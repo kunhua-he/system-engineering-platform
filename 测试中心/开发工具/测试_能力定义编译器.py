@@ -1,0 +1,177 @@
+"""能力定义编译器测试：唯一事实源 → 契约派生物自动生成。
+
+覆盖：编译产物齐全/生成标记/两次编译摘要一致/篡改生成物阻断/
+行为字段缺失阻断/提供者缺失阻断/漂移检测一致性/JSON 结构向后兼容。
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+if str(Path(__file__).resolve().parents[2]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from 开发工具.契约编译.能力定义编译器 import (
+    编译能力定义, 编译结果, 生成Agent数据, 生成包声明, 生成能力契约,
+    生成注册入口, 生成搜索数据, 生成验证场景引用, 读取能力定义, 校验能力定义,
+)
+from 开发工具.契约编译.漂移检测 import 检测能力定义漂移
+
+生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
+
+
+def 样例定义() -> dict:
+    return {
+        "包id": "支持库.适配层.python_docx提供者",
+        "能力列表": [
+            {
+                "能力id": "文字文档.解析文字文档",
+                "版本": "1.0.0",
+                "中文名称": "解析文字文档",
+                "说明": "解析 DOC/DOCX 为平台通用文档",
+                "参数": [
+                    {"名称": "文件路径", "类型": "文本", "必填": True, "说明": "文件绝对路径"},
+                    {"名称": "格式", "类型": "文本", "必填": False, "默认值": "docx", "说明": "doc/docx"},
+                ],
+                "返回": "结果",
+                "错误码": ["文件不存在", "参数不合法", "提供者不可用", "文件损坏"],
+                "行为": {
+                    "修改输入": False, "幂等": True, "副作用": "只读", "排序稳定": True,
+                    "时区": "Asia/Shanghai", "编码": "utf-8", "精度": "高",
+                    "空值": "返回空文档", "输入上限": "200MB", "超时可重试": True,
+                    "取消": "支持", "重试条件": "超时/提供者不可用",
+                    "事务边界": "无", "补偿动作": "无", "线程安全": True, "进程安全": True,
+                    "资源释放": "自动", "错误码": "统一", "可重试性": "超时可重试",
+                },
+                "提供者": {"默认": "支持库.适配层.python_docx提供者", "版本": ">=1.0.0"},
+            }
+        ],
+    }
+
+
+class Test能力定义编译器(unittest.TestCase):
+    """能力定义编译器闭环测试。"""
+
+    def setUp(self):
+        self.临时 = Path(tempfile.mkdtemp())
+        self.包目录 = self.临时 / "python_docx提供者"
+        self.包目录.mkdir()
+        self.定义文件 = self.包目录 / "能力定义.json"
+        self.定义文件.write_text(json.dumps(样例定义(), ensure_ascii=False), encoding="utf-8")
+
+    def test_编译产物齐全(self):
+        结果 = 编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="支持库.适配层.python_docx提供者.实现.文字文档",
+        )
+        self.assertTrue(结果.成功, str(结果.问题列表))
+        名称表 = {产物["类型"] for 产物 in 结果.产物列表}
+        self.assertIn("参数契约.json", 名称表)
+        self.assertIn("包声明.json", 名称表)
+        self.assertIn("__init__.py", 名称表)
+        self.assertIn("能力搜索数据.json", 名称表)
+        self.assertIn("Agent查询数据.json", 名称表)
+        self.assertIn("验证场景引用.json", 名称表)
+        self.assertIn("完整性摘要.json", 名称表)
+
+    def test_生成标记存在(self):
+        编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        入口 = (self.包目录 / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn(生成标记, 入口)
+        self.assertIn("def 注册能力", 入口)
+
+    def test_两次编译摘要一致(self):
+        """从干净输入连续生成两次，内容摘要一致（P3 要求 2）。"""
+        第一次 = 编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        摘要一 = {产物["路径"]: 产物["摘要"] for 产物 in 第一次.产物列表}
+        第二次 = 编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        摘要二 = {产物["路径"]: 产物["摘要"] for 产物 in 第二次.产物列表}
+        self.assertEqual(摘要一, 摘要二)
+
+    def test_篡改生成物阻断(self):
+        """手工篡改生成物（删生成标记）→ 重新编译拒绝覆盖（P3 要求 4）。"""
+        编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        入口 = self.包目录 / "__init__.py"
+        入口.write_text("# 手工篡改\n", encoding="utf-8")
+        结果 = 编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        self.assertFalse(结果.成功)
+        self.assertTrue(any("手工修改" in 问题 for 问题 in 结果.问题列表))
+
+    def test_漂移检测一致(self):
+        编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        问题列表 = 检测能力定义漂移(self.包目录)
+        self.assertEqual([], 问题列表, str(问题列表))
+
+    def test_篡改能力契约漂移阻断(self):
+        编译能力定义(
+            self.定义文件, self.包目录,
+            包id="支持库.适配层.python_docx提供者", 包名称="python_docx提供者",
+            包类型="支持库", 依赖=[], 实现模块="x",
+        )
+        契约 = self.包目录 / "能力契约" / "参数契约.json"
+        数据 = json.loads(契约.read_text(encoding="utf-8"))
+        数据["能力契约"][0]["参数"] = [{"名称": "被篡改"}]
+        契约.write_text(json.dumps(数据, ensure_ascii=False), encoding="utf-8")
+        问题列表 = 检测能力定义漂移(self.包目录)
+        self.assertTrue(any("不一致" in 问题 for 问题 in 问题列表))
+
+    def test_行为字段缺失阻断(self):
+        定义 = 样例定义()
+        定义["能力列表"][0]["行为"].pop("副作用")
+        校验结果 = 校验能力定义(定义)
+        self.assertTrue(any("行为" in 问题 and "副作用" in 问题 for 问题 in 校验结果))
+
+    def test_提供者缺失阻断(self):
+        定义 = 样例定义()
+        定义["能力列表"][0]["提供者"] = {}
+        校验结果 = 校验能力定义(定义)
+        self.assertTrue(any("默认" in 问题 for 问题 in 校验结果))
+
+    def test_错误码空阻断(self):
+        定义 = 样例定义()
+        定义["能力列表"][0]["错误码"] = []
+        校验结果 = 校验能力定义(定义)
+        self.assertTrue(any("错误码" in 问题 for 问题 in 校验结果))
+
+    def test_JSON结构向后兼容(self):
+        """生成的能力契约与既有参数契约.json 结构一致（能力契约 列表）。"""
+        契约文本 = 生成能力契约(样例定义())
+        契约 = json.loads(契约文本)
+        self.assertIn("能力契约", 契约)
+        条目 = 契约["能力契约"][0]
+        self.assertEqual(条目["能力id"], "文字文档.解析文字文档")
+        self.assertIn("参数", 条目)
+        self.assertIn("错误码", 条目)
+
+
+if __name__ == "__main__":
+    unittest.main()
