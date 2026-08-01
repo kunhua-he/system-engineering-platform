@@ -14,7 +14,7 @@ if str(系统根) not in sys.path:
 
 from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.授权 import 发布者
-from 支持库.适配层.密码适配 import 生成密钥对
+from 支持库.适配层 import 生成密钥对
 from 开发工具.统一能力入口.视图.发布者视图 import 发布者视图
 
 

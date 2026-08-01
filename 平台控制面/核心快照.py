@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from 平台控制面.包仓库 import 规范化相对路径
-from 支持库.适配层.密码适配 import 签名 as Ed签名, 验证签名 as Ed验证, 内容摘要
+from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证, 内容摘要
 
 
 class 核心快照管理:

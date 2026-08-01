@@ -13,7 +13,7 @@ from pathlib import Path
 系统根 = Path(__file__).resolve().parents[2]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
-from 支持库.适配层.密码适配 import 生成密钥对, 验证签名, 内容摘要
+from 支持库.适配层 import 生成密钥对, 验证签名, 内容摘要
 from 平台控制面.包仓库.可信仓库元数据 import 可信仓库元数据
 
 

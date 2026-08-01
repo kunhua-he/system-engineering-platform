@@ -17,7 +17,7 @@ from 平台控制面.包仓库 import 包仓库
 from 平台控制面.核心快照 import 核心快照管理
 from 平台控制面.发布管理 import 发布管理
 from 平台控制面.资源监督 import 资源监督器
-from 支持库.适配层.密码适配 import 生成密钥对, 签名 as Ed签名, 验证签名 as Ed验证
+from 支持库.适配层 import 生成密钥对, 签名 as Ed签名, 验证签名 as Ed验证
 
 
 def 建服务() -> tuple[统一能力服务, Path]:

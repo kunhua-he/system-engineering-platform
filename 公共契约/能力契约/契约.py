@@ -30,8 +30,14 @@ class 能力实现:
         return 声明参数名 == 实现参数名 and 声明.返回 == self.返回
 
     def 调用(self, *参数值: Any, **关键字值: Any) -> Any:
-        """按契约调用实现；参数名与声明不符时拒绝调用。"""
-        声明参数名 = {参数.get("名称") for 参数 in self.参数}
+        """按契约调用实现；参数名与声明不符时拒绝调用。
+
+        参数表兼容两种形态：dict 列表（{名称,类型}）与字符串参数名列表。
+        """
+        声明参数名 = {
+            (参数.get("名称") if isinstance(参数, dict) else 参数)
+            for 参数 in self.参数
+        }
         未知关键字 = set(关键字值) - 声明参数名
         if 未知关键字:
             raise TypeError(f"能力 {self.能力id} 收到未知参数: {sorted(未知关键字)}")

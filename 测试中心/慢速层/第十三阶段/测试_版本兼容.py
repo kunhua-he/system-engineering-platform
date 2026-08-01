@@ -27,7 +27,7 @@ from 平台控制面.平台状态 import 平台状态
 from 平台控制面.核心快照 import 核心快照管理
 from 平台控制面.发布管理 import 发布管理
 from 平台控制面.提供者.版本兼容 import 版本兼容
-from 支持库.适配层.密码适配 import 生成密钥对
+from 支持库.适配层 import 生成密钥对
 
 
 class Test核心双版本状态兼容(unittest.TestCase):

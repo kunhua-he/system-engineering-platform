@@ -13,7 +13,7 @@ if str(系统根) not in sys.path:
 
 from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.能力目录 import 契约指纹
-from 支持库.适配层.密码适配 import 生成密钥对
+from 支持库.适配层 import 生成密钥对
 
 工作目录 = Path(tempfile.mkdtemp(prefix="平台控制面示例_"))
 服务 = 统一能力服务(工作目录)

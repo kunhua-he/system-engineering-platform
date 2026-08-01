@@ -140,16 +140,36 @@ def _生成字节(内容参数: dict) -> bytes:
     for 幻灯片 in 幻灯片列表:
         if not isinstance(幻灯片, dict):
             continue
+        数据 = 幻灯片.get("数据") if isinstance(幻灯片.get("数据"), dict) else {}
+        标题文本 = str(
+            幻灯片.get("标题") or 幻灯片.get("name") or 幻灯片.get("名称") or 幻灯片.get("文本")
+            or 数据.get("标题") or 数据.get("name") or 数据.get("文本") or ""
+        )
         页面 = 演示文稿.slides.add_slide(演示文稿.slide_layouts[1])
         if (标题占位 := 页面.shapes.title) is not None:
-            标题占位.text = str(幻灯片.get("标题") or 幻灯片.get("name") or 幻灯片.get("文本") or "")
-        if isinstance(要点 := 幻灯片.get("要点") or 幻灯片.get("bullets") or [], list) and 要点:
+            标题占位.text = 标题文本
+        要点列表 = 幻灯片.get("要点") or 幻灯片.get("bullets") or []
+        if not isinstance(要点列表, list) or not 要点列表:
+            元素列表 = 幻灯片.get("元素") or 幻灯片.get("elements") or 幻灯片.get("children") or []
+            要点列表 = []
+            for 元素 in 元素列表:
+                if not isinstance(元素, dict):
+                    continue
+                元素数据 = 元素.get("数据") if isinstance(元素.get("数据"), dict) else {}
+                文本 = 元素.get("文本") or 元素.get("标题") or 元素数据.get("文本") or 元素数据.get("标题") or ""
+                if 文本:
+                    要点列表.append({"文本": str(文本), "级别": 元素.get("级别") or 元素.get("level") or 0})
+        if 要点列表:
             正文 = 页面.placeholders[1].text_frame
             正文.word_wrap = True
-            for 序号, 文本 in enumerate(要点):
+            for 序号, 文本 in enumerate(要点列表):
                 段落 = 正文.paragraphs[0] if 序号 == 0 else 正文.add_paragraph()
-                段落.text = str(文本.get("文本", "")) if isinstance(文本, dict) else str(文本)
-        if 备注 := 幻灯片.get("备注") or 幻灯片.get("notes") or "":
+                if isinstance(文本, dict):
+                    段落.text = str(文本.get("文本", ""))
+                    段落.level = int(文本.get("级别", 文本.get("level", 0)) or 0)
+                else:
+                    段落.text = str(文本)
+        if 备注 := 幻灯片.get("备注") or 幻灯片.get("notes") or 数据.get("备注") or "":
             页面.notes_slide.notes_text_frame.text = str(备注)
         渲染数 += 1
     if 渲染数 == 0:

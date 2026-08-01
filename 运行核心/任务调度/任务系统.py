@@ -55,13 +55,18 @@ class 任务:
 class 任务系统:
     """任务门面：独立进程执行、并发安全查询、原子快照持久化。"""
 
-    def __init__(self, 存储目录: Path | None = None) -> None:
+    def __init__(self, 存储目录: Path | None = None, *,
+                 最大活动数: int = 4, 最大排队数: int = 16,
+                 提交截止秒: float = 30.0) -> None:
         self.存储目录 = 存储目录 or Path(self.默认存储目录())
         self.存储目录.mkdir(parents=True, exist_ok=True)
         self.任务表: dict[str, 任务] = {}
         self.执行函数表: dict[str, Callable] = {}
         self.锁 = threading.RLock()
-        self.进程池 = 任务进程池(存储目录=self.存储目录 / "进程任务")
+        self.进程池 = 任务进程池(
+            存储目录=self.存储目录 / "进程任务",
+            最大活动数=最大活动数, 最大排队数=最大排队数, 提交截止秒=提交截止秒,
+        )
         self.加载()
 
     @staticmethod

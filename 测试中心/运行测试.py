@@ -12,6 +12,9 @@ unittest discover 的 VALID_MODULE_NAME 只认 ASCII 标识符，无法加载
 
 用法：
     python3.14 测试中心/运行测试.py
+    python3.14 测试中心/运行测试.py --继续
+    python3.14 测试中心/运行测试.py --测试文件 测试中心/模块库/测试_文件管理模块.py
+    python3.14 测试中心/运行测试.py --阶段 模块合规
     python3.14 测试中心/运行测试.py --范围 慢速
     python3.14 测试中心/运行测试.py --范围 全部
 """
@@ -22,10 +25,14 @@ import hashlib
 import json
 import re
 import os
+import platform
+import shutil
+import subprocess
 import sys
 import time
 import unittest
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[1]
@@ -37,7 +44,10 @@ sys.path.insert(0, str(系统根))
 import 测试中心
 
 缓存文件路径 = 系统根 / "工程缓存" / "验证缓存.json"
+断点文件路径 = 系统根 / "工程缓存" / "验证断点.json"
 缓存结构版本 = "2.0.0"  # 缓存结构版本：损坏/缺字段/引擎变化时自动失效
+运行证据有效秒 = 7 * 24 * 60 * 60
+环境敏感阶段 = {"真实进程", "网关", "浏览器", "发布门禁", "慢速层"}
 顶层包目录表 = {
     目录.name for 目录 in 系统根.iterdir()
     if 目录.is_dir() and 目录.name not in ("测试中心", "工程缓存", "开发文档", "示例项目", ".git", "__pycache__")
@@ -107,6 +117,48 @@ def 阶段摘要(测试文件列表: list[Path], 依赖目录表: set[str]) -> s
     return 摘要器.hexdigest()[:16]
 
 
+def 运行环境摘要() -> str:
+    """运行时、系统、依赖锁和外部程序不变时允许复用运行证据。"""
+    摘要器 = hashlib.sha256()
+    摘要器.update(sys.version.encode("utf-8"))
+    摘要器.update(platform.platform().encode("utf-8"))
+    摘要器.update(platform.machine().encode("utf-8"))
+    for 路径 in sorted(系统根.rglob("*依赖锁*.json")):
+        if "工程缓存" not in str(路径) and 路径.is_file():
+            摘要器.update(str(路径.relative_to(系统根)).encode("utf-8"))
+            摘要器.update(_文件摘要(路径).encode("utf-8"))
+    for 程序 in (sys.executable, shutil.which("soffice"), shutil.which("psql")):
+        if not 程序:
+            continue
+        路径 = Path(程序)
+        try:
+            状态 = 路径.stat()
+        except OSError:
+            continue
+        摘要器.update(str(路径).encode("utf-8"))
+        摘要器.update(f"{状态.st_size}:{状态.st_mtime_ns}".encode("utf-8"))
+    return 摘要器.hexdigest()[:16]
+
+
+def 阶段缓存可复用(
+    阶段名: str, 缓存项: dict | None, 摘要: str, 环境摘要: str,
+    *, 强制慢速: bool = False, 当前时间: float | None = None,
+) -> bool:
+    if not 缓存项 or 缓存项.get("摘要") != 摘要 or not 缓存项.get("成功"):
+        return False
+    if not 缓存项.get("测试数") or 缓存项.get("结构版本") != 缓存结构版本:
+        return False
+    if 阶段名 == "慢速层" and 强制慢速:
+        return False
+    if 阶段名 in 环境敏感阶段:
+        if 缓存项.get("环境摘要") != 环境摘要:
+            return False
+        记录时间 = float(缓存项.get("时间戳", 0))
+        if (当前时间 or time.time()) - 记录时间 > 运行证据有效秒:
+            return False
+    return True
+
+
 def 读取缓存() -> dict:
     if not 缓存文件路径.is_file():
         return {}
@@ -119,6 +171,33 @@ def 读取缓存() -> dict:
 def 写入缓存(缓存: dict) -> None:
     缓存文件路径.parent.mkdir(parents=True, exist_ok=True)
     缓存文件路径.write_text(json.dumps(缓存, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def 写入断点(范围: str, 阶段名: str, 阶段顺序表: list[tuple[str, list[str]]], 原因: str) -> None:
+    断点文件路径.parent.mkdir(parents=True, exist_ok=True)
+    数据 = {
+        "范围": 范围, "失败阶段": 阶段名,
+        "阶段列表": [名称 for 名称, _ in 阶段顺序表],
+        "原因": 原因, "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "缓存结构版本": 缓存结构版本,
+    }
+    临时路径 = 断点文件路径.with_suffix(".json.tmp")
+    临时路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2), encoding="utf-8")
+    临时路径.replace(断点文件路径)
+
+
+def 读取断点() -> dict:
+    if not 断点文件路径.is_file():
+        return {}
+    try:
+        数据 = json.loads(断点文件路径.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return 数据 if isinstance(数据, dict) else {}
+
+
+def 清除断点() -> None:
+    断点文件路径.unlink(missing_ok=True)
 
 
 def 判断零测试(套件: unittest.TestSuite) -> bool:
@@ -144,6 +223,140 @@ def 判断存在跳过(结果: unittest.TestResult) -> bool:
     return True
 
 
+def 执行测试套件(套件: unittest.TestSuite, 名称: str = "定向") -> int:
+    """使用统一门禁执行一个明确套件。"""
+    if 判断零测试(套件):
+        print(f"{名称}门禁失败：未发现任何测试用例（测试数量为零不允许返回成功）")
+        return 1
+    print(f"--- {名称}验证（{套件.countTestCases()} 个测试）---")
+    结果 = unittest.TextTestRunner(verbosity=1).run(套件)
+    if not 结果.wasSuccessful() or 判断导入失败(结果) or 判断存在跳过(结果):
+        return 1
+    print(f"{名称}门禁通过：共 {套件.countTestCases()} 个测试全部成功")
+    return 0
+
+
+def 加载指定测试文件(路径表: list[str]) -> unittest.TestSuite:
+    """工作包快速验证：只加载显式指定的测试文件。"""
+    套件 = unittest.TestSuite()
+    加载器 = unittest.TestLoader()
+    for 序号, 原路径 in enumerate(路径表):
+        路径 = Path(原路径)
+        if not 路径.is_absolute():
+            路径 = 系统根 / 路径
+        路径 = 路径.resolve()
+        if not 路径.is_relative_to(测试中心.测试中心目录.resolve()):
+            raise ValueError(f"测试文件必须位于测试中心: {原路径}")
+        if not 路径.is_file() or 路径.suffix != ".py" or not 路径.name.startswith("测试_"):
+            raise ValueError(f"不是有效测试文件: {原路径}")
+        模块 = 测试中心.加载测试模块(路径, 序号)
+        套件.addTests(加载器.loadTestsFromModule(模块))
+    return 套件
+
+
+def 计算并行数(文件数: int, 请求并行数: int) -> int:
+    """0 表示自动；并发有界，避免测试调度反向冲垮机器。"""
+    if 文件数 <= 1:
+        return 1
+    if 请求并行数 < 0:
+        raise ValueError("并行数不能小于0")
+    上限 = min(32, max(1, os.cpu_count() or 4))
+    return min(文件数, 请求并行数 or 上限)
+
+
+def _运行单文件子进程(路径: str, 运行id: str, 序号: int) -> dict[str, object]:
+    工作目录 = 系统根 / "工程缓存" / "验证运行" / 运行id / str(序号)
+    工作目录.mkdir(parents=True, exist_ok=True)
+    环境 = os.environ.copy()
+    环境["TMPDIR"] = str(工作目录)
+    环境["系统底座_验证运行id"] = 运行id
+    try:
+        结果 = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "--内部测试文件", 路径],
+            cwd=系统根, env=环境, capture_output=True, text=True,
+            check=False, timeout=600,
+        )
+    except subprocess.TimeoutExpired as 错误:
+        return {
+            "路径": 路径, "退出码": 124,
+            "标准输出": (错误.stdout or "")[-8000:] if isinstance(错误.stdout, str) else "",
+            "标准错误": "单文件验证超过600秒，已终止",
+        }
+    return {
+        "路径": 路径, "退出码": 结果.returncode,
+        "标准输出": 结果.stdout[-8000:], "标准错误": 结果.stderr[-4000:],
+    }
+
+
+def 并行执行指定测试文件(路径表: list[str], 并行数: int) -> int:
+    """工作包多文件并行；每个文件独立进程和临时目录。"""
+    实际并行 = 计算并行数(len(路径表), 并行数)
+    if 实际并行 == 1:
+        return 执行测试套件(加载指定测试文件(路径表), "工作包")
+    运行id = uuid.uuid4().hex
+    结果表: list[dict[str, object]] = []
+    with ThreadPoolExecutor(max_workers=实际并行) as 池:
+        任务表 = {
+            池.submit(_运行单文件子进程, 路径, 运行id, 序号): 路径
+            for 序号, 路径 in enumerate(路径表)
+        }
+        for 任务 in as_completed(任务表):
+            结果表.append(任务.result())
+    失败表 = [结果 for 结果 in 结果表 if 结果["退出码"] != 0]
+    for 结果 in sorted(结果表, key=lambda 项: str(项["路径"])):
+        print(f"--- 工作包文件：{结果['路径']}（退出码={结果['退出码']}）---")
+        if 结果["退出码"] != 0:
+            print(结果["标准输出"])
+            print(结果["标准错误"], file=sys.stderr)
+    shutil.rmtree(系统根 / "工程缓存" / "验证运行" / 运行id, ignore_errors=True)
+    if 失败表:
+        print(f"工作包并行门禁失败：{len(失败表)}/{len(结果表)} 个文件失败")
+        return 1
+    print(f"工作包并行门禁通过：{len(结果表)} 个文件，并行数 {实际并行}")
+    return 0
+
+
+def 筛选阶段(
+    阶段顺序表: list[tuple[str, list[str]]], 指定阶段: list[str],
+) -> list[tuple[str, list[str]]]:
+    """波次验证：保持固定顺序，仅选择明确受影响阶段。"""
+    可用阶段 = {名称 for 名称, _ in 阶段顺序表}
+    未知阶段 = sorted(set(指定阶段) - 可用阶段)
+    if 未知阶段:
+        raise ValueError(f"未知验证阶段: {', '.join(未知阶段)}")
+    目标 = set(指定阶段)
+    return [阶段 for 阶段 in 阶段顺序表 if 阶段[0] in 目标]
+
+
+def 计算断点续跑阶段(
+    阶段顺序表: list[tuple[str, list[str]]], 断点: dict,
+    缓存: dict, 环境摘要: str, 强制慢速: bool,
+) -> list[tuple[str, list[str]]]:
+    """从失败阶段继续；更早阶段证据失效时自动回退。"""
+    记录阶段 = 断点.get("阶段列表", [])
+    if 记录阶段:
+        阶段顺序表 = [阶段 for 阶段 in 阶段顺序表 if 阶段[0] in 记录阶段]
+    名称表 = [名称 for 名称, _ in 阶段顺序表]
+    失败阶段 = str(断点.get("失败阶段", ""))
+    if 失败阶段 not in 名称表:
+        raise ValueError(f"断点失败阶段不存在: {失败阶段}")
+    起点 = 名称表.index(失败阶段)
+    for 序号, (阶段名, 匹配表) in enumerate(阶段顺序表[:起点]):
+        阶段文件 = 收集阶段文件(匹配表)
+        if not 阶段文件:
+            起点 = 序号
+            break
+        依赖目录表 = 阶段依赖目录表(阶段文件)
+        摘要 = 阶段摘要(阶段文件, 依赖目录表)
+        if not 阶段缓存可复用(
+            阶段名, 缓存.get(阶段名), 摘要, 环境摘要,
+            强制慢速=强制慢速,
+        ):
+            起点 = 序号
+            break
+    return 阶段顺序表[起点:]
+
+
 def 审计工程缓存正式实现引用() -> list[str]:
     """正式测试不得把工程缓存中的候选代码当作生产实现。
 
@@ -167,7 +380,11 @@ def 审计工程缓存正式实现引用() -> list[str]:
     return 违规文件
 
 
-def 主函数(套件: unittest.TestSuite | None = None, 范围: str = "常规") -> int:
+def 主函数(
+    套件: unittest.TestSuite | None = None, 范围: str = "常规",
+    指定测试文件: list[str] | None = None, 指定阶段: list[str] | None = None,
+    并行数: int = 0, 强制慢速: bool = False, 继续运行: bool = False,
+) -> int:
     """按固定阶段顺序执行全部测试；前一阶段失败必须停止。"""
     加载器 = unittest.TestLoader()
     if 套件 is not None:
@@ -180,6 +397,21 @@ def 主函数(套件: unittest.TestSuite | None = None, 范围: str = "常规") 
             return 1
         print(f"门禁通过：共 {套件.countTestCases()} 个测试全部成功")
         return 0
+    if 指定测试文件:
+        if 继续运行:
+            print("用法错误：--继续不能与--测试文件同时使用")
+            return 2
+        if 范围 != "常规" or 指定阶段:
+            print("用法错误：--测试文件不能与--阶段或非默认--范围同时使用")
+            return 2
+        try:
+            return 并行执行指定测试文件(指定测试文件, 并行数)
+        except (OSError, ValueError, ImportError) as 错误:
+            print(f"工作包门禁失败：{错误}")
+            return 1
+    if 强制慢速 and 范围 not in ("慢速", "全部"):
+        print("用法错误：--强制慢速只能与--范围 慢速或全部使用")
+        return 2
     缓存实现引用 = 审计工程缓存正式实现引用()
     if 缓存实现引用:
         print("正式实现门禁失败：测试引用了工程缓存中的第十四阶段候选实现")
@@ -205,6 +437,16 @@ def 主函数(套件: unittest.TestSuite | None = None, 范围: str = "常规") 
         ("发布门禁", ["测试_门禁.py", "发布门禁"]),
     ]
     慢速阶段顺序表 = [("慢速层", ["慢速层"])]
+    断点: dict = {}
+    if 继续运行:
+        断点 = 读取断点()
+        if not 断点:
+            print("续跑门禁失败：没有可恢复的验证断点")
+            return 2
+        if 断点.get("缓存结构版本") != 缓存结构版本:
+            print("续跑门禁失败：断点结构版本已失效，请重新执行原验证命令")
+            return 2
+        范围 = str(断点.get("范围", 范围))
     if 范围 == "常规":
         阶段顺序表 = 常规阶段顺序表
     elif 范围 == "慢速":
@@ -214,6 +456,19 @@ def 主函数(套件: unittest.TestSuite | None = None, 范围: str = "常规") 
     else:
         print(f"用法错误：未知验证范围 {范围!r}")
         return 2
+    if 继续运行 and 指定阶段:
+        print("用法错误：--继续不能与--阶段同时使用")
+        return 2
+    if 指定阶段:
+        if 范围 != "常规":
+            print("用法错误：--阶段只能用于常规范围")
+            return 2
+        try:
+            阶段顺序表 = 筛选阶段(阶段顺序表, 指定阶段)
+        except ValueError as 错误:
+            print(f"用法错误：{错误}")
+            return 2
+    断点阶段顺序表 = 阶段顺序表
     if 范围 in ("慢速", "全部"):
         # 发布门禁可能由慢速综合审计反向调用。令牌必须同时匹配直接父进程，
         # 门禁才可复用当前正在执行的慢速验证事务，避免门禁与慢速层递归。
@@ -223,19 +478,35 @@ def 主函数(套件: unittest.TestSuite | None = None, 范围: str = "常规") 
     阶段序号 = 0
     复用阶段数 = 0
     缓存 = 读取缓存()
+    环境摘要 = 运行环境摘要()
+    if 继续运行:
+        try:
+            记录阶段 = set(断点.get("阶段列表", []))
+            断点阶段顺序表 = [
+                阶段 for 阶段 in 阶段顺序表 if 阶段[0] in 记录阶段
+            ]
+            阶段顺序表 = 计算断点续跑阶段(
+                断点阶段顺序表, 断点, 缓存, 环境摘要, 强制慢速,
+            )
+        except ValueError as 错误:
+            print(f"续跑门禁失败：{错误}")
+            return 2
+        print(f"断点续跑：从 {阶段顺序表[0][0]} 开始，共 {len(阶段顺序表)} 个阶段")
     开始时间 = time.monotonic()
     for 阶段名, 匹配表 in 阶段顺序表:
         阶段序号 += 1
         阶段文件 = 收集阶段文件(匹配表)
         if not 阶段文件:
             print(f"阶段门禁失败：{阶段名} 阶段未发现任何测试文件")
+            写入断点(范围, 阶段名, 断点阶段顺序表, "未发现测试文件")
             return 1
         # 增量验证：缓存键 = 测试文件 + 依赖目录摘要；无变化复用已验证证据
         依赖目录表 = 阶段依赖目录表(阶段文件)
         摘要 = 阶段摘要(阶段文件, 依赖目录表)
         缓存项 = 缓存.get(阶段名)
-        if 阶段名 != "慢速层" and 缓存项 and 缓存项.get("摘要") == 摘要 and 缓存项.get("成功") \
-                and 缓存项.get("测试数") and 缓存项.get("结构版本") == 缓存结构版本:
+        if 阶段缓存可复用(
+            阶段名, 缓存项, 摘要, 环境摘要, 强制慢速=强制慢速,
+        ):
             print(f"--- 阶段：{阶段名}（缓存命中，复用 {缓存项.get('测试数')} 个测试已验证证据）---")
             总测试数 += 缓存项.get("测试数", 0)
             复用阶段数 += 1
@@ -255,26 +526,32 @@ def 主函数(套件: unittest.TestSuite | None = None, 范围: str = "常规") 
                             阶段套件.addTests(加载器.loadTestsFromModule(模块))
         if 判断零测试(阶段套件):
             print(f"阶段门禁失败：{阶段名} 阶段未发现任何测试用例")
+            写入断点(范围, 阶段名, 断点阶段顺序表, "未发现测试用例")
             return 1
         print(f"--- 阶段：{阶段名}（{阶段套件.countTestCases()} 个测试）---")
         阶段结果 = unittest.TextTestRunner(verbosity=1).run(阶段套件)
         if not 阶段结果.wasSuccessful():
             print(f"阶段门禁失败：{阶段名} 阶段存在失败，停止后续阶段")
+            写入断点(范围, 阶段名, 断点阶段顺序表, "测试失败")
             return 1
         if 判断导入失败(阶段结果):
             print(f"阶段门禁失败：{阶段名} 阶段存在导入失败，停止后续阶段")
+            写入断点(范围, 阶段名, 断点阶段顺序表, "导入失败")
             return 1
         if 判断存在跳过(阶段结果):
             print(f"阶段门禁失败：{阶段名} 阶段存在未执行场景，停止后续阶段")
+            写入断点(范围, 阶段名, 断点阶段顺序表, "存在未执行场景")
             return 1
         总测试数 += 阶段套件.countTestCases()
         缓存[阶段名] = {
             "摘要": 摘要, "成功": True, "测试数": 阶段套件.countTestCases(),
             "结构版本": 缓存结构版本,
             "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "时间戳": time.time(), "环境摘要": 环境摘要,
         }
         写入缓存(缓存)
     总耗时 = time.monotonic() - 开始时间
+    清除断点()
     print(f"门禁通过：共 {总测试数} 个测试全部成功（复用 {复用阶段数} 个阶段缓存，总耗时 {总耗时:.2f} 秒）")
     return 0
 
@@ -284,5 +561,19 @@ if __name__ == "__main__":
 
     参数解析器 = argparse.ArgumentParser(description="系统工程底座唯一验证入口")
     参数解析器.add_argument("--范围", choices=("常规", "慢速", "全部"), default="常规")
+    参数解析器.add_argument("--阶段", action="append", help="合并波次只验证指定常规阶段，可重复")
+    参数解析器.add_argument("--测试文件", nargs="+", help="工作包只验证明确测试文件")
+    参数解析器.add_argument("--并行数", type=int, default=0, help="工作包并行进程数，0为自动")
+    参数解析器.add_argument("--强制慢速", action="store_true", help="忽略慢速证据缓存并真实执行")
+    参数解析器.add_argument("--继续", dest="继续运行", action="store_true", help="从失败断点继续，证据失效时自动回退")
+    参数解析器.add_argument("--内部测试文件", help=argparse.SUPPRESS)
     参数 = 参数解析器.parse_args()
-    raise SystemExit(主函数(范围=参数.范围))
+    if 参数.内部测试文件:
+        raise SystemExit(执行测试套件(
+            加载指定测试文件([参数.内部测试文件]), "单文件",
+        ))
+    raise SystemExit(主函数(
+        范围=参数.范围, 指定测试文件=参数.测试文件,
+        指定阶段=参数.阶段, 并行数=参数.并行数,
+        强制慢速=参数.强制慢速, 继续运行=参数.继续运行,
+    ))

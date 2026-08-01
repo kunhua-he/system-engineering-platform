@@ -8,7 +8,7 @@ from pathlib import Path
 from 平台控制面.包仓库.可信仓库元数据 import 可信仓库元数据
 from 平台控制面.备份恢复.备份契约 import 权威数据备份契约
 from 平台控制面.备份恢复.恢复编排器 import 新机器恢复编排器
-from 支持库.适配层.密码适配 import 内容摘要 as 仓库摘要
+from 支持库.适配层 import 内容摘要 as 仓库摘要
 
 from 审计环境 import (构造存储根, 构造权威状态库, 构造制品目录, 构造源码快照,
                        构造依赖锁, 构造编排器备份, 读取版本标记, 最小能力输出)

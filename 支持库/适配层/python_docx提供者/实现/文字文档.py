@@ -134,8 +134,95 @@ def _docx可用() -> bool:
         return False
 
 
+def _取块文本(块: dict) -> str:
+    """兼容 文本 顶层与 数据.文本 嵌套结构。"""
+    数据 = 块.get("数据") if isinstance(块.get("数据"), dict) else {}
+    return str(
+        块.get("文本")
+        or 块.get("标题")
+        or 块.get("name")
+        or 数据.get("文本")
+        or 数据.get("标题")
+        or 数据.get("name")
+        or ""
+    )
+
+
+def _取块类型(块: dict) -> str:
+    数据 = 块.get("数据") if isinstance(块.get("数据"), dict) else {}
+    return str(块.get("类型") or 数据.get("类型") or "段落").lower()
+
+
+def _取块级别(块: dict) -> int:
+    数据 = 块.get("数据") if isinstance(块.get("数据"), dict) else {}
+    原始 = 块.get("级别") or 块.get("level") or 数据.get("级别") or 数据.get("level") or 1
+    try:
+        return max(1, min(int(原始), 4))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _取表头(块: dict) -> list:
+    数据 = 块.get("数据") if isinstance(块.get("数据"), dict) else {}
+    return (
+        块.get("表头")
+        or 块.get("header")
+        or 块.get("table_header")
+        or 数据.get("表头")
+        or 数据.get("headers")
+        or 数据.get("columns")
+        or []
+    )
+
+
+def _取表格行(块: dict) -> list:
+    数据 = 块.get("数据") if isinstance(块.get("数据"), dict) else {}
+    return 块.get("行") or 块.get("rows") or 块.get("table_rows") or 数据.get("行") or 数据.get("rows") or []
+
+
+def _单元格文本(值) -> str:
+    if isinstance(值, dict):
+        for 键 in ("文本", "标注", "value", "name", "名称"):
+            if 键 in 值 and 值[键] is not None:
+                return str(值[键])
+        return str(值)
+    return "" if 值 is None else str(值)
+
+
+def _添加表格块(文档, 块: dict) -> None:
+    """按 表头/行 生成表格；支持 数据.表格 嵌套（headers/rows 或 columns/values）。"""
+    表头 = _取表头(块)
+    行列表 = _取表格行(块)
+    if not isinstance(表头, list):
+        表头 = []
+    if not isinstance(行列表, list):
+        行列表 = []
+    数据行列表: list[list[str]] = []
+    if 表头:
+        数据行列表.append([_单元格文本(单元格) for 单元格 in 表头])
+    for 行 in 行列表:
+        if isinstance(行, dict):
+            if 表头:
+                数据行列表.append([_单元格文本(行.get(_单元格文本(列))) for 列 in 表头])
+            else:
+                数据行列表.append([_单元格文本(值) for 值 in 行.values()])
+        elif isinstance(行, (list, tuple)):
+            数据行列表.append([_单元格文本(值) for 值 in 行])
+        else:
+            数据行列表.append([_单元格文本(行)])
+    数据行列表 = [行 for 行 in 数据行列表 if 行]
+    if not 数据行列表:
+        return
+    列数 = max(len(行) for 行 in 数据行列表)
+    表格 = 文档.add_table(rows=len(数据行列表), cols=列数)
+    for 行索引, 行数据 in enumerate(数据行列表):
+        for 列索引 in range(列数):
+            if 列索引 < len(行数据):
+                表格.rows[行索引].cells[列索引].text = 行数据[列索引]
+
+
 def 生成文字文档(内容参数: dict) -> 结果:
-    """按 内容参数（内容块列表：标题/段落）生成 DOCX 字节。"""
+    """按 内容参数（内容块列表：标题/段落/表格）生成 DOCX 字节。"""
     if not isinstance(内容参数, dict):
         return _失败("参数不合法", "内容参数必须是字典")
     if not _docx可用():
@@ -149,12 +236,19 @@ def 生成文字文档(内容参数: dict) -> 结果:
         for 块 in 块列表:
             if not isinstance(块, dict):
                 continue
-            类型 = 块.get("类型", "段落")
-            文本 = str(块.get("文本", ""))
-            if 类型 in ("标题", "heading"):
-                文档.add_heading(文本, level=1)
-            elif 类型 in ("段落", "paragraph"):
-                文档.add_paragraph(文本)
+            类型 = _取块类型(块)
+            文本 = _取块文本(块)
+            if 类型 in ("标题", "heading", "head", "h1", "h2", "h3", "h4"):
+                文档.add_heading(文本, level=_取块级别(块))
+            elif 类型 in ("表格", "table"):
+                _添加表格块(文档, 块)
+            elif 类型 in ("分页", "pagebreak", "page_break"):
+                文档.add_page_break()
+            elif 类型 in ("段落", "paragraph", "文本", "textbox", "列出", "code"):
+                段落 = 文档.add_paragraph(文本)
+                if 块.get("加粗") or 块.get("bold"):
+                    for 运行 in 段落.runs:
+                        运行.bold = True
         io流 = io.BytesIO()
         文档.save(io流)
         字节 = io流.getvalue()
