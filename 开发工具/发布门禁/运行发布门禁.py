@@ -83,8 +83,17 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0) -> tupl
         return -1, f"超时（> {超时秒} 秒）"
 
 
+def _是否已废弃包(包目录: Path) -> bool:
+    """已废弃包保留文件但不参与装配/审计/门禁（与发现器/加载器同口径）。"""
+    try:
+        import json as _json
+        声明 = _json.loads((包目录 / "包声明.json").read_text(encoding="utf-8"))
+        return bool(声明.get("已废弃"))
+    except Exception:
+        return False
+
+
 def _校验文件清单摘要(包目录: Path) -> tuple[bool, str]:
-    """按完整性摘要中的文件清单逐文件校验，并拒绝缺项和多余项。"""
     声明路径 = 包目录 / "包声明.json"
     摘要路径 = 包目录 / "完整性摘要.json"
     if not 声明路径.is_file() or not 摘要路径.is_file():
@@ -206,8 +215,10 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     # 1. 包结构完整 + 包声明合法 + 能力契约合法。
     # 未指定单包时校验全部正式支持库和模块，模板不参与发布。
     包目录列表 = [包目录] if 包目录 is not None else sorted(
-        [路径.parent for 路径 in (系统根 / "支持库").rglob("包声明.json")]
-        + [路径.parent for 路径 in (系统根 / "模块库").rglob("包声明.json") if 路径.parent.name != "_模板"]
+        [路径.parent for 路径 in (系统根 / "支持库").rglob("包声明.json")
+         if not _是否已废弃包(路径.parent)]
+        + [路径.parent for 路径 in (系统根 / "模块库").rglob("包声明.json")
+           if 路径.parent.name != "_模板" and not _是否已废弃包(路径.parent)]
     )
     if 包目录列表:
         import json as _json
@@ -515,7 +526,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         import tempfile as _临时
         from 平台控制面.统一入口 import 统一能力服务
         from 平台控制面.发布管理 import 发布管理
-        from 支持库.适配层.密码适配 import 生成密钥对 as _密钥对
+        from 支持库.适配层 import 生成密钥对 as _密钥对
         平台目录 = Path(_临时.mkdtemp(prefix="门禁平台_"))
         平台服务 = 统一能力服务(平台目录)
         # 1. 未确认需求创建组件必须被拒（需求直达门禁）+ 授权不可自举

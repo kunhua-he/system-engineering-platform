@@ -7,7 +7,7 @@ import json
 import time
 from typing import Any
 
-from 支持库.适配层.密码适配 import 签名 as Ed签名, 验证签名 as Ed验证
+from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证
 
 
 class 签名能力:

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from 平台控制面.包仓库.可信仓库元数据 import 可信仓库元数据
-from 支持库.适配层.密码适配 import 生成密钥对, 签名, 内容摘要
+from 支持库.适配层 import 生成密钥对, 签名, 内容摘要
 
 
 def 规范化正文(元数据: dict) -> bytes:

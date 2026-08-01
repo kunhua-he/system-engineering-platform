@@ -70,7 +70,7 @@ def _项2_可复现构建(系统根: Path) -> tuple[str, bool, str]:
 def _项3_可信仓库元数据(系统根: Path) -> tuple[str, bool, str]:
     """可信仓库：有效四元数据通过；替换攻击必须失败。"""
     from 平台控制面.包仓库.可信仓库元数据 import 可信仓库元数据
-    from 支持库.适配层.密码适配 import 内容摘要
+    from 支持库.适配层 import 内容摘要
     目录 = Path(tempfile.mkdtemp(prefix="门禁_可信仓库_"))
     仓库 = 可信仓库元数据(目录)
     根信任 = 仓库.初始化()

@@ -25,21 +25,133 @@ def _取表名(工作表: dict) -> str:
 
 def _取单元格文本(值) -> str:
     if isinstance(值, dict):
-        for 键 in ("文本", "标注", "value", "name"):
+        for 键 in ("文本", "标注", "value", "name", "名称"):
             if 键 in 值 and 值[键] is not None:
                 return str(值[键])
         return str(值)
     return "" if 值 is None else str(值)
 
 
+def _列名(列单元格) -> str:
+    """列可以是文本或 {名称: 列名} 字典。"""
+    return _取单元格文本(列单元格)
+
+
 def _标准化行(行数据, 列: list) -> list:
     if isinstance(行数据, dict):
         if 列:
-            return [_取单元格文本(行数据.get(列单元格)) for 列单元格 in 列]
+            return [_取单元格文本(行数据.get(_列名(列单元格))) for 列单元格 in 列]
         return [_取单元格文本(值) for 值 in 行数据.values()]
     if isinstance(行数据, (list, tuple)):
         return [_取单元格文本(值) for 值 in 行数据]
     return [_取单元格文本(行数据)]
+
+
+def _解析单元格地址(地址: str) -> tuple[int, int]:
+    """把 A1 风格地址解析为 (行号, 列号)，非法时抛 ValueError。"""
+    匹配 = __import__("re").match(r"([A-Za-z]+)(\d+)", str(地址 or "").strip())
+    if not 匹配:
+        raise ValueError(f"非法单元格地址: {地址}")
+    列索引 = 0
+    for 字符 in 匹配.group(1).upper():
+        列索引 = 列索引 * 26 + (ord(字符) - 64)
+    return int(匹配.group(2)), 列索引
+
+
+def _应用样式到单元格(单元格, 样式信息: dict) -> None:
+    """把样式字典应用到 openpyxl 单元格（与旧版写入_样式 同语义）。"""
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    字体参数: dict = {}
+    if 样式信息.get("bold"):
+        字体参数["bold"] = True
+    if 样式信息.get("italic"):
+        字体参数["italic"] = True
+    if 样式信息.get("underline"):
+        字体参数["underline"] = "single"
+    if 样式信息.get("strikethrough"):
+        字体参数["strike"] = True
+    if 样式信息.get("fontSize"):
+        字体参数["size"] = 样式信息["fontSize"]
+    if 样式信息.get("fontName"):
+        字体参数["name"] = 样式信息["fontName"]
+    if 样式信息.get("color"):
+        颜色值 = str(样式信息["color"])
+        if 颜色值.startswith("#"):
+            字体参数["color"] = 颜色值[1:]
+    if 字体参数:
+        单元格.font = Font(**字体参数)
+    if 样式信息.get("fillColor"):
+        填充色 = str(样式信息["fillColor"])
+        if 填充色.startswith("#"):
+            单元格.fill = PatternFill(start_color=填充色[1:], end_color=填充色[1:], fill_type="solid")
+    对齐参数: dict = {}
+    if 样式信息.get("对齐"):
+        水平对齐 = {"左": "left", "居中": "center", "右": "right"}.get(样式信息["对齐"])
+        if 水平对齐:
+            对齐参数["horizontal"] = 水平对齐
+    if 样式信息.get("wrapText"):
+        对齐参数["wrap_text"] = True
+    if 对齐参数:
+        单元格.alignment = Alignment(**对齐参数)
+    if 样式信息.get("borderType"):
+        边框类型 = 样式信息["borderType"]
+        if 边框类型 in ("全部", "outside"):
+            单元格.border = Border(
+                left=Side(style="thin", color="000000"),
+                right=Side(style="thin", color="000000"),
+                top=Side(style="thin", color="000000"),
+                bottom=Side(style="thin", color="000000"),
+            )
+
+
+def _写入单元格映射(表单, 工作表: dict) -> int:
+    """按 A1 地址写入 单元格映射（含公式/样式/合并/列宽/行高）。"""
+    from openpyxl.styles import Alignment, Font
+    写入格数 = 0
+    单元格映射 = 工作表.get("单元格映射") or {}
+    样式映射 = 工作表.get("样式映射") or {}
+    if 单元格映射:
+        for 地址, 值 in 单元格映射.items():
+            try:
+                行号, 列号 = _解析单元格地址(地址)
+            except ValueError:
+                continue
+            单元格 = 表单.cell(row=行号, column=列号)
+            if isinstance(值, str) and "[ASCII:" in 值:
+                值 = _解码ascii转义(值)
+            单元格.value = 值
+            样式信息 = 样式映射.get(地址)
+            if isinstance(样式信息, dict) and 样式信息:
+                _应用样式到单元格(单元格, 样式信息)
+            写入格数 += 1
+    for 合并范围 in 工作表.get("合并范围") or []:
+        if isinstance(合并范围, str):
+            try:
+                表单.merge_cells(合并范围)
+            except Exception:
+                pass
+    for 列字母, 宽度 in (工作表.get("列宽映射") or {}).items():
+        try:
+            表单.column_dimensions[str(列字母)].width = float(宽度) / 7
+        except (KeyError, ValueError, TypeError):
+            pass
+    for 行号字符串, 高度 in (工作表.get("行高映射") or {}).items():
+        try:
+            表单.row_dimensions[int(行号字符串)].height = float(高度) / 4
+        except (ValueError, TypeError, KeyError):
+            pass
+    return 写入格数
+
+
+def _解码ascii转义(值: str) -> str:
+    """解码 [ASCII:0xXXXX] 转义序列（旧版 Excel 引擎产物兼容）。"""
+    import re
+    def 替换(匹配):
+        try:
+            return chr(int(匹配.group(1), 16))
+        except ValueError:
+            return 匹配.group(0)
+    return re.sub(r"\[ASCII:0x([0-9A-F]{4})\]", 替换, 值)
 
 
 def _生成XLSX字节(工作表列表: list) -> bytes:
@@ -64,8 +176,10 @@ def _生成XLSX字节(工作表列表: list) -> bytes:
             if 行值:
                 表单.append(行值)
                 写入格数 += len(行值)
+        if 工作表.get("单元格映射"):
+            写入格数 += _写入单元格映射(表单, 工作表)
     if 写入格数 == 0:
-        raise ValueError("工作表列表中没有可写单元格（列/行均为空）")
+        raise ValueError("工作表列表中没有可写单元格（列/行/单元格映射均为空）")
     缓冲 = io.BytesIO()
     工作簿.save(缓冲)
     return 缓冲.getvalue()

@@ -30,6 +30,27 @@ from 模块库.文档生成 import 生成文档
 
 
 class Test生成文档(unittest.TestCase):
+    def setUp(self):
+        """真实装配：注册提供者能力并经 装配系统 注入唯一能力调用服务。"""
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
+
+        注册表 = 能力注册表()
+        from 支持库.适配层.python_docx提供者 import 注册能力 as 注册docx
+        from 支持库.适配层.openpyxl提供者 import 注册能力 as 注册xlsx
+        from 支持库.适配层.python_pptx提供者 import 注册能力 as 注册pptx
+        from 支持库.适配层.reportlab提供者 import 注册能力 as 注册pdf
+
+        注册docx(注册表)
+        注册xlsx(注册表)
+        注册pptx(注册表)
+        注册pdf(注册表)
+        设置全局唯一服务(唯一能力调用服务(注册表))
+
+    def tearDown(self):
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+        设置全局唯一服务(None)
+
     def test_四格式组合生成返回统一产物(self):
         for 格式, 内容参数 in 四格式参数表:
             with self.subTest(格式=格式):

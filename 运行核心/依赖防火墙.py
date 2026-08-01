@@ -191,6 +191,8 @@ def 审计依赖(目标目录: Path | None = None, *, 返回违规: bool = True)
                     and "适配层" in str(文件.relative_to(系统根))
                     and (
                         文件.relative_to(系统根).parts[2].endswith("提供者")
+                        # 密码适配.py 已废弃：正式代码已迁移到 密码签名提供者，
+                        # 仅历史兼容保留（测试仍可直引）；豁免仅覆盖该文件本身。
                         or 文件.relative_to(系统根).parts[2] == "密码适配.py"
                     )
                 ) or (

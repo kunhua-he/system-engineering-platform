@@ -21,7 +21,7 @@ if str(系统根) not in sys.path:
 
 from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.发布管理 import 发布管理
-from 支持库.适配层.密码适配 import 生成密钥对
+from 支持库.适配层 import 生成密钥对
 
 
 def 建服务() -> tuple[统一能力服务, Path]:

@@ -21,7 +21,7 @@ from typing import Any
 from 平台控制面.包仓库.路径安全 import 规范化相对路径
 from 平台控制面.包仓库.签名能力 import 签名能力
 from 平台控制面.包仓库.安装能力 import 安装能力
-from 支持库.适配层.密码适配 import 内容摘要
+from 支持库.适配层 import 内容摘要
 
 
 class 包仓库(签名能力, 安装能力):
