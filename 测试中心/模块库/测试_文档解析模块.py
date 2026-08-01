@@ -1,0 +1,156 @@
+"""文档解析模块真实组合测试（unittest）。
+
+覆盖：七格式真实解析（docx/xlsx/pptx/pdf 原生 + doc/xls/ppt 转换链）、
+格式归一化、非法格式、缺提供者、往返一致性。
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+if str(Path(__file__).resolve().parents[2]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from 模块库.文档解析 import 解析文档
+
+
+def _生成docx(路径: Path) -> None:
+    from docx import Document
+    文档 = Document()
+    文档.add_heading("组合测试标题", level=1)
+    文档.add_paragraph("模块库文档解析组合测试段落")
+    文档.save(str(路径))
+
+
+def _生成xlsx(路径: Path) -> None:
+    from openpyxl import Workbook
+    工作簿 = Workbook()
+    工作表 = 工作簿.active
+    工作表.title = "数据"
+    工作表.append(["列1", "列2"])
+    工作表.append(["甲", 1])
+    工作簿.save(str(路径))
+
+
+def _生成pptx(路径: Path) -> None:
+    from pptx import Presentation
+    演示 = Presentation()
+    幻灯片 = 演示.slides.add_slide(演示.slide_layouts[1])
+    幻灯片.shapes.title.text = "组合演示标题"
+    幻灯片.placeholders[1].text = "要点一"
+    演示.save(str(路径))
+
+
+def _生成pdf(路径: Path) -> None:
+    from reportlab.pdfgen import canvas
+    画布 = canvas.Canvas(str(路径))
+    画布.drawString(50, 700, "PDF combined parse")
+    画布.save()
+
+
+class Test文档解析模块(unittest.TestCase):
+    def setUp(self):
+        self.临时目录 = tempfile.mkdtemp(prefix="测试_文档解析模块_")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.临时目录, ignore_errors=True)
+
+    def test_docx往返(self):
+        路径 = Path(self.临时目录) / "测试.docx"
+        _生成docx(路径)
+        结果 = 解析文档(str(路径), "docx")
+        self.assertTrue(结果.成功, f"失败: {结果.错误说明 if not 结果.成功 else ''}")
+        文档 = 结果.值
+        self.assertEqual(文档.格式, "docx")
+        self.assertIn("组合测试标题", " ".join(块.文本 for 块 in 文档.块列表))
+
+    def test_xlsx往返(self):
+        路径 = Path(self.临时目录) / "测试.xlsx"
+        _生成xlsx(路径)
+        结果 = 解析文档(str(路径), "xlsx")
+        self.assertTrue(结果.成功)
+        文档 = 结果.值
+        self.assertEqual(文档.格式, "xlsx")
+        表格块 = next(块 for 块 in 文档.块列表 if 块.类型 == "工作表")
+        self.assertEqual(表格块.表格数据[0][:2], ["列1", "列2"])
+
+    def test_pptx往返(self):
+        路径 = Path(self.临时目录) / "测试.pptx"
+        _生成pptx(路径)
+        结果 = 解析文档(str(路径), "pptx")
+        self.assertTrue(结果.成功)
+        文档 = 结果.值
+        self.assertEqual(文档.格式, "pptx")
+        文本合集 = " ".join(块.文本 for 块 in 文档.块列表)
+        self.assertIn("组合演示标题", 文本合集)
+
+    def test_pdf往返(self):
+        路径 = Path(self.临时目录) / "测试.pdf"
+        _生成pdf(路径)
+        结果 = 解析文档(str(路径), "pdf")
+        self.assertTrue(结果.成功)
+        文档 = 结果.值
+        self.assertEqual(文档.格式, "pdf")
+        self.assertGreater(len(文档.块列表), 0)
+
+    def test_格式归一化(self):
+        路径 = Path(self.临时目录) / "测试.PDF"
+        _生成pdf(路径)
+        结果 = 解析文档(str(路径), ".PDF")
+        self.assertTrue(结果.成功, f"归一化失败: {结果.错误说明 if not 结果.成功 else ''}")
+
+    def test_非法格式(self):
+        路径 = Path(self.临时目录) / "测试.txt"
+        路径.write_text("文本", encoding="utf-8")
+        结果 = 解析文档(str(路径), "txt")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_文件不存在(self):
+        结果 = 解析文档("/不存在的路径/文件.docx", "docx")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "文件不存在")
+
+    def test_缺提供者(self):
+        # 依赖注入：环境变量禁用 pdfplumber → 平台返回 提供者不可用
+        from 支持库.适配层.pdfplumber提供者.实现 import PDF文本表格 as pdf实现
+        原缓存 = pdf实现._提供者缓存
+        pdf实现._提供者缓存 = None
+        try:
+            with mock.patch.dict(os.environ, {"pdfplumber提供者_禁用库": "pdfplumber"}):
+                路径 = Path(self.临时目录) / "任意.pdf"
+                路径.write_bytes(b"x")
+                结果 = 解析文档(str(路径), "pdf")
+                self.assertFalse(结果.成功)
+                self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            pdf实现._提供者缓存 = 原缓存
+
+    def test_doc转换链(self):
+        import shutil
+        import subprocess
+        soffice = shutil.which("soffice") or "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+        if not Path(soffice).exists():
+            self.skipTest("LibreOffice 不可用")
+        源 = Path(self.临时目录) / "源.docx"
+        _生成docx(源)
+        subprocess.run(
+            [soffice, "--headless", "--convert-to", "doc", "--outdir", str(self.临时目录), str(源)],
+            capture_output=True, timeout=120,
+        )
+        旧路径 = Path(self.临时目录) / "源.doc"
+        if not 旧路径.exists():
+            self.skipTest("LibreOffice doc 转换未产出")
+        结果 = 解析文档(str(旧路径), "doc")
+        self.assertTrue(结果.成功, f"doc 组合解析失败: {结果.错误说明 if not 结果.成功 else ''}")
+        self.assertEqual(结果.值.格式, "docx")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,15 @@
+# Python 缓存与生成物
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# 工程缓存可重新生成，不作为正式源代码
+工程缓存/
+
+# 系统文件
+.DS_Store

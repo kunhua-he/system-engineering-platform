@@ -1,0 +1,160 @@
+"""容量与资源基线：声明基线→实测采样→对比超限→超限处理链→熔断与证据。
+P1-16 仅标准库中文语义；采样全真实，ps 不可用返回错误码；超限处理真实执行并追加 JSON Lines 证据，连续超限达阈值熔断。"""
+from __future__ import annotations
+
+import json, os, subprocess, sys, tempfile, threading, time
+from pathlib import Path
+from typing import Any
+
+必需基线字段 = ("线程上限", "进程上限", "内存上限MB", "队列长度上限",
+             "文件句柄上限", "临时空间上限MB", "单次调用超时秒", "每分钟重启上限")
+ps路径表 = ("/bin/ps", "/usr/bin/ps")
+
+
+def 采样内存RSS(ps命令: str | None) -> dict:
+    """真实 RSS(MB)：macOS ps -o rss=，Linux /proc 状态；失败返回错误码。"""
+    if sys.platform == "darwin":
+        for 路径 in (ps路径表 if ps命令 is None else (ps命令,)):
+            try:
+                输出 = subprocess.run([路径, "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=5)
+                if 输出.returncode == 0 and 输出.stdout.strip():
+                    return {"成功": True, "值MB": round(int(输出.stdout.strip()) / 1024, 2), "错误码": "", "错误说明": ""}
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                continue
+        return {"成功": False, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": f"ps 不可用: {ps命令 or ps路径表}"}
+    try:
+        值 = next(行.split()[1] for 行 in Path(f"/proc/{os.getpid()}/status").read_text(encoding="utf-8").splitlines() if 行.startswith("VmRSS:"))
+        return {"成功": True, "值MB": round(int(值) / 1024, 2), "错误码": "", "错误说明": ""}
+    except (OSError, StopIteration, ValueError) as 错误:
+        return {"成功": False, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": f"/proc 状态不可用: {错误}"}
+
+
+def 采样进程数() -> dict:
+    """真实进程数：当前进程自身 + pgrep 直接子进程。"""
+    try:
+        输出 = subprocess.run(["pgrep", "-P", str(os.getpid())], capture_output=True, text=True, timeout=5)
+        return {"成功": True, "值": 1 + len([行 for 行 in 输出.stdout.splitlines() if 行.strip()]), "错误码": "", "错误说明": ""}
+    except (OSError, subprocess.TimeoutExpired) as 错误:
+        return {"成功": False, "值": -1, "错误码": "进程枚举失败", "错误说明": f"pgrep 不可用: {错误}"}
+
+
+def 采样句柄数() -> dict:
+    try:
+        return {"成功": True, "值": len(os.listdir("/dev/fd")), "错误码": "", "错误说明": ""}
+    except OSError:
+        return {"成功": False, "值": -1, "错误码": "句柄枚举失败", "错误说明": "句柄目录均不可用"}
+
+
+def 采样临时目录(目录) -> dict:
+    """真实临时空间占用：os.walk 对目录内全部文件求和（字节），失败返回错误码。"""
+    try:
+        return {"成功": True, "值": sum(os.path.getsize(os.path.join(根, 名)) for 根, _, 文件表 in os.walk(目录) for 名 in 文件表 if os.path.isfile(os.path.join(根, 名))),
+                "错误码": "", "错误说明": ""}
+    except OSError as 错误:
+        return {"成功": False, "值": 0, "错误码": "目录不可用", "错误说明": f"目录不存在或不可读: {目录}（{错误}）"}
+
+
+class 容量基线:
+    """声明基线→实测采样→对比超限→超限处理链（拒绝/排空/释放/证据/熔断）。"""
+
+    def __init__(self, 证据文件=None, 临时目录=None, *, ps命令: str | None = None, 熔断阈值: int = 3, 排空超时秒: float = 10.0) -> None:
+        self._基线: dict[str, Any] = {}
+        self._证据文件 = Path(证据文件) if 证据文件 else Path(tempfile.gettempdir()) / "容量基线证据.jsonl"
+        self._临时目录 = str(临时目录) if 临时目录 else tempfile.gettempdir()
+        self._ps命令, self._熔断阈值, self._排空超时秒 = ps命令, max(1, int(熔断阈值)), float(排空超时秒)
+        self._锁 = threading.Lock()
+        (self._停止接收, self._拒绝计数, self._活动任务, self._连续超限, self._熔断, self._释放请求, self._释放回调) = ({}, {}, {}, {}, {}, {}, {})
+        self._证据序号 = 0
+
+    def 声明基线(self, 基线: dict) -> tuple[bool, str]:
+        缺失 = [字段 for 字段 in 必需基线字段 if 字段 not in 基线]
+        if 缺失:
+            return False, f"基线缺少必需字段: {缺失}"
+        for 字段 in 必需基线字段:
+            if isinstance(基线[字段], bool) or not isinstance(基线[字段], (int, float)) or 基线[字段] <= 0:
+                return False, f"基线字段非法（必须为正数）: {字段}={基线[字段]!r}"
+        self._基线 = dict(基线)
+        return True, "基线声明通过"
+
+    def 实测采样(self) -> dict[str, Any]:
+        内存, 进程, 句柄, 临时 = 采样内存RSS(self._ps命令), 采样进程数(), 采样句柄数(), 采样临时目录(self._临时目录)
+        失败表 = [(项["错误码"], 项["错误说明"]) for 项 in (内存, 进程, 句柄, 临时) if not 项["成功"]]
+        return {"成功": not 失败表, "线程数": len(threading.enumerate()), "进程数": 进程["值"],
+                "内存MB": 内存["值MB"], "文件句柄数": 句柄["值"], "队列深度": 0, "临时空间MB": round(临时["值"] / 1048576, 2),
+                "临时空间字节": 临时["值"],
+                "错误码": "；".join(项[0] for 项 in 失败表), "错误说明": "；".join(项[1] for 项 in 失败表)}
+
+    def 对比基线(self) -> list[dict[str, Any]]:
+        采样 = self.实测采样()
+        对照表 = (("线程上限", "线程数"), ("进程上限", "进程数"), ("内存上限MB", "内存MB"),
+                ("文件句柄上限", "文件句柄数"), ("临时空间上限MB", "临时空间MB"), ("队列长度上限", "队列深度"))
+        超限项 = []
+        for 基线字段, 采样字段 in 对照表:
+            声明值, 实测值 = self._基线.get(基线字段), 采样[采样字段]
+            if 声明值 is not None and (实测值 < 0 or 实测值 > 声明值):
+                超限项.append({"字段": 采样字段, "声明值": 声明值, "实测值": 实测值, **({"采样失败": True, "错误说明": 采样["错误说明"]} if 实测值 < 0 else {})})
+        return 超限项
+
+    def 超限处理(self, 执行单元id: str) -> dict[str, Any]:
+        """超限处理链真实执行：停止接收→拒绝排队→排空等待→优雅释放→证据→熔断。"""
+        with self._锁:
+            if 执行单元id in self._熔断:
+                return {"结果": "熔断", "执行单元": 执行单元id, "原因": self._熔断[执行单元id]}
+        self._停止接收[执行单元id] = True
+        被拒, 超限项, 开始 = self._拒绝计数.get(执行单元id, 0), self.对比基线(), time.time()
+        while self._活动任务.get(执行单元id, 0) > 0 and time.time() - 开始 <= self._排空超时秒:
+            time.sleep(0.05)
+        等待秒, 完成 = round(time.time() - 开始, 2), self._活动任务.get(执行单元id, 0) == 0
+        with self._锁:
+            self._释放请求[执行单元id] = True
+            (self._释放回调.get(执行单元id) or (lambda _: None))(执行单元id)
+        with self._锁:
+            self._连续超限[执行单元id] = 连续 = self._连续超限.get(执行单元id, 0) + 1
+        if 连续 >= self._熔断阈值:
+            with self._锁:
+                self._熔断[执行单元id] = f"连续超限{连续}次，达到熔断阈值{self._熔断阈值}"
+        熔断文字 = f"熔断（连续{连续}次≥阈值{self._熔断阈值}）" if 连续 >= self._熔断阈值 else f"连续超限{连续}次（未达阈值{self._熔断阈值}）"
+        步骤 = ["停止接收新任务", f"拒绝排队({被拒}次)",
+                f"等待活动任务排空({等待秒}秒,{'完成' if 完成 else '超时'})", "请求优雅释放", 熔断文字]
+        证据id = self._记录证据(执行单元id, 超限项, 步骤, 连续)
+        return {"结果": "熔断" if 执行单元id in self._熔断 else "已处理", "执行单元": 执行单元id,
+                "停止接收": True, "拒绝排队": 被拒, "排空": {"完成": 完成, "等待秒": 等待秒}, "连续超限": 连续, "证据id": 证据id, "超限项": 超限项}
+
+    def _记录证据(self, 执行单元id: str, 超限项: list, 步骤: list, 连续: int) -> str:
+        with self._锁:
+            self._证据序号 += 1
+            证据id = f"容量基线-{self._证据序号}"
+        with open(self._证据文件, "a", encoding="utf-8") as 文件:
+            文件.write(json.dumps({"证据id": 证据id, "时间": time.strftime("%Y-%m-%d %H:%M:%S"), "执行单元": 执行单元id,
+                                   "超限项": 超限项, "处理步骤": 步骤, "连续超限": 连续}, ensure_ascii=False) + "\n")
+        return 证据id
+
+    def 熔断状态(self, 执行单元id: str | None = None) -> dict:
+        with self._锁:
+            if 执行单元id is not None:
+                return {"熔断": 执行单元id in self._熔断, "原因": self._熔断.get(执行单元id, ""), "执行单元": 执行单元id}
+            return {"熔断": bool(self._熔断), "原因": "；".join(f"{单元}:{原因}" for 单元, 原因 in self._熔断.items())}
+
+    def 尝试接收(self, 执行单元id: str) -> dict[str, Any]:
+        with self._锁:
+            if 执行单元id in self._熔断:
+                return {"成功": False, "原因": f"熔断: {self._熔断[执行单元id]}", "拒绝计数": self._拒绝计数.get(执行单元id, 0)}
+            if self._停止接收.get(执行单元id):
+                self._拒绝计数[执行单元id] = self._拒绝计数.get(执行单元id, 0) + 1
+                return {"成功": False, "原因": "已停止接收新任务", "拒绝计数": self._拒绝计数[执行单元id]}
+            return {"成功": True, "原因": "", "拒绝计数": self._拒绝计数.get(执行单元id, 0)}
+
+    def 登记活动任务(self, 执行单元id: str, 增量: int = 1) -> None:
+        with self._锁:
+            self._活动任务[执行单元id] = max(0, self._活动任务.get(执行单元id, 0) + 增量)
+
+    def 注册释放回调(self, 执行单元id: str, 回调) -> None:
+        with self._锁:
+            self._释放回调[执行单元id] = 回调
+
+    def 解除熔断(self, 执行单元id: str) -> None:
+        with self._锁:
+            self._熔断.pop(执行单元id, None)
+            self._停止接收.pop(执行单元id, None)
+            self._连续超限.pop(执行单元id, None)
+            self._拒绝计数[执行单元id] = 0

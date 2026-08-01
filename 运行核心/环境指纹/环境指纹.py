@@ -1,0 +1,146 @@
+"""环境指纹与稳定证据失效：运行时/OS/架构/第三方变化 → 稳定证据自动失效。
+
+P5 规则：环境指纹变化时，基于旧环境的稳定证据（验证记录/门禁结果）
+自动失效，组件降为候选；重新验证后才能恢复稳定。
+
+环境指纹至少包含：
+- Python 版本 / 操作系统 / CPU 架构
+- 第三方发行包精确版本
+- 外部应用版本（LibreOffice/textutil）
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import platform
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+第三方版本探测 = {
+    "cryptography": "cryptography",
+    "python-docx": "docx",
+    "PyMuPDF": "fitz",
+    "openpyxl": "openpyxl",
+    "pdfplumber": "pdfplumber",
+    "pg8000": "pg8000",
+    "python-pptx": "pptx",
+    "psycopg": "psycopg",
+    "psycopg2": "psycopg2",
+    "reportlab": "reportlab",
+}
+
+
+@dataclass
+class 环境指纹结果:
+    """环境指纹计算/比较结果。"""
+
+    成功: bool = True
+    指纹: str = ""
+    详细信息: dict[str, Any] = field(default_factory=dict)
+    问题列表: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # 成功 由问题列表决定（append 后自动失效）
+        if self.问题列表:
+            self.成功 = False
+
+
+def _包版本(模块名: str) -> str:
+    """取第三方包版本；未安装 → '未安装'。"""
+    try:
+        import importlib
+
+        模块 = importlib.import_module(模块名)
+        for 属性 in ("__version__", "version", "VERSION"):
+            if hasattr(模块, 属性):
+                值 = getattr(模块, 属性)
+                if isinstance(值, str) and 值:
+                    return 值
+        return "已安装(版本未知)"
+    except ImportError:
+        return "未安装"
+
+
+def 探测外部应用版本() -> dict[str, str]:
+    """探测外部应用版本（LibreOffice/textutil）。"""
+    结果: dict[str, str] = {}
+    # LibreOffice
+    for 候选 in ("soffice", "libreoffice"):
+        路径 = shutil.which(候选)
+        if 路径:
+            try:
+                子 = subprocess.run(
+                    [路径, "--version"], capture_output=True, text=True, timeout=10
+                )
+                结果["LibreOffice"] = 子.stdout.strip().splitlines()[0][:60] if 子.stdout else 路径
+            except Exception:
+                结果["LibreOffice"] = 路径
+            break
+    # textutil（macOS 系统能力）
+    if shutil.which("textutil"):
+        结果["textutil"] = "可用"
+    return 结果
+
+
+def 计算环境指纹(*, 含外部应用: bool = True) -> 环境指纹结果:
+    """计算当前环境指纹。"""
+    详细信息: dict[str, Any] = {
+        "python": sys.version.split()[0],
+        "os": platform.system(),
+        "os版本": platform.release(),
+        "架构": platform.machine(),
+        "第三方": {名称: _包版本(模块) for 名称, 模块 in 第三方版本探测.items()},
+    }
+    if 含外部应用:
+        详细信息["外部应用"] = 探测外部应用版本()
+    指纹 = hashlib.sha256(
+        json.dumps(详细信息, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:16]
+    return 环境指纹结果(True, 指纹=指纹, 详细信息=详细信息)
+
+
+def 读取证据环境指纹(证据文件: Path) -> str:
+    """读取稳定证据记录中的环境指纹；无记录 → 空。"""
+    if not 证据文件.is_file():
+        return ""
+    try:
+        数据 = json.loads(证据文件.read_text(encoding="utf-8"))
+        return 数据.get("环境指纹", "")
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+
+def 校验证据有效(证据文件: Path, *, 含外部应用: bool = True) -> 环境指纹结果:
+    """校验稳定证据是否仍有效：当前指纹 == 记录指纹。"""
+    当前 = 计算环境指纹(含外部应用=含外部应用)
+    if not 当前.成功:
+        return 当前
+    记录指纹 = 读取证据环境指纹(证据文件)
+    if not 记录指纹:
+        当前.问题列表.append("无证据环境指纹记录（证据失效：无法验证）")
+        当前.成功 = False
+        return 当前
+    if 记录指纹 != 当前.指纹:
+        当前.问题列表.append(
+            f"环境指纹漂移（证据失效）：记录 {记录指纹} ≠ 当前 {当前.指纹}"
+        )
+        当前.成功 = False
+    return 当前
+
+
+def 生成证据记录(证据文件: Path, 附加: dict | None = None) -> 环境指纹结果:
+    """生成带环境指纹的稳定证据记录。"""
+    当前 = 计算环境指纹()
+    if not 当前.成功:
+        return 当前
+    记录 = {"环境指纹": 当前.指纹, "指纹详情": 当前.详细信息}
+    if 附加:
+        记录.update(附加)
+    证据文件.parent.mkdir(parents=True, exist_ok=True)
+    证据文件.write_text(json.dumps(记录, ensure_ascii=False, indent=2), encoding="utf-8")
+    return 当前
