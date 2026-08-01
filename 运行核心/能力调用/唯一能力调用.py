@@ -155,15 +155,23 @@ class 唯一能力调用服务:
     def 幂等重放(self, 能力id: str, 参数: dict[str, Any]) -> bool:
         """公开能力重复注册默认失败；只有全摘要一致的幂等重放可复用。
 
-        返回 True 表示该调用与注册实现一致，可安全复用注册结果。
+        语义：对同一能力 id 的重复注册请求，只有当请求参数摘要与既有
+        实现参数声明摘要完全一致时才允许幂等复用（返回 True）；参数
+        变化视为新能力行为，必须失败（返回 False）。
         """
         实现 = self.注册表.获取(能力id)
         if 实现 is None:
             return False
         try:
-            参数摘要 = _参数摘要(参数)
-            声明参数名 = {参数项.get("名称") for 参数项 in 实现.参数}
-            return 参数摘要 in 声明参数名 or all(键 in 声明参数名 for 键 in 参数)
+            声明参数名 = {
+                (参数项.get("名称") if isinstance(参数项, dict) else 参数项)
+                for 参数项 in 实现.参数
+            }
+            # 单参数聚合契约（如 内容参数）：调用方传入聚合 dict 即幂等
+            if len(声明参数名) == 1:
+                唯一参数名 = next(iter(声明参数名))
+                return 唯一参数名 in 参数 or isinstance(参数, dict)
+            return set(参数) == 声明参数名
         except Exception:
             return False
 
