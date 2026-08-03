@@ -1,4 +1,4 @@
-"""Git 提供者主实现：检查提供者、worktree 创建/查询/关闭、当前状态。
+"""Git 提供者主实现：检查提供者、worktree 创建/查询/关闭、当前状态、获取当前提交哈希。
 
 最小原子命令集（一个第三方 git 一个提供者）。参数经白名单校验
 （实现/白名单.py），git 调用走受管执行（实现/受管执行.py：参数
@@ -126,4 +126,30 @@ def 当前状态(仓库路径: str, 超时秒: float = 默认超时秒) -> 结�
         "分支": 分支.值["标准输出"].strip(),
         "未提交修改": [行 for 行 in 状态.值["标准输出"].splitlines() if 行.strip()],
         "最近提交": [行 for 行 in 日志.值["标准输出"].splitlines() if 行.strip()],
+    })
+
+
+def 获取当前提交哈希(仓库路径: str, 超时秒: float = 默认超时秒) -> 结果:
+    """git rev-parse HEAD + rev-parse --abbrev-ref HEAD：{提交哈希, 分支}。
+
+    正常分支返回分支名；detached HEAD 时分支为 HEAD。非仓库目录统一
+    映射为 命令失败（错误码契约不暴露 仓库不存在）。
+    """
+    校验 = 校验超时(超时秒)
+    if 校验:
+        return 校验
+    if not isinstance(仓库路径, str) or not 仓库路径.strip():
+        return 失败结果("参数不合法", "仓库路径必须是非空文本")
+    执行 = _顺序执行(仓库路径, [
+        ["rev-parse", "HEAD"],
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+    ], 超时秒)
+    if not 执行.成功:
+        if 执行.错误码 == "仓库不存在":
+            return 失败结果("命令失败", f"不是 git 仓库: {仓库路径}")
+        return 执行
+    哈希执行, 分支执行 = 执行.值["执行列表"]
+    return 结果.成功结果({
+        "提交哈希": 哈希执行.值["标准输出"].strip(),
+        "分支": 分支执行.值["标准输出"].strip() or "HEAD",
     })
