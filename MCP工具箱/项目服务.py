@@ -136,6 +136,19 @@ def _开工上下文(任务: str, 历史数量: int) -> dict[str, Any]:
             "只在地图未覆盖时直接读取文件", "代码指纹变化后只复验受影响范围",
             "收工前提交 MCP 使用反馈，再执行成功验证并记录证据",
         ],
+        "探索策略": {
+            "顺序": ["项目身份与角色", "能力摘要", "代码地图符号与调用链", "完整契约", "历史成功证据"],
+            "默认返回": "高相关摘要，不隐藏参数、返回、错误码、权限、资源限制、版本和副作用",
+            "禁止": ["一次加载全部源码", "一次加载全部说明书", "重复探索未变化的代码指纹"],
+            "展开条件": "确认能力或定位目标后，按能力id、文件或符号展开完整信息",
+        },
+        "验证策略": {
+            "工作包": "连续完成同一工作包后，只验证受影响测试；无共享资源的测试并行",
+            "合并波次": "工作包合并后只验证受影响阶段；不得重复运行相同测试",
+            "阶段收口": "全部工作包合并后由主协调者执行一次常规全量",
+            "慢速层": "源码、依赖、环境指纹一致且证据未过期时复用；变化或故障回归才强制执行",
+            "禁止": "每改一个文件就跑全量，或用缓存冒充受影响测试真实通过",
+        },
         "反馈门禁": {
             "必须提交": True, "工具": "mcp_feedback",
             "字段": ["总结", "不满意", "多余", "缺失", "升级建议"],
@@ -232,7 +245,7 @@ async def 工具列表() -> list[Tool]:
     工具定义 = [
         Tool(name="project_context", description="项目开工上下文：身份、代码地图、证据可信度和最近成功验证。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3}}}),
         Tool(name="role_profile", description="返回当前 MCP 角色、可用工具及其边界。", inputSchema={"type": "object", "properties": {}}),
-        Tool(name="capability_search", description="只读搜索支持库与模块库公开能力，不加载实现。", inputSchema={"type": "object", "properties": {"keyword": {"type": "string"}, "limit": {"type": "integer"}}}),
+        Tool(name="capability_search", description="高相关只读搜索公开能力；默认返回最多5个候选，不加载实现。确认能力后再用能力id读取完整契约。", inputSchema={"type": "object", "properties": {"keyword": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5}}}),
         Tool(name="capability_read", description="只读查看一个公开能力的名称、说明、所属包和类型。", inputSchema={"type": "object", "properties": {"capability_id": {"type": "string"}}, "required": ["capability_id"]}),
         Tool(name="mcp_feedback", description="提交本次 MCP 使用反馈；成功验证入账前强制执行。", inputSchema={"type": "object", "properties": {"summary": {"type": "string"}, "dissatisfaction": {"type": "string"}, "redundant": {"type": "string"}, "missing": {"type": "string"}, "upgrade_suggestion": {"type": "string"}}, "required": ["summary", "dissatisfaction", "redundant", "missing", "upgrade_suggestion"]}),
         Tool(name="feedback_status", description="查看本次开工标识是否已提交 MCP 使用反馈。", inputSchema={"type": "object", "properties": {}}),
@@ -261,7 +274,7 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         数据 = 角色说明(当前角色)
     elif 名称 == "capability_search":
         数据 = 搜索公开能力(
-            项目根目录, str(参数.get("keyword", "")), int(参数.get("limit", 20)),
+            项目根目录, str(参数.get("keyword", "")), int(参数.get("limit", 5)),
         )
     elif 名称 == "capability_read":
         数据 = 读取公开能力(项目根目录, str(参数["capability_id"]))
