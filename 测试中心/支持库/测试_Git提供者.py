@@ -1,9 +1,10 @@
 """Git 提供者测试：临时目录自建 git 仓库真实调用（全部真实 git 执行）。
 
 覆盖：检查提供者/创建工作区/查询工作区/提交/回滚/挑拣合入/当前状态/
-关闭工作区；参数注入拒绝（分支名/路径/哈希 含 ;|& 换行 等元字符）；
-未提交修改关闭拒绝（非强制）；冲突自动中止恢复干净状态；提供者不可用注入；
-仓库不存在/路径越界/命令失败；临时仓库与 worktree 全部清理（零残留）。
+关闭工作区/获取当前提交哈希；参数注入拒绝（分支名/路径/哈希 含 ;|& 换行
+等元字符）；未提交修改关闭拒绝（非强制）；冲突自动中止恢复干净状态；
+提供者不可用注入；超时注入；仓库不存在/路径越界/命令失败；detached HEAD
+分支为 HEAD；临时仓库与 worktree 全部清理（零残留）。
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 支持库.适配层.Git提供者 import (
     检查提供者, 创建工作区, 查询工作区, 关闭工作区,
-    提交, 回滚, 挑拣合入, 当前状态,
+    提交, 回滚, 挑拣合入, 当前状态, 获取当前提交哈希,
 )
 
 
@@ -198,6 +199,68 @@ class TestGit提供者(unittest.TestCase):
             结果 = 当前状态(str(self.仓库))
         self.assertEqual(结果.错误码, "提供者不可用")
 
+    def test_获取当前提交哈希_正常分支与真实git一致(self):
+        结果 = 获取当前提交哈希(str(self.仓库))
+        self.assertTrue(结果.成功, 结果.错误说明)
+        真实哈希 = _运行git(str(self.仓库), "rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(结果.值["提交哈希"], 真实哈希)
+        self.assertEqual(结果.值["分支"], "main")
+
+    def test_获取当前提交哈希_detached头分支为HEAD(self):
+        detach = _运行git(str(self.仓库), "checkout", "--detach")
+        self.assertEqual(detach.returncode, 0, detach.stderr)
+        结果 = 获取当前提交哈希(str(self.仓库))
+        self.assertTrue(结果.成功, 结果.错误说明)
+        真实哈希 = _运行git(str(self.仓库), "rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(结果.值["提交哈希"], 真实哈希)
+        self.assertEqual(结果.值["分支"], "HEAD")
+
+    def test_获取当前提交哈希_非仓库命令失败(self):
+        空目录 = self.临时根 / "空目录"
+        空目录.mkdir()
+        结果 = 获取当前提交哈希(str(空目录))
+        self.assertEqual(结果.错误码, "命令失败")
+        结果 = 获取当前提交哈希(str(self.临时根 / "不存在"))
+        self.assertEqual(结果.错误码, "命令失败")
+
+    def test_获取当前提交哈希_提供者不可用注入(self):
+        from 支持库.适配层.Git提供者.实现 import 受管执行 as 执行模块
+        with mock.patch.object(执行模块.subprocess, "Popen",
+                               side_effect=OSError("模拟 git 缺失")):
+            结果 = 获取当前提交哈希(str(self.仓库))
+        self.assertEqual(结果.错误码, "提供者不可用")
+
+    def test_获取当前提交哈希_超时注入(self):
+        from 支持库.适配层.Git提供者.实现 import 受管执行 as 执行模块
+
+        class _挂起进程:
+            """communicate 永不返回的伪进程（模拟 git 卡死）。"""
+
+            pid = 2147483000
+            stdin = stdout = stderr = None
+
+            def communicate(self, timeout=None):
+                raise subprocess.TimeoutExpired("git", timeout)
+
+            def wait(self, timeout=None):
+                raise subprocess.TimeoutExpired("git", timeout)
+
+        with mock.patch.object(执行模块.subprocess, "Popen",
+                               return_value=_挂起进程()):
+            结果 = 获取当前提交哈希(str(self.仓库))
+        self.assertEqual(结果.错误码, "超时")
+        self.assertTrue(结果.可重试)
+
+    def test_获取当前提交哈希_参数注入拒绝(self):
+        结果 = 获取当前提交哈希("")
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 获取当前提交哈希(str(self.仓库), 超时秒=0)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 获取当前提交哈希(str(self.仓库), 超时秒=-1)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 获取当前提交哈希(str(self.仓库), 超时秒="60")
+        self.assertEqual(结果.错误码, "参数不合法")
+
     def test_注册能力(self):
         from 公共契约.能力契约.契约 import 能力注册表
         from 支持库.适配层.Git提供者 import 注册能力
@@ -205,7 +268,8 @@ class TestGit提供者(unittest.TestCase):
         注册能力(注册表)
         for 能力id in ["Git操作.检查提供者", "Git操作.创建工作区", "Git操作.查询工作区",
                        "Git操作.关闭工作区", "Git操作.提交", "Git操作.回滚",
-                       "Git操作.挑拣合入", "Git操作.当前状态"]:
+                       "Git操作.挑拣合入", "Git操作.当前状态",
+                       "Git操作.获取当前提交哈希"]:
             实现 = 注册表.获取(能力id)
             self.assertIsNotNone(实现, 能力id)
             self.assertEqual(实现.包id, "支持库.适配层.Git提供者")
