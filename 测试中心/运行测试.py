@@ -27,6 +27,7 @@ import re
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -42,9 +43,13 @@ from pathlib import Path
 sys.path.insert(0, str(系统根))
 
 import 测试中心
+from MCP工具箱 import 测试资源
 
 缓存文件路径 = 系统根 / "工程缓存" / "验证缓存.json"
 断点文件路径 = 系统根 / "工程缓存" / "验证断点.json"
+运行根目录 = 系统根 / "工程缓存" / "验证运行"
+清理失败证据目录 = 系统根 / "工程缓存" / "清理失败证据"
+保留制品目录 = 系统根 / "工程缓存" / "保留制品"
 缓存结构版本 = "2.0.0"  # 缓存结构版本：损坏/缺字段/引擎变化时自动失效
 运行证据有效秒 = 7 * 24 * 60 * 60
 环境敏感阶段 = {"真实进程", "网关", "浏览器", "发布门禁", "慢速层"}
@@ -264,52 +269,196 @@ def 计算并行数(文件数: int, 请求并行数: int) -> int:
     return min(文件数, 请求并行数 or 上限)
 
 
-def _运行单文件子进程(路径: str, 运行id: str, 序号: int) -> dict[str, object]:
-    工作目录 = 系统根 / "工程缓存" / "验证运行" / 运行id / str(序号)
+def _生成任务id() -> str:
+    """8位短任务id（一次工作包运行的唯一标识）。"""
+    return uuid.uuid4().hex[:8]
+
+
+def _生成工作区标识(任务id: str, 序号: int) -> str:
+    """工作区标识：目录名含任务id与工作包序号语义。"""
+    return f"工作包-{任务id}-{序号}"
+
+
+def _输出文本(内容: object) -> str:
+    """子进程输出统一转文本（兼容 bytes 与 str）。"""
+    if isinstance(内容, bytes):
+        return 内容.decode("utf-8", errors="replace")
+    return 内容 or ""
+
+
+def _写清理失败证据(任务id: str, 路径: str, 失败原因: str) -> Path:
+    """清理失败必须留证据：工程缓存/清理失败证据/{任务id}.json。"""
+    证据目录 = 清理失败证据目录
+    证据目录.mkdir(parents=True, exist_ok=True)
+    证据 = {
+        "运行id": 任务id,
+        "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "路径": str(路径),
+        "失败原因": 失败原因,
+    }
+    证据路径 = 证据目录 / f"{任务id}.json"
+    临时路径 = 证据路径.with_suffix(".json.tmp")
+    临时路径.write_text(json.dumps(证据, ensure_ascii=False, indent=2), encoding="utf-8")
+    临时路径.replace(证据路径)
+    return 证据路径
+
+
+def _终止进程组(进程: subprocess.Popen) -> None:
+    """超时后终止子进程整个进程组（含孙进程），先温柔后强杀。"""
+    try:
+        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        进程.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        进程.wait()
+
+
+def _清理工作包临时根(
+    任务id: str, 工作目录: Path, 资源清单路径: Path, 工作包路径: str,
+) -> dict[str, object]:
+    """工作包 teardown：清理登记资源、迁移保留物、删除临时根目录。
+
+    任何一步失败都必须写证据并返回失败（门禁不允许静默忽略清理异常）。
+    只清理登记且位于临时根目录内的资源；保留物迁移到
+    工程缓存/保留制品/{任务id}/ 后再整体删除临时根目录。
+    """
+    try:
+        保留路径表: list[Path] = []
+        if 资源清单路径.is_file():
+            for 行 in 资源清单路径.read_text(encoding="utf-8").splitlines():
+                try:
+                    记录 = json.loads(行)
+                except json.JSONDecodeError:
+                    continue
+                if 记录.get("保留"):
+                    保留路径表.append(Path(str(记录["路径"])).resolve())
+        测试资源.清理资源(资源清单路径, 临时根目录=工作目录)
+        for 保留路径 in 保留路径表:
+            if not 保留路径.exists():
+                continue
+            保留目录 = 保留制品目录 / 任务id
+            保留目录.mkdir(parents=True, exist_ok=True)
+            目标 = 保留目录 / 保留路径.name
+            if 目标.is_dir():
+                shutil.rmtree(目标, ignore_errors=True)
+            else:
+                目标.unlink(missing_ok=True)
+            shutil.move(str(保留路径), str(目标))
+        if 工作目录.exists():
+            shutil.rmtree(工作目录)
+    except Exception as 异常:
+        失败原因 = f"{type(异常).__name__}: {异常}"
+        证据路径 = _写清理失败证据(任务id, str(工作包路径), 失败原因)
+        return {
+            "成功": False, "失败原因": 失败原因,
+            "证据路径": str(证据路径), "保留数": 0,
+        }
+    return {"成功": True, "失败原因": "", "证据路径": "", "保留数": len(保留路径表)}
+
+
+def _运行单文件子进程(
+    路径: str, 任务id: str, 序号: int, *, 超时秒: int = 600,
+) -> dict[str, object]:
+    """运行单个工作包子进程；独立临时根目录与 teardown 保证。"""
+    工作区标识 = _生成工作区标识(任务id, 序号)
+    工作目录 = 运行根目录 / 任务id / 工作区标识
     工作目录.mkdir(parents=True, exist_ok=True)
+    资源清单路径 = 工作目录 / "资源清单.jsonl"
     环境 = os.environ.copy()
     环境["TMPDIR"] = str(工作目录)
-    环境["系统底座_验证运行id"] = 运行id
-    try:
-        结果 = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve()), "--内部测试文件", 路径],
-            cwd=系统根, env=环境, capture_output=True, text=True,
-            check=False, timeout=600,
-        )
-    except subprocess.TimeoutExpired as 错误:
-        return {
-            "路径": 路径, "退出码": 124,
-            "标准输出": (错误.stdout or "")[-8000:] if isinstance(错误.stdout, str) else "",
-            "标准错误": "单文件验证超过600秒，已终止",
-        }
-    return {
-        "路径": 路径, "退出码": 结果.returncode,
-        "标准输出": 结果.stdout[-8000:], "标准错误": 结果.stderr[-4000:],
+    环境["系统底座_验证运行id"] = 任务id
+    环境["系统底座_任务id"] = 任务id
+    环境["系统底座_工作区标识"] = 工作区标识
+    环境["系统底座_资源清单路径"] = str(资源清单路径)
+    结果: dict[str, object] = {
+        "路径": 路径, "退出码": 2, "标准输出": "", "标准错误": "",
     }
+    进程: subprocess.Popen | None = None
+    try:
+        进程 = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "--内部测试文件", 路径],
+            cwd=系统根, env=环境, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, start_new_session=True,
+        )
+        try:
+            标准输出, 标准错误 = 进程.communicate(timeout=超时秒)
+        except subprocess.TimeoutExpired as 错误:
+            _终止进程组(进程)
+            结果 = {
+                "路径": 路径, "退出码": 124,
+                "标准输出": _输出文本(错误.stdout)[-8000:],
+                "标准错误": "单文件验证超过指定时限，已终止（进程组已清理）",
+            }
+        else:
+            结果 = {
+                "路径": 路径, "退出码": 进程.returncode,
+                "标准输出": _输出文本(标准输出)[-8000:],
+                "标准错误": _输出文本(标准错误)[-4000:],
+            }
+    finally:
+        # 正常结束、失败、超时中断或异常都必须执行 teardown
+        清理结果 = _清理工作包临时根(任务id, 工作目录, 资源清单路径, 路径)
+        结果["临时根目录"] = str(工作目录)
+        结果["工作区标识"] = 工作区标识
+        结果["资源清单路径"] = str(资源清单路径)
+        if not 清理结果["成功"]:
+            结果["清理失败"] = True
+            结果["清理失败原因"] = 清理结果["失败原因"]
+            结果["清理失败证据路径"] = 清理结果["证据路径"]
+            if 结果.get("退出码", 0) == 0:
+                结果["退出码"] = 125
+    return 结果
 
 
 def 并行执行指定测试文件(路径表: list[str], 并行数: int) -> int:
-    """工作包多文件并行；每个文件独立进程和临时目录。"""
+    """工作包多文件并行；每个文件独立进程、独立临时根与 teardown。"""
     实际并行 = 计算并行数(len(路径表), 并行数)
     if 实际并行 == 1:
         return 执行测试套件(加载指定测试文件(路径表), "工作包")
-    运行id = uuid.uuid4().hex
+    任务id = _生成任务id()
     结果表: list[dict[str, object]] = []
-    with ThreadPoolExecutor(max_workers=实际并行) as 池:
-        任务表 = {
-            池.submit(_运行单文件子进程, 路径, 运行id, 序号): 路径
-            for 序号, 路径 in enumerate(路径表)
-        }
-        for 任务 in as_completed(任务表):
-            结果表.append(任务.result())
+    父级清理失败表: list[str] = []
+    try:
+        with ThreadPoolExecutor(max_workers=实际并行) as 池:
+            任务表 = {
+                池.submit(_运行单文件子进程, 路径, 任务id, 序号): 路径
+                for 序号, 路径 in enumerate(路径表)
+            }
+            for 任务 in as_completed(任务表):
+                结果表.append(任务.result())
+    finally:
+        # 工作区各自 teardown 后，兜底删除运行根目录残留
+        运行根 = 运行根目录 / 任务id
+        if 运行根.exists():
+            try:
+                shutil.rmtree(运行根)
+            except Exception as 异常:
+                证据路径 = _写清理失败证据(
+                    任务id, str(运行根), f"{type(异常).__name__}: {异常}",
+                )
+                父级清理失败表.append(str(证据路径))
     失败表 = [结果 for 结果 in 结果表 if 结果["退出码"] != 0]
+    清理失败项 = [结果 for 结果 in 结果表 if 结果.get("清理失败")]
     for 结果 in sorted(结果表, key=lambda 项: str(项["路径"])):
         print(f"--- 工作包文件：{结果['路径']}（退出码={结果['退出码']}）---")
         if 结果["退出码"] != 0:
             print(结果["标准输出"])
             print(结果["标准错误"], file=sys.stderr)
-    shutil.rmtree(系统根 / "工程缓存" / "验证运行" / 运行id, ignore_errors=True)
-    if 失败表:
+    for 结果 in 清理失败项:
+        print(
+            f"清理失败证据：{结果['清理失败证据路径']}"
+            f"（原因：{结果['清理失败原因']}）",
+            file=sys.stderr,
+        )
+    for 证据路径 in 父级清理失败表:
+        print(f"清理失败证据：{证据路径}", file=sys.stderr)
+    if 失败表 or 清理失败项 or 父级清理失败表:
         print(f"工作包并行门禁失败：{len(失败表)}/{len(结果表)} 个文件失败")
         return 1
     print(f"工作包并行门禁通过：{len(结果表)} 个文件，并行数 {实际并行}")
