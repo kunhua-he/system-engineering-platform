@@ -56,3 +56,41 @@ def 生成占位图(宽度: int, 高度: int, 占位类型: str = "纯色",
 def 识别图像格式(字节: bytes) -> 结果:
     """按内容识别图像格式（伪装检测），经 Pillow 提供者解码判定。"""
     return _解码图像(字节)
+
+
+# ── 第二十八阶段新增：缩略图/EXIF/透明合成/感知哈希/缩放/重编码（超时秒上限 60 透传）──
+
+def 生成缩略图(字节: bytes, 最大边长: int, 超时秒: float = 60) -> 结果:
+    """生成缩略图（保持纵横比，只缩不放大）。"""
+    from 支持库.适配层.Pillow提供者 import 生成缩略图 as _生成缩略图
+    return _生成缩略图(字节, 最大边长, 超时秒=超时秒)
+
+
+def 图像EXIF转置(字节: bytes, 超时秒: float = 60) -> 结果:
+    """EXIF orientation 转置图像。"""
+    from 支持库.适配层.Pillow提供者 import 图像EXIF转置 as _图像EXIF转置
+    return _图像EXIF转置(字节, 超时秒=超时秒)
+
+
+def 透明背景合成(字节: bytes, 背景颜色: str = "#FFFFFF", 超时秒: float = 60) -> 结果:
+    """透明图像与背景色合成。"""
+    from 支持库.适配层.Pillow提供者 import 透明背景合成 as _透明背景合成
+    return _透明背景合成(字节, 背景颜色, 超时秒=超时秒)
+
+
+def 计算感知哈希(字节: bytes, 哈希类型: str = "pHash", 超时秒: float = 60) -> 结果:
+    """计算 aHash/dHash/pHash 感知哈希（64 位十六进制）。"""
+    from 支持库.适配层.Pillow提供者 import 计算感知哈希 as _计算感知哈希
+    return _计算感知哈希(字节, 哈希类型, 超时秒=超时秒)
+
+
+def 缩放图像(字节: bytes, 宽度: int | None = None, 高度: int | None = None, 超时秒: float = 60) -> 结果:
+    """按指定宽高缩放（宽高可空=最长边按纵横比推算）。"""
+    from 支持库.适配层.Pillow提供者 import 缩放图像 as _缩放图像
+    return _缩放图像(字节, 宽度, 高度, 超时秒=超时秒)
+
+
+def 重编码图像(字节: bytes, 格式: str = "PNG", 质量: int = 90, 超时秒: float = 60) -> 结果:
+    """按格式与质量重编码图像。"""
+    from 支持库.适配层.Pillow提供者 import 重编码图像 as _重编码图像
+    return _重编码图像(字节, 格式, 质量, 超时秒=超时秒)

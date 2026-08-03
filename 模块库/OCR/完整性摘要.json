@@ -13,11 +13,11 @@
     },
     {
       "路径": "实现/OCR.py",
-      "sha256": "a23364d2faea04722da20f2cc512c75c4690b7ec6ecd4a4a4e6ce5f3405787bf"
+      "sha256": "fdb38bf64be8b60233529240e52841a6685ee5edfd9f5aa378b3acfaf0dd5601"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "b3e2c0a9dd0c37adbb06fcac74b9dd75f607d6ec2a9d6ec7f0718e30c28686d1"
+      "sha256": "961eff5cafc3d2d4e1c76639c1c49636baee743cadbe80a9df1a13b5a96ea661"
     },
     {
       "路径": "说明/使用说明.md",
