@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "e17f59196bca744fa7964ac3c0e55659b595c16d9858f7ee15bec562b46d71fc"
+      "sha256": "2dcc7354b0a35e39ccaf03af1242ae587783d6d31cc990456c787acde9c8ad8b"
     },
     {
       "路径": "依赖锁.json",
@@ -13,11 +13,11 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "3ae671a7a709d2ba8d74f57f35474546ea81b66efba471dabdc27a20f8573d04"
+      "sha256": "7849e26e5d6537f1050f3f8123c3b511c438c36166a8dfbdab3120c3e1df0a31"
     },
     {
       "路径": "实现/Git提供者.py",
-      "sha256": "8c8e02e4851b2cc9dc0c613d33107e906ac14488e6623c702feec460d0e458ea"
+      "sha256": "2b1de2e80fc501a192a9c69d684a1a95c4960d372fcd6be0b25b4ead5210a8bd"
     },
     {
       "路径": "实现/受管执行.py",
@@ -33,27 +33,27 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "5fb44ded1c4f87c009d69e8b3c42c07c95c85ac12830cd6346214f23f4900b54"
+      "sha256": "ab88ebcbc6c96d5f794e20cebd8d391d93cf6dbbe0deba3285081d4645720630"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "5b46fe158d4580f4dbb4b8804e50793f5263f7ca69e975e783ef0b918bb7c0d4"
+      "sha256": "c6ff3c1668909ceea441f40e2b16b1cbab4937b9e1f0924dbe68fe5649fe204e"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "a43b5a7bccf10fb58291821373171f59df19493314978fc9730bfb13ee11b210"
+      "sha256": "f17c7b4cfcf0553f382a2402dd12a27b3a12ddb82cf47a7c09225217dd637d00"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "f91aad6d0e98108a9aaff1429ae684978ee01d86afa79ca45b046f5a991925ba"
+      "sha256": "bd66dc04b972f12e17dc5e278866263c5c254309f00860773f4934a29edb4160"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "1322048e4a28b586e7aa2baa738f88285599af99b007be0f840522b2cce0453a"
+      "sha256": "9c5fbcafb0d8e20e7b829d8b55f0579376eb2df9aa64f69e12c2a1d050ab4d5f"
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "780cf25d85999ba73f86f6b747018a857e9b0b11ad8b5c7b8322a7ec74fbfb86"
+      "sha256": "15f3feb8c589710f561f3f0877a11b7ffc19401a83b62a4332544a3ffdc31b10"
     }
   ]
 }
