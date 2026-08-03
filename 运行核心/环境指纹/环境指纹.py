@@ -51,18 +51,20 @@ class 环境指纹结果:
 
 
 def _包版本(模块名: str) -> str:
-    """取第三方包版本；未安装 → '未安装'。"""
-    try:
-        import importlib
+    """取第三方包版本；未安装 → '未安装'。
 
-        模块 = importlib.import_module(模块名)
-        for 属性 in ("__version__", "version", "VERSION"):
-            if hasattr(模块, 属性):
-                值 = getattr(模块, 属性)
-                if isinstance(值, str) and 值:
-                    return 值
-        return "已安装(版本未知)"
-    except ImportError:
+    只读发行包元数据（importlib.metadata），**不 import 模块本体**：
+    原生扩展（如 fitz/PyMuPDF）禁止在主进程加载，版本探测必须在
+    主进程内安全完成（隔离铁律）。
+    """
+    try:
+        from importlib import metadata as _元数据
+        import sys as _sys
+
+        # 模块名 → 发行包名映射（fitz 属于 PyMuPDF 发行包）
+        发行包名 = {"fitz": "PyMuPDF"}.get(模块名, 模块名)
+        return _元数据.version(发行包名)
+    except Exception:
         return "未安装"
 
 
