@@ -98,18 +98,34 @@ class 平台客户端制品接入:
 
     # ---- 密钥（客户端构建专用；测试可注入现成密钥对） ----
     @staticmethod
+    def _加固密钥权限(密钥目录: Path, 私钥文件: Path, 公钥文件: Path) -> None:
+        """签名密钥受控：目录 700、私钥 600、公钥 644。"""
+        try:
+            密钥目录.chmod(0o700)
+            私钥文件.chmod(0o600)
+            公钥文件.chmod(0o644)
+        except OSError:
+            pass  # 平台不支持 chmod 时忽略（Windows 类）
+
+    @staticmethod
     def 生成或读取密钥(密钥目录: Path | str | None = None) -> tuple[str, str]:
-        """返回 (私钥PEM, 公钥PEM)：已有密钥复用，缺失则生成并落盘。"""
+        """返回 (私钥PEM, 公钥PEM)：已有密钥复用，缺失则生成并落盘。
+
+        签名密钥受控：密钥目录 700、私钥文件 600（仅属主可读写），
+        公钥 644（可分发）；密钥只落盘 工程缓存（可重建，非源码树）。
+        """
         密钥目录 = Path(密钥目录) if 密钥目录 is not None \
             else Path(__file__).resolve().parents[2] / "工程缓存" / "制品仓库" / "平台客户端密钥"
         私钥文件 = 密钥目录 / "发布者私钥.pem"
         公钥文件 = 密钥目录 / "发布者公钥.pem"
         if 私钥文件.is_file() and 公钥文件.is_file():
+            平台客户端制品接入._加固密钥权限(密钥目录, 私钥文件, 公钥文件)
             return 私钥文件.read_text(encoding="utf-8"), 公钥文件.read_text(encoding="utf-8")
         私钥, 公钥 = 生成密钥对()
         密钥目录.mkdir(parents=True, exist_ok=True)
         私钥文件.write_text(私钥, encoding="utf-8")
         公钥文件.write_text(公钥, encoding="utf-8")
+        平台客户端制品接入._加固密钥权限(密钥目录, 私钥文件, 公钥文件)
         return 私钥, 公钥
 
     # ---- 入库（内容寻址 + 签名 + 信任元数据） ----
@@ -158,15 +174,33 @@ class 平台客户端制品接入:
     def _登记信任元数据(self, 制品摘要: str, 版本: str) -> None:
         """可信仓库元数据：根信任（幂等）→ 目标 → 快照。
 
-        目标只登记 摘要/版本（不写制品内容 .bin）：包仓库 校验签名 已对
-        磁盘制品逐一重算 sha256 做防替换，可信元数据负责 根信任/目标/
-        快照 的签名、过期与回退阻断，两者各司其职。
+        目标登记的 制品内容 为 包仓库 制品摘要 的同源输入正文（与 内容摘要
+        输入一致），使 可信仓库元数据.阻断检查 的"目标被替换"磁盘比对
+        真实有效；包仓库 签名校验 另对磁盘制品逐一重算 sha256 双重防替换。
         """
         元数据目录 = self.信任目录 / "元数据"
         元数据目录.mkdir(parents=True, exist_ok=True)
         if not (元数据目录 / "根信任.json").is_file():
             self.可信元数据.初始化()
-        self.可信元数据.发布目标(包id=self.包id, 版本=版本, 制品摘要=制品摘要)
+        # 重建与 包仓库.构建制品 完全同源的摘要输入正文（保证 内容摘要(正文)==制品摘要）
+        记录 = self.状态.读取记录("制品", "制品摘要", 制品摘要)
+        if 记录:
+            文件清单 = json.loads(记录.get("文件清单") or "{}")
+            构建输入 = json.loads(记录.get("构建输入") or "{}")
+            正文 = json.dumps(
+                {"包id": self.包id, "版本": 版本,
+                 "文件清单": 文件清单, "构建输入": 构建输入},
+                ensure_ascii=False, sort_keys=True,
+            )
+        else:
+            正文 = json.dumps({"包id": self.包id, "版本": 版本}, ensure_ascii=False, sort_keys=True)
+        # 幂等自检：正文摘要必须等于制品摘要，否则登记会污染信任元数据
+        from 支持库.适配层 import 内容摘要 as _内容摘要
+        if _内容摘要(正文.encode("utf-8")) != 制品摘要:
+            return  # 正文不可复算（记录缺失/不匹配）：不登记目标，防恒真误报
+        self.可信元数据.发布目标(
+            包id=self.包id, 版本=版本, 制品摘要=制品摘要,
+            制品内容=正文.encode("utf-8"))
         self.可信元数据.生成快照()
 
     def 校验制品(self, 制品摘要: str) -> tuple[bool, str]:

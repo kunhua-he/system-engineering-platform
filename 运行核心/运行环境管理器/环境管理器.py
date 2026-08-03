@@ -92,6 +92,11 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300) -> 环境结果
     依赖锁 = 读取依赖锁(提供者目录)
     if not 依赖锁:
         return 环境结果(True, 解释器路径=sys.executable, 错误说明="无第三方依赖，使用系统解释器")
+    # 全部为外部应用/系统工具（非 pip 包）→ 使用系统解释器，不构建 venv
+    pip包表 = [包 for 包 in 依赖锁.get("包", []) if _是pip包(包)]
+    if not pip包表:
+        return 环境结果(True, 解释器路径=sys.executable,
+                        错误说明="仅外部应用/系统工具，使用系统解释器")
     摘要 = 计算环境摘要(依赖锁, 提供者目录.name)
     目标 = 环境目录(提供者目录, 摘要)
     解释器 = 目标 / "bin" / "python3"
@@ -103,10 +108,14 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300) -> 环境结果
 
 
 def 校验环境(解释器: Path, 依赖锁: dict) -> bool:
-    """校验已生成环境：解释器存在 + 锁中每个包可导入。"""
+    """校验已生成环境：解释器存在 + 锁中每个 pip 包可导入。
+
+    外部应用/系统工具（来源 非 PyPI）不做 import 校验：它们不是
+    Python 包，以系统解释器运行，由提供者自身负责存在性检查。
+    """
     if not 解释器.is_file():
         return False
-    包表 = 依赖锁.get("包", [])
+    包表 = [包 for 包 in 依赖锁.get("包", []) if _是pip包(包)]
     if not 包表:
         return True
     检查列表 = " && ".join(
@@ -122,6 +131,12 @@ def 校验环境(解释器: Path, 依赖锁: dict) -> bool:
         return False
 
 
+def _是pip包(包: dict) -> bool:
+    """是否为 pip 可安装的 Python 发行包（外部应用/系统工具返回 False）。"""
+    来源 = str(包.get("来源", "") or "").lower()
+    return "外部应用" not in 来源 and "系统工具" not in 来源 and "pip" not in 来源
+
+
 def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
               解释器: Path, 摘要: str, 超时秒: int) -> 环境结果:
     """临时目录构建 venv → 安装依赖 → 校验 → 原子改名。"""
@@ -133,7 +148,7 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
         venv.create(临时目录, with_pip=True)
         临时解释器 = 临时目录 / "bin" / "python3"
         环境变量 = {**os.environ, "PYTHONNOUSERSITE": "1"}
-        包表 = 依赖锁.get("包", [])
+        包表 = [包 for 包 in 依赖锁.get("包", []) if _是pip包(包)]
         for 包 in 包表:
             安装参数 = [
                 str(临时解释器), "-m", "pip", "install", "--quiet",

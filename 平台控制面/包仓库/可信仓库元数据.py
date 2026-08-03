@@ -29,6 +29,13 @@ class 可信仓库元数据:
         self.有效期秒 = 有效期秒
         self.当前根私钥 = 根密钥对[0] if 根密钥对 else None
         self.当前根公钥 = 根密钥对[1] if 根密钥对 else None
+        # 已初始化仓库：从离线根私钥恢复签名能力（根信任存在但未传密钥对时）
+        if self.当前根私钥 is None and (self.目录 / "根私钥.pem").is_file():
+            self.当前根私钥 = (self.目录 / "根私钥.pem").read_text(encoding="utf-8")
+        if self.当前根公钥 is None:
+            根信任 = self._读取("根信任")
+            if 根信任:
+                self.当前根公钥 = 根信任.get("公钥", "")
 
     # ---- 存储基础 ----
     def _写入(self, 文件名: str, 元数据: dict) -> None:
