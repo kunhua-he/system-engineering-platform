@@ -1,5 +1,7 @@
-"""Tesseract 提供者测试：真实版本探针/语言包/OCR（生成测试图片）+受管进程超时/取消/
-输出上限/崩溃/零残留；tesseract 缺失时如实标记"未配置"（skipTest），工具缺失语义仍经注入断言。"""
+"""Tesseract 提供者测试：真实版本探针/语言包/OCR（生成测试图片）+命令路径配置覆盖
+体系（显式参数 > 环境变量 Tesseract提供者_命令路径 > 默认探测；伪路径→工具缺失、
+不可执行→命令失败、低版本→版本不兼容、不泄露路径细节）+受管进程超时/取消/输出
+上限/崩溃/零残留；tesseract 缺失时如实标记"未配置"（skipTest），工具缺失语义仍经注入断言。"""
 from __future__ import annotations
 
 import os
@@ -109,6 +111,84 @@ class Test识别图片(unittest.TestCase):
             with mock.patch.object(提供者模块, "执行命令", return_value=结果):
                 返回值 = 识别图片(str(self.图片路径))
             self.assertEqual(返回值.错误码, "进程崩溃" if 结果.成功 else "取消")
+
+
+class Test命令路径配置(unittest.TestCase):
+    """配置覆盖体系：显式参数 > 环境变量 > 默认探测；非法路径明确失败。"""
+
+    def test_显式配置伪路径工具缺失(self):
+        结果 = 版本探针(命令路径="/不存在/tesseract伪路径")
+        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", True))
+
+    def test_显式配置不可执行命令失败(self):
+        with tempfile.TemporaryDirectory(prefix="测试_Tesseract路径_") as 目录:
+            不可执行 = Path(目录) / "伪tesseract"
+            不可执行.write_text("#!/bin/sh\nexit 0", encoding="utf-8")
+            os.chmod(不可执行, 0o644)
+            结果 = 版本探针(命令路径=str(不可执行))
+        self.assertEqual((结果.错误码, 结果.可重试), ("命令失败", True))
+
+    def test_显式配置真实路径生效(self):
+        if not tesseract存在(): self.skipTest("本机未配置 tesseract")
+        真实路径 = shutil.which("tesseract")
+        探针 = 版本探针(命令路径=真实路径)
+        self.assertTrue(探针.成功, 探针.错误说明)
+        self.assertRegex(探针.值["版本"], r"^\d+(?:\.\d+)+$")
+        语言 = 语言包列表(命令路径=真实路径)
+        self.assertTrue(语言.成功 and "eng" in 语言.值["语言列表"], 语言.错误说明)
+        with tempfile.TemporaryDirectory(prefix="测试_Tesseract路径_") as 目录:
+            图片 = Path(目录) / "配置图.png"
+            _生成图片(图片)
+            识别 = 识别图片(str(图片), 命令路径=真实路径)
+        self.assertTrue(识别.成功 and "123" in 识别.值["文本"], 识别.错误说明)
+
+    def test_环境变量优先于默认探测(self):
+        with mock.patch.dict(os.environ, {"Tesseract提供者_命令路径": "/不存在/tesseract伪路径"}):
+            结果 = 版本探针()
+        self.assertEqual(结果.错误码, "工具缺失")
+        if tesseract存在():
+            with mock.patch.dict(os.environ, {"Tesseract提供者_命令路径": shutil.which("tesseract")}):
+                结果 = 版本探针()
+            self.assertTrue(结果.成功, 结果.错误说明)
+
+    def test_显式参数优先于环境变量(self):
+        if not tesseract存在(): self.skipTest("本机未配置 tesseract")
+        with mock.patch.dict(os.environ, {"Tesseract提供者_命令路径": "/不存在/tesseract伪路径"}):
+            结果 = 版本探针(命令路径=shutil.which("tesseract"))
+        self.assertTrue(结果.成功, 结果.错误说明)
+
+    def test_识别图片经环境变量配置(self):
+        with tempfile.TemporaryDirectory(prefix="测试_Tesseract路径_") as 目录:
+            图片 = Path(目录) / "环境图.png"
+            _生成图片(图片)
+            with mock.patch.dict(os.environ, {"Tesseract提供者_命令路径": "/不存在/tesseract伪路径"}):
+                结果 = 识别图片(str(图片))
+        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", True))
+
+    def test_版本不兼容(self):
+        if not tesseract存在(): self.skipTest("本机未配置 tesseract")
+        with mock.patch.object(提供者模块, "_提取版本", return_value="4.1.0"):
+            结果 = 版本探针()
+        self.assertEqual((结果.错误码, 结果.可重试), ("版本不兼容", True))
+        self.assertEqual(结果.详细信息.get("当前版本"), "4.1.0")
+        self.assertEqual(结果.详细信息.get("最低版本"), "5.0.0")
+
+    def test_错误消息与详情不泄露配置路径(self):
+        伪路径 = "/机密/配置/tesseract路径"
+        结果 = 版本探针(命令路径=伪路径)
+        self.assertEqual(结果.错误码, "工具缺失")
+        self.assertNotIn(伪路径, 结果.错误说明)
+        self.assertNotIn(伪路径, str(结果.详细信息))
+        for 函数 in (lambda: 语言包列表(命令路径=伪路径),
+                     lambda: 识别图片("不存在.png", 命令路径=伪路径)):
+            结果 = 函数()
+            self.assertEqual(结果.错误码, "工具缺失")
+            self.assertNotIn(伪路径, 结果.错误说明)
+
+    def test_命令路径参数类型非法(self):
+        self.assertEqual(版本探针(命令路径=123).错误码, "参数不合法")
+        self.assertEqual(语言包列表(命令路径=["a"]).错误码, "参数不合法")
+        self.assertEqual(识别图片("不存在.png", 命令路径=123).错误码, "参数不合法")
 
 
 class Test受管进程(unittest.TestCase):
