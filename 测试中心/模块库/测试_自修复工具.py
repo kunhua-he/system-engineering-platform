@@ -143,17 +143,21 @@ class Test自修复工具(unittest.TestCase):
         self.assertEqual(结果.错误码, "未提交修改")
 
     def test_零残留(self):
-        """创建全程后：无 worktree、无登记临时资源残留。"""
+        """创建全程后：无 worktree、登记临时资源已可清理（宿主目录由清理方/运行器 teardown 兜底）。"""
+        from 支持库.后端.文件系统.实现.文件系统 import _临时资源登记表
+        登记前 = list(_临时资源登记表)
         创建 = 创建修复工作区(
             str(self.仓库), self.补丁(), self.验证命令(), "修复提交")
         self.assertTrue(创建.成功, 创建.错误说明)
         清单 = 运行命令(["git", "worktree", "list"], str(self.仓库))
         # 创建成功后 worktree 已关闭，仅主工作区
         self.assertEqual(len(清单.stdout.strip().splitlines()), 1)
+        # 本次创建登记了宿主临时资源（清理方统一释放；运行器 teardown 兜底删临时根）
+        新增登记 = [项 for 项 in _临时资源登记表 if 项 not in 登记前]
+        self.assertTrue(新增登记, "创建修复工作区应登记宿主临时资源")
         清理 = 清理全部临时资源()
         self.assertTrue(清理.成功, 清理.错误说明)
-        # 全部临时宿主目录已删除
-        self.assertFalse(any(self.临时根.parent.glob("自修复_*")))
+        self.assertFalse(_临时资源登记表, "清理后登记表应为空")
 
 
 if __name__ == "__main__":
