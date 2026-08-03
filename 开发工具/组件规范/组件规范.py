@@ -3,12 +3,13 @@
 九要素：包声明/能力契约/依赖契约/配置契约/权限契约/执行单元/验证场景/
 说明书/完整性摘要。区别只由颗粒度和依赖方向决定：
 支持库=原子能力；基础模块=通用流程；功能模块=完整功能；项目代码=项目特例。
+完整性摘要生成/校验一律委托唯一生成器（完整性摘要.py，文件清单 sha256
+唯一权威格式），不得复制第二套摘要算法；旧 {组件id,摘要} 格式一律拒绝。
 不得复制多套加载器、版本、诊断、日志、发布和验证逻辑。
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,19 +30,6 @@ class 规范校验结果:
     @property
     def 成功(self) -> bool:
         return not self.问题列表
-
-
-def 计算目录摘要(目录: Path) -> str:
-    """计算目录内全部文件的内容寻址摘要（排除缓存/临时/摘要自身）。"""
-    import hashlib as _哈希
-    摘要器 = _哈希.sha256()
-    for 文件 in sorted(目录.rglob("*")):
-        if 文件.is_file() and "pycache" not in str(文件) and "工程缓存" not in str(文件) \
-                and 文件.name != "完整性摘要.json":  # 排除摘要自身（避免自引用漂移）
-            相对 = str(文件.relative_to(目录))
-            摘要器.update(相对.encode("utf-8"))
-            摘要器.update(文件.read_bytes())
-    return 摘要器.hexdigest()[:16]
 
 
 def 校验组件规范(组件目录: Path) -> 规范校验结果:
@@ -84,27 +72,33 @@ def 校验组件规范(组件目录: Path) -> 规范校验结果:
     # 说明书
     if not (组件目录 / "说明").is_dir() and not (组件目录 / "说明书.md").is_file():
         结果.问题列表.append("缺少 说明/ 或 说明书.md")
-    # 完整性摘要
+    # 完整性摘要（委托唯一校验器：文件清单格式唯一权威，旧格式一律拒绝）
     if not (组件目录 / "完整性摘要.json").is_file():
         结果.问题列表.append("缺少 完整性摘要.json")
     else:
-        try:
-            摘要数据 = json.loads((组件目录 / "完整性摘要.json").read_text(encoding="utf-8"))
-            期望摘要 = 摘要数据.get("摘要", "")
-            实际摘要 = 计算目录摘要(组件目录)
-            if 期望摘要 != 实际摘要:
-                结果.问题列表.append(f"完整性摘要不匹配（期望 {期望摘要}，实际 {实际摘要}）")
-        except json.JSONDecodeError:
-            结果.问题列表.append("完整性摘要.json 不是合法 JSON")
+        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        通过, 问题列表 = 校验完整性摘要(组件目录)
+        结果.问题列表.extend(问题列表)
     return 结果
 
 
-def 生成完整性摘要(组件目录: Path) -> str:
-    """生成并写入完整性摘要.json（排除摘要文件自身与缓存）。"""
-    摘要 = 计算目录摘要(组件目录)
+def 生成完整性摘要(组件目录: Path) -> dict[str, Any]:
+    """生成并写入 完整性摘要.json（委托唯一生成器，文件清单唯一权威格式）。
+
+    包id/版本取自 包声明.json（缺省时用 组件目录名/1.0.0），
+    不复制任何第二套摘要算法。
+    """
+    from 开发工具.组件规范.完整性摘要 import 生成完整性摘要 as 生成文件清单摘要
+    声明路径 = 组件目录 / "包声明.json"
+    try:
+        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        声明 = {}
+    摘要 = 生成文件清单摘要(
+        组件目录, 包id=声明.get("包id", 组件目录.name),
+        版本=声明.get("版本", "1.0.0"))
     (组件目录 / "完整性摘要.json").write_text(
-        json.dumps({"组件id": 组件目录.name, "摘要": 摘要}, ensure_ascii=False, indent=2),
-        encoding="utf-8")
+        json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 摘要
 
 

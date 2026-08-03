@@ -90,9 +90,26 @@ class Test零测试门禁(unittest.TestCase):
         套件 = 运行测试.加载指定测试文件([
             "测试中心/MCP工具箱/测试_项目服务.py",
         ])
-        # 断言数量随 MCP 工具箱测试演化（当前 13：基础 10 + 角色门面 3）
-        self.assertGreater(套件.countTestCases(), 0)
-        self.assertEqual(套件.countTestCases(), 13)
+        # 结构性最小约束：套件非空、全部用例仅来自指定文件对应模块；
+        # 不写死具体数量，新增测试无需修改本断言。
+        # 注：Python 3.13+ 的 TestSuite.__iter__ 不再递归展开，需逐层展开。
+
+        def 展开全部用例(当前套件):
+            for 项 in 当前套件._tests:
+                if isinstance(项, unittest.TestSuite):
+                    yield from 展开全部用例(项)
+                else:
+                    yield 项
+
+        用例表 = list(展开全部用例(套件))
+        self.assertGreater(len(用例表), 0, "指定文件必须加载出测试用例")
+        来源模块表 = {type(用例).__module__ for 用例 in 用例表}
+        self.assertEqual(len(来源模块表), 1,
+                         "工作包模式不得混入指定文件以外的测试")
+        self.assertTrue(
+            next(iter(来源模块表)).endswith("_测试_项目服务"),
+            f"用例必须来自指定文件，实际来源: {来源模块表}",
+        )
 
     def test_工作包模式拒绝测试中心外文件(self):
         with self.assertRaises(ValueError):
