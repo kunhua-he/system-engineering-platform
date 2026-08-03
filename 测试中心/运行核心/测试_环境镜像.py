@@ -1,14 +1,16 @@
 """环境缓存远程镜像测试：契约/校验器/伪造攻击/回退语义/可选接入。
 
 覆盖：
-- 契约：配置结构（启用开关/镜像地址/信任指纹）、制品摘要=环境目录摘要、
-  匹配条件=制品摘要+依赖锁+Python版本+系统版本+架构 全部一致。
-- 校验器：全部匹配才允许命中；伪造镜像（摘要不匹配/锁不匹配/版本不符/
-  系统版本不符/架构不符/指纹不符/清单不完整）→ 拒绝（镜像摘要不匹配）。
-- 回退语义：镜像不可用/镜像摘要不匹配/镜像下载失败 → 明确回退本地构建，
-  不得把失败伪装成缓存命中。
+- 契约：配置结构（启用开关/镜像地址/信任指纹/发布者公钥）、制品摘要=
+  环境目录摘要、匹配条件=制品摘要+依赖锁+Python版本+系统版本+架构 全部一致。
+- 校验器：公钥签名验证 + 信任指纹双保险 + 五条件全部匹配才允许命中；
+  签名无效（镜像签名无效）/伪造镜像（摘要不匹配/锁不匹配/版本不符/
+  系统版本不符/架构不符/指纹不符/清单不完整）→ 拒绝。
+- 回退语义：镜像不可用/镜像签名无效/镜像摘要不匹配/镜像下载失败 →
+  明确回退本地构建，不得把失败伪装成缓存命中。
 - 默认关闭：未启用时完全走现有本地缓存路径（行为零变化）。
 - 端到端：file:// 临时测试镜像（隔离地址，不接触业务数据库/生产制品）。
+- 密钥角色边界：测试内生成临时密钥对（发布角色语义），运行核心只验证。
 """
 
 from __future__ import annotations
@@ -26,16 +28,24 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 支持库.适配层.密码签名提供者 import 生成密钥对
 from 运行核心.运行环境管理器.环境管理器 import (
     计算环境摘要, 确保环境, 环境目录, 环境结果, 读取依赖锁,
 )
 from 运行核心.运行环境管理器.远程镜像 import (
     计算制品摘要, 镜像不可用, 镜像下载失败, 镜像校验请求, 镜像摘要不匹配,
-    读取远程镜像配置, 下载镜像制品, 获取镜像清单, 远程镜像校验器,
-    远程镜像配置,
+    镜像签名无效, 签名清单, 读取远程镜像配置, 下载镜像制品, 获取镜像清单,
+    远程镜像校验器, 远程镜像配置,
 )
 
 测试指纹 = "测试信任指纹-7f3a"
+
+
+def 生成测试密钥对() -> tuple[str, str]:
+    """测试内生成临时 Ed25519 密钥对（发布角色语义，运行核心不持私钥）。"""
+    结果 = 生成密钥对()
+    assert 结果.成功, 结果.错误说明
+    return 结果.值["私钥PEM"], 结果.值["公钥PEM"]
 
 
 def 样例锁(版本: str = "1.2.0") -> dict:
@@ -60,16 +70,17 @@ class Test远程镜像契约(unittest.TestCase):
         self.assertEqual(配置.信任指纹, "")
 
     def test_配置文件读取启用(self):
-        """配置文件 {启用/镜像地址/信任指纹} 正确解析。"""
+        """配置文件 {启用/镜像地址/信任指纹/公钥PEM} 正确解析。"""
         配置路径 = self.临时 / "远程镜像配置.json"
         配置路径.write_text(json.dumps({
             "启用": True, "镜像地址": "http://镜像.example.com/环境制品",
-            "信任指纹": "sha256-abc123",
+            "信任指纹": "sha256-abc123", "公钥PEM": "-----BEGIN PUBLIC KEY-----\n测试",
         }, ensure_ascii=False), encoding="utf-8")
         配置 = 读取远程镜像配置(配置路径)
         self.assertTrue(配置.启用)
         self.assertEqual(配置.镜像地址, "http://镜像.example.com/环境制品")
         self.assertEqual(配置.信任指纹, "sha256-abc123")
+        self.assertEqual(配置.公钥PEM, "-----BEGIN PUBLIC KEY-----\n测试")
 
     def test_配置文件损坏回退默认关闭(self):
         """无效 JSON/缺字段 → 默认关闭（安全失败）。"""
@@ -106,7 +117,7 @@ class Test远程镜像契约(unittest.TestCase):
 
 
 class Test远程镜像校验器(unittest.TestCase):
-    """校验器：全部匹配才允许命中；任一伪造 → 拒绝（镜像摘要不匹配）。"""
+    """校验器：公钥签名 + 信任指纹双保险 + 五条件匹配才允许命中。"""
 
     def setUp(self):
         self.请求 = 镜像校验请求(
@@ -115,59 +126,93 @@ class Test远程镜像校验器(unittest.TestCase):
             系统版本="测试系统 26.1",
             架构="arm64",
         )
-        self.清单 = {
+        self.私钥PEM, self.公钥PEM = 生成测试密钥对()
+        self.清单 = self.签名清单()
+
+    def 签名清单(self, **覆盖: str) -> dict:
+        """发布侧模拟：组装清单并用测试私钥签名（签名正文=稳定序列化）。"""
+        清单 = {
             "制品摘要": "制品摘要-aaaa",
             "依赖锁摘要": "锁摘要-1111",
             "python版本": "3.14.0",
             "系统版本": "测试系统 26.1",
             "架构": "arm64",
             "信任指纹": 测试指纹,
+            **覆盖,
         }
+        签名结果 = 签名清单(清单, self.私钥PEM)
+        self.assertTrue(签名结果.成功, 签名结果.错误说明)
+        return 签名结果.值
 
     def test_全部匹配允许命中(self):
-        结果 = 远程镜像校验器(self.请求, self.清单, 测试指纹)
+        结果 = 远程镜像校验器(self.请求, self.清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertTrue(结果.允许命中)
         self.assertEqual(结果.制品摘要, "制品摘要-aaaa")
 
-    def test_伪造镜像摘要不匹配拒绝(self):
-        """伪造制品摘要（下载内容与声明不符）→ 拒绝。"""
+    def test_签名被篡改拒绝(self):
+        """签名值被改（签名与正文不符）→ 拒绝（镜像签名无效）。"""
+        篡改清单 = dict(self.清单)
+        篡改清单["签名"] = "00" * 128
+        结果 = 远程镜像校验器(self.请求, 篡改清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
+        self.assertFalse(结果.允许命中)
+        self.assertEqual(结果.错误码, 镜像签名无效)
+
+    def test_公钥被替换拒绝(self):
+        """配置公钥与签名私钥不配对 → 拒绝（镜像签名无效）。"""
+        他人公钥 = 生成测试密钥对()[1]
         结果 = 远程镜像校验器(self.请求, self.清单, 测试指纹,
+                               公钥PEM=他人公钥)
+        self.assertFalse(结果.允许命中)
+        self.assertEqual(结果.错误码, 镜像签名无效)
+
+    def test_伪造镜像摘要不匹配拒绝(self):
+        """签名有效但下载内容与声明不符 → 拒绝（镜像摘要不匹配）。"""
+        结果 = 远程镜像校验器(self.请求, self.清单, 测试指纹,
+                                公钥PEM=self.公钥PEM,
                                 实际制品摘要="伪造制品摘要-ffff")
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("制品摘要不匹配", 结果.错误说明)
 
     def test_伪造镜像依赖锁不匹配拒绝(self):
-        伪造清单 = {**self.清单, "依赖锁摘要": "伪造锁摘要-ffff"}
-        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹)
+        """发布者合法签名但依赖锁摘要与本地期望不符 → 拒绝。"""
+        伪造清单 = self.签名清单(依赖锁摘要="伪造锁摘要-ffff")
+        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("依赖锁不匹配", 结果.错误说明)
 
     def test_伪造镜像Python版本不符拒绝(self):
-        伪造清单 = {**self.清单, "python版本": "3.9.0"}
-        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹)
+        伪造清单 = self.签名清单(python版本="3.9.0")
+        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("Python版本不匹配", 结果.错误说明)
 
     def test_伪造镜像系统版本不符拒绝(self):
-        伪造清单 = {**self.清单, "系统版本": "伪造系统 1.0"}
-        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹)
+        伪造清单 = self.签名清单(系统版本="伪造系统 1.0")
+        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("系统版本不匹配", 结果.错误说明)
 
     def test_伪造镜像架构不符拒绝(self):
-        伪造清单 = {**self.清单, "架构": "x86_64"}
-        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹)
+        伪造清单 = self.签名清单(架构="x86_64")
+        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("架构不匹配", 结果.错误说明)
 
     def test_信任指纹不符拒绝(self):
-        """配置指纹与镜像声明不一致 → 拒绝（镜像不可信）。"""
-        结果 = 远程镜像校验器(self.请求, self.清单, "伪造指纹-ffff")
+        """签名有效但配置指纹与镜像声明不一致 → 拒绝（双保险仍生效）。"""
+        结果 = 远程镜像校验器(self.请求, self.清单, "伪造指纹-ffff",
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("信任指纹不匹配", 结果.错误说明)
@@ -176,26 +221,44 @@ class Test远程镜像校验器(unittest.TestCase):
         """缺失任一匹配字段 → 拒绝（不静默放行）。"""
         缺失架构 = {**self.清单}
         缺失架构.pop("架构")
-        结果 = 远程镜像校验器(self.请求, 缺失架构, 测试指纹)
+        结果 = 远程镜像校验器(self.请求, 缺失架构, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertIn("架构", 结果.错误说明)
         空清单 = {}
-        结果二 = 远程镜像校验器(self.请求, 空清单, 测试指纹)
+        结果二 = 远程镜像校验器(self.请求, 空清单, 测试指纹,
+                                 公钥PEM=self.公钥PEM)
         self.assertFalse(结果二.允许命中)
         self.assertEqual(结果二.错误码, 镜像摘要不匹配)
 
-    def test_伪造镜像全条件不符拒绝(self):
-        """综合伪造攻击：锁/版本/系统/架构/指纹全错 → 一律拒绝。"""
-        伪造清单 = {
-            "制品摘要": "伪造-aaaa",
-            "依赖锁摘要": "伪造锁",
-            "python版本": "2.7",
-            "系统版本": "伪造系统",
-            "架构": "sparc",
-            "信任指纹": "伪造指纹",
+    def test_签名缺失拒绝(self):
+        """无签名字段（信任指纹不能作为唯一依据）→ 拒绝（镜像签名无效）。"""
+        无签名清单 = {
+            "制品摘要": "制品摘要-aaaa",
+            "依赖锁摘要": "锁摘要-1111",
+            "python版本": "3.14.0",
+            "系统版本": "测试系统 26.1",
+            "架构": "arm64",
+            "信任指纹": 测试指纹,
         }
-        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹)
+        结果 = 远程镜像校验器(self.请求, 无签名清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
+        self.assertFalse(结果.允许命中)
+        self.assertEqual(结果.错误码, 镜像签名无效)
+
+    def test_伪造镜像全条件不符拒绝(self):
+        """综合伪造攻击：锁/版本/系统/架构/指纹全错（合法签名）→ 拒绝。"""
+        伪造清单 = self.签名清单(
+            制品摘要="伪造-aaaa",
+            依赖锁摘要="伪造锁",
+            python版本="2.7",
+            系统版本="伪造系统",
+            架构="sparc",
+            信任指纹="伪造指纹",
+        )
+        结果 = 远程镜像校验器(self.请求, 伪造清单, 测试指纹,
+                               公钥PEM=self.公钥PEM)
         self.assertFalse(结果.允许命中)
         self.assertEqual(结果.错误码, 镜像摘要不匹配)
         self.assertNotEqual(结果.制品摘要, "伪造-aaaa")
@@ -203,6 +266,10 @@ class Test远程镜像校验器(unittest.TestCase):
 
 class Test远程镜像接入(unittest.TestCase):
     """可选接入：默认关闭零变化；启用后命中/回退语义端到端（file:// 隔离地址）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.私钥PEM, cls.公钥PEM = 生成测试密钥对()
 
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp())
@@ -244,16 +311,19 @@ class Test远程镜像接入(unittest.TestCase):
         self.配置路径.parent.mkdir(parents=True, exist_ok=True)
         self.配置路径.write_text(json.dumps({
             "启用": 启用, "镜像地址": 镜像地址, "信任指纹": 测试指纹,
+            "公钥PEM": self.公钥PEM,
         }, ensure_ascii=False), encoding="utf-8")
-        return 远程镜像配置(启用=启用, 镜像地址=镜像地址, 信任指纹=测试指纹)
+        return 远程镜像配置(启用=启用, 镜像地址=镜像地址,
+                            信任指纹=测试指纹, 公钥PEM=self.公钥PEM)
 
     def 构造镜像制品(self, 提供者: Path, 摘要: str, *,
                       锁摘要覆盖: str | None = None,
-                      不打包制品: bool = False) -> str:
-        """在临时目录构造 file:// 临时测试镜像（隔离地址）。
+                      不打包制品: bool = False,
+                      签名后篡改: bool = False) -> str:
+        """在临时目录构造 file:// 临时测试镜像（隔离地址，发布侧签名）。
 
         镜像结构：镜像仓库/<提供者id>/<摘要>/镜像清单.json + 制品.tar.gz。
-        返回 file:// 镜像地址。
+        清单由测试私钥（发布角色语义）签名；返回 file:// 镜像地址。
         """
         仓库 = self.临时 / "镜像仓库"
         镜像项目录 = 仓库 / 提供者.name / 摘要
@@ -273,8 +343,13 @@ class Test远程镜像接入(unittest.TestCase):
             "架构": platform.machine(),
             "信任指纹": 测试指纹,
         }
+        签名结果 = 签名清单(清单, self.私钥PEM)
+        assert 签名结果.成功, 签名结果.错误说明
+        签名后清单 = 签名结果.值
+        if 签名后篡改:
+            签名后清单["签名"] = "00" * 128
         (镜像项目录 / "镜像清单.json").write_text(
-            json.dumps(清单, ensure_ascii=False), encoding="utf-8")
+            json.dumps(签名后清单, ensure_ascii=False), encoding="utf-8")
         return "file://" + str(仓库)
 
     def test_未启用时行为零变化(self):
@@ -336,6 +411,21 @@ class Test远程镜像接入(unittest.TestCase):
         self.assertEqual([行["类型"] for 行 in 证据], ["失败", "重建"])
         self.assertEqual(证据[0]["错误码"], 镜像摘要不匹配)
         self.assertIn("依赖锁不匹配", 证据[0]["错误说明"])
+
+    def test_镜像签名无效回退本地构建(self):
+        """镜像清单签名被篡改 → 镜像签名无效 + 回退本地构建（信任指纹不足为凭）。"""
+        提供者 = self.新提供者(锁=样例锁())
+        摘要 = 计算环境摘要(样例锁(), 提供者.name)
+        镜像地址 = self.构造镜像制品(提供者, 摘要, 签名后篡改=True)
+        self.写镜像配置(镜像地址)
+        with self.放行本地构建()[0], self.放行本地构建()[1]:
+            结果 = 确保环境(提供者)
+        self.assertTrue(结果.成功)
+        self.assertEqual(self.构建记录["次数"], 1)
+        证据 = self.证据行()
+        self.assertEqual([行["类型"] for 行 in 证据], ["失败", "重建"])
+        self.assertEqual(证据[0]["错误码"], 镜像签名无效)
+        self.assertIn("签名", 证据[0]["错误说明"])
 
     def test_镜像下载失败回退本地构建(self):
         """清单匹配但制品缺失 → 镜像下载失败 + 回退本地构建。"""
