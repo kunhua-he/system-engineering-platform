@@ -60,9 +60,13 @@ def 计算代码指纹(目录: Path) -> dict[str, Any]:
         return {"成功": False, "错误码": 错误_登记失败, "消息": "目录不存在，无法计算代码指纹"}
     摘要器 = hashlib.sha256()
     for 文件 in sorted(根.rglob("*")):
-        if 文件.is_file() and not any(片段 in str(文件) for 片段 in _排除片段表):
-            摘要器.update(str(文件.relative_to(根)).encode("utf-8"))
-            摘要器.update(文件.read_bytes())
+        if not 文件.is_file():
+            continue
+        相对 = 文件.relative_to(根)
+        if any(片段 in 段 for 片段 in _排除片段表 for 段 in 相对.parts):
+            continue  # 只按相对路径段名（子串）排除缓存，避免 TMPDIR 前缀误匹配
+        摘要器.update(str(相对).encode("utf-8"))
+        摘要器.update(文件.read_bytes())
     return {"成功": True, "指纹": 摘要器.hexdigest()[:16]}
 
 
