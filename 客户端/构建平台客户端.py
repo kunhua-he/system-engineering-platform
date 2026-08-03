@@ -22,6 +22,8 @@ import tempfile
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parent.parent
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
 顶层包表 = ["公共契约", "支持库", "模块库", "运行核心", "前端核心", "后端核心",
            "项目适配层", "平台控制面", "启动监督器", "开发工具"]
 客户端前缀 = "平台客户端"
@@ -188,38 +190,34 @@ def 构建(安装: bool = False) -> Path:
 
 
 def 安装到环境(制品根: Path) -> Path:
-    """把制品安装到 工程缓存/平台客户端环境/（内容寻址不可变目录）。
+    """把制品经正式包仓库机制安装到 平台客户端环境/（不 bypass）。
 
-    环境目录结构：
-        工程缓存/平台客户端环境/平台客户端/  ← 固定包名的已安装制品（原子替换）
-        工程缓存/平台客户端环境/当前.json    ← 激活指针（摘要/来源制品目录）
+    链路（全部复用 平台控制面/包仓库 既有内容寻址、签名与信任体系）：
+    入库（内容寻址 + 物料清单 + Ed25519 签名 + 信任元数据）→
+    校验（签名 + 磁盘逐一摘要）→ 临时目录完整写入 + fsync + os.replace
+    原子替换 → 发布管理（单调版本+栅栏令牌+CAS）激活指针 →
+    同步 当前.json（V3 稳定路径契约）→ 校验稳定路径可读。
+
+    环境目录契约不变：
+        工程缓存/制品仓库/平台客户端环境/平台客户端/  ← 固定包名的已安装制品
+        工程缓存/制品仓库/平台客户端环境/当前.json    ← 激活指针（摘要/制品目录）
     """
-    制品副本 = 环境目录 / "制品" / 制品根.name
-    if 制品副本.exists():
-        shutil.rmtree(制品副本)
-    制品副本.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(制品根, 制品副本)
-    # 原子发布固定包名：完整复制到临时目录 → 校验 → 整体替换
-    临时 = 环境目录 / f".平台客户端.tmp-{制品根.name[-8:]}"
-    if 临时.exists():
-        shutil.rmtree(临时)
-    临时.mkdir(parents=True)
-    shutil.copytree(制品根, 临时 / "平台客户端")
-    (临时 / "平台客户端" / "制品来源.json").write_text(
-        f'{{"制品目录": "{制品根.name}", "摘要sha256": "{制品根.name.split("-")[-1]}"}}',
-        encoding="utf-8",
-    )
-    目标 = 环境目录 / "平台客户端"
-    if 目标.exists():
-        shutil.rmtree(目标)
-    shutil.move(临时 / "平台客户端", 目标)
-    shutil.rmtree(临时, ignore_errors=True)
-    指针 = 环境目录 / "当前.json"
-    指针.write_text(
-        f'{{"摘要sha256": "{制品根.name.split("-")[-1]}", "制品目录": "{制品根.name}"}}',
-        encoding="utf-8",
-    )
-    print(f"已安装到环境：{目标}")
+    from 平台控制面.包仓库.平台客户端制品 import 平台客户端制品接入
+    接入 = 平台客户端制品接入()
+    私钥, 公钥 = 平台客户端制品接入.生成或读取密钥()
+    入库成功, 入库消息, 制品摘要 = 接入.入库(
+        制品目录=制品根, 构建输入={"来源": "客户端构建", "命令": " ".join(sys.argv)},
+        私钥PEM=私钥, 公钥PEM=公钥)
+    if not 入库成功:
+        raise RuntimeError(f"入库失败: {入库消息}")
+    安装成功, 安装消息, 目标 = 接入.安装到环境(制品摘要)
+    if not 安装成功:
+        raise RuntimeError(f"安装失败: {安装消息}")
+    有效, 校验消息, _ = 接入.校验稳定路径()
+    if not 有效:
+        raise RuntimeError(f"稳定路径校验失败: {校验消息}")
+    print(f"已经包仓库安装并激活：{目标}")
+    print(f"入库：{入库消息}")
     return 目标
 
 
