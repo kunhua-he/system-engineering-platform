@@ -145,3 +145,57 @@ def 读取二进制文件(受控根目录: str, 相对路径: str, 最大字节�
         return 结果.成功结果(目标.read_bytes())
     except OSError as 错误:
         return 结果.失败("文件读取失败", str(错误), 来源="文件系统")
+
+
+def 读取文件头部字节(受控根目录: str, 相对路径: str, 字节数: int = 4096) -> 结果:
+    """在受控根目录内按相对路径只读文件头部 N 字节（不加载全文件）。
+
+    受控根 + 相对路径 双重路径边界校验（防路径逃逸）；只读头部字节数，
+    大文件也不会整体载入内存。供文件头嗅探/预览等只读场景调用。
+    """
+    根目录 = Path(受控根目录).resolve()
+    if not 根目录.is_dir():
+        return 结果.失败("目录不存在", f"受控根目录不存在: {受控根目录}", 来源="文件系统")
+    目标 = (根目录 / 相对路径).resolve()
+    try:
+        if os.path.commonpath([str(根目录), str(目标)]) != str(根目录):
+            return 结果.失败("路径越界", f"路径越出受控根目录: {相对路径}", 来源="文件系统")
+    except ValueError:
+        return 结果.失败("路径越界", f"路径越出受控根目录: {相对路径}", 来源="文件系统")
+    if not 目标.is_file():
+        return 结果.失败("文件不存在", f"文件不存在: {相对路径}", 来源="文件系统")
+    try:
+        with 目标.open("rb") as 文件流:
+            return 结果.成功结果(文件流.read(max(int(字节数), 0)))
+    except OSError as 错误:
+        return 结果.失败("文件读取失败", str(错误), 来源="文件系统")
+
+
+_临时资源登记表: list[str] = []
+
+
+def 登记临时资源(路径: str) -> 结果:
+    """登记一个临时资源（文件或目录），由 清理全部临时资源 统一释放。"""
+    if not isinstance(路径, str) or not 路径.strip():
+        return 结果.失败("参数不合法", "路径必须为非空文本", 来源="文件系统")
+    if 路径 not in _临时资源登记表:
+        _临时资源登记表.append(路径)
+    return 结果.成功结果(len(_临时资源登记表))
+
+
+def 清理全部临时资源() -> 结果:
+    """清理全部已登记临时资源（文件删除/目录递归删除，不存在视为幂等成功）。"""
+    清理失败表 = []
+    for 路径 in list(_临时资源登记表):
+        try:
+            目标 = Path(路径)
+            if 目标.is_dir():
+                shutil.rmtree(目标)
+            else:
+                目标.unlink(missing_ok=True)
+        except OSError as 错误:
+            清理失败表.append(f"{路径}: {错误}")
+    _临时资源登记表.clear()
+    if 清理失败表:
+        return 结果.失败("清理失败", "；".join(清理失败表), 来源="文件系统")
+    return 结果.成功结果()
