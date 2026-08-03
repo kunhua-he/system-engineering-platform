@@ -2,6 +2,7 @@
 崩溃/截断/零残留；ffmpeg 不可用时如实标记跳过并断言 未配置 语义。"""
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -18,14 +19,22 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 支持库.适配层.FFmpeg提供者 import 检查提供者, 探测媒体, 提取音频, 转码, 抽取帧
 from 支持库.适配层.FFmpeg提供者.实现 import 进程管理 as 进程模块
 from 支持库.适配层.FFmpeg提供者.实现 import 探测 as 探测模块
+from 支持库.适配层.FFmpeg提供者.实现 import 处理 as 处理模块
 
 
-def _生成视频(路径: Path, 含音频: bool) -> Path:
+def _生成视频(路径: Path, 含音频: bool, 尺寸: str = "64x64") -> Path:
     参数 = [探测模块.查找命令("ffmpeg"), "-y", "-f", "lavfi", "-i",
-            "testsrc=size=64x64:rate=10", "-t", "1"]
+            f"testsrc=size={尺寸}:rate=10", "-t", "1"]
     if 含音频:
         参数 += ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest"]
     参数 += ["-pix_fmt", "yuv420p", str(路径)]
+    subprocess.run(参数, capture_output=True, check=True)
+    return 路径
+
+
+def _生成纯音频(路径: Path) -> Path:
+    参数 = [探测模块.查找命令("ffmpeg"), "-y", "-f", "lavfi", "-i",
+            "sine=frequency=440:duration=1", str(路径)]
     subprocess.run(参数, capture_output=True, check=True)
     return 路径
 
@@ -57,6 +66,9 @@ class TestFFmpeg提供者(unittest.TestCase):
         if cls.可用:
             cls.带音频 = _生成视频(cls.临时目录 / "带音频.mp4", 含音频=True)
             cls.纯视频 = _生成视频(cls.临时目录 / "纯视频.mp4", 含音频=False)
+            cls.标清视频 = _生成视频(cls.临时目录 / "标清.mp4", 含音频=False, 尺寸="320x240")
+            cls.低清视频 = _生成视频(cls.临时目录 / "低清.mp4", 含音频=False, 尺寸="160x120")
+            cls.纯音频 = _生成纯音频(cls.临时目录 / "纯音频.wav")
             cls.损坏文件 = cls.临时目录 / "损坏.bin"
             cls.损坏文件.write_bytes(os.urandom(4096))
     @classmethod
@@ -106,6 +118,68 @@ class TestFFmpeg提供者(unittest.TestCase):
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "jpg")
         self.assertGreater(结果.值["字节数"], 0)
+        self.assertIn("宽度", 结果.值)
+        self.assertIn("高度", 结果.值)
+
+    def test_抽取帧真实尺寸匹配(self):
+        结果 = 抽取帧(str(self.标清视频), 0.5)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["宽度"], 320)
+        self.assertEqual(结果.值["高度"], 240)
+
+    def test_抽取帧尺寸随源真实变化(self):
+        高结果 = 抽取帧(str(self.标清视频), 0.5)
+        低结果 = 抽取帧(str(self.低清视频), 0.5)
+        self.assertTrue(高结果.成功 and 低结果.成功,
+                        f"高={高结果.错误说明} 低={低结果.错误说明}")
+        self.assertEqual((高结果.值["宽度"], 高结果.值["高度"]), (320, 240))
+        self.assertEqual((低结果.值["宽度"], 低结果.值["高度"]), (160, 120))
+        self.assertNotEqual(
+            (高结果.值["宽度"], 高结果.值["高度"]),
+            (低结果.值["宽度"], 低结果.值["高度"]),
+            "不同尺寸源视频的抽帧宽高必须不同（禁止固定值）")
+
+    def test_抽取帧损坏媒体(self):
+        self.assertEqual(抽取帧(str(self.损坏文件), 0.5).错误码, "损坏媒体")
+
+    def test_抽取帧非视频如实失败(self):
+        结果 = 抽取帧(str(self.纯音频), 0.5)
+        self.assertFalse(结果.成功, "非视频媒体抽帧必须如实失败")
+        self.assertEqual(结果.错误码, "进程崩溃")
+
+    def test_抽取帧程序缺失(self):
+        with mock.patch.object(探测模块, "查找命令", return_value=None):
+            结果 = 抽取帧(str(self.带音频), 0.5)
+        self.assertEqual(结果.错误码, "提供者不可用")
+
+    def test_抽取帧超时(self):
+        挂起脚本 = _写脚本(self.临时目录 / "挂起抽帧.sh", "#!/bin/sh\nsleep 30\n")
+        真实ffprobe = 探测模块.查找命令("ffprobe")
+
+        def 假查找(命令名: str):
+            return 挂起脚本 if 命令名 == "ffmpeg" else 真实ffprobe
+
+        with mock.patch.object(探测模块, "查找命令", side_effect=假查找):
+            结果 = 抽取帧(str(self.带音频), 0.5, 超时秒=0.3)
+        self.assertEqual(结果.错误码, "超时")
+
+    def test_抽取帧取消透传(self):
+        探测输出 = json.dumps({
+            "format": {"duration": "1.0", "format_name": "mp4", "size": "1000", "bit_rate": "8000"},
+            "streams": [{"index": 0, "codec_type": "video", "codec_name": "h264",
+                         "width": 320, "height": 240, "sample_rate": None, "channels": None}],
+        }).encode()
+
+        def 假执行(命令列表, *, 超时秒, 最大输出字节, 取消函数=None):
+            if "ffmpeg" in " ".join(命令列表):
+                return 进程模块.受管结果(成功=False, 错误码="取消", 错误摘要="取消: 外部命令执行被终止")
+            return 进程模块.受管结果(成功=True, 退出码=0, 标准输出=探测输出)
+
+        with mock.patch.object(探测模块, "执行受管命令", side_effect=假执行), \
+                mock.patch.object(处理模块, "执行受管命令", side_effect=假执行):
+            结果 = 抽取帧(str(self.带音频), 0.5)
+        self.assertEqual(结果.错误码, "取消")
+        self.assertFalse(结果.可重试)
 
     def test_输出超出限制(self):
         self.assertEqual(提取音频(str(self.带音频), 最大输出字节=10).错误码, "超出限制")
@@ -154,6 +228,9 @@ class TestFFmpeg提供者(unittest.TestCase):
         提取音频(str(self.带音频))
         转码(str(self.带音频), 输出格式="mkv")
         抽取帧(str(self.带音频), 0.5)
+        抽取帧(str(self.标清视频), 0.5)
+        抽取帧(str(self.低清视频), 0.5)
+        抽取帧(str(self.纯音频), 0.5)
         提取音频(str(self.损坏文件))
         self.assertEqual(_临时前缀集(临时根), 前缀集)
 

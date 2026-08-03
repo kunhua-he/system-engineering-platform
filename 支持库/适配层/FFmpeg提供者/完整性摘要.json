@@ -17,11 +17,11 @@
     },
     {
       "路径": "实现/处理.py",
-      "sha256": "e2f494f3d2b634c6fb91352a6f0e6b8b735c4aae4a5ff5b97cac3545cf4a0b2f"
+      "sha256": "4e88a59b3308dbc6e92150001efb1747bbd90d85fb35e26bc3e21c33c26c7d82"
     },
     {
       "路径": "实现/探测.py",
-      "sha256": "6cd06315bae556a33029c971a6ba40a42494d0e682d20fbf8b85afb26c1b888b"
+      "sha256": "e0596b71a8d115a4f6588561e28a6c1214d6594f7475c7e783b8505e551e92b0"
     },
     {
       "路径": "实现/进程管理.py",
@@ -29,11 +29,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "25695d5fb92e1f8f3739cea37a43862dcca733403fa755fa3c62f0ab8b2ab850"
+      "sha256": "a459a941fe373ae2f64f271c83bd6a028efe5752d9b54eafbd1a49d3a0955cdb"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "a27d5a6d61b5a8e85e1aae6fd93a7d7c23dcd6d6fb13306ff70a40a64fca2992"
+      "sha256": "389f84beefb86f4d08419ab07c61c8ed64b28f00843b2ff2c7054d0d75bc0d69"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -41,11 +41,11 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "b1530374ed6bf5df6cb79116b601582db7feff46ceb8ce5dbcaedf55662855e5"
+      "sha256": "44b8eb31ddfd6567d675d27aea8ec128caf28d767ce88fef027089b45ca162b9"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "04579327304aa9bc1f14f6d0240cbc98026004e762b189e9a84af1fa75fb1d58"
+      "sha256": "4f8fd3dc279cb58657823141cc4cff379fb941137888ef643959fd8692004ef6"
     },
     {
       "路径": "验证场景引用.json",
