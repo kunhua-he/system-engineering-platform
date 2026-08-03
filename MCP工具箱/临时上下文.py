@@ -67,6 +67,24 @@ def 清理临时上下文(目录: Path, 开工id: str) -> dict[str, Any]:
     return {"成功": True, "开工id": _安全标识(开工id), "已清理": 是否存在}
 
 
+def 核对修改范围(目录: Path, 开工id: str, 实际路径: list[str]) -> dict[str, Any]:
+    上下文 = 读取临时上下文(目录, 开工id)
+    if not 上下文.get("成功"):
+        return 上下文
+    允许 = [
+        str(项).replace("\\", "/").lstrip("./").rstrip("/")
+        for 项 in 上下文.get("允许目录", []) if str(项).strip()
+    ]
+    越界 = []
+    for 路径 in 实际路径:
+        规范 = str(路径).replace("\\", "/").lstrip("./")
+        if not any(规范 == 范围 or 规范.startswith(f"{范围}/") for 范围 in 允许):
+            越界.append(规范)
+    return {"成功": not 越界, "开工id": 开工id, "实际路径数": len(实际路径),
+            "越界路径": 越界,
+            "错误码": "TEMPORARY_CONTEXT_SCOPE_MISMATCH" if 越界 else ""}
+
+
 def 清理过期上下文(目录: Path) -> int:
     if not 目录.is_dir():
         return 0
