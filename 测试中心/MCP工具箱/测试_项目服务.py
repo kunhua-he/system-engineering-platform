@@ -69,6 +69,19 @@ class 项目服务测试(unittest.TestCase):
             self.assertIn("包id", 能力)
             self.assertIn("参数", 能力)
 
+    def test_验证计划按修改范围生成定向命令(self) -> None:
+        计划 = 服务模块._验证计划(
+            ["运行核心/运行环境管理器/强制校验.py"], "工作包"
+        )
+        self.assertEqual(计划["受影响测试目录"], ["测试中心/运行核心"])
+        self.assertFalse(计划["是否需要全量"])
+        self.assertIn("--测试文件", 计划["建议命令"][0])
+
+    def test_阶段收口验证计划才建议全量(self) -> None:
+        计划 = 服务模块._验证计划(["运行核心/能力调用"], "阶段收口")
+        self.assertTrue(计划["是否需要全量"])
+        self.assertEqual(计划["建议命令"], [["python3.14", "测试中心/运行测试.py"]])
+
     def test_调用者工具列表和直接调用双重拒绝(self) -> None:
         原角色 = 服务模块.当前角色
         服务模块.当前角色 = "调用者"
