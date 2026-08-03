@@ -1,0 +1,31 @@
+{
+  "包id": "模块库.OCR",
+  "版本": "1.0.0",
+  "摘要算法": "sha256",
+  "文件清单": [
+    {
+      "路径": "__init__.py",
+      "sha256": "378901ac8a5c1fad0263e70540cbbb6ef1d423e19be315af5754f6241e3e6952"
+    },
+    {
+      "路径": "包声明.json",
+      "sha256": "f7590bc6bafa8b44f8aa68a4c9e9d65d005ca3f2590a6144f9a1ce46319792f1"
+    },
+    {
+      "路径": "实现/OCR.py",
+      "sha256": "a23364d2faea04722da20f2cc512c75c4690b7ec6ecd4a4a4e6ce5f3405787bf"
+    },
+    {
+      "路径": "能力契约/参数契约.json",
+      "sha256": "b3e2c0a9dd0c37adbb06fcac74b9dd75f607d6ec2a9d6ec7f0718e30c28686d1"
+    },
+    {
+      "路径": "说明/使用说明.md",
+      "sha256": "c756a6d21743200e0b385fd038d2d34524ae4b89ccc2dff71f06a139ac0bf139"
+    },
+    {
+      "路径": "验证场景引用.json",
+      "sha256": "5cf08ae76fcf235753b1d39f0e65b7a27ee214b6db6f2751cbaa9f023b11d60e"
+    }
+  ]
+}
