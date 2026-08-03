@@ -19,7 +19,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 运行核心.运行环境管理器.系统探针 import 检查系统工具, 探针结果
+from 支持库.适配层.系统探针 import 检查系统工具, 探针结果
 
 macOSsoffice路径 = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
 
@@ -145,7 +145,7 @@ class Test提供者入口不可用映射(unittest.TestCase):
         模块._提供者缓存 = {"soffice": str(macOSsoffice路径)}
         try:
             with mock.patch(
-                "运行核心.运行环境管理器.系统探针.检查系统工具",
+                "支持库.适配层.系统探针.检查系统工具",
                 return_value=探针结果(False, 错误码="探针超时", 诊断="卡住已强杀"),
             ):
                 结果 = 模块.检查提供者()
@@ -162,7 +162,7 @@ class Test提供者入口不可用映射(unittest.TestCase):
         模块._提供者缓存 = {"textutil": "/usr/bin/textutil"}
         try:
             with mock.patch(
-                "运行核心.运行环境管理器.系统探针.检查系统工具",
+                "支持库.适配层.系统探针.检查系统工具",
                 return_value=探针结果(False, 错误码="退出码非零", 退出码=1,
                                       诊断="textutil 退出码 1"),
             ):

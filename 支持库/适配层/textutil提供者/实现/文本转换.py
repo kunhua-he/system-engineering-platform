@@ -45,7 +45,7 @@ def 检查提供者() -> 结果:
     （工具缺失/超时/退出码非0）→ 外部提供者不可用。
     """
     import platform
-    from 运行核心.运行环境管理器.系统探针 import 检查系统工具
+    from 支持库.适配层.系统探针 import 检查系统工具
     路径 = 查找textutil()
     if not 路径:
         return _失败("外部提供者不可用", "textutil 未找到（macOS 系统能力缺失）")

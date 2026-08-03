@@ -90,7 +90,9 @@ class Test零测试门禁(unittest.TestCase):
         套件 = 运行测试.加载指定测试文件([
             "测试中心/MCP工具箱/测试_项目服务.py",
         ])
-        self.assertEqual(套件.countTestCases(), 10)
+        # 断言数量随 MCP 工具箱测试演化（当前 13：基础 10 + 角色门面 3）
+        self.assertGreater(套件.countTestCases(), 0)
+        self.assertEqual(套件.countTestCases(), 13)
 
     def test_工作包模式拒绝测试中心外文件(self):
         with self.assertRaises(ValueError):
