@@ -20,6 +20,7 @@ from mcp.types import ServerCapabilities, TextContent, Tool
 try:
     from MCP工具箱.公开能力 import 搜索公开能力, 读取公开能力
     from MCP工具箱.使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
+    from MCP工具箱.临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文
     from MCP工具箱.角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
         校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
@@ -27,6 +28,7 @@ try:
 except ModuleNotFoundError:
     from 公开能力 import 搜索公开能力, 读取公开能力
     from 使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
+    from 临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文
     from 角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
         校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
@@ -36,6 +38,7 @@ except ModuleNotFoundError:
 记忆目录 = 项目根目录 / "开发文档" / "项目记忆"
 证据路径 = 项目根目录 / "开发文档" / "项目证据" / "验证历史.jsonl"
 反馈路径 = 项目根目录 / "开发文档" / "项目证据" / "MCP使用反馈.jsonl"
+临时上下文目录 = 项目根目录 / "工程缓存" / "MCP临时上下文"
 服务 = Server("system_engineering_toolkit")
 当前角色 = 读取当前角色()
 当前实例 = {
@@ -319,6 +322,7 @@ def _统一开发入口(
 ) -> dict[str, Any]:
     """一次返回开工上下文和验证计划，避免Agent重复调用元工具。"""
     上下文 = _开工上下文(任务, 历史数量)
+    清理过期上下文(临时上下文目录)
     计划 = _验证计划(修改路径, 级别)
     return {
         "开工上下文": 上下文,
@@ -355,6 +359,7 @@ async def 工具列表() -> list[Tool]:
         Tool(name="verify_and_record", description="不经 shell 运行验证；仅退出码为0时记入最近成功证据。", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, "required": ["name", "command"]}),
         Tool(name="verification_plan", description="按修改路径生成定向验证计划；只规划不执行，避免每次重复跑全量。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}}, "required": ["modified_paths"]}),
         Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
+        Tool(name="temporary_context", description="读取或写入当前子任务临时上下文；只保留定向事实、范围、记忆查询和验证计划，过期自动失效。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
     ]
     return [工具 for 工具 in 工具定义 if 工具.name in 可用工具(当前角色)]
 
@@ -411,6 +416,26 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             str(参数.get("task", "")), 修改路径,
             str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
         )
+    elif 名称 == "temporary_context":
+        操作 = str(参数["operation"])
+        开工id = str(参数["work_id"])
+        if 操作 == "写入":
+            数据 = 写入临时上下文(
+                临时上下文目录, 开工id=开工id,
+                父任务=str(参数.get("parent_task", 当前任务名称)),
+                角色=str(参数.get("role", 当前角色)),
+                允许目录=list(参数.get("allowed_paths", [])),
+                记忆查询=list(参数.get("memory_queries", [])),
+                事实=list(参数.get("confirmed_facts", [])),
+                验证计划=list(参数.get("verification_commands", [])),
+                有效秒数=int(参数.get("ttl_seconds", 7200)),
+            )
+        elif 操作 == "读取":
+            数据 = 读取临时上下文(临时上下文目录, 开工id)
+        elif 操作 == "清理":
+            数据 = 清理临时上下文(临时上下文目录, 开工id)
+        else:
+            raise ValueError("临时上下文操作必须是写入、读取或清理")
     elif 名称 == "verify_and_record":
         if not 查询反馈状态(反馈路径, 当前开工id)["已反馈"]:
             raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
