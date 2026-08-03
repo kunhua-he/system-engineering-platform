@@ -2,7 +2,8 @@
 
 支持资源类型：文件、目录、子进程（终止进程组防残留）、端口（终止占用进程并验证释放）、
 线程（验证已结束）、句柄（验证已关闭）。清理失败不抛异常，返回失败表并保留证据到
-临时根目录/清理失败.json；成功=False 时调用方必须感知。
+临时根目录/清理失败.json；提供证据目录时额外写入
+工程缓存/清理失败证据/{work_id}.json（与运行测试.py 语义对齐）；成功=False 时调用方必须感知。
 """
 
 from __future__ import annotations
@@ -25,13 +26,14 @@ _对象注册表: dict[str, Any] = {}
 
 def 登记资源(清单路径: Path, *, 资源路径: str, 临时根目录: Path,
              资源类型: str = "文件", 保留: bool = False,
-             附加信息: Any = None) -> dict[str, Any]:
+             附加信息: Any = None, work_id: str | None = None) -> dict[str, Any]:
     """登记一条测试临时资源。
 
     资源路径：文件/目录为真实路径；子进程为"子进程:<pid>"；端口为"端口:<端口号>"；
     线程为"线程:<标识>"；句柄为"句柄:<描述>"。
     附加信息：子进程传 {"pid": 整数}；端口传 {"端口": 整数, "占用pid": 整数}；
     线程传线程对象；句柄传句柄对象。
+    work_id：可选登记维度，写入记录后关闭工作区可按维度定位与清理。
     """
     目标 = Path(资源路径).resolve()
     根 = 临时根目录.resolve()
@@ -40,6 +42,8 @@ def 登记资源(清单路径: Path, *, 资源路径: str, 临时根目录: Path
     标识 = _推导标识(资源类型, 目标, 附加信息)
     记录: dict[str, Any] = {"路径": str(目标), "类型": 资源类型,
                             "保留": bool(保留), "标识": 标识}
+    if work_id:
+        记录["work_id"] = str(work_id)
     if 资源类型 == "端口" and isinstance(附加信息, dict) and 附加信息.get("占用pid") is not None:
         记录["占用pid"] = int(附加信息["占用pid"])
     if 附加信息 is not None and 资源类型 in ("线程", "句柄"):
@@ -50,10 +54,14 @@ def 登记资源(清单路径: Path, *, 资源路径: str, 临时根目录: Path
     return {"成功": True, **记录}
 
 
-def 清理资源(清单路径: Path, *, 临时根目录: Path) -> dict[str, Any]:
+def 清理资源(清单路径: Path, *, 临时根目录: Path,
+             证据目录: Path | None = None, work_id: str | None = None) -> dict[str, Any]:
     """清理清单中已登记的资源；单项失败不抛异常，收集到失败表并保留证据。
 
-    返回 {"成功": bool, "清理数": int, "保留数": int, "失败表": [...]}；
+    证据目录：提供时，失败证据额外写入 证据目录/{work_id or "未开工"}.json
+    （统一结构：运行id/时间/路径/失败原因/资源列表，与运行测试.py 语义对齐）。
+
+    返回 {"成功": bool, "清理数": int, "保留数": int, "失败表": [...], "证据路径": str}；
     失败表项为 {"路径/标识": str, "类型": str, "原因": str}。
     """
     根 = 临时根目录.resolve()
@@ -80,14 +88,28 @@ def 清理资源(清单路径: Path, *, 临时根目录: Path) -> dict[str, Any]
                     "原因": f"{type(错误).__name__}: {错误}",
                 })
         清单路径.unlink(missing_ok=True)
+    证据路径 = ""
     if 失败表:
         try:
-            _写清理失败证据(根, 失败表)
+            _写临时根清理失败证据(根, 失败表)
         except OSError as 错误:
             失败表.append({"路径/标识": str(根 / "清理失败.json"), "类型": "证据",
                          "原因": f"写入清理失败证据失败：{type(错误).__name__}: {错误}"})
-        return {"成功": False, "清理数": 清理数, "保留数": 保留数, "失败表": 失败表}
-    return {"成功": True, "清理数": 清理数, "保留数": 保留数, "失败表": 失败表}
+        if 证据目录 is not None:
+            try:
+                证据路径 = str(写清理失败证据(
+                    证据目录.resolve(), work_id or "未开工", 根, 失败表,
+                ))
+            except OSError as 错误:
+                失败表.append({
+                    "路径/标识": str(证据目录.resolve() / f"{work_id or '未开工'}.json"),
+                    "类型": "证据",
+                    "原因": f"写入统一清理失败证据失败：{type(错误).__name__}: {错误}",
+                })
+        return {"成功": False, "清理数": 清理数, "保留数": 保留数,
+                "失败表": 失败表, "证据路径": 证据路径}
+    return {"成功": True, "清理数": 清理数, "保留数": 保留数,
+            "失败表": 失败表, "证据路径": 证据路径}
 
 
 def 清理单项(记录: dict[str, Any], 根: Path) -> None:
@@ -192,6 +214,11 @@ def _终止占用进程(pid: int) -> None:
         pass
 
 
+def 终止进程防残留(pid: int) -> None:
+    """公开入口：先温和终止、等待后强制终止单个进程，防残留；进程已退出视为成功。"""
+    _终止占用进程(pid)
+
+
 def _验证端口已释放(端口号: int) -> None:
     """尝试绑定端口验证已释放；仍被占用抛 OSError。"""
     探针 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -235,7 +262,7 @@ def _句柄已关闭(句柄对象: Any) -> bool:
     return False
 
 
-def _写清理失败证据(根: Path, 失败表: list[dict[str, str]]) -> None:
+def _写临时根清理失败证据(根: Path, 失败表: list[dict[str, str]]) -> None:
     """把失败证据写入 临时根目录/清理失败.json，已有证据追加不覆盖。"""
     证据路径 = 根 / "清理失败.json"
     已有失败: list[dict[str, Any]] = []
@@ -251,3 +278,29 @@ def _写清理失败证据(根: Path, 失败表: list[dict[str, str]]) -> None:
     证据路径.write_text(
         json.dumps({"失败": 已有失败 + 新条目}, ensure_ascii=False, indent=2),
         encoding="utf-8")
+
+
+def 写清理失败证据(
+    证据目录: Path, 运行id: str, 根: Path, 失败表: list[dict[str, str]],
+) -> Path:
+    """写入统一清理失败证据：证据目录/{运行id}.json（原子写，覆盖不追加）。
+
+    结构化字段：运行id/时间/路径/失败原因/资源列表，与 运行测试.py 的
+    工程缓存/清理失败证据/{任务id}.json 语义对齐，供关闭工作区等场景复用。
+    """
+    证据目录.mkdir(parents=True, exist_ok=True)
+    证据 = {
+        "运行id": 运行id,
+        "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "路径": str(根),
+        "失败原因": f"资源清理失败，共 {len(失败表)} 项",
+        "资源列表": [
+            {"路径": 项.get("路径/标识", ""), "类型": 项.get("类型", ""),
+             "原因": 项.get("原因", "")} for 项 in 失败表
+        ],
+    }
+    证据路径 = 证据目录 / f"{运行id}.json"
+    临时路径 = 证据路径.with_suffix(".json.tmp")
+    临时路径.write_text(json.dumps(证据, ensure_ascii=False, indent=2), encoding="utf-8")
+    临时路径.replace(证据路径)
+    return 证据路径
