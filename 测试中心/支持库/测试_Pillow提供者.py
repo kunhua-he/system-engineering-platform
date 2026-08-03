@@ -56,9 +56,26 @@ def _关闭进程(进程: subprocess.Popen) -> None:
 
 class TestPillow提供者(unittest.TestCase):
     def test_主进程不加载PIL(self):
-        self.assertNotIn("PIL", sys.modules)
+        """主进程零加载 PIL：提供者源码不导入 PIL，且调用不向主进程引入 PIL。
+
+        全量套件中其他库（如 reportlab 依赖链）可能已加载 PIL，故仅断言
+        本提供者自身不导入、本调用不引入，避免测试环境相互污染。
+        """
+        实现路径 = Path(__file__).resolve().parent.parent.parent / "支持库" / "适配层" / "Pillow提供者" / "实现" / "提供者.py"
+        实现源码 = 实现路径.read_text(encoding="utf-8")
+        import ast
+        导入表 = []
+        for 节点 in ast.walk(ast.parse(实现源码)):
+            if isinstance(节点, ast.Import):
+                导入表.extend(别名.name for 别名 in 节点.names)
+            elif isinstance(节点, ast.ImportFrom) and 节点.module:
+                导入表.append(节点.module)
+        self.assertNotIn("PIL", [名称.split(".")[0] for 名称 in 导入表],
+                         f"主进程侧源码不得导入 PIL，实际导入: {导入表}")
+        PIL先前已存在 = "PIL" in sys.modules
         解码图像(最小PNG)
-        self.assertNotIn("PIL", sys.modules)
+        if not PIL先前已存在:
+            self.assertNotIn("PIL", sys.modules)
 
     def test_解码图像PNG正常(self):
         结果 = 解码图像(最小PNG)
