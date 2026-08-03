@@ -1,55 +1,55 @@
 {
- "包id": "支持库.适配层.Tesseract提供者",
- "版本": "1.0.0",
- "摘要算法": "sha256",
- "文件清单": [
-  {
-   "路径": "__init__.py",
-   "sha256": "034ca5323f7d91105d42f58dfcf8d71875a94e1fb11573aa307d9bb6300d4e9f"
-  },
-  {
-   "路径": "依赖锁.json",
-   "sha256": "3ce2c5849fdd58d8e238d19420abacfea1bf6ad22fb87a364d49b14b66628782"
-  },
-  {
-   "路径": "包声明.json",
-   "sha256": "733fe6153a409b819b35552be054bf12dd9ed1420e1975f5fa4bd3627ff03dbc"
-  },
-  {
-   "路径": "实现/临时文件.py",
-   "sha256": "3090094b949b8e7792626ae0a15c64dc0af787b135ea6f61f51e0b18822a53e1"
-  },
-  {
-   "路径": "实现/受管进程.py",
-   "sha256": "8979bd67ca669e0fc84001144773f0d4871c8f99d4af6e8e7203966510918385"
-  },
-  {
-   "路径": "实现/提供者.py",
-   "sha256": "bae3a3d6a3c6d8d49313b02ae4acf0b1e0b58bdbca39814d01c467d64ef6901e"
-  },
-  {
-   "路径": "能力契约/参数契约.json",
-   "sha256": "b0302fd3a64984e3389979b0e51eace699c2d787efdc2778d4080d1324d10010"
-  },
-  {
-   "路径": "能力定义.json",
-   "sha256": "97e297795806ac0b4d8ea37babd07e1286487f58abd334ce9c389a873c32fdcd"
-  },
-  {
-   "路径": "能力数据/Agent查询数据.json",
-   "sha256": "75ff40b9b8034525abf8a28ba498d4aa5adaae4402c2aca4a2e8503f7757262f"
-  },
-  {
-   "路径": "能力数据/能力搜索数据.json",
-   "sha256": "ce7f0944295db5dbb43391d7800c47ef8f31bd63ab1f39dbf1585ab649b7545e"
-  },
-  {
-   "路径": "说明/使用说明.md",
-   "sha256": "1a022318d8cc0beb336ab69222277ff594fd3dc7b130b0a6dbc34e4cd55656b5"
-  },
-  {
-   "路径": "验证场景引用.json",
-   "sha256": "63d618091efb594c1e28a3808d40ce2cdfe49d1a5907bda22cefa366f82aba73"
-  }
- ]
+  "包id": "支持库.适配层.Tesseract提供者",
+  "版本": "1.0.0",
+  "摘要算法": "sha256",
+  "文件清单": [
+    {
+      "路径": "__init__.py",
+      "sha256": "c44cf0db93984e7adb942b2ec7a66997b760b6e7acbe4fd03eb210ac8443bb71"
+    },
+    {
+      "路径": "依赖锁.json",
+      "sha256": "3ce2c5849fdd58d8e238d19420abacfea1bf6ad22fb87a364d49b14b66628782"
+    },
+    {
+      "路径": "包声明.json",
+      "sha256": "fd0d119c5b9873d8b1b5fe45bf2e98c64f2a1cd2c0aa6938b2c577f9159585cf"
+    },
+    {
+      "路径": "实现/临时文件.py",
+      "sha256": "3090094b949b8e7792626ae0a15c64dc0af787b135ea6f61f51e0b18822a53e1"
+    },
+    {
+      "路径": "实现/受管进程.py",
+      "sha256": "8979bd67ca669e0fc84001144773f0d4871c8f99d4af6e8e7203966510918385"
+    },
+    {
+      "路径": "实现/提供者.py",
+      "sha256": "a62f48572370d337be89e1915ba1a0d410f4ab0ec7717cd29de892ef3be1792d"
+    },
+    {
+      "路径": "能力契约/参数契约.json",
+      "sha256": "8f197b4352ef8d7fd0d8c4e6868a98ba94bf41b84b3825acac53e1c0fefdd695"
+    },
+    {
+      "路径": "能力定义.json",
+      "sha256": "3f8b76fcbf03696cc9d0958e3e043e49fd3f76b79aca516d0c5ead71e706739a"
+    },
+    {
+      "路径": "能力数据/Agent查询数据.json",
+      "sha256": "26aacfdca90f3df0f2dc93a31f2192435b78a9cf7b36d014eabf2d59699ed1ef"
+    },
+    {
+      "路径": "能力数据/能力搜索数据.json",
+      "sha256": "13e784125ca3b402bf454ec63f5756f8a88ee0db20e8d73db406aac3f8474819"
+    },
+    {
+      "路径": "说明/使用说明.md",
+      "sha256": "b1b17452f8ce80d84fecb8b0980a13ddf0558fbba420c003dc3a47a806a2f261"
+    },
+    {
+      "路径": "验证场景引用.json",
+      "sha256": "63d618091efb594c1e28a3808d40ce2cdfe49d1a5907bda22cefa366f82aba73"
+    }
+  ]
 }
