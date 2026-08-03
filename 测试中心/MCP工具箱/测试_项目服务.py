@@ -82,6 +82,14 @@ class 项目服务测试(unittest.TestCase):
         self.assertTrue(计划["是否需要全量"])
         self.assertEqual(计划["建议命令"], [["python3.14", "测试中心/运行测试.py"]])
 
+    def test_统一开发入口一次返回上下文和计划(self) -> None:
+        结果 = 服务模块._统一开发入口(
+            "统一入口测试", ["运行核心/运行环境管理器/强制校验.py"], "工作包", 1
+        )
+        self.assertIn("开工上下文", 结果)
+        self.assertIn("验证计划", 结果)
+        self.assertEqual(结果["验证计划"]["受影响测试目录"], ["测试中心/运行核心"])
+
     def test_调用者工具列表和直接调用双重拒绝(self) -> None:
         原角色 = 服务模块.当前角色
         服务模块.当前角色 = "调用者"

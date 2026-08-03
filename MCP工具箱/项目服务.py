@@ -314,6 +314,24 @@ def _验证计划(修改路径: list[str], 级别: str = "工作包") -> dict[st
     }
 
 
+def _统一开发入口(
+    任务: str, 修改路径: list[str], 级别: str, 历史数量: int,
+) -> dict[str, Any]:
+    """一次返回开工上下文和验证计划，避免Agent重复调用元工具。"""
+    上下文 = _开工上下文(任务, 历史数量)
+    计划 = _验证计划(修改路径, 级别)
+    return {
+        "开工上下文": 上下文,
+        "验证计划": 计划,
+        "下一步": [
+            "按角色边界使用代码地图定位",
+            "连续完成同一工作包，不逐文件跑全量",
+            "工作包完成后按验证计划并行执行",
+            "收工前提交MCP反馈，再记录成功证据",
+        ],
+    }
+
+
 @服务.list_tools()
 async def 工具列表() -> list[Tool]:
     工具定义 = [
@@ -336,6 +354,7 @@ async def 工具列表() -> list[Tool]:
         Tool(name="memory_write", description="写入系统工程平台自己的长期项目记忆。", inputSchema={"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}, "labels": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "body"]}),
         Tool(name="verify_and_record", description="不经 shell 运行验证；仅退出码为0时记入最近成功证据。", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, "required": ["name", "command"]}),
         Tool(name="verification_plan", description="按修改路径生成定向验证计划；只规划不执行，避免每次重复跑全量。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}}, "required": ["modified_paths"]}),
+        Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
     ]
     return [工具 for 工具 in 工具定义 if 工具.name in 可用工具(当前角色)]
 
@@ -383,6 +402,11 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         数据 = _写入记忆(str(参数["title"]), str(参数["body"]), list(参数.get("labels", [])))
     elif 名称 == "verification_plan":
         数据 = _验证计划(list(参数.get("modified_paths", [])), str(参数.get("level", "工作包")))
+    elif 名称 == "development_start":
+        数据 = _统一开发入口(
+            str(参数.get("task", "")), list(参数.get("modified_paths", [])),
+            str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
+        )
     elif 名称 == "verify_and_record":
         if not 查询反馈状态(反馈路径, 当前开工id)["已反馈"]:
             raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
