@@ -5,6 +5,12 @@ from __future__ import annotations
 from 模块库.图像处理.实现.图像处理 import 分析图像文件
 from 模块库.图像处理.实现.图像处理 import 生成占位图
 from 模块库.图像处理.实现.图像处理 import 识别图像格式
+from 模块库.图像处理.实现.图像处理 import 生成缩略图
+from 模块库.图像处理.实现.图像处理 import 图像EXIF转置
+from 模块库.图像处理.实现.图像处理 import 透明背景合成
+from 模块库.图像处理.实现.图像处理 import 计算感知哈希
+from 模块库.图像处理.实现.图像处理 import 缩放图像
+from 模块库.图像处理.实现.图像处理 import 重编码图像
 
 __all__ = [
     "分析图像文件", "生成占位图", "识别图像格式",
