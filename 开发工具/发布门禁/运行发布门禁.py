@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import json
-import hashlib
 import shutil
 import subprocess
 import sys
@@ -94,54 +93,13 @@ def _是否已废弃包(包目录: Path) -> bool:
 
 
 def _校验文件清单摘要(包目录: Path) -> tuple[bool, str]:
-    声明路径 = 包目录 / "包声明.json"
-    摘要路径 = 包目录 / "完整性摘要.json"
-    if not 声明路径.is_file() or not 摘要路径.is_file():
-        return False, "缺少包声明.json或完整性摘要.json"
-    try:
-        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
-        摘要 = json.loads(摘要路径.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as 错误:
-        return False, f"摘要不可读: {错误}"
-    if 摘要.get("包id") != 声明.get("包id") or 摘要.get("版本") != 声明.get("版本"):
-        return False, "摘要中的包id或版本与包声明不一致"
-    文件清单 = 摘要.get("文件清单")
-    if not isinstance(文件清单, list) or not 文件清单:
-        return False, "文件清单为空，无法证明包内容完整"
+    """委托唯一校验器：完整性摘要.json 必须为文件清单格式且与真实文件闭合。"""
+    from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
 
-    声明路径集合: set[str] = set()
-    for 条目 in 文件清单:
-        if not isinstance(条目, dict):
-            return False, "文件清单条目必须包含路径和sha256"
-        相对路径 = str(条目.get("路径", ""))
-        期望摘要 = str(条目.get("sha256", 条目.get("摘要", ""))).lower()
-        if not 相对路径 or len(期望摘要) < 16:
-            return False, f"文件清单条目不完整: {相对路径 or '缺少路径'}"
-        文件 = (包目录 / 相对路径).resolve()
-        try:
-            文件.relative_to(包目录.resolve())
-        except ValueError:
-            return False, f"文件路径越界: {相对路径}"
-        if not 文件.is_file():
-            return False, f"清单文件不存在: {相对路径}"
-        实际摘要 = hashlib.sha256(文件.read_bytes()).hexdigest()
-        if not 实际摘要.startswith(期望摘要):
-            return False, f"文件摘要不一致: {相对路径}"
-        声明路径集合.add(Path(相对路径).as_posix())
-
-    实际路径集合 = {
-        文件.relative_to(包目录).as_posix()
-        for 文件 in 包目录.rglob("*")
-        if 文件.is_file()
-        and 文件.name != "完整性摘要.json"
-        and "__pycache__" not in 文件.parts
-        and 文件.suffix != ".pyc"
-    }
-    缺少清单 = sorted(实际路径集合 - 声明路径集合)
-    多余清单 = sorted(声明路径集合 - 实际路径集合)
-    if 缺少清单 or 多余清单:
-        return False, f"清单不闭合: 未登记{缺少清单[:3]} 多余{多余清单[:3]}"
-    return True, f"逐文件校验{len(声明路径集合)}项，清单与实际文件闭合"
+    通过, 问题列表 = 校验完整性摘要(包目录)
+    if 通过:
+        return True, "逐文件校验通过，清单与实际文件闭合"
+    return False, "；".join(问题列表[:3])
 
 
 def _校验依赖锁与反向篡改() -> tuple[bool, str, bool, str]:

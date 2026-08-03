@@ -18,6 +18,15 @@ import os
     平台维护者, 发布者,
 }
 
+
+class 越权拒绝(PermissionError):
+    """越权阻断：携带明确错误码（权限不足 / 角色越权），不静默放行。"""
+
+    def __init__(self, 错误码: str, 消息: str) -> None:
+        self.错误码 = 错误码
+        self.消息 = 消息
+        super().__init__(f"{错误码}: {消息}")
+
 基础工具 = {
     "project_context", "role_profile", "capability_search", "capability_read",
     "mcp_feedback", "feedback_status",
@@ -129,13 +138,57 @@ def 代码地图范围(角色: str) -> list[str]:
 
 def 校验工具权限(角色: str, 工具名: str) -> None:
     if 工具名 not in 可用工具(角色):
-        raise PermissionError(f"角色 {角色} 无权调用工具: {工具名}")
+        raise 越权拒绝("权限不足", f"角色 {角色} 无权调用工具: {工具名}")
+
+
+def 校验修改路径(角色: str, 修改路径: list[str]) -> None:
+    """修改路径必须落在角色允许目录内，防止借规划工具探测范围外代码。"""
+    范围表 = [
+        项.replace("\\", "/").lstrip("./").rstrip("/")
+        for 项 in 代码地图范围(角色)
+    ]
+    for 路径 in 修改路径:
+        规范路径 = str(路径).replace("\\", "/").lstrip("./").rstrip("/")
+        if not any(
+            规范路径 == 范围 or 规范路径.startswith(f"{范围}/")
+            for 范围 in 范围表
+        ):
+            raise 越权拒绝("角色越权", f"角色 {角色} 无权访问修改路径: {路径}")
+
+
+def 允许测试范围(角色: str) -> list[str]:
+    """角色允许运行的测试文件前缀；未配置测试目录的角色返回空表。"""
+    范围表 = 代码地图范围(角色)
+    if "测试中心" in 范围表:
+        return ["测试中心"]
+    return [范围 for 范围 in 范围表 if 范围.startswith("测试中心/")]
+
+
+def _在范围内(路径: str, 范围表: list[str]) -> bool:
+    规范路径 = str(路径).replace("\\", "/").lstrip("./")
+    return any(
+        规范路径 == 范围 or 规范路径.startswith(f"{范围}/")
+        for 范围 in 范围表
+    )
+
+
+def _提取测试文件(命令: list[str]) -> list[str]:
+    """解析 --测试文件 后面的全部值（遇下一个选项或结束停止）。"""
+    文件表: list[str] = []
+    for 序号, 项 in enumerate(命令):
+        if 项 != "--测试文件":
+            continue
+        for 值 in 命令[序号 + 1:]:
+            if 值.startswith("--"):
+                break
+            文件表.append(值)
+    return 文件表
 
 
 def 获取角色指南(角色: str) -> dict[str, object]:
     步骤 = 角色指南表.get(角色)
     if 步骤 is None:
-        raise PermissionError(f"角色 {角色} 没有开发或维护指南")
+        raise 越权拒绝("角色越权", f"角色 {角色} 没有开发或维护指南")
     return {
         "角色": 角色, "步骤": 步骤,
         "允许目录": 代码地图范围(角色),
@@ -144,27 +197,38 @@ def 获取角色指南(角色: str) -> dict[str, object]:
 
 
 def 校验验证命令(角色: str, 命令: list[str]) -> None:
-    """验证工具只运行固定门禁入口，禁止退化成通用命令执行器。"""
+    """验证工具只运行角色范围内的固定门禁入口，禁止退化成通用命令执行器。"""
     if 命令 == ["git", "diff", "--check"]:
         return
     if 命令[:2] == ["codegraph", "status"]:
         return
     if not 命令 or 命令[0] not in {"python3.14", "python3"}:
-        raise PermissionError("验证命令只允许 Python、git diff --check 或 codegraph status")
+        raise 越权拒绝("权限不足", "验证命令只允许 Python、git diff --check 或 codegraph status")
     if "-c" in 命令:
-        raise PermissionError("验证命令禁止 python -c")
+        raise 越权拒绝("权限不足", "验证命令禁止 python -c")
     if 命令[1:3] == ["-m", "py_compile"]:
         if len(命令) < 4:
-            raise PermissionError("py_compile 必须指定文件")
+            raise 越权拒绝("权限不足", "py_compile 必须指定文件")
         return
     if len(命令) < 2:
-        raise PermissionError("验证命令缺少固定入口")
+        raise 越权拒绝("权限不足", "验证命令缺少固定入口")
     入口 = 命令[1].replace("\\", "/")
     if 入口.startswith("测试中心/"):
-        return
+        测试范围表 = 允许测试范围(角色)
+        if not 测试范围表:
+            raise 越权拒绝("权限不足", f"角色 {角色} 不允许运行测试入口: {入口}")
+        测试文件表 = _提取测试文件(命令)
+        if 测试文件表:
+            for 测试文件 in 测试文件表:
+                if not _在范围内(测试文件, 测试范围表):
+                    raise 越权拒绝("角色越权", f"角色 {角色} 无权运行测试文件: {测试文件}")
+            return
+        if "测试中心" in 测试范围表:
+            return
+        raise 越权拒绝("权限不足", f"角色 {角色} 必须用 --测试文件 限定测试范围: {入口}")
     if 入口 == "开发工具/发布门禁/运行发布门禁.py" and 角色 in {平台维护者, 发布者}:
         return
-    raise PermissionError(f"角色 {角色} 不允许执行验证入口: {入口}")
+    raise 越权拒绝("权限不足", f"角色 {角色} 不允许执行验证入口: {入口}")
 
 
 def 角色说明(角色: str) -> dict[str, object]:

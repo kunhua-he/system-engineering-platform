@@ -22,14 +22,14 @@ try:
     from MCP工具箱.使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
     from MCP工具箱.角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
-        校验验证命令, 获取角色指南,
+        校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
     )
 except ModuleNotFoundError:
     from 公开能力 import 搜索公开能力, 读取公开能力
     from 使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
     from 角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
-        校验验证命令, 获取角色指南,
+        校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
     )
 
 项目根目录 = Path(__file__).resolve().parent.parent
@@ -227,7 +227,7 @@ def _过滤代码地图输出(原文: str, 范围表: list[str]) -> str:
 def _按角色探索代码(查询: str) -> dict[str, Any]:
     范围表 = 代码地图范围(当前角色)
     if not 范围表:
-        raise PermissionError(f"角色 {当前角色} 没有源码查询权限")
+        raise 越权拒绝("权限不足", f"角色 {当前角色} 没有源码查询权限")
     结果 = _执行(
         ["codegraph", "explore", 查询, "--max-files", "20"],
         60, 200000,
@@ -401,10 +401,14 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
     elif 名称 == "memory_write":
         数据 = _写入记忆(str(参数["title"]), str(参数["body"]), list(参数.get("labels", [])))
     elif 名称 == "verification_plan":
-        数据 = _验证计划(list(参数.get("modified_paths", [])), str(参数.get("level", "工作包")))
+        修改路径 = list(参数.get("modified_paths", []))
+        校验修改路径(当前角色, 修改路径)
+        数据 = _验证计划(修改路径, str(参数.get("level", "工作包")))
     elif 名称 == "development_start":
+        修改路径 = list(参数.get("modified_paths", []))
+        校验修改路径(当前角色, 修改路径)
         数据 = _统一开发入口(
-            str(参数.get("task", "")), list(参数.get("modified_paths", [])),
+            str(参数.get("task", "")), 修改路径,
             str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
         )
     elif 名称 == "verify_and_record":
