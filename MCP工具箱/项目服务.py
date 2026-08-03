@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import subprocess
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,9 @@ try:
     from MCP工具箱.公开能力 import 搜索公开能力, 读取公开能力
     from MCP工具箱.使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
     from MCP工具箱.临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文
+    from MCP工具箱.任务观测 import 任务开始, 工具事件, 任务结束, 查询任务
+    from MCP工具箱.工作区管理 import 创建工作区, 查询工作区, 关闭工作区
+    from MCP工具箱.测试资源 import 登记资源, 清理资源
     from MCP工具箱.角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
         校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
@@ -29,6 +33,9 @@ except ModuleNotFoundError:
     from 公开能力 import 搜索公开能力, 读取公开能力
     from 使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
     from 临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文
+    from 任务观测 import 任务开始, 工具事件, 任务结束, 查询任务
+    from 工作区管理 import 创建工作区, 查询工作区, 关闭工作区
+    from 测试资源 import 登记资源, 清理资源
     from 角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
         校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
@@ -39,6 +46,9 @@ except ModuleNotFoundError:
 证据路径 = 项目根目录 / "开发文档" / "项目证据" / "验证历史.jsonl"
 反馈路径 = 项目根目录 / "开发文档" / "项目证据" / "MCP使用反馈.jsonl"
 临时上下文目录 = 项目根目录 / "工程缓存" / "MCP临时上下文"
+观测路径 = 项目根目录 / "工程缓存" / "MCP任务观测" / "事件.jsonl"
+工作区根目录 = 项目根目录 / "工程缓存" / "任务工作区"
+测试资源清单目录 = 项目根目录 / "工程缓存" / "测试资源清单"
 服务 = Server("system_engineering_toolkit")
 当前角色 = 读取当前角色()
 当前实例 = {
@@ -323,6 +333,8 @@ def _统一开发入口(
     """一次返回开工上下文和验证计划，避免Agent重复调用元工具。"""
     上下文 = _开工上下文(任务, 历史数量)
     清理过期上下文(临时上下文目录)
+    任务开始(观测路径, 任务id=上下文["项目"]["开工id"],
+            开工id=上下文["项目"]["开工id"], 角色=当前角色)
     计划 = _验证计划(修改路径, 级别)
     return {
         "开工上下文": 上下文,
@@ -360,6 +372,9 @@ async def 工具列表() -> list[Tool]:
         Tool(name="verification_plan", description="按修改路径生成定向验证计划；只规划不执行，避免每次重复跑全量。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}}, "required": ["modified_paths"]}),
         Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
         Tool(name="temporary_context", description="读取或写入当前子任务临时上下文；只保留定向事实、范围、记忆查询和验证计划，过期自动失效。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
+        Tool(name="task_observation", description="被动记录和查询任务时间线；只返回耗时、工具、状态和错误摘要，不记录提示词或源码。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["开始", "结束", "查询"]}, "task_id": {"type": "string"}, "work_id": {"type": "string"}, "parent_task_id": {"type": "string"}, "success": {"type": "boolean"}, "error_code": {"type": "string"}, "child_count": {"type": "integer"}}, "required": ["operation", "task_id"]}),
+        Tool(name="workspace", description="创建、查询和关闭当前项目的隔离 Git worktree。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "force": {"type": "boolean"}}, "required": ["operation"]}),
+        Tool(name="test_resource", description="登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}}, "required": ["operation", "temp_root"]}),
     ]
     return [工具 for 工具 in 工具定义 if 工具.name in 可用工具(当前角色)]
 
@@ -367,6 +382,8 @@ async def 工具列表() -> list[Tool]:
 @服务.call_tool()
 async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]:
     校验工具权限(当前角色, 名称)
+    观测开始 = time.monotonic()
+    观测任务id = str(参数.get("task_id") or 当前开工id)
     if 名称 == "project_context":
         数据 = _开工上下文(str(参数.get("task", "")), int(参数.get("history_limit", 3)))
     elif 名称 == "role_profile":
@@ -436,6 +453,41 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             数据 = 清理临时上下文(临时上下文目录, 开工id)
         else:
             raise ValueError("临时上下文操作必须是写入、读取或清理")
+    elif 名称 == "task_observation":
+        操作 = str(参数["operation"])
+        任务id = str(参数["task_id"])
+        if 操作 == "开始":
+            数据 = 任务开始(观测路径, 任务id=任务id, 开工id=str(参数.get("work_id", 当前开工id)),
+                          角色=当前角色, 父任务id=str(参数.get("parent_task_id", "")),
+                          子代理数=int(参数.get("child_count", 0)))
+        elif 操作 == "结束":
+            数据 = 任务结束(观测路径, 任务id=任务id, 开工id=str(参数.get("work_id", 当前开工id)),
+                          成功=bool(参数.get("success", True)), 错误码=str(参数.get("error_code", "")))
+        elif 操作 == "查询":
+            数据 = 查询任务(观测路径, 任务id)
+        else:
+            raise ValueError("任务观测操作必须是开始、结束或查询")
+    elif 名称 == "workspace":
+        操作 = str(参数["operation"])
+        if 操作 == "创建":
+            数据 = 创建工作区(项目根目录, 工作区根目录, 任务id=str(参数["task_id"]), 基线=str(参数.get("base", "HEAD")))
+        elif 操作 == "查询":
+            数据 = 查询工作区(项目根目录, 工作区根目录)
+        elif 操作 == "关闭":
+            数据 = 关闭工作区(项目根目录, str(参数["path"]), 强制=bool(参数.get("force", False)))
+        else:
+            raise ValueError("工作区操作必须是创建、查询或关闭")
+    elif 名称 == "test_resource":
+        操作 = str(参数["operation"])
+        临时根 = Path(str(参数["temp_root"])).resolve()
+        清单 = 测试资源清单目录 / f"{当前开工id or '未开工'}.jsonl"
+        if 操作 == "登记":
+            数据 = 登记资源(清单, 资源路径=str(参数["resource_path"]), 临时根目录=临时根,
+                          资源类型=str(参数.get("resource_type", "文件")), 保留=bool(参数.get("keep", False)))
+        elif 操作 == "清理":
+            数据 = 清理资源(清单, 临时根目录=临时根)
+        else:
+            raise ValueError("测试资源操作必须是登记或清理")
     elif 名称 == "verify_and_record":
         if not 查询反馈状态(反馈路径, 当前开工id)["已反馈"]:
             raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
@@ -443,6 +495,7 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         数据 = _运行验证(str(参数["name"]), list(参数["command"]), int(参数.get("timeout_seconds", 300)))
     else:
         raise ValueError(f"未知工具：{名称}")
+    工具事件(观测路径, 任务id=观测任务id, 开工id=当前开工id, 工具=名称, 开始单调=观测开始)
     return [TextContent(type="text", text=json.dumps(数据, ensure_ascii=False, indent=2))]
 
 
