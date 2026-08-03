@@ -48,8 +48,11 @@ def _校验编码选项(编码选项: Any) -> 结果 | None:
 
 
 def _执行处理(文件路径: str, 参数列表: list[str], 输出文件: Path,
-            超时秒: float, 最大输出字节: int) -> 结果:
-    """ffmpeg 受管执行并读取输出文件；进程级失败 → 取消/超时/进程崩溃。"""
+            超时秒: float, 最大输出字节: int, 帧探测: bool = False) -> 结果:
+    """ffmpeg 受管执行并读取输出文件；进程级失败 → 取消/超时/进程崩溃。
+
+    帧探测：对输出文件经 ffprobe 受控探测链做真实尺寸探测，加入 宽度/高度。
+    """
     ffmpeg = 探测.查找命令("ffmpeg")
     if not ffmpeg:
         return 探测._失败("提供者不可用", "ffmpeg 未安装（提供者不可用）")
@@ -65,11 +68,18 @@ def _执行处理(文件路径: str, 参数列表: list[str], 输出文件: Path
     大小 = 输出文件.stat().st_size
     if 大小 > 最大输出字节:
         return 探测._失败("超出限制", f"输出文件过大: {大小} 字节 > 上限 {最大输出字节} 字节")
-    return 结果.成功结果({
+    值 = {
         "字节b64": base64.b64encode(输出文件.read_bytes()).decode("ascii"),
         "格式": 输出文件.suffix.lstrip("."), "字节数": 大小,
         "输出路径": str(输出文件),
-    })
+    }
+    if 帧探测:
+        尺寸 = 探测.探测帧尺寸(str(输出文件), 超时秒)
+        if not 尺寸.成功:
+            return 尺寸
+        值["宽度"] = 尺寸.值["宽度"]
+        值["高度"] = 尺寸.值["高度"]
+    return 结果.成功结果(值)
 
 
 def _预检媒体(预检: 结果, 最大时长秒: Any, 流检查: Any = None) -> 结果 | None:
@@ -81,13 +91,14 @@ def _预检媒体(预检: 结果, 最大时长秒: Any, 流检查: Any = None) -
 
 
 def _处理任务(文件路径: str, 输出路径: str | None, 前缀: str, 扩展名: str,
-            构建参数: Any, 超时秒: float, 最大输出字节: int) -> 结果:
+            构建参数: Any, 超时秒: float, 最大输出字节: int,
+            帧探测: bool = False) -> 结果:
     """受管执行并读取输出文件；临时目录自建时 finally 强制清理（零残留）。"""
     输出文件 = Path(输出路径) if 输出路径 else Path(tempfile.mkdtemp(prefix=前缀)) / f"输出.{扩展名}"
     自建 = 输出路径 is None
     try:
         return _执行处理(文件路径, 构建参数(输出文件), 输出文件,
-                         超时秒, 最大输出字节)
+                         超时秒, 最大输出字节, 帧探测=帧探测)
     finally:
         if 自建:
             shutil.rmtree(输出文件.parent, ignore_errors=True)
@@ -141,7 +152,11 @@ def 抽取帧(文件路径: str, 时间点秒: float, 输出格式: str = "jpg",
          输出路径: str | None = None, 超时秒: float = 60.0,
          最大输出字节: int = 默认最大输出字节,
          最大时长秒: float | None = 默认最大时长秒) -> 结果:
-    """ffmpeg 抽帧（jpg/png，时间点秒，默认临时文件自动清理）。"""
+    """ffmpeg 抽帧（jpg/png，时间点秒，默认临时文件自动清理）。
+
+    返回 {字节b64, 格式, 宽度, 高度}；宽度/高度为输出帧经 ffprobe
+    受控探测链探测得到的真实尺寸，禁止固定值。
+    """
     输出格式 = str(输出格式 or "").lower().lstrip(".")
     错误 = 探测.校验基本参数(文件路径, 超时秒, 输出路径)
     if 错误:
@@ -157,4 +172,4 @@ def 抽取帧(文件路径: str, 时间点秒: float, 输出格式: str = "jpg",
     return _处理任务(
         文件路径, 输出路径, "FFmpeg抽帧_", 输出格式,
         lambda 输出文件: ["-ss", str(时间点秒), "-i", 文件路径, "-frames:v", "1", "-f", "image2"] + 质量参数 + [str(输出文件)],
-        超时秒, 最大输出字节)
+        超时秒, 最大输出字节, 帧探测=True)
