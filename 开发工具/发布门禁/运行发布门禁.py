@@ -649,13 +649,15 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         检查("第十四阶段-十项门禁加载", False, f"异常: {错误}")
 
     # 工程缓存不得有 Python 正式源码（候选实现必须已生产化；制品仓库是
-    # 内容寻址制品数据目录，其内文件为构建产物，不属于源码）
+    # 内容寻址制品数据目录，其内文件为构建产物，不属于源码；提供者运行
+    # 环境是受管 venv（pip 安装的第三方依赖），不属于正式源码）
     try:
         缓存目录 = 系统根 / "工程缓存"
         缓存源码表 = []
         if 缓存目录.is_dir():
             for 文件 in 缓存目录.rglob("*.py"):
-                if "制品仓库" in 文件.parts or "__pycache__" in 文件.parts:
+                if "制品仓库" in 文件.parts or "__pycache__" in 文件.parts \
+                        or "提供者运行环境" in 文件.parts:
                     continue
                 缓存源码表.append(str(文件.relative_to(系统根)))
         检查("工程缓存无Python源码", not 缓存源码表,
