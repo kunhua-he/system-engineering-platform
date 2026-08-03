@@ -5,6 +5,12 @@
 子进程完成后用 os._exit(0) 直接退出，跳过模块销毁，崩溃不影响
 主进程/测试器/后端。fitz 操作逻辑见 子进程解析.py。
 
+自足性（第二十五阶段 wp7）：子进程内 import 平台客户端 必须自足。
+运行前提：依赖平台客户端制品已安装（激活指针 工程缓存/制品仓库/
+平台客户端环境/当前.json 存在且指向已安装制品）。入口解析激活指针，
+把平台客户端环境目录加入 sys.path（幂等），使 平台客户端 包可直接
+import，无需外部 PYTHONPATH 桥接。
+
 协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。
 请求：{"操作": "检测加密页数"|"渲染整页"|"提取图像"|"校验PDF", ...}
 响应：{"成功": true, "值": ...} | {"成功": false, "值": ...,
@@ -21,6 +27,49 @@ from pathlib import Path
 系统根 = Path(__file__).resolve().parents[4]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
+
+客户端环境目录名 = "工程缓存/制品仓库/平台客户端环境"
+激活指针文件名 = "当前.json"
+_平台客户端路径已注入 = False
+
+
+def 平台客户端环境目录() -> Path:
+    """平台客户端环境目录：默认 系统根/工程缓存/制品仓库/平台客户端环境。
+
+    允许环境变量 PyMuPDF提供者_客户端环境目录 覆盖（测试/部署注入）。
+    """
+    覆盖 = os.environ.get("PyMuPDF提供者_客户端环境目录")
+    if 覆盖:
+        return Path(覆盖).resolve()
+    return 系统根 / 客户端环境目录名
+
+
+def 注入平台客户端路径() -> str | None:
+    """解析激活指针并把平台客户端环境目录加入 sys.path（幂等）。
+
+    成功返回 None；失败返回中文错误说明（制品缺失/激活指针不可读）。
+    进程内重复调用不重复注入。
+    """
+    global _平台客户端路径已注入
+    if _平台客户端路径已注入:
+        return None
+    环境目录 = 平台客户端环境目录()
+    指针文件 = 环境目录 / 激活指针文件名
+    if not 指针文件.is_file():
+        return f"平台客户端制品缺失：激活指针不存在（{指针文件}）"
+    try:
+        指针 = json.loads(指针文件.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as 错误:
+        return f"平台客户端制品缺失：激活指针不可读（{错误}）"
+    制品名 = 指针.get("制品目录", "")
+    已安装目录 = 环境目录 / "平台客户端"
+    if not 制品名 or not (已安装目录 / "__init__.py").is_file():
+        return f"平台客户端制品缺失：激活指针指向的制品目录未安装（{制品名 or '<空>'}）"
+    if str(环境目录) not in sys.path:
+        sys.path.insert(0, str(环境目录))
+    _平台客户端路径已注入 = True
+    return None
+
 
 from 支持库.适配层.PyMuPDF提供者.实现.子进程解析 import (  # noqa: E402
     初始化, 检测加密页数, 渲染整页, 提取图像, 校验PDF,
@@ -47,6 +96,10 @@ def _输出(结果: dict) -> int:
 
 
 def 主循环() -> int:
+    注入错误 = 注入平台客户端路径()
+    if 注入错误:
+        print(_响应(False, 错误码="提供者不可用", 错误说明=注入错误))
+        return 0
     初始化(_禁用库表())
     请求行 = sys.stdin.readline()
     if not 请求行.strip():

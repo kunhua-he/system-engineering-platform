@@ -17,7 +17,7 @@
   },
   {
    "路径": "实现/子进程入口.py",
-   "sha256": "4e514699b47a688d701d87ea95bc942257d0b6e0caf87e6fc8ddd5db95377f25"
+   "sha256": "ce7fd7e225a27c45252142f6f7e328476a7706f3dd39d13abaae94fca446d95d"
   },
   {
    "路径": "实现/子进程解析.py",
@@ -29,11 +29,11 @@
   },
   {
    "路径": "能力契约/参数契约.json",
-   "sha256": "bf6264c141999de7a33e70a8110b6acc63962725ee04cfb7f38093aaadc0de15"
+   "sha256": "e506e9c556db4ff58f795aef11e5d4831bc3160a06416daa85eb7a3c175e33e5"
   },
   {
    "路径": "能力定义.json",
-   "sha256": "47152374d06a2acce336f36b2171b3c3bb1a76fc03e5dacfe1b70c0f251ba026"
+   "sha256": "017b3880c10815aa1a55fd8c03a85deddc8fd66fc0425c801570ab46bed428e1"
   },
   {
    "路径": "能力数据/Agent查询数据.json",
@@ -45,7 +45,7 @@
   },
   {
    "路径": "说明/使用说明.md",
-   "sha256": "16fd76cf8c4ffc9e32a6b262972eb99272d4ea8b1309ab2082e7489863aa8809"
+   "sha256": "c7e72bd8d064bbacf146086a23fd24f7ce6ca8abe84ed5c53b3c0938c877687f"
   },
   {
    "路径": "验证场景引用.json",
