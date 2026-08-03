@@ -89,6 +89,95 @@ class 项目服务测试(unittest.TestCase):
         self.assertIn("开工上下文", 结果)
         self.assertIn("验证计划", 结果)
         self.assertEqual(结果["验证计划"]["受影响测试目录"], ["测试中心/运行核心"])
+        self.assertIn("工作区快照", 结果["开工上下文"])
+        self.assertIn("当前分支", 结果["开工上下文"]["工作区快照"])
+
+    def test_工作区工具暴露提交与合并(self) -> None:
+        工具表 = {工具.name: 工具 for 工具 in asyncio.run(服务模块.工具列表())}
+        操作表 = 工具表["workspace"].inputSchema["properties"]["operation"]["enum"]
+        self.assertIn("提交", 操作表)
+        self.assertIn("合并", 操作表)
+        self.assertIn("test_resource", 工具表)
+
+    def test_普通开发角色不能合并分支(self) -> None:
+        原角色 = 服务模块.当前角色
+        服务模块.当前角色 = "模块开发者"
+        try:
+            with self.assertRaises(PermissionError):
+                asyncio.run(服务模块.调用工具("workspace", {
+                    "operation": "合并", "path": str(服务模块.项目根目录),
+                    "target_branch": "main", "source_branch": "codex/test",
+                }))
+        finally:
+            服务模块.当前角色 = 原角色
+
+    def test_子任务反馈必须绑定有效临时上下文(self) -> None:
+        原反馈 = 服务模块.反馈路径
+        原上下文 = 服务模块.临时上下文目录
+        with tempfile.TemporaryDirectory() as 临时目录:
+            服务模块.反馈路径 = Path(临时目录) / "反馈.jsonl"
+            服务模块.临时上下文目录 = Path(临时目录) / "上下文"
+            参数 = {
+                "work_id": "child-a1", "summary": "可用", "dissatisfaction": "无",
+                "redundant": "无", "missing": "无", "upgrade_suggestion": "无",
+            }
+            try:
+                with self.assertRaises(PermissionError):
+                    asyncio.run(服务模块.调用工具("mcp_feedback", 参数))
+                服务模块.写入临时上下文(
+                    服务模块.临时上下文目录, 开工id="child-a1", 父任务="父任务",
+                    角色=服务模块.当前角色, 允许目录=["MCP工具箱"], 记忆查询=[],
+                    事实=[], 验证计划=[], 有效秒数=60,
+                )
+                结果 = asyncio.run(服务模块.调用工具("mcp_feedback", 参数))
+                self.assertIn("child-a1", 结果[0].text)
+            finally:
+                服务模块.反馈路径 = 原反馈
+                服务模块.临时上下文目录 = 原上下文
+
+    def test_临时上下文核对修改范围(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            目录 = Path(临时目录)
+            服务模块.写入临时上下文(
+                目录, 开工id="scope-a1", 父任务="父任务", 角色=服务模块.当前角色,
+                允许目录=["./MCP工具箱"], 记忆查询=[], 事实=[], 验证计划=[], 有效秒数=60,
+            )
+            通过 = 服务模块.核对修改范围(目录, "scope-a1", ["MCP工具箱/项目服务.py"])
+            越界 = 服务模块.核对修改范围(目录, "scope-a1", ["运行核心/越界.py"])
+            self.assertTrue(通过["成功"])
+            self.assertFalse(越界["成功"])
+            self.assertEqual(越界["错误码"], "TEMPORARY_CONTEXT_SCOPE_MISMATCH")
+
+    def test_子任务验证证据按真实开工id记录(self) -> None:
+        原反馈 = 服务模块.反馈路径
+        原证据 = 服务模块.证据路径
+        原上下文 = 服务模块.临时上下文目录
+        with tempfile.TemporaryDirectory() as 临时目录:
+            根 = Path(临时目录)
+            服务模块.反馈路径 = 根 / "反馈.jsonl"
+            服务模块.证据路径 = 根 / "证据.jsonl"
+            服务模块.临时上下文目录 = 根 / "上下文"
+            try:
+                服务模块.写入临时上下文(
+                    服务模块.临时上下文目录, 开工id="child-evidence", 父任务="父任务",
+                    角色=服务模块.当前角色, 允许目录=["MCP工具箱"], 记忆查询=[],
+                    事实=[], 验证计划=[], 有效秒数=60,
+                )
+                服务模块.写入反馈(
+                    服务模块.反馈路径, 开工id="child-evidence", 任务="子任务",
+                    角色=服务模块.当前角色, 总结="可用", 不满意="无", 多余="无",
+                    缺失="无", 升级建议="无",
+                )
+                结果 = asyncio.run(服务模块.调用工具("verify_and_record", {
+                    "work_id": "child-evidence", "name": "子任务验证",
+                    "command": ["git", "diff", "--check"],
+                }))
+                self.assertIn('"开工id": "child-evidence"', 结果[0].text)
+                self.assertIn('"开工id": "child-evidence"', 服务模块.证据路径.read_text(encoding="utf-8"))
+            finally:
+                服务模块.反馈路径 = 原反馈
+                服务模块.证据路径 = 原证据
+                服务模块.临时上下文目录 = 原上下文
 
     def test_调用者工具列表和直接调用双重拒绝(self) -> None:
         原角色 = 服务模块.当前角色

@@ -21,9 +21,11 @@ from mcp.types import ServerCapabilities, TextContent, Tool
 try:
     from MCP工具箱.公开能力 import 搜索公开能力, 读取公开能力
     from MCP工具箱.使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
-    from MCP工具箱.临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文
-    from MCP工具箱.任务观测 import 任务开始, 工具事件, 任务结束, 查询任务
-    from MCP工具箱.工作区管理 import 创建工作区, 查询工作区, 关闭工作区
+    from MCP工具箱.临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文, 核对修改范围
+    from MCP工具箱.任务观测 import 任务开始, 工具事件, 任务结束, 查询任务, 阶段记录, 生成效率报告
+    from MCP工具箱.工作区管理 import (
+        创建工作区, 查询工作区, 关闭工作区, 合并分支, 工作区提交,
+    )
     from MCP工具箱.测试资源 import 登记资源, 清理资源
     from MCP工具箱.支持库协作 import 登记需求, 复用搜索, 登记能力占用
     from MCP工具箱.模块合规 import 校验模块合规
@@ -38,9 +40,9 @@ try:
 except ModuleNotFoundError:
     from 公开能力 import 搜索公开能力, 读取公开能力
     from 使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
-    from 临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文
-    from 任务观测 import 任务开始, 工具事件, 任务结束, 查询任务
-    from 工作区管理 import 创建工作区, 查询工作区, 关闭工作区
+    from 临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文, 核对修改范围
+    from 任务观测 import 任务开始, 工具事件, 任务结束, 查询任务, 阶段记录, 生成效率报告
+    from 工作区管理 import 创建工作区, 查询工作区, 关闭工作区, 合并分支, 工作区提交
     from 测试资源 import 登记资源, 清理资源
     from 支持库协作 import 登记需求, 复用搜索, 登记能力占用
     from 模块合规 import 校验模块合规
@@ -130,6 +132,16 @@ def _代码地图状态() -> dict[str, Any]:
     }
 
 
+def _工作区快照() -> dict[str, Any]:
+    分支 = _执行(["git", "branch", "--show-current"])
+    状态 = _执行(["git", "-c", "core.quotePath=false", "status", "--short"])
+    工作树 = _执行(["git", "worktree", "list", "--porcelain"])
+    脏文件 = [行 for 行 in 状态["标准输出"].splitlines() if 行.strip()]
+    return {"当前分支": 分支["标准输出"].strip(), "脏文件数": len(脏文件),
+            "脏文件": 脏文件[:100], "工作树": 工作树["标准输出"].strip(),
+            "提示": "并行工作包必须使用独立worktree；同阶段共享文件发生变化时重新读取后再编辑。"}
+
+
 def _开工上下文(任务: str, 历史数量: int) -> dict[str, Any]:
     global 当前任务名称, 当前开工id
     if not 当前开工id or 任务 != 当前任务名称:
@@ -157,6 +169,7 @@ def _开工上下文(任务: str, 历史数量: int) -> dict[str, Any]:
             "提交": 提交, "工作区指纹": 工作区指纹, "匹配成功记录数": 匹配数,
         },
         "最近成功验证": 历史,
+        "工作区快照": _工作区快照(),
         "固定流程": [
             "先调用项目开工上下文", "再用代码地图探索定位符号和调用链",
             "只在地图未覆盖时直接读取文件", "代码指纹变化后只复验受影响范围",
@@ -215,13 +228,13 @@ def _写入记忆(标题: str, 正文: str, 标签: list[str]) -> dict[str, Any]
     return {"成功": True, "路径": str(路径.relative_to(项目根目录))}
 
 
-def _运行验证(名称: str, 命令: list[str], 超时秒数: int) -> dict[str, Any]:
+def _运行验证(名称: str, 命令: list[str], 超时秒数: int, *, 开工id: str = "") -> dict[str, Any]:
     if not 名称.strip() or not 命令 or any(not isinstance(项, str) or not 项 for 项 in 命令):
         raise ValueError("名称和命令数组不能为空")
     结果 = _执行(命令, max(1, min(超时秒数, 3600)))
     提交, 工作区指纹 = _代码指纹()
     记录 = {
-        "名称": 名称, "命令": 命令, "退出码": 结果["退出码"],
+        "名称": 名称, "命令": 命令, "退出码": 结果["退出码"], "开工id": 开工id,
         "时间": datetime.now(timezone.utc).isoformat(), "提交": 提交,
         "工作区指纹": 工作区指纹, "输出末尾": 结果["标准输出"][-2000:],
         "错误末尾": 结果["标准错误"][-1000:],
@@ -248,6 +261,17 @@ def _过滤代码地图输出(原文: str, 范围表: list[str]) -> str:
     if not 保留表:
         return "当前角色范围内没有匹配源码。"
     return "**角色范围内源码**\n\n" + "\n\n".join(保留表)
+
+
+def _有效开工id(候选: object) -> str:
+    开工id = str(候选 or 当前开工id)
+    if not 开工id:
+        raise PermissionError("尚未建立开工上下文")
+    if 开工id == 当前开工id:
+        return 开工id
+    if 读取临时上下文(临时上下文目录, 开工id).get("成功"):
+        return 开工id
+    raise PermissionError("只能操作当前任务或有效临时上下文子任务")
 
 
 def _按角色探索代码(查询: str) -> dict[str, Any]:
@@ -368,7 +392,7 @@ async def 工具列表() -> list[Tool]:
         Tool(name="role_profile", description="返回当前 MCP 角色、可用工具及其边界。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="capability_search", description="高相关只读搜索公开能力；默认返回最多5个候选，不加载实现。确认能力后再用能力id读取完整契约。", inputSchema={"type": "object", "properties": {"keyword": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5}}}),
         Tool(name="capability_read", description="只读查看一个公开能力的名称、说明、所属包和类型。", inputSchema={"type": "object", "properties": {"capability_id": {"type": "string"}}, "required": ["capability_id"]}),
-        Tool(name="mcp_feedback", description="提交本次 MCP 使用反馈；成功验证入账前强制执行。", inputSchema={"type": "object", "properties": {"summary": {"type": "string"}, "dissatisfaction": {"type": "string"}, "redundant": {"type": "string"}, "missing": {"type": "string"}, "upgrade_suggestion": {"type": "string"}}, "required": ["summary", "dissatisfaction", "redundant", "missing", "upgrade_suggestion"]}),
+        Tool(name="mcp_feedback", description="提交当前任务或有效子任务的MCP反馈；成功验证入账前强制执行。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "summary": {"type": "string"}, "dissatisfaction": {"type": "string"}, "redundant": {"type": "string"}, "missing": {"type": "string"}, "upgrade_suggestion": {"type": "string"}}, "required": ["summary", "dissatisfaction", "redundant", "missing", "upgrade_suggestion"]}),
         Tool(name="feedback_status", description="查看本次开工标识是否已提交 MCP 使用反馈。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="feedback_review", description="维护者按开工id或任务读取MCP反馈与升级候选。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "task": {"type": "string"}, "limit": {"type": "integer"}}}),
         Tool(name="support_library_development_guide", description="支持库开发专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
@@ -381,13 +405,13 @@ async def 工具列表() -> list[Tool]:
         Tool(name="codegraph_explore", description="在系统工程平台自己的代码地图中探索符号、源码和调用链。", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
         Tool(name="memory_search", description="搜索系统工程平台自己的项目记忆。", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}),
         Tool(name="memory_write", description="写入系统工程平台自己的长期项目记忆。", inputSchema={"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}, "labels": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "body"]}),
-        Tool(name="verify_and_record", description="不经 shell 运行验证；仅退出码为0时记入最近成功证据。", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, "required": ["name", "command"]}),
+        Tool(name="verify_and_record", description="不经shell运行验证；仅退出码为0时按开工id记入成功证据。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, "required": ["name", "command"]}),
         Tool(name="verification_plan", description="按修改路径生成定向验证计划；只规划不执行，避免每次重复跑全量。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}}, "required": ["modified_paths"]}),
         Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
-        Tool(name="temporary_context", description="读取或写入当前子任务临时上下文；只保留定向事实、范围、记忆查询和验证计划，过期自动失效。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
-        Tool(name="task_observation", description="被动记录和查询任务时间线；只返回耗时、工具、状态和错误摘要，不记录提示词或源码。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["开始", "结束", "查询"]}, "task_id": {"type": "string"}, "work_id": {"type": "string"}, "parent_task_id": {"type": "string"}, "success": {"type": "boolean"}, "error_code": {"type": "string"}, "child_count": {"type": "integer"}}, "required": ["operation", "task_id"]}),
-        Tool(name="workspace", description="创建、查询和关闭当前项目的隔离 Git worktree。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "force": {"type": "boolean"}}, "required": ["operation"]}),
-        Tool(name="test_resource", description="登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}, "work_id": {"type": "string"}}, "required": ["operation", "temp_root"]}),
+        Tool(name="temporary_context", description="读取、写入、核对或清理子任务临时上下文。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "核对范围", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "actual_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
+        Tool(name="task_observation", description="被动记录任务、阶段与工具耗时，并生成效率报告；不记录提示词或源码。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["开始", "结束", "查询", "阶段开始", "阶段结束", "报告"]}, "task_id": {"type": "string"}, "work_id": {"type": "string"}, "parent_task_id": {"type": "string"}, "success": {"type": "boolean"}, "error_code": {"type": "string"}, "child_count": {"type": "integer"}, "phase": {"type": "string", "enum": ["探索", "开发", "子代理", "测试", "等待", "合并", "收口"]}, "phase_id": {"type": "string"}, "note": {"type": "string"}}, "required": ["operation", "task_id"]}),
+        Tool(name="workspace", description="创建、查询、提交、合并和关闭隔离Git worktree。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "提交", "合并", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "target_branch": {"type": "string"}, "source_branch": {"type": "string"}, "message": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "force": {"type": "boolean"}}, "required": ["operation"]}),
+        Tool(name="test_resource", description="按开工id登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}}, "required": ["operation", "temp_root"]}),
         Tool(name="登记需求", description="登记平台能力需求快照（能力id/说明/来源任务）。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "说明": {"type": "string"}, "来源任务": {"type": "string"}, "work_id": {"type": "string"}}, "required": ["能力id", "说明"]}),
         Tool(name="复用搜索", description="扫描既有支持库能力，返回可复用候选或标记无现成。", inputSchema={"type": "object", "properties": {"关键词": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["关键词"]}),
         Tool(name="登记能力占用", description="登记某能力由某提供包占用；异包重复占用冲突拒绝。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "提供包id": {"type": "string"}, "开工id": {"type": "string"}}, "required": ["能力id", "提供包id"]}),
@@ -415,6 +439,9 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
     校验工具权限(当前角色, 名称)
     观测开始 = time.monotonic()
     观测任务id = str(参数.get("task_id") or 当前开工id)
+    事件开工id = 当前开工id
+    if 名称 in {"mcp_feedback", "task_observation", "test_resource", "verify_and_record"}:
+        事件开工id = _有效开工id(参数.get("work_id"))
     if 名称 == "project_context":
         数据 = _开工上下文(str(参数.get("task", "")), int(参数.get("history_limit", 3)))
     elif 名称 == "role_profile":
@@ -428,8 +455,9 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         if 数据 is None:
             数据 = {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": "公开能力不存在"}
     elif 名称 == "mcp_feedback":
+        反馈开工id = _有效开工id(参数.get("work_id"))
         数据 = 写入反馈(
-            反馈路径, 开工id=当前开工id, 任务=当前任务名称, 角色=当前角色,
+            反馈路径, 开工id=反馈开工id, 任务=当前任务名称, 角色=当前角色,
             总结=str(参数["summary"]), 不满意=str(参数["dissatisfaction"]),
             多余=str(参数["redundant"]), 缺失=str(参数["missing"]),
             升级建议=str(参数["upgrade_suggestion"]),
@@ -482,24 +510,37 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             数据 = 读取临时上下文(临时上下文目录, 开工id)
         elif 操作 == "清理":
             数据 = 清理临时上下文(临时上下文目录, 开工id)
+        elif 操作 == "核对范围":
+            数据 = 核对修改范围(临时上下文目录, 开工id, list(参数.get("actual_paths", [])))
         else:
-            raise ValueError("临时上下文操作必须是写入、读取或清理")
+            raise ValueError("临时上下文操作必须是写入、读取、核对范围或清理")
     elif 名称 == "task_observation":
         操作 = str(参数["operation"])
         任务id = str(参数["task_id"])
+        观测开工id = _有效开工id(参数.get("work_id"))
         if 操作 == "开始":
-            数据 = 任务开始(观测路径, 任务id=任务id, 开工id=str(参数.get("work_id", 当前开工id)),
+            数据 = 任务开始(观测路径, 任务id=任务id, 开工id=观测开工id,
                           角色=当前角色, 父任务id=str(参数.get("parent_task_id", "")),
                           子代理数=int(参数.get("child_count", 0)))
         elif 操作 == "结束":
-            数据 = 任务结束(观测路径, 任务id=任务id, 开工id=str(参数.get("work_id", 当前开工id)),
+            数据 = 任务结束(观测路径, 任务id=任务id, 开工id=观测开工id,
                           成功=bool(参数.get("success", True)), 错误码=str(参数.get("error_code", "")))
         elif 操作 == "查询":
             数据 = 查询任务(观测路径, 任务id)
+        elif 操作 in {"阶段开始", "阶段结束"}:
+            数据 = 阶段记录(观测路径, 任务id=任务id,
+                         开工id=观测开工id,
+                         阶段=str(参数["phase"]), 状态=操作.removeprefix("阶段"),
+                         阶段id=str(参数.get("phase_id", "")),
+                         说明=str(参数.get("note", "")))
+        elif 操作 == "报告":
+            数据 = 生成效率报告(观测路径, 任务id)
         else:
-            raise ValueError("任务观测操作必须是开始、结束或查询")
+            raise ValueError("任务观测操作必须是开始、结束、查询、阶段开始、阶段结束或报告")
     elif 名称 == "workspace":
         操作 = str(参数["operation"])
+        if 操作 == "合并" and 当前角色 not in {"平台维护者", "发布者"}:
+            raise PermissionError("只有平台维护者或发布者可以合并分支")
         if 操作 == "创建":
             数据 = 创建工作区(项目根目录, 工作区根目录, 任务id=str(参数["task_id"]), 基线=str(参数.get("base", "HEAD")))
         elif 操作 == "查询":
@@ -507,12 +548,17 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 操作 == "关闭":
             数据 = 关闭工作区(项目根目录, str(参数["path"]), 强制=bool(参数.get("force", False)),
                             work_id=str(参数.get("work_id", 当前开工id)))
+        elif 操作 == "提交":
+            数据 = 工作区提交(Path(str(参数["path"])), str(参数["message"]), 路径列表=list(参数.get("paths", [])) or None)
+        elif 操作 == "合并":
+            数据 = 合并分支(Path(str(参数["path"])), str(参数["target_branch"]), str(参数["source_branch"]), 提交消息=str(参数.get("message", "")))
         else:
-            raise ValueError("工作区操作必须是创建、查询或关闭")
+            raise ValueError("工作区操作必须是创建、查询、提交、合并或关闭")
     elif 名称 == "test_resource":
         操作 = str(参数["operation"])
+        资源开工id = _有效开工id(参数.get("work_id"))
         临时根 = Path(str(参数["temp_root"])).resolve()
-        清单 = 测试资源清单目录 / f"{当前开工id or '未开工'}.jsonl"
+        清单 = 测试资源清单目录 / f"{资源开工id or '未开工'}.jsonl"
         if 操作 == "登记":
             数据 = 登记资源(清单, 资源路径=str(参数["resource_path"]), 临时根目录=临时根,
                           资源类型=str(参数.get("resource_type", "文件")), 保留=bool(参数.get("keep", False)),
@@ -562,19 +608,23 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
     elif 名称 == "判定验证结果":
         数据 = 判定验证结果(int(参数["退出码"]), str(参数["标准输出"]))
     elif 名称 == "verify_and_record":
-        if not 查询反馈状态(反馈路径, 当前开工id)["已反馈"]:
+        证据开工id = _有效开工id(参数.get("work_id"))
+        if not 查询反馈状态(反馈路径, 证据开工id)["已反馈"]:
             raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
         命令 = list(参数["command"])
         校验 = 校验验证命令受控(命令)
         if not 校验["成功"]:
             raise PermissionError(f"验证命令拒绝: {校验['错误码']}: {校验.get('消息', '')}")
-        数据 = _运行验证(str(参数["name"]), 命令, int(参数.get("timeout_seconds", 300)))
+        数据 = _运行验证(
+            str(参数["name"]), 命令, int(参数.get("timeout_seconds", 300)),
+            开工id=证据开工id,
+        )
         判定 = 判定验证结果(int(数据.get("退出码", -1)), str(数据.get("输出末尾", "")))
         if not 判定["成功"]:
             数据["判定"] = 判定
     else:
         raise ValueError(f"未知工具：{名称}")
-    工具事件(观测路径, 任务id=观测任务id, 开工id=当前开工id, 工具=名称, 开始单调=观测开始)
+    工具事件(观测路径, 任务id=观测任务id, 开工id=事件开工id, 工具=名称, 开始单调=观测开始)
     return [TextContent(type="text", text=json.dumps(数据, ensure_ascii=False, indent=2))]
 
 

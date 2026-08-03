@@ -47,7 +47,11 @@ class 越权拒绝(PermissionError):
     "project_context", "role_profile", "capability_search", "capability_read",
     "mcp_feedback", "feedback_status",
 }
-开发工具 = {"codegraph_explore", "memory_search", "memory_write", "verify_and_record", "verification_plan", "development_start", "temporary_context", "task_observation"}
+开发工具 = {
+    "codegraph_explore", "memory_search", "memory_write", "verify_and_record",
+    "verification_plan", "development_start", "temporary_context", "task_observation",
+    "workspace", "test_resource",
+}
 
 角色工具表 = {
     调用者: 基础工具,
