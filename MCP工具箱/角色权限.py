@@ -51,13 +51,18 @@ class 越权拒绝(PermissionError):
 
 角色工具表 = {
     调用者: 基础工具,
-    支持库开发者: 基础工具 | 开发工具 | {"support_library_development_guide"},
-    模块开发者: 基础工具 | 开发工具 | {"module_development_guide"},
-    核心开发者: 基础工具 | 开发工具 | {"core_development_guide"},
+    支持库开发者: 基础工具 | 开发工具 | {"support_library_development_guide",
+                    "登记需求", "复用搜索", "登记能力占用"},
+    模块开发者: 基础工具 | 开发工具 | {"module_development_guide", "校验模块合规"},
+    核心开发者: 基础工具 | 开发工具 | {"core_development_guide",
+                   "创建核心快照", "查询核心快照", "兼容性检查", "回滚门禁"},
     项目开发者: 基础工具 | 开发工具 | {"project_development_guide"},
     平台构建开发者: 基础工具 | 开发工具 | {"platform_build_development_guide"},
-    平台维护者: 基础工具 | 开发工具 | {"platform_maintenance_guide", "feedback_review"},
-    发布者: 基础工具 | 开发工具 | {"release_guide", "feedback_review"},
+    平台维护者: 基础工具 | 开发工具 | {"platform_maintenance_guide", "feedback_review",
+                   "运行发布门禁", "检查发布证据", "生成发布证据", "切换激活指针", "依赖裁决",
+                   "登记任务", "协作状态", "收口登记", "校验验证命令", "判定验证结果"},
+    发布者: 基础工具 | 开发工具 | {"release_guide", "feedback_review",
+                  "运行发布门禁", "检查发布证据", "生成发布证据", "切换激活指针", "依赖裁决"},
 }
 
 角色边界表 = {

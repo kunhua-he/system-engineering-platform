@@ -25,6 +25,12 @@ try:
     from MCP工具箱.任务观测 import 任务开始, 工具事件, 任务结束, 查询任务
     from MCP工具箱.工作区管理 import 创建工作区, 查询工作区, 关闭工作区
     from MCP工具箱.测试资源 import 登记资源, 清理资源
+    from MCP工具箱.支持库协作 import 登记需求, 复用搜索, 登记能力占用
+    from MCP工具箱.模块合规 import 校验模块合规
+    from MCP工具箱.核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
+    from MCP工具箱.发布治理 import 运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决
+    from MCP工具箱.协作状态 import 登记任务, 查询协作状态, 收口登记
+    from MCP工具箱.验证门禁 import 校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁
     from MCP工具箱.角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
         校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
@@ -36,6 +42,12 @@ except ModuleNotFoundError:
     from 任务观测 import 任务开始, 工具事件, 任务结束, 查询任务
     from 工作区管理 import 创建工作区, 查询工作区, 关闭工作区
     from 测试资源 import 登记资源, 清理资源
+    from 支持库协作 import 登记需求, 复用搜索, 登记能力占用
+    from 模块合规 import 校验模块合规
+    from 核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
+    from 发布治理 import 运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决
+    from 协作状态 import 登记任务, 查询协作状态, 收口登记
+    from 验证门禁 import 校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁
     from 角色权限 import (
         代码地图范围, 读取当前角色, 角色说明, 可用工具, 校验工具权限,
         校验验证命令, 获取角色指南, 校验修改路径, 越权拒绝,
@@ -47,6 +59,7 @@ except ModuleNotFoundError:
 反馈路径 = 项目根目录 / "开发文档" / "项目证据" / "MCP使用反馈.jsonl"
 临时上下文目录 = 项目根目录 / "工程缓存" / "MCP临时上下文"
 观测路径 = 项目根目录 / "工程缓存" / "MCP任务观测" / "事件.jsonl"
+工程缓存目录 = 项目根目录 / "工程缓存"
 工作区根目录 = 项目根目录 / "工程缓存" / "任务工作区"
 测试资源清单目录 = 项目根目录 / "工程缓存" / "测试资源清单"
 服务 = Server("system_engineering_toolkit")
@@ -374,7 +387,25 @@ async def 工具列表() -> list[Tool]:
         Tool(name="temporary_context", description="读取或写入当前子任务临时上下文；只保留定向事实、范围、记忆查询和验证计划，过期自动失效。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
         Tool(name="task_observation", description="被动记录和查询任务时间线；只返回耗时、工具、状态和错误摘要，不记录提示词或源码。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["开始", "结束", "查询"]}, "task_id": {"type": "string"}, "work_id": {"type": "string"}, "parent_task_id": {"type": "string"}, "success": {"type": "boolean"}, "error_code": {"type": "string"}, "child_count": {"type": "integer"}}, "required": ["operation", "task_id"]}),
         Tool(name="workspace", description="创建、查询和关闭当前项目的隔离 Git worktree。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "force": {"type": "boolean"}}, "required": ["operation"]}),
-        Tool(name="test_resource", description="登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}}, "required": ["operation", "temp_root"]}),
+        Tool(name="test_resource", description="登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}, "work_id": {"type": "string"}}, "required": ["operation", "temp_root"]}),
+        Tool(name="登记需求", description="登记平台能力需求快照（能力id/说明/来源任务）。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "说明": {"type": "string"}, "来源任务": {"type": "string"}, "work_id": {"type": "string"}}, "required": ["能力id", "说明"]}),
+        Tool(name="复用搜索", description="扫描既有支持库能力，返回可复用候选或标记无现成。", inputSchema={"type": "object", "properties": {"关键词": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["关键词"]}),
+        Tool(name="登记能力占用", description="登记某能力由某提供包占用；异包重复占用冲突拒绝。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "提供包id": {"type": "string"}, "开工id": {"type": "string"}}, "required": ["能力id", "提供包id"]}),
+        Tool(name="校验模块合规", description="模块合规验证：import白名单/能力占用/包七要素。", inputSchema={"type": "object", "properties": {"模块名": {"type": "string"}}, "required": ["模块名"]}),
+        Tool(name="创建核心快照", description="创建核心快照（运行核心+公共契约清单与摘要，入工程缓存）。", inputSchema={"type": "object", "properties": {"说明": {"type": "string"}}}),
+        Tool(name="查询核心快照", description="列出核心快照（时间/摘要/文件数）。", inputSchema={"type": "object", "properties": {}}),
+        Tool(name="兼容性检查", description="对比当前与快照的兼容性：漂移与资源预算（行数上限）。", inputSchema={"type": "object", "properties": {"快照标识": {"type": "string"}}, "required": ["快照标识"]}),
+        Tool(name="回滚门禁", description="校验快照完整性并原子切换激活指针回滚（不覆盖源码）。", inputSchema={"type": "object", "properties": {"快照标识": {"type": "string"}, "执行回滚": {"type": "boolean"}}, "required": ["快照标识"]}),
+        Tool(name="运行发布门禁", description="真实运行平台发布门禁（运行发布门禁.py）。", inputSchema={"type": "object", "properties": {"包目录": {"type": "string"}}}),
+        Tool(name="检查发布证据", description="检查提交在验证历史中的成功证据。", inputSchema={"type": "object", "properties": {"提交": {"type": "string"}}, "required": ["提交"]}),
+        Tool(name="生成发布证据", description="写入发布证据到工程缓存/发布证据/{提交}.json。", inputSchema={"type": "object", "properties": {"提交": {"type": "string"}, "名称": {"type": "string"}, "退出码": {"type": "integer"}, "指纹": {"type": "string"}}, "required": ["提交", "名称", "退出码"]}),
+        Tool(name="切换激活指针", description="CAS 切换平台客户端激活指针（旧令牌不匹配拒绝）。", inputSchema={"type": "object", "properties": {"目标摘要": {"type": "string"}, "旧令牌": {"type": "string"}, "提交": {"type": "string"}}, "required": ["目标摘要", "旧令牌"]}),
+        Tool(name="依赖裁决", description="校验包声明依赖闭包（缺项/多余/版本漂移/循环）。", inputSchema={"type": "object", "properties": {"包id": {"type": "string"}}, "required": ["包id"]}),
+        Tool(name="登记任务", description="登记主/子任务协作状态（parent/child 映射）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}, "角色": {"type": "string"}, "worktree路径": {"type": "string"}, "允许路径": {"type": "array", "items": {"type": "string"}}, "基线提交": {"type": "string"}, "parent_work_id": {"type": "string"}}, "required": ["work_id", "任务"]}),
+        Tool(name="协作状态", description="按开工id或任务查询协作状态（子任务/反馈/证据/阻断标记）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}}}),
+        Tool(name="收口登记", description="delivery_closeout：收口登记五件套与结论；未反馈或证据不匹配阻断。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "五件套路径": {"type": "string"}, "结论": {"type": "string"}}, "required": ["work_id"]}),
+        Tool(name="校验验证命令", description="受控验证命令白名单校验（运行测试.py/pytest 定向，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
+        Tool(name="判定验证结果", description="判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}}, "required": ["退出码", "标准输出"]}),
     ]
     return [工具 for 工具 in 工具定义 if 工具.name in 可用工具(当前角色)]
 
@@ -474,7 +505,8 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 操作 == "查询":
             数据 = 查询工作区(项目根目录, 工作区根目录)
         elif 操作 == "关闭":
-            数据 = 关闭工作区(项目根目录, str(参数["path"]), 强制=bool(参数.get("force", False)))
+            数据 = 关闭工作区(项目根目录, str(参数["path"]), 强制=bool(参数.get("force", False)),
+                            work_id=str(参数.get("work_id", 当前开工id)))
         else:
             raise ValueError("工作区操作必须是创建、查询或关闭")
     elif 名称 == "test_resource":
@@ -483,16 +515,63 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         清单 = 测试资源清单目录 / f"{当前开工id or '未开工'}.jsonl"
         if 操作 == "登记":
             数据 = 登记资源(清单, 资源路径=str(参数["resource_path"]), 临时根目录=临时根,
-                          资源类型=str(参数.get("resource_type", "文件")), 保留=bool(参数.get("keep", False)))
+                          资源类型=str(参数.get("resource_type", "文件")), 保留=bool(参数.get("keep", False)),
+                          work_id=str(参数.get("work_id", 当前开工id)))
         elif 操作 == "清理":
             数据 = 清理资源(清单, 临时根目录=临时根)
         else:
             raise ValueError("测试资源操作必须是登记或清理")
+    elif 名称 == "登记需求":
+        数据 = 登记需求(工程缓存目录, 能力id=str(参数["能力id"]), 说明=str(参数["说明"]),
+                      来源任务=str(参数.get("来源任务", 当前任务名称)), work_id=str(参数.get("work_id", 当前开工id)))
+    elif 名称 == "复用搜索":
+        数据 = 复用搜索(项目根目录, str(参数["关键词"]))
+    elif 名称 == "登记能力占用":
+        数据 = 登记能力占用(工程缓存目录, 能力id=str(参数["能力id"]),
+                          提供包id=str(参数["提供包id"]), 开工id=str(参数.get("开工id", 当前开工id)))
+    elif 名称 == "校验模块合规":
+        数据 = 校验模块合规(项目根目录, str(参数["模块名"]))
+    elif 名称 == "创建核心快照":
+        数据 = 创建核心快照(项目根目录, 说明=str(参数.get("说明", "")))
+    elif 名称 == "查询核心快照":
+        数据 = 查询核心快照(项目根目录)
+    elif 名称 == "兼容性检查":
+        数据 = 兼容性检查(str(参数["快照标识"]), 项目根目录)
+    elif 名称 == "回滚门禁":
+        数据 = 回滚门禁(str(参数["快照标识"]), 项目根目录, 执行回滚=bool(参数.get("执行回滚", False)))
+    elif 名称 == "运行发布门禁":
+        数据 = 运行发布门禁(str(参数.get("包目录", "")) or None)
+    elif 名称 == "检查发布证据":
+        数据 = 检查发布证据(str(参数["提交"]))
+    elif 名称 == "生成发布证据":
+        数据 = 生成发布证据(str(参数["提交"]), str(参数["名称"]), int(参数["退出码"]), str(参数.get("指纹", "")))
+    elif 名称 == "切换激活指针":
+        数据 = 切换激活指针(str(参数["目标摘要"]), str(参数["旧令牌"]), 提交=str(参数.get("提交", "")))
+    elif 名称 == "依赖裁决":
+        数据 = 依赖裁决(str(参数["包id"]))
+    elif 名称 == "登记任务":
+        数据 = 登记任务(str(参数["work_id"]), 任务=str(参数["任务"]), 角色=str(参数.get("角色", 当前角色)),
+                       worktree路径=str(参数.get("worktree路径", "")), 允许路径=list(参数.get("允许路径", [])),
+                       基线提交=str(参数.get("基线提交", "")), parent_work_id=str(参数.get("parent_work_id", "")))
+    elif 名称 == "协作状态":
+        数据 = 查询协作状态(str(参数.get("work_id", "")), 任务=str(参数.get("任务", "")))
+    elif 名称 == "收口登记":
+        数据 = 收口登记(str(参数["work_id"]), 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
+    elif 名称 == "校验验证命令":
+        数据 = 校验验证命令受控(list(参数["命令"]))
+    elif 名称 == "判定验证结果":
+        数据 = 判定验证结果(int(参数["退出码"]), str(参数["标准输出"]))
     elif 名称 == "verify_and_record":
         if not 查询反馈状态(反馈路径, 当前开工id)["已反馈"]:
             raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
-        校验验证命令(当前角色, list(参数["command"]))
-        数据 = _运行验证(str(参数["name"]), list(参数["command"]), int(参数.get("timeout_seconds", 300)))
+        命令 = list(参数["command"])
+        校验 = 校验验证命令受控(命令)
+        if not 校验["成功"]:
+            raise PermissionError(f"验证命令拒绝: {校验['错误码']}: {校验.get('消息', '')}")
+        数据 = _运行验证(str(参数["name"]), 命令, int(参数.get("timeout_seconds", 300)))
+        判定 = 判定验证结果(int(数据.get("退出码", -1)), str(数据.get("输出末尾", "")))
+        if not 判定["成功"]:
+            数据["判定"] = 判定
     else:
         raise ValueError(f"未知工具：{名称}")
     工具事件(观测路径, 任务id=观测任务id, 开工id=当前开工id, 工具=名称, 开始单调=观测开始)
