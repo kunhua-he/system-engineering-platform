@@ -20,8 +20,10 @@ from 公共契约.基础类型.结果类型 import 结果
 包目录 = Path(__file__).resolve().parent.parent
 子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
 默认超时秒 = 60.0
+超时秒上限 = 60.0
 默认最大输出字节 = 64 * 1024 * 1024
 输入字节上限 = 64 * 1024 * 1024
+单图最大像素 = 40_000_000
 
 
 def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
@@ -112,6 +114,16 @@ def _校验宽高(宽度: Any, 高度: Any) -> 结果 | None:
     return None
 
 
+def _校验超时秒(超时秒: Any) -> 结果 | None:
+    if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool):
+        return _失败("参数不合法", "超时秒必须为数字")
+    if 超时秒 <= 0:
+        return _失败("参数不合法", "超时秒必须为正数")
+    if 超时秒 > 超时秒上限:
+        return _失败("参数不合法", f"超时秒超过上限 {超时秒上限:g} 秒")
+    return None
+
+
 def 解码图像(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
     """隔离解码图像字节：成功值 {格式, 宽度, 高度, 模式}。"""
     错误 = _校验字节(字节)
@@ -143,6 +155,102 @@ def 生成占位图(宽度: int, 高度: int, 占位类型: str = "纯色",
         "操作": "生成占位图", "宽度": 宽度, "高度": 高度, "占位类型": 占位类型,
         "背景颜色": 背景颜色, "前景颜色": 前景颜色, "文本": 文本,
     }, 超时秒=超时秒)
+
+
+def 生成缩略图(字节: bytes, 最大边长: int, 超时秒: float = 默认超时秒) -> 结果:
+    """隔离生成等比例缩略图（只缩不放大）：成功值 {图像b64, 格式, 宽度, 高度}。"""
+    错误 = _校验字节(字节)
+    if 错误:
+        return 错误
+    if not isinstance(最大边长, int) or isinstance(最大边长, bool) or 最大边长 < 1:
+        return _失败("参数不合法", "最大边长必须为正整数")
+    错误 = _校验超时秒(超时秒)
+    if 错误:
+        return 错误
+    return 执行任务({"操作": "生成缩略图", "字节b64": base64.b64encode(字节).decode("ascii"),
+                     "最大边长": 最大边长}, 超时秒=超时秒)
+
+
+def 图像EXIF转置(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
+    """隔离按 EXIF orientation 转置图像：成功值 {图像b64, 格式, 宽度, 高度}。"""
+    错误 = _校验字节(字节)
+    if 错误:
+        return 错误
+    错误 = _校验超时秒(超时秒)
+    if 错误:
+        return 错误
+    return 执行任务({"操作": "图像EXIF转置", "字节b64": base64.b64encode(字节).decode("ascii")},
+                    超时秒=超时秒)
+
+
+def 透明背景合成(字节: bytes, 背景颜色: str, 超时秒: float = 默认超时秒) -> 结果:
+    """隔离透明背景合成（RGBA/LA/P 透明 → 背景色合成 RGB PNG）：成功值 {图像b64, 格式, 宽度, 高度}。"""
+    错误 = _校验字节(字节)
+    if 错误:
+        return 错误
+    if not isinstance(背景颜色, str):
+        return _失败("参数不合法", "背景颜色必须是 #RRGGBB 文本")
+    错误 = _校验超时秒(超时秒)
+    if 错误:
+        return 错误
+    return 执行任务({"操作": "透明背景合成", "字节b64": base64.b64encode(字节).decode("ascii"),
+                     "背景颜色": 背景颜色}, 超时秒=超时秒)
+
+
+def 计算感知哈希(字节: bytes, 哈希类型: str, 超时秒: float = 默认超时秒) -> 结果:
+    """隔离计算感知哈希 aHash/dHash/pHash：成功值 {哈希, 哈希类型}。"""
+    错误 = _校验字节(字节)
+    if 错误:
+        return 错误
+    if not isinstance(哈希类型, str) or 哈希类型 not in ("aHash", "dHash", "pHash"):
+        return _失败("参数不合法", "哈希类型必须是 aHash/dHash/pHash")
+    错误 = _校验超时秒(超时秒)
+    if 错误:
+        return 错误
+    return 执行任务({"操作": "计算感知哈希", "字节b64": base64.b64encode(字节).decode("ascii"),
+                     "哈希类型": 哈希类型}, 超时秒=超时秒)
+
+
+def 缩放图像(字节: bytes, 宽度: int | None = None, 高度: int | None = None,
+             超时秒: float = 默认超时秒) -> 结果:
+    """隔离精确缩放图像（宽高至少一个，缺省一侧按纵横比推算）：成功值 {图像b64, 格式, 宽度, 高度}。"""
+    错误 = _校验字节(字节)
+    if 错误:
+        return 错误
+    if 宽度 is None and 高度 is None:
+        return _失败("参数不合法", "宽度与高度至少提供一个（缺省一侧按纵横比推算）")
+    for 名称, 值 in (("宽度", 宽度), ("高度", 高度)):
+        if 值 is not None and (not isinstance(值, int) or isinstance(值, bool) or 值 < 1):
+            return _失败("参数不合法", f"{名称}必须为正整数")
+    if 宽度 is not None and 高度 is not None and 宽度 * 高度 > 单图最大像素:
+        return _失败("超大", f"目标像素数 {宽度 * 高度} 超过上限 {单图最大像素}")
+    错误 = _校验超时秒(超时秒)
+    if 错误:
+        return 错误
+    return 执行任务({"操作": "缩放图像", "字节b64": base64.b64encode(字节).decode("ascii"),
+                     "宽度": 宽度, "高度": 高度}, 超时秒=超时秒)
+
+
+def 重编码图像(字节: bytes, 格式: str = "PNG", 质量: int = 90,
+               超时秒: float = 默认超时秒) -> 结果:
+    """隔离重编码图像（JPEG/PNG/WebP；质量 1-100）：成功值 {图像b64, 格式, 宽度, 高度}。"""
+    错误 = _校验字节(字节)
+    if 错误:
+        return 错误
+    if not isinstance(格式, str):
+        return _失败("参数不合法", "格式必须是 JPEG/PNG/WebP 文本")
+    目标格式 = 格式.upper()
+    if 目标格式 == "JPG":
+        目标格式 = "JPEG"
+    if 目标格式 not in ("JPEG", "PNG", "WEBP"):
+        return _失败("参数不合法", "格式必须是 JPEG/PNG/WebP")
+    if not isinstance(质量, int) or isinstance(质量, bool) or not (1 <= 质量 <= 100):
+        return _失败("参数不合法", "质量必须是 1-100 的整数")
+    错误 = _校验超时秒(超时秒)
+    if 错误:
+        return 错误
+    return 执行任务({"操作": "重编码图像", "字节b64": base64.b64encode(字节).decode("ascii"),
+                     "格式": 目标格式, "质量": 质量}, 超时秒=超时秒)
 
 
 def 等待并收集(进程列表: list[subprocess.Popen], 超时秒: float = 10.0) -> None:
