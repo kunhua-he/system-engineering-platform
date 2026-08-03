@@ -1,14 +1,18 @@
-"""Pillow 提供者测试：真实解码/像素统计/占位图 + 损坏/伪装/超大/超时/崩溃/不可用/零残留。
+"""Pillow 提供者测试：真实解码/像素统计/占位图 + 6 新能力（缩略图/EXIF转置/
+透明合成/感知哈希/缩放/重编码）+ 损坏/伪装/超大/超时/崩溃/不可用/自举/零残留。
 架构验证：主进程不加载 PIL；子进程覆盖启动/调用/超时/崩溃/重启/停止与残留清理；
-提供者不可用走环境变量依赖注入。
+提供者不可用走环境变量依赖注入；子进程自举清空 PYTHONPATH 仍成功。
 """
 from __future__ import annotations
 
 import base64
+import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import unittest
 import zlib
 from pathlib import Path
@@ -17,8 +21,17 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 支持库.适配层.Pillow提供者 import 解码图像, 像素统计, 生成占位图
+from 公共契约.能力契约.契约 import 能力注册表
+from 支持库.适配层.Pillow提供者 import (
+    解码图像, 像素统计, 生成占位图, 生成缩略图, 图像EXIF转置,
+    透明背景合成, 计算感知哈希, 缩放图像, 重编码图像, 注册能力,
+)
 from 支持库.适配层.Pillow提供者.实现 import 提供者 as 提供者模块
+
+提供者目录 = (
+    Path(__file__).resolve().parents[2]
+    / "支持库" / "适配层" / "Pillow提供者"
+)
 
 最小PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 最小JPEG = base64.b64decode("/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==")
@@ -32,6 +45,69 @@ def _大像素PNG(宽度: int, 高度: int) -> bytes:
             + struct.pack(">I", zlib.crc32(b"IHDR" + IHDR数据)))
     IEND = struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND"))
     return 头 + IHDR + IEND
+
+
+def _RGB_PNG(宽度: int, 高度: int, 像素函数) -> bytes:
+    """手工构造 RGB PNG（每像素按 像素函数(x, y) → (红,绿,蓝)），不加载 PIL。"""
+    头 = b"\x89PNG\r\n\x1a\n"
+    IHDR数据 = struct.pack(">IIBBBBB", 宽度, 高度, 8, 2, 0, 0, 0)
+    IHDR = (struct.pack(">I", len(IHDR数据)) + b"IHDR" + IHDR数据
+            + struct.pack(">I", zlib.crc32(b"IHDR" + IHDR数据)))
+    原始 = b"".join(b"\x00" + b"".join(bytes(像素函数(x, y)) for x in range(宽度))
+                    for y in range(高度))
+    压缩 = zlib.compress(原始)
+    IDAT = (struct.pack(">I", len(压缩)) + b"IDAT" + 压缩
+            + struct.pack(">I", zlib.crc32(b"IDAT" + 压缩)))
+    IEND = struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND"))
+    return 头 + IHDR + IDAT + IEND
+
+
+def _RGBA_PNG(宽度: int, 高度: int, 像素函数) -> bytes:
+    """手工构造 RGBA PNG（每像素按 像素函数(x, y) → (红,绿,蓝,不透明度)）。"""
+    头 = b"\x89PNG\r\n\x1a\n"
+    IHDR数据 = struct.pack(">IIBBBBB", 宽度, 高度, 8, 6, 0, 0, 0)
+    IHDR = (struct.pack(">I", len(IHDR数据)) + b"IHDR" + IHDR数据
+            + struct.pack(">I", zlib.crc32(b"IHDR" + IHDR数据)))
+    原始 = b"".join(b"\x00" + b"".join(bytes(像素函数(x, y)) for x in range(宽度))
+                    for y in range(高度))
+    压缩 = zlib.compress(原始)
+    IDAT = (struct.pack(">I", len(压缩)) + b"IDAT" + 压缩
+            + struct.pack(">I", zlib.crc32(b"IDAT" + 压缩)))
+    IEND = struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND"))
+    return 头 + IHDR + IDAT + IEND
+
+
+def _带EXIF方向JPEG(方向: int) -> bytes:
+    """用独立子进程生成带指定 EXIF orientation 的 JPEG（主进程不加载 PIL）。"""
+    代码 = "\n".join([
+        "import io, sys",
+        "from PIL import Image",
+        "图像 = Image.new('RGB', (8, 4), (200, 30, 90))",
+        "exif = Image.Exif()",
+        f"exif[274] = {方向}",
+        "输出 = io.BytesIO()",
+        "图像.save(输出, 'JPEG', exif=exif)",
+        "sys.stdout.buffer.write(输出.getvalue())",
+    ])
+    运行 = subprocess.run([sys.executable, "-c", 代码], capture_output=True, timeout=60)
+    if 运行.returncode != 0:
+        raise AssertionError(f"EXIF 样本生成失败: {运行.stderr.decode('utf-8', errors='replace')}")
+    return 运行.stdout
+
+
+class _假进程:
+    """模拟子进程：返回超过输出上限的响应字节（测 超大输出 错误码）。"""
+
+    returncode = 0
+    stdin = None
+    stdout = None
+    stderr = None
+
+    def communicate(self, input=None, timeout=None):
+        return b"x" * (提供者模块.默认最大输出字节 + 1), b""
+
+    def poll(self):
+        return 0
 
 
 def _退出子进程(码: int) -> subprocess.Popen:
@@ -216,6 +292,251 @@ class TestPillow提供者(unittest.TestCase):
             if 流:
                 流.close()
         self.assertIsNotNone(进程.poll())
+
+    def test_生成缩略图等比例与只缩不放大(self):
+        源 = 生成占位图(200, 100, "纯色", 背景颜色="#336699")
+        self.assertTrue(源.成功, 源.错误说明)
+        字节 = base64.b64decode(源.值["图像b64"])
+        缩 = 生成缩略图(字节, 100)
+        self.assertTrue(缩.成功, 缩.错误说明)
+        self.assertEqual((缩.值["宽度"], 缩.值["高度"]), (100, 50))
+        self.assertEqual(缩.值["格式"], "PNG")
+        放大 = 生成缩略图(字节, 500)  # 最大边长超过原图 → 不放大
+        self.assertEqual((放大.值["宽度"], 放大.值["高度"]), (200, 100))
+        jpeg缩 = 生成缩略图(最小JPEG, 100)
+        self.assertTrue(jpeg缩.成功, jpeg缩.错误说明)
+        self.assertEqual(jpeg缩.值["格式"], "JPEG")
+
+    def test_生成缩略图非法参数与超时上限(self):
+        self.assertEqual(生成缩略图(最小PNG, 0).错误码, "参数不合法")
+        self.assertEqual(生成缩略图(最小PNG, "100").错误码, "参数不合法")
+        self.assertEqual(生成缩略图(b"", 100).错误码, "参数不合法")
+        self.assertEqual(生成缩略图(最小PNG, 100, 超时秒=61).错误码, "参数不合法")
+
+    def test_图像EXIF转置方向样本(self):
+        转正 = 图像EXIF转置(_带EXIF方向JPEG(1))
+        self.assertTrue(转正.成功, 转正.错误说明)
+        self.assertEqual((转正.值["宽度"], 转正.值["高度"]), (8, 4))
+        self.assertEqual(转正.值["格式"], "JPEG")
+        转90 = 图像EXIF转置(_带EXIF方向JPEG(6))
+        self.assertTrue(转90.成功, 转90.错误说明)
+        self.assertEqual((转90.值["宽度"], 转90.值["高度"]), (4, 8))
+        无方向 = 图像EXIF转置(_RGB_PNG(6, 3, lambda x, y: (10, 20, 30)))
+        self.assertTrue(无方向.成功, 无方向.错误说明)
+        self.assertEqual((无方向.值["宽度"], 无方向.值["高度"]), (6, 3))
+
+    def test_图像EXIF转置非法参数(self):
+        self.assertEqual(图像EXIF转置(b"").错误码, "参数不合法")
+        self.assertEqual(图像EXIF转置("文本").错误码, "参数不合法")
+
+    def test_透明背景合成像素级(self):
+        """半透明红 (255,0,0,128) + 不透明红 (255,0,0,255) 合成到 #FFFFFF。"""
+        png = _RGBA_PNG(2, 1, lambda x, y: (255, 0, 0, 128 if x == 0 else 255))
+        合 = 透明背景合成(png, "#FFFFFF")
+        self.assertTrue(合.成功, 合.错误说明)
+        self.assertEqual((合.值["宽度"], 合.值["高度"]), (2, 1))
+        self.assertEqual(合.值["格式"], "PNG")
+        统计 = 像素统计(base64.b64decode(合.值["图像b64"]))
+        self.assertTrue(统计.成功, 统计.错误说明)
+        self.assertEqual(统计.值["平均颜色"], {"红": 255, "绿": 64, "蓝": 64})
+
+    def test_透明背景合成非法参数(self):
+        self.assertEqual(透明背景合成(最小PNG, "red").错误码, "参数不合法")
+        self.assertEqual(透明背景合成(b"", "#FFFFFF").错误码, "参数不合法")
+
+    def test_计算感知哈希确定性与格式(self):
+        渐变 = base64.b64decode(生成占位图(
+            64, 64, "渐变", 前景颜色="#FF0000", 背景颜色="#0000FF").值["图像b64"])
+        for 类型 in ("aHash", "dHash", "pHash"):
+            第一次 = 计算感知哈希(渐变, 类型)
+            self.assertTrue(第一次.成功, 第一次.错误说明)
+            第二次 = 计算感知哈希(渐变, 类型)
+            self.assertEqual(第一次.值["哈希"], 第二次.值["哈希"])
+            self.assertEqual(第一次.值["哈希类型"], 类型)
+            self.assertEqual(len(第一次.值["哈希"]), 16)
+            int(第一次.值["哈希"], 16)  # 必须是合法十六进制
+
+    def test_计算感知哈希差异性与类型区分(self):
+        渐变 = base64.b64decode(生成占位图(
+            64, 64, "渐变", 前景颜色="#FF0000", 背景颜色="#0000FF").值["图像b64"])
+        纯色 = _RGB_PNG(64, 64, lambda x, y: (255, 0, 0))
+        递减水平 = _RGB_PNG(64, 64, lambda x, y: ((63 - x) * 4, 0, 0))
+        self.assertNotEqual(计算感知哈希(渐变, "aHash").值["哈希"],
+                            计算感知哈希(纯色, "aHash").值["哈希"])
+        self.assertNotEqual(计算感知哈希(递减水平, "dHash").值["哈希"],
+                            计算感知哈希(纯色, "dHash").值["哈希"])
+        self.assertNotEqual(计算感知哈希(渐变, "pHash").值["哈希"],
+                            计算感知哈希(纯色, "pHash").值["哈希"])
+        三类型 = {计算感知哈希(渐变, 类型).值["哈希"] for 类型 in ("aHash", "dHash", "pHash")}
+        self.assertEqual(len(三类型), 3)
+
+    def test_计算感知哈希非法参数(self):
+        self.assertEqual(计算感知哈希(最小PNG, "xx").错误码, "参数不合法")
+        self.assertEqual(计算感知哈希(b"", "aHash").错误码, "参数不合法")
+
+    def test_缩放图像精确尺寸(self):
+        源 = 生成占位图(200, 100, "纯色")
+        字节 = base64.b64decode(源.值["图像b64"])
+        宽 = 缩放图像(字节, 宽度=50)
+        self.assertTrue(宽.成功, 宽.错误说明)
+        self.assertEqual((宽.值["宽度"], 宽.值["高度"]), (50, 25))
+        高 = 缩放图像(字节, 高度=80)
+        self.assertTrue(高.成功, 高.错误说明)
+        self.assertEqual((高.值["宽度"], 高.值["高度"]), (160, 80))
+        双 = 缩放图像(字节, 宽度=60, 高度=40)
+        self.assertTrue(双.成功, 双.错误说明)
+        self.assertEqual((双.值["宽度"], 双.值["高度"]), (60, 40))
+        self.assertEqual(双.值["格式"], "PNG")
+
+    def test_缩放图像非法参数与超大(self):
+        self.assertEqual(缩放图像(最小PNG).错误码, "参数不合法")
+        self.assertEqual(缩放图像(最小PNG, 宽度="10").错误码, "参数不合法")
+        self.assertEqual(缩放图像(最小PNG, 宽度=0, 高度=10).错误码, "参数不合法")
+        self.assertEqual(缩放图像(b"", 宽度=10).错误码, "参数不合法")
+        self.assertEqual(缩放图像(最小PNG, 宽度=7000, 高度=7000).错误码, "超大")
+
+    def test_重编码图像像素级与质量差异(self):
+        源 = 生成占位图(4, 4, "纯色", 背景颜色="#123456")
+        字节 = base64.b64decode(源.值["图像b64"])
+        期望 = {"红": 18, "绿": 52, "蓝": 86}
+        png = 重编码图像(字节, "PNG")
+        self.assertTrue(png.成功, png.错误说明)
+        self.assertEqual(png.值["格式"], "PNG")
+        统计 = 像素统计(base64.b64decode(png.值["图像b64"]))
+        self.assertTrue(统计.成功, 统计.错误说明)
+        self.assertEqual(统计.值["平均颜色"], 期望)
+        for 格式 in ("JPEG", "WEBP"):
+            重 = 重编码图像(字节, 格式, 100)
+            self.assertTrue(重.成功, 重.错误说明)
+            self.assertEqual(重.值["格式"], 格式)
+            统计 = 像素统计(base64.b64decode(重.值["图像b64"]))
+            self.assertTrue(统计.成功, 统计.错误说明)
+            for 通道 in ("红", "绿", "蓝"):
+                self.assertLessEqual(
+                    abs(统计.值["平均颜色"][通道] - 期望[通道]), 2, 通道)
+        渐变 = base64.b64decode(生成占位图(
+            64, 64, "渐变", 前景颜色="#FF0000", 背景颜色="#0000FF").值["图像b64"])
+        低质量 = 重编码图像(渐变, "JPEG", 1)
+        高质量 = 重编码图像(渐变, "JPEG", 100)
+        self.assertTrue(低质量.成功 and 高质量.成功)
+        self.assertLess(len(base64.b64decode(低质量.值["图像b64"])),
+                        len(base64.b64decode(高质量.值["图像b64"])))
+
+    def test_重编码图像非法参数(self):
+        self.assertEqual(重编码图像(最小PNG, "GIF").错误码, "参数不合法")
+        self.assertEqual(重编码图像(最小PNG, "PNG", 0).错误码, "参数不合法")
+        self.assertEqual(重编码图像(最小PNG, "PNG", 101).错误码, "参数不合法")
+        self.assertEqual(重编码图像(b"", "PNG").错误码, "参数不合法")
+        self.assertEqual(重编码图像(最小PNG, "PNG", 90, 超时秒=0).错误码, "参数不合法")
+
+    def test_新能力超大像素(self):
+        self.assertEqual(生成缩略图(_大像素PNG(8000, 8000), 100).错误码, "超大")
+        self.assertEqual(图像EXIF转置(_大像素PNG(8000, 8000)).错误码, "超大")
+        self.assertEqual(透明背景合成(_大像素PNG(8000, 8000), "#FFFFFF").错误码, "超大")
+        self.assertEqual(计算感知哈希(_大像素PNG(8000, 8000), "aHash").错误码, "超大")
+        self.assertEqual(重编码图像(_大像素PNG(8000, 8000), "PNG").错误码, "超大")
+
+    def test_子进程输出超大返回超大(self):
+        with mock.patch.object(提供者模块, "_启动子进程", return_value=_假进程()), \
+                mock.patch.object(提供者模块, "_终止进程组"), \
+                mock.patch.object(提供者模块, "_关闭流"):
+            结果 = 解码图像(最小PNG)
+        self.assertEqual(结果.错误码, "超大")
+
+    def test_清空PYTHONPATH全链路调用成功(self):
+        with mock.patch.dict(os.environ, {"PYTHONPATH": ""}):
+            结果 = 解码图像(最小PNG)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["格式"], "PNG")
+
+    def test_子进程入口清空PYTHONPATH最小调用成功(self):
+        入口 = 提供者目录 / "实现" / "子进程入口.py"
+        请求 = json.dumps({"操作": "解码图像",
+                           "字节b64": base64.b64encode(最小PNG).decode("ascii")},
+                          ensure_ascii=False) + "\n"
+        环境 = dict(os.environ)
+        环境["PYTHONPATH"] = ""
+        运行 = subprocess.run([sys.executable, str(入口)], input=请求.encode("utf-8"),
+                              capture_output=True, env=环境, timeout=60)
+        self.assertEqual(运行.returncode, 0,
+                         运行.stderr.decode("utf-8", errors="replace"))
+        响应 = json.loads(运行.stdout.decode("utf-8"))
+        self.assertTrue(响应["成功"], 响应)
+        self.assertEqual(响应["值"]["格式"], "PNG")
+
+    def test_子进程自举激活指针解析(self):
+        临时 = Path(tempfile.mkdtemp(prefix="测试_Pillow自举_"))
+        try:
+            环境目录 = 临时 / "平台客户端环境"
+            客户端目录 = 环境目录 / "平台客户端"
+            实现目录 = 客户端目录 / "支持库" / "适配层" / "Pillow提供者" / "实现"
+            实现目录.mkdir(parents=True)
+            (客户端目录 / "__init__.py").write_text("", encoding="utf-8")
+            (环境目录 / "当前.json").write_text(json.dumps(
+                {"摘要sha256": "0" * 16, "制品目录": "平台客户端-0000000000000000",
+                 "制品摘要": "0" * 32, "版本": 1, "栅栏令牌": 1}),
+                encoding="utf-8")
+            源实现 = 提供者目录 / "实现"
+            shutil.copy2(源实现 / "子进程入口.py", 实现目录 / "子进程入口.py")
+            shutil.copy2(源实现 / "子进程解析.py", 实现目录 / "子进程解析.py")
+            请求 = json.dumps({"操作": "解码图像",
+                               "字节b64": base64.b64encode(最小PNG).decode("ascii")},
+                              ensure_ascii=False) + "\n"
+            环境 = dict(os.environ)
+            环境["PYTHONPATH"] = ""
+            环境["Pillow提供者_客户端环境目录"] = str(环境目录)
+            运行 = subprocess.run([sys.executable, str(实现目录 / "子进程入口.py")],
+                                  input=请求.encode("utf-8"), capture_output=True,
+                                  env=环境, timeout=60)
+            self.assertEqual(运行.returncode, 0,
+                             运行.stderr.decode("utf-8", errors="replace"))
+            响应 = json.loads(运行.stdout.decode("utf-8"))
+            self.assertTrue(响应["成功"], 响应)
+        finally:
+            shutil.rmtree(临时, ignore_errors=True)
+
+    def test_超时取消后无残留进程(self):
+        捕获 = {}
+
+        def 挂起执行(请求, 超时秒=提供者模块.默认超时秒):
+            进程 = 提供者模块._启动子进程()
+            捕获["进程"] = 进程
+            try:
+                进程.communicate(timeout=0.3)  # 不发请求 → 真实挂起 → 超时
+            except subprocess.TimeoutExpired:
+                return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+            finally:
+                提供者模块._终止进程组(进程)
+                for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
+                    if 流:
+                        流.close()
+            return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+        with mock.patch.object(提供者模块, "执行任务", side_effect=挂起执行):
+            结果 = 解码图像(最小PNG)
+        self.assertEqual(结果.错误码, "超时")
+        self.assertIsNotNone(捕获["进程"].poll())  # 进程组已被强杀，无残留
+
+    def test_注册能力与声明一致(self):
+        注册表 = 能力注册表()
+        注册能力(注册表)
+        声明数据 = json.loads((提供者目录 / "包声明.json").read_text(encoding="utf-8"))
+        定义数据 = json.loads((提供者目录 / "能力定义.json").read_text(encoding="utf-8"))
+        声明能力表 = [能力["能力id"] for 能力 in 声明数据["能力"]]
+        定义能力表 = [能力["能力id"] for 能力 in 定义数据["能力列表"]]
+        self.assertEqual(len(定义能力表), 9)
+        self.assertEqual(定义能力表, 声明能力表)
+        for 能力id in 定义能力表:
+            self.assertIsNotNone(注册表.获取(能力id), 能力id)
+
+    def test_完整性摘要一致(self):
+        摘要数据 = json.loads((提供者目录 / "完整性摘要.json").read_text(encoding="utf-8"))
+        self.assertEqual(摘要数据["包id"], "支持库.适配层.Pillow提供者")
+        self.assertEqual(摘要数据["摘要算法"], "sha256")
+        self.assertTrue(摘要数据["文件清单"], "文件清单不得为空")
+        清单路径 = {项["路径"] for 项 in 摘要数据["文件清单"]}
+        self.assertIn("__init__.py", 清单路径)
+        self.assertIn("能力定义.json", 清单路径)
+        self.assertIn("实现/子进程入口.py", 清单路径)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "d5d341ac210c7f7d071c24c20f16a13b8153a9aa279659a7ab1036a6f491d5e2"
+      "sha256": "8c52e2f755416fdece9255d5f61870a665910985a1090b62bf46f6326e89384b"
     },
     {
       "路径": "依赖锁.json",
@@ -13,43 +13,43 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "87d02bf7d9962864980f07938f80cc85f0c5e4764dd51216a1d53c64f3aaeb37"
+      "sha256": "7c0a761c1f158710c883f8f06c65f712e7d01560346d30df331d0f28c4cc3d0b"
     },
     {
       "路径": "实现/子进程入口.py",
-      "sha256": "5c7a6819a49a6e068e879b82b9188f3d99b0013eb418ae5af1c38d541f22bd2d"
+      "sha256": "31000709fdae8c28e04d2b2ea077f4f1070ea084a7eca11d73636895f99a3581"
     },
     {
       "路径": "实现/子进程解析.py",
-      "sha256": "ae8a7001f48ea71a533cdd151896b5ff5657688c43d900a59dd67a3ad0e2928d"
+      "sha256": "787185cd24953a6c5a43eb10a9f958c9f4316bf5d56db267d728c91c2c2e6986"
     },
     {
       "路径": "实现/提供者.py",
-      "sha256": "ffe0347b8aaa703efafe8cd53b51370bb2fd0189a369c3b8a64677d74583000a"
+      "sha256": "ef62dbb8ef8b4ca9622d6a473b580eee1337ed51a86e86ac953203f81ecfe0d2"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "2a828481cd21eecf9226669be23430324b1a161be6b780ac44b3b53e74904592"
+      "sha256": "b05c0e7aed5c0de67a04f48e250a19b41f0125b00ae03b45551f50a12eb4641b"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "5261bb5ee0e2d67e5d5dc21e0df2973e6ea3d1344dd1e7ad3b8548cf6837d23d"
+      "sha256": "68b65138c62a302ba9bafee66cfb7a3380fab83b7673772077ed83842c8ac8b8"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "0afeb74dbac2b5cdabb707a15af584ac3a10f9b53b3ca9865d67e63b233b8ed6"
+      "sha256": "4060ab8bfe0a2a490fa80fe9c6db29d48fc0765fa120b4e9dba43c26f0465240"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "b9d63d31c9316a811cf990c4fb13f0518358d8fd3417d284d22ce2d17deea2ba"
+      "sha256": "a2019b783491bdd543435b7f6e63a4623cdf7d25837566f782ea667932962362"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "a9af7457ffb940131d8a4b7ac4dd7fde37eb2e259192bf6a02f610d31fe6394e"
+      "sha256": "4103318a36cc827d9f3f7b89f697148ca9c8f9f35e49ca7bc8bef061de886c94"
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "e6745246913e041d51f5edf7576fb7af5f71d555a616b758cba66c3d7922c001"
+      "sha256": "b108fd012c900dc56e67a002c95c68c1cfe9ccf4650d8697cee6a316eb148233"
     }
   ]
 }
