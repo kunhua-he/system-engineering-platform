@@ -13,7 +13,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 开发工具.组件合规.合规测试包 import 组件合规, 合规场景表
-from 开发工具.组件规范.组件规范 import 校验组件规范, 生成完整性摘要
+from 开发工具.组件规范.完整性摘要 import 生成完整性摘要, 校验完整性摘要
 
 
 def 建合规组件() -> Path:
@@ -47,8 +47,10 @@ def 建合规组件() -> Path:
     (目录 / "说明" / "说明书.md").write_text(
         "# 合规组件说明书\n\n参数: 文本\n错误码: 参数不合法\n内部错误\n版本 1.0.0\n",
         encoding="utf-8")
-    # 完整性摘要（在最后生成，避免摘要自身被计入）
-    生成完整性摘要(目录)
+    # 完整性摘要（唯一生成器：文件清单 sha256 唯一权威格式，最后生成避免自引用）
+    摘要 = 生成完整性摘要(目录, 包id="合规.组件", 版本="1.0.0")
+    (目录 / "完整性摘要.json").write_text(
+        json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 目录
 
 
@@ -83,14 +85,25 @@ class Test组件合规(unittest.TestCase):
         self.assertFalse(场景详情["完整性摘要"])
 
     def test_摘要篡改拒绝(self):
+        """篡改 完整性摘要.json 中清单条目 sha256 → 唯一校验器拒绝。"""
         组件目录 = 建合规组件()
         摘要路径 = 组件目录 / "完整性摘要.json"
         摘要数据 = json.loads(摘要路径.read_text(encoding="utf-8"))
-        摘要数据["摘要"] = "伪造摘要"
+        摘要数据["文件清单"][0]["sha256"] = "伪造摘要" + "0" * 40
         摘要路径.write_text(json.dumps(摘要数据, ensure_ascii=False), encoding="utf-8")
-        结果 = 校验组件规范(组件目录)
-        self.assertFalse(结果.成功)
-        self.assertTrue(any("完整性摘要不匹配" in 问题 for 问题 in 结果.问题列表))
+        通过, 问题列表 = 校验完整性摘要(组件目录)
+        self.assertFalse(通过)
+        self.assertTrue(any("文件摘要不一致" in 问题 for 问题 in 问题列表))
+
+    def test_旧组件id摘要格式拒绝(self):
+        """旧 {组件id,摘要} 格式必须被唯一校验器拒绝（拒绝漂移）。"""
+        组件目录 = 建合规组件()
+        (组件目录 / "完整性摘要.json").write_text(json.dumps({
+            "组件id": "合规.组件", "摘要": "旧格式摘要",
+        }, ensure_ascii=False), encoding="utf-8")
+        通过, 问题列表 = 校验完整性摘要(组件目录)
+        self.assertFalse(通过)
+        self.assertTrue(any("文件清单缺失或为空" in 问题 for 问题 in 问题列表))
 
     def test_实现文件删除拒绝(self):
         组件目录 = 建合规组件()

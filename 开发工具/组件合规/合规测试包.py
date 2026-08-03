@@ -327,18 +327,12 @@ class 组件合规:
         return False, "缺少 说明/ 或 说明书.md"
 
     def _场景完整性摘要(self) -> tuple[bool, str]:
-        """完整性摘要：摘要存在且匹配。"""
-        from 开发工具.组件规范.组件规范 import 计算目录摘要
-        摘要路径 = self.组件目录 / "完整性摘要.json"
-        if not 摘要路径.is_file():
-            return False, "缺少 完整性摘要.json"
-        try:
-            摘要数据 = json.loads(摘要路径.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return False, "完整性摘要 JSON 解析失败"
-        期望 = 摘要数据.get("摘要", "")
-        实际 = 计算目录摘要(self.组件目录)
-        return 期望 == 实际, f"摘要匹配（{实际}）"
+        """完整性摘要：经唯一校验器验证文件清单格式闭合（拒绝旧格式与自比较）。"""
+        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        通过, 问题列表 = 校验完整性摘要(self.组件目录)
+        if not 通过:
+            return False, "; ".join(问题列表) or "完整性摘要校验失败"
+        return True, "文件清单格式校验通过（唯一校验器）"
 
     def _场景公共入口(self) -> tuple[bool, str]:
         """公共入口：包声明入口文件存在且可导入。"""
