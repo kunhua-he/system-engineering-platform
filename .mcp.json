@@ -30,6 +30,18 @@
       "cwd": "~/Documents/Agent/PHP/系统工程平台",
       "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "核心开发者"}
     },
+    "system_engineering_project_developer": {
+      "command": "python3.14",
+      "args": ["MCP工具箱/项目服务.py"],
+      "cwd": "~/Documents/Agent/PHP/系统工程平台",
+      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "项目开发者"}
+    },
+    "system_engineering_platform_build_developer": {
+      "command": "python3.14",
+      "args": ["MCP工具箱/项目服务.py"],
+      "cwd": "~/Documents/Agent/PHP/系统工程平台",
+      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "平台构建开发者"}
+    },
     "system_engineering_publisher": {
       "command": "python3.14",
       "args": ["MCP工具箱/项目服务.py"],

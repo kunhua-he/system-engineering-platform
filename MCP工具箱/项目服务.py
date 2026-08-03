@@ -43,6 +43,8 @@ except ModuleNotFoundError:
     "支持库开发者": "system_engineering_support_library_developer",
     "模块开发者": "system_engineering_module_developer",
     "核心开发者": "system_engineering_core_developer",
+    "项目开发者": "system_engineering_project_developer",
+    "平台构建开发者": "system_engineering_platform_build_developer",
     "平台维护者": "system_engineering_toolkit",
     "发布者": "system_engineering_publisher",
 }[当前角色]
@@ -238,6 +240,8 @@ async def 工具列表() -> list[Tool]:
         Tool(name="support_library_development_guide", description="支持库开发专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="module_development_guide", description="模块开发专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="core_development_guide", description="核心开发专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
+        Tool(name="project_development_guide", description="项目适配开发专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
+        Tool(name="platform_build_development_guide", description="平台构建开发专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="platform_maintenance_guide", description="平台维护专属流程与边界。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="release_guide", description="发布者专属审核、激活和回滚流程。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="codegraph_explore", description="在系统工程平台自己的代码地图中探索符号、源码和调用链。", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
@@ -280,6 +284,7 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
     elif 名称 in {
         "support_library_development_guide", "module_development_guide",
         "core_development_guide", "platform_maintenance_guide", "release_guide",
+        "project_development_guide", "platform_build_development_guide",
     }:
         数据 = 获取角色指南(当前角色)
     elif 名称 == "codegraph_explore":
