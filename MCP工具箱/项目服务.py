@@ -240,6 +240,55 @@ def _按角色探索代码(查询: str) -> dict[str, Any]:
     }
 
 
+def _验证计划(修改路径: list[str], 级别: str = "工作包") -> dict[str, Any]:
+    """按修改范围给出定向验证建议；只规划，不执行测试。"""
+    测试表 = {
+        "项目适配层": "测试中心/项目适配",
+        "运行核心/运行环境": "测试中心/运行核心",
+        "运行核心": "测试中心/运行核心",
+        "平台控制面/包仓库": "测试中心/平台控制面",
+        "客户端": "测试中心/客户端",
+        "支持库": "测试中心/支持库",
+        "模块库": "测试中心/模块库",
+        "MCP工具箱": "测试中心/MCP工具箱",
+    }
+    影响阶段: set[str] = set()
+    for 路径 in 修改路径:
+        规范路径 = str(路径).replace("\\", "/").lstrip("./")
+        for 前缀, 测试目录 in 测试表.items():
+            if 规范路径 == 前缀 or 规范路径.startswith(f"{前缀}/"):
+                影响阶段.add(测试目录)
+    目录列表 = sorted(影响阶段)
+    测试命令 = []
+    for 目录 in 目录列表:
+        测试文件 = sorted(
+            (项目根目录 / 目录).rglob("测试_*.py")
+            if (项目根目录 / 目录).is_dir() else []
+        )
+        if 测试文件:
+            测试命令.append(
+                ["python3.14", "测试中心/运行测试.py", "--测试文件", *[
+                    str(文件.relative_to(项目根目录)) for 文件 in 测试文件
+                ], "--并行数", "0"]
+            )
+    if 级别 == "阶段收口":
+        测试命令 = [["python3.14", "测试中心/运行测试.py"]]
+    elif 级别 == "正式发布":
+        测试命令 = [
+            ["python3.14", "测试中心/运行测试.py", "--范围", "全部"],
+            ["python3.14", "开发工具/发布门禁/运行发布门禁.py"],
+        ]
+    return {
+        "修改路径": 修改路径,
+        "验证级别": 级别,
+        "受影响测试目录": 目录列表,
+        "并行建议": "不同测试目录可并行；共享数据库、端口、发布指针和外部应用必须串行。",
+        "建议命令": 测试命令,
+        "是否需要全量": 级别 in {"阶段收口", "正式发布"},
+        "说明": "本工具只生成计划，不执行验证；执行后必须用 verify_and_record 记录证据。",
+    }
+
+
 @服务.list_tools()
 async def 工具列表() -> list[Tool]:
     工具定义 = [
@@ -261,6 +310,7 @@ async def 工具列表() -> list[Tool]:
         Tool(name="memory_search", description="搜索系统工程平台自己的项目记忆。", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}),
         Tool(name="memory_write", description="写入系统工程平台自己的长期项目记忆。", inputSchema={"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}, "labels": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "body"]}),
         Tool(name="verify_and_record", description="不经 shell 运行验证；仅退出码为0时记入最近成功证据。", inputSchema={"type": "object", "properties": {"name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, "required": ["name", "command"]}),
+        Tool(name="verification_plan", description="按修改路径生成定向验证计划；只规划不执行，避免每次重复跑全量。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}}, "required": ["modified_paths"]}),
     ]
     return [工具 for 工具 in 工具定义 if 工具.name in 可用工具(当前角色)]
 
@@ -306,6 +356,8 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         数据 = _搜索记忆(str(参数["query"]), int(参数.get("limit", 5)))
     elif 名称 == "memory_write":
         数据 = _写入记忆(str(参数["title"]), str(参数["body"]), list(参数.get("labels", [])))
+    elif 名称 == "verification_plan":
+        数据 = _验证计划(list(参数.get("modified_paths", [])), str(参数.get("level", "工作包")))
     elif 名称 == "verify_and_record":
         if not 查询反馈状态(反馈路径, 当前开工id)["已反馈"]:
             raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
