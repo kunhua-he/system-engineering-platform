@@ -29,7 +29,11 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class 探针结果:
-    """系统工具独立进程探针结果（成功=False 时不抛异常，只返回结果）。"""
+    """系统工具独立进程探针结果（成功=False 时不抛异常，只返回结果）。
+
+    统一字段：成功/错误码/退出码/版本/标准错误摘要/耗时秒/诊断/
+    错误摘要/可重试；失败不伪造版本，错误码 工具缺失/探针超时/退出码非零 明确。
+    """
 
     成功: bool
     错误码: str = ""           # 参数不合法/工具缺失/探针超时/退出码非零
@@ -38,6 +42,15 @@ class 探针结果:
     标准错误摘要: str = ""     # 标准错误截断摘要
     耗时秒: float = 0.0
     诊断: str = ""
+    可重试: bool = False       # 探针超时等暂态失败 → 可重试
+    错误摘要: str = ""         # 统一错误摘要（失败时=诊断 or 标准错误摘要；成功为空）
+
+    def __post_init__(self) -> None:
+        # 成功时错误摘要恒为空；失败未显式提供时由 诊断/标准错误摘要 派生
+        if self.成功:
+            object.__setattr__(self, "错误摘要", "")
+        elif not self.错误摘要:
+            object.__setattr__(self, "错误摘要", self.诊断 or self.标准错误摘要)
 
 
 def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float = 5.0,
@@ -84,6 +97,7 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
             return 探针结果(
                 False, 错误码="探针超时", 耗时秒=time.monotonic() - 开始,
                 诊断=f"{名称} 探针超时（> {超时秒} 秒），已强制终止",
+                可重试=True,
             )
         退出码 = 进程.returncode
         耗时秒 = time.monotonic() - 开始

@@ -55,13 +55,22 @@ def 校验配置(
     # 3. 类型错误报告
     类型映射 = {
         "文本": str, "整数": int, "布尔": bool, "列表": list, "字典": dict,
+        "数字": (int, float),
     }
     for 名称, 声明 in 声明表.items():
         if 名称 not in 配置:
             continue
         期望类型 = 声明.get("类型", "")
         期望类 = 类型映射.get(期望类型)
-        if 期望类 and not isinstance(配置[名称], 期望类):
+        if 期望类 is None:
+            continue
+        if 期望类型 == "数字":
+            # 数字：整数或浮点，排除布尔
+            类型通过 = (isinstance(配置[名称], (int, float))
+                        and not isinstance(配置[名称], bool))
+        else:
+            类型通过 = isinstance(配置[名称], 期望类)
+        if not 类型通过:
             结果.问题列表.append(
                 f"配置类型错误: {名称} 期望 {期望类型}，实际 {type(配置[名称]).__name__}"
             )
