@@ -132,11 +132,14 @@ class TestReportlab提供者(unittest.TestCase):
         self.assertIn("PDF生成.生成PDF", 定义能力表)
 
     def test_完整性摘要一致(self):
-        """完整性摘要与能力定义一致（P3 编译器生成）。"""
+        """完整性摘要与包声明一致（文件清单格式，门禁口径）。"""
         摘要数据 = json.loads((提供者目录 / "完整性摘要.json").read_text(encoding="utf-8"))
         self.assertEqual(摘要数据["包id"], "支持库.适配层.reportlab提供者")
-        self.assertEqual(摘要数据["能力数"], 1)
-        self.assertEqual(摘要数据["能力清单"], ["PDF生成.生成PDF"])
+        self.assertEqual(摘要数据["摘要算法"], "sha256")
+        self.assertTrue(摘要数据["文件清单"], "文件清单不得为空")
+        清单路径 = {项["路径"] for 项 in 摘要数据["文件清单"]}
+        self.assertIn("__init__.py", 清单路径)
+        self.assertIn("能力定义.json", 清单路径)
 
 
 if __name__ == "__main__":
