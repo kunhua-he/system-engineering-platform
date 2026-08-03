@@ -39,9 +39,27 @@ def 查找textutil() -> str | None:
 
 
 def 检查提供者() -> 结果:
-    """检查 textutil 是否可用。"""
+    """检查 textutil 是否可用（真实独立进程探针：textutil -help + macOS 版本）。
+
+    textutil 无独立版本号，版本取 macOS 系统版本；探针失败
+    （工具缺失/超时/退出码非0）→ 外部提供者不可用。
+    """
+    import platform
+    from 运行核心.运行环境管理器.系统探针 import 检查系统工具
     路径 = 查找textutil()
-    return 结果.成功结果({"textutil": "可用" if 路径 else "不可用"})
+    if not 路径:
+        return _失败("外部提供者不可用", "textutil 未找到（macOS 系统能力缺失）")
+    探针 = 检查系统工具("textutil", [路径], 版本参数="-help")
+    if not 探针.成功:
+        return _失败("外部提供者不可用",
+                      f"textutil 探针失败（{探针.错误码}）: {探针.诊断}")
+    版本 = platform.mac_ver()[0] or platform.release()
+    return 结果.成功结果({
+        "textutil": "可用",
+        "版本": 版本,
+        "退出码": 探针.退出码,
+        "标准错误摘要": 探针.标准错误摘要,
+    })
 
 
 def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:

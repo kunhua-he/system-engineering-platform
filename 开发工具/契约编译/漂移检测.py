@@ -211,6 +211,24 @@ def 检测生成文件被改(产物目录: Path) -> list[str]:
     return 问题列表
 
 
+def 检测完整性摘要格式(包目录: Path) -> list[str]:
+    """完整性摘要.json 必须为文件清单格式（拒绝旧'能力数'格式/缺文件清单）。"""
+    问题列表 = []
+    摘要路径 = 包目录 / "完整性摘要.json"
+    if not 摘要路径.is_file():
+        return 问题列表
+    try:
+        摘要数据 = json.loads(摘要路径.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return [f"完整性摘要.json 不是合法 JSON: {摘要路径}"]
+    文件清单 = 摘要数据.get("文件清单")
+    if not isinstance(文件清单, list) or not 文件清单:
+        问题列表.append(f"完整性摘要.json 非文件清单格式（缺文件清单或为空）: {摘要路径}")
+    if 摘要数据.get("摘要算法", "sha256") != "sha256":
+        问题列表.append(f"完整性摘要.json 摘要算法不合法: {摘要数据.get('摘要算法')}")
+    return 问题列表
+
+
 def 检测能力定义漂移(包目录: Path) -> list[str]:
     """能力定义 → 生成物一致性：从能力定义重编译并与现有生成物对比。
 
@@ -228,6 +246,8 @@ def 检测能力定义漂移(包目录: Path) -> list[str]:
         if 声明文件.is_file():
             问题列表.append(f"存在包声明但无能力定义（需迁移到唯一事实源）: {包目录}")
         return 问题列表
+    # 完整性摘要必须为文件清单格式（拒绝旧'能力数'格式漂移）
+    问题列表.extend(检测完整性摘要格式(包目录))
     # 加入平台根以导入编译器
     平台根 = str(包目录.resolve().parents[1])
     if 平台根 not in sys.path:

@@ -21,14 +21,26 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
 import venv
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 工程缓存目录名 = "工程缓存"
 提供者环境根名 = "提供者运行环境"
+缓存证据文件名 = "缓存证据.jsonl"
 代理地址 = "http://127.0.0.1:4780"
+默认最大并行 = 8
+
+# 并行构建锁：同一提供者、同一制品仓库必须串行
+_锁容器锁 = threading.Lock()
+_提供者锁表: dict[str, threading.Lock] = {}
+_制品锁表: dict[str, threading.Lock] = {}
+# 缓存证据追加写锁（多线程安全）
+_证据锁 = threading.Lock()
 
 
 @dataclass
@@ -74,37 +86,145 @@ def 读取依赖锁(提供者目录: Path) -> dict:
     return json.loads(锁文件.read_text(encoding="utf-8"))
 
 
+def _定位系统根(提供者目录: Path) -> Path:
+    """定位系统根：含 支持库+模块库 的祖先目录；无则退回提供者目录自身。"""
+    系统根 = Path(提供者目录).resolve()
+    for 祖先 in 系统根.parents:
+        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
+            return 祖先
+    return 系统根
+
+
 def 环境目录(提供者目录: Path, 摘要: str) -> Path:
     """计算环境目录：工程缓存/提供者运行环境/<提供者id>/<摘要>/。"""
-    系统根 = 提供者目录.resolve()
-    for _祖先 in 系统根.parents:
-        if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
-            系统根 = _祖先
-            break
+    系统根 = _定位系统根(提供者目录)
     return 系统根 / 工程缓存目录名 / 提供者环境根名 / 提供者目录.name / 摘要
+
+
+def _输入哈希(提供者目录: Path) -> str:
+    """输入证据：依赖锁.json 内容哈希（文件缺失按空内容计）。"""
+    锁文件 = Path(提供者目录) / "依赖锁.json"
+    if not 锁文件.is_file():
+        return hashlib.sha256(b"").hexdigest()[:16]
+    return hashlib.sha256(锁文件.read_bytes()).hexdigest()[:16]
+
+
+def _系统版本详情() -> str:
+    """系统版本指纹：macOS 用 sw_vers 输出，其他平台退回 platform 信息。"""
+    try:
+        结果 = subprocess.run(["sw_vers"], capture_output=True, timeout=10)
+        if 结果.returncode == 0:
+            return 结果.stdout.decode("utf-8", "ignore").strip()
+    except Exception:
+        pass
+    return f"{platform.system()} {platform.release()}"
+
+
+def _记录证据(提供者目录: Path, 类型: str, 摘要: str, 输入哈希: str,
+              *, 错误码: str = "", 错误说明: str = "") -> None:
+    """追加一条缓存证据到 工程缓存/提供者运行环境/缓存证据.jsonl（线程安全）。
+
+    类型：命中（复用现有环境/系统解释器回退）、重建（真实构建）、失败（构建失败）。
+    """
+    系统根 = _定位系统根(提供者目录)
+    记录 = {
+        "时间": datetime.now().isoformat(timespec="seconds"),
+        "提供者id": Path(提供者目录).name,
+        "摘要": 摘要,
+        "类型": 类型,
+        "输入哈希": 输入哈希,
+        "系统版本": _系统版本详情(),
+        "错误码": 错误码,
+        "错误说明": 错误说明,
+    }
+    with _证据锁:
+        证据文件 = 系统根 / 工程缓存目录名 / 提供者环境根名 / 缓存证据文件名
+        证据文件.parent.mkdir(parents=True, exist_ok=True)
+        with 证据文件.open("a", encoding="utf-8") as 写入:
+            写入.write(json.dumps(记录, ensure_ascii=False) + "\n")
+
+
+def _制品仓库标识(依赖锁: dict) -> str:
+    """制品仓库标识：锁内各包 索引地址+代理 组合；全默认 → 默认制品仓库。"""
+    标识表 = set()
+    for 包 in 依赖锁.get("包", []):
+        索引 = 包.get("索引地址") or "默认索引"
+        代理 = 包.get("代理") or ""
+        标识表.add(f"{索引}|{代理}")
+    return "|".join(sorted(标识表)) or "默认制品仓库"
+
+
+def _提供者锁(提供者id: str) -> threading.Lock:
+    with _锁容器锁:
+        return _提供者锁表.setdefault(提供者id, threading.Lock())
+
+
+def _制品仓库锁(标识: str) -> threading.Lock:
+    with _锁容器锁:
+        return _制品锁表.setdefault(标识, threading.Lock())
 
 
 def 确保环境(提供者目录: Path, *, 超时秒: int = 300) -> 环境结果:
     """确保提供者环境存在且有效；缺失/损坏则构建。
 
     依赖锁为空 → 无需独立环境（纯标准库提供者），返回系统解释器。
+    命中/重建/失败 均追加写入 缓存证据.jsonl（可审计）。
     """
     依赖锁 = 读取依赖锁(提供者目录)
+    输入哈希 = _输入哈希(提供者目录)
+    提供者id = 提供者目录.name
     if not 依赖锁:
+        _记录证据(提供者目录, "命中", "", 输入哈希)
         return 环境结果(True, 解释器路径=sys.executable, 错误说明="无第三方依赖，使用系统解释器")
     # 全部为外部应用/系统工具（非 pip 包）→ 使用系统解释器，不构建 venv
     pip包表 = [包 for 包 in 依赖锁.get("包", []) if _是pip包(包)]
     if not pip包表:
+        _记录证据(提供者目录, "命中", "", 输入哈希)
         return 环境结果(True, 解释器路径=sys.executable,
-                        错误说明="仅外部应用/系统工具，使用系统解释器")
-    摘要 = 计算环境摘要(依赖锁, 提供者目录.name)
+                         错误说明="仅外部应用/系统工具，使用系统解释器")
+    摘要 = 计算环境摘要(依赖锁, 提供者id)
     目标 = 环境目录(提供者目录, 摘要)
     解释器 = 目标 / "bin" / "python3"
     校验结果 = 校验环境(解释器, 依赖锁)
     if 校验结果:
+        _记录证据(提供者目录, "命中", 摘要, 输入哈希)
         return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
     # 损坏/缺失 → 临时构建 → 原子改名
-    return _构建环境(提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒)
+    结果 = _构建环境(提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒)
+    if 结果.成功:
+        _记录证据(提供者目录, "重建", 摘要, 输入哈希)
+    else:
+        _记录证据(提供者目录, "失败", 摘要, 输入哈希,
+                   错误码=结果.错误码, 错误说明=结果.错误说明)
+    return 结果
+
+
+def _并行确保单环境(提供者目录: Path) -> 环境结果:
+    """并行任务单元：先取提供者锁（同提供者串行），再取制品仓库锁（同制品串行）。"""
+    依赖锁 = 读取依赖锁(提供者目录)
+    with _提供者锁(提供者目录.name):
+        with _制品仓库锁(_制品仓库标识(依赖锁)):
+            return 确保环境(提供者目录)
+
+
+def 并行确保环境(提供者目录列表: list[Path], *, 最大并行: int = 默认最大并行) -> list[环境结果]:
+    """并行确保多个提供者环境（复用 确保环境 构建逻辑）。
+
+    - 不同提供者且不同制品仓库 → 并行构建（最多 最大并行 个并行任务）。
+    - 同一提供者、同一环境目录、同一制品仓库 → 锁串行。
+    - 返回结果与输入顺序一致（环境结果 列表）。
+    """
+    目录表 = [Path(目录) for 目录 in 提供者目录列表]
+    if not 目录表:
+        return []
+    并行数 = max(1, int(最大并行))
+    with ThreadPoolExecutor(max_workers=并行数) as 池:
+        return list(池.map(_并行确保单环境, 目录表))
+
+
+def 批量确保环境(提供者目录列表: list[Path], 最大并行: int = 默认最大并行) -> list[环境结果]:
+    """默认批量入口（供装配/脚本调用）；串行场景可直接调用 确保环境。"""
+    return 并行确保环境(提供者目录列表, 最大并行=最大并行)
 
 
 def 校验环境(解释器: Path, 依赖锁: dict) -> bool:
