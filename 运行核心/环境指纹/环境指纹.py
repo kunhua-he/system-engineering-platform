@@ -15,7 +15,6 @@ import hashlib
 import json
 import platform
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,24 +67,38 @@ def _包版本(模块名: str) -> str:
         return "未安装"
 
 
+外部应用探针清单 = (
+    ("LibreOffice", "LibreOffice soffice", ("soffice", "libreoffice"), "--version"),
+    ("textutil", "textutil", ("textutil",), "-help"),
+)
+
+
 def 探测外部应用版本() -> dict[str, str]:
-    """探测外部应用版本（LibreOffice/textutil）。"""
+    """探测外部应用版本（LibreOffice/textutil），统一经 系统探针。
+
+    版本来源与 健康监督/提供者检查提供者 完全一致：
+    支持库.适配层.系统探针.检查系统工具（独立子进程，超时强杀，
+    超时/退出码非0 收敛为明确失败），不再独立 subprocess 逻辑。
+
+    失败语义：工具缺失/探针超时/退出码非零 → "失败:<错误码>" 明确失败
+    标记，绝不返回伪造版本（如"未知"或路径冒充）；
+    textutil 无独立版本号，版本取 macOS 系统版本（探针成功为前提）。
+    """
+    from 支持库.适配层.系统探针 import 检查系统工具
     结果: dict[str, str] = {}
-    # LibreOffice
-    for 候选 in ("soffice", "libreoffice"):
-        路径 = shutil.which(候选)
-        if 路径:
-            try:
-                子 = subprocess.run(
-                    [路径, "--version"], capture_output=True, text=True, timeout=10
-                )
-                结果["LibreOffice"] = 子.stdout.strip().splitlines()[0][:60] if 子.stdout else 路径
-            except Exception:
-                结果["LibreOffice"] = 路径
-            break
-    # textutil（macOS 系统能力）
-    if shutil.which("textutil"):
-        结果["textutil"] = "可用"
+    for 工具, 探针名, 候选列表, 版本参数 in 外部应用探针清单:
+        路径 = next((c for c in 候选列表 if shutil.which(c)), None)
+        if not 路径:
+            结果[工具] = "失败:工具缺失"
+            continue
+        探针 = 检查系统工具(探针名, [路径], 版本参数=版本参数)
+        if not 探针.成功:
+            结果[工具] = f"失败:{探针.错误码}"
+            continue
+        if 工具 == "textutil":
+            结果[工具] = platform.mac_ver()[0] or platform.release()
+        else:
+            结果[工具] = 探针.版本 or "可用"
     return 结果
 
 
