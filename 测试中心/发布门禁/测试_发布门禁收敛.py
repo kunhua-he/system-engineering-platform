@@ -1,0 +1,207 @@
+"""第二十九阶段 G3：发布门禁权威合规接入收敛测试。
+
+验证：发布门禁逐包真实调用唯一权威合规验证器（13/13 证据）；
+反向破坏（删除任一要素）→ MCP合规/组件合规/发布门禁 结论一致且失败。
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+系统根 = Path(__file__).resolve().parents[2]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
+
+from 开发工具.组件合规.合规测试包 import 组件合规
+from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
+from 开发工具.发布门禁.运行发布门禁 import 执行逐包权威合规
+
+能力甲 = {
+    "能力id": "破坏模块.能力甲", "版本": "1.0.0", "说明": "门禁收敛能力甲",
+    "参数": [{"名称": "文本", "类型": "文本", "必填": True,
+              "默认值": None, "说明": "待处理文本"}],
+    "返回": {"类型": "结果", "值结构": {}},
+    "错误码": ["参数不合法"],
+    "调用示例": {"能力id": "破坏模块.能力甲", "参数": {"文本": "示例"}},
+}
+
+入口源码 = '''"""破坏模块包级中文入口。"""
+from __future__ import annotations
+
+from 实现.实现 import 能力甲
+
+__all__ = ["能力甲"]
+
+
+def 注册能力(注册表) -> None:
+    """由模块加载器调用。"""
+    from 公共契约.能力契约.契约 import 能力实现
+
+    注册表.注册(能力实现(
+        能力id="破坏模块.能力甲", 包id="模块库.破坏模块", 实现函数=能力甲,
+        参数=[{"名称": "文本", "类型": "文本"}], 返回="结果", 说明="门禁收敛能力",
+    ))
+'''
+
+实现源码 = '''"""破坏模块实现。"""
+from __future__ import annotations
+
+
+def 能力甲(文本: str) -> dict:
+    if not 文本:
+        return {"成功": False, "错误码": "参数不合法"}
+    return {"成功": True, "值": {"长度": len(文本)}}
+'''
+
+
+def 建临时模块库() -> tuple[Path, Path]:
+    """在临时根构造 模块库/破坏模块（正式包形态齐全），返回 (临时根, 模块目录)。"""
+    临时根 = Path(tempfile.mkdtemp(prefix="门禁收敛_"))
+    模块目录 = 临时根 / "模块库" / "破坏模块"
+    for 子目录 in ("能力契约", "依赖契约", "配置契约", "权限契约", "实现", "说明"):
+        (模块目录 / 子目录).mkdir(parents=True)
+    (模块目录 / "能力契约" / "参数契约.json").write_text(
+        json.dumps({"契约版本": "1.0.0", "能力契约": [能力甲]},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
+    (模块目录 / "依赖契约" / "依赖契约.json").write_text(
+        json.dumps({"依赖": []}, ensure_ascii=False), encoding="utf-8")
+    (模块目录 / "配置契约" / "配置契约.json").write_text(
+        json.dumps({"默认超时秒": 10}, ensure_ascii=False), encoding="utf-8")
+    (模块目录 / "权限契约" / "权限契约.json").write_text(
+        json.dumps({"破坏模块.能力甲": {"允许用户": ["*"]}}, ensure_ascii=False),
+        encoding="utf-8")
+    (模块目录 / "资源预算.json").write_text(
+        json.dumps({"内存上限": 50, "线程上限": 2, "子进程上限": 1,
+                    "并发调用上限": 2, "队列长度": 5, "文件句柄上限": 20,
+                    "临时空间上限": 50, "单次调用超时": 3,
+                    "每分钟重启次数": 2, "空闲回收时间": 30}, ensure_ascii=False),
+        encoding="utf-8")
+    (模块目录 / "复用决策.json").write_text(
+        json.dumps({"搜索词": "破坏", "候选能力id": ["破坏模块.能力甲"]},
+                   ensure_ascii=False), encoding="utf-8")
+    (模块目录 / "验证场景引用.json").write_text(
+        json.dumps({"验证场景引用": [{"场景id": "模块.装配验证",
+                                     "目标": "模块库.破坏模块", "范围": "装配"}]},
+                   ensure_ascii=False), encoding="utf-8")
+    (模块目录 / "包声明.json").write_text(json.dumps({
+        "包id": "模块库.破坏模块", "名称": "破坏模块", "类型": "基础模块",
+        "版本": "1.0.0", "说明": "门禁收敛测试模块", "入口": "__init__.py",
+        "依赖": [],
+    }, ensure_ascii=False), encoding="utf-8")
+    (模块目录 / "__init__.py").write_text(入口源码, encoding="utf-8")
+    (模块目录 / "实现" / "实现.py").write_text(实现源码, encoding="utf-8")
+    (模块目录 / "说明" / "使用说明.md").write_text(
+        "# 破坏模块说明书\n\n能力甲，错误码：参数不合法。\n", encoding="utf-8")
+    摘要 = 生成完整性摘要(模块目录, 包id="模块库.破坏模块", 版本="1.0.0")
+    (模块目录 / "完整性摘要.json").write_text(
+        json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return 临时根, 模块目录
+
+
+def _MCP合规(临时根: Path, 模块名: str = "破坏模块") -> dict:
+    from MCP工具箱.模块合规 import 校验模块合规
+    return 校验模块合规(临时根, 模块名)
+
+
+class Test发布门禁收敛(unittest.TestCase):
+    """发布门禁逐包权威合规接入与反向破坏一致性。"""
+
+    def test_齐全包_合规_MCP_门禁三通过(self) -> None:
+        """齐全正式包：组件合规 13/13、MCP 合规成功、门禁逐包 13/13。"""
+        临时根, 模块目录 = 建临时模块库()
+        try:
+            报告 = 组件合规(模块目录).执行()
+            self.assertEqual(报告.通过数, 13,
+                             [f"{名称}: {详情}" for 名称, 通过, 详情 in 报告.场景结果表 if not 通过])
+            MCP结果 = _MCP合规(临时根)
+            self.assertTrue(MCP结果["成功"], MCP结果)
+            通过, 证据表 = 执行逐包权威合规([模块目录])
+            self.assertTrue(通过, 证据表)
+            self.assertEqual(证据表[0][3], 13, "逐包证据必须为 13/13")
+            self.assertEqual(证据表[0][2], True)
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+    def test_删除实现_三者一致失败(self) -> None:
+        """删除 实现/实现.py → 组件合规/门禁/MCP 结论一致且失败。"""
+        临时根, 模块目录 = 建临时模块库()
+        try:
+            (模块目录 / "实现" / "实现.py").unlink()
+            报告 = 组件合规(模块目录).执行()
+            self.assertFalse(报告.成功)
+            通过, 证据表 = 执行逐包权威合规([模块目录])
+            self.assertFalse(通过, "门禁必须因逐包合规失败而非零退出")
+            self.assertLess(证据表[0][3], 13)
+            self.assertIn("公共入口", 证据表[0][1], "门禁证据必须列明失败场景")
+            MCP结果 = _MCP合规(临时根)
+            self.assertFalse(MCP结果["成功"], "MCP 合规必须一致失败")
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+    def test_删除入口_三者一致失败(self) -> None:
+        """删除 __init__.py → 组件合规/门禁/MCP 结论一致且失败。"""
+        临时根, 模块目录 = 建临时模块库()
+        try:
+            (模块目录 / "__init__.py").unlink()
+            报告 = 组件合规(模块目录).执行()
+            self.assertFalse(报告.成功)
+            通过, _ = 执行逐包权威合规([模块目录])
+            self.assertFalse(通过)
+            MCP结果 = _MCP合规(临时根)
+            self.assertFalse(MCP结果["成功"], "MCP 合规必须一致失败")
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+    def test_删除验证证据_三者一致失败(self) -> None:
+        """删除 验证场景引用.json → 组件合规/门禁/MCP 结论一致且失败。"""
+        临时根, 模块目录 = 建临时模块库()
+        try:
+            (模块目录 / "验证场景引用.json").unlink()
+            报告 = 组件合规(模块目录).执行()
+            self.assertFalse(报告.成功)
+            场景表 = {名称: 通过 for 名称, 通过, _ in 报告.场景结果表}
+            self.assertFalse(场景表["结构"], "缺验证证据必须使结构场景失败")
+            通过, _ = 执行逐包权威合规([模块目录])
+            self.assertFalse(通过)
+            MCP结果 = _MCP合规(临时根)
+            self.assertFalse(MCP结果["成功"], "MCP 七要素含验证场景引用，必须一致失败")
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+    def test_删除配置契约_合规与门禁一致失败(self) -> None:
+        """删除 配置契约 → 组件合规/门禁一致失败（S0 缺项阻断清单）。"""
+        临时根, 模块目录 = 建临时模块库()
+        try:
+            shutil.rmtree(模块目录 / "配置契约")
+            报告 = 组件合规(模块目录).执行()
+            self.assertFalse(报告.成功)
+            场景表 = {名称: 通过 for 名称, 通过, _ in 报告.场景结果表}
+            self.assertFalse(场景表["配置"], "缺 配置契约 必须使配置场景失败")
+            通过, 证据表 = 执行逐包权威合规([模块目录])
+            self.assertFalse(通过)
+            self.assertIn("配置", 证据表[0][1], "门禁证据必须列明 配置 失败")
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+    def test_逐包证据输出格式(self) -> None:
+        """逐包证据：包名/失败场景/通过/13 项计数齐全。"""
+        临时根, 模块目录 = 建临时模块库()
+        try:
+            通过, 证据表 = 执行逐包权威合规([模块目录])
+            self.assertTrue(通过)
+            名称, 失败场景, 通过标记, 通过数 = 证据表[0]
+            self.assertEqual(名称, "破坏模块")
+            self.assertEqual(失败场景, "", "通过包失败场景必须为空")
+            self.assertEqual(通过标记, True)
+            self.assertEqual(通过数, 13)
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    unittest.main()
