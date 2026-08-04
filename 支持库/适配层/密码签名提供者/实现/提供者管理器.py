@@ -77,6 +77,8 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
     崩溃/超时/启动失败分别返回 提供者崩溃/超时/提供者不可用；
     调用结束后确保进程组终止、管道全部关闭，无残留。
     """
+    if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool) or 超时秒 <= 0:
+        return _失败("参数不合法", "超时秒必须是正数")
     进程 = None
     try:
         进程 = _启动子进程()

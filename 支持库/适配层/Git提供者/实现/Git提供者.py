@@ -28,10 +28,13 @@ def _顺序执行(仓库路径: str, 命令列表: list[list[str]], 超时秒: f
     return 结果.成功结果({"执行列表": 执行列表})
 
 
-def 检查提供者() -> 结果:
+def 检查提供者(超时秒: float = 15) -> 结果:
     """git --version 真实探针：{git, 版本} 或 提供者不可用。"""
+    校验 = 校验超时(超时秒)
+    if 校验:
+        return 校验
     try:
-        版本 = subprocess.run(["git", "--version"], capture_output=True, timeout=15)
+        版本 = subprocess.run(["git", "--version"], capture_output=True, timeout=超时秒)
     except (OSError, subprocess.TimeoutExpired):
         return 失败结果("提供者不可用", "无法运行 git --version", 可重试=True)
     if 版本.returncode != 0:
