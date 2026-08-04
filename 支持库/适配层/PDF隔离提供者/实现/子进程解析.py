@@ -8,6 +8,7 @@ pdfplumber/fitz，崩溃不影响平台主进程。所有函数返回 JSON 可�
 from __future__ import annotations
 
 import hashlib
+import io
 import time
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,7 @@ def _加载库(禁用库表: set[str]) -> dict[str, Any]:
             import pdfplumber
             状态["pdfplumber"] = pdfplumber
             状态["版本"]["pdfplumber"] = str(getattr(pdfplumber, "__version__", "未知"))
-        except Exception:
+        except (Exception,):
             状态["版本"]["pdfplumber"] = "不可用"
     else:
         状态["版本"]["pdfplumber"] = "不可用"
@@ -34,7 +35,7 @@ def _加载库(禁用库表: set[str]) -> dict[str, Any]:
             import fitz
             状态["fitz"] = fitz
             状态["版本"]["fitz"] = str(getattr(fitz, "VersionBind", "未知"))
-        except Exception:
+        except (Exception,):
             状态["版本"]["fitz"] = "不可用"
     else:
         状态["版本"]["fitz"] = "不可用"
@@ -67,7 +68,7 @@ def _检测加密与页数(fitz模块: Any, 路径: Path) -> tuple[bool, int | N
             return bool(文档.needs_pass), 文档.page_count
         finally:
             文档.close()
-    except Exception:
+    except (Exception,):
         return False, None
 
 
@@ -81,10 +82,10 @@ def _渲染页面图像(fitz文档: Any, 页码: int) -> list[tuple[bytes, str]]
                 continue
             try:
                 数据 = fitz文档.extract_image(xref)
-            except Exception:
+            except (Exception,):
                 continue
             结果表.append((数据["image"], 数据["ext"]))
-    except Exception:
+    except (Exception,):
         return []
     return 结果表
 
@@ -145,12 +146,12 @@ def 解析PDF为字典(
     if 状态["fitz"]:
         try:
             fitz文档 = 状态["fitz"].open(str(路径))
-        except Exception:
+        except (Exception,):
             fitz文档 = None
     try:
         try:
             pdf = 状态["pdfplumber"].open(str(路径))
-        except Exception as 错误:
+        except (Exception,) as 错误:
             if _疑似加密(错误):
                 return {"错误码": "文件加密", "错误说明": f"PDF 已加密：{错误}"}
             return {"错误码": "文件损坏", "错误说明": f"pdfplumber 打开失败: {错误}"}
@@ -191,9 +192,9 @@ def 解析PDF为字典(
         finally:
             try:
                 pdf.close()
-            except Exception:
-                pass
-    except Exception as 错误:
+            except (Exception,) as 错误:
+                return {"错误码": "文件损坏", "错误说明": f"PDF 关闭失败: {错误}"}
+    except (Exception,) as 错误:
         if _疑似加密(错误):
             return {"错误码": "文件加密", "错误说明": f"PDF 已加密：{错误}"}
         return {"错误码": "文件损坏", "错误说明": f"PDF 解析失败: {错误}"}
@@ -201,25 +202,37 @@ def 解析PDF为字典(
         if fitz文档 is not None:
             try:
                 fitz文档.close()
-            except Exception:
-                pass
+            except (Exception,) as 错误:
+                return {"错误码": "文件损坏", "错误说明": f"fitz 文档关闭失败: {错误}"}
+
+
+def _尝试fitz页数(fitz模块: Any, 字节: bytes) -> dict[str, Any] | None:
+    """用 fitz 重开 PDF 返回页数；失败返回 None（回退 pdfplumber）。"""
+    if fitz模块 is None:
+        return None
+    try:
+        with fitz模块.open(stream=字节, filetype="pdf") as 文档:
+            return {"页数": 文档.page_count, "提供者": "fitz"}
+    except (Exception,):
+        return None
+
+
+def _尝试pdfplumber页数(pdfplumber模块: Any, 字节: bytes) -> dict[str, Any] | None:
+    """用 pdfplumber 重开 PDF 返回页数；失败返回 None。"""
+    if pdfplumber模块 is None:
+        return None
+    try:
+        with pdfplumber模块.open(io.BytesIO(字节)) as 文档:
+            return {"页数": len(文档.pages), "提供者": "pdfplumber"}
+    except (Exception,):
+        return None
 
 
 def 校验PDF返回页数(字节: bytes, 禁用库表: set[str] | None = None) -> dict[str, Any]:
     """用 fitz 或 pdfplumber 重新打开 PDF 返回页数（签名校验用）。"""
     禁用库表 = 禁用库表 or set()
     状态 = _加载库(禁用库表)
-    import io
-    if 状态["fitz"]:
-        try:
-            with 状态["fitz"].open(stream=字节, filetype="pdf") as 文档:
-                return {"页数": 文档.page_count, "提供者": "fitz"}
-        except Exception:
-            pass
-    if 状态["pdfplumber"]:
-        try:
-            with 状态["pdfplumber"].open(io.BytesIO(字节)) as 文档:
-                return {"页数": len(文档.pages), "提供者": "pdfplumber"}
-        except Exception:
-            pass
+    结果 = _尝试fitz页数(状态["fitz"], 字节) or _尝试pdfplumber页数(状态["pdfplumber"], 字节)
+    if 结果:
+        return 结果
     return {"错误码": "文件损坏", "错误说明": "PDF 无法重新打开解析"}

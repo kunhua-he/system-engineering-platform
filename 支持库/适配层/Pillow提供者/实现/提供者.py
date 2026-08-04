@@ -98,12 +98,18 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
     return 结果.成功结果(响应.get("值"))
 
 
-def _校验字节(字节: Any) -> 结果 | None:
+def _校验字节(字节: Any) -> tuple[bytes | None, 结果 | None]:
+    """字节 参数归一化校验：二进制原样，base64 文本解码（跨宿主可序列化）。"""
+    if isinstance(字节, str):
+        try:
+            字节 = base64.b64decode(字节)
+        except ValueError:
+            return None, _失败("参数不合法", "字节文本必须是合法 base64")
     if not isinstance(字节, bytes) or not 字节:
-        return _失败("参数不合法", "字节必须为非空二进制")
+        return None, _失败("参数不合法", "字节必须为非空二进制")
     if len(字节) > 输入字节上限:
-        return _失败("超大", f"图像字节超过上限 {输入字节上限} 字节")
-    return None
+        return None, _失败("超大", f"图像字节超过上限 {输入字节上限} 字节")
+    return 字节, None
 
 
 def _校验宽高(宽度: Any, 高度: Any) -> 结果 | None:
@@ -126,7 +132,7 @@ def _校验超时秒(超时秒: Any) -> 结果 | None:
 
 def 解码图像(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
     """隔离解码图像字节：成功值 {格式, 宽度, 高度, 模式}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     return 执行任务({"操作": "解码图像", "字节b64": base64.b64encode(字节).decode("ascii")},
@@ -135,7 +141,7 @@ def 解码图像(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
 
 def 像素统计(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
     """隔离统计像素：成功值 {宽度, 高度, 像素数, 平均颜色}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     return 执行任务({"操作": "像素统计", "字节b64": base64.b64encode(字节).decode("ascii")},
@@ -159,7 +165,7 @@ def 生成占位图(宽度: int, 高度: int, 占位类型: str = "纯色",
 
 def 生成缩略图(字节: bytes, 最大边长: int, 超时秒: float = 默认超时秒) -> 结果:
     """隔离生成等比例缩略图（只缩不放大）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     if not isinstance(最大边长, int) or isinstance(最大边长, bool) or 最大边长 < 1:
@@ -173,7 +179,7 @@ def 生成缩略图(字节: bytes, 最大边长: int, 超时秒: float = 默认�
 
 def 图像EXIF转置(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
     """隔离按 EXIF orientation 转置图像：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     错误 = _校验超时秒(超时秒)
@@ -185,7 +191,7 @@ def 图像EXIF转置(字节: bytes, 超时秒: float = 默认超时秒) -> 结�
 
 def 透明背景合成(字节: bytes, 背景颜色: str, 超时秒: float = 默认超时秒) -> 结果:
     """隔离透明背景合成（RGBA/LA/P 透明 → 背景色合成 RGB PNG）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     if not isinstance(背景颜色, str):
@@ -199,7 +205,7 @@ def 透明背景合成(字节: bytes, 背景颜色: str, 超时秒: float = 默�
 
 def 计算感知哈希(字节: bytes, 哈希类型: str, 超时秒: float = 默认超时秒) -> 结果:
     """隔离计算感知哈希 aHash/dHash/pHash：成功值 {哈希, 哈希类型}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     if not isinstance(哈希类型, str) or 哈希类型 not in ("aHash", "dHash", "pHash"):
@@ -214,7 +220,7 @@ def 计算感知哈希(字节: bytes, 哈希类型: str, 超时秒: float = 默�
 def 缩放图像(字节: bytes, 宽度: int | None = None, 高度: int | None = None,
              超时秒: float = 默认超时秒) -> 结果:
     """隔离精确缩放图像（宽高至少一个，缺省一侧按纵横比推算）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     if 宽度 is None and 高度 is None:
@@ -234,7 +240,7 @@ def 缩放图像(字节: bytes, 宽度: int | None = None, 高度: int | None = 
 def 重编码图像(字节: bytes, 格式: str = "PNG", 质量: int = 90,
                超时秒: float = 默认超时秒) -> 结果:
     """隔离重编码图像（JPEG/PNG/WebP；质量 1-100）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    错误 = _校验字节(字节)
+    字节, 错误 = _校验字节(字节)
     if 错误:
         return 错误
     if not isinstance(格式, str):

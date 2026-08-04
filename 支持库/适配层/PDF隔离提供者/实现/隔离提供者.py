@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import signal
@@ -115,8 +116,22 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
     return 结果.成功结果(响应.get("值"))
 
 
+def _校验字节(字节: Any) -> tuple[bytes | None, 结果 | None]:
+    """字节 参数归一化校验：二进制原样，base64 文本解码（跨宿主可序列化）。"""
+    if isinstance(字节, str):
+        try:
+            字节 = base64.b64decode(字节)
+        except ValueError:
+            return None, _失败("参数不合法", "字节文本必须是合法 base64")
+    if not isinstance(字节, bytes) or not 字节:
+        return None, _失败("参数不合法", "字节必须为非空二进制")
+    return 字节, None
+
+
 def 解析PDF隔离(文件路径: str, 最大页数: int = 500, 最大字节数: int = 0, 超时秒: float = 默认超时秒) -> 结果:
     """隔离解析 PDF，返回通用文档字典（成功值）。"""
+    if not isinstance(文件路径, str) or not 文件路径.strip():
+        return _失败("参数不合法", "文件路径必须为非空文本")
     return 执行任务({
         "操作": "解析",
         "文件路径": 文件路径,
@@ -128,7 +143,9 @@ def 解析PDF隔离(文件路径: str, 最大页数: int = 500, 最大字节数:
 
 def 校验PDF隔离(字节: bytes, 超时秒: float = 30.0) -> 结果:
     """隔离重开 PDF 返回页数（生成签名校验用）。"""
-    import base64
+    字节, 错误 = _校验字节(字节)
+    if 错误:
+        return 错误
     return 执行任务({
         "操作": "校验",
         "字节b64": base64.b64encode(字节).decode("ascii"),
