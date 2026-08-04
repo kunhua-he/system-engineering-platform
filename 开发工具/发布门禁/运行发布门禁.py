@@ -113,23 +113,16 @@ def 执行逐包权威合规(包目录列表: list[Path]) -> tuple[bool, list[tu
     from 开发工具.组件合规.合规测试包 import 组件合规
 
     证据列表: list[tuple[str, str, bool, int]] = []
-    模块未达标: list[str] = []
+    未达标: list[str] = []
     for 包目录 in 包目录列表:
-        类型 = "支持库"
-        声明路径 = 包目录 / "包声明.json"
-        if 声明路径.is_file():
-            try:
-                类型 = json.loads(声明路径.read_text(encoding="utf-8")).get("类型", "支持库")
-            except (json.JSONDecodeError, OSError):
-                pass
         报告 = 组件合规(包目录).执行()
         失败场景 = "；".join(
             f"{名称}({详情[:40]})" for 名称, 通过, 详情 in 报告.场景结果表 if not 通过
         )
         证据列表.append((包目录.name, 失败场景, 报告.成功, 报告.通过数))
-        if 类型 in ("基础模块", "功能模块") and not 报告.成功:
-            模块未达标.append(f"{包目录.name}({报告.通过数}/13)")
-    return not 模块未达标, 证据列表
+        if not 报告.成功:
+            未达标.append(f"{包目录.name}({报告.通过数}/13)")
+    return not 未达标, 证据列表
 
 
 def _校验依赖锁与反向篡改() -> tuple[bool, str, bool, str]:
@@ -237,15 +230,88 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
                 else f"{名称}: {通过数}/13 ✗{失败}"
                 for 名称, 失败, 通过, 通过数 in 逐包证据表
             )
-            债务包 = [f"{名称}: {通过数}/13" for 名称, _, _, 通过数 in 逐包证据表 if 通过数 < 13]
-            检查("权威合规-模块13/13", 合规通过,
+            检查("权威合规-逐包13/13", 合规通过,
                  f"真实调用权威验证器逐包校验 {len(逐包证据表)} 包；{合规证据}")
-            if 债务包:
-                检查("支持库合规债务披露", True,
-                     f"支持库/描述包未迁移 S0.1 聚合契约（历史债务，进升级池）：{len(债务包)} 包；"
-                     + "；".join(债务包[:8]) + ("…" if len(债务包) > 8 else ""), 强制=False)
         except Exception as 错误:
             检查("权威合规-逐包13/13", False, f"权威验证器不可执行: {错误}")
+
+        # 1.6 生产装配闭环（第三十阶段强制）：注册表唯一性 / 冷启动装配 /
+        #     提供者进程一致 / 资源零残留 / 客户端制品一致性（全部调用生产验证器）
+        try:
+            # 1.6.1 注册表唯一性：全仓只允许一个 能力注册表 类定义（公共契约 权威）
+            注册表定义文件: list[str] = []
+            for 文件 in list((系统根 / "公共契约").rglob("*.py")) + list((系统根 / "运行核心").rglob("*.py")) + list((系统根 / "平台控制面").rglob("*.py")):
+                if 文件.name.startswith("__"):
+                    continue
+                try:
+                    if "class 能力注册表" in 文件.read_text(encoding="utf-8"):
+                        注册表定义文件.append(str(文件.relative_to(系统根)))
+                except OSError:
+                    pass
+            检查("注册表唯一性", len(注册表定义文件) == 1,
+                 f"能力注册表 类定义位置: {注册表定义文件 or '未发现'}")
+        except Exception as 错误:
+            检查("注册表唯一性", False, f"异常: {错误}")
+
+        try:
+            # 1.6.2 冷启动生产装配：全新子进程、清空源码 PYTHONPATH，经生产装配入口
+            import subprocess as _子进程, sys as _sys
+            冷启动脚本 = 系统根 / "测试中心" / "运行核心" / "冷启动脚本.py"
+            if 冷启动脚本.is_file():
+                冷启动运行 = _子进程.run(
+                    [_sys.executable, str(冷启动脚本), "装配", str(系统根), "[]"],
+                    capture_output=True, text=True, cwd=str(系统根),
+                    env={k: v for k, v in os.environ.items()
+                         if k not in ("PYTHONPATH", "PYTHONHOME")},
+                    timeout=300,
+                )
+                冷启动通过 = 冷启动运行.returncode == 0 and "装配成功" in 冷启动运行.stdout
+                检查("冷启动生产装配", 冷启动通过,
+                     f"退出码 {冷启动运行.returncode}；"
+                     f"{冷启动运行.stdout[-300:] or 冷启动运行.stderr[-300:]}")
+            else:
+                检查("冷启动生产装配", False, "冷启动脚本缺失")
+        except Exception as 错误:
+            检查("冷启动生产装配", False, f"异常: {错误}")
+
+        try:
+            # 1.6.3 提供者进程一致性（静态）：每个含 依赖锁.json 的适配层包，
+            #     锁.提供者id 必须与包声明.包id 一致，且无锁适配层包不得存在
+            #     （删锁/锁错绑 必须阻断）；隔离边界另查（C3 生产管理器）。
+            import json as _锁json
+            适配层根 = 系统根 / "支持库" / "适配层"
+            锁问题: list[str] = []
+            for 锁文件 in 适配层根.rglob("依赖锁.json"):
+                锁数据 = _锁json.loads(锁文件.read_text(encoding="utf-8"))
+                声明路径 = 锁文件.parent / "包声明.json"
+                if not 声明路径.is_file():
+                    锁问题.append(f"{锁文件.parent.name} 有锁无包声明")
+                    continue
+                声明 = _锁json.loads(声明路径.read_text(encoding="utf-8"))
+                锁提供者 = str(锁数据.get("提供者id", "") or "")
+                if 锁提供者 != 声明.get("包id"):
+                    锁问题.append(
+                        f"{锁文件.parent.name} 锁提供者id({锁提供者})≠包id({声明.get('包id')})"
+                    )
+            检查("提供者进程一致性", not 锁问题,
+                 f"锁一致性问题: {锁问题[:5] or '无'}")
+            from 运行核心.运行环境管理器.提供者生命周期 import 提供者生命周期管理器
+            生命周期管理器 = 提供者生命周期管理器(提供者根目录=适配层根)
+            隔离问题 = 生命周期管理器.检查隔离边界()
+            检查("提供者隔离边界", not 隔离问题,
+                 f"隔离边界问题: {隔离问题[:5] or '无'}")
+        except Exception as 错误:
+            检查("提供者进程一致性", False, f"异常: {错误}")
+            检查("提供者隔离边界", False, f"异常: {错误}")
+
+        try:
+            # 1.6.4 客户端制品一致性：激活指针→制品根→包层→公开入口 一致（B1）
+            from 平台控制面.包仓库.平台客户端制品 import 平台客户端制品接入
+            接入 = 平台客户端制品接入()
+            有效, 消息, _ = 接入.校验稳定路径()
+            检查("客户端制品一致性", 有效, 消息)
+        except Exception as 错误:
+            检查("客户端制品一致性", False, f"异常: {错误}")
     else:
         检查("包结构完整", False, "未发现任何正式候选包")
         检查("包声明合法", False, "未发现任何正式候选包")
