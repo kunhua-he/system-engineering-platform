@@ -1,8 +1,11 @@
-"""前端描述模型实现（不对外暴露，只经包级中文入口调用）。"""
+"""前端描述模型实现（不对外暴露，只经包级中文入口调用）。
+
+对外只返回统一结果：成功时 值 内放结构化描述数据，失败返回 结果.失败，
+不泄漏任何内部对象；参数非法显式返回失败，不抛异常。
+"""
 
 from __future__ import annotations
 
-import json as _json
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -17,8 +20,14 @@ def _失败(错误码: str, 消息: str) -> 结果:
 
 
 def 创建资源描述(资源id: str, 资源类型: str, 来源: str) -> 结果:
-    if not 资源id or not 资源类型:
-        return _失败("参数不合法", "资源id 与资源类型不能为空")
+    if not isinstance(资源id, str) or not 资源id:
+        return _失败("参数不合法", "资源id 必须为非空文本")
+    if not isinstance(资源类型, str) or not 资源类型:
+        return _失败("参数不合法", "资源类型必须为非空文本")
+    if 来源 is None:
+        来源 = ""
+    if not isinstance(来源, str):
+        return _失败("参数不合法", "来源必须是文本")
     return _成功({"资源id": 资源id, "资源类型": 资源类型, "来源": 来源, "引用计数": 0})
 
 
