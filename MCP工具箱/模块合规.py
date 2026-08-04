@@ -1,20 +1,14 @@
-"""模块合规验证：import 白名单、能力占用、包七要素三类校验。
+"""模块合规验证：权威 13 项组件合规 + 模块专属边界审计。
 
-模块开发门面：只读支持库公开能力 + 创建模块 + 模块合规验证；
-模块禁止导入支持库实现目录/第三方/运行核心实现。
-
-三类校验：
-1. 导入白名单：AST 解析 模块库/<模块>/实现/*.py 的 import；
-   允许 支持库.*（仅公开入口 __init__ 层，路径不得含 实现 或内部目录段）、
-   公共契约.*、标准库；检出 支持库 内部目录导入、第三方、核心、白名单外导入。
-2. 能力占用：读取 包声明.json 依赖列表，逐一核对 支持库 全包能力定义文件
-   （能力定义.json 与支持库包声明.json 的能力清单）中存在提供者。
-3. 包七要素：包声明.json/能力契约/说明/实现/完整性摘要/验证场景引用/__init__.py
-   存在；完整性摘要用 开发工具/组件规范/完整性摘要.py 校验，漂移拒绝。
+MCP 校验模块合规 = 开发工具/组件合规/合规测试包.py（13 项强制场景，唯一权威）
++ 模块专属边界审计（AST）：支持库/提供者物理导入、实现目录导入、第三方导入、
+运行核心实现导入、直接I/O、tempfile、subprocess、socket、数据库客户端、
+格式解析原子实现、动态import 绕过；标准库按行为调用图判断（非无条件白名单）。
+支持库.适配层.<提供者> 公开入口层为过渡期模块组成边界（收口后模块一律经
+获取能力调用器().调用能力，物理导入归零）。
 
 统一结果结构：{"成功": bool, "错误码": str, "违规列表": [...]}；
-错误码：模块不存在 MODULE_NOT_FOUND / 导入违规 IMPORT_VIOLATION /
-无提供者 NO_PROVIDER / 要素缺失 ELEMENT_MISSING / 摘要漂移 SUMMARY_DRIFT。
+错误码：MODULE_NOT_FOUND / AUTHORITY_VIOLATION / IMPORT_VIOLATION / BOUNDARY_VIOLATION。
 """
 
 from __future__ import annotations
@@ -25,11 +19,6 @@ import sys
 from pathlib import Path
 from typing import Any, Iterator
 
-# 支持库包内不允许被模块引用的内部目录段（只允许公开入口 __init__ 层）。
-支持库内部目录段 = {"实现", "能力契约", "说明", "完整性摘要", "验证场景引用",
-                "包声明", "默认配置", "能力数据", "__pycache__"}
-
-# 已知第三方根模块（模块不得直接导入，第三方能力必须经支持库适配层提供）。
 第三方根模块 = {
     "docx", "fitz", "openpyxl", "pdfplumber", "pptx", "reportlab",
     "cryptography", "PIL", "ffmpeg", "密码操作", "numpy", "pandas",
@@ -37,22 +26,41 @@ from typing import Any, Iterator
     "psycopg", "pg8000", "torch", "whisper", "cv2", "matplotlib",
     "pydub", "moviepy", "selenium", "playwright", "chardet",
 }
-
-# 运行核心及其余平台核心目录（模块一律禁止导入）。
+数据库客户端根 = {"sqlite3", "pymongo", "mysql", "redis"}
 核心根目录名 = {"运行核心", "前端核心", "后端核心"}
-
+支持库内部目录段 = {"实现", "能力契约", "说明", "完整性摘要", "验证场景引用",
+                "包声明", "默认配置", "能力数据", "__pycache__"}
 标准库根模块 = frozenset(getattr(sys, "stdlib_module_names", set())) | {
     "__future__", "abc", "enum", "functools", "itertools", "operator",
 }
 
-
-def _读取声明(路径: Path) -> dict[str, Any]:
-    """读取 JSON 声明；不可读或非对象返回空字典。"""
-    try:
-        数据 = json.loads(路径.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return 数据 if isinstance(数据, dict) else {}
+# 标准库按行为调用图判断：仅调用下列函数/方法时违规（import 本身不算白名单）。
+行为调用表 = {
+    "tempfile": {"mkdtemp", "mkstemp", "NamedTemporaryFile", "TemporaryDirectory",
+                 "gettempdir", "mktemp", "TemporaryFile"},
+    "subprocess": {"run", "Popen", "call", "check_call", "check_output",
+                   "getoutput", "getstatusoutput"},
+    "os": {"system", "popen", "remove", "unlink", "makedirs", "mkdir", "rmdir",
+           "rename", "replace", "open", "read", "write"},
+    "shutil": {"copy", "copyfile", "move", "rmtree", "copytree", "unpack_archive"},
+    "pathlib": {"read_text", "read_bytes", "write_text", "write_bytes", "open",
+                "unlink", "mkdir", "rmdir", "rename", "replace", "touch"},
+    "socket": {"socket", "create_connection", "create_server", "bind", "connect",
+               "listen", "accept", "send", "sendall", "recv"},
+    "json": {"loads", "dumps", "load", "dump"},
+    "csv": {"reader", "writer", "DictReader", "DictWriter"},
+    "xml": {"parse", "fromstring", "tostring", "ElementTree"},
+    "yaml": {"safe_load", "load", "safe_dump", "dump"},
+}
+行为类别表 = {
+    "tempfile": "临时目录操作", "subprocess": "进程调用", "os": "直接I/O",
+    "shutil": "直接I/O", "pathlib": "直接I/O", "socket": "网络套接字",
+    "json": "格式解析原子操作", "csv": "格式解析原子操作",
+    "xml": "格式解析原子操作", "yaml": "格式解析原子操作",
+}
+动态导入调用 = {"import_module", "__import__", "exec", "eval"}
+导入违规类别 = {"支持库导入", "实现目录导入", "第三方导入", "运行核心导入",
+              "数据库客户端", "相对导入", "白名单外导入"}
 
 
 def _结果(违规列表: list[dict[str, Any]], 错误码: str = "") -> dict[str, Any]:
@@ -89,29 +97,30 @@ def _解析导入(源码路径: Path) -> Iterator[dict[str, Any]]:
 
 
 def _分类导入(导入模块: str) -> dict[str, str] | None:
-    """按白名单分类单个导入；返回违规 {类别} 或 None（放行）。
+    """导入分类：放行 标准库/公共契约/支持库.适配层.<提供者> 公开入口层。
 
-    允许：标准库、公共契约.*、支持库.*（仅公开入口 __init__ 层）。
-    检出：支持库内部目录（含 *.实现*）、第三方、核心、白名单外、相对导入。
+    检出：支持库导入（后端/前端/第三方/内部目录/根）、实现目录导入、
+    数据库客户端、第三方导入、运行核心导入、相对导入、白名单外导入。
     """
     模块 = 导入模块.strip()
     if not 模块:
         return None
     根 = 模块.split(".")[0]
+    if 根 in 数据库客户端根:
+        return {"类别": "数据库客户端"}
     if 根 in 标准库根模块 or 模块.startswith("__future__"):
         return None
     if 模块 == "公共契约" or 模块.startswith("公共契约."):
         return None
     if 根 == "支持库":
-        if 模块 == "支持库":
-            return None
         路径段 = 模块.split(".")
-        内部段 = [段 for 段 in 路径段[1:] if 段 in 支持库内部目录段]
-        if 内部段:
-            return {"类别": "实现目录导入", "内部段": 内部段[0]}
-        return None
+        if any(段 in 支持库内部目录段 for 段 in 路径段[1:]):
+            return {"类别": "实现目录导入"}
+        if len(路径段) in (2, 3) and 路径段[1] == "适配层":
+            return None
+        return {"类别": "支持库导入"}
     if 根 in 核心根目录名:
-        return {"类别": "核心导入"}
+        return {"类别": "运行核心导入"}
     if 根 in 第三方根模块:
         return {"类别": "第三方导入"}
     if 模块.startswith("."):
@@ -119,10 +128,71 @@ def _分类导入(导入模块: str) -> dict[str, str] | None:
     return {"类别": "白名单外导入"}
 
 
-def 校验导入白名单(项目根: Path, 模块名: str) -> dict[str, Any]:
-    """校验 模块库/<模块>/实现/*.py 的 import 白名单合规。
+def _解析别名(树: ast.AST) -> dict[str, str]:
+    """import/from-import 别名表：名称 → 完整模块路径。"""
+    别名表: dict[str, str] = {}
+    for 节点 in ast.walk(树):
+        if isinstance(节点, ast.Import):
+            for 别名 in 节点.names:
+                别名表[别名.asname or 别名.name.split(".")[0]] = 别名.name
+        elif isinstance(节点, ast.ImportFrom):
+            for 别名 in 节点.names:
+                if 别名.name != "*":
+                    别名表[别名.asname or 别名.name] = (
+                        f"{节点.module}.{别名.name}" if 节点.module else 别名.name)
+    return 别名表
 
-    违规项：{"文件": 相对路径, "行": 行号, "模块": 导入模块名, "类别": 类别}。
+
+def _根名称(节点) -> str:
+    """取属性链/调用链最深层名称：tempfile.mkdtemp() → tempfile。"""
+    while isinstance(节点, (ast.Attribute, ast.Call)):
+        节点 = 节点.value if isinstance(节点, ast.Attribute) else 节点.func
+    return 节点.id if isinstance(节点, ast.Name) else ""
+
+
+def _审计行为(源码路径: Path) -> list[dict[str, Any]]:
+    """标准库行为调用图审计：别名解析后按 模块路径+调用名 匹配违规行为。"""
+    违规列表: list[dict[str, Any]] = []
+    try:
+        树 = ast.parse(源码路径.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return 违规列表
+    别名表 = _解析别名(树)
+    for 节点 in ast.walk(树):
+        if not isinstance(节点, ast.Call):
+            continue
+        if isinstance(节点.func, ast.Name):
+            名称 = 节点.func.id
+            if 名称 in {"open"}:
+                违规列表.append({"行": 节点.lineno, "类别": "直接I/O", "调用": "open"})
+            elif 名称 in 动态导入调用:
+                违规列表.append({"行": 节点.lineno, "类别": "动态导入绕过", "调用": 名称})
+            elif 名称 in 别名表:
+                全名 = 别名表[名称]
+                模块根 = 全名.split(".")[0]
+                if 模块根 in 行为调用表 and 全名.rsplit(".", 1)[-1] in 行为调用表[模块根]:
+                    违规列表.append({"行": 节点.lineno, "类别": 行为类别表[模块根], "调用": 全名})
+                elif 全名 in {"importlib.import_module", "builtins.__import__"}:
+                    违规列表.append({"行": 节点.lineno, "类别": "动态导入绕过", "调用": 全名})
+        elif isinstance(节点.func, ast.Attribute):
+            调用名 = 节点.func.attr
+            if 调用名 in 动态导入调用:
+                违规列表.append({"行": 节点.lineno, "类别": "动态导入绕过", "调用": 调用名})
+                continue
+            根 = _根名称(节点.func)
+            模块路径 = 别名表.get(根, "")
+            模块根 = 模块路径.split(".")[0]
+            if 模块根 in 行为调用表 and 调用名 in 行为调用表[模块根]:
+                违规列表.append({"行": 节点.lineno, "类别": 行为类别表[模块根],
+                                  "调用": f"{模块路径}.{调用名}"})
+    return 违规列表
+
+
+def 审计模块边界(项目根: Path, 模块名: str) -> dict[str, Any]:
+    """模块专属边界审计：AST 检查 实现/*.py 的导入分类与标准库行为调用图。
+
+    违规项：{"文件", "行", "模块"|"调用", "类别"}；错误码 IMPORT_VIOLATION/
+    BOUNDARY_VIOLATION。
     """
     模块目录 = _定位模块目录(项目根, 模块名)
     if 模块目录 is None:
@@ -138,137 +208,41 @@ def 校验导入白名单(项目根: Path, 模块名: str) -> dict[str, Any]:
                 分类 = _分类导入(导入["模块"])
                 if 分类 is None:
                     continue
-                违规列表.append({
-                    "文件": 相对路径,
-                    "行": int(导入["行"]),
-                    "模块": 导入["模块"],
-                    "类别": 分类["类别"],
-                })
-    return _结果(违规列表, "IMPORT_VIOLATION" if 违规列表 else "")
+                违规列表.append({"文件": 相对路径, "行": int(导入["行"]),
+                                  "模块": 导入["模块"], "类别": 分类["类别"]})
+            for 行为违规 in _审计行为(源码路径):
+                违规列表.append({"文件": 相对路径, **行为违规})
+    if not 违规列表:
+        return _结果([])
+    类别表 = {违规["类别"] for 违规 in 违规列表}
+    错误码 = "IMPORT_VIOLATION" if 类别表 & 导入违规类别 else "BOUNDARY_VIOLATION"
+    return _结果(违规列表, 错误码)
 
 
-def _收集支持库能力(项目根: Path) -> set[str]:
-    """收集 支持库 全包能力定义（能力定义.json + 支持库包声明.json 能力清单）。"""
-    能力集合: set[str] = set()
-    支持库根 = 项目根 / "支持库"
-    if not 支持库根.is_dir():
-        return 能力集合
-    for 定义路径 in 支持库根.rglob("能力定义.json"):
-        定义 = _读取声明(定义路径)
-        能力列表 = 定义.get("能力列表", 定义.get("能力定义", []))
-        for 能力 in 能力列表 if isinstance(能力列表, list) else []:
-            if isinstance(能力, dict) and 能力.get("能力id"):
-                能力集合.add(str(能力["能力id"]))
-    for 声明路径 in 支持库根.rglob("包声明.json"):
-        声明 = _读取声明(声明路径)
-        for 能力 in 声明.get("能力", []) if isinstance(声明.get("能力", []), list) else []:
-            if isinstance(能力, dict) and 能力.get("能力id"):
-                能力集合.add(str(能力["能力id"]))
-    return 能力集合
-
-
-def 校验能力占用(项目根: Path, 模块名: str) -> dict[str, Any]:
-    """校验模块声明依赖在 支持库 全包能力定义中存在提供者。
-
-    违规项：{"文件": "包声明.json", "行": 0, "模块": 能力id, "类别": "无提供者"}。
-    """
+def _权威合规违规(项目根: Path, 模块名: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """调用权威 13 项组件合规验证器（合规测试包.py），产出违规项与报告摘要。"""
+    from 开发工具.组件合规.合规测试包 import 组件合规
     模块目录 = _定位模块目录(项目根, 模块名)
-    if 模块目录 is None:
-        return _结果([{"文件": "模块库/" + 模块名.strip("模块库.").strip("/"),
-                       "行": 0, "模块": 模块名, "类别": "模块不存在"}],
-                      "MODULE_NOT_FOUND")
-    声明 = _读取声明(模块目录 / "包声明.json")
-    依赖列表 = 声明.get("依赖", [])
-    提供者能力 = _收集支持库能力(项目根)
-    违规列表: list[dict[str, Any]] = []
-    for 依赖 in 依赖列表 if isinstance(依赖列表, list) else []:
-        if not isinstance(依赖, dict):
-            continue
-        能力id = str(依赖.get("能力", ""))
-        if 能力id and 能力id not in 提供者能力:
-            违规列表.append({
-                "文件": "模块库/" + 模块名.strip("模块库.").strip("/") + "/包声明.json",
-                "行": 0, "模块": 能力id, "类别": "无提供者",
-            })
-    return _结果(违规列表, "NO_PROVIDER" if 违规列表 else "")
-
-
-包七要素名称 = ("包声明.json", "能力契约", "说明", "实现", "完整性摘要.json",
-            "验证场景引用.json", "__init__.py")
-
-
-def _要素缺失违规(模块目录: Path, 要素: str) -> dict[str, Any]:
-    return {"文件": 模块目录.as_posix() + "/" + 要素, "行": 0,
-            "模块": 模块目录.name, "类别": "要素缺失", "要素": 要素}
-
-
-def 校验包七要素(项目根: Path, 模块名: str) -> dict[str, Any]:
-    """校验模块包七要素存在，并用 开发工具/组件规范/完整性摘要.py 校验摘要。
-
-    违规项类别：要素缺失（缺文件/目录/内容）/ 摘要漂移（完整性摘要不闭合）。
-    """
-    模块目录 = _定位模块目录(项目根, 模块名)
-    if 模块目录 is None:
-        return _结果([{"文件": "模块库/" + 模块名.strip("模块库.").strip("/"),
-                       "行": 0, "模块": 模块名, "类别": "模块不存在"}],
-                      "MODULE_NOT_FOUND")
-    违规列表: list[dict[str, Any]] = []
-    if not (模块目录 / "包声明.json").is_file():
-        违规列表.append(_要素缺失违规(模块目录, "包声明.json"))
-    elif not _读取声明(模块目录 / "包声明.json"):
-        违规列表.append({"文件": (模块目录 / "包声明.json").as_posix(), "行": 0,
-                       "模块": 模块目录.name, "类别": "要素缺失", "要素": "包声明.json",
-                       "说明": "包声明.json 不可读或非对象"})
-    能力契约目录 = 模块目录 / "能力契约"
-    if not 能力契约目录.is_dir() or not (能力契约目录 / "参数契约.json").is_file():
-        违规列表.append(_要素缺失违规(模块目录, "能力契约"))
-    说明目录 = 模块目录 / "说明"
-    if not 说明目录.is_dir() or not any(说明目录.iterdir()):
-        违规列表.append(_要素缺失违规(模块目录, "说明"))
-    实现目录 = 模块目录 / "实现"
-    if not 实现目录.is_dir() or not any(实现目录.glob("*.py")):
-        违规列表.append(_要素缺失违规(模块目录, "实现"))
-    for 要素 in ("完整性摘要.json", "验证场景引用.json", "__init__.py"):
-        if not (模块目录 / 要素).is_file():
-            违规列表.append(_要素缺失违规(模块目录, 要素))
-    if not (模块目录 / "完整性摘要.json").is_file():
-        return _结果(违规列表, "ELEMENT_MISSING" if 违规列表 else "")
-    from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
-    摘要通过, 摘要问题 = 校验完整性摘要(模块目录)
-    if not 摘要通过:
-        for 问题 in 摘要问题:
-            违规列表.append({
-                "文件": (模块目录 / "完整性摘要.json").as_posix(),
-                "行": 0, "模块": 模块目录.name, "类别": "摘要漂移", "说明": str(问题),
-            })
-    if any(项["类别"] == "摘要漂移" for 项 in 违规列表):
-        return _结果(违规列表, "SUMMARY_DRIFT")
-    return _结果(违规列表, "ELEMENT_MISSING" if 违规列表 else "")
+    报告 = 组件合规(模块目录).执行()
+    违规列表 = [{"文件": f"模块库/{模块名}", "行": 0, "模块": 模块名,
+                "类别": "权威合规", "场景": 名称, "说明": 详情}
+               for 名称, 通过, 详情 in 报告.场景结果表 if not 通过]
+    摘要 = {"通过数": 报告.通过数, "场景数": len(报告.场景结果表), "成功": 报告.成功}
+    return 违规列表, 摘要
 
 
 def 校验模块合规(项目根: Path, 模块名: str) -> dict[str, Any]:
-    """统一入口：合并导入白名单、能力占用、包七要素三类校验结果。
-
-    成功 = 三类均无违规；错误码取首个违规错误码，均无违规时为空串。
-    """
+    """统一入口：权威 13 项合规 + 模块专属边界审计，两类违规合并判定。"""
     模块目录 = _定位模块目录(项目根, 模块名)
     if 模块目录 is None:
         return _结果([{"文件": "模块库/" + 模块名.strip("模块库.").strip("/"),
                        "行": 0, "模块": 模块名, "类别": "模块不存在"}],
                       "MODULE_NOT_FOUND")
-    导入结果 = 校验导入白名单(项目根, 模块名)
-    占用结果 = 校验能力占用(项目根, 模块名)
-    要素结果 = 校验包七要素(项目根, 模块名)
-    违规列表 = (
-        导入结果.get("违规列表", [])
-        + 占用结果.get("违规列表", [])
-        + 要素结果.get("违规列表", [])
-    )
-    if not 违规列表:
-        return _结果([])
-    for 错误码 in ("MODULE_NOT_FOUND", "IMPORT_VIOLATION", "NO_PROVIDER",
-                   "ELEMENT_MISSING", "SUMMARY_DRIFT"):
-        if 错误码 in (导入结果.get("错误码"), 占用结果.get("错误码"),
-                     要素结果.get("错误码")):
-            return _结果(违规列表, 错误码)
-    return _结果(违规列表)
+    权威违规, 权威摘要 = _权威合规违规(项目根, 模块名)
+    边界结果 = 审计模块边界(项目根, 模块名)
+    违规列表 = 权威违规 + 边界结果.get("违规列表", [])
+    结果 = _结果(违规列表)
+    结果["权威合规"] = 权威摘要
+    if 违规列表:
+        结果["错误码"] = "AUTHORITY_VIOLATION" if 权威违规 else 边界结果["错误码"]
+    return 结果
