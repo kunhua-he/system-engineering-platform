@@ -101,7 +101,7 @@ def _归一化空白(文本: str) -> str:
     return _空白模式.sub(" ", 文本).strip()
 
 
-def 提取网页标题(网页内容: str) -> 结果:
+def 提取网页标题(网页内容: str = None) -> 结果:
     """从 HTML 内容提取 <title> 文本；无标题返回空字符串。"""
     if not isinstance(网页内容, str):
         return _失败("参数不合法", "网页内容必须为字符串")
@@ -115,7 +115,7 @@ def 提取网页标题(网页内容: str) -> 结果:
     return _成功(标题.strip())
 
 
-def 提取网页正文(网页内容: str, 最大长度: int = 20000) -> 结果:
+def 提取网页正文(网页内容: str = None, 最大长度: int = 20000) -> 结果:
     """从 HTML 内容提取 body 文本：剔除 script/style，空白归一化，截断到 最大长度。"""
     if not isinstance(网页内容, str):
         return _失败("参数不合法", "网页内容必须为字符串")
