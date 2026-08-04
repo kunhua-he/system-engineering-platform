@@ -14,7 +14,11 @@ from 公共契约.包声明 import 能力声明
 
 @dataclass(frozen=True)
 class 能力实现:
-    """能力提供方注册的实现句柄。"""
+    """能力提供方注册的实现句柄。
+
+    元数据字段（版本/提供者id/提供者版本/制品摘要）供调用证据采集：
+    由生产装配注册方提供，缺省为空串；不得伪造，未知即空。
+    """
 
     能力id: str
     包id: str
@@ -22,6 +26,10 @@ class 能力实现:
     参数: list[dict[str, str]] = field(default_factory=list)
     返回: str = ""
     说明: str = ""
+    版本: str = ""
+    提供者id: str = ""
+    提供者版本: str = ""
+    制品摘要: str = ""
 
     def 声明一致(self, 声明: 能力声明) -> bool:
         """实现句柄与声明的参数/返回是否一致。"""
