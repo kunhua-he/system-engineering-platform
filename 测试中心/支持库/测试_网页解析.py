@@ -13,6 +13,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 支持库.后端.网页解析 import 提取网页标题, 提取网页正文
+系统根 = Path(__file__).resolve().parents[2]
 from 模块库.网页分析 import 提取网页信息
 
 
@@ -98,7 +99,18 @@ class Test提取网页正文(unittest.TestCase):
 
 
 class Test提取网页信息(unittest.TestCase):
-    """网页分析模块组合能力。"""
+    """网页分析模块组合能力（模块经能力调用器，需装配）。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from 公共契约.能力契约.调用器 import _全局调用器
+        if _全局调用器 is None:
+            from 公共契约.能力契约.契约 import 能力注册表
+            from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+            from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+            cls._装配注册表 = 能力注册表()
+            安装全部支持库(系统根 / "支持库", cls._装配注册表)
+            创建并绑定(cls._装配注册表)
 
     def test_组合提取标题与正文(self):
         结果 = 提取网页信息("<html><head><title>标题A</title></head><body>正文A</body></html>")

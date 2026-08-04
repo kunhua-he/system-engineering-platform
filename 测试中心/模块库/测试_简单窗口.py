@@ -104,6 +104,17 @@ class Test简单窗口S0收敛(unittest.TestCase):
 
 
 class Test简单窗口功能(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        from 公共契约.能力契约.调用器 import _全局调用器
+        if _全局调用器 is None:
+            from 公共契约.能力契约.契约 import 能力注册表
+            from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+            from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+            cls._装配注册表 = 能力注册表()
+            安装全部支持库(系统根 / "支持库", cls._装配注册表)
+            创建并绑定(cls._装配注册表)
+
     """功能真实调用：模块经 获取能力调用器().调用能力 组合支持库能力。"""
 
     def test_创建打开传递参数获取描述关闭全流程(self) -> None:
