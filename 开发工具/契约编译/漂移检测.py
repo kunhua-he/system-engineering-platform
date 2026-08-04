@@ -256,6 +256,7 @@ def 检测能力定义漂移(包目录: Path) -> list[str]:
         生成Agent数据, 生成包声明, 生成能力契约, 生成注册入口,
         生成搜索数据, 生成验证场景引用, 读取能力定义, 校验能力定义,
     )
+    from 开发工具.契约编译.聚合契约解析 import 读取原始
     try:
         定义 = 读取能力定义(定义文件)
     except json.JSONDecodeError as 错误:
@@ -284,12 +285,11 @@ def 检测能力定义漂移(包目录: Path) -> list[str]:
     期望契约 = json.loads(生成能力契约(定义))
     契约文件 = 包目录 / "能力契约" / "参数契约.json"
     if 契约文件.is_file():
-        try:
-            实际契约 = json.loads(契约文件.read_text(encoding="utf-8"))
-            if 实际契约 != 期望契约:
-                问题列表.append(f"能力契约与能力定义不一致（需重新编译）: {包目录}")
-        except json.JSONDecodeError:
+        实际契约 = 读取原始(契约文件)
+        if 实际契约 is None:
             问题列表.append(f"能力契约 JSON 解析失败: {契约文件}")
+        elif 实际契约 != 期望契约:
+            问题列表.append(f"能力契约与能力定义不一致（需重新编译）: {包目录}")
     else:
         问题列表.append(f"能力契约缺失（需重新编译）: {契约文件}")
     # 注册入口含生成标记（或手写入口含 注册能力 → 合法）
