@@ -12,6 +12,7 @@ Homebrew tesseract 无法读取绝对路径图片，一律以图片目录为 cwd
 命令失败/版本不兼容/提供者不可用。"""
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import os
@@ -163,6 +164,18 @@ def _分类识别失败(标准错误: str, 语言: str) -> 结果:
     return _失败("识别失败", f"tesseract 识别失败：{摘要 or '未知错误'}", 可重试=True)
 
 
+def _归一化图片字节(图片字节: Any) -> tuple[bytes | None, 结果 | None]:
+    """图片字节 参数归一化校验：二进制原样，base64 文本解码（跨宿主可序列化）。"""
+    if isinstance(图片字节, str):
+        try:
+            图片字节 = base64.b64decode(图片字节)
+        except ValueError:
+            return None, _失败("参数不合法", "图片字节文本必须是合法 base64")
+    if not isinstance(图片字节, bytes) or not 图片字节:
+        return None, _失败("参数不合法", "图片字节必须为非空二进制")
+    return 图片字节, None
+
+
 def 识别图片(图片路径: str | None = None, 图片字节: bytes | None = None,
              语言: str = 默认语言, 词级数据: bool = False, 超时秒: float = 60.0,
              取消事件: threading.Event | None = None,
@@ -182,7 +195,9 @@ def 识别图片(图片路径: str | None = None, 图片字节: bytes | None = N
     工具路径 = 解析结果
     临时目录 = None
     if 图片字节 is not None:
-        if not isinstance(图片字节, bytes) or not 图片字节: return _失败("参数不合法", "图片字节必须为非空二进制")
+        图片字节, 错误 = _归一化图片字节(图片字节)
+        if 错误:
+            return 错误
         临时目录 = 创建临时目录()
         工作目录, 图片相对名 = str(临时目录), 落盘图片(临时目录, 图片字节).name
     else:

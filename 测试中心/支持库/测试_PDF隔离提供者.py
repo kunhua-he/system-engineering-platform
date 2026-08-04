@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -191,6 +192,68 @@ class TestPDF隔离提供者(unittest.TestCase):
         self.assertIsNone(进程.poll())  # 刚启动仍在运行
         提供者模块.等待并收集([进程])
         self.assertIsNotNone(进程.poll())  # 清理后已退出
+
+    def test_校验PDF字节参数不合法(self):
+        """空字节/非法 base64 文本 → 参数不合法（统一失败结果，不抛异常）。"""
+        for 字节 in (b"", "不是合法base64!!", None):
+            结果 = 校验PDF隔离(字节)
+            self.assertFalse(结果.成功, repr(字节))
+            self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_校验PDF接受base64文本(self):
+        """base64 文本字节（跨宿主可序列化）真实重开 PDF 成功。"""
+        b64 = __import__("base64").b64encode(self.PDF路径.read_bytes()).decode("ascii")
+        结果 = 校验PDF隔离(b64)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual((结果.值 or {}).get("页数"), 1)
+
+
+class TestPDF隔离包级合规(unittest.TestCase):
+    """S0 正式包九要素与聚合契约逐能力对称漂移断言。"""
+
+    def setUp(self):
+        self.提供者目录 = (
+            Path(__file__).resolve().parents[2]
+            / "支持库" / "适配层" / "PDF隔离提供者"
+        )
+
+    def test_九要素齐全(self):
+        for 相对路径 in (
+            "依赖契约/依赖契约.json", "配置契约/配置契约.json", "权限契约/权限契约.json",
+            "资源预算.json", "复用决策.json", "验证场景引用.json", "完整性摘要.json",
+            "能力定义.json", "能力数据/Agent查询数据.json", "能力数据/能力搜索数据.json",
+        ):
+            self.assertTrue((self.提供者目录 / 相对路径).is_file(), f"缺少 {相对路径}")
+        预算 = json.loads((self.提供者目录 / "资源预算.json").read_text(encoding="utf-8"))
+        for 键 in ("内存上限", "线程上限", "子进程上限", "并发调用上限", "队列长度",
+                   "文件句柄上限", "临时空间上限", "单次调用超时", "每分钟重启次数", "空闲回收时间"):
+            self.assertIn(键, 预算, f"资源预算缺少 {键}")
+        复用 = json.loads((self.提供者目录 / "复用决策.json").read_text(encoding="utf-8"))
+        self.assertTrue(复用.get("搜索词") and 复用.get("候选能力id"))
+
+    def test_聚合契约全要素与权限覆盖(self):
+        契约数据 = json.loads(
+            (self.提供者目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+        self.assertEqual(契约数据["契约版本"], "1.0.0")
+        能力表 = 契约数据["能力契约"]
+        self.assertEqual(len(能力表), 3)
+        权限数据 = json.loads(
+            (self.提供者目录 / "权限契约" / "权限契约.json").read_text(encoding="utf-8"))
+        for 能力 in 能力表:
+            self.assertEqual(能力["版本"], "1.0.0", 能力["能力id"])
+            self.assertTrue(能力["说明"], 能力["能力id"])
+            self.assertIn("调用示例", 能力, 能力["能力id"])
+            self.assertIsInstance(能力["调用示例"].get("参数"), dict)
+            for 参数 in 能力["参数"]:
+                self.assertNotEqual(参数["类型"], "任意", f"{能力['能力id']} 参数 {参数['名称']} 禁止任意类型")
+                self.assertIn("必填", 参数)
+                self.assertIn("默认值", 参数)
+            self.assertIn(能力["能力id"], 权限数据, f"{能力['能力id']} 缺权限声明")
+        定义数据 = json.loads((self.提供者目录 / "能力定义.json").read_text(encoding="utf-8"))
+        self.assertEqual({能力["能力id"] for 能力 in 能力表},
+                         {能力["能力id"] for 能力 in 定义数据["能力列表"]})
+        self.assertTrue((self.提供者目录 / "验证数据" / "示例.pdf").is_file(),
+                        "缺少 验证数据/示例.pdf（解析PDF 调用示例依赖）")
 
 
 if __name__ == "__main__":
