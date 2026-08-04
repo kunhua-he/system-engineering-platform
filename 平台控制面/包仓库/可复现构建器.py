@@ -17,6 +17,10 @@ from pathlib import Path
 默认主机名 = "可复现构建机"
 
 
+# 二进制资产 hex 前缀（与 平台客户端制品 的 _二进制前缀 一致）
+_二进制前缀 = "hexfile:"
+
+
 def 规范化相对路径(路径: str) -> str:
     """校验并规范化制品内相对路径；非法路径抛 ValueError（与包仓库同一规则）。"""
     if not 路径 or 路径 in (".", "/", "\\"):
@@ -87,7 +91,10 @@ class 可复现构建器:
         for 路径, 内容 in 规范化表.items():
             目标 = 构建目录 / 路径
             目标.parent.mkdir(parents=True, exist_ok=True)
-            目标.write_text(内容, encoding="utf-8")
+            if 内容.startswith(_二进制前缀):
+                目标.write_bytes(bytes.fromhex(内容[len(_二进制前缀):]))
+            else:
+                目标.write_text(内容, encoding="utf-8")
         return 构建目录, self.构建摘要(构建目录)
 
     def 构建摘要(self, 构建目录: str | Path) -> dict[str, str]:
