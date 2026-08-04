@@ -38,7 +38,7 @@ def 查找textutil() -> str | None:
     return 路径
 
 
-def 检查提供者() -> 结果:
+def 检查提供者(超时秒: float = 30) -> 结果:
     """检查 textutil 是否可用（真实独立进程探针：textutil -help + macOS 版本）。
 
     textutil 无独立版本号，版本取 macOS 系统版本；探针失败
@@ -49,7 +49,7 @@ def 检查提供者() -> 结果:
     路径 = 查找textutil()
     if not 路径:
         return _失败("外部提供者不可用", "textutil 未找到（macOS 系统能力缺失）")
-    探针 = 检查系统工具("textutil", [路径], 版本参数="-help")
+    探针 = 检查系统工具("textutil", [路径], 超时秒=超时秒, 版本参数="-help")
     if not 探针.成功:
         return _失败("外部提供者不可用",
                       f"textutil 探针失败（{探针.错误码}）: {探针.诊断}")
@@ -123,7 +123,8 @@ def 转换文本文件(输入路径: str, 目标格式: str, *, 超时秒: float
         大小 = 输出文件.stat().st_size
         if 大小 > 最大输出字节:
             return _失败("超出限制", f"输出文件过大: {大小} 字节 > {最大输出字节}")
-        文本 = 输出文件.read_text(encoding="utf-8", errors="replace")
+        with open(输出文件, "rb") as 流:
+            文本 = 流.read().decode("utf-8", errors="replace")
         return 结果.成功结果({"文本": 文本, "格式": 目标格式_clean,
                              "字节数": 大小, "输出路径": str(输出文件)})
     except OSError as 错误:
