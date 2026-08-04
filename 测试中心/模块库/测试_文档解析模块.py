@@ -64,6 +64,7 @@ class Test文档解析模块(unittest.TestCase):
         from 支持库.适配层.python_pptx提供者 import 注册能力 as 注册pptx
         from 支持库.适配层.pdfplumber提供者 import 注册能力 as 注册pdf
         from 支持库.适配层.LibreOffice提供者 import 注册能力 as 注册libre
+        from 支持库.后端.资源管理 import 注册能力 as 注册资源管理
 
         注册表 = 能力注册表()
         注册docx(注册表)
@@ -71,13 +72,12 @@ class Test文档解析模块(unittest.TestCase):
         注册pptx(注册表)
         注册pdf(注册表)
         注册libre(注册表)
+        注册资源管理(注册表)
         设置全局唯一服务(唯一能力调用服务(注册表))
 
     def tearDown(self):
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
         设置全局唯一服务(None)
-
-    def tearDown(self):
         import shutil
         shutil.rmtree(self.临时目录, ignore_errors=True)
 
