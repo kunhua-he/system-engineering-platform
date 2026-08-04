@@ -1,8 +1,9 @@
-"""模块库.自修复工具 组合能力真实端到端测试。
+"""模块库.自修复工具 组合能力真实端到端测试（调用器装配）。
 
 全部真实 git 调用：worktree 创建→补丁应用→验证→提交→挑拣合入→回滚→
 验证还原；补丁多重匹配/路径逃逸/验证失败不提交/回滚失败中止/未提交修改
-拒绝；零残留（临时仓库/worktree/进程/登记临时资源全清理）。
+拒绝；平台不可用（未装配调用器如实返回 提供者不可用）；参数错误；
+获取当前提交哈希；零残留（临时仓库/worktree/进程/登记临时资源全清理）。
 """
 
 from __future__ import annotations
@@ -17,13 +18,47 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 模块库.自修复工具 import 创建修复工作区, 回滚修复, 验证修复
+from 模块库.自修复工具 import 创建修复工作区, 获取当前提交哈希, 回滚修复, 验证修复
 from 支持库.后端.文件系统 import 清理全部临时资源
 from 支持库.后端.资源管理 import 创建内容摘要
 
 
 def 运行命令(命令列表: list[str], 工作目录: str) -> subprocess.CompletedProcess:
     return subprocess.run(命令列表, cwd=工作目录, capture_output=True, text=True)
+
+
+def 装配能力调用器() -> None:
+    """真实装配：注册支持库能力与模块能力，注入唯一能力调用服务。"""
+    from 公共契约.能力契约.契约 import 能力实现, 能力注册表
+    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
+    from 支持库.适配层.Git提供者 import 注册能力 as 注册Git
+    from 支持库.适配层.本地进程适配器 import 本地进程适配器
+    from 支持库.后端.文件系统 import 注册能力 as 注册文件系统
+    from 支持库.后端.资源管理 import 注册能力 as 注册资源管理
+    from 模块库.自修复工具 import 注册能力 as 注册自修复
+
+    注册表 = 能力注册表()
+    注册Git(注册表)
+    注册文件系统(注册表)
+    注册资源管理(注册表)
+    注册表.注册(能力实现(
+        能力id="本地进程.执行命令受控",
+        包id="支持库.适配层.本地进程适配器",
+        实现函数=本地进程适配器().执行命令受控,
+        参数=[{"名称": "命令列表", "类型": "列表"},
+              {"名称": "超时秒", "类型": "浮点数"},
+              {"名称": "输出上限字节", "类型": "整数"},
+              {"名称": "工作目录", "类型": "文本"}],
+        返回="结果",
+        说明="验证命令受管执行（真实子进程）",
+    ))
+    注册自修复(注册表)
+    设置全局唯一服务(唯一能力调用服务(注册表))
+
+
+def 卸载能力调用器() -> None:
+    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+    设置全局唯一服务(None)
 
 
 class Test自修复工具(unittest.TestCase):
@@ -41,8 +76,10 @@ class Test自修复工具(unittest.TestCase):
             "重复出现\n重复出现\n", encoding="utf-8")
         运行命令(["git", "add", "."], str(仓库目录))
         运行命令(["git", "commit", "-m", "初始提交"], str(仓库目录))
+        装配能力调用器()
 
     def tearDown(self):
+        卸载能力调用器()
         清理全部临时资源()
         shutil.rmtree(self.临时根, ignore_errors=True)
 
@@ -141,6 +178,54 @@ class Test自修复工具(unittest.TestCase):
         结果 = 回滚修复(str(self.仓库), "a" * 7, 操作="回滚")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "未提交修改")
+
+    def test_获取当前提交哈希(self):
+        """获取当前提交哈希与分支（经调用器 Git操作 能力）。"""
+        结果 = 获取当前提交哈希(str(self.仓库))
+        self.assertTrue(结果.成功, 结果.错误说明)
+        实际哈希 = 运行命令(["git", "rev-parse", "HEAD"], str(self.仓库)).stdout.strip()
+        self.assertEqual(结果.值["提交哈希"], 实际哈希)
+        self.assertEqual(结果.值["分支"], "主干")
+
+    def test_平台不可用如实失败(self):
+        """未装配调用器（卸载+清除惰性钩子）→ 返回 提供者不可用，不抛异常。"""
+        import 公共契约.能力契约.调用器 as 调用器
+        原钩子 = 调用器._惰性装配函数
+        卸载能力调用器()
+        调用器._惰性装配函数 = None
+        try:
+            结果 = 创建修复工作区(
+                str(self.仓库), self.补丁(), self.验证命令(), "不应提交")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+            # 验证命令执行失败按原语义包装为 验证失败（不抛异常如实失败）
+            验证 = 验证修复(str(self.仓库), ["git", "status"])
+            self.assertFalse(验证.成功)
+            self.assertEqual(验证.错误码, "验证失败")
+        finally:
+            调用器._惰性装配函数 = 原钩子
+            装配能力调用器()
+
+    def test_参数错误(self):
+        """提交消息为空/验证命令非列表/操作非法/补丁列表为空 → 参数不合法。"""
+        with self.subTest(场景="提交消息为空"):
+            结果 = 创建修复工作区(
+                str(self.仓库), self.补丁(), self.验证命令(), "  ")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+        with self.subTest(场景="验证命令非列表"):
+            结果 = 验证修复(str(self.仓库), "git status")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+        with self.subTest(场景="操作非法"):
+            结果 = 回滚修复(str(self.仓库), "a" * 7, 操作="未知操作")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+        with self.subTest(场景="补丁列表为空"):
+            结果 = 创建修复工作区(
+                str(self.仓库), [], ["git", "status"], "不应提交")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
 
     def test_零残留(self):
         """创建全程后：无 worktree、登记临时资源已可清理（宿主目录由清理方/运行器 teardown 兜底）。"""
