@@ -43,7 +43,7 @@ def 查找LibreOffice() -> str | None:
     return 路径
 
 
-def 检查提供者() -> 结果:
+def 检查提供者(超时秒: float = 30) -> 结果:
     """检查 LibreOffice 是否可用（真实独立进程探针：soffice --version）。
 
     探针失败（工具缺失/超时/退出码非0）→ 外部提供者不可用，
@@ -53,7 +53,7 @@ def 检查提供者() -> 结果:
     路径 = 查找LibreOffice()
     if not 路径:
         return _失败("外部提供者不可用", "LibreOffice 未找到（未安装或不在 PATH）")
-    探针 = 检查系统工具("LibreOffice soffice", [路径])
+    探针 = 检查系统工具("LibreOffice soffice", [路径], 超时秒=超时秒)
     if not 探针.成功:
         return _失败("外部提供者不可用",
                       f"LibreOffice 探针失败（{探针.错误码}）: {探针.诊断}")

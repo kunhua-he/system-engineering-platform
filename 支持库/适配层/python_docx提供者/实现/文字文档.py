@@ -82,6 +82,7 @@ def 解析文字文档(文件路径: str, 格式: str = "docx", *,
         return _失败("文件损坏", f"python-docx 打开失败: {错误}")
     块列表: list[dict] = []
     资源列表: list[dict] = []
+    警告列表: list[str] = []
     来源引用 = {"module": "docx-parser", "file_id": 0}
     # 段落
     for 段落 in 文档.paragraphs:
@@ -104,10 +105,10 @@ def 解析文字文档(文件路径: str, 格式: str = "docx", *,
                         "类型": "image", "资源引用": 关系.rId,
                         "字节数据b64": base64.b64encode(图像字节).decode("ascii"),
                     })
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except Exception as 错误:
+                    警告列表.append(f"图像 {关系.rId} 读取失败: {错误}")
+    except Exception as 错误:
+        警告列表.append(f"文档图像资源读取失败: {错误}")
     通用文档 = {
         "schema_version": "通用文档-v1",
         "content_type": "word",
@@ -115,7 +116,7 @@ def 解析文字文档(文件路径: str, 格式: str = "docx", *,
         "块列表": 块列表,
         "资源列表": 资源列表,
         "元数据": {"来源": "python_docx提供者", "格式": "docx"},
-        "警告": [],
+        "警告": 警告列表,
         "resource_diagnostics": [],
         "附加": {},
     }

@@ -49,7 +49,7 @@ def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
 
 def _文件摘要(文件路径: Path) -> str:
     摘要器 = hashlib.sha256()
-    with 文件路径.open("rb") as 流:
+    with open(文件路径, "rb") as 流:
         while 数据块 := 流.read(1024 * 1024):
             摘要器.update(数据块)
     return 摘要器.hexdigest()
@@ -124,7 +124,7 @@ def _解析xlsx内容(文件路径: Path, 数据模式: bool, 最大工作表数
 
 def _加密或损坏(错误: Exception) -> 结果:
     消息 = str(错误).lower()
-    if "encrypt" in 消息 or "password" in 消息:
+    if "encrypt" in 消息 or "密码" in 消息 or "口令" in 消息:
         return _失败("文件加密", f"XLSX 已加密: {错误}")
     return _失败("文件损坏", f"XLSX 解析失败: {错误}")
 

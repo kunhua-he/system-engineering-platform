@@ -128,18 +128,18 @@ def _写入单元格映射(表单, 工作表: dict) -> int:
         if isinstance(合并范围, str):
             try:
                 表单.merge_cells(合并范围)
-            except Exception:
-                pass
+            except Exception as 错误:
+                continue
     for 列字母, 宽度 in (工作表.get("列宽映射") or {}).items():
         try:
             表单.column_dimensions[str(列字母)].width = float(宽度) / 7
         except (KeyError, ValueError, TypeError):
-            pass
+            continue
     for 行号字符串, 高度 in (工作表.get("行高映射") or {}).items():
         try:
             表单.row_dimensions[int(行号字符串)].height = float(高度) / 4
         except (ValueError, TypeError, KeyError):
-            pass
+            continue
     return 写入格数
 
 
