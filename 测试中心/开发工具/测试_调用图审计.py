@@ -154,13 +154,12 @@ class Test能力调用图审计(unittest.TestCase):
         命中 = self._检出类型("实现目录直连")
         self.assertEqual(len(命中), 1)
 
-    def test_真实OCR审计如实报出支持库导入(self) -> None:
-        """当前 OCR 实现有支持库静态导入 → 必须如实报出（第二波迁移后清零）。"""
+    def test_真实OCR审计清零确认(self) -> None:
+        """OCR 经第二波迁移后支持库静态导入必须为零（S0.5 验收）。"""
         报告 = 审计模块库(系统根 / "模块库")
         OCR违规 = [违规 for 违规 in 报告.违规列表
-                 if "OCR" in 违规.文件 and "支持库直连" in 违规.类型]
-        self.assertTrue(OCR违规, "OCR 当前支持库静态导入必须被如实报出")
-        self.assertTrue(any("Tesseract提供者" in 违规.详情 for 违规 in OCR违规))
+                 if "OCR" in 违规.文件 and 违规.类型 in ("支持库直连", "原子旁路", "四者漂移")]
+        self.assertFalse(OCR违规, f"OCR 迁移后必须清零，实际违规: {[违规.详情 for 违规 in OCR违规]}")
 
 
 if __name__ == "__main__":

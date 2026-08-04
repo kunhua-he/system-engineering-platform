@@ -170,7 +170,8 @@ class 项目服务测试(unittest.TestCase):
                 )
                 结果 = asyncio.run(服务模块.调用工具("verify_and_record", {
                     "work_id": "child-evidence", "name": "子任务验证",
-                    "command": ["git", "diff", "--check"],
+                    "command": ["python3.14", "-m", "pytest",
+                                "测试中心/模块库/测试_OCR.py", "-q", "--timeout=600"],
                 }))
                 self.assertIn('"开工id": "child-evidence"', 结果[0].text)
                 self.assertIn('"开工id": "child-evidence"', 服务模块.证据路径.read_text(encoding="utf-8"))

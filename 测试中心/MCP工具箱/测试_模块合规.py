@@ -76,14 +76,11 @@ class 模块合规测试(unittest.TestCase):
         self.assertEqual(结果["错误码"], "")
         self.assertEqual(结果["违规列表"], [])
 
-    def test_真实OCR校验模块合规只含权威违规(self):
-        """MCP 校验 = 权威 13 项 + 边界审计；OCR 边界干净，失败仅来自权威部分。"""
+    def test_真实OCR校验模块合规通过(self):
+        """OCR 经第二波迁移后：权威 13 项 + 边界审计全部通过（S0.5 验收）。"""
         结果 = 校验模块合规(系统根, "OCR")
-        self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "AUTHORITY_VIOLATION")
-        self.assertTrue(结果["权威合规"]["成功"] is False)
-        类别表 = {违规["类别"] for 违规 in 结果["违规列表"]}
-        self.assertEqual(类别表, {"权威合规"})
+        self.assertTrue(结果["成功"], f"OCR 校验应通过: {结果}")
+        self.assertEqual(结果["错误码"], "")
 
     def test_支持库导入检出(self):
         搭建违规模块(self.临时根, "支持库导入模块",
