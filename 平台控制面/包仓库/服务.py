@@ -23,6 +23,9 @@ from 平台控制面.包仓库.签名能力 import 签名能力
 from 平台控制面.包仓库.安装能力 import 安装能力
 from 支持库.适配层 import 内容摘要
 
+# 二进制资产 hex 前缀（与 平台客户端制品/_二进制前缀、可复现构建器 一致）
+_二进制前缀 = "hexfile:"
+
 
 class 包仓库(签名能力, 安装能力):
     """包仓库服务（唯一写入口：平台状态.制品/信任）。"""
@@ -46,8 +49,14 @@ class 包仓库(签名能力, 安装能力):
             规范化文件表[规范化] = 内容
         # 同包同版本唯一性：已存在同版本制品时摘要必须一致
         已有表 = self.状态.查询记录("制品", "包id=? AND 版本=?", (包id, 版本))
-        文件清单 = {路径: {"sha256": hashlib.sha256(内容.encode("utf-8")).hexdigest(),
-                          "大小": len(内容.encode("utf-8"))}
+        def _文件摘要(内容: str) -> tuple[str, int]:
+            """二进制资产按解码后字节计算摘要（与安装还原一致，避免 hex 文本旧制品复用）。"""
+            if 内容.startswith(_二进制前缀):
+                字节 = bytes.fromhex(内容[len(_二进制前缀):])
+                return hashlib.sha256(字节).hexdigest(), len(字节)
+            return hashlib.sha256(内容.encode("utf-8")).hexdigest(), len(内容.encode("utf-8"))
+
+        文件清单 = {路径: {"sha256": _文件摘要(内容)[0], "大小": _文件摘要(内容)[1]}
                     for 路径, 内容 in 规范化文件表.items()}
         正文 = json.dumps({"包id": 包id, "版本": 版本, "文件清单": 文件清单,
                            "构建输入": 构建输入}, ensure_ascii=False, sort_keys=True)
@@ -63,12 +72,17 @@ class 包仓库(签名能力, 安装能力):
             for 路径, 内容 in 规范化文件表.items():
                 目标 = 临时目录 / 路径
                 目标.parent.mkdir(parents=True, exist_ok=True)
-                目标.write_text(内容, encoding="utf-8")
+                if 内容.startswith(_二进制前缀):
+                    目标.write_bytes(bytes.fromhex(内容[len(_二进制前缀):]))
+                else:
+                    目标.write_text(内容, encoding="utf-8")
             # 逐一核对磁盘实际文件摘要（防写入前已存在文件干扰）
             for 路径, 内容 in 规范化文件表.items():
                 实际 = hashlib.sha256((临时目录 / 路径).read_bytes()).hexdigest()
                 if 实际 != 文件清单[路径]["sha256"]:
-                    raise RuntimeError(f"临时构建校验失败: {路径}")
+                    raise RuntimeError(
+                        f"临时构建校验失败: {路径}（实际 {实际[:12]} ≠ 期望 {文件清单[路径]['sha256'][:12]}）"
+                    )
             物料清单 = {"包id": 包id, "版本": 版本, "文件清单": 文件清单, "构建输入": 构建输入}
             (临时目录 / "物料清单.json").write_text(
                 json.dumps(物料清单, ensure_ascii=False, indent=2), encoding="utf-8")

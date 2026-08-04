@@ -49,6 +49,13 @@ def 计算目录摘要16(目录: Path) -> str:
     return 哈希器.hexdigest()[:摘要前缀长度]
 
 
+# 二进制资产后缀（示例/验证数据 等真实二进制文件，hex 编码入库）
+_二进制文件后缀表 = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+                  ".woff", ".woff2", ".ttf", ".otf", ".ico", ".mp3", ".wav",
+                  ".mp4", ".zip", ".xlsx", ".docx", ".pptx"}
+_二进制前缀 = "hexfile:"
+
+
 def 读取制品文件表(制品目录: Path) -> dict[str, str]:
     """把制品目录全部正式文件读为 相对路径→文本 文件表（供 包仓库.构建制品）。"""
     文件表: dict[str, str] = {}
@@ -58,6 +65,12 @@ def 读取制品文件表(制品目录: Path) -> dict[str, str]:
         if 文件.name == "物料清单.json":
             continue
         相对 = 文件.relative_to(制品目录).as_posix()
+        if 文件.suffix.lower() in _二进制文件后缀表:
+            try:
+                文件表[相对] = _二进制前缀 + 文件.read_bytes().hex()
+            except OSError as 错误:
+                raise ValueError(f"制品文件不可读: {相对}（{错误}）") from 错误
+            continue
         try:
             文件表[相对] = 文件.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as 错误:
