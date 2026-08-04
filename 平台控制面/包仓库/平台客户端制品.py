@@ -144,9 +144,7 @@ class 平台客户端制品接入:
         摘要16 = 制品名.split("-")[-1]
         if not (len(摘要16) == 摘要前缀长度 and all(字符 in "0123456789abcdef" for 字符 in 摘要16)):
             return False, f"制品目录摘要段不合法: {制品名}", ""
-        # 摘要口径=平台客户端 包层内容（新制品根含包层；旧平铺制品向后兼容）
-        内容根 = 制品目录 / "平台客户端"
-        实际摘要16 = 计算目录摘要16(内容根 if 内容根.is_dir() else 制品目录)
+        实际摘要16 = 计算目录摘要16(制品目录)
         if 实际摘要16 != 摘要16:
             return False, f"制品目录摘要不符（目录名 {摘要16}，实际 {实际摘要16}）", ""
         # 1. 内容寻址登记（复用 包仓库.构建制品：路径安全→临时目录→磁盘校验→
@@ -294,16 +292,12 @@ class 平台客户端制品接入:
         临时 = self.环境目录 / f".安装临时_{uuid.uuid4().hex[:8]}"
         临时.mkdir(parents=True)
         try:
-            # 制品根含 平台客户端 包层时复制包层内容；旧平铺制品向后兼容
-            内容根 = 制品目录 / "平台客户端"
-            if not 内容根.is_dir():
-                内容根 = 制品目录
-            for 文件 in sorted(内容根.rglob("*")):
+            for 文件 in sorted(制品目录.rglob("*")):
                 if 文件.is_dir() or "__pycache__" in 文件.parts:
                     continue
                 if 文件.name == "物料清单.json":
                     continue
-                相对 = 文件.relative_to(内容根)
+                相对 = 文件.relative_to(制品目录)
                 目标文件 = 临时 / 相对
                 目标文件.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(文件, 目标文件)
@@ -390,9 +384,7 @@ class 平台客户端制品接入:
         指向目录 = self.客户端制品目录 / 制品名 if 制品名 else None
         if 指向目录 is None or not 指向目录.is_dir():
             return f"激活指针指向的制品目录不存在: {制品名 or '<空>'}"
-        内容根 = 指向目录 / "平台客户端"
-        摘要根 = 内容根 if 内容根.is_dir() else 指向目录
-        if len(摘要16) != 摘要前缀长度 or 计算目录摘要16(摘要根) != 摘要16:
+        if len(摘要16) != 摘要前缀长度 or 计算目录摘要16(指向目录) != 摘要16:
             return f"激活指针指向的制品摘要不符: {制品名}（期望 {摘要16}）"
         制品摘要 = 指针.get("制品摘要", "")
         if 制品摘要:
@@ -428,9 +420,7 @@ class 平台客户端制品接入:
         指向目录 = self.客户端制品目录 / 制品名 if 制品名 else None
         if 指向目录 is None or not 指向目录.is_dir():
             return False, f"陈旧激活指针：指向的制品目录不存在 {制品名 or '<空>'}", None
-        内容根 = 指向目录 / "平台客户端"
-        摘要根 = 内容根 if 内容根.is_dir() else 指向目录
-        if 计算目录摘要16(摘要根) != 摘要16:
+        if 计算目录摘要16(指向目录) != 摘要16:
             return False, f"陈旧激活指针：指向的制品摘要不符 {制品名}", None
         return True, f"稳定路径可读：{目标}", 目标
 
