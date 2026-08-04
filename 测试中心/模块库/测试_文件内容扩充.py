@@ -2,7 +2,7 @@
 
 覆盖：受控二进制读取（真实读回/路径越界/超大拒绝/文件不存在）、
 头部读取（PNG 头断言）、流式摘要（3MB+ 大文件与 sha256 全量对比）、
-既有能力回归（读取/写入/复制/移动/删除/列出）。
+平台不可用降级（提供者不可用）、既有能力回归（读取/写入/复制/移动/删除/列出）。
 """
 
 from __future__ import annotations
@@ -31,12 +31,35 @@ from 模块库.文件管理 import (
 PNG签名 = b"\x89PNG\r\n\x1a\n"
 
 
+def _装配调用器() -> None:
+    """真实装配：注册文件系统与资源管理支持库能力并注入唯一能力调用服务。"""
+    from 公共契约.能力契约.契约 import 能力注册表
+    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
+    from 支持库.后端.文件系统 import 注册能力 as 注册文件系统
+    from 支持库.后端.资源管理 import 注册能力 as 注册资源管理
+
+    注册表 = 能力注册表()
+    注册文件系统(注册表)
+    注册资源管理(注册表)
+    设置全局唯一服务(唯一能力调用服务(注册表))
+
+
+def _卸载调用器() -> None:
+    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+
+    设置全局唯一服务(None)
+
+
 class 测试_文件内容扩充(unittest.TestCase):
     def setUp(self):
+        _装配调用器()
         self.临时根 = tempfile.mkdtemp(prefix="测试_文件内容扩充_")
         self.根目录 = Path(self.临时根)
         self.二进制文件 = self.根目录 / "图像.png"
         self.二进制文件.write_bytes(PNG签名 + b"\x00\x01\x02\x03" * 64)
+
+    def tearDown(self):
+        _卸载调用器()
 
     def test_受控二进制读取真实读回(self):
         结果 = 读取二进制文件(self.临时根, "图像.png", 0)
@@ -72,6 +95,14 @@ class 测试_文件内容扩充(unittest.TestCase):
         结果 = 读取文件头部字节(self.临时根, "../越界.bin", 8)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "路径越界")
+
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        _卸载调用器()
+        结果 = 读取文件(str(self.二进制文件))
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+        _装配调用器()
 
     def test_流式摘要大文件分块(self):
         大文件 = self.根目录 / "大文件.bin"
