@@ -23,7 +23,8 @@ class Test包发现(unittest.TestCase):
         self.assertTrue(发现.成功, str(发现.问题列表))
         类型表 = {声明.类型 for 声明 in 发现.声明列表}
         self.assertIn("支持库", 类型表)
-        self.assertIn("模块", 类型表)
+        self.assertIn("基础模块", 类型表)
+        self.assertIn("功能模块", 类型表)
         self.assertGreaterEqual(len(发现.声明列表), 8)
 
     def test_能力id唯一(self):
