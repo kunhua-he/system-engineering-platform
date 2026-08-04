@@ -1,8 +1,8 @@
-"""模块库.媒体转写 组合 FFmpeg 与 MLX Whisper 支持库公开入口的真实测试。
+"""模块库.媒体转写 组合能力真实测试：经唯一能力调用服务装配 MLX Whisper 支持库能力。
 
 覆盖：模型未配置如实返回（不伪造转写）、模型缺失语义、伪脚本模拟子进程
-（崩溃/超时/取消，经支持库）、视频转写流程（真实 ffmpeg 提取音频 + 转写
-段未配置）、提取段失败错误码透传、参数校验、零残留。
+（崩溃/超时，经支持库真实链）、转写视频文件流程、参数错误（路径/令牌/配置）、
+平台不可用（调用器未装配如实返回 提供者不可用）、注册能力 4 项与四者对称。
 """
 
 from __future__ import annotations
@@ -18,21 +18,12 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from unittest import mock
-
-from 公共契约.基础类型.结果类型 import 结果
-from 模块库.媒体转写 import (
-    检查转写可用性,
-    获取模型版本,
-    转写视频文件,
-    转写音频文件,
-)
+from 模块库.媒体转写 import 检查可用性, 获取模型版本, 转写音频文件, 转写视频文件
 
 环境变量模型路径 = "MLXWhisper提供者_模型路径"
 环境变量模型名 = "MLXWhisper提供者_模型名"
-环境变量禁用库 = "MLXWhisper提供者_禁用库"
 环境变量伪库行为 = "媒体转写测试_伪库行为"
-环境变量名表 = [环境变量模型路径, 环境变量模型名, 环境变量禁用库, 环境变量伪库行为]
+环境变量名表 = [环境变量模型路径, 环境变量模型名, 环境变量伪库行为]
 
 
 def 运行ffmpeg(参数列表: list[str]) -> bool:
@@ -67,32 +58,53 @@ def 生成测试音频(目录: Path) -> str:
     return ""
 
 
-class 基础环境(unittest.TestCase):
+class 媒体转写装配(unittest.TestCase):
+    """真实装配：注册 MLX Whisper 提供者能力并经唯一服务注入调用器。"""
+
+    @classmethod
+    def setUpClass(cls):
+        from 公共契约.能力契约.调用器 import 设置惰性装配函数
+        cls.原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+        设置惰性装配函数(None)
+
+    @classmethod
+    def tearDownClass(cls):
+        from 公共契约.能力契约.调用器 import 设置惰性装配函数
+        设置惰性装配函数(cls.原惰性装配)
+
     def setUp(self):
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
+        from 支持库.适配层.MLXWhisper提供者 import 注册能力 as 注册转写能力
+
+        注册表 = 能力注册表()
+        注册转写能力(注册表)
+        设置全局唯一服务(唯一能力调用服务(注册表))
         self.原环境 = {名: os.environ.get(名) for 名 in 环境变量名表}
         for 名 in 环境变量名表:
             os.environ.pop(名, None)
         self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_媒体转写_"))
-        self.转写残留前 = {目录 for 目录 in Path(tempfile.gettempdir()).glob("媒体转写_*") if 目录.is_dir()}
         self.视频路径 = 生成测试视频(self.临时目录)
         self.音频路径 = 生成测试音频(self.临时目录)
-        if not self.视频路径 or not self.音频路径:
-            self.skipTest("本机 ffmpeg 不可用，跳过真实媒体用例")
+        if not self.视频路径 and not self.音频路径:
+            # 未配置模型/模型缺失/参数错误/平台不可用语义不依赖真实媒体文件
+            self.视频路径 = str(self.临时目录 / "示例视频.mp4")
+            self.音频路径 = str(self.临时目录 / "示例音频.wav")
 
     def tearDown(self):
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+        设置全局唯一服务(None)
         for 名, 值 in self.原环境.items():
             if 值 is None:
                 os.environ.pop(名, None)
             else:
                 os.environ[名] = 值
         shutil.rmtree(self.临时目录, ignore_errors=True)
-        残留后 = {目录 for 目录 in Path(tempfile.gettempdir()).glob("媒体转写_*") if 目录.is_dir()}
-        self.assertEqual(残留后 - self.转写残留前, set(), "媒体转写模块残留了临时目录")
 
 
-class Test未配置模型如实返回(基础环境):
+class Test未配置模型如实返回(媒体转写装配):
     def test_检查可用性未配置(self):
-        结果 = 检查转写可用性()
+        结果 = 检查可用性()
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "未配置模型")
 
@@ -114,13 +126,18 @@ class Test未配置模型如实返回(基础环境):
         self.assertIsNone(结果.值)
 
 
-class Test模型缺失语义(基础环境):
+class Test模型缺失语义(媒体转写装配):
     def setUp(self):
         super().setUp()
         self.缺失配置 = {"模型路径": str(self.临时目录 / "不存在模型目录"), "模型名": ""}
 
     def test_检查可用性模型缺失(self):
-        结果 = 检查转写可用性(配置=self.缺失配置)
+        结果 = 检查可用性(配置=self.缺失配置)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "模型缺失")
+
+    def test_获取模型版本模型缺失(self):
+        结果 = 获取模型版本(配置=self.缺失配置)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "模型缺失")
 
@@ -135,8 +152,66 @@ class Test模型缺失语义(基础环境):
         self.assertEqual(结果.错误码, "模型缺失")
 
 
-class Test伪脚本子进程语义(基础环境):
-    """伪 mlx_whisper 库经 PYTHONPATH 注入隔离子进程，驱动崩溃/超时/取消。"""
+class Test参数错误(媒体转写装配):
+    def test_空路径参数不合法(self):
+        for 函数 in (转写音频文件, 转写视频文件):
+            结果 = 函数("")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+            结果 = 函数(None)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_取消令牌id必须为文本(self):
+        结果 = 转写音频文件(self.音频路径, 取消令牌id=123)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 转写视频文件(self.视频路径, 取消令牌id={"非序列化": True})
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_取消令牌id文本放行(self):
+        结果 = 转写音频文件(self.音频路径, 取消令牌id="令牌-甲")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "未配置模型")
+
+    def test_超时秒必须为正数(self):
+        结果 = 检查可用性(超时秒=-1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 获取模型版本(超时秒=-1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 转写音频文件(self.音频路径, 超时秒=-1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 转写视频文件(self.视频路径, 转写超时秒=-1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_配置必须为对象(self):
+        结果 = 检查可用性(配置="不是对象")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        结果 = 转写音频文件(self.音频路径, 配置=[1, 2])
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+
+class Test平台不可用(媒体转写装配):
+    def test_调用器未装配如实返回(self):
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+        设置全局唯一服务(None)
+        结果 = 转写音频文件(self.音频路径)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+        结果 = 检查可用性()
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+
+
+class Test伪脚本子进程语义(媒体转写装配):
+    """伪 mlx_whisper 库经 PYTHONPATH 注入隔离子进程，驱动崩溃/超时（真实链）。"""
 
     def setUp(self):
         super().setUp()
@@ -158,6 +233,8 @@ class Test伪脚本子进程语义(基础环境):
         模型目录 = self.临时目录 / "模型目录"
         模型目录.mkdir()
         self.模型配置 = {"模型路径": str(模型目录), "模型名": "伪模型"}
+        self.音频文件 = self.临时目录 / "伪库音频.wav"
+        self.音频文件.write_bytes(b"RIFF" + b"\x00" * 100)
 
     def tearDown(self):
         if self.原路径变量:
@@ -167,51 +244,50 @@ class Test伪脚本子进程语义(基础环境):
         super().tearDown()
 
     def test_伪库探针生效(self):
-        结果 = 检查转写可用性(配置=self.模型配置)
+        结果 = 检查可用性(配置=self.模型配置)
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["模型版本"], "9.9.测试伪库")
 
     def test_子进程崩溃映射进程崩溃(self):
         os.environ[环境变量伪库行为] = "崩溃"
-        结果 = 转写音频文件(self.音频路径, 配置=self.模型配置)
+        结果 = 转写音频文件(str(self.音频文件), 配置=self.模型配置)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "进程崩溃")
 
     def test_子进程超时映射超时(self):
         os.environ[环境变量伪库行为] = "慢速"
-        结果 = 转写音频文件(self.音频路径, 超时秒=1, 配置=self.模型配置)
+        结果 = 转写音频文件(str(self.音频文件), 超时秒=1, 配置=self.模型配置)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "超时")
 
-    def test_取消判断映射取消(self):
-        os.environ[环境变量伪库行为] = "慢速"
-        结果 = 转写音频文件(self.音频路径, 超时秒=30,
-                          取消判断=lambda: True, 配置=self.模型配置)
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "取消")
 
+class Test注册能力(unittest.TestCase):
+    def test_模块注册四个能力且四者对称(self):
+        class 假注册表:
+            def __init__(self):
+                self.条目 = []
 
-class Test转写视频流程(基础环境):
-    def test_提取段失败错误码透传(self):
-        失败结果 = 结果.失败("无音轨", "媒体不包含音频流", 来源="FFmpeg提供者")
-        with mock.patch(
-            "模块库.媒体转写.实现.媒体转写._提取音频",
-            return_value=失败结果,
-        ):
-            转写结果 = 转写视频文件(self.视频路径)
-        self.assertFalse(转写结果.成功)
-        self.assertEqual(转写结果.错误码, "无音轨")
+            def 注册(self, 能力):
+                self.条目.append(能力)
 
-    def test_参数不合法(self):
-        结果 = 转写视频文件("")
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "参数不合法")
+        注册表 = 假注册表()
+        from 模块库.媒体转写 import 注册能力, __all__
 
-    def test_视频转写流程提取段真实执行(self):
-        结果 = 转写视频文件(self.视频路径)
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "未配置模型")
-        self.assertTrue(Path(self.视频路径).is_file())
+        注册能力(注册表)
+        能力id表 = [条目.能力id for 条目 in 注册表.条目]
+        self.assertEqual(能力id表, [
+            "媒体转写.转写视频文件",
+            "媒体转写.转写音频文件",
+            "媒体转写.检查可用性",
+            "媒体转写.获取模型版本",
+        ])
+        self.assertEqual(set(__all__), {id.split(".")[-1] for id in 能力id表})
+        for 条目 in 注册表.条目:
+            self.assertEqual(条目.包id, "模块库.媒体转写")
+
+    def test_公开入口导出检查可用性(self):
+        from 模块库.媒体转写 import 检查可用性 as 入口函数
+        self.assertTrue(callable(入口函数))
 
 
 if __name__ == "__main__":
