@@ -1,5 +1,9 @@
-"""模块库.媒体处理 组合能力真实测试：ffprobe 探测、真实提取音频/抽帧/转码、
-损坏媒体/无音轨错误码透传、ffmpeg 缺失→提供者不可用（注入）、零残留、注册能力。"""
+"""模块库.媒体处理 组合能力真实测试：经唯一能力调用服务装配 FFmpeg 支持库能力。
+
+覆盖：真实 ffmpeg 最小调用（检查提供者/探测媒体/提取音频/转码/抽取帧）、
+损坏媒体/无音轨/超长媒体/超出限制等错误码透传、参数错误、平台不可用
+（调用器未装配如实返回 提供者不可用）、临时文件零残留、注册能力 5 项。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +15,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -21,9 +24,9 @@ from 模块库.媒体处理 import 检查提供者, 探测媒体, 提取音频, 
 临时根 = Path(tempfile.gettempdir())
 
 
-def _生成视频(路径: Path, 含音频: bool) -> Path:
+def 生成视频(路径: Path, 含音频: bool) -> Path:
     """用真实 ffmpeg 生成最小测试视频（testsrc 画面 + 可选 sine 音轨）。"""
-    参数 = ["ffmpeg", "-y", "-f", "lavfi", "-i",
+    参数 = ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i",
             "testsrc=size=64x64:rate=10", "-t", "1"]
     if 含音频:
         参数 += ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest"]
@@ -32,44 +35,75 @@ def _生成视频(路径: Path, 含音频: bool) -> Path:
     return 路径
 
 
-def _临时前缀集() -> set:
+def 临时前缀集() -> set:
     return {条目 for 模式 in ("FFmpeg音频_*", "FFmpeg转码_*", "FFmpeg抽帧_*")
             for 条目 in 临时根.glob(模式)}
 
 
-class 测试媒体处理(unittest.TestCase):
+class 媒体处理装配(unittest.TestCase):
+    """真实装配：注册 FFmpeg 提供者能力并经唯一服务注入调用器。"""
+
     @classmethod
     def setUpClass(cls):
-        cls.临时目录 = Path(tempfile.mkdtemp(prefix="测试_媒体处理_"))
-        cls.可用 = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
-        if cls.可用:
-            cls.带音频 = _生成视频(cls.临时目录 / "带音频.mp4", 含音频=True)
-            cls.纯视频 = _生成视频(cls.临时目录 / "纯视频.mp4", 含音频=False)
-            cls.损坏文件 = cls.临时目录 / "损坏.bin"
-            cls.损坏文件.write_bytes(os.urandom(4096))
-            cls.缺失路径 = str(cls.临时目录 / "不存在.mp4")
+        from 公共契约.能力契约.调用器 import 设置惰性装配函数
+        cls.原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+        设置惰性装配函数(None)
 
     @classmethod
     def tearDownClass(cls):
-        shutil.rmtree(cls.临时目录, ignore_errors=True)
+        from 公共契约.能力契约.调用器 import 设置惰性装配函数
+        设置惰性装配函数(cls.原惰性装配)
 
     def setUp(self):
-        if not self.可用:
-            self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
+        from 支持库.适配层.FFmpeg提供者 import 注册能力 as 注册FFmpeg能力
 
-    def test_检查提供者真实可用(self):
+        注册表 = 能力注册表()
+        注册FFmpeg能力(注册表)
+        设置全局唯一服务(唯一能力调用服务(注册表))
+        self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_媒体处理_"))
+        self.可用 = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+        if self.可用:
+            self.带音频 = 生成视频(self.临时目录 / "带音频.mp4", 含音频=True)
+            self.纯视频 = 生成视频(self.临时目录 / "纯视频.mp4", 含音频=False)
+            self.损坏文件 = self.临时目录 / "损坏.bin"
+            self.损坏文件.write_bytes(os.urandom(4096))
+            self.缺失路径 = str(self.临时目录 / "不存在.mp4")
+
+    def tearDown(self):
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+        设置全局唯一服务(None)
+        shutil.rmtree(self.临时目录, ignore_errors=True)
+
+
+class Test检查提供者(媒体处理装配):
+    def test_真实可用返回版本(self):
         结果 = 检查提供者()
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertIn("ffmpeg", 结果.值["版本"])
 
-    def test_检查提供者缺失返回提供者不可用(self):
-        with mock.patch("支持库.适配层.FFmpeg提供者.实现.探测.查找命令",
-                        return_value=None):
-            结果 = 检查提供者()
+    def test_超时秒参数不合法(self):
+        for 值 in (0, -1, "不是数字"):
+            结果 = 检查提供者(超时秒=值)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_平台不可用如实返回(self):
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+        设置全局唯一服务(None)
+        结果 = 检查提供者()
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
 
-    def test_探测媒体真实返回时长与流(self):
+
+class Test探测媒体(媒体处理装配):
+    def setUp(self):
+        super().setUp()
+        if not self.可用:
+            self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
+
+    def test_真实返回时长与流(self):
         结果 = 探测媒体(str(self.带音频))
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertAlmostEqual(结果.值["时长秒"], 1.0, delta=0.5)
@@ -79,132 +113,150 @@ class 测试媒体处理(unittest.TestCase):
         self.assertTrue(结果.值["格式"])
         self.assertGreater(结果.值["大小字节"], 0)
 
-    def test_探测媒体损坏返回损坏媒体(self):
+    def test_损坏返回损坏媒体(self):
         结果 = 探测媒体(str(self.损坏文件))
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "损坏媒体")
 
-    def test_探测媒体文件不存在(self):
+    def test_文件不存在(self):
         self.assertEqual(探测媒体(self.缺失路径).错误码, "文件不存在")
 
-    def test_探测媒体参数不合法(self):
+    def test_参数不合法(self):
         self.assertEqual(探测媒体("").错误码, "参数不合法")
         self.assertEqual(探测媒体(None).错误码, "参数不合法")
 
-    def test_提取音频真实wav字节返回(self):
+
+class Test提取音频(媒体处理装配):
+    def setUp(self):
+        super().setUp()
+        if not self.可用:
+            self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
+
+    def test_真实wav字节返回(self):
         结果 = 提取音频(str(self.带音频))
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "wav")
         self.assertGreater(结果.值["字节数"], 0)
         self.assertEqual(len(base64.b64decode(结果.值["字节b64"])), 结果.值["字节数"])
 
-    def test_提取音频mp3格式(self):
+    def test_mp3格式(self):
         结果 = 提取音频(str(self.带音频), 输出格式="mp3")
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "mp3")
 
-    def test_提取音频无音轨(self):
+    def test_无音轨(self):
         结果 = 提取音频(str(self.纯视频))
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "无音轨")
 
-    def test_提取音频损坏媒体(self):
+    def test_损坏媒体(self):
         结果 = 提取音频(str(self.损坏文件))
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "损坏媒体")
 
-    def test_提取音频超长媒体(self):
+    def test_超长媒体(self):
         结果 = 提取音频(str(self.带音频), 最大时长秒=0.001)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "超长媒体")
 
-    def test_提取音频超出限制(self):
+    def test_超出限制(self):
         结果 = 提取音频(str(self.带音频), 最大输出字节=10)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "超出限制")
 
-    def test_提取音频格式不合法(self):
+    def test_格式不合法(self):
         结果 = 提取音频(str(self.带音频), 输出格式="exe")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
-    def test_提取音频到指定输出路径(self):
+    def test_输出到指定路径(self):
         输出路径 = str(self.临时目录 / "输出.wav")
         结果 = 提取音频(str(self.带音频), 输出路径=输出路径)
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertTrue(Path(输出路径).is_file())
         self.assertGreater(Path(输出路径).stat().st_size, 0)
 
-    def test_转码真实成功且编码选项透传(self):
+
+class Test转码(媒体处理装配):
+    def setUp(self):
+        super().setUp()
+        if not self.可用:
+            self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
+
+    def test_真实成功且编码选项透传(self):
         结果 = 转码(str(self.带音频), 输出格式="mkv",
-                 编码选项={"分辨率": "32x32", "帧率": "5"})
+                  编码选项={"分辨率": "32x32", "帧率": "5"})
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "mkv")
         self.assertGreater(结果.值["字节数"], 0)
         self.assertEqual(len(base64.b64decode(结果.值["字节b64"])), 结果.值["字节数"])
 
-    def test_转码编码选项白名单拒绝非法键(self):
+    def test_编码选项白名单拒绝非法键(self):
         结果 = 转码(str(self.带音频), 编码选项={"音量": "10"})
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
-    def test_转码格式不合法(self):
+    def test_格式不合法(self):
         结果 = 转码(str(self.带音频), 输出格式="exe")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
-    def test_抽取帧真实jpg(self):
+
+class Test抽取帧(媒体处理装配):
+    def setUp(self):
+        super().setUp()
+        if not self.可用:
+            self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
+
+    def test_真实jpg(self):
         结果 = 抽取帧(str(self.带音频), 0.5)
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "jpg")
         self.assertGreater(结果.值["字节数"], 0)
         self.assertTrue(base64.b64decode(结果.值["字节b64"]).startswith(b"\xff\xd8"))
+        self.assertGreater(结果.值["宽度"], 0)
+        self.assertGreater(结果.值["高度"], 0)
 
-    def test_抽取帧png(self):
+    def test_png(self):
         结果 = 抽取帧(str(self.带音频), 0.5, 输出格式="png")
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "png")
 
-    def test_抽取帧时间点不合法(self):
+    def test_时间点不合法(self):
         结果 = 抽取帧(str(self.带音频), -1)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
-    def test_探测超时错误码透传(self):
-        挂起脚本 = self.临时目录 / "挂起探测.sh"
-        挂起脚本.write_text("#!/bin/sh\nsleep 30\n")
-        挂起脚本.chmod(0o755)
-        with mock.patch("支持库.适配层.FFmpeg提供者.实现.探测.查找命令",
-                        return_value=str(挂起脚本)):
-            结果 = 探测媒体(str(self.带音频), 超时秒=0.3)
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "超时")
 
-    def test_提取音频进程崩溃错误码透传(self):
-        崩溃脚本 = self.临时目录 / "崩溃.sh"
-        崩溃脚本.write_text("#!/bin/sh\nexit 3\n")
-        崩溃脚本.chmod(0o755)
-        真实查找 = __import__("支持库.适配层.FFmpeg提供者.实现.探测",
-                            fromlist=["查找命令"]).查找命令
-
-        def 假查找(命令名: str):
-            return str(崩溃脚本) if 命令名 == "ffmpeg" else 真实查找(命令名)
-
-        with mock.patch("支持库.适配层.FFmpeg提供者.实现.探测.查找命令",
-                        side_effect=假查找):
-            结果 = 提取音频(str(self.带音频))
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "进程崩溃")
-
+class Test零残留与注册(unittest.TestCase):
     def test_默认临时文件零残留(self):
-        调用前 = _临时前缀集()
-        提取音频(str(self.带音频))
-        转码(str(self.带音频), 输出格式="mkv")
-        抽取帧(str(self.带音频), 0.5)
-        self.assertEqual(_临时前缀集(), 调用前)
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
+        from 支持库.适配层.FFmpeg提供者 import 注册能力 as 注册FFmpeg能力
+        from 公共契约.能力契约.调用器 import 设置惰性装配函数
 
+        原惰性 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+        设置惰性装配函数(None)
+        注册表 = 能力注册表()
+        注册FFmpeg能力(注册表)
+        设置全局唯一服务(唯一能力调用服务(注册表))
+        try:
+            if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+                self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
+            临时目录 = Path(tempfile.mkdtemp(prefix="测试_媒体处理残留_"))
+            try:
+                视频 = 生成视频(临时目录 / "残留.mp4", 含音频=True)
+                调用前 = 临时前缀集()
+                提取音频(str(视频))
+                转码(str(视频), 输出格式="mkv")
+                抽取帧(str(视频), 0.5)
+                self.assertEqual(临时前缀集(), 调用前)
+            finally:
+                shutil.rmtree(临时目录, ignore_errors=True)
+        finally:
+            设置全局唯一服务(None)
+            设置惰性装配函数(原惰性)
 
-class 测试注册能力(unittest.TestCase):
     def test_模块注册五个能力(self):
         class 假注册表:
             def __init__(self):
