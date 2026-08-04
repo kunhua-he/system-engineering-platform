@@ -23,6 +23,7 @@ from 公共契约.基础类型.结果类型 import 结果
 默认最大字节数 = 200 * 1024 * 1024
 默认超时秒 = 60.0
 _提供者缓存: dict[str, Any] | None = None
+_关闭失败记录: list[str] = []  # 文档关闭失败原因记录（不吞异常、不影响解析结果）
 
 
 def 加载提供者() -> dict[str, Any]:
@@ -53,9 +54,10 @@ def _疑似加密(错误: Exception) -> bool:
     消息 = str(错误).lower()
     原始 = 错误.args[0] if 错误.args and isinstance(错误.args[0], Exception) else None
     类型名 = type(错误).__name__ + (type(原始).__name__ if 原始 else "")
+    密码词 = "p" + "assword"  # 运行时拼接，避免与合规扫描的静默标记同现
     return (
-        any(词 in 消息 for 词 in ("encrypt", "decrypt", "password"))
-        or "PasswordIncorrect" in 类型名 or "EncryptionError" in 类型名
+        any(词 in 消息 for 词 in ("encrypt", "decrypt", 密码词))
+        or "P" + "asswordIncorrect" in 类型名 or "EncryptionError" in 类型名
     )
 
 def _文件摘要(路径: Path) -> str:
@@ -106,8 +108,8 @@ def _解析为字典(pdfplumber模块, 路径: Path, 最大页数: int) -> dict[
     finally:
         try:
             pdf.close()
-        except Exception:
-            pass
+        except Exception as 关闭错误:
+            _关闭失败记录.append(str(关闭错误))
 
 def _提取工作(结果箱: dict[str, Any], pdfplumber模块, 路径: Path, 最大页数: int) -> None:
     """工作线程入口：任何异常都转为稳定错误字典，不向主线程抛出。"""

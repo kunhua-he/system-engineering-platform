@@ -49,15 +49,17 @@ def 校验基本参数(文件路径: Any, 超时秒: Any, 输出路径: Any = No
     return None
 
 
-def 检查提供者() -> 结果:
+def 检查提供者(超时秒: float = 30.0) -> 结果:
     """检查 ffmpeg/ffprobe 可用性（真实独立进程版本探针），缺失 → 提供者不可用。"""
+    if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool) or 超时秒 <= 0:
+        return _失败("参数不合法", "超时秒必须是正数")
     ffmpeg路径 = 查找命令("ffmpeg")
     ffprobe路径 = 查找命令("ffprobe")
     if not ffmpeg路径 or not ffprobe路径:
         return _失败("提供者不可用", "ffmpeg/ffprobe 未找到（未配置提供者）")
     版本信息 = {}
     for 名称, 路径 in (("ffmpeg", ffmpeg路径), ("ffprobe", ffprobe路径)):
-        探针 = 执行受管命令([路径, "-version"], 超时秒=5.0, 最大输出字节=8192)
+        探针 = 执行受管命令([路径, "-version"], 超时秒=min(float(超时秒), 5.0), 最大输出字节=8192)
         if 探针.成功:
             首行 = (探针.标准输出.decode("utf-8", errors="replace").strip().splitlines() or [""])[0]
             版本信息[名称] = 首行[:120]
