@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import subprocess
 import sys
@@ -189,6 +190,50 @@ class Test命令路径配置(unittest.TestCase):
         self.assertEqual(版本探针(命令路径=123).错误码, "参数不合法")
         self.assertEqual(语言包列表(命令路径=["a"]).错误码, "参数不合法")
         self.assertEqual(识别图片("不存在.png", 命令路径=123).错误码, "参数不合法")
+
+
+class Test包级合规(unittest.TestCase):
+    """S0 正式包九要素与聚合契约逐能力对称漂移断言。"""
+
+    def setUp(self):
+        self.提供者目录 = (
+            Path(__file__).resolve().parents[2]
+            / "支持库" / "适配层" / "Tesseract提供者"
+        )
+
+    def test_九要素齐全(self):
+        for 相对路径 in (
+            "依赖契约/依赖契约.json", "配置契约/配置契约.json", "权限契约/权限契约.json",
+            "资源预算.json", "复用决策.json", "验证场景引用.json", "完整性摘要.json",
+        ):
+            self.assertTrue((self.提供者目录 / 相对路径).is_file(), f"缺少 {相对路径}")
+        预算 = json.loads((self.提供者目录 / "资源预算.json").read_text(encoding="utf-8"))
+        for 键 in ("内存上限", "线程上限", "子进程上限", "并发调用上限", "队列长度",
+                   "文件句柄上限", "临时空间上限", "单次调用超时", "每分钟重启次数", "空闲回收时间"):
+            self.assertIn(键, 预算, f"资源预算缺少 {键}")
+        复用 = json.loads((self.提供者目录 / "复用决策.json").read_text(encoding="utf-8"))
+        self.assertTrue(复用.get("搜索词") and 复用.get("候选能力id"))
+
+    def test_聚合契约全要素与权限覆盖(self):
+        契约数据 = json.loads(
+            (self.提供者目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+        self.assertEqual(契约数据["契约版本"], "1.0.0")
+        能力表 = 契约数据["能力契约"]
+        self.assertEqual(len(能力表), 3)
+        权限数据 = json.loads(
+            (self.提供者目录 / "权限契约" / "权限契约.json").read_text(encoding="utf-8"))
+        for 能力 in 能力表:
+            self.assertEqual(能力["版本"], "1.0.0", 能力["能力id"])
+            self.assertIn("调用示例", 能力, 能力["能力id"])
+            self.assertIsInstance(能力["调用示例"].get("参数"), dict)
+            for 参数 in 能力["参数"]:
+                self.assertNotEqual(参数["类型"], "任意", f"{能力['能力id']} 参数 {参数['名称']} 禁止任意类型")
+                self.assertIn("必填", 参数)
+                self.assertIn("默认值", 参数)
+            self.assertIn(能力["能力id"], 权限数据, f"{能力['能力id']} 缺权限声明")
+        定义数据 = json.loads((self.提供者目录 / "能力定义.json").read_text(encoding="utf-8"))
+        self.assertEqual({能力["能力id"] for 能力 in 能力表},
+                         {能力["能力id"] for 能力 in 定义数据["能力列表"]})
 
 
 class Test受管进程(unittest.TestCase):
