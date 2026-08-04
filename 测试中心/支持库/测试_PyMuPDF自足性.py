@@ -90,12 +90,16 @@ class TestPyMuPDF自足性(unittest.TestCase):
 
     def test_注入幂等(self):
         """进程内重复调用注入，sys.path 只注入一次。"""
-        注入前 = sum(1 for 路径 in sys.path if Path(路径) == 默认环境目录)
+        # 兼容双结构：新版制品根含 平台客户端 包层时注入 环境目录/平台客户端，
+        # 旧版平铺结构时注入 环境目录（两者均视为一次注入）
+        注入前 = sum(1 for 路径 in sys.path
+                   if Path(路径) in (默认环境目录, 默认环境目录 / "平台客户端"))
         第一次 = 子进程入口.注入平台客户端路径()
         self.assertIsNone(第一次, 第一次)
         第二次 = 子进程入口.注入平台客户端路径()
         self.assertIsNone(第二次, 第二次)
-        注入后 = sum(1 for 路径 in sys.path if Path(路径) == 默认环境目录)
+        注入后 = sum(1 for 路径 in sys.path
+                   if Path(路径) in (默认环境目录, 默认环境目录 / "平台客户端"))
         self.assertEqual(注入后 - 注入前, 1)
 
     def test_零残留(self):

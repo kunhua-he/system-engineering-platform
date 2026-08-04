@@ -63,10 +63,16 @@ def 注入平台客户端路径() -> str | None:
         return f"平台客户端制品缺失：激活指针不可读（{错误}）"
     制品名 = 指针.get("制品目录", "")
     已安装目录 = 环境目录 / "平台客户端"
-    if not 制品名 or not (已安装目录 / "__init__.py").is_file():
+    # 兼容两种安装结构：新版制品根含 平台客户端 包层（环境/平台客户端/平台客户端/__init__.py），
+    # 旧版平铺包内容（环境/平台客户端/__init__.py）。
+    if 已安装目录.is_dir() and (已安装目录 / "平台客户端" / "__init__.py").is_file():
+        注入目录 = 已安装目录
+    elif 已安装目录.is_dir() and (已安装目录 / "__init__.py").is_file():
+        注入目录 = 环境目录
+    else:
         return f"平台客户端制品缺失：激活指针指向的制品目录未安装（{制品名 or '<空>'}）"
-    if str(环境目录) not in sys.path:
-        sys.path.insert(0, str(环境目录))
+    if str(注入目录) not in sys.path:
+        sys.path.insert(0, str(注入目录))
     _平台客户端路径已注入 = True
     return None
 
