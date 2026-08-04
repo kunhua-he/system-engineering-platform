@@ -32,7 +32,7 @@ def 创建内容摘要(文件路径: Path, 算法: str = "sha256") -> str:
     if not 文件路径.is_file():
         raise FileNotFoundError(f"文件不存在: {文件路径}")
     摘要器 = hashlib.new(算法)
-    with 文件路径.open("rb") as 输入:
+    with open(文件路径, "rb") as 输入:
         while 块 := 输入.read(1024 * 1024):
             摘要器.update(块)
     return 摘要器.hexdigest()
@@ -96,11 +96,12 @@ def 原子写入(目标路径: Path, 内容: str | bytes) -> None:
     临时路径 = 目标路径.parent / f".{目标路径.name}.{uuid.uuid4().hex[:8]}.tmp"
     模式 = "wb" if isinstance(内容, bytes) else "w"
     编码 = None if isinstance(内容, bytes) else "utf-8"
-    with 临时路径.open(模式, encoding=编码) as 输出:
+    with open(临时路径, 模式, encoding=编码) as 输出:
         输出.write(内容)
         输出.flush()
         os.fsync(输出.fileno())
     os.replace(临时路径, 目标路径)  # 原子替换
+    return True
 
 
 def 原子替换(目标路径: Path, 新内容: str | bytes, 期望版本: str = "") -> tuple[bool, str]:

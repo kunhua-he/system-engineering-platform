@@ -6,6 +6,8 @@
 - 响应大小上限：max_bytes 超限即中止，防止无界读入。
 - 凭证安全：不记录请求头中的敏感字段到错误信息。
 - 超时：connect/read 统一超时。
+全部公开能力返回统一结果（成功/值/错误/错误码）；响应句柄显式 close
+释放，不泄漏裸句柄；不吞异常、不以成功形状伪装失败。
 """
 
 from __future__ import annotations
@@ -74,7 +76,7 @@ def 编码中文地址(地址: str) -> str:
         (解析.scheme, 解析.netloc, 编码路径, 编码查询, 解析.fragment))
 
 
-def 构建查询串(参数: dict) -> 结果:
+def 构建查询串(参数: dict = None) -> 结果:
     """把参数映射编码为 URL 查询串，空映射返回空串。"""
     if not isinstance(参数, dict):
         return _失败("参数不合法", "参数必须是映射")
@@ -83,10 +85,13 @@ def 构建查询串(参数: dict) -> 结果:
     return _成功(urllib.parse.urlencode(参数))
 
 
-def 发送请求(*, 地址: str, 方法: str = "GET", 请求参数: dict | None = None,
+def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求参数: dict | None = None,
              超时秒: float = 默认超时秒, 最大字节数: int = 默认最大字节数,
              允许回环: bool = False, 取消标记: Any = None) -> 结果:
-    """发送 HTTP 请求；返回统一结果（值=状态码/响应头/响应文本/错误信息）。"""
+    """发送 HTTP 请求；返回统一结果（值=状态码/响应头/响应文本/错误信息）。
+
+    响应句柄显式 close 释放；凭证字段不写入错误信息。
+    """
     try:
         if not isinstance(地址, str) or 地址.strip() == "":
             return _失败("参数不合法", "地址为空")
@@ -96,9 +101,9 @@ def 发送请求(*, 地址: str, 方法: str = "GET", 请求参数: dict | None 
             请求参数 = {}
         if not isinstance(请求参数, dict):
             return _失败("参数不合法", "请求参数必须是映射")
-        if not isinstance(超时秒, (int, float)) or 超时秒 <= 0:
+        if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool) or 超时秒 <= 0:
             return _失败("参数不合法", "超时秒必须是正数")
-        if not isinstance(最大字节数, int) or 最大字节数 <= 0:
+        if not isinstance(最大字节数, int) or isinstance(最大字节数, bool) or 最大字节数 <= 0:
             return _失败("参数不合法", "最大字节数必须是正整数")
         方法 = str(方法 or "GET").upper()
         if 方法 not in ("GET", "POST"):
@@ -120,15 +125,20 @@ def 发送请求(*, 地址: str, 方法: str = "GET", 请求参数: dict | None 
             请求 = urllib.request.Request(地址, data=请求体, headers=请求头, method=方法)
         except (TypeError, ValueError) as 错误:
             return _失败("参数不合法", f"请求构造失败: {错误}")
-        with urllib.request.urlopen(请求, timeout=超时秒) as 响应:
+        响应 = None
+        try:
+            响应 = urllib.request.urlopen(请求, timeout=超时秒)
             状态码 = 响应.getcode()
             响应头 = {键: 值 for 键, 值 in 响应.headers.items()}
             响应字节 = 响应.read(最大字节数 + 1)
             if len(响应字节) > 最大字节数:
                 return _失败("响应超限", f"响应超过上限 {最大字节数} 字节")
             响应文本 = 响应字节.decode("utf-8", errors="replace")
-        return _成功({"状态码": 状态码, "响应头": 响应头,
-                      "响应文本": 响应文本, "错误信息": ""})
+            return _成功({"状态码": 状态码, "响应头": 响应头,
+                          "响应文本": 响应文本, "错误信息": ""})
+        finally:
+            if 响应 is not None:
+                响应.close()
     except HTTPError as 错误:
         return _成功({"状态码": 错误.code, "响应头": {}, "响应文本": "",
                       "错误信息": f"网络失败: {错误.reason}"})
