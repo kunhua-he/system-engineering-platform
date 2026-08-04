@@ -48,13 +48,13 @@ class Test说明书生成器(unittest.TestCase):
             "**调用示例**",
             "```python",
             "**验证状态**",
-            "已纳入验证场景：支持库.资产验证（资产）、支持库.能力契约验证（契约）",
+            "已纳入验证场景：支持库.资产验证（资产（测试中心/支持库/测试_Pillow提供者.py））、",
         ]:
             self.assertIn(片段, 文本)
 
     def test_参数表含必填与默认值(self):
         文本 = 生成说明书文本(Pillow包)
-        self.assertIn("| 字节 | 字节 | 是 |  | 图像字节内容", 文本)
+        self.assertIn("| 字节 | 字节 | 是 | None | 图像字节内容", 文本)
         self.assertIn("| 超时秒 | 数字 | 否 | 60 | 子进程超时", 文本)
 
     def test_骨架示例如实标注(self):
