@@ -554,11 +554,10 @@ class 组件合规:
             入口模块.注册能力(注册表)
             已注册 = bool(注册表.能力id列表)
         if not 已注册:
-            # 回退：实现目录直接加载（历史组件兼容）
             实现目录 = self.组件目录 / "实现"
             if not 实现目录.is_dir():
                 实现目录 = self.组件目录 / "执行单元"
-            能力表, 是否聚合, _ = _读取聚合契约(self.组件目录)
+            能力表, _, _ = _读取聚合契约(self.组件目录)
             for 契约 in 能力表[:1]:
                 能力id = 契约.get("能力id", "")
                 实现文件 = 实现目录 / f"{能力id.split('.')[-1]}.py"
@@ -581,7 +580,50 @@ class 组件合规:
                         continue
         if not 已注册:
             return False, "公开入口未提供 注册能力 且无可用实现（真实返回不可达）"
-        # 3. 真实调用：遍历注册表每个能力（成功路径 + 缺必填失败路径）
+        # 3. 装配最小合规调用器（模块实现经 获取能力调用器 调用的唯一装配路径）
+        from 公共契约.能力契约.调用器 import 注册能力调用器
+
+        class _合规调用器:
+            def __init__(self, 注册表) -> None:
+                self._注册表 = 注册表
+
+            def 调用能力(self, 能力id: str, 参数: dict | None = None, **选项) -> Any:
+                from 公共契约.基础类型.结果类型 import 结果
+                实现 = self._注册表.获取(能力id)
+                if 实现 is None:
+                    return 结果.失败("提供者不可用", f"能力未注册: {能力id}",
+                                      来源="组件合规", 可重试=True)
+                返回值 = 实现.调用(**(参数 or {}))
+                if isinstance(返回值, dict):
+                    if 返回值.get("成功"):
+                        return 结果.成功结果(返回值.get("值"))
+                    return 结果.失败(str(返回值.get("错误码") or "失败"),
+                                      str(返回值.get("消息") or ""), 来源="组件合规")
+                return 返回值
+
+            def 幂等重放(self, *args, **kwargs) -> bool:
+                return False
+
+            def 查询调用历史(self, 上限: int = 50) -> list:
+                return []
+
+            def 最近失败(self, 上限: int = 10) -> list:
+                return []
+
+            def 回答九问(self, *args, **kwargs) -> dict:
+                return {}
+
+        注册能力调用器(_合规调用器(注册表))
+        try:
+            问题 = self._遍历真实调用(注册表)
+        finally:
+            注册能力调用器(None)
+        if 问题:
+            return False, "；".join(问题)
+        return True, f"真实调用 {len(注册表.能力id列表)} 个能力全部非空返回"
+
+    def _遍历真实调用(self, 注册表) -> list[str]:
+        """遍历注册表每个能力：成功路径 + 缺必填失败路径。"""
         问题: list[str] = []
         能力表, _, _ = _读取聚合契约(self.组件目录)
         示例参数表 = {
@@ -610,11 +652,16 @@ class 组件合规:
                             if not 参数.get("必填", True)}
                 try:
                     失败结果 = 实现对象.调用(**失败参数)
-                    if isinstance(失败结果, dict) and 失败结果.get("成功") is True:
+                    是成功 = False
+                    if isinstance(失败结果, dict):
+                        是成功 = bool(失败结果.get("成功"))
+                    elif hasattr(失败结果, "成功"):
+                        是成功 = bool(失败结果.成功)
+                    if 是成功:
                         问题.append(f"{能力id} 缺必填参数未返回失败（失败语义缺失）")
                 except TypeError:
+                    # 缺必填参数被 Python 签名拒绝 = 失败语义成立
                     pass
-        if 问题:
-            return False, "; ".join(问题)
-        return (True, f"经 公开入口+能力注册表+锁定提供者 真实调用 "
-                     f"{len(注册表.能力id列表)} 个能力（成功+失败路径）")
+                except Exception as 错误:
+                    问题.append(f"{能力id} 缺必填参数调用异常（失败语义缺失）: {错误}")
+        return 问题
