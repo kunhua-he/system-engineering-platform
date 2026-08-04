@@ -16,9 +16,34 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from unittest import mock
+系统根 = Path(__file__).resolve().parents[2]
 
+from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.文档生成 import 生成DOCX, 生成PDF, 生成PPTX, 生成XLSX, 校验签名
+
+
+class 假调用器:
+    """测试注入的假能力调用器：按预设返回失败结果。"""
+
+    def __init__(self, 预设结果=None):
+        self.预设结果 = 预设结果
+
+    def 调用能力(self, 能力id, 参数=None, **关键字):
+        if self.预设结果 is not None:
+            return self.预设结果
+        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=True)
+
+    def 幂等重放(self, *args, **kwargs):
+        return False
+
+    def 查询调用历史(self, 上限=50):
+        return []
+
+    def 最近失败(self, 上限=10):
+        return []
+
+    def 回答九问(self, *args, **kwargs):
+        return {}
 
 DOCX参数 = {
     "内容块列表": [
@@ -52,7 +77,23 @@ OOXML必要成员表 = {
 
 
 class 测试基类(unittest.TestCase):
-    """断言生成结果与签名。"""
+    """装配唯一能力调用服务；断言生成结果与签名。"""
+
+    @classmethod
+    def setUpClass(cls):
+        """安装全部支持库（含受管提供者）并绑定唯一能力调用服务。"""
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+        from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+
+        cls.注册表 = 能力注册表()
+        安装全部支持库(系统根 / "支持库", cls.注册表)
+        cls.服务 = 创建并绑定(cls.注册表)
+
+    @classmethod
+    def tearDownClass(cls):
+        from 运行核心.能力调用.唯一能力调用 import 销毁全局唯一服务
+        销毁全局唯一服务()
 
     def 断言OOXML签名(self, 格式: str, 字节: bytes):
         with zipfile.ZipFile(io.BytesIO(字节)) as 压缩包:
@@ -98,32 +139,38 @@ class Test生成DOCX(测试基类):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_缺库提供者不可用(self):
-        with mock.patch(
-            "支持库.后端.文档生成.实现.文档生成.提供者可用",
-            return_value=False,
-        ):
+        # 临时注入假调用器（受管提供者不可用）→ 如实返回 提供者不可用
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+
+        设置全局唯一服务(假调用器())
+        try:
             结果 = 生成DOCX({"内容块列表": [{"类型": "段落", "文本": "x"}]})
+        finally:
+            创建并绑定(self.__class__.注册表)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
 
     def test_生成异常转生成失败(self):
-        with mock.patch(
-            "支持库.后端.文档生成.实现.文档生成.生成DOCX字节",
-            side_effect=RuntimeError("模拟生成器崩溃"),
-        ):
+        # 临时注入假调用器（受管提供者返回 生成失败）→ 如实透传
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+        from 公共契约.基础类型.结果类型 import 结果 as 结果类型
+
+        设置全局唯一服务(假调用器(预设结果=结果类型.失败("生成失败", "模拟生成器崩溃", 来源="测试")))
+        try:
             结果 = 生成DOCX({"内容块列表": [{"类型": "段落", "文本": "x"}]})
+        finally:
+            创建并绑定(self.__class__.注册表)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "生成失败")
 
-    def test_报告提供者版本与耗时(self):
+    def test_报告签名与耗时(self):
         结果 = 生成DOCX(DOCX参数)
         self.assertTrue(结果.成功)
         附加 = 结果.值.附加
-        self.assertIn("提供者版本", 附加)
-        self.assertIn("python-docx", 附加["提供者版本"])
+        self.assertIn("签名校验", 附加)
+        self.assertTrue(附加["签名校验"])
         self.assertIn("生成耗时秒", 附加)
         self.assertGreater(附加["生成耗时秒"], 0)
-        self.assertTrue(附加["签名校验"])
 
 
 class Test生成XLSX(测试基类):
@@ -150,11 +197,14 @@ class Test生成XLSX(测试基类):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_缺库提供者不可用(self):
-        with mock.patch(
-            "支持库.后端.文档生成.实现.文档生成.提供者可用",
-            return_value=False,
-        ):
+        # 临时注入假调用器（受管提供者不可用）→ 如实返回 提供者不可用
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+
+        设置全局唯一服务(假调用器())
+        try:
             结果 = 生成XLSX({"工作表列表": [{"表名": "表", "行": [["x"]]}]})
+        finally:
+            创建并绑定(self.__class__.注册表)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
 
@@ -187,11 +237,14 @@ class Test生成PPTX(测试基类):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_缺库提供者不可用(self):
-        with mock.patch(
-            "支持库.后端.文档生成.实现.文档生成.提供者可用",
-            return_value=False,
-        ):
+        # 临时注入假调用器（受管提供者不可用）→ 如实返回 提供者不可用
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+
+        设置全局唯一服务(假调用器())
+        try:
             结果 = 生成PPTX({"幻灯片列表": [{"标题": "标题"}]})
+        finally:
+            创建并绑定(self.__class__.注册表)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
 
@@ -219,11 +272,14 @@ class Test生成PDF(测试基类):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_缺库提供者不可用(self):
-        with mock.patch(
-            "支持库.后端.文档生成.实现.文档生成.提供者可用",
-            return_value=False,
-        ):
+        # 临时注入假调用器（受管提供者不可用）→ 如实返回 提供者不可用
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+
+        设置全局唯一服务(假调用器())
+        try:
             结果 = 生成PDF({"内容块列表": [{"类型": "段落", "文本": "x"}]})
+        finally:
+            创建并绑定(self.__class__.注册表)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
 

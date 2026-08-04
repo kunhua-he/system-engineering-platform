@@ -19,8 +19,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-if str(Path(__file__).resolve().parents[2]) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+系统根 = Path(__file__).resolve().parents[2]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
 
 from 支持库.后端.PDF文档 import 解析PDF
 
@@ -121,6 +122,22 @@ def _生成图像PDF(路径: Path) -> Path:
 
 
 class TestPDF文档(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """装配唯一能力调用服务：安装全部支持库（含受管提供者）并绑定。"""
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+        from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+
+        cls.注册表 = 能力注册表()
+        安装全部支持库(系统根 / "支持库", cls.注册表)
+        cls.服务 = 创建并绑定(cls.注册表)
+
+    @classmethod
+    def tearDownClass(cls):
+        from 运行核心.能力调用.唯一能力调用 import 销毁全局唯一服务
+        销毁全局唯一服务()
+
     def setUp(self):
         self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_PDF文档_"))
         self.最小PDF = _生成文本PDF(self.临时目录 / "最小.pdf")
