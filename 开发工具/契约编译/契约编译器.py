@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from 开发工具.契约编译.聚合契约解析 import 校验能力条目, 读取原始
+
 生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
 
 
@@ -45,31 +47,16 @@ class 编译结果:
 
 
 def 读取契约(契约文件: Path) -> dict[str, Any]:
-    return json.loads(契约文件.read_text(encoding="utf-8"))
+    """读取契约 JSON（委托唯一聚合契约解析器的读取；非法 JSON 抛错保持兼容）。"""
+    数据 = 读取原始(契约文件)
+    if 数据 is None:
+        raise json.JSONDecodeError("契约 JSON 非法", "", 0)
+    return 数据
 
 
 def 校验契约结构(契约: dict[str, Any]) -> list[str]:
-    """校验契约 JSON 结构合法。"""
-    问题列表 = []
-    if not 契约.get("能力id"):
-        问题列表.append("缺少 能力id")
-    if not 契约.get("版本"):
-        问题列表.append("缺少 版本")
-    if "参数" not in 契约:
-        问题列表.append("缺少 参数")
-    else:
-        参数列表 = 契约["参数"]
-        if not isinstance(参数列表, list):
-            问题列表.append("参数 必须是列表")
-        else:
-            for 参数 in 参数列表:
-                if not 参数.get("名称"):
-                    问题列表.append("存在缺少 名称 的参数")
-    if "返回" not in 契约:
-        问题列表.append("缺少 返回")
-    if "错误码" not in 契约:
-        问题列表.append("缺少 错误码")
-    return 问题列表
+    """校验契约 JSON 结构合法（委托唯一聚合契约解析器的能力条目校验）。"""
+    return 校验能力条目(契约)
 
 
 def 生成Python入口(契约: dict[str, Any]) -> str:
