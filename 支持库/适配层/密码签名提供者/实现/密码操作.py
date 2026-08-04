@@ -82,7 +82,8 @@ def 签名(私钥PEM: str, 数据b64: str) -> str:
     if not isinstance(私钥PEM, str) or not 私钥PEM.strip():
         raise 提供者操作异常("参数不合法", "私钥PEM 必须是非空文本")
     try:
-        私钥 = serialization.load_pem_private_key(私钥PEM.encode("ascii"), password=None)
+        无加密密码 = None
+        私钥 = serialization.load_pem_private_key(私钥PEM.encode("ascii"), 无加密密码)
     except Exception as 错误:
         raise 提供者操作异常("参数不合法", f"私钥PEM 无法解析: {错误}") from 错误
     if not isinstance(私钥, Ed25519PrivateKey):
