@@ -14,8 +14,29 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+系统根 = Path(__file__).resolve().parents[2]
+
+from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.表格文档 import 解析表格文档
-from 支持库.后端.表格文档.实现 import 表格文档 as 实现模块
+
+
+class 假调用器:
+    """测试注入的假能力调用器：所有能力返回 提供者不可用。"""
+
+    def 调用能力(self, 能力id, 参数=None, **关键字):
+        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=True)
+
+    def 幂等重放(self, *args, **kwargs):
+        return False
+
+    def 查询调用历史(self, 上限=50):
+        return []
+
+    def 最近失败(self, 上限=10):
+        return []
+
+    def 回答九问(self, *args, **kwargs):
+        return {}
 
 
 def _生成xlsx(路径: Path) -> None:
@@ -33,6 +54,22 @@ def _生成xlsx(路径: Path) -> None:
 
 
 class Test表格文档(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """装配唯一能力调用服务：安装全部支持库（含受管提供者）并绑定。"""
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+        from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+
+        cls.注册表 = 能力注册表()
+        安装全部支持库(系统根 / "支持库", cls.注册表)
+        cls.服务 = 创建并绑定(cls.注册表)
+
+    @classmethod
+    def tearDownClass(cls):
+        from 运行核心.能力调用.唯一能力调用 import 销毁全局唯一服务
+        销毁全局唯一服务()
+
     def setUp(self):
         self.临时目录 = tempfile.mkdtemp(prefix="测试_表格文档_")
 
@@ -101,16 +138,18 @@ class Test表格文档(unittest.TestCase):
         self.assertEqual(结果.错误码, "文件损坏")
 
     def test_缺提供者返回不可用(self):
-        原缓存 = 实现模块._提供者缓存
-        实现模块._提供者缓存 = {"openpyxl": None, "版本": {"openpyxl": "不可用"}}
+        # 临时注入假调用器（受管提供者不可用）→ 如实返回 提供者不可用
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+
+        路径 = Path(self.临时目录) / "任意.xlsx"
+        路径.write_bytes(b"x")
+        设置全局唯一服务(假调用器())
         try:
-            路径 = Path(self.临时目录) / "任意.xlsx"
-            路径.write_bytes(b"x")
             结果 = 解析表格文档(str(路径), "xlsx")
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
         finally:
-            实现模块._提供者缓存 = 原缓存
+            创建并绑定(self.__class__.注册表)
 
     def test_xls转换链(self):
         import shutil

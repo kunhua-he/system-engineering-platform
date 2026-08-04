@@ -1,26 +1,33 @@
-"""演示文稿解析原子能力：pptx 原生 + ppt 经文档转换链，返回 结果[通用文档]。安全约束：OOXML 不可信 ZIP 检查；损坏/伪装→文件损坏；超限→超出限制；缺 python-pptx→提供者不可用。"""
+"""演示文稿解析原子能力：经受管提供者能力解析 ppt/pptx。
+
+- pptx 原生解析经受管提供者能力 `演示文稿.解析演示文稿`
+  （python_pptx提供者）执行，本模块（主进程）绝不 import pptx；
+- 旧格式 ppt 先经受管提供者能力 `LibreOffice转换.转换办公文件`
+  转 pptx 再解析；
+- OOXML 不可信 ZIP 安全校验（成员数/单项大小/总量/压缩比/路径逃逸/
+  宏/外部引用）保留在本模块（纯标准库 zipfile）；
+- 能力经 公共契约.能力契约.调用器.获取能力调用器 注入的唯一能力
+  调用服务调用；调用器未装配时如实返回 提供者不可用。
+
+安全约束：损坏/伪装→文件损坏；超限→超出限制；缺提供者→提供者不可用。
+"""
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import shutil
 import tempfile
 import time
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from 公共契约.基础类型.文档结构 import 文档块, 文档资源, 来源位置, 通用文档, 归一化格式
+from 公共契约.基础类型.文档结构 import 通用文档, 归一化格式
 from 公共契约.基础类型.结果类型 import 结果
-from 支持库.后端.文档转换 import 转换办公文件
 
-try:
-    import pptx
-    from pptx.enum.shapes import MSO_SHAPE_TYPE
-except ImportError:
-    pptx = MSO_SHAPE_TYPE = None
-
+来源 = "演示文稿"
+解析演示文稿能力id = "演示文稿.解析演示文稿"
+转换办公能力id = "LibreOffice转换.转换办公文件"
 默认最大幻灯片数 = 200
 默认最大字节数 = 200 * 1024 * 1024
 默认超时秒 = 60
@@ -28,12 +35,18 @@ except ImportError:
 最大压缩比 = 1000
 
 
+def _调用(能力id: str, 请求参数: dict) -> 结果:
+    """经唯一能力调用服务调用受管提供者能力；调用器未装配时如实失败。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+
+    try:
+        return 获取能力调用器().调用能力(能力id, 请求参数, 调用方=来源)
+    except RuntimeError as 错误:
+        return 结果.失败("提供者不可用", str(错误), 来源=来源, 可重试=True)
+
+
 def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
-    return 结果.失败(错误码, 消息, 来源="演示文稿", 可重试=可重试)
-
-
-def _文件摘要(路径: Path) -> str:
-    return hashlib.sha256(路径.read_bytes()).hexdigest()
+    return 结果.失败(错误码, 消息, 来源=来源, 可重试=可重试)
 
 
 def _检查压缩包(路径: Path, 最大字节数: int) -> str | None:
@@ -69,7 +82,7 @@ def _检查压缩包(路径: Path, 最大字节数: int) -> str | None:
 
 
 def 解析演示文稿(
-    文件路径: str | Path,
+    文件路径: str,
     格式: str = "",
     最大幻灯片数: int = 默认最大幻灯片数,
     最大字节数: int = 默认最大字节数,
@@ -88,70 +101,62 @@ def 解析演示文稿(
         return _失败("参数不合法", f"仅支持 ppt/pptx，收到: {格式}")
     if 来源.stat().st_size > 最大字节数:
         return _失败("超出限制", f"文件大小超过上限 {最大字节数} 字节")
-    if pptx is None:
-        return _失败("提供者不可用", "缺少 python-pptx，无法解析演示文稿", 可重试=True)
     if 格式 == "pptx":
         错误码 = _检查压缩包(来源, 最大字节数)
         if 错误码:
             return _失败(错误码, "OOXML 不可信 ZIP 检查未通过" if 错误码 == "文件损坏" else "演示文稿资源超过上限")
-    临时目录 = None
+
+    临时目录: Path | None = None
+    解析路径 = 来源
+    解析方式 = "原生"
+    附加警告: list[str] = []
     try:
         if 格式 == "ppt":
             临时目录 = Path(tempfile.mkdtemp(prefix="平台演示文稿_"))
-            转换结果 = 转换办公文件(来源, "pptx", 输出目录=临时目录, 超时秒=超时秒, 最大输出字节=最大字节数)
+            转换结果 = _转换ppt为pptx(来源, 临时目录, 超时秒)
             if not 转换结果.成功:
-                return _失败(转换结果.错误码, f"ppt 经文档转换失败: {转换结果.错误说明}", 可重试=转换结果.可重试)
-            解析路径, 解析方式 = Path(转换结果.值["路径"]), "转换"
-        else:
-            解析路径, 解析方式 = 来源, "原生"
-        return _解析pptx(解析路径, 来源, 格式, 解析方式, 最大幻灯片数, 开始时间)
+                return 转换结果
+            解析路径 = Path(转换结果.值)
+            解析方式 = "转换"
+            附加警告 = ["converted_from_ppt"]
+
+        调用结果 = _调用(解析演示文稿能力id, {
+            "文件路径": str(解析路径),
+            "格式": "pptx",
+            "最大幻灯片数": 最大幻灯片数,
+            "最大字节数": 最大字节数,
+            "超时秒": 超时秒,
+        })
+        if not 调用结果.成功:
+            return 调用结果
+        文档 = 调用结果.值
+        if not isinstance(文档, 通用文档):
+            return _失败("文件损坏", "演示文稿提供者返回了无效结果")
+        return 结果.成功结果(replace(
+            文档,
+            格式=格式,
+            解析方式=解析方式,
+            警告=list(文档.警告) + 附加警告,
+            耗时秒=round(time.monotonic() - 开始时间, 4),
+        ))
     finally:
         临时目录 and shutil.rmtree(临时目录, ignore_errors=True)
 
 
-def _解析pptx(解析路径: Path, 原始路径: Path, 格式: str, 解析方式: str, 最大幻灯片数: int, 开始时间: float) -> 结果:
-    """用 python-pptx 解析并组装通用文档。"""
-    try:
-        演示 = pptx.Presentation(str(解析路径))
-    except Exception:
-        return _失败("文件损坏", f"无法打开演示文稿（损坏或伪装）: {解析路径.name}")
-    幻灯片数 = len(演示.slides)
-    if 幻灯片数 > 最大幻灯片数:
-        return _失败("超出限制", f"幻灯片数 {幻灯片数} 超过上限 {最大幻灯片数}")
-    块列表, 资源列表, 警告 = [], [], []
-    for 序号, 幻灯片 in enumerate(演示.slides, start=1):
-        文本行, 附加, 图像引用 = [], {}, []
-        for 形状 in 幻灯片.shapes:
-            if 形状.has_text_frame:
-                文本行 += [段落.text for 段落 in 形状.text_frame.paragraphs if 段落.text.strip()]
-            if getattr(形状, "has_table", False):
-                文本行 += [单元格.text for 行 in 形状.table.rows for 单元格 in 行.cells if 单元格.text.strip()]
-            if 形状.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                try:
-                    图像 = 形状.image
-                    资源索引 = len(资源列表)
-                    资源列表.append(文档资源(类型="图像", 媒体类型=图像.content_type or "image/未知",
-                        文件名=图像.filename or f"图像_{序号}_{资源索引}", 描述=f"幻灯片{序号} 图像",
-                        字节数据b64=base64.b64encode(图像.blob).decode("ascii")))
-                    图像引用.append(资源索引)
-                except Exception as 错误:
-                    警告.append(f"幻灯片{序号} 图像读取失败: {错误}")
-        try:
-            备注 = (幻灯片.notes_slide.notes_text_frame.text if 幻灯片.has_notes_slide else "").strip()
-            备注 and 附加.update(备注=备注)
-        except Exception as 错误:
-            警告.append(f"幻灯片{序号} 备注读取失败: {错误}")
-        if 图像引用:
-            附加["图像资源引用"] = 图像引用
-        块列表.append(文档块(类型="幻灯片", 文本="\n".join(文本行), 来源位置=来源位置(幻灯片=序号), 附加=附加))
-    try:
-        标题 = 演示.core_properties.title or 原始路径.stem
-    except Exception:
-        标题 = 原始路径.stem
-    return 结果.成功结果(通用文档(
-        文档类型="演示文稿", 格式=格式, 标题=标题, 块列表=块列表, 资源列表=资源列表,
-        保真级别="高", 解析方式=解析方式, 警告=警告,
-        诊断=[f"幻灯片数: {幻灯片数}", f"资源数: {len(资源列表)}"],
-        耗时秒=round(time.monotonic() - 开始时间, 4),
-        提供者版本={"python-pptx": getattr(pptx, "__version__", "未知")}, 原始文件摘要=_文件摘要(原始路径),
-    ))
+def _转换ppt为pptx(源路径: Path, 临时目录: Path, 超时秒: float) -> 结果:
+    """经受管提供者能力把旧格式 PPT 转为 PPTX，返回目标文件路径。"""
+    转换结果 = _调用(转换办公能力id, {
+        "输入路径": str(源路径),
+        "目标格式": "pptx",
+        "输出目录": str(临时目录),
+        "超时秒": 超时秒,
+    })
+    if not 转换结果.成功:
+        return 转换结果
+    值 = 转换结果.值
+    if not isinstance(值, dict) or not 值.get("输出路径"):
+        return _失败("转换失败", "LibreOffice 未产出转换文件")
+    目标 = Path(值["输出路径"])
+    if not 目标.is_file():
+        return _失败("转换失败", f"LibreOffice 未产出文件: {目标.name}")
+    return 结果.成功结果(str(目标))
