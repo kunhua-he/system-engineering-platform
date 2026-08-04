@@ -1,8 +1,11 @@
-"""前端描述模型实现（不对外暴露，只经包级中文入口调用）。"""
+"""前端描述模型实现（不对外暴露，只经包级中文入口调用）。
+
+对外只返回统一结果：成功时 值 内放结构化描述数据，失败返回 结果.失败，
+不泄漏任何内部对象；参数非法显式返回失败，不抛异常。
+"""
 
 from __future__ import annotations
 
-import json as _json
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -17,6 +20,8 @@ def _失败(错误码: str, 消息: str) -> 结果:
 
 
 def 创建文件选择描述(允许扩展名列表: list, 多选: bool = False) -> 结果:
+    if 允许扩展名列表 is None:
+        允许扩展名列表 = []
     if not isinstance(允许扩展名列表, list):
         return _失败("参数不合法", "允许扩展名列表必须是列表")
     return _成功({

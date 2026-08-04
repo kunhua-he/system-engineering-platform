@@ -1,8 +1,11 @@
-"""前端描述模型实现（不对外暴露，只经包级中文入口调用）。"""
+"""前端描述模型实现（不对外暴露，只经包级中文入口调用）。
+
+对外只返回统一结果：成功时 值 内放结构化描述数据，失败返回 结果.失败，
+不泄漏任何内部对象；参数非法显式返回失败，不抛异常。
+"""
 
 from __future__ import annotations
 
-import json as _json
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -17,11 +20,19 @@ def _失败(错误码: str, 消息: str) -> 结果:
 
 
 def 创建组件定义(组件id: str, 组件类型: str, 属性: dict) -> 结果:
-    if not 组件id or not 组件类型:
-        return _失败("参数不合法", "组件id 与组件类型不能为空")
+    if not isinstance(组件id, str) or not 组件id:
+        return _失败("参数不合法", "组件id 必须为非空文本")
+    if not isinstance(组件类型, str) or not 组件类型:
+        return _失败("参数不合法", "组件类型必须为非空文本")
+    if 属性 is None:
+        属性 = {}
+    if not isinstance(属性, dict):
+        return _失败("参数不合法", "属性必须是字典")
     return _成功({
-        "组件id": 组件id, "组件类型": 组件类型,
-        "属性": dict(属性 or {}), "事件列表": [],
+        "组件id": 组件id,
+        "组件类型": 组件类型,
+        "属性": dict(属性),
+        "事件列表": [],
     })
 
 
@@ -32,14 +43,20 @@ def 校验组件属性(组件定义: dict) -> 结果:
     for 字段 in 必填:
         if 字段 not in 组件定义:
             return _失败("参数不合法", f"组件定义缺少字段: {字段}")
+    if not isinstance(组件定义["组件id"], str) or not 组件定义["组件id"]:
+        return _失败("参数不合法", "组件id 必须为非空文本")
+    if not isinstance(组件定义["组件类型"], str) or not 组件定义["组件类型"]:
+        return _失败("参数不合法", "组件类型必须为非空文本")
     if not isinstance(组件定义["属性"], dict):
         return _失败("参数不合法", "组件属性必须是字典")
     return _成功(True)
 
 
 def 声明事件(组件定义: dict, 事件名称: str) -> 结果:
-    if not 事件名称:
-        return _失败("参数不合法", "事件名称不能为空")
+    if not isinstance(组件定义, dict):
+        return _失败("参数不合法", "组件定义必须是字典")
+    if not isinstance(事件名称, str) or not 事件名称:
+        return _失败("参数不合法", "事件名称必须为非空文本")
     新定义 = dict(组件定义)
     事件列表 = list(新定义.get("事件列表") or [])
     if 事件名称 not in 事件列表:
