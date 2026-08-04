@@ -415,7 +415,8 @@ async def 工具列表() -> list[Tool]:
         Tool(name="登记需求", description="登记平台能力需求快照（能力id/说明/来源任务）。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "说明": {"type": "string"}, "来源任务": {"type": "string"}, "work_id": {"type": "string"}}, "required": ["能力id", "说明"]}),
         Tool(name="复用搜索", description="扫描既有支持库能力，返回可复用候选或标记无现成。", inputSchema={"type": "object", "properties": {"关键词": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["关键词"]}),
         Tool(name="登记能力占用", description="登记某能力由某提供包占用；异包重复占用冲突拒绝。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "提供包id": {"type": "string"}, "开工id": {"type": "string"}}, "required": ["能力id", "提供包id"]}),
-        Tool(name="校验模块合规", description="模块合规验证：import白名单/能力占用/包七要素。", inputSchema={"type": "object", "properties": {"模块名": {"type": "string"}}, "required": ["模块名"]}),
+        Tool(name="校验模块合规", description="模块合规验证：权威 13 项组件合规 + 模块专属边界审计（支持库/提供者物理导入、直接I/O、tempfile、subprocess、socket、数据库、动态import 等）。", inputSchema={"type": "object", "properties": {"模块名": {"type": "string"}}, "required": ["模块名"]}),
+        Tool(name="生成模块模板", description="唯一模块模板生成器：按 模块名/类型(基础模块|功能模块)/能力清单/依赖能力清单 生成 聚合契约+包声明+经调用器实现骨架+对称入口+完整性摘要。", inputSchema={"type": "object", "properties": {"模块名": {"type": "string"}, "类型": {"type": "string", "enum": ["基础模块", "功能模块"]}, "能力清单": {"type": "array", "items": {"type": "object"}}, "依赖能力清单": {"type": "array", "items": {"type": "object"}}}, "required": ["模块名", "能力清单"]}),
         Tool(name="创建核心快照", description="创建核心快照（运行核心+公共契约清单与摘要，入工程缓存）。", inputSchema={"type": "object", "properties": {"说明": {"type": "string"}}}),
         Tool(name="查询核心快照", description="列出核心快照（时间/摘要/文件数）。", inputSchema={"type": "object", "properties": {}}),
         Tool(name="兼容性检查", description="对比当前与快照的兼容性：漂移与资源预算（行数上限）。", inputSchema={"type": "object", "properties": {"快照标识": {"type": "string"}}, "required": ["快照标识"]}),
@@ -577,6 +578,16 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                           提供包id=str(参数["提供包id"]), 开工id=str(参数.get("开工id", 当前开工id)))
     elif 名称 == "校验模块合规":
         数据 = 校验模块合规(项目根目录, str(参数["模块名"]))
+    elif 名称 == "生成模块模板":
+        from 开发工具.组件规范.模块模板生成器 import 生成模块模板
+        结果 = 生成模块模板(
+            模块名=str(参数["模块名"]), 类型=str(参数.get("类型", "基础模块")),
+            能力清单=参数.get("能力清单", []), 依赖能力清单=参数.get("依赖能力清单", []),
+        )
+        if 结果.成功:
+            数据 = {"成功": True, **结果.值}
+        else:
+            数据 = {"成功": False, "错误码": 结果.错误码, "说明": 结果.错误说明}
     elif 名称 == "创建核心快照":
         数据 = 创建核心快照(项目根目录, 说明=str(参数.get("说明", "")))
     elif 名称 == "查询核心快照":

@@ -50,7 +50,8 @@ assert 规格 and 规格.loader
 基础工具 = {"project_context", "role_profile", "capability_search", "capability_read",
             "mcp_feedback", "feedback_status"}
 开发工具 = {"codegraph_explore", "memory_search", "memory_write", "verify_and_record",
-            "verification_plan", "development_start", "temporary_context", "task_observation"}
+            "verification_plan", "development_start", "temporary_context", "task_observation",
+            "workspace", "test_resource"}
 
 
 class 五类核心门面测试(unittest.TestCase):
@@ -77,7 +78,7 @@ class 五类核心门面测试(unittest.TestCase):
         self.assertEqual(可用工具(调用者), 基础工具, "调用者只读门面无开发工具")
         接线扩展 = {
             支持库开发者: {"登记需求", "复用搜索", "登记能力占用"},
-            模块开发者: {"校验模块合规"},
+            模块开发者: {"校验模块合规", "生成模块模板"},
             核心开发者: {"创建核心快照", "查询核心快照", "兼容性检查", "回滚门禁"},
             平台维护者: {"运行发布门禁", "检查发布证据", "生成发布证据", "切换激活指针", "依赖裁决",
                         "登记任务", "协作状态", "收口登记", "校验验证命令", "判定验证结果"},
