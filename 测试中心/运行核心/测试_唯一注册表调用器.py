@@ -124,12 +124,22 @@ def 注册能力(注册表) -> None:
 
 
 def 写迷你包(根目录: Path, 相对目录: str, 声明: dict, 入口代码: str) -> None:
-    """在迷你系统根下写一份包（包声明.json + 入口.py）。"""
+    """在迷你系统根下写一份包（包声明.json + 入口.py + 聚合契约）。"""
     目录 = 根目录 / 相对目录
     目录.mkdir(parents=True, exist_ok=True)
     (目录 / "包声明.json").write_text(
         json.dumps(声明, ensure_ascii=False, indent=2), encoding="utf-8")
     (目录 / "入口.py").write_text(入口代码, encoding="utf-8")
+    (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
+    (目录 / "能力契约" / "参数契约.json").write_text(json.dumps({
+        "契约版本": "1.0.0",
+        "能力契约": [{
+            "能力id": 能力["能力id"], "版本": 声明.get("版本", "1.0.0"),
+            "说明": 声明.get("名称", "迷你包"), "参数": 能力.get("参数", []),
+            "返回": 能力.get("返回", {"类型": "dict"}), "错误码": [],
+            "调用示例": "{}",
+        } for 能力 in 声明.get("能力", [])],
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def 构造迷你系统根() -> tuple[Path, Path, Path]:
