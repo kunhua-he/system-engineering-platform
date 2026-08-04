@@ -26,7 +26,7 @@ def _加载PIL(禁用库表: set[str]):
             from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
             return (Image, ImageDraw, ImageFont, ImageOps, ImageStat)
         except Exception:
-            pass
+            return None
     return None
 
 
@@ -86,7 +86,9 @@ def 解码图像(字节b64: str) -> dict[str, Any]:
     if 错误:
         return 错误
     宽度, 高度 = 图像.size
-    return {"值": {"格式": 图像.format, "宽度": 宽度, "高度": 高度, "模式": 图像.mode}}
+    结果 = {"值": {"格式": 图像.format, "宽度": 宽度, "高度": 高度, "模式": 图像.mode}}
+    图像.close()
+    return 结果
 
 
 def 像素统计(字节b64: str) -> dict[str, Any]:
@@ -98,13 +100,16 @@ def 像素统计(字节b64: str) -> dict[str, Any]:
     try:
         统计 = ImageStat.Stat(图像.convert("RGB"))
     except Exception as 统计错误:
+        图像.close()
         return {"错误码": "文件损坏", "错误说明": f"像素统计失败: {统计错误}"}
     平均 = [int(round(值)) for 值 in 统计.mean]
     宽度, 高度 = 图像.size
-    return {"值": {
+    结果 = {"值": {
         "宽度": 宽度, "高度": 高度, "像素数": 宽度 * 高度,
         "平均颜色": {"红": 平均[0], "绿": 平均[1], "蓝": 平均[2]},
     }}
+    图像.close()
+    return 结果
 
 
 def _校验宽高(宽度: Any, 高度: Any) -> dict[str, Any] | None:
@@ -150,9 +155,12 @@ def 生成占位图(宽度: Any, 高度: Any, 占位类型: Any, 背景颜色: A
     try:
         图像.save(输出流, format="PNG")
     except Exception as 保存错误:
+        图像.close()
         return {"错误码": "文件损坏", "错误说明": f"占位图编码失败: {保存错误}"}
-    return {"值": {"图像b64": base64.b64encode(输出流.getvalue()).decode("ascii"),
+    结果 = {"值": {"图像b64": base64.b64encode(输出流.getvalue()).decode("ascii"),
                    "格式": "PNG", "宽度": 宽度, "高度": 高度}}
+    图像.close()
+    return 结果
 
 
 def _取输出格式(图像: Any) -> str:
@@ -192,9 +200,12 @@ def 生成缩略图(字节b64: str, 最大边长: Any) -> dict[str, Any]:
         return 错误
     Image = _PIL模块[0]
     目标格式 = _取输出格式(图像)  # 先取原格式，再转置（转置后 format 丢失）
-    图像 = _PIL模块[3].exif_transpose(图像)
-    图像.thumbnail((最大边长, 最大边长), Image.Resampling.LANCZOS)
-    return _编码图像(图像, 目标格式)
+    转置后 = _PIL模块[3].exif_transpose(图像)
+    转置后.thumbnail((最大边长, 最大边长), Image.Resampling.LANCZOS)
+    结果 = _编码图像(转置后, 目标格式)
+    图像.close()
+    转置后.close()
+    return 结果
 
 
 def 图像EXIF转置(字节b64: str) -> dict[str, Any]:
@@ -206,7 +217,10 @@ def 图像EXIF转置(字节b64: str) -> dict[str, Any]:
         return 错误
     目标格式 = _取输出格式(图像)  # 先取原格式，再转置（转置后 format 丢失）
     转置后 = _PIL模块[3].exif_transpose(图像)
-    return _编码图像(转置后, 目标格式)
+    结果 = _编码图像(转置后, 目标格式)
+    图像.close()
+    转置后.close()
+    return 结果
 
 
 def 透明背景合成(字节b64: str, 背景颜色: Any) -> dict[str, Any]:
@@ -227,7 +241,10 @@ def 透明背景合成(字节b64: str, 背景颜色: Any) -> dict[str, Any]:
         输出图像 = 合成底
     else:
         输出图像 = 图像.convert("RGB")
-    return _编码图像(输出图像, "PNG")
+    结果 = _编码图像(输出图像, "PNG")
+    图像.close()
+    输出图像.close()
+    return 结果
 
 
 def _一维DCT(数据: list[float]) -> list[float]:
@@ -279,7 +296,10 @@ def 计算感知哈希(字节b64: str, 哈希类型: Any) -> dict[str, Any]:
                        for y in range(8) for x in range(8))
     else:
         位串 = _感知哈希位串(灰度, Image)
-    return {"值": {"哈希": format(int(位串, 2), "016x"), "哈希类型": 类型}}
+    结果 = {"值": {"哈希": format(int(位串, 2), "016x"), "哈希类型": 类型}}
+    图像.close()
+    灰度.close()
+    return 结果
 
 
 def 缩放图像(字节b64: str, 宽度: Any, 高度: Any) -> dict[str, Any]:
@@ -310,7 +330,10 @@ def 缩放图像(字节b64: str, 宽度: Any, 高度: Any) -> dict[str, Any]:
     else:
         新宽, 新高 = 宽度, 高度
     缩放后 = 图像.resize((新宽, 新高), Image.Resampling.LANCZOS)
-    return _编码图像(缩放后, 目标格式)
+    结果 = _编码图像(缩放后, 目标格式)
+    图像.close()
+    缩放后.close()
+    return 结果
 
 
 def 重编码图像(字节b64: str, 格式: Any, 质量: Any) -> dict[str, Any]:
@@ -330,6 +353,8 @@ def 重编码图像(字节b64: str, 格式: Any, 质量: Any) -> dict[str, Any]:
     宽度, 高度 = 图像.size
     结果 = _编码图像(图像, 目标格式, 质量)
     if 结果.get("错误码"):
+        图像.close()
         return 结果
     结果["值"]["宽度"], 结果["值"]["高度"] = 宽度, 高度
+    图像.close()
     return 结果
