@@ -125,6 +125,26 @@ class 冷启动反向门禁基础(unittest.TestCase):
             声明["已废弃"] = True
         (目录 / "包声明.json").write_text(
             json.dumps(声明, ensure_ascii=False), encoding="utf-8")
+        契约 = {
+            "契约版本": "1.0.0",
+            "能力契约": [{
+                "能力id": 能力id, "版本": 版本, "说明": 名称,
+                "参数": [], "返回": {"类型": "dict", "说明": "统一结果"},
+                "错误码": [], "调用示例": "{}",
+            }],
+        }
+        (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
+        (目录 / "能力契约" / "参数契约.json").write_text(
+            json.dumps(契约, ensure_ascii=False), encoding="utf-8")
+        from 运行核心.环境指纹 import 计算环境指纹
+        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
+        (目录 / "依赖锁.json").write_text(json.dumps({
+            "包": [{"名称": "冷启动测试工具", "版本": "1.0.0",
+                    "模块名": "冷启动测试工具", "来源": "外部应用"}],
+            "提供者id": 名称, "直接依赖": [], "依赖闭包": [],
+            "环境": {"Python": 指纹["python"], "操作系统": 系统名, "CPU": 指纹["架构"]},
+        }, ensure_ascii=False), encoding="utf-8")
         返回值 = 返回值 or 名称
         (目录 / "入口.py").write_text(
             "from 公共契约.能力契约.契约 import 能力实现\n\n"
@@ -145,6 +165,24 @@ class 冷启动反向门禁基础(unittest.TestCase):
             "包id": f"支持库.适配层.{名称}", "名称": 名称, "类型": "支持库",
             "版本": "1.0.0", "入口": "入口.py", "依赖": [],
             "能力": [{"能力id": 能力id, "名称": 名称}],
+        }, ensure_ascii=False), encoding="utf-8")
+        (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
+        (目录 / "能力契约" / "参数契约.json").write_text(json.dumps({
+            "契约版本": "1.0.0",
+            "能力契约": [{
+                "能力id": 能力id, "版本": "1.0.0", "说明": 名称,
+                "参数": [], "返回": {"类型": "dict", "说明": "统一结果"},
+                "错误码": [], "调用示例": "{}",
+            }],
+        }, ensure_ascii=False), encoding="utf-8")
+        from 运行核心.环境指纹 import 计算环境指纹
+        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
+        (目录 / "依赖锁.json").write_text(json.dumps({
+            "包": [{"名称": "冷启动测试工具", "版本": "1.0.0",
+                    "模块名": "冷启动测试工具", "来源": "外部应用"}],
+            "提供者id": 名称, "直接依赖": [], "依赖闭包": [],
+            "环境": {"Python": 指纹["python"], "操作系统": 系统名, "CPU": 指纹["架构"]},
         }, ensure_ascii=False), encoding="utf-8")
         (目录 / "入口.py").write_text(
             "from 支持库.适配层.{名}.实现.测试实现 import 能力\n\n"
@@ -259,9 +297,10 @@ class Test冷启动子进程(冷启动反向门禁基础):
         # 失败模块的能力不可用（半装配对调用方不可见）
         self.assertFalse(结果表["文件管理.写入文件"]["成功"])
         self.assertEqual(结果表["文件管理.写入文件"]["错误码"], "能力不存在")
-        # 缺陷证据：支持库批次能力残留可调用（半装配残留，回传缺陷清单）
-        self.assertTrue(结果表["文件系统.写入文件"]["成功"],
-                        "缺陷证据：装配失败后支持库能力残留可调用")
+        # 生产修复验证：装配失败后注册表恢复装配前状态，支持库能力同样不可残留
+        self.assertFalse(结果表["文件系统.写入文件"]["成功"],
+                         "装配失败后支持库能力必须不可调用（零半装配）")
+        self.assertEqual(结果表["文件系统.写入文件"]["错误码"], "能力不存在")
 
     def test_重复能力冲突被拒绝(self) -> None:
         """重复能力冲突：声明级（发现器）与注册级（注册表）都必须拒绝。"""
@@ -387,12 +426,15 @@ class Test冷启动反向破坏(冷启动反向门禁基础):
         数据 = self.运行脚本("组件合规", str(self.根), 组件)
         self.assertLess(数据["通过数"], 13, "删契约后合规门禁必须失败")
         self.assertIn("契约", 数据["失败场景"])
-        # 缺陷证据：运行时装配链放行（fail-open），回传缺陷清单
+        # 生产修复验证：运行时装配链也必须失败（fail-closed）
         数据 = self.运行脚本("装配", str(self.根), self.装配请求(
             ("文件系统.写入文件", {"文件路径": str(self.根 / "契约.txt"), "内容": "契约", "编码": "utf-8"}),
         ))
-        self.assertTrue(数据["装配成功"],
-                        "缺陷证据：删契约后运行时装配仍成功（fail-open）")
+        self.assertFalse(数据["装配成功"], "删契约后装配必须失败（fail-closed）")
+        self.assertTrue(
+            any("聚合契约" in 问题 for 问题 in 数据["问题列表"]),
+            str(数据["问题列表"]),
+        )
 
     def test_删锁生产链失败(self) -> None:
         """删除 依赖锁.json → 提供者依赖锁 fail-closed 强制校验必须拒绝。
@@ -421,12 +463,15 @@ class Test冷启动反向破坏(冷启动反向门禁基础):
             any("缺少 依赖锁.json" in 问题["原因"] for 问题 in 数据["问题列表"]),
             str(数据["问题列表"]),
         )
-        # 缺陷证据：装配系统删锁后放行（fail-open），回传缺陷清单
+        # 生产修复验证：装配系统删锁后必须拒绝（fail-closed）
         数据 = self.运行脚本("装配", str(self.根), self.装配请求(
             (f"{提供者名}.最小能力", {}),
         ))
-        self.assertTrue(数据["装配成功"],
-                        "缺陷证据：删锁后装配系统仍放行（fail-open）")
+        self.assertFalse(数据["装配成功"], "删锁后装配必须失败（fail-closed）")
+        self.assertTrue(
+            any("依赖锁缺失" in 问题 for 问题 in 数据["问题列表"]),
+            str(数据["问题列表"]),
+        )
 
 
 if __name__ == "__main__":
