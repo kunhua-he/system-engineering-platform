@@ -17,10 +17,30 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+系统根 = Path(__file__).resolve().parents[2]
+
+from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.演示文稿 import 解析演示文稿
 from 支持库.后端.文档转换 import 检查提供者
 
-实现模块 = importlib.import_module("支持库.后端.演示文稿.实现.演示文稿")
+
+class 假调用器:
+    """测试注入的假能力调用器：所有能力返回 提供者不可用。"""
+
+    def 调用能力(self, 能力id, 参数=None, **关键字):
+        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=True)
+
+    def 幂等重放(self, *args, **kwargs):
+        return False
+
+    def 查询调用历史(self, 上限=50):
+        return []
+
+    def 最近失败(self, 上限=10):
+        return []
+
+    def 回答九问(self, *args, **kwargs):
+        return {}
 
 最小PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -51,6 +71,22 @@ def 生成示例演示文稿(路径: Path) -> None:
 
 
 class Test演示文稿pptx(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """装配唯一能力调用服务：安装全部支持库（含受管提供者）并绑定。"""
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+        from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+
+        cls.注册表 = 能力注册表()
+        安装全部支持库(系统根 / "支持库", cls.注册表)
+        cls.服务 = 创建并绑定(cls.注册表)
+
+    @classmethod
+    def tearDownClass(cls):
+        from 运行核心.能力调用.唯一能力调用 import 销毁全局唯一服务
+        销毁全局唯一服务()
+
     def setUp(self):
         self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_演示文稿_"))
         self.pptx路径 = self.临时目录 / "示例演示.pptx"
@@ -83,7 +119,7 @@ class Test演示文稿pptx(unittest.TestCase):
         self.assertTrue(图像.媒体类型.startswith("image/"))
         self.assertEqual(图像.字节数据b64, base64.b64encode(最小PNG).decode("ascii"))
         self.assertEqual(文档.块列表[3].附加["图像资源引用"], [0])
-        self.assertEqual(文档.提供者版本.get("python-pptx"), 实现模块.pptx.__version__)
+        self.assertTrue(文档.提供者版本.get("python-pptx"))
         self.assertEqual(len(文档.原始文件摘要), 64)
         self.assertGreaterEqual(文档.耗时秒, 0)
 
@@ -123,9 +159,15 @@ class Test演示文稿pptx(unittest.TestCase):
         self.assertEqual(解析演示文稿(伪装2).错误码, "文件损坏")
 
     def test_缺python_pptx返回提供者不可用(self):
-        with mock.patch.object(实现模块, "pptx", None):
+        # 临时注入假调用器（受管提供者不可用）→ 如实返回 提供者不可用
+        from 运行核心.能力调用.唯一能力调用 import 创建并绑定, 设置全局唯一服务
+
+        设置全局唯一服务(假调用器())
+        try:
             结果 = 解析演示文稿(self.pptx路径)
-        self.assertEqual(结果.错误码, "提供者不可用")
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            创建并绑定(self.__class__.注册表)
 
 
 class Test演示文稿ppt转换链(unittest.TestCase):

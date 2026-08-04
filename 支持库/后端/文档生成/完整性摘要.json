@@ -5,59 +5,55 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "be937dca2eabe2c165579e81606264ebf9c3b2ed20dc81d74db1c1777a07eb57"
+      "sha256": "d51eba33965ce9e0f6a953bc411fd905c057df5ceec46362971e27a30dd25351"
+    },
+    {
+      "路径": "依赖契约/依赖契约.json",
+      "sha256": "95cea7eda47785dc511d1aeb78a7c9f624804f139147d7f85e312cb4a72ff60f"
     },
     {
       "路径": "包声明.json",
       "sha256": "867f1bc0c962a35c1c77d28abbf0bd90ddd022a6dcce0a4a4361e2befcb6dc29"
     },
     {
-      "路径": "实现/共用解析.py",
-      "sha256": "5dd0e8efa0aaba058dd0db159becfeb6536871939244bff9fc5ee3bb373176b7"
-    },
-    {
-      "路径": "实现/提供者.py",
-      "sha256": "de22be019636b226550366b55855393b0a9fbfe0939e4f48f263bc2c40b4ae2d"
+      "路径": "复用决策.json",
+      "sha256": "93ecad2873998fa326b2cda260d4af3f0693ac7032db4aea519c89182aa86562"
     },
     {
       "路径": "实现/文档生成.py",
-      "sha256": "18fb78340bd16a1583b9e13bc3b8aa57bc07f1e04167470eef5ad0a020b176d5"
-    },
-    {
-      "路径": "实现/渲染表格.py",
-      "sha256": "8c91283b40be2ebb0a605bbecec2f633817802e268cdf9e807145bdb8f2d00cb"
-    },
-    {
-      "路径": "实现/生成docx.py",
-      "sha256": "10e4a3a7a3fa9c4947638e4e2ee6c1657ecedfe59b8aeb255696210a5e493722"
-    },
-    {
-      "路径": "实现/生成pdf.py",
-      "sha256": "886c166c382da2dddc024e2618137f2f0b84f5747c4a0f0b63f2bce267717b00"
-    },
-    {
-      "路径": "实现/生成pptx.py",
-      "sha256": "6cbcb45022d25f6b4e958c4f1d2ce4b3f38812b47be6272ce1b6bb92a5466957"
-    },
-    {
-      "路径": "实现/生成xlsx.py",
-      "sha256": "9388fb784b644d79505613efff86f22bd25408f092e88176b5fb9c728bb0c0be"
+      "sha256": "67917d5ffc31d0aa14658b61fb23dbe282bc0eecb417e9426a6c3f466684edcc"
     },
     {
       "路径": "实现/签名校验.py",
-      "sha256": "e5a703b27fe4db1c0915a2e9972df86c7465f65224d0479ab03630a510f1bff6"
+      "sha256": "15b4e8901fd7ca88009cdaeeb09b5efe388909bd37d50f3628706041f930624b"
+    },
+    {
+      "路径": "权限契约/权限契约.json",
+      "sha256": "261fedcf52fd184f71f0ea2b3c3f6ff0ed66221dc7a850c889f4dc60b099578c"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "0497cb6196233a8bb9f5c933d38609295e9c2ee66d7e9d4eb22f00a27303f539"
+      "sha256": "ca9eb065f61014a8359273040bf03608ba8b1ebdefffbb60deecbb6c09d4863f"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "5af29bc2e6cd29533888118a7d856320a223b72c6c19c3bfa3272801be2d398d"
+      "sha256": "a2820550d709ccfee03eb12f7957adfa5d0a6f786ed21d2f02c361bcfe5d0718"
+    },
+    {
+      "路径": "资源预算.json",
+      "sha256": "5970daec535d27db1bb7edb8a2946c71f338591c33e05a44f8d76cbb3371ca7e"
+    },
+    {
+      "路径": "配置契约/配置契约.json",
+      "sha256": "b1e44ced7b8dc5b55dd84eda70aed73cdd82ba962d2770ae1f021ac9416c3050"
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "1fcd5cfc6825da38959c8a6f75b160f485d12bb92bba411354b79e4397111f22"
+      "sha256": "5d9180bbfae83e4b6448a855e5174b7d640ce620c34563c5094e8491850ca73d"
+    },
+    {
+      "路径": "默认配置/默认配置.json",
+      "sha256": "b1e44ced7b8dc5b55dd84eda70aed73cdd82ba962d2770ae1f021ac9416c3050"
     }
   ]
 }
