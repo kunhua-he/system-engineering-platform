@@ -28,14 +28,14 @@ from 支持库.适配层.reportlab提供者.实现.渲染表格 import 添加表
 ]
 
 
-def 生成PDF(参数: dict) -> 结果:
+def 生成PDF(内容参数: dict) -> 结果:
     """按内容参数字典生成 PDF，返回 结果[生成产物字典]。"""
-    if not isinstance(参数, dict):
-        return 结果.失败("参数不合法", "参数必须是字典", 来源=能力名)
+    if not isinstance(内容参数, dict):
+        return 结果.失败("参数不合法", "内容参数必须是字典", 来源=能力名)
     if not _提供者可用():
         return 结果.失败("提供者不可用", "reportlab 未安装，无法生成 PDF", 来源=能力名)
     try:
-        字节 = _生成PDF字节(参数)
+        字节 = _生成PDF字节(内容参数)
     except ValueError as 错误:
         return 结果.失败("参数不合法", str(错误), 来源=能力名)
     except Exception as 错误:
@@ -152,6 +152,6 @@ def _注册中文字体() -> tuple[str, str]:
 
     try:
         pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-    except Exception:
-        pass
+    except Exception as 错误:
+        raise ValueError(f"中文字体注册失败（系统字体与内置 CID 均不可用）: {错误}")
     return "STSong-Light", "STSong-Light"
