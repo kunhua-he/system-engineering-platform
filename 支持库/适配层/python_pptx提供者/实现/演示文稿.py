@@ -45,7 +45,7 @@ def _检查压缩包(路径: Path, 最大字节数: int) -> str | None:
                 try:
                     关系 = 压缩包.read(名称).decode("utf-8", "replace")
                 except (KeyError, OSError, zipfile.BadZipFile, RuntimeError):
-                    pass
+                    continue
                 if 'TargetMode="External"' in 关系 and "file:" in 关系:
                     return "文件损坏"
         return None
