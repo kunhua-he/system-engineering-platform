@@ -79,7 +79,8 @@ class Test生成模块模板(unittest.TestCase):
         for 能力id in [条目["能力id"] for 条目 in 声明["能力"]]:
             self.assertIn(能力id, 权限契约, f"能力缺权限声明: {能力id}")
         实现文本 = (模块目录 / "实现" / "示例统计.py").read_text(encoding="utf-8")
-        self.assertIn("from 支持库.后端.文件系统 import 读取文件 as _读取文件", 实现文本)
+        self.assertIn("获取能力调用器().调用能力", 实现文本)
+        self.assertNotIn("import 支持库", 实现文本)
         self.assertNotIn("支持库.后端.文件系统.实现", 实现文本)
 
     def test_已存在拒绝覆盖(self):
