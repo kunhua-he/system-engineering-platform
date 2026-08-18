@@ -29,9 +29,8 @@ class 工作区管理测试(unittest.TestCase):
         self._临时 = tempfile.TemporaryDirectory()
         根 = Path(self._临时.name)
         self.项目根 = 根 / "主仓库"
-        self.工作区根 = 根 / "旁路"
+        self.工作区根 = self.项目根 / "工程缓存" / "任务工作区"
         self.项目根.mkdir()
-        self.工作区根.mkdir()
         初始化 = _运行(self.项目根, ["git", "init", "-b", "main"])
         self.assertEqual(初始化.returncode, 0, 初始化.stderr)
         _运行(self.项目根, ["git", "config", "user.name", "测试用户"])

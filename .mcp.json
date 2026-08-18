@@ -2,18 +2,7 @@
   "mcpServers": {
     "system_engineering_toolkit": {
       "type": "http",
-      "url": "http://127.0.0.1:8766/mcp/",
-      "env": {"SYSTEM_ENGINEERING_MCP_ROLE": "平台维护者"}
-    },
-    "system_engineering_developer": {
-      "type": "http",
-      "url": "http://127.0.0.1:8767/mcp/",
-      "env": {"SYSTEM_ENGINEERING_MCP_ROLE": "核心开发者"}
-    },
-    "system_engineering_caller": {
-      "type": "http",
-      "url": "http://127.0.0.1:8768/mcp/",
-      "env": {"SYSTEM_ENGINEERING_MCP_ROLE": "调用者"}
+      "url": "http://127.0.0.1:8766/mcp/"
     }
   }
 }

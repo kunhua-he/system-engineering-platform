@@ -47,31 +47,45 @@ class 发布证据测试(unittest.TestCase):
     def test_生成发布证据结构化追加(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             结果1 = 发布治理.生成发布证据(
-                "abc123", "门禁验证", 0, "指纹A", 证据目录=临时目录)
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "门禁验证", 0, "指纹A", 证据目录=临时目录)
             self.assertTrue(结果1.成功)
             self.assertEqual(结果1.数据["条目数"], 1)
-            self.assertEqual(Path(结果1.数据["路径"]).name, "abc123.json")
+            self.assertEqual(Path(结果1.数据["路径"]).name, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json")
             结果2 = 发布治理.生成发布证据(
-                "abc123", "激活指针切换", 0, "指纹B", 证据目录=临时目录)
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "激活指针切换", 0, "指纹B", 证据目录=临时目录)
             self.assertTrue(结果2.成功)
             self.assertEqual(结果2.数据["条目数"], 2)
-            数据 = json.loads((Path(临时目录) / "abc123.json").read_text(encoding="utf-8"))
-            self.assertEqual(数据["提交"], "abc123")
+            数据 = json.loads((Path(临时目录) / "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json").read_text(encoding="utf-8"))
+            self.assertEqual(数据["提交"], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
             self.assertEqual(len(数据["条目"]), 2)
             self.assertEqual(数据["条目"][0]["名称"], "门禁验证")
             self.assertEqual(数据["条目"][1]["退出码"], 0)
+
+    def test_非法提交拒绝且错误码为参数无效(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            for 非法值 in ["abc123", "test", "../逃逸", "", "A" * 40, "a" * 39]:
+                结果 = 发布治理.生成发布证据(
+                    非法值, "门禁验证", 0, "指纹A", 证据目录=临时目录)
+                self.assertFalse(结果.成功, f"{非法值!r} 应被拒绝")
+                self.assertEqual(结果.错误码, 发布治理.参数无效, f"{非法值!r}")
+                self.assertFalse((Path(临时目录) / f"{非法值}.json").exists())
+            拒绝 = 发布治理.切换激活指针(
+                "新摘要目标", 1, 环境目录参数=临时目录,
+                提交="../逃逸", 证据目录参数=Path(临时目录) / "证据")
+            self.assertFalse(拒绝.成功)
+            self.assertEqual(拒绝.错误码, 发布治理.参数无效)
 
     def test_检查发布证据命中与无证据拒绝(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             证据路径 = Path(临时目录) / "验证历史.jsonl"
             证据路径.write_text(json.dumps({
-                "名称": "门禁验证", "退出码": 0, "提交": "abc123",
+                "名称": "门禁验证", "退出码": 0, "提交": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "工作区指纹": "指纹X", "时间": "t", "命令": [],
             }, ensure_ascii=False) + "\n" + json.dumps({
-                "名称": "失败验证", "退出码": 1, "提交": "abc123",
+                "名称": "失败验证", "退出码": 1, "提交": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "工作区指纹": "指纹Y", "时间": "t", "命令": [],
             }, ensure_ascii=False) + "\n", encoding="utf-8")
-            命中 = 发布治理.检查发布证据("abc123", 证据路径=证据路径)
+            命中 = 发布治理.检查发布证据("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 证据路径=证据路径)
             self.assertTrue(命中.成功)
             self.assertEqual(命中.数据["名称"], "门禁验证")
             self.assertEqual(命中.数据["退出码"], 0)
@@ -106,7 +120,7 @@ class 激活指针测试(unittest.TestCase):
             _写指针(环境, 令牌=2)
             结果 = 发布治理.切换激活指针(
                 "新摘要目标", 1, 环境目录参数=临时目录,
-                提交="test", 证据目录参数=Path(临时目录) / "证据")
+                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, 发布治理.陈旧令牌)
             指针 = _读指针(环境)
@@ -119,14 +133,14 @@ class 激活指针测试(unittest.TestCase):
             _写指针(环境, 令牌=2)
             结果 = 发布治理.切换激活指针(
                 "新摘要目标", 2, 环境目录参数=临时目录,
-                提交="test", 证据目录参数=Path(临时目录) / "证据")
+                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
             self.assertTrue(结果.成功)
             指针 = _读指针(环境)
             self.assertEqual(指针["摘要sha256"], "新摘要目标"[:16])
             self.assertEqual(指针["制品摘要"], "新摘要目标")
             self.assertEqual(指针["版本"], 3)
             self.assertEqual(指针["栅栏令牌"], 3)
-            证据文件 = Path(临时目录) / "证据" / "test.json"
+            证据文件 = Path(临时目录) / "证据" / "cccccccccccccccccccccccccccccccccccccccc.json"
             self.assertTrue(证据文件.is_file())
             证据 = json.loads(证据文件.read_text(encoding="utf-8"))
             self.assertEqual(证据["条目"][0]["名称"], "激活指针切换: v2→v3")
@@ -137,11 +151,11 @@ class 激活指针测试(unittest.TestCase):
             _写指针(环境, 摘要="原始摘要", 令牌=2)
             首次 = 发布治理.切换激活指针(
                 "新摘要目标", 2, 环境目录参数=临时目录,
-                提交="test", 证据目录参数=Path(临时目录) / "证据")
+                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
             self.assertTrue(首次.成功)
             回滚 = 发布治理.切换激活指针(
                 "原始摘要", 3, 环境目录参数=临时目录,
-                提交="test", 证据目录参数=Path(临时目录) / "证据")
+                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
             self.assertTrue(回滚.成功)
             指针 = _读指针(环境)
             self.assertEqual(指针["摘要sha256"], "原始摘要"[:16])
@@ -152,7 +166,7 @@ class 激活指针测试(unittest.TestCase):
         with tempfile.TemporaryDirectory() as 临时目录:
             结果 = 发布治理.切换激活指针(
                 "新摘要目标", 1, 环境目录参数=临时目录,
-                提交="test", 证据目录参数=Path(临时目录) / "证据")
+                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, 发布治理.指针缺失)
 

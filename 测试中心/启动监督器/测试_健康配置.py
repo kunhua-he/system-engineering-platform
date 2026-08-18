@@ -65,7 +65,7 @@ class Test健康配置覆盖(unittest.TestCase):
         self.assertEqual(结果.配置["健康监督失败阈值"], 1)
         self.assertEqual(
             结果.配置["健康监督证据保留策略"],
-            {"保留条数": 0, "保留TTL秒": 0})
+            {"保留条数": 2000, "保留TTL秒": 0})
         for 键 in 结果.配置:
             self.assertEqual(结果.来源表[键], "支持库默认配置")
 

@@ -13,13 +13,14 @@
 from __future__ import annotations
 
 import os
+from collections import deque
 
 from 公共契约.基础类型.文档结构 import 通用文档, 文档块, 来源位置, 支持格式集合
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.能力契约.调用器 import 获取能力调用器
 
 来源 = "文档解析"
-释放诊断: list[str] = []
+释放诊断: deque[str] = deque(maxlen=100)  # 环形有界（无消费方的诊断数据不得无界增长）
 
 # 格式 → 能力 id（提供者选择由唯一能力调用服务完成）
 格式到能力id = {
@@ -83,7 +84,6 @@ def _解析旧格式(路径: str, 格式: str, 目标格式: str) -> 结果:
             服务.调用能力("资源管理.安全释放", {"路径": 目录})
         except Exception as 错误:
             释放诊断.append(str(错误))
-
 
 def _解析目标(格式: str, 路径: str, 资源预算: int):
     """按格式经唯一能力调用服务解析，返回 结果。"""

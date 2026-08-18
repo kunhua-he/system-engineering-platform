@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -230,45 +231,46 @@ def 读取文件头部字节(受控根目录: str = None, 相对路径: str = No
         return 结果.失败("文件读取失败", str(错误), 来源="文件系统")
 
 
-_临时资源登记表: list[str] = []
+_临时资源登记表: set[str] = set()
+_临时资源锁 = threading.Lock()
 
 
 def 登记临时资源(路径: str = None) -> 结果:
     """登记一个临时资源（文件或目录），由 清理全部临时资源 统一释放。"""
     if not isinstance(路径, str) or not 路径.strip():
         return 结果.失败("参数不合法", "路径必须为非空文本", 来源="文件系统")
-    if 路径 not in _临时资源登记表:
-        _临时资源登记表.append(路径)
-    return 结果.成功结果(len(_临时资源登记表))
+    with _临时资源锁:
+        _临时资源登记表.add(路径)
+        return 结果.成功结果(len(_临时资源登记表))
 
 
 def 清理全部临时资源(路径前缀: str = "") -> 结果:
     """清理已登记临时资源（文件删除/目录递归删除，不存在视为幂等成功）。
 
     路径前缀 非空时只清理以此前缀开头的登记资源；无匹配登记资源时返回
-    资源不存在（避免静默什么都不做）。
+    资源不存在（避免静默什么都不做）。登记表变更全部在锁内完成。
     """
     if 路径前缀 is None or not isinstance(路径前缀, str):
         return 结果.失败("参数不合法", "路径前缀必须为文本", 来源="文件系统")
-    待清理 = _临时资源登记表 if not 路径前缀 else [
-        路径 for 路径 in _临时资源登记表 if 路径.startswith(路径前缀)
-    ]
-    if 路径前缀 and not 待清理:
-        return 结果.失败("资源不存在", f"无匹配前缀 {路径前缀} 的登记资源", 来源="文件系统")
-    清理失败表 = []
-    清理数量 = 0
-    for 路径 in list(待清理):
-        try:
-            目标 = Path(路径)
-            if 目标.is_dir():
-                shutil.rmtree(目标)
-            else:
-                目标.unlink(missing_ok=True)
-            清理数量 += 1
-            if 路径 in _临时资源登记表:
-                _临时资源登记表.remove(路径)
-        except OSError as 错误:
-            清理失败表.append(f"{路径}: {错误}")
+    with _临时资源锁:
+        待清理 = _临时资源登记表 if not 路径前缀 else {
+            路径 for 路径 in _临时资源登记表 if 路径.startswith(路径前缀)
+        }
+        if 路径前缀 and not 待清理:
+            return 结果.失败("资源不存在", f"无匹配前缀 {路径前缀} 的登记资源", 来源="文件系统")
+        清理失败表 = []
+        清理数量 = 0
+        for 路径 in list(待清理):
+            try:
+                目标 = Path(路径)
+                if 目标.is_dir():
+                    shutil.rmtree(目标)
+                else:
+                    目标.unlink(missing_ok=True)
+                清理数量 += 1
+                _临时资源登记表.discard(路径)
+            except OSError as 错误:
+                清理失败表.append(f"{路径}: {错误}")
     if 清理失败表:
         return 结果.失败("清理失败", "；".join(清理失败表), 来源="文件系统")
     return 结果.成功结果(清理数量)

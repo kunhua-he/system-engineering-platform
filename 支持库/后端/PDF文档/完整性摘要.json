@@ -9,11 +9,11 @@
     },
     {
       "路径": "依赖契约/依赖契约.json",
-      "sha256": "95cea7eda47785dc511d1aeb78a7c9f624804f139147d7f85e312cb4a72ff60f"
+      "sha256": "4b23f1ebfaab9e313b76bb7902bbde068f10dc7d965339c0b5f2f0a7491db00e"
     },
     {
       "路径": "包声明.json",
-      "sha256": "b1141e105036611fcbaa746b3546b1018f92f55759d33333897126bc99306d31"
+      "sha256": "044b89a03f094dc1c6d4b8bc7b89eecc6834f1a9b1e21daa9c279ac341b12229"
     },
     {
       "路径": "复用决策.json",
@@ -32,8 +32,12 @@
       "sha256": "8a1fea2fd8a0584c585be0ddebc939c57bf5d44750bada9f960acde7361995f2"
     },
     {
+      "路径": "能力数据/能力搜索数据.json",
+      "sha256": "31664021a4c8e35b5c1fe5c5625ad9145f33eeffcdd54385cc906409c0cb70ef"
+    },
+    {
       "路径": "说明/使用说明.md",
-      "sha256": "2ec60e524a7398b6ec7bf18aa976e909fd21c96516d699e6b8ddc304458a3677"
+      "sha256": "941a4512062a24a696a5cda1bc56b648d62c67599961aaa0b2ec44948818882f"
     },
     {
       "路径": "资源预算.json",

@@ -27,6 +27,8 @@ from typing import Any
 进程状态_已停止 = "已停止"
 进程状态_故障 = "故障"
 
+日志上限 = 200  # 日志列表环形裁剪上限（对齐 提供者生命周期._日志上限）
+
 
 @dataclass
 class 进程调用结果:
@@ -67,6 +69,7 @@ class 独立进程:
         self.重启次数 = 0
         self.退出码: int | None = None
         self.日志列表: list[str] = []
+        self._读取缓冲 = b""  # os.read 直读内核的行缓冲（绕开 TextIOWrapper 预读）
 
     def _确定解释器(self) -> str:
         """确定子进程解释器：优先独立环境，其次系统解释器。"""
@@ -84,6 +87,38 @@ class 独立进程:
 
     def _记录日志(self, 消息: str) -> None:
         self.日志列表.append(f"[{time.strftime('%H:%M:%S')}] {消息}")
+        if len(self.日志列表) > 日志上限:
+            del self.日志列表[:len(self.日志列表) - 日志上限]
+
+    def _读取一行(self, 超时秒: float) -> str:
+        """带超时的行读取：select + os.read 直读内核，避免 readline/缓冲预读无界阻塞。
+
+        内部缓冲保存半行/多行数据（响应行上限 1MB，防恶意无界行）；
+        超过 超时秒 未读到完整行抛 TimeoutError；管道 EOF 抛 ConnectionError。
+        """
+        行缓冲上限 = 1024 * 1024
+        截止 = time.monotonic() + max(0.01, 超时秒)
+        描述符 = self.进程.stdout.fileno()
+        while True:
+            if b"\n" in self._读取缓冲:
+                行, 剩余 = self._读取缓冲.split(b"\n", 1)
+                self._读取缓冲 = 剩余
+                return 行.decode("utf-8", "replace")
+            剩余时间 = 截止 - time.monotonic()
+            if 剩余时间 <= 0:
+                raise TimeoutError(f"读取响应超时（> {超时秒} 秒）")
+            可读, _, _ = select.select([描述符], [], [], 剩余时间)
+            if not 可读:
+                raise TimeoutError(f"读取响应超时（> {超时秒} 秒）")
+            try:
+                块 = os.read(描述符, 4096)
+            except OSError as 错误:
+                raise ConnectionError(f"读取响应失败: {错误}") from 错误
+            if not 块:
+                raise ConnectionError("进程已退出（无响应）")
+            self._读取缓冲 += 块
+            if len(self._读取缓冲) > 行缓冲上限:
+                raise ConnectionError(f"响应行超过上限（{行缓冲上限} 字节）")
 
     def _关闭管道(self) -> None:
         """关闭已结束进程的标准管道，避免文件描述符泄漏。"""
@@ -125,8 +160,9 @@ class 独立进程:
                 self._关闭管道()
                 return False, f"启动超时/提前退出（退出码 {self.退出码}）"
             try:
-                行 = self.进程.stdout.readline()
-            except (ValueError, OSError):
+                # 分段限时读取：每次最多等 0.5 秒，超时走外层整体超时判定并强杀
+                行 = self._读取一行(min(0.5, self.启动超时秒 - (time.monotonic() - 开始)))
+            except (TimeoutError, ConnectionError, ValueError, OSError):
                 行 = ""
             if "READY" in 行:
                 self.状态 = 进程状态_运行中
@@ -141,12 +177,7 @@ class 独立进程:
             raise ConnectionError("进程未运行")
         self.进程.stdin.write(json.dumps(请求, ensure_ascii=False) + "\n")
         self.进程.stdin.flush()
-        可读, _, _ = select.select([self.进程.stdout], [], [], self.调用超时秒)
-        if not 可读:
-            raise TimeoutError(f"调用超时（> {self.调用超时秒} 秒）")
-        行 = self.进程.stdout.readline()
-        if not 行:
-            raise ConnectionError("进程已退出（无响应）")
+        行 = self._读取一行(self.调用超时秒)
         return json.loads(行)
 
     def 调用(self, *, 能力id: str, 参数: dict | None = None,

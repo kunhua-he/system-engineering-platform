@@ -40,6 +40,8 @@ from 运行核心.运行环境管理器.环境管理器 import 确保环境, 读
 默认日志上限 = 200
 默认最大重启次数 = 3
 取消等待上限秒 = 2.0
+排空滞留预算秒 = 2.0
+排空滞留预算字节 = 64 * 1024
 
 
 @dataclass
@@ -303,6 +305,14 @@ class 提供者生命周期管理器:
         )
         成功, 消息 = 进程.启动()
         with self._锁:
+            # 启动完成回锁复查：启动期间其他线程可能抢先启动新进程，超限则
+            # 强制终止新进程并拒绝（消除检查-启动之间的 TOCTOU 窗口）
+            运行中数量 = sum(1 for 进程对象 in self._进程表.values()
+                           if 进程对象.状态 == 进程状态_运行中)
+            if 成功 and 运行中数量 >= self._最大进程数:
+                进程.强制终止()
+                self._记录日志(提供者id, "启动拒绝：启动期间进程数达上限，新进程已终止")
+                return False, f"运行中进程数已达上限（{self._最大进程数}），拒绝启动 {提供者id}"
             self._进程表[提供者id] = 进程
             self._状态表[提供者id] = 进程.状态
             self._记录日志(提供者id, f"启动: {消息}")
@@ -372,12 +382,19 @@ class 提供者生命周期管理器:
         原超时 = 进程.调用超时秒
         进程.调用超时秒 = 超时
         try:
-            self._排空滞留响应(进程)  # 调用前排空滞留行（防超时响应错位）
+            if not self._排空滞留响应(进程):  # 调用前排空滞留行（防超时响应错位）
+                self._终止并重启(提供者id)
+                return 进程调用结果(
+                    False, 错误码="滞留响应超预算",
+                    错误说明="调用前排空滞留响应超预算，进程已重置", 可重试=True)
             if 取消事件 is None:
                 结果 = 进程.调用(能力id=能力id, 参数=参数)
                 if not 结果.成功 and 结果.错误码 == "超时":
-                    self._排空滞留响应(进程)
-                    self._记录日志(提供者id, f"调用超时已排空: {能力id}")
+                    if not self._排空滞留响应(进程):
+                        self._终止并重启(提供者id)
+                        self._记录日志(提供者id, "调用超时后排空超预算，进程已重置")
+                    else:
+                        self._记录日志(提供者id, f"调用超时已排空: {能力id}")
                 return 结果
             结果盒: list = []
             线程 = threading.Thread(
@@ -405,32 +422,43 @@ class 提供者生命周期管理器:
                 return 进程调用结果(False, 错误码="内部错误", 错误说明="调用结果缺失")
             结果 = 结果盒[0]
             if not 结果.成功 and 结果.错误码 == "超时":
-                self._排空滞留响应(进程)
+                if not self._排空滞留响应(进程):
+                    self._终止并重启(提供者id)
             return 结果
         finally:
             进程.调用超时秒 = 原超时
 
-    def _排空滞留响应(self, 进程: 独立进程, *, 窗口秒: float = 0.05) -> None:
-        """排空子进程 stdout 滞留响应行（有界等待），管道干净、进程可复用。
+    def _排空滞留响应(self, 进程: 独立进程, *, 窗口秒: float = 0.05) -> bool:
+        """排空子进程 stdout 滞留响应行（时间/字节双重有界），返回是否排空完成。
 
-        每次 select 窗口内无可读即停止（不阻塞等待慢操作完成）；配合
-        调用前排空：超时后滞留的响应行在下次调用前被探测并消费，防止
-        响应错位。
+        累计排空时间超过 排空滞留预算秒（2 秒）或累计字节超过
+        排空滞留预算字节（64KB）即放弃并返回 False，由调用方终止并重置
+        进程（进程已不可复用）；每次 select 窗口内无可读即停止。异常记录
+        日志（环形有界）并按失败处理。
         """
+        import select as _select
+        标准输出 = 进程.进程.stdout if 进程.进程 is not None else None
+        if 标准输出 is None:
+            return True
+        开始 = time.monotonic()
+        累计字节 = 0
         try:
-            import select as _select
-            标准输出 = 进程.进程.stdout if 进程.进程 is not None else None
-            if 标准输出 is None:
-                return
-            while True:
+            while (time.monotonic() - 开始 <= 排空滞留预算秒
+                   and 累计字节 < 排空滞留预算字节):
                 可读, _, _ = _select.select([标准输出], [], [], 窗口秒)
                 if not 可读:
                     break
                 行 = 标准输出.readline()
                 if not 行:
                     break
-        except Exception:
-            pass
+                累计字节 += len(行.encode("utf-8", "ignore"))
+        except Exception as 错误:
+            self._记录日志(进程.名称, f"排空滞留响应异常: {错误}")
+            return False
+        if (累计字节 >= 排空滞留预算字节
+                or time.monotonic() - 开始 > 排空滞留预算秒):
+            return False
+        return True
 
     def _终止并重启(self, 提供者id: str) -> None:
         """兜底：终止占用中的进程并自动重启（重启次数有界）。"""

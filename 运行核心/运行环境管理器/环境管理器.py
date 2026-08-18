@@ -34,6 +34,7 @@ from typing import Any
 缓存证据文件名 = "缓存证据.jsonl"
 远程镜像配置文件名 = "远程镜像配置.json"
 默认最大并行 = 8
+缓存证据保留条数 = 5000
 
 from 运行核心.运行环境管理器.远程镜像 import (
     下载镜像制品, 获取镜像清单, 计算制品摘要, 镜像不可用, 镜像下载失败,
@@ -121,9 +122,37 @@ def _系统版本详情() -> str:
         结果 = subprocess.run(["sw_vers"], capture_output=True, timeout=10)
         if 结果.returncode == 0:
             return 结果.stdout.decode("utf-8", "ignore").strip()
-    except Exception:
+    except (OSError, subprocess.TimeoutExpired):
         pass
     return f"{platform.system()} {platform.release()}"
+
+
+def _裁剪缓存证据(证据文件: Path) -> None:
+    """缓存证据环形裁剪：只保留最近 缓存证据保留条数 行（尾部倒读，O(窗口)）。"""
+    try:
+        with open(证据文件, "rb") as 文件:
+            文件.seek(0, os.SEEK_END)
+            大小 = 文件.tell()
+            if 大小 == 0:
+                return
+            块大小 = 65536
+            尾部 = b""
+            while 大小 > 0:
+                读取长度 = min(块大小, 大小)
+                大小 -= 读取长度
+                文件.seek(大小)
+                尾部 = 文件.read(读取长度) + 尾部
+                if 尾部.count(b"\n") >= 缓存证据保留条数:
+                    break
+        if 尾部.count(b"\n") < 缓存证据保留条数:
+            return  # 未超过保留条数，不裁剪
+        行表 = 尾部.splitlines()[-缓存证据保留条数:]
+        内容 = "\n".join(行.decode("utf-8", "replace") for 行 in 行表) + "\n"
+        临时路径 = 证据文件.with_suffix(".jsonl.tmp")
+        临时路径.write_text(内容, encoding="utf-8")
+        临时路径.replace(证据文件)
+    except OSError:
+        return
 
 
 def _记录证据(提供者目录: Path, 类型: str, 摘要: str, 输入哈希: str,
@@ -148,6 +177,7 @@ def _记录证据(提供者目录: Path, 类型: str, 摘要: str, 输入哈希:
         证据文件.parent.mkdir(parents=True, exist_ok=True)
         with 证据文件.open("a", encoding="utf-8") as 写入:
             写入.write(json.dumps(记录, ensure_ascii=False) + "\n")
+        _裁剪缓存证据(证据文件)
 
 
 def _制品仓库标识(依赖锁: dict) -> str:
