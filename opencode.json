@@ -1,0 +1,26 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "system_engineering_toolkit": {
+      "type": "local",
+      "command": ["python3.14", "MCP工具箱/项目服务.py"],
+      "cwd": "~/Documents/Agent/PHP/系统工程平台",
+      "environment": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "平台维护者"},
+      "enabled": true
+    },
+    "system_engineering_developer": {
+      "type": "local",
+      "command": ["python3.14", "MCP工具箱/项目服务.py"],
+      "cwd": "~/Documents/Agent/PHP/系统工程平台",
+      "environment": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "核心开发者"},
+      "enabled": true
+    },
+    "system_engineering_caller": {
+      "type": "local",
+      "command": ["python3.14", "MCP工具箱/项目服务.py"],
+      "cwd": "~/Documents/Agent/PHP/系统工程平台",
+      "environment": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "调用者"},
+      "enabled": true
+    }
+  }
+}
