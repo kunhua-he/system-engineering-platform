@@ -35,11 +35,7 @@ try:
     from MCP工具箱.协作状态 import 登记任务, 查询协作状态, 收口登记
     from MCP工具箱.验证门禁 import 校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁
     from MCP工具箱.角色权限 import (
-        读取当前角色, 角色说明, 获取角色指南, 越权拒绝,
-        角色所属实例, 实例角色集, 实例可用工具, 实例核心工具, 实例代码地图范围,
-        校验实例工具权限, 校验实例修改路径,
-        支持库开发者, 模块开发者, 核心开发者, 项目开发者,
-        平台构建开发者, 平台维护者, 发布者,
+        获取角色指南, 网关实例名, 网关角色名, 网关说明,
     )
 except ModuleNotFoundError:
     from 工具名映射 import 中文名到协议名, 协议名到中文名
@@ -56,11 +52,7 @@ except ModuleNotFoundError:
     from 协作状态 import 登记任务, 查询协作状态, 收口登记
     from 验证门禁 import 校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁
     from 角色权限 import (
-        读取当前角色, 角色说明, 获取角色指南, 越权拒绝,
-        角色所属实例, 实例角色集, 实例可用工具, 实例核心工具, 实例代码地图范围,
-        校验实例工具权限, 校验实例修改路径,
-        支持库开发者, 模块开发者, 核心开发者, 项目开发者,
-        平台构建开发者, 平台维护者, 发布者,
+        获取角色指南, 网关实例名, 网关角色名, 网关说明,
     )
 
 项目根目录 = Path(__file__).resolve().parent.parent
@@ -72,10 +64,9 @@ except ModuleNotFoundError:
 工程缓存目录 = 项目根目录 / "工程缓存"
 工作区根目录 = 项目根目录 / "工程缓存" / "任务工作区"
 测试资源清单目录 = 项目根目录 / "工程缓存" / "测试资源清单"
+协作状态目录 = 项目根目录 / "工程缓存" / "协作状态"
 服务 = Server("system_engineering_toolkit")
-当前角色 = 读取当前角色()
-# 单实例多角色：3 个实例承载全部 8 角色，实例名由角色固定归属，不再随角色变化。
-当前实例 = 角色所属实例(当前角色)
+# 单网关（无角色）模式：8766 单一对外网关，不再读取角色环境变量。
 当前任务名称 = ""
 当前开工id = ""
 
@@ -158,7 +149,7 @@ def _开工上下文(任务: str, 历史数量: int) -> dict[str, Any]:
     return {
         "项目": {
             "名称": "系统工程平台", "根目录": str(项目根目录),
-            "MCP实例": 当前实例, "角色门面": 当前角色,
+            "MCP实例": 网关实例名, "角色门面": "单网关（无角色）",
             "任务": 任务, "开工id": 当前开工id,
         },
         "代码地图": 地图,
@@ -259,11 +250,12 @@ def _过滤代码地图输出(原文: str, 范围表: list[str]) -> str:
         结束 = 匹配表[序号 + 1].start() if 序号 + 1 < len(匹配表) else len(原文)
         保留表.append(原文[匹配.start():结束].rstrip())
     if not 保留表:
-        return "当前角色范围内没有匹配源码。"
-    return "**角色范围内源码**\n\n" + "\n\n".join(保留表)
+        return "查询范围内没有匹配源码。"
+    return "**查询范围内源码**\n\n" + "\n\n".join(保留表)
 
 
 def _有效开工id(候选: object) -> str:
+    """只允许当前开工id或已登记子任务（临时上下文存在或协作状态已登记）。"""
     开工id = str(候选 or 当前开工id)
     if not 开工id:
         raise PermissionError("尚未建立开工上下文")
@@ -271,22 +263,29 @@ def _有效开工id(候选: object) -> str:
         return 开工id
     if 读取临时上下文(临时上下文目录, 开工id).get("成功"):
         return 开工id
-    raise PermissionError("只能操作当前任务或有效临时上下文子任务")
+    if (协作状态目录 / f"{开工id}.json").is_file():
+        return 开工id
+    raise PermissionError("只能操作当前任务或已登记子任务")
 
 
-def _按角色探索代码(查询: str) -> dict[str, Any]:
-    范围表 = 实例代码地图范围(当前实例)
-    if not 范围表:
-        raise 越权拒绝("权限不足", f"角色 {当前角色} 没有源码查询权限")
+# 单网关模式代码地图探索范围：全部正式目录（无角色过滤）。
+全部目录表 = [
+    "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心", "后端核心",
+    "支持库", "模块库", "项目适配层", "开发工具", "测试中心", "示例项目",
+]
+
+
+def _探索代码(查询: str) -> dict[str, Any]:
+    """网关直通探索代码地图：单网关模式不设角色范围限制。"""
     结果 = _执行(
         ["codegraph", "explore", 查询, "--max-files", "20"],
         60, 200000,
     )
     return {
         "退出码": 结果["退出码"],
-        "标准输出": _过滤代码地图输出(结果["标准输出"], 范围表)[-48000:],
+        "标准输出": 结果["标准输出"][-48000:],
         "标准错误": 结果["标准错误"][-4000:],
-        "查询范围": 范围表,
+        "查询范围": list(全部目录表),
     }
 
 
@@ -371,13 +370,13 @@ def _统一开发入口(
     上下文 = _开工上下文(任务, 历史数量)
     清理过期上下文(临时上下文目录)
     任务开始(观测路径, 任务id=上下文["项目"]["开工id"],
-            开工id=上下文["项目"]["开工id"], 角色=当前角色)
+            开工id=上下文["项目"]["开工id"], 角色=网关角色名)
     计划 = _验证计划(修改路径, 级别)
     return {
         "开工上下文": 上下文,
         "验证计划": 计划,
         "下一步": [
-            "按角色边界使用代码地图定位",
+            "按网关直通使用代码地图定位",
             "连续完成同一工作包，不逐文件跑全量",
             "工作包完成后按验证计划并行执行",
             "收工前提交MCP反馈，再记录成功证据",
@@ -436,9 +435,8 @@ _工具定义列表 = [
 
 @服务.list_tools()
 async def 工具列表() -> list[Tool]:
-    # 精简注入：基础 + 实例业务核心 + 工具目录，其余工具经 tool_catalog 发现后再按角色集权限调用。
-    可注入工具 = {中文名到协议名.get(名, 名) for 名 in 实例核心工具(当前实例) | {"tool_catalog"}}
-    return [工具 for 工具 in _工具定义列表 if 工具.name in 可注入工具]
+    # 单网关模式：全部工具直通注入，不按角色过滤。
+    return list(_工具定义列表)
 
 
 # 工具目录分类：按 14 个模块域划分，覆盖全部全量工具。
@@ -464,10 +462,20 @@ _工具分类表 = {
 }
 
 
+def _结果转字典(结果: Any) -> dict[str, Any]:
+    """发布治理.结果 dataclass → 可 JSON 序列化字典（S6：json.dumps 无法序列化 dataclass）。"""
+    return {
+        "成功": 结果.成功,
+        "错误码": 结果.错误码,
+        "消息": 结果.消息,
+        "数据": 结果.数据,
+    }
+
+
 def _工具目录(分类: str = "", 关键词: str = "") -> dict[str, Any]:
     """只读返回工具清单（中文名+协议名+描述），不加载实现、不触碰项目资源。"""
     定义表 = {工具.name: 工具 for 工具 in _工具定义列表}
-    可调用集 = {中文名到协议名.get(名, 名) for 名 in 实例可用工具(当前实例)}
+    可调用集 = set(定义表)  # 单网关模式：全部工具对网关调用者开放
     条目表: list[dict[str, Any]] = []
     已覆盖: set[str] = set()
     for 分类名, 工具名表 in _工具分类表.items():
@@ -496,232 +504,236 @@ def _工具目录(分类: str = "", 关键词: str = "") -> dict[str, Any]:
         "分类": 分类 or "全部",
         "关键词": 关键词,
         "条目数": len(条目表),
-        "当前实例": 当前实例,
+        "当前实例": 网关实例名,
         "当前实例可用工具数": len(可调用集),
         "工具清单": 条目表,
-        "提示": "工具目录只返回清单；调用未注入的工具仍受实例角色集白名单校验，越权拒绝。",
+        "提示": "单网关模式：全部工具对网关调用者开放；未知工具名与越界路径仍默认拒绝。",
     }
 
 
 @服务.call_tool()
 async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]:
-    # 兼容：调用方可能用中文名（角色白名单与旧调用习惯），统一归一化为英文协议名再分发。
+    # 兼容：调用方可能用中文名，统一归一化为英文协议名再分发。
     名称 = 中文名到协议名.get(名称, 名称)
     if 名称 == "tool_catalog":
-        # 工具目录是只读发现工具：不触碰项目资源，对所有实例开放，跳过角色白名单。
+        # 工具目录是只读发现工具：不触碰项目资源，直接返回全量清单。
         数据 = _工具目录(str(参数.get("分类", "")), str(参数.get("关键词", "")))
         工具事件(观测路径, 任务id=str(参数.get("task_id") or 当前开工id),
                 开工id=当前开工id, 工具=名称, 开始单调=time.monotonic())
         return [TextContent(type="text", text=json.dumps(数据, ensure_ascii=False, indent=2))]
-    # 角色权限白名单沿用中文工具名，协议名需反查中文名后校验。
-    校验实例工具权限(当前实例, 协议名到中文名.get(名称, 名称))
     观测开始 = time.monotonic()
     观测任务id = str(参数.get("task_id") or 当前开工id)
     事件开工id = 当前开工id
     if 名称 in {"mcp_feedback", "task_observation", "test_resource", "verify_and_record"}:
         事件开工id = _有效开工id(参数.get("work_id"))
-    if 名称 == "project_context":
-        数据 = _开工上下文(str(参数.get("task", "")), int(参数.get("history_limit", 3)))
-    elif 名称 == "role_profile":
-        数据 = 角色说明(当前角色)
-    elif 名称 == "capability_search":
-        数据 = 搜索公开能力(
-            项目根目录, str(参数.get("keyword", "")), int(参数.get("limit", 5)),
-        )
-    elif 名称 == "capability_read":
-        数据 = 读取公开能力(项目根目录, str(参数["capability_id"]))
-        if 数据 is None:
-            数据 = {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": "公开能力不存在"}
-    elif 名称 == "mcp_feedback":
-        反馈开工id = _有效开工id(参数.get("work_id"))
-        数据 = 写入反馈(
-            反馈路径, 开工id=反馈开工id, 任务=当前任务名称, 角色=当前角色,
-            总结=str(参数["summary"]), 不满意=str(参数["dissatisfaction"]),
-            多余=str(参数["redundant"]), 缺失=str(参数["missing"]),
-            升级建议=str(参数["upgrade_suggestion"]),
-        )
-    elif 名称 == "feedback_status":
-        数据 = 查询反馈状态(反馈路径, 当前开工id)
-    elif 名称 == "feedback_review":
-        数据 = 读取反馈列表(
-            反馈路径, 开工id=str(参数.get("work_id", "")),
-            任务=str(参数.get("task", "")), 数量=int(参数.get("limit", 20)),
-        )
-    elif 名称 in {
-        "support_library_development_guide", "module_development_guide",
-        "core_development_guide", "platform_maintenance_guide", "release_guide",
-        "project_development_guide", "platform_build_development_guide",
-    }:
-        _指南角色表 = {
-            "support_library_development_guide": 支持库开发者,
-            "module_development_guide": 模块开发者,
-            "core_development_guide": 核心开发者,
-            "project_development_guide": 项目开发者,
-            "platform_build_development_guide": 平台构建开发者,
-            "platform_maintenance_guide": 平台维护者,
-            "release_guide": 发布者,
-        }
-        # 合并开发实例下按工具名返回对应角色指南，不再固定用当前默认角色。
-        数据 = 获取角色指南(_指南角色表[名称])
-    elif 名称 == "codegraph_explore":
-        数据 = _按角色探索代码(str(参数["query"]))
-    elif 名称 == "memory_search":
-        数据 = _搜索记忆(str(参数["query"]), int(参数.get("limit", 5)))
-    elif 名称 == "memory_write":
-        数据 = _写入记忆(str(参数["title"]), str(参数["body"]), list(参数.get("labels", [])))
-    elif 名称 == "verification_plan":
-        修改路径 = list(参数.get("modified_paths", []))
-        校验实例修改路径(当前实例, 修改路径)
-        数据 = _验证计划(修改路径, str(参数.get("level", "工作包")))
-    elif 名称 == "development_start":
-        修改路径 = list(参数.get("modified_paths", []))
-        校验实例修改路径(当前实例, 修改路径)
-        数据 = _统一开发入口(
-            str(参数.get("task", "")), 修改路径,
-            str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
-        )
-    elif 名称 == "temporary_context":
-        操作 = str(参数["operation"])
-        开工id = str(参数["work_id"])
-        if 操作 == "写入":
-            数据 = 写入临时上下文(
-                临时上下文目录, 开工id=开工id,
-                父任务=str(参数.get("parent_task", 当前任务名称)),
-                角色=str(参数.get("role", 当前角色)),
-                允许目录=list(参数.get("allowed_paths", [])),
-                记忆查询=list(参数.get("memory_queries", [])),
-                事实=list(参数.get("confirmed_facts", [])),
-                验证计划=list(参数.get("verification_commands", [])),
-                有效秒数=int(参数.get("ttl_seconds", 7200)),
+    try:
+        if 名称 == "project_context":
+            数据 = _开工上下文(str(参数.get("task", "")), int(参数.get("history_limit", 3)))
+        elif 名称 == "role_profile":
+            数据 = {
+                **网关说明(),
+                "可用工具": sorted(定义.name for 定义 in _工具定义列表),
+                "可用工具数": len(_工具定义列表),
+            }
+        elif 名称 == "capability_search":
+            数据 = 搜索公开能力(
+                项目根目录, str(参数.get("keyword", "")), int(参数.get("limit", 5)),
             )
-        elif 操作 == "读取":
-            数据 = 读取临时上下文(临时上下文目录, 开工id)
-        elif 操作 == "清理":
-            数据 = 清理临时上下文(临时上下文目录, 开工id)
-        elif 操作 == "核对范围":
-            数据 = 核对修改范围(临时上下文目录, 开工id, list(参数.get("actual_paths", [])))
+        elif 名称 == "capability_read":
+            数据 = 读取公开能力(项目根目录, str(参数["capability_id"]))
+            if 数据 is None:
+                数据 = {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": "公开能力不存在"}
+        elif 名称 == "mcp_feedback":
+            反馈开工id = _有效开工id(参数.get("work_id"))
+            数据 = 写入反馈(
+                反馈路径, 开工id=反馈开工id, 任务=当前任务名称, 角色=网关角色名,
+                总结=str(参数["summary"]), 不满意=str(参数["dissatisfaction"]),
+                多余=str(参数["redundant"]), 缺失=str(参数["missing"]),
+                升级建议=str(参数["upgrade_suggestion"]),
+            )
+        elif 名称 == "feedback_status":
+            数据 = 查询反馈状态(反馈路径, 当前开工id)
+        elif 名称 == "feedback_review":
+            数据 = 读取反馈列表(
+                反馈路径, 开工id=str(参数.get("work_id", "")),
+                任务=str(参数.get("task", "")), 数量=int(参数.get("limit", 20)),
+            )
+        elif 名称 in {
+            "support_library_development_guide", "module_development_guide",
+            "core_development_guide", "platform_maintenance_guide", "release_guide",
+            "project_development_guide", "platform_build_development_guide",
+        }:
+            # 单网关模式：指南工具统一返回网关说明。
+            数据 = 获取角色指南(名称)
+        elif 名称 == "codegraph_explore":
+            数据 = _探索代码(str(参数["query"]))
+        elif 名称 == "memory_search":
+            数据 = _搜索记忆(str(参数["query"]), int(参数.get("limit", 5)))
+        elif 名称 == "memory_write":
+            数据 = _写入记忆(str(参数["title"]), str(参数["body"]), list(参数.get("labels", [])))
+        elif 名称 == "verification_plan":
+            修改路径 = list(参数.get("modified_paths", []))
+            数据 = _验证计划(修改路径, str(参数.get("level", "工作包")))
+        elif 名称 == "development_start":
+            修改路径 = list(参数.get("modified_paths", []))
+            数据 = _统一开发入口(
+                str(参数.get("task", "")), 修改路径,
+                str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
+            )
+        elif 名称 == "temporary_context":
+            操作 = str(参数["operation"])
+            开工id = str(参数["work_id"])
+            if 操作 == "写入":
+                # 只允许当前开工id或已登记子任务（与 mcp_feedback/verify_and_record 同路径），
+                # 防止伪造任意子任务身份。
+                try:
+                    有效id = _有效开工id(开工id)
+                except PermissionError as 错误:
+                    数据 = {"成功": False, "错误码": "未授权", "错误说明": str(错误)}
+                else:
+                    数据 = 写入临时上下文(
+                        临时上下文目录, 开工id=有效id,
+                        父任务=str(参数.get("parent_task", 当前任务名称)),
+                        角色=str(参数.get("role", 网关角色名)),
+                        允许目录=list(参数.get("allowed_paths", [])),
+                        记忆查询=list(参数.get("memory_queries", [])),
+                        事实=list(参数.get("confirmed_facts", [])),
+                        验证计划=list(参数.get("verification_commands", [])),
+                        有效秒数=int(参数.get("ttl_seconds", 7200)),
+                    )
+            elif 操作 == "读取":
+                数据 = 读取临时上下文(临时上下文目录, 开工id)
+            elif 操作 == "清理":
+                数据 = 清理临时上下文(临时上下文目录, 开工id)
+            elif 操作 == "核对范围":
+                数据 = 核对修改范围(临时上下文目录, 开工id, list(参数.get("actual_paths", [])))
+            else:
+                raise ValueError("临时上下文操作必须是写入、读取、核对范围或清理")
+        elif 名称 == "task_observation":
+            操作 = str(参数["operation"])
+            任务id = str(参数["task_id"])
+            观测开工id = _有效开工id(参数.get("work_id"))
+            if 操作 == "开始":
+                数据 = 任务开始(观测路径, 任务id=任务id, 开工id=观测开工id,
+                               角色=网关角色名, 父任务id=str(参数.get("parent_task_id", "")),
+                               子代理数=int(参数.get("child_count", 0)))
+            elif 操作 == "结束":
+                数据 = 任务结束(观测路径, 任务id=任务id, 开工id=观测开工id,
+                               成功=bool(参数.get("success", True)), 错误码=str(参数.get("error_code", "")))
+            elif 操作 == "查询":
+                数据 = 查询任务(观测路径, 任务id)
+            elif 操作 in {"阶段开始", "阶段结束"}:
+                数据 = 阶段记录(观测路径, 任务id=任务id,
+                             开工id=观测开工id,
+                             阶段=str(参数["phase"]), 状态=操作.removeprefix("阶段"),
+                             阶段id=str(参数.get("phase_id", "")),
+                             说明=str(参数.get("note", "")))
+            elif 操作 == "报告":
+                数据 = 生成效率报告(观测路径, 任务id)
+            else:
+                raise ValueError("任务观测操作必须是开始、结束、查询、阶段开始、阶段结束或报告")
+        elif 名称 == "workspace":
+            操作 = str(参数["operation"])
+            if 操作 == "创建":
+                数据 = 创建工作区(项目根目录, 工作区根目录, 任务id=str(参数["task_id"]), 基线=str(参数.get("base", "HEAD")))
+            elif 操作 == "查询":
+                数据 = 查询工作区(项目根目录, 工作区根目录)
+            elif 操作 == "关闭":
+                数据 = 关闭工作区(项目根目录, str(参数["path"]), 强制=bool(参数.get("force", False)),
+                                work_id=str(参数.get("work_id", 当前开工id)))
+            elif 操作 == "提交":
+                数据 = 工作区提交(Path(str(参数["path"])), str(参数["message"]), 路径列表=list(参数.get("paths", [])) or None)
+            elif 操作 == "合并":
+                数据 = 合并分支(Path(str(参数["path"])), str(参数["target_branch"]), str(参数["source_branch"]), 提交消息=str(参数.get("message", "")))
+            else:
+                raise ValueError("工作区操作必须是创建、查询、提交、合并或关闭")
+        elif 名称 == "test_resource":
+            操作 = str(参数["operation"])
+            资源开工id = _有效开工id(参数.get("work_id"))
+            # S2：临时根固定为 工程缓存/测试临时/，不接受调用者任意参数。
+            临时根 = (项目根目录 / "工程缓存" / "测试临时").resolve()
+            清单 = 测试资源清单目录 / f"{资源开工id or '未开工'}.jsonl"
+            if 操作 == "登记":
+                数据 = 登记资源(清单, 资源路径=str(参数["resource_path"]), 临时根目录=临时根,
+                               资源类型=str(参数.get("resource_type", "文件")), 保留=bool(参数.get("keep", False)),
+                               work_id=str(参数.get("work_id", 当前开工id)))
+            elif 操作 == "清理":
+                数据 = 清理资源(清单, 临时根目录=临时根)
+            else:
+                raise ValueError("测试资源操作必须是登记或清理")
+        elif 名称 == "register_requirement":
+            数据 = 登记需求(工程缓存目录, 能力id=str(参数["能力id"]), 说明=str(参数["说明"]),
+                          来源任务=str(参数.get("来源任务", 当前任务名称)), work_id=str(参数.get("work_id", 当前开工id)))
+        elif 名称 == "reuse_search":
+            数据 = 复用搜索(项目根目录, str(参数["关键词"]))
+        elif 名称 == "claim_capability":
+            数据 = 登记能力占用(工程缓存目录, 能力id=str(参数["能力id"]),
+                              提供包id=str(参数["提供包id"]), 开工id=str(参数.get("开工id", 当前开工id)))
+        elif 名称 == "validate_module_compliance":
+            数据 = 校验模块合规(项目根目录, str(参数["模块名"]))
+        elif 名称 == "generate_module_template":
+            from 开发工具.组件规范.模块模板生成器 import 生成模块模板
+            结果 = 生成模块模板(
+                模块名=str(参数["模块名"]), 类型=str(参数.get("类型", "基础模块")),
+                能力清单=参数.get("能力清单", []), 依赖能力清单=参数.get("依赖能力清单", []),
+            )
+            if 结果.成功:
+                数据 = {"成功": True, **结果.值}
+            else:
+                数据 = {"成功": False, "错误码": 结果.错误码, "说明": 结果.错误说明}
+        elif 名称 == "create_core_snapshot":
+            数据 = 创建核心快照(项目根目录, 说明=str(参数.get("说明", "")))
+        elif 名称 == "query_core_snapshot":
+            数据 = 查询核心快照(项目根目录)
+        elif 名称 == "compatibility_check":
+            数据 = 兼容性检查(str(参数["快照标识"]), 项目根目录)
+        elif 名称 == "rollback_gate":
+            数据 = 回滚门禁(str(参数["快照标识"]), 项目根目录, 执行回滚=bool(参数.get("执行回滚", False)))
+        elif 名称 == "run_release_gate":
+            数据 = _结果转字典(运行发布门禁(str(参数.get("包目录", "")) or None))
+        elif 名称 == "check_release_evidence":
+            数据 = _结果转字典(检查发布证据(str(参数["提交"])))
+        elif 名称 == "generate_release_evidence":
+            数据 = _结果转字典(生成发布证据(
+                str(参数["提交"]), str(参数["名称"]), int(参数["退出码"]), str(参数.get("指纹", "")),
+            ))
+        elif 名称 == "switch_active_pointer":
+            数据 = _结果转字典(切换激活指针(
+                str(参数["目标摘要"]), str(参数["旧令牌"]), 提交=str(参数.get("提交", "")),
+            ))
+        elif 名称 == "dependency_arbitration":
+            数据 = _结果转字典(依赖裁决(str(参数["包id"])))
+        elif 名称 == "register_task":
+            数据 = 登记任务(str(参数["work_id"]), 任务=str(参数["任务"]), 角色=str(参数.get("角色", 网关角色名)),
+                           worktree路径=str(参数.get("worktree路径", "")), 允许路径=list(参数.get("允许路径", [])),
+                           基线提交=str(参数.get("基线提交", "")), parent_work_id=str(参数.get("parent_work_id", "")))
+        elif 名称 == "collaboration_status":
+            数据 = 查询协作状态(str(参数.get("work_id", "")), 任务=str(参数.get("任务", "")))
+        elif 名称 == "delivery_closeout":
+            数据 = 收口登记(str(参数["work_id"]), 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
+        elif 名称 == "validate_verification_command":
+            数据 = 校验验证命令受控(list(参数["命令"]))
+        elif 名称 == "judge_verification_result":
+            数据 = 判定验证结果(int(参数["退出码"]), str(参数["标准输出"]))
+        elif 名称 == "verify_and_record":
+            证据开工id = _有效开工id(参数.get("work_id"))
+            if not 查询反馈状态(反馈路径, 证据开工id)["已反馈"]:
+                raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
+            命令 = list(参数["command"])
+            校验 = 校验验证命令受控(命令)
+            if not 校验["成功"]:
+                raise PermissionError(f"验证命令拒绝: {校验['错误码']}: {校验.get('消息', '')}")
+            数据 = _运行验证(
+                str(参数["name"]), 命令, int(参数.get("timeout_seconds", 300)),
+                开工id=证据开工id,
+            )
+            判定 = 判定验证结果(int(数据.get("退出码", -1)), str(数据.get("输出末尾", "")))
+            if not 判定["成功"]:
+                数据["判定"] = 判定
         else:
-            raise ValueError("临时上下文操作必须是写入、读取、核对范围或清理")
-    elif 名称 == "task_observation":
-        操作 = str(参数["operation"])
-        任务id = str(参数["task_id"])
-        观测开工id = _有效开工id(参数.get("work_id"))
-        if 操作 == "开始":
-            数据 = 任务开始(观测路径, 任务id=任务id, 开工id=观测开工id,
-                          角色=当前角色, 父任务id=str(参数.get("parent_task_id", "")),
-                          子代理数=int(参数.get("child_count", 0)))
-        elif 操作 == "结束":
-            数据 = 任务结束(观测路径, 任务id=任务id, 开工id=观测开工id,
-                          成功=bool(参数.get("success", True)), 错误码=str(参数.get("error_code", "")))
-        elif 操作 == "查询":
-            数据 = 查询任务(观测路径, 任务id)
-        elif 操作 in {"阶段开始", "阶段结束"}:
-            数据 = 阶段记录(观测路径, 任务id=任务id,
-                         开工id=观测开工id,
-                         阶段=str(参数["phase"]), 状态=操作.removeprefix("阶段"),
-                         阶段id=str(参数.get("phase_id", "")),
-                         说明=str(参数.get("note", "")))
-        elif 操作 == "报告":
-            数据 = 生成效率报告(观测路径, 任务id)
-        else:
-            raise ValueError("任务观测操作必须是开始、结束、查询、阶段开始、阶段结束或报告")
-    elif 名称 == "workspace":
-        操作 = str(参数["operation"])
-        if 操作 == "合并" and 当前角色 not in {"平台维护者", "发布者"}:
-            raise PermissionError("只有平台维护者或发布者可以合并分支")
-        if 操作 == "创建":
-            数据 = 创建工作区(项目根目录, 工作区根目录, 任务id=str(参数["task_id"]), 基线=str(参数.get("base", "HEAD")))
-        elif 操作 == "查询":
-            数据 = 查询工作区(项目根目录, 工作区根目录)
-        elif 操作 == "关闭":
-            数据 = 关闭工作区(项目根目录, str(参数["path"]), 强制=bool(参数.get("force", False)),
-                            work_id=str(参数.get("work_id", 当前开工id)))
-        elif 操作 == "提交":
-            数据 = 工作区提交(Path(str(参数["path"])), str(参数["message"]), 路径列表=list(参数.get("paths", [])) or None)
-        elif 操作 == "合并":
-            数据 = 合并分支(Path(str(参数["path"])), str(参数["target_branch"]), str(参数["source_branch"]), 提交消息=str(参数.get("message", "")))
-        else:
-            raise ValueError("工作区操作必须是创建、查询、提交、合并或关闭")
-    elif 名称 == "test_resource":
-        操作 = str(参数["operation"])
-        资源开工id = _有效开工id(参数.get("work_id"))
-        临时根 = Path(str(参数["temp_root"])).resolve()
-        清单 = 测试资源清单目录 / f"{资源开工id or '未开工'}.jsonl"
-        if 操作 == "登记":
-            数据 = 登记资源(清单, 资源路径=str(参数["resource_path"]), 临时根目录=临时根,
-                          资源类型=str(参数.get("resource_type", "文件")), 保留=bool(参数.get("keep", False)),
-                          work_id=str(参数.get("work_id", 当前开工id)))
-        elif 操作 == "清理":
-            数据 = 清理资源(清单, 临时根目录=临时根)
-        else:
-            raise ValueError("测试资源操作必须是登记或清理")
-    elif 名称 == "register_requirement":
-        数据 = 登记需求(工程缓存目录, 能力id=str(参数["能力id"]), 说明=str(参数["说明"]),
-                      来源任务=str(参数.get("来源任务", 当前任务名称)), work_id=str(参数.get("work_id", 当前开工id)))
-    elif 名称 == "reuse_search":
-        数据 = 复用搜索(项目根目录, str(参数["关键词"]))
-    elif 名称 == "claim_capability":
-        数据 = 登记能力占用(工程缓存目录, 能力id=str(参数["能力id"]),
-                          提供包id=str(参数["提供包id"]), 开工id=str(参数.get("开工id", 当前开工id)))
-    elif 名称 == "validate_module_compliance":
-        数据 = 校验模块合规(项目根目录, str(参数["模块名"]))
-    elif 名称 == "generate_module_template":
-        from 开发工具.组件规范.模块模板生成器 import 生成模块模板
-        结果 = 生成模块模板(
-            模块名=str(参数["模块名"]), 类型=str(参数.get("类型", "基础模块")),
-            能力清单=参数.get("能力清单", []), 依赖能力清单=参数.get("依赖能力清单", []),
-        )
-        if 结果.成功:
-            数据 = {"成功": True, **结果.值}
-        else:
-            数据 = {"成功": False, "错误码": 结果.错误码, "说明": 结果.错误说明}
-    elif 名称 == "create_core_snapshot":
-        数据 = 创建核心快照(项目根目录, 说明=str(参数.get("说明", "")))
-    elif 名称 == "query_core_snapshot":
-        数据 = 查询核心快照(项目根目录)
-    elif 名称 == "compatibility_check":
-        数据 = 兼容性检查(str(参数["快照标识"]), 项目根目录)
-    elif 名称 == "rollback_gate":
-        数据 = 回滚门禁(str(参数["快照标识"]), 项目根目录, 执行回滚=bool(参数.get("执行回滚", False)))
-    elif 名称 == "run_release_gate":
-        数据 = 运行发布门禁(str(参数.get("包目录", "")) or None)
-    elif 名称 == "check_release_evidence":
-        数据 = 检查发布证据(str(参数["提交"]))
-    elif 名称 == "generate_release_evidence":
-        数据 = 生成发布证据(str(参数["提交"]), str(参数["名称"]), int(参数["退出码"]), str(参数.get("指纹", "")))
-    elif 名称 == "switch_active_pointer":
-        数据 = 切换激活指针(str(参数["目标摘要"]), str(参数["旧令牌"]), 提交=str(参数.get("提交", "")))
-    elif 名称 == "dependency_arbitration":
-        数据 = 依赖裁决(str(参数["包id"]))
-    elif 名称 == "register_task":
-        数据 = 登记任务(str(参数["work_id"]), 任务=str(参数["任务"]), 角色=str(参数.get("角色", 当前角色)),
-                       worktree路径=str(参数.get("worktree路径", "")), 允许路径=list(参数.get("允许路径", [])),
-                       基线提交=str(参数.get("基线提交", "")), parent_work_id=str(参数.get("parent_work_id", "")))
-    elif 名称 == "collaboration_status":
-        数据 = 查询协作状态(str(参数.get("work_id", "")), 任务=str(参数.get("任务", "")))
-    elif 名称 == "delivery_closeout":
-        数据 = 收口登记(str(参数["work_id"]), 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
-    elif 名称 == "validate_verification_command":
-        数据 = 校验验证命令受控(list(参数["命令"]))
-    elif 名称 == "judge_verification_result":
-        数据 = 判定验证结果(int(参数["退出码"]), str(参数["标准输出"]))
-    elif 名称 == "verify_and_record":
-        证据开工id = _有效开工id(参数.get("work_id"))
-        if not 查询反馈状态(反馈路径, 证据开工id)["已反馈"]:
-            raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
-        命令 = list(参数["command"])
-        校验 = 校验验证命令受控(命令)
-        if not 校验["成功"]:
-            raise PermissionError(f"验证命令拒绝: {校验['错误码']}: {校验.get('消息', '')}")
-        数据 = _运行验证(
-            str(参数["name"]), 命令, int(参数.get("timeout_seconds", 300)),
-            开工id=证据开工id,
-        )
-        判定 = 判定验证结果(int(数据.get("退出码", -1)), str(数据.get("输出末尾", "")))
-        if not 判定["成功"]:
-            数据["判定"] = 判定
-    else:
-        raise ValueError(f"未知工具：{名称}")
+            raise ValueError(f"未知工具：{名称}")
+    except (KeyError, ValueError, TypeError) as 异常:
+        数据 = {"成功": False, "错误码": "参数无效", "错误说明": str(异常)}
     工具事件(观测路径, 任务id=观测任务id, 开工id=事件开工id, 工具=名称, 开始单调=观测开始)
     return [TextContent(type="text", text=json.dumps(数据, ensure_ascii=False, indent=2))]
 

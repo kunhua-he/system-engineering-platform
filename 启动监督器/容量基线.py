@@ -9,6 +9,8 @@ from typing import Any
 必需基线字段 = ("线程上限", "进程上限", "内存上限MB", "队列长度上限",
              "文件句柄上限", "临时空间上限MB", "单次调用超时秒", "每分钟重启上限")
 ps路径表 = ("/bin/ps", "/usr/bin/ps")
+# 证据追加写锁（多线程安全）
+_证据锁 = threading.Lock()
 
 
 def 采样内存RSS(ps命令: str | None) -> dict:
@@ -59,7 +61,9 @@ class 容量基线:
 
     def __init__(self, 证据文件=None, 临时目录=None, *, ps命令: str | None = None, 熔断阈值: int = 3, 排空超时秒: float = 10.0) -> None:
         self._基线: dict[str, Any] = {}
-        self._证据文件 = Path(证据文件) if 证据文件 else Path(tempfile.gettempdir()) / "容量基线证据.jsonl"
+        self._证据文件 = (Path(证据文件) if 证据文件
+                         else Path(__file__).resolve().parents[1]
+                         / "工程缓存" / "启动监督器" / "容量基线证据.jsonl")
         self._临时目录 = str(临时目录) if 临时目录 else tempfile.gettempdir()
         self._ps命令, self._熔断阈值, self._排空超时秒 = ps命令, max(1, int(熔断阈值)), float(排空超时秒)
         self._锁 = threading.Lock()
@@ -124,9 +128,11 @@ class 容量基线:
         with self._锁:
             self._证据序号 += 1
             证据id = f"容量基线-{self._证据序号}"
-        with open(self._证据文件, "a", encoding="utf-8") as 文件:
-            文件.write(json.dumps({"证据id": 证据id, "时间": time.strftime("%Y-%m-%d %H:%M:%S"), "执行单元": 执行单元id,
-                                   "超限项": 超限项, "处理步骤": 步骤, "连续超限": 连续}, ensure_ascii=False) + "\n")
+        with _证据锁:
+            self._证据文件.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._证据文件, "a", encoding="utf-8") as 文件:
+                文件.write(json.dumps({"证据id": 证据id, "时间": time.strftime("%Y-%m-%d %H:%M:%S"), "执行单元": 执行单元id,
+                                       "超限项": 超限项, "处理步骤": 步骤, "连续超限": 连续}, ensure_ascii=False) + "\n")
         return 证据id
 
     def 熔断状态(self, 执行单元id: str | None = None) -> dict:

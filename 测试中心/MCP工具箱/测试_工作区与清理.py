@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -17,6 +18,7 @@ import tempfile
 import threading
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
@@ -26,9 +28,20 @@ if str(系统根) not in sys.path:
 from MCP工具箱.测试资源 import 登记资源, 清理资源
 
 
+@contextlib.contextmanager
+def _临时测试根():
+    """受控临时根：必须位于 工程缓存/测试临时/ 下（测试资源安全边界）。"""
+    根 = 系统根 / "工程缓存" / "测试临时" / uuid.uuid4().hex[:12]
+    根.mkdir(parents=True, exist_ok=True)
+    try:
+        yield 根
+    finally:
+        shutil.rmtree(根, ignore_errors=True)
+
+
 class 工作区与清理测试(unittest.TestCase):
     def test_只清理登记的临时资源(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             资源 = 根 / "临时.txt"
             资源.write_text("临时", encoding="utf-8")
@@ -41,7 +54,7 @@ class 工作区与清理测试(unittest.TestCase):
             self.assertFalse(资源.exists())
 
     def test_保留资源不删除且禁止越界登记(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             资源 = 根 / "证据.json"
             资源.write_text("证据", encoding="utf-8")
@@ -57,7 +70,7 @@ class 工作区与清理测试(unittest.TestCase):
                       资源路径="/tmp/越界资源.txt", 临时根目录=Path(tempfile.mkdtemp()))
 
     def test_登记并清理真实子进程(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             子进程 = subprocess.Popen(["sleep", "300"], start_new_session=True)
             try:
@@ -82,7 +95,7 @@ class 工作区与清理测试(unittest.TestCase):
                     子进程.wait()
 
     def test_清理失败保留证据并返回失败(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             失败目录 = 根 / "只读目录"
             失败目录.mkdir()
@@ -106,7 +119,7 @@ class 工作区与清理测试(unittest.TestCase):
                 shutil.rmtree(失败目录, ignore_errors=True)
 
     def test_保留资源与清理失败证据并存(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             保留文件 = 根 / "证据.json"
             保留文件.write_text("证据", encoding="utf-8")
@@ -131,7 +144,7 @@ class 工作区与清理测试(unittest.TestCase):
                 shutil.rmtree(失败目录, ignore_errors=True)
 
     def test_端口登记与释放(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             监听 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             监听.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -158,7 +171,7 @@ class 工作区与清理测试(unittest.TestCase):
                 监听.close()
 
     def test_线程登记清理验证已结束(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             工作线程 = threading.Thread(target=lambda: time.sleep(0.3))
             工作线程.start()
@@ -171,7 +184,7 @@ class 工作区与清理测试(unittest.TestCase):
             self.assertEqual(结果["清理数"], 1)
 
     def test_线程仍存活清理失败(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             放行 = threading.Event()
             工作线程 = threading.Thread(target=放行.wait)
@@ -190,7 +203,7 @@ class 工作区与清理测试(unittest.TestCase):
                 工作线程.join()
 
     def test_句柄登记清理验证已关闭(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             句柄文件 = 根 / "句柄目标.txt"
             句柄文件.write_text("数据", encoding="utf-8")
@@ -208,7 +221,7 @@ class 工作区与清理测试(unittest.TestCase):
                     句柄.close()
 
     def test_句柄未关闭清理失败(self) -> None:
-        with tempfile.TemporaryDirectory() as 临时目录:
+        with _临时测试根() as 临时目录:
             根 = Path(临时目录)
             句柄文件 = 根 / "句柄目标.txt"
             句柄文件.write_text("数据", encoding="utf-8")

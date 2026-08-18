@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -67,6 +68,10 @@ class 任务系统:
             存储目录=self.存储目录 / "进程任务",
             最大活动数=最大活动数, 最大排队数=最大排队数, 提交截止秒=提交截止秒,
         )
+        self.同步线程: threading.Thread | None = None
+        self.同步唤醒事件 = threading.Event()
+        self.同步停止事件 = threading.Event()
+        self.上次同步状态表: dict[str, str] = {}
         self.加载()
 
     @staticmethod
@@ -133,19 +138,46 @@ class 任务系统:
         with self.锁:
             self.任务表[任务对象.任务id] = 任务对象
             self._保存已加锁()
-        threading.Thread(target=self._同步任务, args=(任务对象.任务id,), daemon=True).start()
+        self._确保同步线程()
         return 任务对象
 
-    def _同步任务(self, 任务id: str) -> None:
-        while True:
-            独立对象 = self.进程池.查询(任务id)
-            with self.锁:
-                任务对象 = self.任务表[任务id]
-                self._应用独立状态已加锁(任务对象, 独立对象)
-                self._保存已加锁()
-                if 任务对象.状态 in _终态:
-                    return
-            time.sleep(0.01)
+    def _确保同步线程(self) -> None:
+        """任务系统内部至多保留一个后台聚合同步线程；线程意外死亡自动重建。"""
+        with self.锁:
+            if self.同步线程 is not None and self.同步线程.is_alive():
+                return
+            self.同步停止事件 = threading.Event()
+            self.同步唤醒事件 = threading.Event()
+            self.同步线程 = threading.Thread(
+                target=self._同步循环, name="任务系统-同步", daemon=True)
+            self.同步线程.start()
+
+    def _同步循环(self) -> None:
+        """单后台聚合同步：轮询全部任务，仅状态变化时全量持久化（fsync 降频）。
+
+        替代原"每任务一个同步线程 + 10ms 全量 fsync"：单个线程按 0.5s
+        轮询，状态变化才写盘；五终态必然伴随状态变化而全量持久化，
+        崩溃收敛（加载时非终态→崩溃）语义不变。
+        """
+        停止事件 = self.同步停止事件
+        while not 停止事件.is_set():
+            try:
+                with self.锁:
+                    任务id表 = list(self.任务表.keys())
+                for 任务id in 任务id表:
+                    with self.锁:
+                        独立对象 = self.进程池.查询(任务id)
+                        任务对象 = self.任务表.get(任务id)
+                        if 任务对象 is None:
+                            continue
+                        self._应用独立状态已加锁(任务对象, 独立对象)
+                        if self.上次同步状态表.get(任务id) != 任务对象.状态:
+                            self.上次同步状态表[任务id] = 任务对象.状态
+                            self._保存已加锁()
+            except Exception as 错误:
+                print(f"任务系统-同步异常（已跳过继续）: {错误}", file=sys.stderr)
+            self.同步唤醒事件.wait(timeout=0.5)
+            self.同步唤醒事件.clear()
 
     @staticmethod
     def _应用独立状态已加锁(任务对象: 任务, 独立对象: Any) -> None:
@@ -167,6 +199,7 @@ class 任务系统:
             self._应用独立状态已加锁(任务对象, 独立对象)
             if 任务对象.状态 in _终态:
                 self._保存已加锁()
+            self.上次同步状态表[任务id] = 任务对象.状态
             return 任务对象
 
     def 查询状态(self, 任务id: str) -> str:
@@ -194,6 +227,7 @@ class 任务系统:
             任务对象.完成时间 = 独立对象.完成时间
             任务对象.进度 = 独立对象.进度
             self._保存已加锁()
+            self.上次同步状态表[任务id] = 任务对象.状态
         return 成功, 消息
 
     def 查询诊断(self, 任务id: str) -> dict[str, Any]:

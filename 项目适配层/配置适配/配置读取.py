@@ -18,14 +18,6 @@ from typing import Any
 
 
 @dataclass
-class 配置条目:
-    """一条已合并配置：值 + 来源追踪。"""
-
-    值: Any
-    来源: str = "默认"
-
-
-@dataclass
 class 配置读取结果:
     """一次配置读取的结果。"""
 

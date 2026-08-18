@@ -1,9 +1,15 @@
-"""测试临时资源登记与安全清理。只清理登记且位于临时根目录内的资源。
+"""测试临时资源登记与安全清理。只清理登记且位于受控临时根内的资源。
 
 支持资源类型：文件、目录、子进程（终止进程组防残留）、端口（终止占用进程并验证释放）、
 线程（验证已结束）、句柄（验证已关闭）。清理失败不抛异常，返回失败表并保留证据到
 临时根目录/清理失败.json；提供证据目录时额外写入
 工程缓存/清理失败证据/{work_id}.json（与运行测试.py 语义对齐）；成功=False 时调用方必须感知。
+
+安全边界（S2）：
+- 临时根必须位于 工程缓存/ 下（MCP 工具入口固定 工程缓存/测试临时/，不接受调用者任意参数）；
+- 子进程/端口登记时校验 pid 归属：只允许本进程派生集合内的 pid
+  （父进程链可达当前进程或已注入 _已启动子进程pid集合），防止登记任意第三方进程；
+- 清理前复核 pid 仍属于本进程派生集合，否则拒绝清理（防清单伪造）。
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ import os
 import shutil
 import signal
 import socket
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -22,6 +29,87 @@ from typing import Any
 # 线程对象与句柄对象无法写入清单 JSON，登记时按资源路径登记到进程内注册表，
 # 清理时取出对象验证真实状态（线程是否结束、句柄是否关闭）。
 _对象注册表: dict[str, Any] = {}
+
+# 本进程已启动子进程 pid 集合：登记入口主动注入或登记时按父进程链自动登记；
+# 清理前复核 pid 必须仍属于该集合（进程内防伪造）。
+_已启动子进程pid集合: set[int] = set()
+
+_工程缓存名 = "工程缓存"
+
+
+def 登记已启动子进程(pid: int) -> None:
+    """派生方启动子进程后主动注入 pid（登记入口信任集合内的 pid）。"""
+    try:
+        _已启动子进程pid集合.add(int(pid))
+    except (TypeError, ValueError):
+        raise ValueError(f"pid 必须是整数: {pid!r}")
+
+
+def _校验临时根(临时根目录: Path) -> Path:
+    """临时根必须位于某个 工程缓存/ 目录之下（测试临时/、验证运行/、任务工作区/ 等）。
+
+    以路径链中的 工程缓存 目录为锚点：允许任意项目根的 工程缓存/ 子目录，
+    但不允许把 工程缓存 本身或 工程缓存 之外 的路径作为临时根。
+    """
+    根 = Path(临时根目录).resolve()
+    候选 = 根
+    while True:
+        if 候选.name == _工程缓存名:
+            if 根 == 候选:
+                raise ValueError(f"临时根不能是 工程缓存 本身: {根}")
+            return 根
+        候选 = 候选.parent
+        if 候选 == 候选.parent:
+            break
+    raise ValueError(f"临时根必须位于 工程缓存/ 下: {根}")
+
+
+def _父进程id(pid: int) -> int | None:
+    """查询 pid 的父进程 pid；查不到返回 None。"""
+    try:
+        进程 = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True, text=True, timeout=5,
+        )
+        if 进程.returncode == 0 and 进程.stdout.strip().isdigit():
+            return int(进程.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    return None
+
+
+def _是当前进程后代(pid: int) -> bool:
+    """pid 的父进程链中是否包含当前进程（本网关/本进程直接或间接派生）。"""
+    已见: set[int] = set()
+    while pid and pid not in 已见 and len(已见) < 64:
+        已见.add(pid)
+        if pid == os.getpid():
+            return True
+        pid = _父进程id(pid)
+    return False
+
+
+def _校验进程归属(pid: int, 资源类型: str) -> int:
+    """子进程/端口登记：pid 必须属于本进程派生集合，否则拒绝登记。"""
+    pid = int(pid)
+    if pid in _已启动子进程pid集合:
+        return pid
+    if pid == os.getpid() or _是当前进程后代(pid):
+        _已启动子进程pid集合.add(pid)
+        return pid
+    raise ValueError(
+        f"拒绝登记 {资源类型}: pid {pid} 不是本进程已启动的子进程"
+    )
+
+
+def _复核清理归属(pid: int, 标识: str) -> None:
+    """清理前复核：pid 仍属于本进程派生集合，否则拒绝（防清单伪造）。"""
+    if pid in _已启动子进程pid集合:
+        return
+    if pid == os.getpid() or _是当前进程后代(pid):
+        _已启动子进程pid集合.add(pid)
+        return
+    raise OSError(f"拒绝清理 {标识}: pid {pid} 不属于本进程派生集合")
 
 
 def 登记资源(清单路径: Path, *, 资源路径: str, 临时根目录: Path,
@@ -34,11 +122,21 @@ def 登记资源(清单路径: Path, *, 资源路径: str, 临时根目录: Path
     附加信息：子进程传 {"pid": 整数}；端口传 {"端口": 整数, "占用pid": 整数}；
     线程传线程对象；句柄传句柄对象。
     work_id：可选登记维度，写入记录后关闭工作区可按维度定位与清理。
+
+    S2 安全边界：临时根必须位于 工程缓存/ 下；子进程/端口 pid 必须是
+    本进程派生集合内的 pid（父进程链可达当前进程或已注入），否则拒绝登记。
     """
+    根 = _校验临时根(临时根目录)
     目标 = Path(资源路径).resolve()
-    根 = 临时根目录.resolve()
     if 资源类型 in ("文件", "目录") and not str(目标).startswith(f"{根}{os.sep}"):
         raise ValueError("只能登记临时根目录内的资源")
+    if 资源类型 == "子进程":
+        pid = _推导pid(附加信息, 目标)
+        _校验进程归属(pid, "子进程")
+    elif 资源类型 == "端口":
+        占用pid = _端口占用pid(附加信息, 目标)
+        if 占用pid is not None:
+            _校验进程归属(占用pid, "端口")
     标识 = _推导标识(资源类型, 目标, 附加信息)
     记录: dict[str, Any] = {"路径": str(目标), "类型": 资源类型,
                             "保留": bool(保留), "标识": 标识}
@@ -64,7 +162,7 @@ def 清理资源(清单路径: Path, *, 临时根目录: Path,
     返回 {"成功": bool, "清理数": int, "保留数": int, "失败表": [...], "证据路径": str}；
     失败表项为 {"路径/标识": str, "类型": str, "原因": str}。
     """
-    根 = 临时根目录.resolve()
+    根 = _校验临时根(临时根目录)
     清理数 = 0
     保留数 = 0
     失败表: list[dict[str, str]] = []
@@ -128,6 +226,7 @@ def 清理单项(记录: dict[str, Any], 根: Path) -> None:
     if 类型 == "子进程":
         if not 标识:
             raise OSError("子进程登记缺少 pid 标识")
+        _复核清理归属(int(标识), f"子进程:{标识}")
         _终止子进程组(int(标识))
         return
     if 类型 == "端口":
@@ -187,11 +286,36 @@ def _终止子进程组(pid: int) -> None:
 
 
 def _释放端口(端口号: int, 记录: dict[str, Any]) -> None:
-    """终止占用进程（若为他人进程）并验证端口已释放。"""
+    """终止占用进程（仅限本进程派生集合内，且非本进程自身）并验证端口已释放。"""
     占用pid = 记录.get("占用pid")
     if 占用pid is not None and int(占用pid) != os.getpid():
+        _复核清理归属(int(占用pid), f"端口:{端口号} 占用进程")
         _终止占用进程(int(占用pid))
     _验证端口已释放(端口号)
+
+
+def _推导pid(附加信息: Any, 目标: Path) -> int:
+    """子进程登记：从附加信息或 子进程:<pid> 路径推导 pid。"""
+    if isinstance(附加信息, dict) and 附加信息.get("pid") is not None:
+        return int(附加信息["pid"])
+    return int(_冒号后(目标.name))
+
+
+def _端口占用pid(附加信息: Any, 目标: Path) -> int | None:
+    """端口登记：从附加信息或 端口:<端口号> 路径推导占用 pid（可能无）。"""
+    if isinstance(附加信息, dict) and 附加信息.get("占用pid") is not None:
+        return int(附加信息["占用pid"])
+    端口号 = int(_冒号后(目标.name))
+    try:
+        for 行 in subprocess.run(
+            ["lsof", "-ti", f"TCP:{端口号}"], capture_output=True,
+            text=True, timeout=5,
+        ).stdout.splitlines():
+            if 行.strip().isdigit():
+                return int(行.strip())
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    return None
 
 
 def _终止占用进程(pid: int) -> None:

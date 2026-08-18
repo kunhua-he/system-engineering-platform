@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import asyncio
-import json
 import sys
 import tempfile
 import unittest
@@ -41,25 +40,6 @@ class 项目服务测试(unittest.TestCase):
                 self.assertFalse(服务模块.证据路径.exists())
             finally:
                 服务模块.证据路径 = 原路径
-
-    def test_调用者只能使用只读工具(self) -> None:
-        from 角色权限 import 调用者, 可用工具, 校验工具权限, 校验验证命令
-
-        self.assertIn("capability_search", 可用工具(调用者))
-        self.assertNotIn("codegraph_explore", 可用工具(调用者))
-        with self.assertRaises(PermissionError):
-            校验工具权限(调用者, "codegraph_explore")
-        with self.assertRaises(PermissionError):
-            校验验证命令(调用者, ["python3.14", "-c", "print(1)"])
-
-    def test_角色代码地图范围相互隔离(self) -> None:
-        from 角色权限 import 支持库开发者, 模块开发者, 代码地图范围, 可用工具
-
-        self.assertIn("支持库", 代码地图范围(支持库开发者))
-        self.assertNotIn("模块库", 代码地图范围(支持库开发者))
-        self.assertEqual(代码地图范围(模块开发者)[0], "模块库")
-        self.assertIn("module_development_guide", 可用工具(模块开发者))
-        self.assertNotIn("support_library_development_guide", 可用工具(模块开发者))
 
     def test_公开能力搜索不加载实现(self) -> None:
         结果 = 服务模块.搜索公开能力(服务模块.项目根目录, "解析PDF", 10)
@@ -99,21 +79,6 @@ class 项目服务测试(unittest.TestCase):
         self.assertIn("合并", 操作表)
         self.assertIn("test_resource", 工具表)
 
-    def test_普通开发角色不能合并分支(self) -> None:
-        原角色 = 服务模块.当前角色
-        原实例 = 服务模块.当前实例
-        服务模块.当前角色 = "模块开发者"
-        服务模块.当前实例 = 服务模块.角色所属实例("模块开发者")
-        try:
-            with self.assertRaises(PermissionError):
-                asyncio.run(服务模块.调用工具("workspace", {
-                    "operation": "合并", "path": str(服务模块.项目根目录),
-                    "target_branch": "main", "source_branch": "codex/test",
-                }))
-        finally:
-            服务模块.当前角色 = 原角色
-            服务模块.当前实例 = 原实例
-
     def test_子任务反馈必须绑定有效临时上下文(self) -> None:
         原反馈 = 服务模块.反馈路径
         原上下文 = 服务模块.临时上下文目录
@@ -129,7 +94,7 @@ class 项目服务测试(unittest.TestCase):
                     asyncio.run(服务模块.调用工具("mcp_feedback", 参数))
                 服务模块.写入临时上下文(
                     服务模块.临时上下文目录, 开工id="child-a1", 父任务="父任务",
-                    角色=服务模块.当前角色, 允许目录=["MCP工具箱"], 记忆查询=[],
+                    角色=服务模块.网关角色名, 允许目录=["MCP工具箱"], 记忆查询=[],
                     事实=[], 验证计划=[], 有效秒数=60,
                 )
                 结果 = asyncio.run(服务模块.调用工具("mcp_feedback", 参数))
@@ -142,7 +107,7 @@ class 项目服务测试(unittest.TestCase):
         with tempfile.TemporaryDirectory() as 临时目录:
             目录 = Path(临时目录)
             服务模块.写入临时上下文(
-                目录, 开工id="scope-a1", 父任务="父任务", 角色=服务模块.当前角色,
+                目录, 开工id="scope-a1", 父任务="父任务", 角色=服务模块.网关角色名,
                 允许目录=["./MCP工具箱"], 记忆查询=[], 事实=[], 验证计划=[], 有效秒数=60,
             )
             通过 = 服务模块.核对修改范围(目录, "scope-a1", ["MCP工具箱/项目服务.py"])
@@ -163,12 +128,12 @@ class 项目服务测试(unittest.TestCase):
             try:
                 服务模块.写入临时上下文(
                     服务模块.临时上下文目录, 开工id="child-evidence", 父任务="父任务",
-                    角色=服务模块.当前角色, 允许目录=["MCP工具箱"], 记忆查询=[],
+                    角色=服务模块.网关角色名, 允许目录=["MCP工具箱"], 记忆查询=[],
                     事实=[], 验证计划=[], 有效秒数=60,
                 )
                 服务模块.写入反馈(
                     服务模块.反馈路径, 开工id="child-evidence", 任务="子任务",
-                    角色=服务模块.当前角色, 总结="可用", 不满意="无", 多余="无",
+                    角色=服务模块.网关角色名, 总结="可用", 不满意="无", 多余="无",
                     缺失="无", 升级建议="无",
                 )
                 结果 = asyncio.run(服务模块.调用工具("verify_and_record", {
@@ -182,41 +147,6 @@ class 项目服务测试(unittest.TestCase):
                 服务模块.反馈路径 = 原反馈
                 服务模块.证据路径 = 原证据
                 服务模块.临时上下文目录 = 原上下文
-
-    def test_调用者工具列表和直接调用双重拒绝(self) -> None:
-        原角色 = 服务模块.当前角色
-        原实例 = 服务模块.当前实例
-        服务模块.当前角色 = "调用者"
-        服务模块.当前实例 = 服务模块.角色所属实例("调用者")
-        try:
-            工具名表 = {工具.name for 工具 in asyncio.run(服务模块.工具列表())}
-            self.assertIn("capability_search", 工具名表)
-            self.assertNotIn("codegraph_explore", 工具名表)
-            with self.assertRaises(PermissionError):
-                asyncio.run(服务模块.调用工具("codegraph_explore", {"query": "实现"}))
-        finally:
-            服务模块.当前角色 = 原角色
-            服务模块.当前实例 = 原实例
-
-    def test_MCP配置角色齐全(self) -> None:
-        配置 = json.loads((服务模块.项目根目录 / ".mcp.json").read_text(encoding="utf-8"))
-        服务器表 = 配置["mcpServers"]
-        # 单实例多角色：8 角色收敛为 3 个实例（toolkit 维护+发布 / developer 合并开发 / caller 只读）
-        self.assertEqual(
-            set(服务器表),
-            {"system_engineering_toolkit", "system_engineering_developer", "system_engineering_caller"},
-        )
-        默认角色表 = {
-            项["env"]["SYSTEM_ENGINEERING_MCP_ROLE"]
-            for 项 in 服务器表.values()
-        }
-        self.assertEqual(默认角色表, {"平台维护者", "核心开发者", "调用者"})
-        # 3 个实例的角色集完整覆盖全部 8 角色
-        覆盖角色 = set().union(*(服务模块.实例角色集(实例) for 实例 in 服务器表))
-        self.assertEqual(
-            覆盖角色,
-            {"调用者", "支持库开发者", "模块开发者", "核心开发者", "项目开发者", "平台构建开发者", "平台维护者", "发布者"},
-        )
 
     def test_CodeGraph输出不泄漏范围外源码(self) -> None:
         标记 = chr(96)
@@ -248,7 +178,7 @@ class 项目服务测试(unittest.TestCase):
                     ))
                 服务模块.写入反馈(
                     服务模块.反馈路径, 开工id=上下文["项目"]["开工id"],
-                    任务="反馈门禁测试", 角色=服务模块.当前角色,
+                    任务="反馈门禁测试", 角色=服务模块.网关角色名,
                     总结="可用", 不满意="无",
                     多余="无", 缺失="无", 升级建议="增加批量审阅",
                 )

@@ -36,6 +36,10 @@
       "sha256": "ca9eb065f61014a8359273040bf03608ba8b1ebdefffbb60deecbb6c09d4863f"
     },
     {
+      "路径": "能力数据/能力搜索数据.json",
+      "sha256": "1c53fa270e65fad879fc81578f99c85431c6d1d94e09df47c31666c1b34cacdf"
+    },
+    {
       "路径": "说明/使用说明.md",
       "sha256": "a2820550d709ccfee03eb12f7957adfa5d0a6f786ed21d2f02c361bcfe5d0718"
     },

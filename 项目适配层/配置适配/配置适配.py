@@ -33,23 +33,3 @@ def 读取配置(项目根目录: Path, 配置名: str = "项目配置.json") ->
     except (json.JSONDecodeError, OSError) as 错误:
         结果.问题列表.append(f"配置读取失败: {错误}")
     return 结果
-
-
-def 写入配置(项目根目录: Path, 配置: dict, 配置名: str = "项目配置.json") -> 配置结果:
-    """写入项目配置（原子写盘）；非字典配置拒绝。"""
-    结果 = 配置结果()
-    if not isinstance(配置, dict):
-        结果.问题列表.append("配置必须是字典")
-        return 结果
-    配置目录 = 项目根目录 / "项目配置"
-    配置目录.mkdir(parents=True, exist_ok=True)
-    配置路径 = 配置目录 / 配置名
-    临时路径 = 配置路径.with_suffix(".tmp")
-    try:
-        临时路径.write_text(json.dumps(配置, ensure_ascii=False, indent=2), encoding="utf-8")
-        临时路径.replace(配置路径)
-        结果.成功 = True
-        结果.配置 = 配置
-    except OSError as 错误:
-        结果.问题列表.append(f"配置写入失败: {错误}")
-    return 结果

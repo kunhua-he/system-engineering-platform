@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import multiprocessing
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -114,7 +115,10 @@ class 任务进程池:
                 self.任务表[任务对象.任务id] = 任务对象
                 self._完成失败(任务对象, 任务状态_失败, "能力不存在", f"任务能力未注册: {能力id}")
                 return 任务对象
-            队列满截止 = 0.0
+            # 截止计算移出入队判断：排队等待全程复用同一截止；已入队任务等槽位
+            # 不受截止约束（有界队列语义：排队任务不得丢失），但 wait 一律带
+            # 超时心跳（可感知停止标志与唤醒通知，不永久无界阻塞）
+            提交截止 = time.monotonic() + self.提交截止秒 if self.提交截止秒 > 0 else 0.0
             while self.活动进程数() >= self.最大活动数:
                 if self.已停止:
                     raise RuntimeError("任务进程池已停止，拒绝提交新任务")
@@ -126,16 +130,16 @@ class 任务进程池:
                             f"任务进程池排队已满（上限 {self.最大排队数}），资源繁忙，"
                             f"任务[{任务对象.任务id}]未提交且未丢失")
                     else:
-                        if 队列满截止 == 0.0:
-                            队列满截止 = time.monotonic() + self.提交截止秒
-                        剩余截止 = 队列满截止 - time.monotonic()
+                        # 队列满且未入队：阻塞到明确截止，超时返回提交超时错误
+                        剩余截止 = 提交截止 - time.monotonic()
                         if 剩余截止 <= 0:
                             raise 资源繁忙错误(
                                 f"提交任务[{任务对象.任务id}]等待槽位超过 "
-                                f"{self.提交截止秒} 秒，进程池资源繁忙")
+                                f"{self.提交截止秒} 秒，进程池资源繁忙（提交超时）")
                         self.提交条件.wait(timeout=剩余截止)
                         continue
-                self.提交条件.wait()
+                # 已入队：带心跳等待槽位（排队任务不丢失；可感知停止）
+                self.提交条件.wait(timeout=0.1)
             if self.已停止:
                 raise RuntimeError("任务进程池已停止，拒绝提交新任务")
             if 任务对象 in self.等待队列:
@@ -177,13 +181,20 @@ class 任务进程池:
             self.监视线程.start()
 
     def _监视循环(self) -> None:
-        """单线程轮询活动任务表，取代每任务一个监视线程；停止事件置位后退出。"""
+        """单线程轮询活动任务表，取代每任务一个监视线程；停止事件置位后退出。
+
+        单次轮询异常只记录并继续（不退出线程）；线程意外死亡时由提交路径
+        _确保监视线程 的 is_alive 检测自动重建。
+        """
         停止事件 = self.监视停止事件
         while not 停止事件.is_set():
-            with self.锁:
-                快照 = list(self.活动任务表.values())
-            for 任务对象 in 快照:
-                self._轮询任务(任务对象)
+            try:
+                with self.锁:
+                    快照 = list(self.活动任务表.values())
+                for 任务对象 in 快照:
+                    self._轮询任务(任务对象)
+            except Exception as 错误:
+                print(f"任务进程池-监视轮询异常（已跳过继续）: {错误}", file=sys.stderr)
             self.监视唤醒事件.wait(timeout=0.05)
             self.监视唤醒事件.clear()
 

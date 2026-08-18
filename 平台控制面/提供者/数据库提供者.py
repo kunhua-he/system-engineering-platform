@@ -32,6 +32,9 @@ class 数据库提供者:
         self._已关闭 = False
         self._锁 = threading.RLock()
         self._执行器 = ThreadPoolExecutor(max_workers=1, thread_name_prefix="库查询")
+        # 事务执行器独立于查询执行器：事务函数内部再走 _执行 提交查询时，
+        # 若共用单线程执行器会形成嵌套死锁（事务函数占住线程等内部查询排队）
+        self._事务执行器 = ThreadPoolExecutor(max_workers=1, thread_name_prefix="库事务")
 
     # ---- 内部：真实连接 / 失效自动重连 ----
     def _新建连接(self) -> sqlite3.Connection:
@@ -80,8 +83,14 @@ class 数据库提供者:
                 except 并发超时:
                     with contextlib.suppress(sqlite3.Error):
                         连接.interrupt()
-                    with contextlib.suppress(Exception):
-                        未来.result()
+                    try:
+                        with contextlib.suppress(Exception):
+                            未来.result(timeout=self.查询超时秒)
+                    except 并发超时:
+                        # 二次超时：interrupt 未生效，连接可能已损坏，标记重建
+                        self._连接 = None
+                        raise TimeoutError(
+                            f"查询超过 {self.查询超时秒} 秒，中断后仍未返回，连接将重建")
                     raise TimeoutError(f"查询超过 {self.查询超时秒} 秒，已真实中断")
             # 独立写语句自动提交；事务(fn) 内的写由 with 连接 统一提交/回滚
             if not 原先在事务 and 连接.in_transaction:
@@ -109,11 +118,35 @@ class 数据库提供者:
             with self._锁:
                 连接 = self._取连接()
                 连接.execute("BEGIN")
-                with 连接:
-                    结果 = 函数()
+            with 连接:  # 提交/回滚由本线程统一执行（函数完成后）
+                结果 = self._执行带超时(函数) if self.查询超时秒 > 0 else 函数()
             return _统一结果(True, 结果=结果, 消息="事务已提交")
         except Exception as 错误:
             return _统一结果(False, 错误码="TRANSACTION_FAILED", 消息=f"事务已回滚: {错误}")
+
+    def _执行带超时(self, 函数: Callable[[], Any]) -> Any:
+        """事务函数超时包装：独立事务执行器 + interrupt 真实中断兜底。
+
+        BEGIN 后锁已释放，函数在独立事务执行器运行（不与查询执行器共用，
+        防嵌套死锁）；函数内部的 _执行/查询 各自取锁，同一连接操作严格
+        串行。超时后 interrupt 真实中断 SQL；二次超时标记连接需重建。
+        """
+        未来 = self._事务执行器.submit(函数)
+        try:
+            return 未来.result(timeout=self.查询超时秒)
+        except 并发超时:
+            with contextlib.suppress(sqlite3.Error):
+                if self._连接 is not None:
+                    self._连接.interrupt()
+            try:
+                with contextlib.suppress(Exception):
+                    return 未来.result(timeout=self.查询超时秒)
+            except 并发超时:
+                # 二次超时：interrupt 未生效，连接可能已损坏，标记重建
+                self._连接 = None
+                raise TimeoutError(
+                    f"事务函数超过 {self.查询超时秒} 秒，中断后仍未返回，连接将重建") from None
+            raise TimeoutError(f"事务函数超过 {self.查询超时秒} 秒，已真实中断") from None
 
     def 关闭(self):
         with self._锁:
@@ -123,6 +156,7 @@ class 数据库提供者:
                     self._连接.close()
             self._连接 = None
             self._执行器.shutdown(wait=False)
+            self._事务执行器.shutdown(wait=False)
         return _统一结果(True, 消息="数据库已关闭，句柄已释放")
 
     def _失败结果(self, 错误: Exception):

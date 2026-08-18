@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -74,8 +75,9 @@ def 查询工作区(项目根目录: Path, 工作区根目录: Path) -> dict[str
 def 关闭工作区(项目根目录: Path, 路径: str, *, 强制: bool = False,
               work_id: str = "") -> dict[str, Any]:
     目标 = Path(路径).resolve()
-    if 目标 == 项目根目录.resolve() or not str(目标).startswith(str(项目根目录.parent.resolve())):
-        raise ValueError("只能关闭项目旁路工作区")
+    项目根文本 = f"{str(项目根目录.resolve())}{os.sep}"
+    if 目标 == 项目根目录.resolve() or not str(目标).startswith(项目根文本):
+        raise ValueError("只能关闭项目内工作区（工程缓存/任务工作区 下）")
     if not 强制:
         状态 = _运行(目标, ["git", "-c", "core.quotePath=false", "status", "--porcelain"])
         if 状态["退出码"] == 0:
@@ -195,12 +197,37 @@ def _命中已登记路径(工作区路径: Path, 行: str, 已登记路径: set
     return str((工作区路径 / 路径文本).resolve()) in 已登记路径
 
 
+def _解析运行秒数(etime文本: str) -> float:
+    """解析 ps etime 列（秒 / MM:SS / HH:MM:SS / D-HH:MM:SS）为秒数。"""
+    文本 = etime文本.strip()
+    if not 文本:
+        return 0.0
+    if "-" in 文本:
+        天数, 时间部分 = 文本.split("-", 1)
+        return float(天数) * 86400 + _解析运行秒数(时间部分)
+    段 = 文本.split(":")
+    try:
+        if len(段) == 1:
+            return float(段[0])
+        if len(段) == 2:
+            return float(段[0]) * 60 + float(段[1])
+        if len(段) == 3:
+            return float(段[0]) * 3600 + float(段[1]) * 60 + float(段[2])
+    except ValueError:
+        return 0.0
+    return 0.0
+
+
 def _释放工作区残留进程(工作区路径: Path) -> list[dict[str, str]]:
-    """ps 匹配工作区路径的残留子进程 → 终止；无法释放项进失败表。"""
+    """ps 匹配工作区路径的残留子进程 → 终止；无法释放项进失败表。
+
+    S2 收紧：只匹配 argv0 含工作区路径、且进程启动时间晚于工作区创建时间的进程；
+    排除自身与网关进程（项目服务.py），防止误杀无关进程。
+    """
     失败表: list[dict[str, str]] = []
     try:
         结果 = subprocess.run(
-            ["ps", "-axo", "pid=,command="], capture_output=True, text=True, check=False,
+            ["ps", "-axo", "pid=,etime=,command="], capture_output=True, text=True, check=False,
         )
     except OSError as 错误:
         return [{"路径/标识": "ps", "类型": "子进程",
@@ -209,15 +236,36 @@ def _释放工作区残留进程(工作区路径: Path) -> list[dict[str, str]]:
         return [{"路径/标识": "ps", "类型": "子进程",
                  "原因": f"ps 检查残留进程退出码 {结果.returncode}"}]
     自身pid = os.getpid()
-    工作区文本 = str(工作区路径)
+    工作区文本 = str(工作区路径.resolve())
+    try:
+        创建时间 = 工作区路径.stat().st_ctime  # 工作区目录创建时间
+    except OSError:
+        创建时间 = 0.0
+    当前时间 = time.time()
     for 行 in 结果.stdout.splitlines():
-        if 工作区文本 not in 行:
+        字段 = 行.split(None, 2)
+        if len(字段) < 3:
             continue
-        字段 = 行.split(None, 1)
-        if not 字段 or not 字段[0].isdigit():
+        if not 字段[0].isdigit():
             continue
         pid = int(字段[0])
         if pid == 自身pid:
+            continue
+        命令 = 字段[2]
+        # 命令行必须含工作区路径（进程以工作区内文件/目录身份启动）；
+        # macOS ps 的 command 列不保证显示自定义 argv[0]，按完整命令行匹配
+        if 工作区文本 not in 命令:
+            continue
+        # 排除网关进程自身（命令行含 项目服务.py 的 Python 服务）
+        if "项目服务.py" in 命令:
+            continue
+        try:
+            运行秒数 = _解析运行秒数(字段[1])
+        except ValueError:
+            continue
+        启动时间 = 当前时间 - 运行秒数
+        # 只处理工作区创建之后启动的进程，排除历史遗留进程
+        if 启动时间 < 创建时间:
             continue
         try:
             终止进程防残留(pid)

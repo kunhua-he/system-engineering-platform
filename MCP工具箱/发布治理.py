@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,9 @@ if str(系统根目录) not in sys.path:
 陈旧令牌 = "陈旧令牌"
 指针缺失 = "指针缺失"
 裁决失败 = "裁决失败"
+参数无效 = "参数无效"
+
+_提交模式 = re.compile(r"^[0-9a-f]{40}$")
 
 # ---- 默认路径（测试可注入临时目录） ----
 验证历史路径 = 系统根目录 / "开发文档" / "项目证据" / "验证历史.jsonl"
@@ -65,9 +69,9 @@ def _时间戳() -> str:
 
 
 def _原子写文本(路径: Path, 文本: str) -> None:
-    """原子写：临时文件 + fsync + 原子替换 + 目录 fsync。"""
+    """原子写：唯一临时文件 + fsync + 原子替换 + 目录 fsync。"""
     路径.parent.mkdir(parents=True, exist_ok=True)
-    临时路径 = 路径.parent / f".{路径.name}.tmp"
+    临时路径 = 路径.parent / f".{路径.name}.{uuid.uuid4().hex}.tmp"
     临时路径.write_text(文本, encoding="utf-8")
     with open(临时路径, "rb") as 句柄:
         os.fsync(句柄.fileno())
@@ -167,7 +171,10 @@ def 生成发布证据(提交: str, 名称: str, 退出码: int, 指纹: str, *,
 
     文件结构: {"提交": ..., "条目": [{"名称", "退出码", "指纹", "时间"}, ...]}。
     工程缓存不入 git，发布证据不参与版本库。
+    S7/C：提交必须是 40 位小写十六进制（防路径穿越文件名），否则参数无效拒绝。
     """
+    if not _提交模式.fullmatch(提交):
+        return 结果(False, 参数无效, f"提交必须是 40 位十六进制: {提交[:40]!r}")
     目录 = Path(证据目录) if 证据目录 else 发布证据目录
     文件路径 = 目录 / f"{提交}.json"
     条目表: list[dict[str, Any]] = []
@@ -196,7 +203,10 @@ def 切换激活指针(目标摘要: str, 旧令牌: int, *,
     """CAS 切换激活指针：读 当前.json，旧令牌不匹配 → 陈旧令牌 拒绝。
 
     匹配则原子写新指针（版本+1、栅栏令牌+1），并把切换记录为发布证据。
+    S7/C：显式提交必须是 40 位小写十六进制，否则参数无效拒绝（证据文件名防路径穿越）。
     """
+    if 提交 and not _提交模式.fullmatch(提交):
+        return 结果(False, 参数无效, f"提交必须是 40 位十六进制: {提交[:40]!r}")
     目录 = Path(环境目录参数) if 环境目录参数 else 环境目录
     指针文件 = 目录 / "当前.json"
     if not 指针文件.is_file():

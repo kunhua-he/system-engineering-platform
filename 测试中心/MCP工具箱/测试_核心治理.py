@@ -15,6 +15,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import MCP工具箱.核心治理 as 核心治理模块
 from MCP工具箱.核心治理 import (
     创建核心快照,
     兼容性检查,
@@ -87,7 +88,7 @@ class 核心治理测试(unittest.TestCase):
         self.assertTrue(创建["成功"], 创建)
         # 在临时副本上篡改，绝不改 worktree 真实核心文件
         self.核心文件.write_text("def 调用():\n    返回 2  # 篡改\n", encoding="utf-8")
-        结果 = 兼容性检查(创建["快照路径"], self.项目根)
+        结果 = 兼容性检查(Path(创建["快照路径"]).name, self.项目根)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "漂移")
         self.assertEqual(结果["问题列表"], ["漂移"])
@@ -101,7 +102,7 @@ class 核心治理测试(unittest.TestCase):
         创建 = 创建核心快照(self.项目根, 说明="删除基线")
         目标 = self.项目根 / "公共契约" / "能力契约" / "能力契约.py"
         目标.unlink()
-        结果 = 兼容性检查(创建["快照路径"], self.项目根)
+        结果 = 兼容性检查(Path(创建["快照路径"]).name, self.项目根)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "漂移")
         self.assertEqual(结果["差异列表"][0]["类型"], "删除")
@@ -110,14 +111,14 @@ class 核心治理测试(unittest.TestCase):
         创建 = 创建核心快照(self.项目根, 说明="预算基线")
         短文件 = self.项目根 / "公共契约" / "能力契约" / "短契约.py"
         短文件.write_text("\n".join(f"行{i}" for i in range(10)), encoding="utf-8")
-        结果 = 兼容性检查(创建["快照路径"], self.项目根)
+        结果 = 兼容性检查(Path(创建["快照路径"]).name, self.项目根)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "漂移")
         self.assertEqual(结果["超限列表"], [])  # 短文件未超限
         # 新增超限正式文件 → 错误码 超限，超限列表列出
         超长文件 = self.项目根 / "公共契约" / "能力契约" / "超长契约.py"
         超长文件.write_text("\n".join(f"行{i}" for i in range(170)), encoding="utf-8")
-        结果2 = 兼容性检查(创建["快照路径"], self.项目根)
+        结果2 = 兼容性检查(Path(创建["快照路径"]).name, self.项目根)
         self.assertFalse(结果2["成功"])
         self.assertEqual(结果2["错误码"], "超限")
         self.assertIn("超限", 结果2["问题列表"])
@@ -134,12 +135,12 @@ class 核心治理测试(unittest.TestCase):
         # 篡改快照内文件副本 → 快照损坏
         副本 = 快照路径 / "运行核心" / "能力调用" / "能力调用.py"
         副本.write_text("def 调用():\n    返回 999\n", encoding="utf-8")
-        结果 = 回滚门禁(创建["快照路径"], self.项目根)
+        结果 = 回滚门禁(Path(创建["快照路径"]).name, self.项目根)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "快照损坏")
         self.assertFalse(结果["可回滚"])
         # 兼容性检查同样拒绝损坏快照
-        结果2 = 兼容性检查(创建["快照路径"], self.项目根)
+        结果2 = 兼容性检查(Path(创建["快照路径"]).name, self.项目根)
         self.assertEqual(结果2["错误码"], "快照损坏")
         self.assertFalse(结果2["可检查"])
         # 篡改清单摘要 → 聚合摘要不匹配，仍判损坏
@@ -147,11 +148,11 @@ class 核心治理测试(unittest.TestCase):
         清单 = json.loads(清单路径.read_text(encoding="utf-8"))
         清单["摘要"] = "篡改摘要"
         清单路径.write_text(json.dumps(清单, ensure_ascii=False), encoding="utf-8")
-        结果3 = 回滚门禁(创建["快照路径"], self.项目根)
+        结果3 = 回滚门禁(Path(创建["快照路径"]).name, self.项目根)
         self.assertEqual(结果3["错误码"], "快照损坏")
 
     def test_回滚门禁与兼容性检查快照不存在(self) -> None:
-        不存在的路径 = self.快照根 / "20260101-000000-000"
+        不存在的路径 = "20260101-000000-000"
         结果 = 回滚门禁(不存在的路径, self.项目根)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "快照不存在")
@@ -160,10 +161,22 @@ class 核心治理测试(unittest.TestCase):
         self.assertEqual(结果2["错误码"], "快照不存在")
         self.assertFalse(结果2["可检查"])
 
+    def test_绝对路径与穿越快照标识拒绝参数无效(self) -> None:
+        创建 = 创建核心快照(self.项目根, 说明="路径穿越基线")
+        self.assertTrue(创建["成功"], 创建)
+        快照绝对路径 = str(创建["快照路径"])
+        for 非法标识 in [快照绝对路径, "../工程缓存/核心快照", "20260101/../../秘密"]:
+            结果 = 兼容性检查(非法标识, self.项目根)
+            self.assertFalse(结果["成功"], f"{非法标识!r} 应被拒绝")
+            self.assertEqual(结果["错误码"], "参数无效", f"{非法标识!r}")
+            结果2 = 回滚门禁(非法标识, self.项目根)
+            self.assertEqual(结果2["错误码"], "参数无效", f"{非法标识!r}")
+            self.assertFalse(结果2["可回滚"])
+
     def test_执行回滚切换激活指针且不覆盖源码(self) -> None:
         创建 = 创建核心快照(self.项目根, 说明="回滚执行")
         原内容 = self.核心文件.read_text(encoding="utf-8")
-        结果 = 回滚门禁(创建["快照路径"], self.项目根, 执行回滚=True)
+        结果 = 回滚门禁(Path(创建["快照路径"]).name, self.项目根, 执行回滚=True)
         self.assertTrue(结果["成功"], 结果)
         self.assertEqual(结果["错误码"], "")
         self.assertTrue(结果["已执行回滚"])
@@ -177,18 +190,34 @@ class 核心治理测试(unittest.TestCase):
         self.assertEqual(self.核心文件.read_text(encoding="utf-8"), 原内容)
         self.assertIn("未覆盖源码", 结果["消息"])
         # 再次回滚门禁可读到当前激活指针
-        结果2 = 回滚门禁(创建["快照路径"], self.项目根)
+        结果2 = 回滚门禁(Path(创建["快照路径"]).name, self.项目根)
         self.assertTrue(结果2["成功"])
         self.assertEqual(结果2["当前激活"], 创建["快照路径"])
 
-    def test_执行回滚激活指针失败报告回滚失败(self) -> None:
+    def test_执行回滚激活指针复核失败拒绝(self) -> None:
         创建 = 创建核心快照(self.项目根, 说明="回滚失败场景")
         激活指针 = self.快照根 / "当前.json"
-        激活指针.mkdir(parents=True)  # 用目录顶住激活指针位置，制造写入失败
-        结果 = 回滚门禁(创建["快照路径"], self.项目根, 执行回滚=True)
+        激活指针.mkdir(parents=True)  # 用目录顶住激活指针位置，制造复核失败
+        结果 = 回滚门禁(Path(创建["快照路径"]).name, self.项目根, 执行回滚=True)
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "回滚失败")
+        self.assertEqual(结果["错误码"], "陈旧令牌")
+        self.assertIn("切换失败", 结果["消息"])
         self.assertTrue(结果["可回滚"])  # 门禁本身校验通过
+
+    def test_执行回滚CAS拒绝并发切换(self) -> None:
+        """CAS：复核期间激活指针被其他方切换，回滚被拒绝且指针保持新值。"""
+        创建 = 创建核心快照(self.项目根, 说明="CAS并发")
+        激活指针 = self.快照根 / "当前.json"
+        激活指针.parent.mkdir(parents=True, exist_ok=True)
+        激活指针.write_text('{"激活快照": "其他方已切换"}\n', encoding="utf-8")
+        # 直接调用底层 CAS：期望旧文本与当前不一致 → 拒绝
+        错误 = 核心治理模块._写激活指针CAS(
+            激活指针, Path(创建["快照路径"]), {"时间戳": "t", "摘要": "s", "文件数": 1},
+            期望旧文本="旧内容",
+        )
+        self.assertIn("陈旧令牌", 错误)
+        self.assertEqual(
+            json.loads(激活指针.read_text(encoding="utf-8"))["激活快照"], "其他方已切换")
 
     def test_时间戳标识解析且快照零残留于真实工程缓存(self) -> None:
         创建 = 创建核心快照(self.项目根, 说明="标识解析")

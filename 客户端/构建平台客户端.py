@@ -124,26 +124,6 @@ def 生成入口(客户端根: Path) -> None:
     )
 
 
-def 生成pyproject(客户端根: Path) -> None:
-    """生成 pyproject.toml（wheel 打包元数据）。"""
-    (客户端根 / "pyproject.toml").write_text(
-        f'[build-system]\n'
-        f'requires = ["setuptools>=68"]\n'
-        f'build-backend = "setuptools.build_meta"\n'
-        f'\n'
-        f'[project]\n'
-        f'name = "{客户端前缀}"\n'
-        f'version = "1.0.0"\n'
-        f'description = "系统工程平台稳定客户端（唯一前缀制品）"\n'
-        f'requires-python = ">=3.14"\n'
-        f'\n'
-        f'[tool.setuptools]\n'
-        f'packages = ["{客户端前缀}"]\n'
-        f'include-package-data = true\n',
-        encoding="utf-8",
-    )
-
-
 def 计算制品摘要(客户端根: Path) -> str:
     """内容寻址：全部正式文件 sha256 摘要。"""
     哈希 = hashlib.sha256()

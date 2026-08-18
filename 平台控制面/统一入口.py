@@ -13,9 +13,12 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import subprocess
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -44,6 +47,24 @@ from 平台控制面.提供者.注册表 import 注册表
 # 验证组件命令白名单（真实进程组 + 超时 + 输出上限）
 允许验证命令 = {"python3.14", "python3", "unittest", "pytest", "true"}
 验证输出上限 = 200 * 1024
+
+
+def _受限读取(流, 上限: int) -> tuple[bytes, bool]:
+    """读满上限后继续排空（防止管道阻塞导致进程挂死），返回 (受限内容, 截断标记)。"""
+    缓冲 = bytearray()
+    截断 = False
+    while True:
+        块 = 流.read(65536)
+        if not 块:
+            break
+        余量 = 上限 - len(缓冲)
+        if 余量 > 0:
+            缓冲.extend(块[:余量])
+            if len(块) > 余量:
+                截断 = True
+        else:
+            截断 = True
+    return bytes(缓冲), 截断
 
 
 class 统一能力服务:
@@ -245,30 +266,77 @@ class 统一能力服务:
         工作区 = Path(参数.get("工作目录", "工程缓存/验证工作区"))
         工作区.mkdir(parents=True, exist_ok=True)
         超时秒 = float(参数.get("超时秒", 30))
+        进程 = subprocess.Popen(
+            [命令] + 参数表, cwd=str(工作区), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, start_new_session=True)
         try:
-            # 独立进程组：超时/失败时终止整个进程树
-            进程 = subprocess.Popen(
-                [命令] + 参数表, cwd=str(工作区), stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, start_new_session=True)
-            try:
-                输出, _ = 进程.communicate(timeout=超时秒)
-            except subprocess.TimeoutExpired:
-                进程.kill()
-                try:
-                    进程.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    pass
+            输出块, 超时发生, 输出超限 = self._受限读取验证输出(进程, 超时秒)
+            if 超时发生:
                 self.状态.追加证据(类型="验证", 主题=命令, 内容={"超时": 超时秒},
                                   调用者=会话["身份id"], 角色=会话["角色"], 结果="超时")
                 return {"成功": False, "错误码": "VERIFY_TIMEOUT",
                         "消息": f"验证超时({超时秒}s)，进程组已终止"}
-            if len(输出.encode("utf-8")) > 验证输出上限:
-                进程.kill()
+            if 输出超限:
                 return {"成功": False, "错误码": "OUTPUT_LIMIT", "消息": "验证输出超过上限，已终止"}
             return {"成功": 进程.returncode == 0, "退出码": 进程.returncode,
-                    "输出摘要": 输出[-200:] or "（无输出）"}
+                    "输出摘要": 输出块[-200:].decode("utf-8", "replace") or "（无输出）"}
         except Exception as 错误:
             return {"成功": False, "错误码": "VERIFY_FAILED", "消息": str(错误)[:200]}
+        finally:
+            self._终止进程组(进程)
+
+    def _受限读取验证输出(self, 进程: subprocess.Popen, 超时秒: float
+                       ) -> tuple[bytes, bool, bool]:
+        """流式受限读取：边读边计数，达 验证输出上限 即终止；超时由主线程轮询判定。
+
+        读线程独立排空管道（读满上限后继续消费，防管道阻塞挂死），主线程
+        轮询 进程.poll() 判定真实超时；返回 (受限输出, 是否超时, 是否输出超限)。
+        """
+        共享 = {"输出": b"", "截断": False}
+
+        def 读取流() -> None:
+            受限, 截断 = _受限读取(进程.stdout, 验证输出上限)
+            共享["输出"] = 受限
+            if 截断:
+                共享["截断"] = True
+
+        读线程 = threading.Thread(target=读取流, daemon=True, name="验证输出读取")
+        读线程.start()
+        截止 = time.monotonic() + 超时秒
+        超时发生 = False
+        输出超限 = False
+        while 进程.poll() is None:
+            if 共享["截断"]:
+                输出超限 = True
+                break
+            if time.monotonic() >= 截止:
+                超时发生 = True
+                break
+            time.sleep(0.05)
+        if 超时发生 or 输出超限:
+            self._终止进程组(进程)
+        读线程.join(timeout=6)
+        return 共享["输出"], 超时发生, 输出超限 or 共享["截断"]
+
+    def _终止进程组(self, 进程: subprocess.Popen) -> None:
+        """终止子进程整个进程组（含孙进程），先 SIGTERM 温柔后 SIGKILL 兜底。"""
+        try:
+            os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass
+        try:
+            进程.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+        try:
+            进程.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
     def _调用能力(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
         """真实调用：授权 → 契约校验 → 注册表（资源监督+真实执行）→ 证据。"""

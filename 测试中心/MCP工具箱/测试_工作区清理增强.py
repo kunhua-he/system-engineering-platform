@@ -37,9 +37,8 @@ class 工作区清理增强测试(unittest.TestCase):
         self._临时 = tempfile.TemporaryDirectory()
         根 = Path(self._临时.name)
         self.项目根 = 根 / "主仓库"
-        self.工作区根 = 根 / "旁路"
+        self.工作区根 = self.项目根 / "工程缓存" / "任务工作区"
         self.项目根.mkdir()
-        self.工作区根.mkdir()
         初始化 = _运行(self.项目根, ["git", "init", "-b", "main"])
         self.assertEqual(初始化.returncode, 0, 初始化.stderr)
         _运行(self.项目根, ["git", "config", "user.name", "测试用户"])
@@ -156,6 +155,8 @@ class 工作区清理增强测试(unittest.TestCase):
 
     def test_关闭前释放匹配工作区路径的残留子进程(self) -> None:
         工作区, 清单 = self.创建真实工作区("任务丁")
+        # 残留进程命令行含工作区路径（macOS ps 不保证显示自定义 argv0，
+        # 按完整命令行匹配；启动时间晚于工作区创建时间）
         残留 = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)", str(工作区)],
             start_new_session=True,

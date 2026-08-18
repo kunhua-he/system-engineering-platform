@@ -100,17 +100,3 @@ def 生成完整性摘要(组件目录: Path) -> dict[str, Any]:
     (组件目录 / "完整性摘要.json").write_text(
         json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 摘要
-
-
-def 说明颗粒度(组件目录: Path) -> str:
-    """按颗粒度说明组件定位。"""
-    声明路径 = 组件目录 / "包声明.json"
-    if not 声明路径.is_file():
-        return "未知"
-    类型 = json.loads(声明路径.read_text(encoding="utf-8")).get("类型", "未知")
-    return {
-        "支持库": "原子能力（文件系统/文本处理等）",
-        "基础模块": "通用流程（组合支持库公开入口）",
-        "功能模块": "完整功能（面向场景组合）",
-        "项目代码": "项目特例（唯一项目专属）",
-    }.get(类型, 类型)

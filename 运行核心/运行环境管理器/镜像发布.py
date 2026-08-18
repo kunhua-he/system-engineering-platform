@@ -95,7 +95,7 @@ def _系统版本详情() -> str:
         结果 = subprocess.run(["sw_vers"], capture_output=True, timeout=10)
         if 结果.returncode == 0:
             return 结果.stdout.decode("utf-8", "ignore").strip()
-    except Exception:
+    except (OSError, subprocess.TimeoutExpired):
         pass
     return f"{platform.system()} {platform.release()}"
 

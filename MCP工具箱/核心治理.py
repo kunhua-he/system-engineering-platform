@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -44,16 +45,22 @@ def 核心快照根目录(项目根目录: Path) -> Path:
 
 def 解析快照路径(快照标识: str | Path, 项目根目录: Path,
                快照根目录: Path | None = None) -> Path:
-    """快照标识：绝对路径直接采用；单个时间戳名在快照根下查找；否则按相对路径。"""
+    """快照标识：单个时间戳名或快照根下相对路径（拒绝绝对路径与 .. 段，防路径穿越）。
+
+    解析结果必须是快照根下的路径；不满足时抛 ValueError（调用方转 参数无效）。
+    """
     原始 = Path(快照标识)
-    if 原始.is_absolute():
-        return 原始.resolve()
     快照根 = Path(快照根目录) if 快照根目录 else 核心快照根目录(项目根目录)
-    if len(原始.parts) == 1:
-        候选 = 快照根 / 原始
-        if 候选.exists():
-            return 候选.resolve()
-    return 原始.resolve()
+    快照根 = 快照根.resolve()
+    if 原始.is_absolute():
+        raise ValueError(f"快照标识不允许绝对路径: {快照标识}")
+    if ".." in 原始.parts:
+        raise ValueError(f"快照标识不允许 .. 段: {快照标识}")
+    候选 = 快照根 / 原始
+    解析结果 = 候选.resolve()
+    if 解析结果 != 快照根 and not str(解析结果).startswith(f"{快照根}{os.sep}"):
+        raise ValueError(f"快照标识越界快照根: {快照标识}")
+    return 解析结果
 
 
 def _收集当前文件表(项目根目录: Path) -> dict[str, str]:
@@ -85,8 +92,17 @@ def _统计行数(文件: Path) -> int:
     return len(文件.read_text(encoding="utf-8").splitlines())
 
 
-def _写激活指针(激活指针路径: Path, 快照路径: Path, 清单: dict[str, Any]) -> None:
-    """切换激活指针：原子写入 当前.json；只改元数据，不覆盖源码。"""
+def _写激活指针CAS(激活指针路径: Path, 快照路径: Path, 清单: dict[str, Any],
+                 期望旧文本: str) -> str:
+    """CAS 写激活指针：写入前复核原文件文本仍为 期望旧文本，否则返回 陈旧令牌 错误码。"""
+    当前文本 = ""
+    try:
+        if 激活指针路径.is_file():
+            当前文本 = 激活指针路径.read_text(encoding="utf-8")
+    except OSError as 错误:
+        return f"激活指针复核失败: {错误}"
+    if 当前文本 != 期望旧文本:
+        return "陈旧令牌: 激活指针已被其他方切换，回滚被拒绝"
     数据 = {
         "激活快照": str(快照路径),
         "时间戳": 清单.get("时间戳", 快照路径.name),
@@ -95,10 +111,14 @@ def _写激活指针(激活指针路径: Path, 快照路径: Path, 清单: dict[
         "时间": datetime.now().isoformat(timespec="seconds"),
         "说明": "激活指针切换：仅元数据，未覆盖源码",
     }
-    激活指针路径.parent.mkdir(parents=True, exist_ok=True)
-    临时路径 = 激活指针路径.with_suffix(".json.tmp")
-    临时路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2), encoding="utf-8")
-    临时路径.replace(激活指针路径)
+    try:
+        激活指针路径.parent.mkdir(parents=True, exist_ok=True)
+        临时路径 = 激活指针路径.parent / f".{激活指针路径.name}.{hashlib.sha256(str(datetime.now().timestamp()).encode()).hexdigest()[:8]}.tmp"
+        临时路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2), encoding="utf-8")
+        临时路径.replace(激活指针路径)
+    except OSError as 错误:
+        return f"激活指针切换失败: {错误}"
+    return ""
 
 
 def _校验快照完整性(快照路径: Path) -> tuple[bool, str, dict[str, Any]]:
@@ -211,7 +231,11 @@ def 兼容性检查(快照标识: str | Path, 项目根目录: Path, *,
             快照根目录: Path | None = None) -> dict[str, Any]:
     """兼容性检查：对比当前 运行核心/公共契约 与快照，检出漂移与资源预算超限。"""
     项目根 = Path(项目根目录)
-    快照路径 = 解析快照路径(快照标识, 项目根, 快照根目录)
+    try:
+        快照路径 = 解析快照路径(快照标识, 项目根, 快照根目录)
+    except ValueError as 错误:
+        return {"成功": False, "错误码": "参数无效", "可检查": False,
+                "消息": str(错误), "快照路径": str(快照标识)}
     if not 快照路径.is_dir():
         return {"成功": False, "错误码": "快照不存在", "可检查": False,
                 "消息": f"快照目录不存在: {快照路径}", "快照路径": str(快照路径)}
@@ -268,7 +292,11 @@ def 回滚门禁(快照标识: str | Path, 项目根目录: Path, *, 执行回�
           快照根目录: Path | None = None) -> dict[str, Any]:
     """回滚门禁：校验快照完整性；执行回滚仅切换激活指针（当前.json），不覆盖源码。"""
     项目根 = Path(项目根目录)
-    快照路径 = 解析快照路径(快照标识, 项目根, 快照根目录)
+    try:
+        快照路径 = 解析快照路径(快照标识, 项目根, 快照根目录)
+    except ValueError as 错误:
+        return {"成功": False, "错误码": "参数无效", "可回滚": False,
+                "消息": str(错误), "快照路径": str(快照标识)}
     if not 快照路径.is_dir():
         return {"成功": False, "错误码": "快照不存在", "可回滚": False,
                 "消息": f"快照目录不存在: {快照路径}", "快照路径": str(快照路径)}
@@ -279,11 +307,13 @@ def 回滚门禁(快照标识: str | Path, 项目根目录: Path, *, 执行回�
     快照根 = Path(快照根目录) if 快照根目录 else 核心快照根目录(项目根)
     激活指针路径 = 快照根 / 激活指针文件名
     当前激活 = ""
+    期望旧文本 = ""
     if 激活指针路径.is_file():
         try:
-            当前激活 = json.loads(激活指针路径.read_text(
-                encoding="utf-8")).get("激活快照", "")
+            期望旧文本 = 激活指针路径.read_text(encoding="utf-8")
+            当前激活 = json.loads(期望旧文本).get("激活快照", "")
         except (json.JSONDecodeError, OSError):
+            期望旧文本 = ""
             当前激活 = ""
     基础 = {"成功": True, "错误码": "", "可回滚": True,
             "消息": "快照完整，可回滚", "快照路径": str(快照路径),
@@ -291,11 +321,10 @@ def 回滚门禁(快照标识: str | Path, 项目根目录: Path, *, 执行回�
             "当前激活": 当前激活}
     if not 执行回滚:
         return 基础
-    try:
-        _写激活指针(激活指针路径, 快照路径, 清单)
-    except OSError as 错误:
-        return {"成功": False, "错误码": "回滚失败", "可回滚": True,
-                "消息": f"激活指针切换失败: {错误}", "快照路径": str(快照路径),
+    cas错误 = _写激活指针CAS(激活指针路径, 快照路径, 清单, 期望旧文本)
+    if cas错误:
+        return {"成功": False, "错误码": "陈旧令牌", "可回滚": True,
+                "消息": cas错误, "快照路径": str(快照路径),
                 "摘要": 清单["摘要"], "文件数": 清单["文件数"],
                 "当前激活": 当前激活}
     return {"成功": True, "错误码": "", "可回滚": True, "已执行回滚": True,

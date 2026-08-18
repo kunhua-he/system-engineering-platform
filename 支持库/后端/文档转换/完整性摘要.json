@@ -9,11 +9,11 @@
     },
     {
       "路径": "依赖契约/依赖契约.json",
-      "sha256": "95cea7eda47785dc511d1aeb78a7c9f624804f139147d7f85e312cb4a72ff60f"
+      "sha256": "a6667f27f727dbc5250dc5321c591a9b35146c8a735104f0b31acc45911bee64"
     },
     {
       "路径": "包声明.json",
-      "sha256": "5aaa3d1b345eda973c13221e7d47d00d3cfc1a231a3b1a765a1f51e1fe80badd"
+      "sha256": "9e63291e5bf1333aa08b5cd12ed0ed7aa7ecde94581d0db37db63c59ee80d884"
     },
     {
       "路径": "复用决策.json",
@@ -30,6 +30,10 @@
     {
       "路径": "能力契约/参数契约.json",
       "sha256": "72177844a1952054ffba381e0a76f72a209ea26fb22aa5ed528f760ec16a5819"
+    },
+    {
+      "路径": "能力数据/能力搜索数据.json",
+      "sha256": "446eec7a6ddb10d19ce97035403f913e5fd3fa5b7f12072656b0d8f096762bdd"
     },
     {
       "路径": "说明/使用说明.md",
