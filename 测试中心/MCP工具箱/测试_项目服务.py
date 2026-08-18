@@ -101,7 +101,9 @@ class 项目服务测试(unittest.TestCase):
 
     def test_普通开发角色不能合并分支(self) -> None:
         原角色 = 服务模块.当前角色
+        原实例 = 服务模块.当前实例
         服务模块.当前角色 = "模块开发者"
+        服务模块.当前实例 = 服务模块.角色所属实例("模块开发者")
         try:
             with self.assertRaises(PermissionError):
                 asyncio.run(服务模块.调用工具("workspace", {
@@ -110,6 +112,7 @@ class 项目服务测试(unittest.TestCase):
                 }))
         finally:
             服务模块.当前角色 = 原角色
+            服务模块.当前实例 = 原实例
 
     def test_子任务反馈必须绑定有效临时上下文(self) -> None:
         原反馈 = 服务模块.反馈路径
@@ -182,7 +185,9 @@ class 项目服务测试(unittest.TestCase):
 
     def test_调用者工具列表和直接调用双重拒绝(self) -> None:
         原角色 = 服务模块.当前角色
+        原实例 = 服务模块.当前实例
         服务模块.当前角色 = "调用者"
+        服务模块.当前实例 = 服务模块.角色所属实例("调用者")
         try:
             工具名表 = {工具.name for 工具 in asyncio.run(服务模块.工具列表())}
             self.assertIn("capability_search", 工具名表)
@@ -191,16 +196,25 @@ class 项目服务测试(unittest.TestCase):
                 asyncio.run(服务模块.调用工具("codegraph_explore", {"query": "实现"}))
         finally:
             服务模块.当前角色 = 原角色
+            服务模块.当前实例 = 原实例
 
     def test_MCP配置角色齐全(self) -> None:
         配置 = json.loads((服务模块.项目根目录 / ".mcp.json").read_text(encoding="utf-8"))
         服务器表 = 配置["mcpServers"]
-        角色表 = {
+        # 单实例多角色：8 角色收敛为 3 个实例（toolkit 维护+发布 / developer 合并开发 / caller 只读）
+        self.assertEqual(
+            set(服务器表),
+            {"system_engineering_toolkit", "system_engineering_developer", "system_engineering_caller"},
+        )
+        默认角色表 = {
             项["env"]["SYSTEM_ENGINEERING_MCP_ROLE"]
             for 项 in 服务器表.values()
         }
+        self.assertEqual(默认角色表, {"平台维护者", "核心开发者", "调用者"})
+        # 3 个实例的角色集完整覆盖全部 8 角色
+        覆盖角色 = set().union(*(服务模块.实例角色集(实例) for 实例 in 服务器表))
         self.assertEqual(
-            角色表,
+            覆盖角色,
             {"调用者", "支持库开发者", "模块开发者", "核心开发者", "项目开发者", "平台构建开发者", "平台维护者", "发布者"},
         )
 
