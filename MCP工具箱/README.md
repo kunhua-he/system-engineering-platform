@@ -13,19 +13,33 @@
 - **精简注入**：每个实例只直接注入「基础 + 业务核心 + tool_catalog」，
   其余工具经 `tool_catalog` 按分类/关键词发现后再按实例角色集白名单校验调用。
 
-## 三个实例（聚合网关子进程）
+## 启动方式（HTTP）
 
-`.mcp.json` 声明三个子进程实例，全部启动同一个 `项目服务.py`，仅默认角色不同：
+平台 MCP 以 **Streamable HTTP** 协议对外提供（stdio 已废弃），供 opencode
+以 `remote` 方式接入：
 
-| 实例 | 承载角色 | 默认角色 | 覆盖 |
+```bash
+./MCP工具箱/启动HTTP服务.sh [端口] [角色]
+# 默认端口 8766，默认角色 平台维护者
+```
+
+- 一个 HTTP 服务进程固定一个角色（角色在导入期由环境变量
+  `SYSTEM_ENGINEERING_MCP_ROLE` 确定）；需要多角色并存时开多个端口。
+- 项目级 `opencode.json` 已注册 `system_engineering_toolkit` 为
+  `remote: http://127.0.0.1:8766/mcp/`。
+- 服务根路径固定为 `/mcp/`，与 `项目服务.py::主程序HTTP` 一致。
+
+### 多角色端口建议
+
+| 端口 | 承载角色 | 默认角色 | 覆盖 |
 |---|---|---|---|
-| system_engineering_toolkit | 平台维护者、发布者 | 平台维护者 | 治理/门禁/发布面 |
-| system_engineering_developer | 支持库、模块、核心、项目、平台构建 5 开发者 | 核心开发者 | 各开发面 |
-| system_engineering_caller | 调用者 | 调用者 | 只读公开契约面 |
+| 8766 | 平台维护者、发布者 | 平台维护者 | 治理/门禁/发布面 |
+| 8767 | 支持库、模块、核心、项目、平台构建 5 开发者 | 核心开发者 | 各开发面 |
+| 8768 | 调用者 | 调用者 | 只读公开契约面 |
 
 > 聚合接入：华世王镞_v3 侧只载入聚合 MCP，本平台工具经 `se_` 前缀路由到
-> `system_engineering_toolkit`（平台维护者）子进程实例；平台自身 `.mcp.json`
-> 保留三个子进程实例供聚合网关使用。（聚合方案落地中）
+> `system_engineering_toolkit`（平台维护者）HTTP 实例；平台自身
+> `opencode.json` 以 remote 注册本平台 HTTP 服务。（聚合方案落地中）
 
 ## 工具目录（tool_catalog）
 
@@ -78,5 +92,6 @@
 
 ```bash
 python3.14 -m py_compile MCP工具箱/项目服务.py MCP工具箱/角色权限.py
+./MCP工具箱/启动HTTP服务.sh 8766 平台维护者   # 启动后 curl POST /mcp/ initialize 验证
 python3.14 测试中心/运行测试.py --测试文件 测试中心/…（按角色范围限定）
 ```
