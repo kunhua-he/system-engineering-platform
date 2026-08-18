@@ -3,6 +3,7 @@
 ## 项目 MCP 与代码地图
 
 - 本仓库使用独立 MCP：system_engineering_toolkit，配置见根目录 .mcp.json。
+- 华世王镞_v3 侧通过聚合 MCP 接入本平台（se_ 前缀路由），角色面仍由 SYSTEM_ENGINEERING_MCP_ROLE 决定；本平台自身 .mcp.json 保留 toolkit/developer/caller 三个子进程实例供聚合网关使用。（聚合方案落地中）
 - 新会话开工先调用 project_context，读取项目身份、代码地图状态、证据可信度和最近 1 至 3 次成功验证。
 - 理解或定位代码先调用 codegraph_explore；.codegraph/ 是本仓库独立代码地图，不与任何业务项目共用。
 - 项目记忆和验证证据只写入本仓库 开发文档/项目记忆/ 与 开发文档/项目证据/。
@@ -11,6 +12,10 @@
 ## 分层 MCP 与子代理继承协议
 
 本平台只保留一个权威 MCP 服务 system_engineering_toolkit，通过角色授权暴露不同工具面；不得为支持库、模块、核心分别复制一套会产生分叉状态的 MCP。角色门面如下：
+
+> 聚合接入：华世王镞_v3 侧只载入聚合 MCP，本平台工具经 se_ 前缀路由进入
+> system_engineering_toolkit 子进程实例；角色面仍由 SYSTEM_ENGINEERING_MCP_ROLE
+> 决定（平台维护者），工具前缀只负责路由，不改变角色白名单。（聚合方案落地中）
 
 | 角色 | 允许使用 | 明确禁止 |
 |---|---|---|

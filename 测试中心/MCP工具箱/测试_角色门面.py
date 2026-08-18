@@ -28,6 +28,8 @@ assert 规格 and 规格.loader
 平台维护者 = 角色权限模块.平台维护者
 调用者 = 角色权限模块.调用者
 发布者 = 角色权限模块.发布者
+支持库开发者 = 角色权限模块.支持库开发者
+模块开发者 = 角色权限模块.模块开发者
 可用工具 = 角色权限模块.可用工具
 允许测试范围 = 角色权限模块.允许测试范围
 校验工具权限 = 角色权限模块.校验工具权限
@@ -45,11 +47,18 @@ class 角色门面测试(unittest.TestCase):
 
     def setUp(self) -> None:
         self.原角色 = 服务模块.当前角色
+        self.原实例 = 服务模块.当前实例
         self.原反馈路径 = 服务模块.反馈路径
 
     def tearDown(self) -> None:
         服务模块.当前角色 = self.原角色
+        服务模块.当前实例 = self.原实例
         服务模块.反馈路径 = self.原反馈路径
+
+    def _切换角色(self, 角色: str) -> None:
+        """同步切换默认角色与所属实例（真实 .mcp.json 由环境变量同时初始化）。"""
+        服务模块.当前角色 = 角色
+        服务模块.当前实例 = 服务模块.角色所属实例(角色)
 
     def _调用(self, 工具名: str, 参数: dict) -> dict:
         文本 = asyncio.run(服务模块.调用工具(工具名, 参数))
@@ -85,8 +94,18 @@ class 角色门面测试(unittest.TestCase):
     def test_工具列表按角色白名单过滤(self) -> None:
         for 角色 in 四角色:
             服务模块.当前角色 = 角色
+            服务模块.当前实例 = 服务模块.角色所属实例(角色)
             工具名表 = {工具.name for 工具 in asyncio.run(服务模块.工具列表())}
-            self.assertEqual(工具名表, 可用工具(角色), f"{角色} 工具列表与白名单不一致")
+            # 精简注入：工具列表 ⊆ 角色可用工具 ∪ 工具目录，且实例核心工具全部注入
+            self.assertTrue(
+                工具名表 <= 可用工具(角色) | {"tool_catalog"},
+                f"{角色} 工具列表越出角色白名单: {工具名表 - 可用工具(角色)}",
+            )
+            self.assertIn("tool_catalog", 工具名表, f"{角色} 缺少工具目录")
+            self.assertTrue(
+                服务模块.实例核心工具(服务模块.当前实例) <= 工具名表,
+                f"{角色} 实例核心工具未全部注入",
+            )
 
     def test_调用者只读门面无开发工具(self) -> None:
         self.assertEqual(可用工具(调用者), 基础工具)
@@ -96,6 +115,7 @@ class 角色门面测试(unittest.TestCase):
     def test_四角色合法工具可调用(self) -> None:
         for 角色 in 四角色:
             服务模块.当前角色 = 角色
+            服务模块.当前实例 = 服务模块.角色所属实例(角色)
             档案 = self._调用("role_profile", {})
             self.assertEqual(档案["角色"], 角色)
             self.assertIn("允许目录", 档案)
@@ -104,11 +124,12 @@ class 角色门面测试(unittest.TestCase):
             self.assertEqual(校验工具权限(角色, "role_profile"), None)
 
     def test_四角色越权工具被拒且错误码为权限不足(self) -> None:
+        # 实例级越权：工具必须不在该角色所属实例的角色集内（合并后同实例内合法）。
         越权调用表 = {
-            平台维护者: "release_guide",
-            核心开发者: "feedback_review",
-            项目开发者: "core_development_guide",
-            平台构建开发者: "platform_maintenance_guide",
+            平台维护者: "生成模块模板",  # 模块开发者专属，toolkit 无
+            核心开发者: "feedback_review",  # 维护者专属，developer 无
+            项目开发者: "release_guide",  # 发布者专属，developer 无
+            平台构建开发者: "platform_maintenance_guide",  # 维护者专属，developer 无
         }
         for 角色, 越权工具 in 越权调用表.items():
             with self.assertRaises(越权拒绝) as 权限层:
@@ -116,6 +137,7 @@ class 角色门面测试(unittest.TestCase):
             self.assertEqual(权限层.exception.错误码, "权限不足")
             self.assertIn("无权调用工具", 权限层.exception.消息)
             服务模块.当前角色 = 角色
+            服务模块.当前实例 = 服务模块.角色所属实例(角色)
             with self.assertRaises(越权拒绝) as 工具面:
                 asyncio.run(服务模块.调用工具(越权工具, {}))
             self.assertEqual(工具面.exception.错误码, "权限不足")
@@ -134,13 +156,22 @@ class 角色门面测试(unittest.TestCase):
             self.assertIn(合法工具, 可用工具(角色))
             self.assertNotIn(越权工具, 可用工具(角色))
 
-    def test_角色专属指南只对本角色开放(self) -> None:
+    def test_指南工具按工具名返回对应角色(self) -> None:
+        """合并开发实例下，指南工具按工具名返回对应角色指南（不再固定用默认角色）。"""
         服务模块.当前角色 = 核心开发者
+        服务模块.当前实例 = 服务模块.角色所属实例(核心开发者)
         self.assertEqual(self._调用("core_development_guide", {})["角色"], 核心开发者)
-        服务模块.当前角色 = 项目开发者
-        with self.assertRaises(越权拒绝) as 上下文:
-            asyncio.run(服务模块.调用工具("core_development_guide", {}))
-        self.assertEqual(上下文.exception.错误码, "权限不足")
+        self.assertEqual(self._调用("support_library_development_guide", {})["角色"], 支持库开发者)
+        self.assertEqual(self._调用("project_development_guide", {})["角色"], 项目开发者)
+
+    def test_跨实例指南工具被拒(self) -> None:
+        """合并开发实例不暴露发布者/维护者专属指南（实例级默认拒绝，错误码为权限不足）。"""
+        服务模块.当前角色 = 核心开发者
+        服务模块.当前实例 = 服务模块.角色所属实例(核心开发者)
+        for 越权工具 in ("release_guide", "platform_maintenance_guide"):
+            with self.assertRaises(越权拒绝) as 上下文:
+                asyncio.run(服务模块.调用工具(越权工具, {}))
+            self.assertEqual(上下文.exception.错误码, "权限不足")
 
     # ---- 代码地图范围 ----
 
@@ -182,6 +213,7 @@ class 角色门面测试(unittest.TestCase):
 
     def test_无源码范围角色探索被拒(self) -> None:
         服务模块.当前角色 = 调用者
+        服务模块.当前实例 = 服务模块.角色所属实例(调用者)
         with self.assertRaises(越权拒绝) as 上下文:
             asyncio.run(服务模块.调用工具("codegraph_explore", {"query": "加载器"}))
         self.assertEqual(上下文.exception.错误码, "权限不足")
@@ -207,10 +239,13 @@ class 角色门面测试(unittest.TestCase):
             self.assertIn("无权访问修改路径", 上下文.exception.消息)
 
     def test_规划工具面拒绝越权修改路径(self) -> None:
+        # 核心开发者已并入 developer 实例：平台控制面/包仓库 属平台构建开发者目录，
+        # 真正越权的是发布者专属目录（发布管理）。
         服务模块.当前角色 = 核心开发者
+        服务模块.当前实例 = 服务模块.角色所属实例(核心开发者)
         with self.assertRaises(越权拒绝) as 上下文:
             asyncio.run(服务模块.调用工具(
-                "verification_plan", {"modified_paths": ["平台控制面/包仓库/制品.py"]},
+                "verification_plan", {"modified_paths": ["平台控制面/发布管理/发布.py"]},
             ))
         self.assertEqual(上下文.exception.错误码, "角色越权")
         计划 = self._调用("verification_plan", {"modified_paths": ["运行核心/加载器/加载器.py"]})
@@ -248,10 +283,19 @@ class 角色门面测试(unittest.TestCase):
         配置 = json.loads((服务模块.项目根目录 / ".mcp.json").read_text(encoding="utf-8"))
         服务文件表 = {项["args"][0] for 项 in 配置["mcpServers"].values()}
         self.assertEqual(服务文件表, {"MCP工具箱/项目服务.py"})
+        # 3 个实例共用同一服务文件，工具列表按实例角色集精简注入
+        self.assertEqual(set(配置["mcpServers"]), {
+            "system_engineering_toolkit", "system_engineering_developer", "system_engineering_caller",
+        })
         for 角色 in 四角色:
             服务模块.当前角色 = 角色
+            服务模块.当前实例 = 服务模块.角色所属实例(角色)
             工具名表 = {工具.name for 工具 in asyncio.run(服务模块.工具列表())}
-            self.assertEqual(工具名表, 可用工具(角色))
+            self.assertTrue(
+                工具名表 <= 可用工具(角色) | {"tool_catalog"},
+                f"{角色} 注入越出角色白名单: {工具名表 - 可用工具(角色)}",
+            )
+            self.assertIn("tool_catalog", 工具名表)
 
     # ---- 子代理继承 ----
 

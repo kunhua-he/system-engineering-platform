@@ -6,47 +6,17 @@
       "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
       "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "平台维护者"}
     },
-    "system_engineering_caller": {
-      "command": "python3.14",
-      "args": ["MCP工具箱/项目服务.py"],
-      "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
-      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "调用者"}
-    },
-    "system_engineering_support_library_developer": {
-      "command": "python3.14",
-      "args": ["MCP工具箱/项目服务.py"],
-      "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
-      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "支持库开发者"}
-    },
-    "system_engineering_module_developer": {
-      "command": "python3.14",
-      "args": ["MCP工具箱/项目服务.py"],
-      "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
-      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "模块开发者"}
-    },
-    "system_engineering_core_developer": {
+    "system_engineering_developer": {
       "command": "python3.14",
       "args": ["MCP工具箱/项目服务.py"],
       "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
       "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "核心开发者"}
     },
-    "system_engineering_project_developer": {
+    "system_engineering_caller": {
       "command": "python3.14",
       "args": ["MCP工具箱/项目服务.py"],
       "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
-      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "项目开发者"}
-    },
-    "system_engineering_platform_build_developer": {
-      "command": "python3.14",
-      "args": ["MCP工具箱/项目服务.py"],
-      "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
-      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "平台构建开发者"}
-    },
-    "system_engineering_publisher": {
-      "command": "python3.14",
-      "args": ["MCP工具箱/项目服务.py"],
-      "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
-      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "发布者"}
+      "env": {"PYTHONPATH": ".", "SYSTEM_ENGINEERING_MCP_ROLE": "调用者"}
     }
   }
 }
