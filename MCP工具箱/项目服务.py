@@ -737,5 +737,38 @@ async def 主程序() -> None:
         )
 
 
+async def 主程序HTTP(端口: int = 8766) -> None:
+    """以 Streamable HTTP 协议提供 MCP 服务（opencode remote 接入）。"""
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    import uvicorn
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    会话管理 = StreamableHTTPSessionManager(app=服务, event_store=None, stateless=False)
+
+    class _流式HTTP应用:
+        """类实例端点：Starlette 将其识别为 ASGI 应用（全 HTTP 方法放行）。"""
+
+        async def __call__(self, 作用域: object, 接收: object, 发送: object) -> None:
+            await 会话管理.handle_request(作用域, 接收, 发送)  # type: ignore[arg-type]
+
+    应用 = Starlette(
+        routes=[Route("/mcp/", endpoint=_流式HTTP应用())],
+        lifespan=lambda 应用对象: 会话管理.run(),
+    )
+    配置 = uvicorn.Config(应用, host="127.0.0.1", port=端口, log_level="info")
+    服务器 = uvicorn.Server(配置)
+    await 服务器.serve()
+
+
 if __name__ == "__main__":
-    asyncio.run(主程序())
+    import argparse
+
+    解析器 = argparse.ArgumentParser(description="系统工程平台 MCP 服务")
+    解析器.add_argument("--http", action="store_true", help="以 HTTP(Streamable) 协议提供服务")
+    解析器.add_argument("--端口", type=int, default=8766, help="HTTP 服务端口")
+    参数 = 解析器.parse_args()
+    if 参数.http:
+        asyncio.run(主程序HTTP(端口=参数.端口))
+    else:
+        asyncio.run(主程序())
