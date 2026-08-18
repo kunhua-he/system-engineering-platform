@@ -168,7 +168,7 @@ class 提供者生命周期管理器:
         已登记能力: list[str] = []
         try:
             if self._注册表 is not None:
-                from 支持库.适配层.提供者注册表.提供者注册表 import 提供者路由信息
+                from 支持库.适配层.提供者注册表 import 提供者路由信息
                 for 能力id in 能力列表:
                     登记结果 = self._注册表.登记路由(提供者路由信息(
                         能力id=能力id,
