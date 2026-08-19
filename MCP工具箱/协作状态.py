@@ -31,7 +31,7 @@ from MCP工具箱.临时上下文 import 读取临时上下文
 错误_登记失败 = "REGISTRATION_FAILED"
 
 _开工id模式 = re.compile(r"^[0-9a-fA-F]{16}$")
-_排除片段表 = ("pycache", "工程缓存", "测试中心缓存", ".git", "完整性摘要.json")
+_排除片段表 = ("pycache", "工程缓存", "测试中心缓存", ".git", "完整性摘要.json", "项目证据", "临时文件")
 
 
 def _校验开工id(work_id: str) -> str:

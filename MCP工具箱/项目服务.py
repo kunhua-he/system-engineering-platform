@@ -716,7 +716,9 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "judge_verification_result":
             数据 = 判定验证结果(int(参数["退出码"]), str(参数["标准输出"]))
         elif 名称 == "verify_and_record":
-            证据开工id = _有效开工id(参数.get("work_id"))
+            证据开工id = str(参数.get("work_id") or 当前开工id)
+            if not 证据开工id:
+                raise PermissionError("尚未建立开工上下文")
             if not 查询反馈状态(反馈路径, 证据开工id)["已反馈"]:
                 raise PermissionError("本次任务尚未提交 MCP 使用反馈，不能记录成功验证证据")
             命令 = list(参数["command"])
