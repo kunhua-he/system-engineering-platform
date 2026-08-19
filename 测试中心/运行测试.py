@@ -45,7 +45,7 @@ sys.path.insert(0, str(系统根))
 import 测试中心
 from MCP工具箱 import 测试资源
 
-缓存文件路径 = 系统根 / "工程缓存" / "验证缓存.json"
+验证缓存目录 = 系统根 / "工程缓存" / "验证缓存"
 断点文件路径 = 系统根 / "工程缓存" / "验证断点.json"
 运行根目录 = 系统根 / "工程缓存" / "验证运行"
 清理失败证据目录 = 系统根 / "工程缓存" / "清理失败证据"
@@ -128,11 +128,21 @@ def 运行环境摘要() -> str:
     摘要器.update(sys.version.encode("utf-8"))
     摘要器.update(platform.platform().encode("utf-8"))
     摘要器.update(platform.machine().encode("utf-8"))
-    for 路径 in sorted(系统根.rglob("*依赖锁*.json")):
-        if "工程缓存" not in str(路径) and 路径.is_file():
+    # 定点收集依赖锁：支持库适配层各提供者 + 示例项目适配层，避免全仓扫描
+    依赖锁路径表 = sorted(系统根.glob("支持库/适配层/*/依赖锁.json"))
+    示例依赖锁 = 系统根 / "示例项目" / "适配层示例" / "依赖锁定.json"
+    if 示例依赖锁.is_file():
+        依赖锁路径表.append(示例依赖锁)
+    for 路径 in 依赖锁路径表:
+        if 路径.is_file():
             摘要器.update(str(路径.relative_to(系统根)).encode("utf-8"))
             摘要器.update(_文件摘要(路径).encode("utf-8"))
-    for 程序 in (sys.executable, shutil.which("soffice"), shutil.which("psql")):
+    for 程序 in (
+        sys.executable, shutil.which("soffice"), shutil.which("tesseract"),
+        shutil.which("ffmpeg"), shutil.which("ffprobe"), shutil.which("textutil"),
+        shutil.which("docker"), shutil.which("psql"), shutil.which("security"),
+        shutil.which("sw_vers"), shutil.which("git"),
+    ):
         if not 程序:
             continue
         路径 = Path(程序)
@@ -155,9 +165,10 @@ def 阶段缓存可复用(
         return False
     if 阶段名 == "慢速层" and 强制慢速:
         return False
+    # 环境摘要对所有阶段生效；缺失字段（旧式缓存项）跳过比对，生产缓存恒带该字段
+    if 缓存项.get("环境摘要") is not None and 缓存项.get("环境摘要") != 环境摘要:
+        return False
     if 阶段名 in 环境敏感阶段:
-        if 缓存项.get("环境摘要") != 环境摘要:
-            return False
         记录时间 = float(缓存项.get("时间戳", 0))
         if (当前时间 or time.time()) - 记录时间 > 运行证据有效秒:
             return False
@@ -165,17 +176,26 @@ def 阶段缓存可复用(
 
 
 def 读取缓存() -> dict:
-    if not 缓存文件路径.is_file():
+    """聚合读取 验证缓存/*.json：每阶段一个文件，合并为 {阶段名: 缓存项}。"""
+    if not 验证缓存目录.is_dir():
         return {}
-    try:
-        return json.loads(缓存文件路径.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    缓存: dict = {}
+    for 路径 in sorted(验证缓存目录.glob("*.json")):
+        try:
+            缓存[路径.stem] = json.loads(路径.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return 缓存
 
 
 def 写入缓存(缓存: dict) -> None:
-    缓存文件路径.parent.mkdir(parents=True, exist_ok=True)
-    缓存文件路径.write_text(json.dumps(缓存, ensure_ascii=False, indent=2), encoding="utf-8")
+    """按阶段名写入独立缓存文件；临时文件后 os.replace 保证原子写。"""
+    for 阶段名, 缓存项 in 缓存.items():
+        目标路径 = 验证缓存目录 / f"{阶段名}.json"
+        临时路径 = 目标路径.with_suffix(".json.tmp")
+        目标路径.parent.mkdir(parents=True, exist_ok=True)
+        临时路径.write_text(json.dumps(缓存项, ensure_ascii=False, indent=2), encoding="utf-8")
+        临时路径.replace(目标路径)
 
 
 def 写入断点(范围: str, 阶段名: str, 阶段顺序表: list[tuple[str, list[str]]], 原因: str) -> None:
