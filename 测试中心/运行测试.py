@@ -249,7 +249,8 @@ def 运行环境摘要() -> str:
         sys.executable, shutil.which("soffice"), shutil.which("tesseract"),
         shutil.which("ffmpeg"), shutil.which("ffprobe"), shutil.which("textutil"),
         shutil.which("docker"), shutil.which("psql"), shutil.which("security"),
-        shutil.which("sw_vers"), shutil.which("git"),
+        shutil.which("sw_vers"), shutil.which("git"), shutil.which("ps"),
+        shutil.which("sleep"),
     ):
         if not 程序:
             continue
