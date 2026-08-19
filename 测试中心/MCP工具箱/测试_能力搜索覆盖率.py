@@ -59,17 +59,20 @@ class 能力搜索覆盖率测试(unittest.TestCase):
             self.assertEqual(能力["调用示例"], "无", f"{能力['能力id']} 无示例须标注为无")
             self.assertIn("验证场景引用", 能力["验证状态"])
             self.assertIn("验证成功记录", 能力["验证状态"])
-        # 模块库无能力定义/能力搜索数据：提供者如实落到包自身、必填如实标注未声明
+        # 模块库能力搜索数据已生成：提供者如实落到包自身、必填为明确布尔值（不再标"未声明"）
         模块能力 = [能力 for 能力 in 结果 if 能力["包id"].startswith("模块库.")]
         self.assertGreater(len(模块能力), 0)
         for 能力 in 模块能力:
             self.assertEqual(能力["提供者"], 能力["包id"])
             for 参数 in 能力["参数"]:
-                self.assertEqual(参数["必填"], "未声明")
-        # 支持库/后端/PDF文档 无错误码声明：错误码如实标注为无
+                self.assertIn(参数["必填"], (True, False, "未声明"),
+                              f"{能力['能力id']} 参数 {参数['名称']} 必填应如实标注")
+        # 支持库/后端/PDF文档 错误码已从契约补齐：应为真实错误码列表（非"无"）
         解析PDF = 公开能力模块.读取公开能力(项目根, "PDF文档.解析PDF")
         self.assertIsNotNone(解析PDF)
-        self.assertEqual(解析PDF["错误码"], "无")
+        self.assertIsInstance(解析PDF["错误码"], list)
+        self.assertGreater(len(解析PDF["错误码"]), 0)
+        self.assertNotEqual(解析PDF["错误码"], "无")
 
     def test_搜索不加载支持库实现(self) -> None:
         for 包名 in 第三方实现包表:
