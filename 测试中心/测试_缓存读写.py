@@ -7,11 +7,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -204,6 +206,83 @@ class Test阶段缓存可复用(unittest.TestCase):
         self.assertFalse(运行测试.阶段缓存可复用(
             "静态契约", {}, "源码摘要", "环境摘要",
         ))
+
+
+class Test摘要git指纹复用(unittest.TestCase):
+    """_文件摘要/_目录摘要 的 git 指纹复用：干净文件免读盘，dirty/untracked 现场哈希。"""
+
+    def setUp(self) -> None:
+        运行测试._构建git指纹映射()
+
+    def test_干净文件摘要稳定(self) -> None:
+        """干净已跟踪文件连续两次调用摘要一致。"""
+        干净文件 = 系统根 / ".gitignore"
+        相对路径 = 运行测试._仓库根相对路径(干净文件)
+        self.assertIn(相对路径, 运行测试._git指纹映射)
+        self.assertNotIn(相对路径, 运行测试._git脏文件集合)
+        self.assertEqual(运行测试._文件摘要(干净文件), 运行测试._文件摘要(干净文件))
+
+    def test_干净文件摘要等于git指纹截断16位(self) -> None:
+        """干净文件直接返回 git blob hash 截断 16 位，不读盘。"""
+        干净文件 = 系统根 / ".gitignore"
+        相对路径 = 运行测试._仓库根相对路径(干净文件)
+        期望 = 运行测试._git指纹映射[相对路径][:16]
+        self.assertEqual(运行测试._文件摘要(干净文件), 期望)
+
+    def test_dirty文件摘要随内容变化(self) -> None:
+        """dirty（已跟踪但工作区修改）走现场哈希：内容变化 → 摘要变化。"""
+        临时文件 = 系统根 / "工程缓存" / f"测试dirty临时_{uuid.uuid4().hex}.txt"
+        临时文件.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(临时文件.unlink, missing_ok=True)
+        临时文件.write_text("第一版内容", encoding="utf-8")
+        相对路径 = 运行测试._仓库根相对路径(临时文件)
+        with patch.object(运行测试, "_git指纹映射", {相对路径: "0" * 40}), \
+                patch.object(运行测试, "_git脏文件集合", {相对路径}):
+            摘要1 = 运行测试._文件摘要(临时文件)
+            临时文件.write_text("第二版内容", encoding="utf-8")
+            摘要2 = 运行测试._文件摘要(临时文件)
+        self.assertEqual(摘要1, hashlib.sha256("第一版内容".encode("utf-8")).hexdigest()[:16])
+        self.assertNotEqual(摘要1, 摘要2)
+
+    def test_untracked文件摘要与现场哈希一致(self) -> None:
+        """仓库内未跟踪文件走现场 sha256。"""
+        临时文件 = 系统根 / "工程缓存" / f"测试untracked临时_{uuid.uuid4().hex}.txt"
+        临时文件.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(临时文件.unlink, missing_ok=True)
+        临时文件.write_text("未跟踪内容", encoding="utf-8")
+        现场 = hashlib.sha256(临时文件.read_bytes()).hexdigest()[:16]
+        self.assertEqual(运行测试._文件摘要(临时文件), 现场)
+
+    def test_仓库外文件现场哈希(self) -> None:
+        """仓库根之外的文件同样走现场 sha256。"""
+        临时目录 = Path(tempfile.mkdtemp(prefix="测试摘要仓库外-"))
+        self.addCleanup(shutil.rmtree, 临时目录, ignore_errors=True)
+        临时文件 = 临时目录 / "外部.txt"
+        临时文件.write_text("仓库外内容", encoding="utf-8")
+        现场 = hashlib.sha256(临时文件.read_bytes()).hexdigest()[:16]
+        self.assertEqual(运行测试._文件摘要(临时文件), 现场)
+
+    def test_摘要统一为16位hex(self) -> None:
+        """git 指纹与 sha256 现场摘要同长度（16 位 hex）。"""
+        干净摘要 = 运行测试._文件摘要(系统根 / ".gitignore")
+        临时文件 = 系统根 / "工程缓存" / f"测试长度临时_{uuid.uuid4().hex}.txt"
+        临时文件.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(临时文件.unlink, missing_ok=True)
+        临时文件.write_text("长度测试", encoding="utf-8")
+        现场摘要 = 运行测试._文件摘要(临时文件)
+        for 摘要 in (干净摘要, 现场摘要):
+            self.assertEqual(len(摘要), 16)
+            int(摘要, 16)
+
+    def test_目录摘要感知新增untracked文件(self) -> None:
+        """防假绿：目录摘要保留 rglob 枚举，新增未跟踪文件必须改变摘要。"""
+        临时目录 = 系统根 / f"_摘要测试临时_{uuid.uuid4().hex}"
+        临时目录.mkdir()
+        self.addCleanup(shutil.rmtree, 临时目录, ignore_errors=True)
+        摘要空 = 运行测试._目录摘要(临时目录)
+        (临时目录 / "新增文件.py").write_text("新增未跟踪文件", encoding="utf-8")
+        摘要非空 = 运行测试._目录摘要(临时目录)
+        self.assertNotEqual(摘要空, 摘要非空)
 
 
 if __name__ == "__main__":

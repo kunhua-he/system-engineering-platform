@@ -80,19 +80,79 @@ _阶段进程锁 = threading.Lock()
 }
 
 
+_git指纹映射: dict[str, str] | None = None  # 仓库根相对路径 → git blob hash（惰性构建）
+_git脏文件集合: set[str] | None = None      # dirty/untracked 路径集合（仓库根相对，惰性构建）
+
+
+def _仓库根相对路径(路径: Path) -> str:
+    """仓库根相对路径（git 路径风格：/ 分隔）；仓库外返回空串。"""
+    try:
+        return str(路径.resolve().relative_to(系统根.resolve())).replace(os.sep, "/")
+    except ValueError:
+        return ""
+
+
+def _构建git指纹映射() -> None:
+    """惰性构建 git 指纹映射：ls-files 取全部已跟踪 blob hash，status 取脏/未跟踪清单。
+
+    构建失败（非 git 仓库、git 不可用等）时映射置空，摘要回退现场哈希，不抛异常。
+    """
+    global _git指纹映射, _git脏文件集合
+    if _git指纹映射 is not None:
+        return
+    _git指纹映射 = {}
+    _git脏文件集合 = set()
+    try:
+        ls结果 = subprocess.run(
+            ["git", "ls-files", "-s", "-z"], cwd=系统根,
+            capture_output=True, check=False,
+        )
+        if ls结果.returncode != 0:
+            return
+        for 条目 in ls结果.stdout.decode("utf-8", errors="replace").split("\0"):
+            if not 条目:
+                continue
+            元数据, 路径 = 条目.split("\t", 1)
+            _, 对象哈希, 阶段 = 元数据.split(" ", 2)
+            if 阶段 == "0":
+                _git指纹映射[路径] = 对象哈希
+        状态结果 = subprocess.run(
+            ["git", "status", "--porcelain", "-z"], cwd=系统根,
+            capture_output=True, check=False,
+        )
+        if 状态结果.returncode != 0:
+            return
+        for 条目 in 状态结果.stdout.decode("utf-8", errors="replace").split("\0"):
+            # 条目形如 "XY 路径"；重命名条目的旧路径段不以两位状态码+空格开头，跳过
+            if len(条目) < 4 or 条目[2:3] != " ":
+                continue
+            _git脏文件集合.add(条目[3:])
+    except (OSError, ValueError):
+        # git 不可用或输出格式异常 → 回退现场哈希
+        _git指纹映射 = {}
+        _git脏文件集合 = {}
+
+
 def _文件摘要(文件: Path) -> str:
-    """文件内容摘要（sha256 前 16 位）。"""
+    """文件内容摘要：干净已跟踪文件免读盘取 git blob hash，其余现场 sha256。
+
+    统一截断 16 位十六进制；git 指纹映射构建失败（非 git 仓库等）时回退现场哈希。
+    """
+    _构建git指纹映射()
+    相对路径 = _仓库根相对路径(文件)
+    if 相对路径 and 相对路径 in _git指纹映射 and 相对路径 not in _git脏文件集合 and 文件.is_file():
+        return _git指纹映射[相对路径][:16]
     return hashlib.sha256(文件.read_bytes()).hexdigest()[:16]
 
 
 def _目录摘要(目录: Path) -> str:
-    """目录内容摘要（全部文件，排除缓存）。"""
+    """目录内容摘要（rglob 全量枚举，逐文件 git 指纹或现场哈希；排除缓存）。"""
     摘要器 = hashlib.sha256()
     for 文件 in sorted(目录.rglob("*")):
         if 文件.is_file() and "pycache" not in str(文件) and "工程缓存" not in str(文件) \
                 and "完整性摘要.json" != 文件.name:
             摘要器.update(str(文件.relative_to(目录)).encode("utf-8"))
-            摘要器.update(文件.read_bytes())
+            摘要器.update(_文件摘要(文件).encode("utf-8"))
     return 摘要器.hexdigest()[:16]
 
 
