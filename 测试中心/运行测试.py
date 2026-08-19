@@ -79,7 +79,7 @@ _阶段进程登记表: dict[str, subprocess.Popen] = {}
 _阶段进程锁 = threading.Lock()
 顶层包目录表 = {
     目录.name for 目录 in 系统根.iterdir()
-    if 目录.is_dir() and 目录.name not in ("测试中心", "工程缓存", "开发文档", "示例项目", ".git", "__pycache__")
+    if 目录.is_dir() and 目录.name not in ("测试中心", "工程缓存", "开发文档", ".git", "__pycache__")
 }
 
 
@@ -174,9 +174,16 @@ def 收集阶段文件(匹配表: list[str]) -> list[Path]:
 
 
 def 阶段依赖目录表(测试文件列表: list[Path]) -> set[str]:
-    """解析测试文件的 import 依赖 → 受影响系统顶层包目录。"""
+    """解析测试文件的 import 依赖 → 受影响系统顶层包目录。
+
+    覆盖三种形态：行首静态 import/from、importlib 动态导入、源码中的顶层包路径字符串。
+    静态解析是保守估计（宁多失效不假绿）：动态导入与路径引用一律计入对应顶层包。
+    """
     依赖表: set[str] = set()
     import模式 = re.compile(r"^\s*(?:from|import)\s+([一-龥\w.]+)")
+    动态导入模式 = re.compile(r"(?:importlib\.)?import_module\s*\(\s*['\"]([一-龥\w.]+)['\"]")
+    路径引用模式 = re.compile(r"['\"]([一-龥\w]+/[\w./-]+)['\"]")
+    顶层包字符串模式 = re.compile(r"['\"]([一-龥\w]+)['\"]")
     for 文件 in 测试文件列表:
         try:
             for 行 in 文件.read_text(encoding="utf-8").splitlines():
@@ -185,6 +192,21 @@ def 阶段依赖目录表(测试文件列表: list[Path]) -> set[str]:
                     顶层包 = 匹配.group(1).split(".")[0].strip()
                     if 顶层包 in 顶层包目录表:
                         依赖表.add(顶层包)
+                动态匹配 = 动态导入模式.search(行)
+                if 动态匹配:
+                    顶层包 = 动态匹配.group(1).split(".")[0].strip()
+                    if 顶层包 in 顶层包目录表:
+                        依赖表.add(顶层包)
+                路径匹配 = 路径引用模式.search(行)
+                if 路径匹配:
+                    首段 = 路径匹配.group(1).split("/", 1)[0].strip()
+                    if 首段 in 顶层包目录表:
+                        依赖表.add(首段)
+                # 顶层包目录名作为独立字符串出现（如 系统根 / "示例项目"）也纳入依赖
+                for 字符串匹配 in 顶层包字符串模式.finditer(行):
+                    候选 = 字符串匹配.group(1)
+                    if 候选 in 顶层包目录表:
+                        依赖表.add(候选)
         except OSError:
             continue
     return 依赖表
