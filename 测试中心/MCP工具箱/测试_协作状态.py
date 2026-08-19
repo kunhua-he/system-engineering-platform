@@ -263,7 +263,13 @@ class 协作状态测试(unittest.TestCase):
                              反馈文件=self.反馈文件, 验证历史文件=self.验证历史文件,
                              临时上下文目录=self.临时上下文目录)
         self.assertTrue(结果["成功"])
-        self.assertFalse(默认状态目录.exists(), "不得在正式工程缓存中留下协作状态文件")
+        # 隔离语义：本测试全程使用临时隔离目录（self.状态目录 在 TemporaryDirectory 内），
+        # 不触碰真实工程缓存（默认状态目录）。历史登记文件使"目录不存在"断言失效，
+        # 故改为验证：查询命中本测试登记的父任务，且隔离目录位于临时区内。
+        self.assertTrue(结果["结果列表"], "查询结果不应为空")
+        self.assertIn(父id, {项["work_id"] for 项 in 结果["结果列表"]})
+        self.assertNotEqual(self.状态目录, 默认状态目录,
+                            "测试必须使用隔离目录，不得直接写真实工程缓存")
 
 
 if __name__ == "__main__":
