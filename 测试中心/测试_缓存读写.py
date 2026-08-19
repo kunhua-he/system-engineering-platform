@@ -12,6 +12,7 @@ import json
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 import uuid
 from pathlib import Path
@@ -283,6 +284,102 @@ class Test摘要git指纹复用(unittest.TestCase):
         (临时目录 / "新增文件.py").write_text("新增未跟踪文件", encoding="utf-8")
         摘要非空 = 运行测试._目录摘要(临时目录)
         self.assertNotEqual(摘要空, 摘要非空)
+
+
+class Test文件级缓存(unittest.TestCase):
+    """文件级缓存：复用判定、依赖变化失效、目录变化失效、弱依赖过期。"""
+
+    def setUp(self) -> None:
+        self.临时根 = 系统根 / f"_文件级缓存测试_{uuid.uuid4().hex}"
+        self.临时根.mkdir()
+        self.依赖根 = self.临时根 / "依赖"
+        self.依赖根.mkdir()
+        self.测试文件 = self.依赖根 / "测试_示例.py"
+        self.测试文件.write_text("import unittest\n", encoding="utf-8")
+        self.依赖文件 = self.依赖根 / "源.py"
+        self.依赖文件.write_text("值 = 1\n", encoding="utf-8")
+        self.依赖目录 = self.依赖根 / "数据目录"
+        self.依赖目录.mkdir()
+        (self.依赖目录 / "a.txt").write_text("a", encoding="utf-8")
+        self.缓存目录 = self.临时根 / "缓存"
+        self.缓存目录.mkdir()
+        self.环境摘要 = "环境摘要测试"
+        self.补丁 = patch.object(运行测试, "验证文件缓存目录", self.缓存目录)
+        self.补丁.start()
+        self.addCleanup(self.补丁.stop)
+        self.addCleanup(shutil.rmtree, self.临时根, ignore_errors=True)
+
+    def 写入缓存(self, *, 含目录: bool = True) -> None:
+        缓存项 = {
+            "成功": True,
+            "测试数": 2,
+            "测试文件摘要": 运行测试.文件级摘要(self.测试文件),
+            "环境摘要": self.环境摘要,
+            "结构版本": 运行测试.缓存结构版本,
+            "依赖摘要表": {
+                str(self.依赖文件.relative_to(系统根)): 运行测试._文件摘要(self.依赖文件),
+            },
+            "目录摘要表": (
+                {str(self.依赖目录.relative_to(系统根)): 运行测试._目录清单摘要(self.依赖目录)}
+                if 含目录 else {}
+            ),
+            "弱依赖标记": False,
+            "时间戳": time.time(),
+        }
+        运行测试.写入文件级缓存(self.测试文件, 缓存项)
+
+    def test_命中条件全部满足时复用(self) -> None:
+        self.写入缓存()
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertTrue(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
+
+    def test_依赖文件内容变化时失效(self) -> None:
+        """假绿防护：依赖源文件内容变化必须使缓存失效。"""
+        self.写入缓存()
+        self.依赖文件.write_text("值 = 2\n", encoding="utf-8")
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertFalse(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
+
+    def test_依赖文件缺失时失效(self) -> None:
+        self.写入缓存()
+        self.依赖文件.unlink()
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertFalse(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
+
+    def test_目录内容新增文件时失效(self) -> None:
+        """假绿防护：扫描目录新增文件必须使缓存失效（目录扫描型测试）。"""
+        self.写入缓存()
+        (self.依赖目录 / "b.txt").write_text("b", encoding="utf-8")
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertFalse(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
+
+    def test_目录缺失时失效(self) -> None:
+        self.写入缓存()
+        shutil.rmtree(self.依赖目录)
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertFalse(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
+
+    def test_无目录摘要表的旧缓存项仍可复用(self) -> None:
+        """向后兼容：目录摘要表缺失（旧缓存项）不阻断复用，文件级校验仍生效。"""
+        self.写入缓存(含目录=False)
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertTrue(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
+
+    def test_弱依赖标记超过有效期后失效(self) -> None:
+        缓存项 = {
+            "成功": True,
+            "测试数": 2,
+            "测试文件摘要": 运行测试.文件级摘要(self.测试文件),
+            "环境摘要": self.环境摘要,
+            "结构版本": 运行测试.缓存结构版本,
+            "依赖摘要表": {},
+            "目录摘要表": {},
+            "弱依赖标记": True,
+            "时间戳": time.time() - 运行测试.弱依赖缓存有效秒 - 10,
+        }
+        运行测试.写入文件级缓存(self.测试文件, 缓存项)
+        缓存项 = 运行测试.读取文件级缓存(self.测试文件)
+        self.assertFalse(运行测试.文件级缓存可复用(self.测试文件, 缓存项, self.环境摘要))
 
 
 if __name__ == "__main__":
