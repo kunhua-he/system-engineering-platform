@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -125,7 +126,7 @@ class Test零测试门禁(unittest.TestCase):
     def test_工作包并行数自动有界(self):
         self.assertEqual(运行测试.计算并行数(1, 0), 1)
         self.assertEqual(运行测试.计算并行数(4, 2), 2)
-        self.assertLessEqual(运行测试.计算并行数(100, 0), 32)
+        self.assertLessEqual(运行测试.计算并行数(100, 0), os.cpu_count())
 
     def test_慢速证据相同且有效时复用(self):
         缓存 = {
