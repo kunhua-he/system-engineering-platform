@@ -164,11 +164,10 @@ def _检出收集错误(文本: str) -> bool:
 
 
 def _检出零测试(文本: str) -> bool:
-    """零测试：no tests ran / 零测试门禁失败 / 未发现任何测试用例 / Ran 0 tests。"""
+    """零测试：Ran 0 tests / no tests ran / 未发现任何测试用例（真正没跑）。"""
     低 = 文本.lower()
     return (
         "no tests ran" in 低
-        or "零测试门禁失败" in 文本
         or "未发现任何测试用例" in 文本
         or "ran 0 tests" in 低
     )
