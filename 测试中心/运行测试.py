@@ -453,10 +453,22 @@ def 执行单文件记录依赖(路径: str) -> int:
         except ValueError:
             continue
         读文件表.append(str(相对路径))
+    # "已存在且被写"的文件也纳入依赖（内容变化应失效），防弱依赖窗口内假绿
+    写读文件表 = []
+    for 相对路径 in 依赖清单.get("已存在且被写列表", []):
+        依赖路径 = Path(相对路径)
+        if not 依赖路径.is_absolute():
+            依赖路径 = 系统根 / 相对路径
+        try:
+            依赖路径.resolve().relative_to(系统根)
+        except ValueError:
+            continue
+        if str(相对路径) not in 读文件表:
+            写读文件表.append(str(相对路径))
     输出 = {
         "退出码": 状态码,
         "测试数": 测试套件.countTestCases(),
-        "读文件列表": 读文件表,
+        "读文件列表": 读文件表 + 写读文件表,
         "目录列表": 依赖清单.get("目录列表", []),
         "弱依赖标记": 依赖清单.get("弱依赖标记", False),
         "截断标记": 依赖清单.get("截断标记", False),

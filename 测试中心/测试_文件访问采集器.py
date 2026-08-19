@@ -114,10 +114,11 @@ class Test文件访问采集(采集器测试基类):
         清单 = self.采集器.提取依赖清单()
         self.assertEqual(
             set(清单),
-            {"读文件列表", "目录列表", "弱依赖标记", "截断标记", "网络标记"},
+            {"读文件列表", "目录列表", "已存在且被写列表", "弱依赖标记", "截断标记", "网络标记"},
         )
         self.assertIsInstance(清单["读文件列表"], list)
         self.assertIsInstance(清单["目录列表"], list)
+        self.assertIsInstance(清单["已存在且被写列表"], list)
         self.assertFalse(清单["弱依赖标记"])
         self.assertFalse(清单["截断标记"])
         self.assertFalse(清单["网络标记"])
