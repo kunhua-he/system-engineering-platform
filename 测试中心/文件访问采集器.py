@@ -40,10 +40,13 @@ _pyc后缀模式 = re.compile(r"__pycache__[/\\]([^/\\]+)\.cpython-\d+[^/\\]*\.p
 
 
 def _构建默认排除目录表() -> list[str]:
-    """默认排除：系统临时目录（TMPDIR/mkdtemp）与项目工程缓存（含验证运行）。"""
-    项目根 = Path(__file__).resolve().parents[1]
-    排除表 = [os.path.abspath(tempfile.gettempdir())]
-    工程缓存 = 项目根 / "工程缓存"
+    """默认排除：系统临时目录（TMPDIR/mkdtemp）与项目工程缓存（含验证运行）。
+
+    用 realpath 解析符号链接（macOS /var → /private/var），否则临时目录
+    mkdtemp 产物（路径走 /private/var/.../T）无法匹配 gettempdir 的 /var/.../T。
+    """
+    排除表 = [os.path.realpath(tempfile.gettempdir())]
+    工程缓存 = Path(__file__).resolve().parents[1] / "工程缓存"
     if 工程缓存.is_dir():
         排除表.append(str(工程缓存))
     return 排除表
@@ -135,9 +138,10 @@ class 文件访问采集器:
     # ---- 记录（统一去重、排除、截断） ----
 
     def _在排除目录内(self, 绝对路径: str) -> bool:
+        解析路径 = os.path.realpath(绝对路径)
         for 目录 in self.排除目录表:
             try:
-                if os.path.commonpath([绝对路径, 目录]) == 目录:
+                if os.path.commonpath([解析路径, 目录]) == 目录:
                     return True
             except ValueError:
                 continue
