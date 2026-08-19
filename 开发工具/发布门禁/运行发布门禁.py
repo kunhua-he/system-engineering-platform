@@ -330,7 +330,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
 
     # 3. 测试全部通过 + 语法编译全部通过
     if 运行测试:
-        退出码, 输出 = 运行子进程(["python3.14", "测试中心/运行测试.py"], 超时秒=600)
+        退出码, 输出 = 运行子进程(["python3.14", "测试中心/运行测试.py", "--并行数", "1"], 超时秒=600)
         检查("测试全部通过", 退出码 == 0, f"退出码 {退出码}（{'通过' if 退出码 == 0 else '失败'}）")
     else:
         检查("测试全部通过", False, "已请求跳过测试，强制门禁未执行")
@@ -701,7 +701,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             import time as _时间
             慢速开始 = _时间.monotonic()
             慢速运行 = _子进程.run(
-                ["python3.14", "测试中心/运行测试.py", "--范围", "慢速"],
+                ["python3.14", "测试中心/运行测试.py", "--范围", "慢速", "--并行数", "1"],
                 capture_output=True, text=True, timeout=300,
                 env={**os.environ, "PYTHONPATH": ""})
             慢速耗时 = _时间.monotonic() - 慢速开始

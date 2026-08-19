@@ -195,6 +195,60 @@ class 结果判定测试(unittest.TestCase):
             self.assertEqual(结果["错误码"], "")
 
 
+class 零测试判定回归测试(unittest.TestCase):
+    """零测试判定回归：真正零测试必须失败；元测试输出不得误判。
+
+    修复背景：_检出零测试 曾按笼统的"零测试门禁失败"字样判定，
+    会被 测试_零测试门禁.py 的故意反向验证输出误触发；
+    现只认 Ran 0 tests / no tests ran / 未发现任何测试用例。
+    """
+
+    def test_真正零测试Ran0检出(self) -> None:
+        for 输出 in [
+            "Ran 0 tests in 0.001s",
+            "no tests ran in 0.001s",
+            "============================= no tests ran in 0.01s =============================",
+            "Ran 0 tests in 0.000s\n\nOK",
+        ]:
+            结果 = 门禁模块.判定验证结果(0, 输出)
+            self.assertFalse(结果["成功"], 输出)
+            self.assertEqual(结果["错误码"], "零测试", 输出)
+
+    def test_元测试输出零测试门禁失败字样不误判(self) -> None:
+        """含"零测试门禁失败"字样但实际跑过测试，必须放行。"""
+        输出 = "\n".join([
+            "--- 工作包验证（18 个测试）---",
+            "测试_零测试门禁.py 故意反向验证输出：零测试门禁失败（预期行为）",
+            "工作包门禁通过：共 18 个测试全部成功",
+            "Ran 18 tests in 0.352s",
+            "",
+            "OK",
+        ])
+        结果 = 门禁模块.判定验证结果(0, 输出)
+        self.assertTrue(结果["成功"], 结果["消息"])
+        self.assertEqual(结果["错误码"], "")
+
+    def test_正常通过Ran22tests成功(self) -> None:
+        结果 = 门禁模块.判定验证结果(0, "Ran 22 tests in 0.9s\n\nOK")
+        self.assertTrue(结果["成功"], 结果["消息"])
+        self.assertEqual(结果["错误码"], "")
+
+    def test_退出码非零即使输出正常也失败(self) -> None:
+        结果 = 门禁模块.判定验证结果(1, "Ran 22 tests in 0.9s\n\nOK")
+        self.assertFalse(结果["成功"])
+        self.assertEqual(结果["错误码"], "验证失败")
+        self.assertIn("1", 结果["消息"])
+
+    def test_未解释跳过无原因失败(self) -> None:
+        for 输出 in [
+            "Ran 22 tests in 0.9s\n1 skipped in 0.01s",
+            "test_跳过场景 ... skipped\n\nOK (skipped=1)",
+        ]:
+            结果 = 门禁模块.判定验证结果(0, 输出)
+            self.assertFalse(结果["成功"], 输出)
+            self.assertEqual(结果["错误码"], "未解释跳过", 输出)
+
+
 class 反馈门禁测试(unittest.TestCase):
     """反馈门禁：按开工id查询 MCP 使用反馈记录。"""
 

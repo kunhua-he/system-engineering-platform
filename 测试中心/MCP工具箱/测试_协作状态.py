@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from MCP工具箱.协作状态 import (
-    计算代码指纹, 登记任务, 查询协作状态, 收口登记, 默认状态目录,
+    计算代码指纹, 登记任务, 查询协作状态, 收口登记, 默认状态目录, _排除片段表,
 )
 from MCP工具箱.临时上下文 import 写入临时上下文
 
@@ -153,6 +153,27 @@ class 协作状态测试(unittest.TestCase):
         (self.工作区 / "源码.txt").write_text("内容已修改", encoding="utf-8")
         self.assertNotEqual(计算代码指纹(self.工作区)["指纹"], 指纹1)
         self.assertFalse(计算代码指纹(Path("不存在目录"))["成功"])
+
+    def test_指纹排除表含项目证据与临时文件(self) -> None:
+        self.assertIn("项目证据", _排除片段表)
+        self.assertIn("临时文件", _排除片段表)
+
+    def test_指纹排除项目证据与临时文件目录(self) -> None:
+        指纹1 = 计算代码指纹(self.工作区)["指纹"]
+        证据目录 = self.工作区 / "开发文档" / "项目证据"
+        证据目录.mkdir(parents=True)
+        (证据目录 / "验证历史.jsonl").write_text("证据", encoding="utf-8")
+        (证据目录 / "MCP使用反馈.jsonl").write_text("反馈", encoding="utf-8")
+        临时目录 = self.工作区 / "开发文档" / "临时文件"
+        临时目录.mkdir(parents=True)
+        (临时目录 / "计划.md").write_text("计划", encoding="utf-8")
+        self.assertEqual(计算代码指纹(self.工作区)["指纹"], 指纹1)
+        测试目录 = self.工作区 / "测试中心"
+        测试目录.mkdir()
+        (测试目录 / "新增用例.py").write_text("新增", encoding="utf-8")
+        self.assertNotEqual(计算代码指纹(self.工作区)["指纹"], 指纹1)
+        (self.工作区 / "根下新增.md").write_text("根下新增", encoding="utf-8")
+        self.assertNotEqual(计算代码指纹(self.工作区)["指纹"], 指纹1)
 
     def test_子代理未登记合并阻断标记(self) -> None:
         未登记子 = "cccc000000000001"
