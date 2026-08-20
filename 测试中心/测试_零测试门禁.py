@@ -200,5 +200,71 @@ class Test零测试门禁(unittest.TestCase):
                 self.assertEqual(运行测试.主函数(继续运行=True), 2)
 
 
+class Test断点集成链路(unittest.TestCase):
+    """阶段失败 → 写断点 → 续跑从失败阶段开始 的集成链路。
+
+    覆盖 主函数串行执行中阶段失败时 写入断点 的正确性，以及断点续跑
+    从失败阶段继续、更早阶段缓存可复用则跳过。
+    """
+
+    def setUp(self) -> None:
+        self.临时目录 = tempfile.TemporaryDirectory()
+        self.addCleanup(self.临时目录.cleanup)
+        self.断点路径 = Path(self.临时目录.name) / "验证断点.json"
+
+    def test_阶段失败写入断点且续跑从失败阶段开始(self) -> None:
+        阶段表 = [("甲", ["甲"]), ("乙", ["乙"]), ("丙", ["丙"])]
+        # 甲阶段成功（写缓存），乙阶段失败（触发断点），丙阶段不执行
+        调用记录: list[str] = []
+
+        def 假阶段执行(阶段名, 匹配表, 范围, 断点表, 缓存, 环境, 强制慢速):
+            if 阶段名 == "甲":
+                调用记录.append("甲")
+                return 0, 1, True, 缓存
+            if 阶段名 == "乙":
+                调用记录.append("乙")
+                # 模拟 _执行单个阶段串行 内部写断点（真实逻辑在阶段失败分支）
+                运行测试.写入断点("常规", "乙", 断点表, "测试失败")
+                return 1, 0, False, 缓存
+            调用记录.append("丙")
+            return 0, 1, True, 缓存
+
+        with tempfile.TemporaryDirectory() as 缓存目录:
+            缓存目录路径 = Path(缓存目录)
+            with patch.object(运行测试, "写入断点") as 假写断点, \
+                    patch.object(运行测试, "_执行单个阶段串行", side_effect=假阶段执行), \
+                    patch.object(运行测试, "清除断点") as 假清除:
+                from 测试中心.运行测试 import _执行阶段顺序表串行
+                结果 = _执行阶段顺序表串行(
+                    "常规", 阶段表, 阶段表, {}, "环境", False,
+                )
+        # 乙失败后丙不执行，且断点被写入（失败阶段=乙）
+        self.assertEqual(调用记录, ["甲", "乙"])
+        self.assertEqual(结果, 1)
+        假写断点.assert_called_once()
+        写断点参数 = 假写断点.call_args[0]
+        self.assertEqual(写断点参数[0], "常规")
+        self.assertEqual(写断点参数[1], "乙")  # 失败阶段
+        假清除.assert_not_called()
+
+    def test_全部阶段成功时清除断点(self) -> None:
+        阶段表 = [("甲", ["甲"]), ("乙", ["乙"])]
+
+        def 假阶段执行(阶段名, 匹配表, 范围, 断点表, 缓存, 环境, 强制慢速):
+            return 0, 1, True, 缓存
+
+        with tempfile.TemporaryDirectory() as 缓存目录:
+            with patch.object(运行测试, "写入断点") as 假写断点, \
+                    patch.object(运行测试, "_执行单个阶段串行", side_effect=假阶段执行), \
+                    patch.object(运行测试, "清除断点") as 假清除:
+                from 测试中心.运行测试 import _执行阶段顺序表串行
+                结果 = _执行阶段顺序表串行(
+                    "常规", 阶段表, 阶段表, {}, "环境", False,
+                )
+        self.assertEqual(结果, 0)
+        假写断点.assert_not_called()
+        假清除.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

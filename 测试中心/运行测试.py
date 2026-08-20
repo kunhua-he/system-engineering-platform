@@ -37,6 +37,11 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+try:
+    import fcntl
+except ImportError:  # Windows 无 fcntl；本平台锁仅在 POSIX 生效
+    fcntl = None
+
 系统根 = Path(__file__).resolve().parents[1]
 # 无条件插到最前：系统根包名（公共契约/能力契约等）与测试中心下同名测试目录
 # 冲突，若依赖 in 判断可能因 cwd/脚本目录已在 sys.path 而跳过插入，
@@ -50,10 +55,12 @@ from MCP工具箱 import 测试资源
 验证文件缓存目录 = 验证缓存目录 / "文件"  # 文件级缓存子目录（阶段缓存失效后的细化层）
 断点文件路径 = 系统根 / "工程缓存" / "验证断点.json"
 运行根目录 = 系统根 / "工程缓存" / "验证运行"
+验证锁路径 = 系统根 / "工程缓存" / "验证锁.lock"  # 全量互斥 flock 文件锁
 清理失败证据目录 = 系统根 / "工程缓存" / "清理失败证据"
 保留制品目录 = 系统根 / "工程缓存" / "保留制品"
 缓存结构版本 = "2.0.0"  # 缓存结构版本：损坏/缺字段/引擎变化时自动失效
 运行证据有效秒 = 7 * 24 * 60 * 60
+环境敏感缓存有效秒 = 24 * 60 * 60  # 环境敏感阶段（真实进程/网关/浏览器/发布门禁/慢速层）依赖真实环境，缓存有效期缩短到 1 天
 弱依赖缓存有效秒 = 3600  # 弱依赖文件级缓存有效期：超时后强制失效重跑
 目录摘要上限 = 100  # 扫描目录数超过该值时不记目录摘要表（降级弱依赖，防递归开销爆炸）
 环境敏感阶段 = {"真实进程", "网关", "浏览器", "发布门禁", "慢速层"}
@@ -279,7 +286,7 @@ def 阶段缓存可复用(
         return False
     if 阶段名 in 环境敏感阶段:
         记录时间 = float(缓存项.get("时间戳", 0))
-        if (当前时间 or time.time()) - 记录时间 > 运行证据有效秒:
+        if (当前时间 or time.time()) - 记录时间 > 环境敏感缓存有效秒:
             return False
     return True
 
@@ -362,6 +369,49 @@ def 写入文件级缓存(测试文件: Path, 缓存项: dict) -> None:
     目标路径.parent.mkdir(parents=True, exist_ok=True)
     临时路径.write_text(json.dumps(缓存项, ensure_ascii=False, indent=2), encoding="utf-8")
     临时路径.replace(目标路径)
+
+
+def 获取验证锁() -> bool:
+    """获取全量验证互斥锁（flock 非阻塞）。已持有其他验证运行 → 返回 False。
+
+    AGENTS.md 铁律"已有全量运行时禁止重复启动"代码化：全量验证（常规/慢速/全部）
+    与环境敏感阶段共享端口/数据库/发布指针，并发运行会互相干扰。
+    锁文件位于工程缓存（可删除、不污染正式目录）；POSIX flock 进程退出自动释放。
+    """
+    if fcntl is None:
+        return True  # 非 POSIX 平台不强制互斥
+    try:
+        验证锁路径.parent.mkdir(parents=True, exist_ok=True)
+        global _验证锁文件
+        _验证锁文件 = open(验证锁路径, "w")
+        fcntl.flock(_验证锁文件, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _验证锁文件.write(str(os.getpid()))
+        _验证锁文件.flush()
+        return True
+    except OSError:
+        try:
+            _验证锁文件.close()
+        except (OSError, NameError, AttributeError):
+            pass
+        return False
+
+
+_验证锁文件 = None
+
+
+def 释放验证锁() -> None:
+    """释放验证锁（正常结束或异常路径都调用）。"""
+    global _验证锁文件
+    if _验证锁文件 is not None:
+        try:
+            fcntl.flock(_验证锁文件, fcntl.LOCK_UN)
+        except (OSError, ValueError):
+            pass
+        try:
+            _验证锁文件.close()
+        except OSError:
+            pass
+        _验证锁文件 = None
 
 
 def 读取缓存() -> dict:
@@ -448,167 +498,6 @@ def 执行测试套件(套件: unittest.TestSuite, 名称: str = "定向") -> in
         return 1
     print(f"{名称}门禁通过：共 {套件.countTestCases()} 个测试全部成功")
     return 0
-
-
-def 执行单文件记录依赖(路径: str) -> int:
-    """--内部测试文件记录依赖 入口：单文件测试 + 采集器记录依赖，输出依赖JSON到stdout。
-
-    采集器只在独立子进程内安装（hook不可移除、禁装主进程/常驻）；依赖清单写缓存由主进程完成。
-    """
-    from 测试中心.文件访问采集器 import 安装采集器, 静态扫描弱依赖
-
-    文件路径 = Path(路径)
-    if not 文件路径.is_absolute():
-        文件路径 = 系统根 / 文件路径
-    文件路径 = 文件路径.resolve()
-    采集器 = 安装采集器()
-    状态码 = 执行测试套件(加载指定测试文件([str(文件路径)]), "单文件")
-    依赖清单 = 采集器.提取依赖清单()
-    # stat 类存在性探测（exists/is_file/getsize 等）不触发 audit 事件，
-    # 静态扫描测试源码命中即标弱依赖（探测结果决定分支但内容未被读取）
-    静态弱依赖特征 = 静态扫描弱依赖(文件路径.read_text(encoding="utf-8"))
-    测试套件 = 加载指定测试文件([str(文件路径)])
-    # 只保留系统根内的依赖（排除标准库/第三方/系统外部文件），控制 JSON 体积并聚焦项目依赖
-    读文件表 = []
-    for 相对路径 in 依赖清单.get("读文件列表", []):
-        依赖路径 = Path(相对路径)
-        if not 依赖路径.is_absolute():
-            依赖路径 = 系统根 / 相对路径
-        try:
-            依赖路径.resolve().relative_to(系统根)
-        except ValueError:
-            continue
-        读文件表.append(str(相对路径))
-    # "已存在且被写"的文件也纳入依赖（内容变化应失效），防弱依赖窗口内假绿
-    写读文件表 = []
-    for 相对路径 in 依赖清单.get("已存在且被写列表", []):
-        依赖路径 = Path(相对路径)
-        if not 依赖路径.is_absolute():
-            依赖路径 = 系统根 / 相对路径
-        try:
-            依赖路径.resolve().relative_to(系统根)
-        except ValueError:
-            continue
-        if str(相对路径) not in 读文件表:
-            写读文件表.append(str(相对路径))
-    输出 = {
-        "退出码": 状态码,
-        "测试数": 测试套件.countTestCases(),
-        "读文件列表": 读文件表 + 写读文件表,
-        "目录列表": 依赖清单.get("目录列表", []),
-        "弱依赖标记": bool(
-            依赖清单.get("弱依赖标记")
-            or 依赖清单.get("截断标记")
-            or 依赖清单.get("网络标记")
-            or 静态弱依赖特征
-        ),
-        "静态弱依赖特征": 静态弱依赖特征,
-        "截断标记": 依赖清单.get("截断标记", False),
-        "网络标记": 依赖清单.get("网络标记", False),
-    }
-    print(f"依赖清单JSON：{json.dumps(输出, ensure_ascii=False)}")
-    return 状态码
-
-
-def 收集阶段未缓存文件(
-    阶段文件: list[Path], 环境摘要: str,
-) -> tuple[int, list[Path]]:
-    """阶段缓存失效后的文件级细化：返回 (文件级命中测试数, 待跑文件表)。
-
-    仅对非环境敏感阶段启用（子进程审计未实现前，真实进程等阶段整阶段跑）。
-    """
-    # 文件级缓存判定前强制刷新 git 映射：验证运行期间工作区可能被并行修改，
-    # 脏集合过期会导致已变文件仍命中旧 hash → 假绿。
-    _构建git指纹映射(强制刷新=True)
-    复用测试数 = 0
-    待跑文件表: list[Path] = []
-    for 文件 in 阶段文件:
-        缓存项 = 读取文件级缓存(文件)
-        if 文件级缓存可复用(文件, 缓存项, 环境摘要):
-            复用测试数 += int(缓存项.get("测试数", 0))
-        else:
-            待跑文件表.append(文件)
-    return 复用测试数, 待跑文件表
-
-
-def 执行待跑文件并写文件级缓存(
-    待跑文件表: list[Path], 环境摘要: str, *, 并行数: int = 0,
-) -> tuple[int, int]:
-    """并行运行待跑文件（记录依赖子进程），成功后写文件级缓存。
-
-    返回 (成功, 新增测试数)。任一文件失败即整体失败（不写缓存）。
-    """
-    if not 待跑文件表:
-        return 0, 0
-    实际并行 = 计算并行数(len(待跑文件表), 并行数)
-    路径表 = [str(文件) for 文件 in 待跑文件表]
-    成功表: list[dict] = []
-    失败表: list[tuple[str, str]] = []
-    任务id = _生成任务id()
-    运行根 = 运行根目录 / 任务id
-    try:
-        with ThreadPoolExecutor(max_workers=实际并行) as 池:
-            任务表 = {
-                池.submit(_运行单文件记录依赖子进程, 路径, 任务id, 序号): 路径
-                for 序号, 路径 in enumerate(路径表)
-            }
-            for 任务 in as_completed(任务表):
-                结果 = 任务.result()
-                if 结果["退出码"] == 0 and 结果.get("依赖清单") is not None:
-                    成功表.append(结果)
-                else:
-                    失败表.append((str(结果["路径"]), str(结果["退出码"])))
-    finally:
-        if 运行根.exists():
-            shutil.rmtree(运行根, ignore_errors=True)
-    if 失败表:
-        for 路径, 退出码 in 失败表:
-            print(f"文件级缓存执行失败：{路径}（退出码={退出码}）", file=sys.stderr)
-        return 1, 0
-    新增测试数 = 0
-    for 结果 in 成功表:
-        测试文件 = Path(str(结果["路径"]))
-        依赖清单 = 结果["依赖清单"]
-        依赖摘要表: dict[str, str] = {}
-        for 相对路径 in 依赖清单.get("读文件列表", []):
-            依赖路径 = Path(相对路径)
-            if not 依赖路径.is_absolute():
-                依赖路径 = 系统根 / 相对路径
-            try:
-                解析路径 = 依赖路径.resolve()
-            except OSError:
-                continue
-            # 只保留系统根内的依赖（排除标准库/第三方 venv/系统外部文件）
-            try:
-                解析路径.relative_to(系统根)
-            except ValueError:
-                continue
-            if not 依赖路径.is_file():
-                continue
-            try:
-                依赖摘要表[str(依赖路径.relative_to(系统根))] = _文件摘要(依赖路径)
-            except ValueError:
-                依赖摘要表[str(依赖路径)] = _文件摘要(依赖路径)
-        缓存项 = {
-            "成功": True,
-            "测试数": int(依赖清单.get("测试数", 0)),
-            "测试文件摘要": 文件级摘要(测试文件),
-            "环境摘要": 环境摘要,
-            "结构版本": 缓存结构版本,
-            "依赖摘要表": 依赖摘要表,
-            "目录摘要表": _构建目录摘要表(依赖清单.get("目录列表", [])),
-            "目录超限": len(依赖清单.get("目录列表", [])) > 目录摘要上限,
-            "弱依赖标记": bool(
-                依赖清单.get("弱依赖标记")
-                or 依赖清单.get("截断标记")
-                or 依赖清单.get("网络标记")
-                or len(依赖清单.get("目录列表", [])) > 目录摘要上限
-            ),
-            "时间戳": time.time(),
-        }
-        写入文件级缓存(测试文件, 缓存项)
-        新增测试数 += 缓存项["测试数"]
-    return 0, 新增测试数
 
 
 def _目录清单摘要(目录: Path) -> str:
@@ -822,74 +711,6 @@ def _运行单文件子进程(
             }
     finally:
         # 正常结束、失败、超时中断或异常都必须执行 teardown
-        清理结果 = _清理工作包临时根(任务id, 工作目录, 资源清单路径, 路径)
-        结果["临时根目录"] = str(工作目录)
-        结果["工作区标识"] = 工作区标识
-        结果["资源清单路径"] = str(资源清单路径)
-        if not 清理结果["成功"]:
-            结果["清理失败"] = True
-            结果["清理失败原因"] = 清理结果["失败原因"]
-            结果["清理失败证据路径"] = 清理结果["证据路径"]
-            if 结果.get("退出码", 0) == 0:
-                结果["退出码"] = 125
-    return 结果
-
-
-def _运行单文件记录依赖子进程(
-    路径: str, 任务id: str, 序号: int, *, 超时秒: int = 600,
-) -> dict[str, object]:
-    """运行单文件并记录依赖；复用工作包临时根/teardown，解析依赖清单JSON。"""
-    工作区标识 = _生成工作区标识(任务id, 序号)
-    工作目录 = 运行根目录 / 任务id / 工作区标识
-    工作目录.mkdir(parents=True, exist_ok=True)
-    资源清单路径 = 工作目录 / "资源清单.jsonl"
-    环境 = os.environ.copy()
-    环境["TMPDIR"] = str(工作目录)
-    环境["系统底座_验证运行id"] = 任务id
-    环境["系统底座_任务id"] = 任务id
-    环境["系统底座_工作区标识"] = 工作区标识
-    环境["系统底座_资源清单路径"] = str(资源清单路径)
-    结果: dict[str, object] = {
-        "路径": 路径, "退出码": 2, "标准输出": "", "标准错误": "", "依赖清单": None,
-    }
-    进程: subprocess.Popen | None = None
-    try:
-        进程 = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "--内部测试文件记录依赖", 路径],
-            cwd=系统根, env=环境, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, start_new_session=True,
-        )
-        try:
-            标准输出, 标准错误 = 进程.communicate(timeout=超时秒)
-        except subprocess.TimeoutExpired as 错误:
-            _终止进程组(进程)
-            结果 = {
-                "路径": 路径, "退出码": 124,
-                "标准输出": _输出文本(错误.stdout)[-8000:],
-                "标准错误": "单文件验证超过指定时限，已终止（进程组已清理）",
-                "依赖清单": None,
-            }
-        else:
-            输出文本 = _输出文本(标准输出)
-            依赖清单 = None
-            标记 = "依赖清单JSON："
-            # 依赖清单行可能在 stdout 末尾但被 -8000 截断；从完整输出里找最后一个
-            # 以标记开头的行并尝试解析，解析失败则不缓存（宁可重跑不假绿）
-            for 行 in reversed(输出文本.splitlines()):
-                if 标记 in 行:
-                    候选 = 行.split(标记, 1)[1]
-                    try:
-                        依赖清单 = json.loads(候选)
-                    except json.JSONDecodeError:
-                        pass
-                    break
-            结果 = {
-                "路径": 路径, "退出码": 进程.returncode,
-                "标准输出": 输出文本[-8000:],
-                "标准错误": _输出文本(标准错误)[-4000:],
-                "依赖清单": 依赖清单,
-            }
-    finally:
         清理结果 = _清理工作包临时根(任务id, 工作目录, 资源清单路径, 路径)
         结果["临时根目录"] = str(工作目录)
         结果["工作区标识"] = 工作区标识
@@ -1653,20 +1474,27 @@ if __name__ == "__main__":
     参数解析器.add_argument("--继续", dest="继续运行", action="store_true", help="从失败断点继续，证据失效时自动回退")
     参数解析器.add_argument("--并行阶段", dest="并行阶段", action="store_true", help="指定阶段并行执行（仅限常规非敏感阶段，与--继续/--测试文件互斥）")
     参数解析器.add_argument("--内部测试文件", help=argparse.SUPPRESS)
-    参数解析器.add_argument("--内部测试文件记录依赖", help=argparse.SUPPRESS)
     参数解析器.add_argument("--内部阶段", help=argparse.SUPPRESS)
     参数 = 参数解析器.parse_args()
-    if 参数.内部测试文件记录依赖:
-        raise SystemExit(执行单文件记录依赖(参数.内部测试文件记录依赖))
     if 参数.内部测试文件:
         raise SystemExit(执行测试套件(
             加载指定测试文件([参数.内部测试文件]), "单文件",
         ))
     if 参数.内部阶段:
         raise SystemExit(执行内部阶段子进程(参数.内部阶段))
-    raise SystemExit(主函数(
-        范围=参数.范围, 指定测试文件=参数.测试文件,
-        指定阶段=参数.阶段, 并行数=参数.并行数,
-        强制慢速=参数.强制慢速, 继续运行=参数.继续运行,
-        并行阶段=参数.并行阶段,
-    ))
+    # 全量验证互斥（AGENTS.md"已有全量运行时禁止重复启动"代码化）：
+    # 常规/慢速/全部 范围持 flock 锁，防并发全量抢端口/数据库/发布指针。
+    # 内部子进程与工作包（--测试文件）无冲突不锁。
+    if not 参数.测试文件:
+        if not 获取验证锁():
+            print("验证锁门禁失败：已有全量验证正在运行（工程缓存/验证锁.lock），禁止重复启动")
+            raise SystemExit(1)
+    try:
+        raise SystemExit(主函数(
+            范围=参数.范围, 指定测试文件=参数.测试文件,
+            指定阶段=参数.阶段, 并行数=参数.并行数,
+            强制慢速=参数.强制慢速, 继续运行=参数.继续运行,
+            并行阶段=参数.并行阶段,
+        ))
+    finally:
+        释放验证锁()
