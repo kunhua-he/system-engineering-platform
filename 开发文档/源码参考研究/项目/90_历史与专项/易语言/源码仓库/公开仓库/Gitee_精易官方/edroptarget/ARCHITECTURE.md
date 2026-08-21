@@ -1,0 +1,311 @@
+# edroptarget 架构审计
+
+## 1. 文档边界与证据等级
+
+- 本文是本项目根目录唯一架构文档；本轮只新增/维护本文件，未修改源码、工程文件或 Git 历史。
+- 目标根：`/Users/hekunhua/Documents/Agent/github 源码参考/90_历史与专项/易语言/源码仓库/公开仓库/Gitee_精易官方/edroptarget`
+- 源码证据来自现场读取的 23 个 Git 跟踪文件（6 个 `.cpp`、7 个解决方案/工程/过滤/用户配置文件、1 个 `.def` 导出定义、9 个头文件）；本次另读取了本文件作为既有文档基线。项目没有 `README.md`、`AGENTS.md`、`CLAUDE.md`、测试目录或旧 `细探-*.md`。
+- 结论分为：
+- **已实现**：源码中确实有定义，并能从静态代码确认其行为；这里通常只表示 ABI 登记、表驱动路由或固定返回值存在。
+- **仅声明/模板**：接口、元数据或框架骨架存在，但没有完成业务动作；不能据此声称功能可用。
+  - **未验证**：本轮未安装依赖、未构建、未启动 Windows/易语言运行环境，不能把可编译、可加载、可拖放运行当作已验证事实。
+- 专属 MCP `system_engineering_toolkit` 的 `project_context` 返回的是系统工程平台根目录，`codegraph_explore` 查询 `edroptarget` 返回 `No relevant code found`；两者均未绑定本目标，因此不把该 MCP 输出冒充为目标代码证据。目标目录没有 `.codegraph/`，本轮按真实文件进行人工取证。
+
+## 2. 项目定位
+
+`edroptarget` 是一个面向易语言的 Windows 拖放支持库模板/骨架，工程同时声明：
+
+1. 一个动态库支持库目标，输出目标扩展名在 Win32 Debug/Release 配置中设置为 `.fne`，并通过 `Source_edroptarget.def` 导出固定入口 `GetNewInf`。
+2. 一个静态库目标 `edroptarget_static`，通过 `__E_STATIC_LIB` 预处理分支提供静态编译所需的命令名信息路径。
+3. 一个易语言自定义窗口/组件数据类型 `DropTarget`（中文名“拖放对象”），声明四类拖放事件、十二项属性及组件交互接口。
+4. 两个对象命令：`RegisterDropTarget` 与 `UnRegisterDropTarget`。
+
+重要边界：当前源码已完成易语言支持库 ABI 的元数据登记、通知分派入口、接口选择器和固定模板返回值，但拖放注册、撤销、组件创建、属性持久化、拖放消息接收、数据对象解析、事件激发和资源释放逻辑均未完成。
+
+## 3. 总体流程图
+
+```text
+易语言 IDE / 编译器 / 运行时
+          |
+          | 加载 .fne 或链接静态库
+          v
++------------------------------+
+| GetNewInf()                  |  <-- Source_edroptarget.def 导出
+| 返回 g_LibInfo...            |
++---------------+--------------+
+                |
+                +--> 支持库元数据
+                |      |- 1 个 DropTarget 数据类型
+                |      |- 2 个对象命令
+                |      |- 4 个事件 / 12 个属性
+                |      `- 版本、GUID、依赖 ABI
+                |
+                +--> edroptarget_ProcessNotifyLib(...)
+                |      |- NL_GET_CMD_FUNC_NAMES      -> 命令名字表
+                |      |- NL_GET_NOTIFY_LIB_FUNC_NAME -> 通知函数名
+                |      |- NL_GET_DEPENDENT_LIBS      -> "\0\0"
+                |      |- NL_SYS_NOTIFY_FUNCTION     -> fnshare 转发
+                |      `- 其它通知                       -> 当前多为空操作
+                |
+                +--> 命令元数据 g_cmdInfo...
+                |      |
+                |      +--> RegisterDropTarget_0...    [函数体空]
+                |      `--> UnRegisterDropTarget_1...   [函数体空]
+                |
+                `--> DropTarget 组件接口
+                       |
+                       +--> ITF_CREATE_UNIT       -> ControlCreate [返回 0]
+                       +--> 属性读写/更新接口      -> 模板返回值/空数据
+                       +--> ITF_GET_NOTIFY_RECEIVER -> PropNotifyReceiver
+                        `--> 运行时拖放消息与事件激发逻辑 [未实现]
+```
+
+## 4. 目录与真实文件地图
+
+```text
+edroptarget/
+├── edroptarget.sln                         # VS solution；动态库 + 静态库
+├── edroptarget.vcxproj                     # 动态库工程
+├── edroptarget_static/edroptarget_static.vcxproj # 静态库工程
+├── Source_edroptarget.def                  # 导出 GetNewInf
+├── include_edroptarget_header.h            # 统一包含与命令函数声明宏
+├── edroptarget_cmd_typedef.h               # 命令宏清单、名称拼接
+├── edroptarget_cmdDef.cpp                  # 两个命令实现入口（当前空行为）
+├── edroptarget_cmdInfo.cpp                 # 参数与命令展示元数据
+├── edroptarget_const.cpp                   # 常量表（当前数量 0）
+├── edroptarget_dtType.cpp                  # DropTarget 类型、属性、事件、组件接口
+├── edroptarget_dllMain.cpp                 # DllMain、LIB_INFO、通知分派、导出配套
+├── elib/
+│   ├── lib2.h                              # 易语言支持库 ABI 基础类型/结构/通知常量
+│   ├── fnshare.h/.cpp                      # 通知回调共享层与宏模板
+│   ├── untshare.h                          # 组件元数据模板宏
+│   ├── krnllib.h                           # 核心库相关声明
+│   ├── lang.h                               # 语言版本声明
+│   ├── mtypes.h                             # 数据类型/平台适配声明
+│   └── PublicIDEFunctions.h                 # IDE 辅助接口常量与参数结构
+└── ARCHITECTURE.md                          # 根目录架构审计文档；本轮唯一修改文件
+```
+
+项目工程实际编译源文件为：`elib/fnshare.cpp`、`edroptarget_cmdDef.cpp`、`edroptarget_const.cpp`、`edroptarget_dllMain.cpp`、`edroptarget_dtType.cpp`、`edroptarget_cmdInfo.cpp`。静态工程通过 `..\` 引用同一批源码，不是独立实现。
+
+## 5. 构建与目标边界（仅读取工程配置，未执行）
+
+| 目标 | 工程类型 | 配置 | 关键定义/工具链 |
+|---|---|---|---|
+| `edroptarget` | `DynamicLibrary` | Debug/Release + Win32/x64 | VS `v141`、Windows SDK `10.0.15063.0`、Unicode；Win32 配置定义 `__E_FNENAME=edroptarget` |
+| `edroptarget_static` | `StaticLibrary` | Debug/Release + Win32/x64 | Win32 Debug/Release 定义 `__E_STATIC_LIB` 与 `__E_FNENAME=edroptarget`；静态工程复用上层源文件 |
+| Solution | `edroptarget.sln` | Debug/Release + x86/x64 | x86 映射到 Win32；包含上述两个 Project |
+
+动态库 Win32 Debug/Release 的链接器使用 `Source_edroptarget.def`，其内容为：`EXPORTS` 下导出 `GetNewInf`。x64 配置未显式设置该 `.def` 文件，是否能按当前工程配置产生符合易语言加载要求的产物，本轮未验证。静态库 x64 配置启用了 `PrecompiledHeader=Use`，仓库中没有 `pch.h`，是否影响实际构建同样未验证。
+
+源码没有第三方包管理文件、外部库文件或运行时数据目录。`elib/lib2.h` 直接依赖 Windows SDK 的 `<windows.h>`，并包含 `<stdio.h>`、`<math.h>`、`<assert.h>`；其余 `elib` 是随仓库提交的易语言 SDK/ABI 头文件。`m_szzDependFiles` 在 `edroptarget_dllMain.cpp` 中设为 `NULL`，静态通知 `NL_GET_DEPENDENT_LIBS` 返回空双零串 `"\0\0"`。
+
+## 6. 支持库入口、元数据与通知链
+
+### 6.1 DLL 入口与支持库信息
+
+`Source_edroptarget.def` 只公开 `GetNewInf`。`edroptarget_dllMain.cpp` 中：
+
+- `DllMain` 定义了 `DLL_PROCESS_ATTACH`、`DLL_PROCESS_DETACH`、`DLL_THREAD_ATTACH`、`DLL_THREAD_DETACH` 分支；各分支没有动作，最终固定返回 `TRUE`。这是已实现的加载入口骨架，不代表拖放初始化已经完成。
+- `GetNewInf()` 返回静态 `g_LibInfo_edroptarget_global_var` 地址。
+- `LIB_INFO` 的静态登记值：
+  - `LIB_FORMAT_VER`；GUID 为 `{9DA96BF9CEBD45c5BFCF94CBE61671F5}`；版本 `2.0.0`。
+  - 要求易语言系统 `3.0`，核心支持库 `3.8`。
+  - 名称 `拖放支持库`；语言 `__GBK_LANG_VER`；系统标志 `_LIB_OS(OS_ALL)`。
+  - 说明为“本支持库实现了对文本，超文本，URL，文件等对象的拖放的支持”。这段说明是元数据声明，不能替代实现证据。
+  - 作者、地址、联系方式和主页均硬编码在 `LIB_INFO`；无 AddIn、SuperTemplate、额外依赖文件。
+  - `m_nDataTypeCount` 指向 `g_DataType_edroptarget_global_var_count`；命令数量指向 `g_cmdInfo_edroptarget_global_var_count`；命令函数指针指向 `g_cmdInfo_edroptarget_global_var_fun`。
+  - 常量数量为 0，类别数量为 0。
+
+### 6.2 通知函数
+
+`edroptarget_ProcessNotifyLib_edroptarget` 已定义并按消息分派：
+
+- `NL_GET_CMD_FUNC_NAMES`：返回静态 `g_cmdNamesedroptarget`。
+- `NL_GET_NOTIFY_LIB_FUNC_NAME`：返回文本 `edroptarget_ProcessNotifyLib_edroptarget`。
+- `NL_GET_DEPENDENT_LIBS`：返回 `"\0\0"`。
+- `NL_SYS_NOTIFY_FUNCTION`：调用 `ProcessNotifyLib`，将系统通知函数指针交给 `elib/fnshare.cpp`。
+- `NL_FREE_LIB_DATA`、`NL_UNLOAD_FROM_IDE`、`NR_DELAY_FREE`、`NL_IDE_READY`、`NL_RIGHT_POPUP_MENU_SHOW`、`NL_ADD_NEW_ELEMENT`：当前分支为空操作或直接保留默认结果。
+- 未识别消息返回 `NR_ERR`；其它已识别消息通常返回 `NR_OK`。
+
+`elib/fnshare.cpp` 中 `ProcessNotifyLib` 会保存 `PFN_NOTIFY_SYS`，首次收到 `NL_SYS_NOTIFY_FUNCTION` 时调用 `NotifySys(NRS_GET_PRG_TYPE, 0, 0)` 更新调试/程序类型状态；同时支持可选的 `SetUserSysNotify` 回调。该共享层是 ABI 通知桥，不包含拖放业务。
+
+### 6.3 静态库命名机制
+
+`edroptarget_cmd_typedef.h` 的 `EDROPTARGET_NAME` 宏把 `__E_FNENAME`、英文命令名和序号拼接为符号，例如：
+
+- `edroptarget_RegisterDropTarget_0_edroptarget`
+- `edroptarget_UnRegisterDropTarget_1_edroptarget`
+
+`include_edroptarget_header.h` 使用 `EDROPTARGET_DEF_CMD` 展开命令函数声明；`edroptarget_dllMain.cpp` 再展开函数指针数组和静态命令名数组。该机制已实现为宏/表驱动的 ABI 适配，但不等于命令行为已实现。
+
+## 7. 命令 API 与真实行为
+
+命令清单来自 `edroptarget_cmd_typedef.h`，命令展示信息来自 `edroptarget_cmdInfo.cpp`：
+
+| 序号 | 中文名 / 英文名 | 返回类型 | 参数 | 平台/状态 | 真实函数行为 |
+|---:|---|---|---|---|---|
+| 0 | `注册拖放控件` / `RegisterDropTarget` | `SDT_BOOL` | 1 个 `SDT_INT`：`接收拖放控件句柄` | `_CMD_OS(__OS_WIN)`，简单级别 | 读取 `pArgInf[1].m_int` 到局部 `arg1`，之后无操作；没有注册、错误处理或 `pRetData` 写入 |
+| 1 | `撤消拖放控件` / `UnRegisterDropTarget` | `_SDT_NULL` | 1 个 `SDT_INT`：`接收拖放控件句柄` | `_CMD_OS(__OS_WIN)`，简单级别 | 读取 `pArgInf[1].m_int` 到局部 `arg1`，之后无操作 |
+
+参数表只有一项 `ARG_INFO`，两个命令通过 `g_argumentInfo_edroptarget_global_var + 0` 复用；命令定义要求每个命令一个参数。函数体没有检查 `nArgCount`，也没有空指针检查。命令元数据是**已实现**，命令业务效果是**未实现**。
+
+## 8. DropTarget 数据模型
+
+### 8.1 类型登记
+
+`g_DataType_edroptarget_global_var` 登记一个 `LIB_DATA_TYPE_INFO`：
+
+- 中文名：`拖放对象`；英文名：`DropTarget`。
+- 类型状态：`_DT_OS(__OS_WIN) | LDT_WIN_UNIT | LDT_IS_FUNCTION_PROVIDER`，即 Windows 窗口单元且标记为功能提供者。
+- 命令索引表 `s_dtCmdIndexedroptarget_DropTarget_static_var_00` 为 `{0, 1}`，对应上面的两个对象命令。
+- 事件数组 4 项，属性数组 12 项，接口入口为 `edroptarget_GetInterface_DropTarget`。
+- 类型说明声明：支持文本、超文本、URL、文件拖放；一个实例只能注册一个其它控件。该说明当前只有契约/产品意图证据，因为注册逻辑没有实现。
+
+### 8.2 属性
+
+前 8 项是易语言窗口单元固定属性：
+
+| 索引 | 中文名 | 英文名 | 类型 |
+|---:|---|---|---|
+| 0 | 左边 | `left` | `UD_INT` |
+| 1 | 顶边 | `top` | `UD_INT` |
+| 2 | 宽度 | `width` | `UD_INT` |
+| 3 | 高度 | `height` | `UD_INT` |
+| 4 | 标记 | `tag` | `UD_TEXT` |
+| 5 | 可视 | `visible` | `UD_BOOL` |
+| 6 | 禁止 | `disable` | `UD_BOOL` |
+| 7 | 鼠标指针 | `MousePointer` | `UD_CURSOR` |
+
+组件自定义属性从组件回调使用的 0 基索引开始：
+
+| 组件索引 | 中文名 | 英文名 | 类型 | 说明 |
+|---:|---|---|---|---|
+| 0 | 接收文本 | `Text` | `UD_BOOL` | 是否接收文本拖放 |
+| 1 | 接收超文本 | `Html` | `UD_BOOL` | 是否接收超文本拖放 |
+| 2 | 接收URL | `Url` | `UD_BOOL` | 是否接收 URL 拖放 |
+| 3 | 接收文件 | `File` | `UD_BOOL` | 是否接收文件拖放 |
+
+源码没有默认值数组、属性状态存储、序列化缓冲区或实例对象结构；`UNIT_PROPERTY` 只是设计器属性描述。
+
+### 8.3 事件
+
+事件参数表 `s_eventArgInfo_edroptarget_DropTarget` 有 4 个文本参数，每个事件使用其中一项：
+
+| 事件索引 | 事件名 | 触发契约 | 参数 |
+|---:|---|---|---|
+| 0 | 得到文本 | 文本拖放且 `接收文本` 为真 | `接收到的文本`，`SDT_TEXT` |
+| 1 | 得到超文本 | 超文本拖放且 `接收超文本` 为真 | `接收到的超文本`，`SDT_TEXT` |
+| 2 | 得到URL | URL 拖放且 `接收URL` 为真 | `接收到的URL`，`SDT_TEXT` |
+| 3 | 得到文件 | 文件拖放且 `接收文件` 为真 | `接收到的文件路径`，`SDT_TEXT`；多文件以“#换行符”分隔 |
+
+四项事件都使用 `_EVENT_OS(OS_ALL) | EV_IS_VER2`，返回类型 `_SDT_NULL`。事件**仅登记为元数据**；仓库没有窗口消息处理、OLE/Windows 拖放接口、数据格式解析或事件派发代码，因此事件能否实际触发未验证且按源码判断为未实现。
+
+## 9. 组件接口与调用链
+
+`edroptarget_GetInterface_DropTarget(INT nInterfaceNO)` 已实现接口号到回调的静态映射：
+
+| 接口号 | 回调 | 静态行为 |
+|---|---|---|
+| `ITF_CREATE_UNIT` | `edroptarget_ControlCreate_DropTarget` | 函数返回 `HUNIT hUnit = 0`；源码有 `TODO 在这里创建组件并返回` |
+| `ITF_PROPERTY_UPDATE_UI` | `edroptarget_PropUpDate_DropTarget` | 无论属性索引均返回 `TRUE` |
+| `ITF_DLG_INIT_CUSTOMIZE_DATA` | `edroptarget_PropPopDlg_DropTarget` | 将 `*pblModified` 设为 `false` 后返回 `FALSE` |
+| `ITF_NOTIFY_PROPERTY_CHANGED` | `edroptarget_PropChanged_DropTarget` | 只对索引 0 进入空分支，最终返回 `false`；其它索引直接返回 `false` |
+| `ITF_GET_ALL_PROPERTY_DATA` | `edroptarget_PropGetDataAll_DropTarget` | 返回 `0`，没有分配/序列化属性块 |
+| `ITF_GET_PROPERTY_DATA` | `edroptarget_PropGetData_DropTarget` | 索引 0 空分支后返回 `true`，但没有填充 `pPropertyVaule`；其它索引返回 `false` |
+| `ITF_IS_NEED_THIS_KEY` | `edroptarget_PropKetInfo_DropTarget` | 固定返回 `FALSE` |
+| `ITF_GET_NOTIFY_RECEIVER` | `edroptarget_PropNotifyReceiver_DropTarget` | 识别 `NU_GET_CREATE_SIZE_IN_DESIGNER`，但不写入宽高且返回 0；其它消息返回 0 |
+| `ITF_GET_ICON_PROPERTY_DATA`、`ITF_LANG_CNV`、`ITF_MSG_FILTER` | 无 | `break` 后统一返回 `NULL` |
+| 其它 | 无 | `NULL` |
+
+因此，接口选择器本身是**已实现**，回调路由是**已声明并有模板定义**，但组件生命周期、属性数据与设计器/运行时的实际交互仍是**未实现**。`PropPopDlg_DropTarget` 直接解引用 `pblModified`，在调用方传入空指针时存在风险；是否允许空指针由 ABI 注释约定，当前回调未自行防护。
+
+## 10. 专项审计结论
+
+### 10.1 拖放、窗口与消息
+
+- **拖放**：全文没有 `RegisterDragDrop`、`RevokeDragDrop`、`IDropTarget`、`IDataObject`、`DragAcceptFiles`、`WM_DROPFILES` 或 `DoDragDrop`。`RegisterDropTarget`/`UnRegisterDropTarget` 只读取句柄参数，函数体没有注册或撤销动作。
+- **窗口**：`DropTarget` 被登记为 `LDT_WIN_UNIT | LDT_IS_FUNCTION_PROVIDER`，但 `ControlCreate_DropTarget` 固定返回 `HUNIT hUnit = 0`；没有创建 `HWND`、保存父窗口/控件句柄、子类化窗口或绑定窗口过程。
+- **消息**：`ITF_MSG_FILTER` 未返回回调；`edroptarget_ProcessNotifyLib_edroptarget` 只处理支持库级通知，不处理 Windows 窗口消息。因而没有可追踪的拖入、拖过、拖放完成消息路径。
+
+### 10.2 数据对象、格式与回调
+
+- **数据对象**：没有 `IDataObject` 查询、剪贴板格式枚举、`CF_TEXT`/HTML/URL/文件格式读取，也没有 Unicode/ANSI 转换或多文件列表解析。四类事件参数只是 `SDT_TEXT` 元数据。
+- **回调**：`edroptarget_GetInterface_DropTarget` 能按接口号返回若干函数地址；这证明的是 ABI 路由，不证明回调有业务效果。属性回调大多返回固定值，`PropGetData` 在索引 0 返回 `TRUE` 但不填充值，属于模板行为。
+- **事件**：没有构造 `EVENT_NOTIFY`/`EVENT_NOTIFY2`、调用宿主通知函数或填充事件参数的代码；“URL 触发哪些事件”等说明仅是产品契约文字，当前无法由实现验证。
+
+### 10.3 句柄、线程与释放
+
+- **句柄**：源码声明并传递 `HWND`、`HUNIT`、`HGLOBAL` 等 ABI 类型，但没有实例表、句柄关联、重复注册规则、失效句柄检测或窗口销毁回调。`HUNIT` 的实际值始终为 0。
+- **线程**：`DllMain` 覆盖四个进程/线程加载通知分支，但各分支为空；没有线程创建、消息循环、线程局部状态或同步原语。`fnshare.cpp` 的通知函数指针和调试状态是进程级静态变量，未提供并发保护。
+- **释放**：`NL_FREE_LIB_DATA` 与 `DLL_PROCESS_DETACH` 均为空；未见 `RevokeDragDrop`、`Release`、`GlobalFree`、窗口销毁、实例表清理或回调解绑。`PropGetDataAll` 不分配数据并返回 0，因此没有可验证的属性块所有权闭环。
+
+### 10.4 ABI 与构建配置
+
+- **ABI**：动态库只通过 `.def` 导出 `GetNewInf`；命令通过宏拼接的函数名和函数指针表接入，静态库通过 `__E_STATIC_LIB` 复用相同源码。`MDATA_INF` 使用 `#pragma pack(1)`，`HUNIT` 为 `DWORD`，这些布局依赖 Windows/易语言 ABI，不能在非目标环境中推断兼容性。
+- **配置差异**：动态库 Win32 Debug/Release 定义 `__E_FNENAME=edroptarget`、输出 `.fne` 并使用 `.def`；动态库 x64 配置没有显式定义 `__E_FNENAME`、没有 `TargetExt` 和 `ModuleDefinitionFile`。静态库 Win32 定义 `__E_STATIC_LIB` 和 `__E_FNENAME`，但 x64 配置未定义这两个宏且启用 `PrecompiledHeader=Use`，仓库没有 `pch.h`。这些配置均未实际构建验证。
+
+## 11. 依赖与边界
+
+### 11.1 内部依赖
+
+```text
+include_edroptarget_header.h
+  ├── elib/lib2.h
+  │     ├── Windows SDK windows.h / C 标准头
+  │     ├── 易语言 ABI：LIB_INFO、CMD_INFO、LIB_DATA_TYPE_INFO
+  │     ├── 组件 ABI：HUNIT、PFN_INTERFACE、属性/事件结构
+  │     └── 系统通知与返回码
+  ├── elib/lang.h
+  ├── elib/krnllib.h
+  └── edroptarget_cmd_typedef.h
+        └── 命令元数据宏 / 符号命名宏
+
+edroptarget_dllMain.cpp
+  └── elib/fnshare.h -> elib/lib2.h
+
+edroptarget_dtType.cpp
+  └── include_edroptarget_header.h
+```
+
+### 11.2 外部边界
+
+- 操作系统边界：Windows；工程显式使用 Win32/x64、Windows SDK、WinAPI 类型（`HWND`、`HMODULE`、`HGLOBAL`、`HMENU`、`LPTSTR`）。
+- 宿主边界：易语言 IDE/编译器/运行时通过 `GetNewInf`、`PFN_NOTIFY_LIB`、`PFN_EXECUTE_CMD`、`PFN_GET_INTERFACE` 等 ABI 交互。
+- 拖放边界：当前只在文档、属性、事件契约中出现，未看到 `RegisterDragDrop`、`RevokeDragDrop`、`IDropTarget`、`IDataObject`、`WM_DROPFILES` 或格式枚举实现；不能推断其实际采用哪一种 Windows 拖放机制。
+- 动态链接边界：DLL 导出仅明确登记 `GetNewInf`；命令实现通过函数指针表而非 `.def` 逐个导出。
+- 静态链接边界：`__E_STATIC_LIB` 分支保留命令实现名与依赖名询问入口，但是否与真实易语言静态编译器完全兼容未验证。
+
+## 12. 测试、验证与未确认项
+
+### 已确认（静态现场证据）
+
+- Git 工作树在写入本文前为干净状态；本地 `master` 提交：`36220b12810ae35fe22777a7cdd6bfe606469028`，提交时间 `2022-12-19T16:04:54+08:00`，提交说明“初始化仓库”。
+- `origin`：`https://gitee.com/JYtechnology/edroptarget.git`；现场 `git ls-remote origin HEAD refs/heads/master` 返回同一提交 `36220b12810ae35fe22777a7cdd6bfe606469028`，未发现本地落后远程。
+- Git 跟踪文件数为 23；目标自身 `.git` 存在。其父目录 `Gitee_精易官方` 现场扫描到 76 个 `.git` 目录，`公开仓库` 扫描到 86 个；这些是目录盘点事实，不改变本项目边界。
+- 解决方案确实包含动态库与静态库两个项目；工程列出的源码与头文件路径均在仓库中存在。
+- 命令、类型、属性、事件、通知和 `GetNewInf` 的源码定义已人工读取。
+
+### 未执行（按任务边界明确不执行）
+
+- 未安装 Visual Studio、Windows SDK 或其它依赖。
+- 未构建 Debug/Release、Win32/x64、动态库或静态库。
+- 未启动 DLL、易语言 IDE、示例程序或服务。
+- 未在 Windows 宿主上验证 `.fne` 加载、静态链接、设计器拖放、属性保存、命令返回值或四类事件触发。
+- 未运行测试：仓库未提供测试工程、测试脚本或测试用例。
+- 未执行远程 `fetch`/`pull`，因为远程 HEAD 与本地基线相同。
+
+### 后续复核重点
+
+1. 先补齐 `ControlCreate` 与实例状态，再决定实际使用 OLE `IDropTarget`、`WM_DROPFILES` 或其它拖放协议。
+2. 实现 `RegisterDropTarget`/`UnRegisterDropTarget` 的控件句柄生命周期、重复注册规则和失败返回值。
+3. 实现 12 项属性的默认值、设计时持久化、运行时实时读取与合法性校验。
+4. 实现文本/HTML/URL/文件格式解析和事件派发，明确 URL 同时触发 HTML/URL 的契约是否保持。
+5. 为 DLL 导出、静态库命名、Win32/x64 工程配置分别建立 Windows/易语言环境验证。
+6. 修复或确认 `pblModified` 可空约定、`PropGetData` 空数据返回 `true`、`PropUpDate` 对所有索引无条件返回 `TRUE` 等模板行为。
+
+## 13. 本轮结论
+
+`edroptarget` 当前是“易语言拖放支持库接口模板”，不是可据源码证明已经可用的拖放实现。可信的已实现部分是：Visual Studio 双目标工程描述、易语言支持库 ABI 元数据表、命令/事件/属性登记、DLL `GetNewInf` 入口、通知分派骨架、组件接口选择器和静态命令名表。核心业务（真实拖放、控件创建、注册/撤销、属性存储、事件触发）在源码中仍为空实现或模板返回值，应标记为**未实现/未验证**，不得依据 `LIB_INFO` 的说明文字反推功能已经完成。
+
+旧细探文件本轮未发现，无需删除或吸收；后续只维护本 `ARCHITECTURE.md`。
