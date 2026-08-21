@@ -12,10 +12,10 @@
 | 本地根目录 | `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/FlagEmbedding` |
 | 上游仓库 | `https://github.com/FlagOpen/FlagEmbedding.git` |
 | 许可证 | 仓库代码标注 MIT；模型权重、Hugging Face 远程代码和数据集须按各自许可证另行核对 |
-| 本地基线 | `7ed43d67ec03fbe5c31c0992dbfa941fb1860549`，`2026-04-22T23:57:32+08:00`，`Merge pull request #1575 from hanhainebula/master` |
-| 远程基线 | `292ad785dea715f8cd509b8177f6e48618e6b137`，`2026-08-14T14:16:02+08:00`，`Update README.md` |
-| 新鲜度 | 本地 `HEAD...origin/master` 为 `0/2`：远程领先 2 个提交；已通过 `127.0.0.1:4780` 在 `/tmp/FlagEmbedding-remote-snapshot` 建立独立快照核对 |
-| 远程差异 | `git diff HEAD..origin/master --stat` 显示仅 `README.md`、`README_zh.md` 发生文档变更；抽查 `setup.py`、两个 `model_mapping.py` 与独立快照一致。远程 `README.md` 新增资助说明，不改变运行时架构。 |
+| 本地基线 | `292ad785dea715f8cd509b8177f6e48618e6b137`，`2026-08-14T14:16:02+08:00`，`Update README.md` |
+| 远程基线 | 与本地相同：`292ad785dea715f8cd509b8177f6e48618e6b137` |
+| 新鲜度 | 本地 `HEAD...origin/master` 为 `0/0`，已执行 `git pull --ff-only origin master` 核对同步；工作树仅有未跟踪研究输入 `.codegraph/` 与本文件。 |
+| 远程差异 | 当前没有待同步提交；运行时架构结论以该提交源码为准。 |
 | 归档留痕 | 已存在的 `细探-FlagEmbedding.md` 作为前置细探输入，当前核对不删除、不改写；有效结论已吸收进本文件。 |
 
 ## 2. 项目定位
@@ -264,7 +264,7 @@ python scripts/split_data_by_length.py ...
 
 ### 11.2 版本与源码证据边界
 
-- 代码事实以本地 `HEAD=7ed43d67ec03fbe5c31c0992dbfa941fb1860549` 为准；远程领先 2 个提交且已知仅 README 文档差异的结论沿用第 1 节，未把远程声明当作本地实现。
+- 代码事实以本地 `HEAD=292ad785dea715f8cd509b8177f6e48618e6b137` 为准，当前与 `origin/master` 同步。
 - 细探中出现的 `flag_embedding/` 是非当前目录名的旁路线索；当前可安装包实际为 `FlagEmbedding/`，已以 `setup.py:14` 的 `find_packages()` 和真实目录为准。
 - 当前核对只修改本文件；未修改源码、测试、配置、依赖、权重、缓存或 Git 记录。
 
@@ -431,11 +431,10 @@ python -m FlagEmbedding.finetune.<family>.<mode>
 
 | 命令 | 目的 | 退出码/结果 |
 |---|---|---|
-| `git status --short --branch && git rev-parse HEAD && git log -1 --format='%H%n%cI%n%s' && git diff --stat` | 记录版本与工作树边界 | `0`；`master...origin/master [behind 2]`；仅 `ARCHITECTURE.md`、`细探-FlagEmbedding.md` 为未跟踪输入 |
+| `git status --short --branch && git rev-parse HEAD && git log -1 --format='%H%n%cI%n%s' && git diff --stat` | 记录版本与工作树边界 | `0`；`master...origin/master` 已同步；未修改源码，研究输入为 `.codegraph/` 与本文件 |
 | `shasum -a 256 '细探-FlagEmbedding.md'` | 固定旧细探基线，防止误改 | `0`；基线 `17ce0e238c0a2b58e1afab870130256ffa494aef996f8f360b572e4c32d65a04` |
-| `codegraph_explore`（专属 MCP） | 读取代码图可信度与最近证据 | MCP 返回：项目无 `.codegraph/`，未建立代码图；不能据此声称有图证据 |
-| `project_context`（专属 MCP） | 核对项目绑定 | 首次连续 3 次不可达；恢复后返回 `MCP实例=project_toolkit`，但错误绑定 `~/Documents/Agent/PHP/华世王镞_v3`，不是目标根；按错绑如实记录，未冒充成功绑定 |
-| `verify_and_record`（专属 MCP） | 收口验证门禁 | `git diff --check` 返回退出码 `0`、判定“通过”、验证类型“弱”；但元数据仍是错绑项目且提示 `MCP_WORK_CONTEXT_MISMATCH`，故只能记录为 MCP 弱验证，不能作为 FlagEmbedding 目标证据 |
+| 项目本地 CodeGraph | 读取源码关系与索引状态 | `.codegraph/` 已建立；546 files、7,959 nodes、15,251 edges，SQLite WAL，`Index is up to date` |
+| MCP 边界 | 本轮按用户授权未使用 MCP | 不引用其他项目 MCP、代码图或验证记录；源码证据来自目标工作树只读 Git/Search/CodeGraph |
 | `AST` 静态解析 | 解析包源码和测试源码 | 退出码 `0`；输出 `AST_OK files=158` |
 | 文档/旧细探保留断言 | 检查新增章节、流程图和旧文件非空 | 退出码 `0`；输出 `DOC_OK old_detail_preserved` |
 | `pytest --collect-only -q -p no:cacheprovider tests/test_imports_v5.py` | 尝试测试收集 | 环境无 `pytest`，shell 报 `/bin/bash: pytest: command not found`；该项未通过、未计入成功 |
@@ -473,7 +472,7 @@ git diff --name-only -- ARCHITECTURE.md "细探-FlagEmbedding.md"
 7. 未验证评测下载工具在断线、超时、磁盘满、部分文件、重复运行下的原子性和清理。
 8. `evaluate_recall_cap()` 在相关文档数为 0 时存在除零风险（`abc/evaluation/utils.py:73-88`）；`search()` 对空 query 结果的 `np.concatenate` 也没有显式空集契约（`:214-228`）。这些是源码风险记录，不是当前核对修改项。
 9. `FlagAutoModel` 的 `model_name` 依赖 basename；同名本地目录或 checkpoint 可能路由到同一实现，外层必须记录完整 path/revision。
-10. 当前核对专属 MCP `system_engineering_toolkit` 的 `project_context` 未成功返回，代码图明确报告无索引；因此本文件的代码事实证据来自直接读取当前源码，不能声称 MCP 绑定或代码图验证成功。
+10. 本轮按用户授权未使用 MCP；代码事实证据来自目标工作树直接读取、Git 和项目本地 CodeGraph，索引状态为最新。不能把静态索引或文档差异检查误报为模型、训练、评测、GPU 或生产验证。
 
 ## 21. 证据索引与维护规则
 
@@ -492,7 +491,7 @@ git diff --name-only -- ARCHITECTURE.md "细探-FlagEmbedding.md"
 
 ## 22. 后续：通用底座映射总览
 
-本节不是把 FlagEmbedding 直接搬进平台，而是把当前源码已经稳定表达的能力拆成“文本支持库、向量支持库、检索模块、模型提供者、运行核心、统一网关”六个边界，逐项给出吸收、升级、隔离或待核裁决。事实基线仍为本地源码；前一轮 `project_context` 返回的是 `~/Documents/Agent/PHP/华世王镞_v3` 的错误绑定，当前核对不采用其代码图、任务记忆或验证结论，以下仅使用目标目录的本地静态读取，验证等级按弱验证处理。
+本节不是把 FlagEmbedding 直接搬进平台，而是把当前源码已经稳定表达的能力拆成“文本支持库、向量支持库、检索模块、模型提供者、运行核心、统一网关”六个边界，逐项给出吸收、升级、隔离或待核裁决。事实基线仍为本地源码；本轮按用户授权未使用 MCP，以下仅使用目标目录的本地静态读取、Git 与 CodeGraph，验证等级按静态研究处理。
 
 ### 22.1 目标单链路
 
@@ -867,4 +866,4 @@ L0/L1 仅支持“源码存在、静态映射成立”；L2 需要真实 import/
 | 现有推理测试 | `tests/test_infer_embedder_basic.py` 与 `test_infer_reranker_basic.py` 会联网下载 `BAAI/*`；当前未安装依赖、未运行 | **测试存在，L3 未通过/未宣称** |
 
 本节不启动实现、不修改源码、不安装依赖、不下载权重、不启动服务、不删除旧细探；后续若要生产化，必须在独立 provider/运行核心中补请求级超时、取消、监督、缓存事务、分数版本和资源残留验证。
-- 复核时应保持“目标目录本地静态读取、错误 project_context 只记环境问题”的证据边界；不能引用错绑项目的代码图或 MCP 验证作为 FlagEmbedding 证据。
+- 复核时应保持“目标目录本地静态读取、Git 与项目本地 CodeGraph”的证据边界；本轮未使用 MCP，不能引用其他项目的代码图或验证记录作为 FlagEmbedding 证据。

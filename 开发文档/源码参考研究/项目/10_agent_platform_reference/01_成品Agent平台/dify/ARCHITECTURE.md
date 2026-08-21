@@ -650,7 +650,19 @@ dify/
 
 当前核对的目标是把 Dify 的真实实现映射到“支持库—模块库—运行核心—统一网关”四个底座边界，不是把 Dify 的目录名直接改名，也不是声称 Dify 已经实现了目标平台的通用底座。
 
-早期核对曾把 `project_context` 错绑到 `~/Documents/Agent/PHP/华世王镞_v3`，返回的代码图、提交和工作区指纹属于另一项目；该返回值已废弃，不使用它作 Dify 证据，也没有切换或修改那个项目。本轮已重新以系统工程平台根目录建立独立开工上下文（`work_id=86e3a3ec08354a91`），并在 Dify 根目录使用其自身 CodeGraph shell 取证。因此，下面的 Dify 结论是**目标目录源码/测试证据**；没有运行依赖、服务、数据库或插件 daemon，运行态部分一律标为未验证。
+本轮严格未使用 MCP。早期上下文/工作 id 不作为 Dify 证据；本轮直接在 Dify checkout 使用其自身 CodeGraph shell 取证，结论以目标目录源码、测试和 Git 提交为准。没有运行依赖、服务、数据库或插件 daemon，运行态部分一律标为未验证。
+
+## 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 当前提交 | `git rev-parse HEAD` | `a9b8c84e9be41376c04901e81ce690f35c1ffe86` |
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | Already up to date |
+| CodeGraph | `codegraph status`、`codegraph sync` | 10,905 files / 215,860 nodes / 671,426 edges，索引最新 |
+| 文档 | `wc -l ARCHITECTURE.md` | 当前 1,298 行 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮只更新平台唯一 ARCHITECTURE.md，未修改 Dify 源码或正式平台代码；严格未使用 MCP，仅使用 shell、Git、CodeGraph 和静态源码证据。未验证依赖安装、Python/Node 测试、Celery/Redis/数据库、模型 provider、插件 daemon、真实 API/UI、并发取消、队列恢复、部署和性能。
 
 证据分级：
 

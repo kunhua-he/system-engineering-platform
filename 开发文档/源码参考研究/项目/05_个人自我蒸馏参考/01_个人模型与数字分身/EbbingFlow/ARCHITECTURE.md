@@ -1,3 +1,5 @@
+# EbbingFlow 架构取证
+
 ```text
 外部客户端 / 浏览器 / QQ Bot / OpenAI-compatible SDK
                  │
@@ -504,3 +506,4 @@ FastAPI lifespan 负责数据库池、Neo4j driver、CDC checkpoint 和 engine �
 6. Neo4j 成功而 SQL evidence 失败时，确认可查询补偿，不伪装完整成功。
 7. CDC 消费者重复、落后、checkpoint 损坏时，确认 replay/去重和告警。
 8. 强杀进程后重启，确认所有连接、锁、临时文件和后台任务可观察并可回收。
+ # EbbingFlow 架构取证

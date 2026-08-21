@@ -1,3 +1,5 @@
+# OpenHuman 架构取证
+
 ```text
 OpenHuman monorepo
 │
@@ -625,3 +627,4 @@ TinyChannels 的 outbound 线必须是：intent 先进入宿主 `DeliveryQueueSt
 5. **P2 验证缺口**：补 AgentBox timeout 后 provider 副作用、cancel/restart、JobStore eviction、unknown-send 三分支、unknown-method feature/domain gating、Tauri startup recovery 的隔离测试；当前 `tests/agentbox_e2e.rs` 明确 `#[ignore]`，不能算端到端通过。
 
 当前核对未运行测试或构建。已完成的是本地分段源码/测试/文档静态审计与根文档更新；CodeGraph 不可用，MCP/Hermes 未使用。
+ # OpenHuman 架构取证

@@ -4,7 +4,7 @@
 >
 > 项目根：`~/Documents/Agent/github 源码参考/10_agent_platform_reference/02_核心Agent框架/langgraph`
 >
-> 当前基线提交：`f09cfe8ffc1eeffd68f4b628ed69c30f7cad229f`（目标仓库 `main...origin/main`，工作区仅有未跟踪的 `.codegraph/` 与根 `ARCHITECTURE.md`；本平台文档不属于目标源码仓库）。
+> 当前基线提交：`f09cfe8ffc1eeffd68f4b628ed69c30f7cad229f`（目标仓库 `main...origin/main`，工作区仅有未跟踪的 `.codegraph/` 与根 `ARCHITECTURE.md`；本平台文档不属于目标源码仓库）。本轮按用户授权未使用 MCP。
 >
 > 许可证：MIT（根 `LICENSE`）。旧细探：`细探-langgraph.md`；该文件已完整读取并逐条与当前源码对照。可证实的事实已吸收到本文；旧文件保留为历史证据，不删除。后续架构事实只维护本文件。
 
@@ -334,8 +334,8 @@ make test
 
 ## 10. 未确认项与后续细探入口
 
-1. **代码地图不可用**：本项目从目标根目录向上没有 `.codegraph/` 索引，专属代码地图查询返回“isn't indexed”；因此本文件的结构结论来自当前磁盘的 README、AGENTS/CLAUDE、依赖清单、核心源码、API 类型、测试与既有细探，而非代码图调用链。
-2. **MCP 项目身份不一致**：当前核对 `project_context` 返回的项目名称/根目录是另一个已绑定工程（`华世王镞_v3`），返回 MCP 实例为 `project_toolkit`，未能证明它就是用户指定的 `system_engineering_toolkit`；该身份偏差不能作为目标仓库证据。目标项目根目录以本文首部绝对路径为准。
+1. **代码地图边界**：目标根目录存在独立 `.codegraph/`；本轮 shell `codegraph status` 显示索引正常（490 files、14,352 nodes、47,223 edges），并以 `codegraph explore` 辅助定位。代码图只用于导航，结论仍以当前源码回读为准。
+2. **MCP 未使用**：本轮按用户授权跳过 MCP，不生成 MCP 开工、反馈或验证记录；目标项目根目录以本文首部绝对路径为准。
 3. **完整 API server 未在本仓库闭合**：CLI 的 `dev/up` 所依赖的 `langgraph-api`、`langgraph-runtime-inmem` 等组件没有在当前 `libs/` 清单中完整呈现；需另行确认服务端路由、数据库表、认证和部署运行时。
 4. **Store 的全部后端覆盖面**：当前仓库确认了 `checkpoint` 的 Store 基础/内存、SQLite Store、Postgres Store及 SDK Store 资源；Redis 或其他 Store 后端未作为当前 `libs/` 独立库完整核实，不应在本档案中当作已交付组件。
 5. **`CompiledStateGraph` 的完整编译细节**：已确认 builder→Pregel 关系，但当前核对没有逐段覆盖 `compile()` 后所有子图、缓存、远程图、durability 和 stream transformer 的实现路径；后续应以 `state.py` 的 compile 方法、`pregel/_loop.py`、`_checkpoint.py` 和 stream transformer 测试为细探入口。

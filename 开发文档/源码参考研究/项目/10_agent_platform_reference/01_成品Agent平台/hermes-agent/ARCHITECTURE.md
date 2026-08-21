@@ -243,8 +243,8 @@ slash command 在 `hermes_cli/commands.py` 的 `COMMAND_REGISTRY` 定义，CLI h
 
 ## 8. 未确认项与风险
 
-1. **代码地图未建立**：目标目录没有 `.codegraph/`，专属 MCP 的 `codeexplore` 和通用 `codegraph_explore` 均无法对目标项目提供索引结果；本文的符号关系来自源码静态读取、仓库架构文档和已有细探，不能冒充代码图验证。
-2. **专属 MCP 上下文错绑**：首轮 `project_context` 返回的是 `华世王镞_v3` 与 `~/Documents/Agent/PHP/华世王镞_v3`，不是本目标 `hermes-agent`；返回的可信度、代码地图和最近成功验证因此只说明另一个项目，未用于证明本仓库实现。此项已保留为升级风险。
+1. **代码地图**：本轮严格未使用 MCP。目标目录已有 `.codegraph/`，已执行 `codegraph status` 与 `codegraph sync`，统计为 7,343 files、160,462 nodes、504,283 edges；CodeGraph 仅用于定位，最终判断以当前源码/Git 为准。
+2. **上下文边界**：不引用其他项目的 MCP 上下文、可信度或验证记录；本轮直接在 hermes-agent checkout 取证。
 3. **提交漂移**：已有细探基于 `a61183b56`，README/AGENTS/website architecture 的规模数字和当前文件可能继续变化；需要后续以目标仓库当前 Git commit 重新审计。
 4. **入口规模与职责仍有大文件耦合**：`run_agent.py`、`cli.py`、`gateway/run.py`、`api_server.py` 等仍是大型协调器；本文记录边界，不等于已完成模块化。
 5. **API 完整字段契约未逐端点展开**：本文列出真实路由和主要语义，未逐一核对每个请求/响应 JSON schema、认证失败码、SSE event payload 和 profile multiplex 的所有边界。
@@ -395,7 +395,21 @@ CLI 命令由 `hermes_cli/commands.py:COMMAND_REGISTRY` 单一注册，避免 he
 
 - 唯一写入目标：本文件；源码仓库仅保留原有未跟踪 `.codegraph/` 与源码侧 `ARCHITECTURE.md`，未修改源码。
 - 当前版本：HEAD `624723130`，origin `https://github.com/NousResearch/hermes-agent.git`。
-- MCP：`project_context`/`codeexplore` 错绑华世王镞_v3；结果未作为 hermes-agent 事实。目标仓库无可用 `.codegraph` 证据。
+- MCP：本轮按用户要求未使用。目标仓库 `.codegraph` 已由本地 CLI 索引，统计见现场收口记录；不把其他项目代码图或验证冒充 Hermes 证据。
+
+## 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | fast-forward 至最新 |
+| 当前提交 | `git rev-parse HEAD` | `23a64a97ec928945b49389e8dfb6d06a11cb0132` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 7,343 files / 160,462 nodes / 504,283 edges，索引最新 |
+| 文档行数 | `wc -l ARCHITECTURE.md` | 当前超过 500 行 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮只修改平台研究文档，未修改 Hermes-Agent 源码、依赖、测试或配置；严格未使用 MCP，仅使用 shell、Git、CodeGraph 与静态源码证据。新提交重点涉及 browser control broker/artifacts/API、compaction、extension router、TUI gateway 与相关测试，已纳入版本和未验证边界。
+
+未验证：Python/Node 依赖安装、完整 pytest/前端构建、真实 provider、Gateway/API/WS、浏览器 CDP/cloud、MCP/插件、并发取消、进程崩溃恢复、快照/持久化、部署和性能。源码测试文件存在不等于运行通过。
 - 文档需要继续补充的高价值验证：API schema 逐端点、SQLite migration/WAL、terminal kill process-group、subagent parent cancellation、MCP真实 transport、skill zip-slip、browser profile清理和 provider credential quarantine。
 - 判定：静态源码审计完成；运行态与跨 transport 契约未验证。
 

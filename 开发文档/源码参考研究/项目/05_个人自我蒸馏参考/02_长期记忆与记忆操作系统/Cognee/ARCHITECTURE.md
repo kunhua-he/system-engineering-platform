@@ -1,3 +1,5 @@
+# Cognee 架构取证
+
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                               Client / Entry                                 │
@@ -937,3 +939,4 @@ recall(query)
 本轮严格未使用 MCP，只使用 shell、git、CodeGraph CLI 与目标 checkout 静态源码。当前文档已覆盖 `add/cognify/search/remember/recall`、dataset queue 与 pipeline task、graph/vector/cache/relational provider、FastAPI/CLI/MCP/frontend、LLM/embedding、rollback/recovery、并发/资源/超时/取消及测试部署证据，并修正历史“`.codegraph` 缺失”描述。
 
 未验证项保持不变：依赖安装与完整 pytest、真实 LLM/embedding、Ladybug/Kuzu/LanceDB/PGVector/Neo4j/Redis、API/MCP handshake、CloudClient、Git/enola、客户端断连、Task.cancel、请求级 deadline、SIGKILL 重启、进程组/WAL/锁/temp/.enola 清理、跨 provider 一致性和重复请求幂等。源码与测试文件存在不等于运行通过。
+ # Cognee 架构取证
