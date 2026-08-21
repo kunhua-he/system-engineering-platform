@@ -197,7 +197,19 @@ README 声明 SDK 分属独立仓库：Python `a2aproject/a2a-python`（包名 `
 - 未执行 `buf generate`、`protoc`、schema 生成、MkDocs/Sphinx 构建、lint、链接检查或任何测试，因此工具链安装状态、当前构建是否通过、生成产物是否最新均未确认。
 - README 列出的六语言 SDK 只通过外部仓库链接确认；各 SDK 的具体 API、版本和实现差异未纳入本仓库架构结论。
 - `specification/a2a.proto` 的 HTTP 注解是当前可见的绑定依据；HTTP 运行时、鉴权中间件、重试策略、持久化和任务调度均由各实现决定，本仓库不提供实现。
-- 专属 MCP 实例 `system_engineering_toolkit` 的 `project_context` 当前返回的是其固定项目“系统工程平台”，代码地图也未切换到目标 A2A 根目录；因此代码地图结果只能作为“已调用但上下文不匹配”的工具证据，目标架构结论以目标目录实际读取和已有细探文档为准。
+- 本轮严格未使用 MCP。目标 A2A checkout 自带 CodeGraph，已执行 `codegraph status` 与 `codegraph sync`，统计为 27 files、41 nodes、72 edges；该仓库主要由 YAML 协议/部署样例构成，源码结论以当前 checkout 和 Git 提交为准。
+
+## 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 源码同步 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `16ba52690519bf55b9388e34d4db356efa88aa51` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 27 files / 41 nodes / 72 edges，索引最新 |
+| 文档 | `wc -l ARCHITECTURE.md` | 637 行，满足 500 行要求 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮只修改平台研究文档，未修改 A2A 源码、依赖、配置或样例；严格未使用 MCP，仅使用 shell、git、CodeGraph 和静态证据。由于目标 checkout 主要是协议与部署 YAML，未验证真实 A2A SDK/agent server、HTTP/SSE streaming、认证、任务状态、并发取消、远端 provider、部署启动和跨版本互操作。
 
 ## 10. 本次建档变更
 

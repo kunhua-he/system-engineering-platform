@@ -1,5 +1,16 @@
 # Haystack 架构建档
 
+## 0. 顶部流程图
+
+```text
+输入 Document/Query
+  → Component 契约与 Pipeline 图
+  → Router/Retriever/DocumentStore
+  → Generator/Tool/Agent
+  → 同步、异步或流式结果
+  → tracing、错误边界与外部 Provider
+```
+
 > 文档性质：首轮全量架构建档；面向源码参考、边界提取和后续版本对照，不是 Haystack 官方开发规范。
 >
 > 目标仓库：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/65_rag_frameworks/haystack`
@@ -1059,3 +1070,10 @@ Provider 创建 client/DB session/模型句柄
 - **序列化**：吸收 allowlist、真实模块检查、版本化迁移和原子发布；不吸收默认 `unsafe`，不保存运行资源和密钥。
 - **资源、失败与取消**：吸收 cancel+drain、流式 sentinel、局部并发上限和快照证据；补齐 wall-clock deadline、provider 取消、租约回收、事务读回和崩溃恢复。
 - **晋级条件**：本后续映射仍是 L0/L1 候选输入。只有完成需求/能力登记、schema 与 owner 冻结、摄取→写入→检索→生成真实链、provider 超时/取消/部分写/重启演练及资源残留核对，才可进入 L2/L3；没有这些证据不得宣称“检索底座已完成”。
+
+### 28.7 本轮 CodeGraph 查询证据
+
+- 查询：`codegraph explore "Pipeline.run Pipeline.run_async component DocumentStore Agent Tool serialization"`。
+- 关键定位：`haystack/core/pipeline/pipeline.py:200` 的同步 `Pipeline.run`；`haystack/core/pipeline/pipeline.py:1084` 的 `run_async`；`haystack/components/agents/agent.py:887` 的 Agent `run_async`；`haystack/document_stores/types/protocol.py:11` 的 `DocumentStore`；`haystack/tools/component_tool.py:35` 的 `ComponentTool`；`haystack/tools/pipeline_tool.py:21` 的 `PipelineTool`。
+- 关系证据：CodeGraph 显示 `PipelineTool → ComponentTool → Tool`、`AsyncDocumentStore → DocumentStore` 的继承关系，并列出 Pipeline/Agent 异步入口的测试调用方；这些是源码关系定位证据，不等于运行时测试通过。
+- 当前索引：1,929 files、13,370 nodes、42,154 edges，SQLite WAL，`Index is up to date`；索引为目标源码目录本地生成，不是 MCP 服务。

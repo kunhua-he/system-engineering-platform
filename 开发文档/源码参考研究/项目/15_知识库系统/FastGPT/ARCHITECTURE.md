@@ -11,7 +11,7 @@ FastGPT 是一个以可视化 Flow 工作流为核心的 AI Agent 构建平台�
 本次分析目标：
 
 - 项目根目录：`/Users/hekunhua/Documents/Agent/github 源码参考/15_知识库系统/FastGPT`
-- 本地 Git 提交：`9a28b3d4f10754abacd8ff9da9f7ac1ebf07a4fe`，提交时间 `2026-08-21T18:15:09+08:00`，提交主题为 `fix: restore template marketplace avatars (#7571)`；`origin/main` 同值，`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`。
+- 本地 Git 提交：`76687002`（完整提交见本次 Git 核对），已与 `origin/main` 同步，`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`。
 - 当前项目版本：根包仍为 `4.0`（仓库历史兼容字段），主应用 `projects/app` 为 `4.16.1`；Node 要求 `>=22.23.2`，pnpm `10.33.4`。
 - 当前工作树：仅保留未跟踪 `.codegraph/` 与源码侧 `ARCHITECTURE.md`；本轮不改源码，不删除或覆盖这两个本地文件。
 - 本轮先执行 `git fetch` 与 `git pull --ff-only origin main`，结果 `Already up to date`；没有发生源码覆盖。
@@ -19,8 +19,8 @@ FastGPT 是一个以可视化 Flow 工作流为核心的 AI Agent 构建平台�
 
 ### 1.1 工具与证据可信度说明
 
-- 本轮 `project_context` 正确绑定系统工程平台；平台自身 CodeGraph 不覆盖外部 FastGPT，随后使用目标仓库自带 `.codegraph/` 的 `codegraph status/explore`，不混用其他项目地图或证据。
-- 目标 CodeGraph 当前为 3,957 files / 55,506 nodes / 185,276 edges，索引状态 `up to date`，覆盖 TypeScript、TSX、JavaScript、Rust、Go、YAML 等。
+- 本轮按用户授权未使用 MCP；使用目标仓库自带 `.codegraph/` 的 `codegraph status/explore`，不混用其他项目地图或证据。
+- 目标 CodeGraph 当前为 3,960 files / 55,553 nodes / 185,440 edges，索引状态 `up to date`，覆盖 TypeScript、TSX、JavaScript、Rust、Go、YAML 等。
 - 本轮仍为源码静态审计：没有安装依赖、启动 MongoDB/Redis/BullMQ/VectorDB、构建 Next、启动 4780 之外的本地服务或运行业务 E2E。
 - 旧 `细探-FastGPT.md`（若存在）只作为历史导航；本文关键结论已回到当前源码行号，且不再维护第二份细探文档。
 
@@ -400,7 +400,7 @@ FastGPT 当前本地形态是一个较大型的 pnpm/Turbo TypeScript monorepo�
 - 未修改：源码、依赖、锁文件、配置、测试、`AGENTS.md`、`细探-FastGPT.md`、submodule。
 - 未执行：安装、启动、构建、业务测试、提交。
 - 已执行：目标仓库 Git 状态/提交/远程信息读取；远程独立快照获取与版本对比；`git diff --check` 静态门禁。
-- 代码图证据：目标仓库无 `.codegraph/`，不可用；没有使用其他仓库代码地图、记忆或验证证据。
+- 代码图证据：目标仓库本地 `.codegraph/` 已建立并索引最新（3,960 files、55,553 nodes、185,440 edges）；没有使用其他仓库代码地图、记忆或验证证据。
 
 ## 17. 旧细探吸收与未吸收裁决
 
@@ -539,7 +539,7 @@ Store nodes/edges
 3. **推荐定向执行**：在具备目标 Node/pnpm、Mongo、Redis 和沙箱依赖后，按包执行 `pnpm exec vitest run packages/service/test/core/workflow/workflowStatus.test.ts packages/service/test/core/workflow/utils/streamResponseContext.test.ts packages/service/test/core/ai/sandbox/application/archive.test.ts`，以及 `pnpm exec vitest run projects/code-sandbox/test/unit/process-pool.test.ts projects/code-sandbox/test/unit/resource-limits.test.ts`；记录退出码、测试数、跳过数和外部服务。
 4. **真实资源验证**：Redis 要验证 TTL/lease token/XREAD blocking connection；Mongo 要验证 response writer 故障降级与无 pending rows；S3/provider 要验证归档→删除→恢复→失败回滚；worker 要验证 PID、IPC、临时目录和 shutdown 后无残留。
 5. **反向验证**：注入错误 provider、非法数组、无 break、重复交互提交、Redis memory pressure、lease renew 失败、archive CAS 失配、S3 上传失败、unzip 路径逃逸、worker crash/timeout；成功路径通过而失败路径无证据只能标为“待核”。
-6. **当前核对实际边界**：未安装依赖、未启动服务、未运行 Vitest；仅完成静态源码/测试取证和文档静态门禁。目标仓库无 `.codegraph/`，专属 MCP 当前实例又错绑到华世王镞_v3，`development_start` 返回 `MCP_TARGET_PROJECT_MISMATCH`，故没有伪造开工 id、MCP 代码图或验证入账。
+6. **当前核对实际边界**：未安装依赖、未启动服务、未运行 Vitest；仅完成静态源码/测试取证和文档静态门禁。本轮按用户授权未使用 MCP；本地 CodeGraph 已建立且索引最新，不能把静态证据升级为运行时或生产验证。
 
 ## 20. 后续裁决：吸收、废弃、待核
 
@@ -572,7 +572,7 @@ Store nodes/edges
 ## 21. 后续交付记录
 
 - **修改文件**：仅 `/Users/hekunhua/Documents/Agent/github 源码参考/15_知识库系统/FastGPT/ARCHITECTURE.md`，追加第 18—21 节；未修改源码、配置、依赖、测试、README、Git 或旧 `细探-FastGPT.md`。
-- **开工/MCP**：未生成有效开工 id；MCP 实例返回的当前根为 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与目标 FastGPT 不一致；`codegraph_explore` 明确返回 FastGPT 无 `.codegraph/`，代码图不可用。错绑结果不纳入证据。
+- **工具边界**：本轮按用户授权未使用 MCP；证据来自 FastGPT 目标工作树的 Git、源码/测试静态读取与本地 CodeGraph。不得引用其他项目 MCP、代码图或验证记录。
 - **验证命令**：当前核对只应执行文档静态检查 `git diff --check` 与目标文件/修改范围审计；Vitest、构建、服务探针和真实 Redis/Mongo/S3/provider/worker 验证未执行，不能报告为通过。
 - **剩余风险**：见第 19.2、20.3；尤其是取消传播、跨存储崩溃一致性、并发状态写入、租约高并发和 worker/进程残留尚未得到真实运行证据。
 
@@ -1021,12 +1021,12 @@ API/上传对象
 
 | 项目 | 当前事实 |
 |---|---|
-| Git | `HEAD=main=origin/main=9a28b3d4f10754abacd8ff9da9f7ac1ebf07a4fe`；领先/落后 `0/0` |
+| Git | `HEAD=main=origin/main=76687002`；领先/落后 `0/0` |
 | 主应用版本 | `projects/app/package.json:1-24` 为 `4.16.1` |
 | 运行时 | 根 `package.json:41-45` 要求 Node `>=22.23.2`、pnpm `10.33.4`；Next catalog 为 `16.3.0` |
 | 受版本控制文件 | 5,973（`git ls-files`；主要目录计数：`packages` 2,494、`projects` 1,925、`document` 1,185、`sdk` 131） |
 | 主要代码文件 | TypeScript 2,856；TSX 855；JavaScript 129；Rust 20；Go 7；MDX 496 |
-| CodeGraph | 3,957 files / 55,506 nodes / 185,276 edges；索引 `up to date` |
+| CodeGraph | 3,960 files / 55,553 nodes / 185,440 edges；索引 `up to date` |
 | 源码工作树 | 未跟踪 `.codegraph/` 与源码侧 `ARCHITECTURE.md`；本轮保留，不修改源码 |
 
 CodeGraph 查询 `dispatchWorkFlow chat completions datasetSearchNode Agent toolCall training queue MongoDB Redis BullMQ` 定位到当前 `packages/service`、`packages/dal`、`projects/app` 和 sandbox/MCP 边界；后续结论以这些源码的当前行号为准。注意：文件总数按 `git ls-files` 重新统计时应以命令原始输出为准，不能把目录计数相加后当成去重总数。

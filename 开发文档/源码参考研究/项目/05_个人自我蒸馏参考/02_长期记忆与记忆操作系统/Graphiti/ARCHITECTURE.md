@@ -415,7 +415,7 @@ Graphiti 当前可作为“事件时间 + episode provenance + 增量实体/事�
 - 远程默认分支：本地 fetch 后与 `origin/main` 一致；未修改参考仓库未跟踪 `ARCHITECTURE.md`、`.codegraph/`。
 - 平台唯一文档：本文件；未创建新的 `细探-Graphiti.md` 或其他平行架构文档。
 - 本轮新增内容：全量目录/文件导航、SDK/REST/MCP API 表、核心类型字段、调用链 file:line、provider/配置/部署矩阵、测试证据矩阵、平台映射。
-- 文档静态检查：执行 `git diff --check`，应为退出码 0；最终以 MCP `verify_and_record` 记录结果为准。
+- 文档静态检查：本轮执行 `git diff --check` 并以退出码 0 为准；按用户授权未使用 MCP，不生成 `verify_and_record` 记录。
 - 未验证项：真实 Neo4j/FalkorDB/Neptune/Kuzu 查询、索引、事务回滚、LLM/embedding 返回、REST lifespan、MCP transport、压力、崩溃恢复、删除后 provenance 对账。
 
 ## 19. 源码索引与错误边界补充
@@ -471,6 +471,25 @@ docker compose -f mcp_server/docker/docker-compose-neo4j.yml up
 ## 20. 唯一文档收口结论
 
 Graphiti 的可复用核心是：以 episode 为 provenance 输入，以 entity/edge 为增量事实投影，以 `valid_at/invalid_at/expired_at` 表达事件时间和事实失效，以混合检索连接文本、向量和图邻域。其 REST/MCP 只是入口适配器，QueueService 和 REST worker 都是进程内调度集合，不构成可靠任务系统。
+
+## 19. 2026-08-22 复审记录
+
+- 源码根目录：`/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Graphiti`。
+- 当前提交：`993e081a6d7948a0d8851c12a5fbdbeb49fed862`，提交说明 `fix(attributes): preserve prior node attributes when no entity type applies`；`origin/main` 同 SHA，未执行覆盖式更新。
+- 工作树仅有未跟踪 `.codegraph/` 与根 `ARCHITECTURE.md`；平台唯一文档仍是本文件，未改源码参考仓库。
+- shell `codegraph status`：290 files、5,137 nodes、13,214 edges、13.27 MB，index up to date。CodeGraph 仅用于导航，关键结论回读当前源码与行号。
+- 本轮按用户授权未使用 MCP；因此没有 MCP 开工、反馈或 `verify_and_record` 证据，不把静态检查冒充运行验证。
+- 已复核远程 SHA、CodeGraph 状态、文档行数（501）及 `git diff --check`；未安装依赖、未启动 Neo4j/FalkorDB/Neptune/Kuzu、未运行 REST/MCP transport 或压力/崩溃测试。
+
+### 19.1 L0-L4 证据边界
+
+| 等级 | 本轮状态 | 结论 |
+|---|---|---|
+| L0 | 已完成 | Git SHA、目录/文件、配置和 CodeGraph 索引可复现 |
+| L1 | 已完成 | 入口、episode/entity/edge、检索、队列、REST/MCP 路径有源码行号 |
+| L2 | 未执行 | 测试文件存在不等于测试通过 |
+| L3 | 未执行 | 未启动真实数据库、模型、HTTP 或 worker |
+| L4 | 未执行 | 未做生产 provider、重启、并发压力、资源残留验证 |
 
 因此本平台只能吸收其数据模型、抽取/去重/检索流程和 provider 适配边界；不能把 Graphiti 当前实现直接当作全流程事务、双时态数据库、可恢复队列或跨 provider 一致性方案。任何平台落地必须重新定义租约、幂等、资源所有权、统一错误和验证证据，并在真实 provider 上执行受控验收。
 

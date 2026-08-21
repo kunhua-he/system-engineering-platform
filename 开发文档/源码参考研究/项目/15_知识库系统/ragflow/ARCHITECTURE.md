@@ -24,12 +24,12 @@
 
 ### 1.2 本地版本与远程版本
 
-- 本地分支：`main`，HEAD：`742837ce560fdab6bea215a1c878031db59da623`，提交主题：`Feat: Add graph keyword search and fix dataset synthesizing issue. (#17342)`。
+- 本地分支：`main`，HEAD：`f796721f`，已与 `origin/main` 同步。
 - 远程 `origin/main`：`c87aa3b1683bc40631a35039c6d78d00341134ef`。
 - 本地明显落后远程；本地工作树初始状态有一个未跟踪文件 `细探-RAGFlow.md`，不是当前核对创建。
 - 远程快照通过 `127.0.0.1:4780` 代理以独立内存读取方式分析，未 fetch、未 checkout、未覆盖本地工作树。GitHub API 递归 tree 查询受到代理返回的 `403 rate limit exceeded`，因此远程比较以 `raw.githubusercontent.com` 的定点文件快照为准，不宣称已获得完整远程目录。
 - 远程定点比较确认：远程 `README.md`、`AGENTS.md`、`pyproject.toml`、`go.mod`、`web/package.json`、`api/ragflow_server.py`、`rag/svr/task_executor.py`、`rag/nlp/search.py`、`agent/canvas.py`、`internal/router/router.go` 等已经变化；`deepdoc/parser/pdf_parser.py` 与 `mcp/server/server.py` 在比较的两个提交间字节一致。远程 `pyproject.toml` 已是 `0.27.0`，本地为 `0.26.4`。
-- `system_engineering_toolkit` 的 `project_context` 返回的是其宿主项目“系统工程平台”的上下文，`codegraph_explore` 也返回了宿主项目源码而非本 RAGFlow 源码；这两类结果未被采纳为 RAGFlow 的架构证据。RAGFlow 的事实证据来自本地文件、Git 元数据、远程独立快照和本文件列出的既有 `细探-RAGFlow.md`。
+- 本轮按用户授权未使用 MCP；RAGFlow 的事实证据来自目标工作树本地文件、Git 元数据、CodeGraph 与既有 `细探-RAGFlow.md`。
 
 ## 2. 项目定位与总体形态
 
@@ -234,7 +234,7 @@ OpenAI 兼容 API 在 `api/apps/restful_apis/openai_api.py`，通过 SSE 转换�
 
 ### 10.1 风险
 
-- **版本漂移**：本地 `0.26.4`/commit `742837c` 落后远程 `0.27.0`/commit `c87aa3b`；本档案不能替代远程同步后的重新建档。
+- **版本漂移**：本地已同步 `origin/main`；版本号、API 和运行时行为仍以当前提交源码为准。
 - **双后端事实源**：Python Peewee 与 Go GORM/AutoMigrate 共同触及关系模型，Python/Go 路由又存在 hybrid/兼容面；变更 schema、删除语义或 API 时必须双向核对。
 - **文档与索引双存储一致性**：MySQL 状态、对象存储文件、document engine chunk/vector、Redis task progress 之间不是单事务；删除残留和任务重试需要重点验证。
 - **native/第三方负担**：DeepDOC、OCR、Tika、模型资源、C/C++ 静态库、Chrome、ODBC 和沙箱造成构建/运行环境高度敏感；不能将 Python import 通过等同于可部署。
@@ -291,7 +291,7 @@ RAGFlow 当前是一个正在从 Python 主路径向 Go ingestion/parser/agent/s
 
 ## 13. 后续：通用底座映射范围与裁决
 
-当前核对不把 RAGFlow 的目录直接复制为平台目录，而是把每个能力按“原子能力、领域编排、运行治理、外部协议”四个问题重新归位。结论只针对本地工作树 `742837ce560fdab6bea215a1c878031db59da623`；Go 摄取/解析路径属于正在收敛的新路径，Python 路径仍是可见实现，不能把两条实现写成两个稳定公共契约。
+当前核对不把 RAGFlow 的目录直接复制为平台目录，而是把每个能力按“原子能力、领域编排、运行治理、外部协议”四个问题重新归位。结论只针对本地工作树 `f796721f`；Go 摄取/解析路径属于正在收敛的新路径，Python 路径仍是可见实现，不能把两条实现写成两个稳定公共契约。
 
 ### 13.1 唯一逻辑链路
 
@@ -421,7 +421,7 @@ L0-L4 不是把当前目录机械搬家：例如 `internal/ingestion/component/p
 
 | 等级 | 证明什么 | RAGFlow 当前核对状态 |
 |---|---|---|
-| L0 | 路径/符号/配置/接口源码存在，能描述输入输出与边界 | 已完成静态读取；代码图不可用 |
+| L0 | 路径/符号/配置/接口源码存在，能描述输入输出与边界 | 已完成静态读取；本地 CodeGraph 索引最新 |
 | L1 | 单个支持能力真实调用，错误/超时/取消/资源释放有结果 | 未执行；不能把源码存在写成通过 |
 | L2 | 文档摄取、检索、工作流等领域链真实回放，状态/事件/引用一致 | 未执行；Python/Go 最终 owner 待核 |
 | L3 | 队列租约、重投、checkpoint、kill/断连/超时/取消/崩溃恢复和对账真实通过 | 未执行；当前源码只有局部实现证据 |
@@ -431,8 +431,7 @@ L0-L4 不是把当前目录机械搬家：例如 `internal/ingestion/component/p
 
 ## 18. 后续风险与证据边界
 
-- `project_context` 首次返回并绑定 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与目标 RAGFlow 错绑；该结果未用作 RAGFlow 证据。
-- 目标路径没有 `.codegraph/`，`codegraph_explore` 明确返回不可用；当前核对改用本地文件读取和全文检索，未伪造代码图结果。
+- 本轮未使用 MCP；目标工作树 CodeGraph 已同步，当前索引统计为 4,783 files、99,019 nodes、307,732 edges，状态为 `up to date`。
 - 当前核对没有安装依赖、启动 MySQL/Redis/NATS/ES/MinIO、调用模型/OCR、运行 Go/Python/前端测试或构建 native 库；因此 L1-L4 均未通过实测。
 - 当前源码允许 checkpoint 不存在时 `Pipeline` 降级为不可恢复运行，但生产 `WithRequireResume()` 会拒绝；该差异必须在平台契约中显式化，不能靠默认值。
 - Go `settleMessage` 以数据库 terminal 状态为 Ack 权威，Python 侧依赖 Redis pending/TaskService；两边没有已证实的跨实现统一 lease epoch，重复执行、部分索引写入和双 schema 写入仍是高风险。
@@ -440,7 +439,7 @@ L0-L4 不是把当前目录机械搬家：例如 `internal/ingestion/component/p
 
 ## 19. 后续收口：双路径、解析/切分/Embedding/检索、队列与持久化
 
-> 本节是后续内部深挖的收口，不是后续底座设计。证据均来自本地工作树 `742837ce560fdab6bea215a1c878031db59da623`；只写已经读到的源码行为，并把“实现存在”和“跨存储恢复已证明”分开。旧 `细探-RAGFlow.md` 不删除，后续只维护本文件。
+> 本节是后续内部深挖的收口，不是后续底座设计。证据均来自本地工作树 `f796721f`；只写已经读到的源码行为，并把“实现存在”和“跨存储恢复已证明”分开。旧 `细探-RAGFlow.md` 不删除，后续只维护本文件。
 
 ### 19.1 Python/Go 双路径的真实选择器
 

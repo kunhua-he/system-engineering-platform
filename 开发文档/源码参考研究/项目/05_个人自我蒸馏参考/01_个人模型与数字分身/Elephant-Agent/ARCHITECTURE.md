@@ -1,3 +1,5 @@
+# Elephant-Agent 架构取证
+
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                    产品 / 运行时入口层（apps/）                              │
@@ -626,3 +628,4 @@ Elephant-Agent 的可复用主干是“surface → Kernel → Context/Recall →
 - 普通异常统一收口、SSE 断开资源终止、learning running job 租约回收、WebSocket dispatch drain 和出站死信仍是主要可靠性缺口。
 
 当前核对未运行测试和服务，仅完成静态审计；因此不能把上表的源码路径存在性升级为 L3/L4 运行通过。
+ # Elephant-Agent 架构取证

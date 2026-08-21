@@ -1,5 +1,16 @@
 # OpenCode 架构建档
 
+## 0. 顶部流程图
+
+```text
+CLI/TUI/Web/Desktop/SDK
+  → HTTP/API 或进程内 Session 服务
+  → Project/Location 上下文与 SQLite 事实记录
+  → Provider/Model 流式请求
+  → Tool/插件/MCP/LSP 执行与事件投影
+  → durable history、状态更新、取消与资源收口
+```
+
 > 本文是对当前本地源码快照的全量静态架构记录，不是实现计划，也不把规格文档当成已实现事实。
 >
 > - 仓库：`/Users/hekunhua/Documents/Agent/github 源码参考/10_agent_platform_reference/01_成品Agent平台/opencode`
@@ -738,3 +749,15 @@ TUI、Web、Desktop、HTTP server 和 embedded SDK 是不同消费/宿主表面�
 - 可吸收为支持库：EventV2 账本与 projector、Effect Schema/协议编解码、LLM Route、Tool registry/output bound、Permission Deferred、AppProcess、Git remote cache。
 - 可吸收为模块库：Session admission/runner、Location 服务组装、远程仓库引用工作副本、HTTP/SSE 消费。
 - 可吸收为运行核心：按 Session keyed coordinator、durable replay、Scope/Fiber 生命周期、统一错误边界。集群所有权、durable run recovery、provider retry/watchdog、完整插件/MCP 策略不得标为已完成能力。
+
+## 18. 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 当前提交 | `git rev-parse HEAD` | `1b937c860b6fd8a83e69f916b1236515aa17ea0d` |
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | 已 fast-forward 至最新；工作树更新来自远程提交 |
+| CodeGraph | `codegraph status`、`codegraph sync` | 3,358 files / 57,218 nodes / 198,327 edges，索引最新 |
+| 文档 | `wc -l ARCHITECTURE.md` | 当前 740 行 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮只更新平台唯一 ARCHITECTURE.md，未修改 OpenCode 源码或正式平台代码；严格未使用 MCP，仅使用 shell、Git、CodeGraph 和静态源码证据。未验证 Bun 依赖安装、CLI/server/UI 构建、真实 provider、HTTP/SSE、插件、数据库迁移、并发取消、崩溃恢复、跨进程 session 一致性和发布部署。

@@ -1,5 +1,16 @@
 # OpenCLIP 架构建档
 
+## 0. 顶部流程图
+
+```text
+图像/音频/文本输入
+  → tokenizer/processor 与 batch
+  → image/text/audio encoder
+  → projection + normalize
+  → 对比 logits / embedding / zero-shot 结果
+  → 训练损失、检索或下游 Provider 调用
+```
+
 > 本文是对本地源码归档的首轮全量架构记录，不是生产接入指南，也不替代上游 README、模型配置和测试。
 >
 > 目标项目：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/open_clip`
@@ -31,16 +42,15 @@ README 明确警告：`main` 的训练栈是 post-refactor 版本；若需要旧
 | 项目 | 本地事实 |
 |---|---|
 | 当前分支 | `main` |
-| 本地 HEAD | `a3c2605ab3adab2eea5dc387ac02ed2ea0a8ef87` |
-| 本地 HEAD 提交 | `Set the default eval length for NaFlex ViT-B-16` |
-| 本地 HEAD 时间 | `2026-07-18 00:15:33 +0800` |
+| 本地 HEAD | `602d4af74f86df6f2ff81ba0f0a847b0b70ad2e5` |
+| 本地 HEAD 提交 | `Fix for new tiktoken config fields, robustness to tiktoken configs with vocab gaps (100 & 200).` |
+| 本地 HEAD 时间 | `2026-08-10 14:11:02 -0700` |
 | 上游远端 | `https://github.com/mlfoundations/open_clip.git` |
-| 远端 `origin/main`（本地 Git 引用） | `a3c2605ab3adab2eea5dc387ac02ed2ea0a8ef87`（与本地 HEAD 相同；当前核对未 fetch） |
-| 独立远端 `main` 快照（此前通过 4780 读取） | `602d4af74f86df6f2ff81ba0f0a847b0b70ad2e5`，时间 `2026-08-10 14:11:02 -0700` |
-| 新鲜度判断 | 本地 Git 引用未证明已追平独立远端快照；不能把本地归档视为最新上游 |
+| 远端 `origin/main` | `602d4af74f86df6f2ff81ba0f0a847b0b70ad2e5`（本轮 fetch 后与本地 HEAD 相同） |
+| 新鲜度判断 | 本轮已核对远程 SHA 与本地一致；当前事实以该 checkout 为准 |
 | 工作区 | 已有未跟踪 `细探-open_clip.md`；本次不改、不删除该文件 |
 
-远端快照的 README 仍保留本地架构主线，并显示后续 tiktoken 配置字段/词表缺口健壮性修复；本文件只记录版本差异，不把远端源码自动合并进本地归档。
+本轮不通过 MCP 或代理读取外部快照；版本差异以 Git fetch/ls-remote 结果为准。
 
 ## 3. 技术栈与依赖
 
@@ -461,7 +471,7 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 6. 未执行 DDP、FSDP2、gradient checkpointing、`torch.compile`、AMP/bf16、EMA 与 checkpoint 往返组合；相关测试存在但可能条件跳过。
 7. 未执行 checkpoint 强杀、DCP 目录残缺、latest rename 窗口、remote sync 失败/子进程残留恢复。
 8. 未验证 `urllib.request.urlopen` 无 timeout 导致的长阻塞和下载半文件清理；这是当前明确的资源治理缺口。
-9. 远端 `origin/main` 与本地 HEAD 的差异只记录，不自动合并；上游 `main` 新提交需重新读取 README、factory、NaFlex、tokenizer、训练 CLI。
+9. 本轮 `origin/main` 与本地 HEAD 已一致；后续上游新提交仍需重新读取 README、factory、NaFlex、tokenizer、训练 CLI。
 10. 细探旧文档已吸收但保留；若未来发现其与源码冲突，必须在本文修正并保留冲突说明，不回写旧细探制造双事实源。
 
 ## 22. 当前核对验证与证据
@@ -470,15 +480,13 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 
 | 命令 | 退出码 | 结果 |
 |---|---:|---|
-| `git status --short; git branch --show-current; git rev-parse HEAD; git log -1 --format='%H%n%ci%n%s'; git rev-parse origin/main` | 0 | `main`；本地 HEAD=`a3c2605ab3adab2eea5dc387ac02ed2ea0a8ef87`；origin/main 同一提交；工作区原本已有未跟踪 `ARCHITECTURE.md` 与 `细探-open_clip.md` |
+| `git status --short; git branch --show-current; git rev-parse HEAD; git log -1 --format='%H%n%ci%n%s'; git ls-remote origin refs/heads/main` | 0 | `main`；本地 HEAD=`602d4af74f86df6f2ff81ba0f0a847b0b70ad2e5`；远程同一提交；工作区有未跟踪 `.codegraph/` 与根 `ARCHITECTURE.md` |
 | Python 只读计数脚本（`src` Python/`tests` Python/模型配置/非 Git 文件及字节数） | 0 | `70 / 47 / 190 / 376 / 15434694`；与本文原有规模叙述一致（测试主文件数以现场 glob 为准） |
 | 目标仓库只读结构校验（读取文档标记、旧细探大小与存在性，并对 `src`+`tests` 共 117 个 Python 文件执行 `ast.parse`） | 0 | `doc_bytes=51213`、`doc_lines=495`、旧细探 `2064` bytes；`ast_failures=0`、`markdown_structure=PASS`；旧细探 SHA256=`97b6ef31e9c6c6d66914b0591a274f96f5cf3d38d1450e064ff86159270ec62c` |
 | 当前核对 `read_file` 完整读取 `细探-open_clip.md` 与 `ARCHITECTURE.md` | 0 | 旧细探 65 行、当前架构文档原 289 行，已逐段对照；旧文件仍存在 |
-| 系统工程平台 MCP `project_context` | 0 | **MCP 实例**=`system_engineering_toolkit`；项目根=`/Users/hekunhua/Documents/Agent/PHP/系统工程平台`；首次上下文开工 id=`423841005f574e6c`；代码图对平台可用，证据等级“已验证”/分数 100 |
-| 系统工程平台 MCP `development_start` | 0 | 受控任务开工 id=`d8d27ded1b3142f4`；目标路径被登记为唯一修改路径；系统 MCP 代码图仍绑定平台，可信度分数 50（目标源码未被索引） |
-| 系统工程平台 MCP `codegraph_explore`（查询目标 open_clip 路径） | 0 | **错绑/无代码图**：返回的是系统工程平台自身 38 个符号/平台文件，未覆盖目标源码；不能冒充 open_clip 代码图，本文后续源码证据均来自目标路径现场只读读取 |
-| 系统工程平台 MCP `mcp_feedback` | 0 | 以 `d8d27ded1b3142f4` 提交总结/不满意/多余/缺失/升级建议五字段；反馈门禁返回“已满足” |
-| 系统工程平台 MCP `verify_and_record` | 0 | 白名单命令 `python3.14 测试中心/运行测试.py --测试文件 测试中心/测试_缓存读写.py --并行数 1`；平台受控验证 `33` tests、退出码 `0`；注意：这是 MCP 白名单证据，不冒充目标仓库 pytest 通过 |
+| MCP | 未使用 | 按用户授权跳过 MCP，不生成开工、反馈或验证记录 |
+| `codegraph status` | 0 | 目标仓库独立索引：126 files、3,118 nodes、7,432 edges、9.44 MB，index up to date |
+| `codegraph explore` | 0 | 定位 `create_model_and_transforms`、`create_model`、`load_checkpoint`、`get_tokenizer`、`get_data` 等调用/测试关系 |
 
 ### 22.2 文档验收口径
 
@@ -729,3 +737,44 @@ git diff --check -- ARCHITECTURE.md
 | 失败/释放 | 已静态搜索 close/release/empty_cache/destroy/join 与主退出路径 | 未注入异常、取消、强杀、OOM | **缺口已证实；不能声称资源安全** |
 
 后续只修改了本文件；旧 `细探-open_clip.md` 继续保留且未改写。后续若要把 OpenCLIP 接入平台，最低新增验收不是“能加载一个模型”，而是：canonical model/preprocess/tokenizer/checkpoint manifest、下载临时文件原子提交与并发锁、请求 deadline/cancel、batch/显存预算拒绝、provider 独立进程、四终态资源清理和失败后现场读回。
+
+## 26. 2026-08-22 复审收口
+
+### 26.1 当前版本与代码地图
+
+- 源码根目录：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/open_clip`。
+- 当前 `HEAD` 与 `origin/main`：`602d4af74f86df6f2ff81ba0f0a847b0b70ad2e5`；提交主题为 tiktoken 配置字段与词表缺口健壮性修复。
+- 工作树仅有未跟踪 `.codegraph/` 与根 `ARCHITECTURE.md`；未修改源码 checkout。
+- `codegraph status`：126 files、3,118 nodes、7,432 edges、9.44 MB，index up to date；Python 文件 123 个。
+- 本轮按用户授权未使用 MCP；代码图仅用于导航，行为结论以源码和 Git 证据为准。
+
+### 26.2 关键调用链复核
+
+1. `create_model_and_transforms`（`src/open_clip/factory.py:1239`）调用 `create_model`（`:322`），后者在 checkpoint 路径上调用 `load_checkpoint`（`:251-296`）；模型、权重、设备精度和预处理在 factory 中完成装配。
+2. `get_tokenizer`（`src/open_clip/factory.py:833`）独立解析 Simple/HF/SigLIP/TikToken 配置；特殊 token 验证与 variable text 约束不等于权重可用，调用方必须绑定 tokenizer、preprocess 和 checkpoint manifest。
+3. `create_loss`（`src/open_clip/factory.py:1043`）按任务配置选择对比、SigLIP、CoCa、Distill、MaMMUT 等 loss；分布式 gather/chunked loss 的通信和显存边界仍由训练任务与 torch.distributed 决定。
+4. 训练数据入口 `get_data`（`src/open_clip_train/data.py:1218`）与 dataset factory 组合 CSV/WebDataset/音频/NaFlex；变量文本 collate 与 token budget 只在对应数据路径生效，不能当作任意推理请求的 OOM 防护。
+5. `load_checkpoint` 会转换第三方 state dict、调整 logit 参数和位置 embedding，最终 `model.load_state_dict(strict=...)`；full checkpoint 与 tower-only 覆盖的失败语义不同，不能只以 factory 返回对象判断完整权重成功。
+
+### 26.3 L0-L4 状态
+
+| 等级 | 本轮状态 | 证据 |
+|---|---|---|
+| L0 静态 | 完成 | Git SHA、远程 SHA、目录、依赖与 CodeGraph 已核对 |
+| L1 源码调用链 | 完成 | factory/tokenizer/tower/loss/data/checkpoint/metrics 有 file:line 证据 |
+| L2 单元测试 | 未执行 | 未安装依赖或运行 pytest |
+| L3 集成 | 未执行 | 未加载真实 checkpoint、模型、GPU、音频或 WebDataset |
+| L4 生产故障 | 未执行 | 未做下载中断、并发 cache、OOM、分布式 rank、worker/线程和显存残留验证 |
+
+### 26.4 可复现验证命令
+
+```bash
+git fetch origin main
+git rev-parse HEAD
+git ls-remote origin refs/heads/main
+codegraph status
+codegraph explore "create_model create_model_and_transforms get_tokenizer TrainingTask contrastive loss get_data load_checkpoint"
+git diff --check -- '开发文档/源码参考研究/项目/30_多模态与媒体分析/40_embedding_retrieval/open_clip/ARCHITECTURE.md'
+```
+
+本轮版本核对、CodeGraph 查询与 `git diff --check` 均已执行并退出 0；测试、模型下载、GPU/分布式和服务命令未执行，不得标记为通过。

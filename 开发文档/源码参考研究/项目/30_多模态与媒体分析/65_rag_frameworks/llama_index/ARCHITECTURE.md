@@ -1,5 +1,17 @@
 # llama_index 架构建档
 
+## 0. 顶部流程图
+
+```text
+数据源/文件/查询
+  → Reader 与 Document/Node 规范化
+  → Transform/Chunk
+  → Index 与 VectorStore/GraphStore
+  → Retriever/Router
+  → Query Engine/Agent/Workflow
+  → LLM 响应、引用与观测
+```
+
 > 首轮全量架构建档；本文是目标项目根目录的唯一正式架构文档。
 > 说明、结论、风险和未确认项使用中文；源码路径、类名、函数名、字段名、命令和包名保留原文。
 
@@ -11,8 +23,7 @@
 - **项目定位**：面向 LLM 应用的 data framework，主链路是数据读取 → 文档/节点变换 → 索引 → 检索 → 响应合成；在此之上提供 agent、chat、workflow、memory、evaluation、tools 和多模态能力。
 - **当前核对允许修改**：仅新增/更新本文；没有修改源码、依赖、测试、配置、Git 历史或运行产物。
 - **规则文件检查**：目标目录内未发现 `AGENTS.md`、`CLAUDE.md`。
-- **代码地图证据**：目标项目没有 `.codegraph/`，`codegraph_explore` 明确返回未建立索引，因此当前核对不把代码图结果冒充为有效证据。
-- **MCP 证据异常**：首轮 `project_context` 返回并绑定了无关项目 `华世王镞_v3`（根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`），其项目身份、地图和定位结果均不适用于本项目；本文件以下结论改由目标目录的本地读取和 Git 命令建立。
+- **工具边界**：本轮按用户授权未使用 MCP；目标项目 `.codegraph/` 已建立并用于本地 `codegraph status/explore`，不混用其他项目地图或证据。
 - **旧细探吸收**：已人工读取并对照此前细粒度研究稿；其中关于 core 分层、索引/检索/合成、存储、观测、VectorStore 契约、Settings、CLI 和集成解耦的内容已吸收到本文，后续正式维护只更新本文。
 
 ## 2. Git 基线与远程新鲜度
@@ -20,14 +31,14 @@
 现场 Git 读取结果：
 
 - 当前分支：`main`，跟踪 `origin/main`。
-- 本地 `HEAD`：`7359b1acc74563f715d4463ace39fb4dc73d79af`。
+- 本地 `HEAD`：`d8021225eb7e7b276d5ceb476b0a4650240f27f8`，与 `origin/main` 同步。
 - 本地最新提交时间：`2026-07-22T01:15:31+02:00`。
 - 本地最新提交：`Add GPT-5.6 models to supported OpenAI models (#22385)`。
 - 远程地址：`https://github.com/run-llama/llama_index.git`。
 - `git ls-remote origin` 当前返回：
   - `HEAD` / `refs/heads/main`：`d8021225eb7e7b276d5ceb476b0a4650240f27f8`。
   - `refs/remotes/origin/HEAD`：`3fc6b0e0457d58ef8fbed619f4d2e01df228ab69`。
-- **新鲜度结论**：远程 `main` 已不同于本地 `HEAD`，本地工作树不是远程最新源码；当前核对未 `fetch`、未 `pull`、未创建快照或 worktree，故没有把远程新提交的实现内容写入本文。
+- **新鲜度结论**：已执行 `git fetch` 与 `git pull --ff-only origin main`；当前 `HEAD...origin/main` 为 `0/0`，源码事实以该提交为准。
 - 工作树状态：当前核对新增正式文档 `ARCHITECTURE.md`；未修改源码、依赖、测试或配置。
 
 ## 3. 规模盘点（现场递归统计）
@@ -432,8 +443,8 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 
 ### 已确认但需持续关注
 
-- **远程漂移**：远程 `main` 已是 `d8021225...`，本地仍是 `7359b1a...`；后续深挖应先建立最新源码快照或在允许时 fetch，再复核关键 API 是否漂移。
-- **代码地图缺失**：本项目没有 `.codegraph/`；需要符号级影响分析时应由项目负责人决定是否初始化代码图，当前核对不擅自生成。
+- **远程漂移**：本地 `HEAD=d8021225eb7e7b276d5ceb476b0a4650240f27f8`，已与 `origin/main` 同步；后续深挖仍需绑定该提交复核关键 API。
+- **代码地图**：本项目 `.codegraph/` 已建立；当前索引为 3,955 files、45,185 nodes、114,377 edges，状态为 `up to date`。
 - **历史研究已收口**：此前细粒度研究稿已经人工吸收到本文并清理；后续不再创建第二份并行正式架构文档。
 - **集成规模复杂**：621 个独立 integration 未逐包阅读；本文只抽查了 `llama-index-vector-stores-chroma` 作为 provider 结构样例，不能把 Chroma 的过滤/持久化语义外推到所有向量库。
 - **外部 provider 语义**：LLM、embedding、reader、vector store、storage、tool 和 graph integration 的凭证、重试、超时、事务、TLS、并发和删除语义均需按具体包继续复核。
@@ -443,7 +454,7 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 - 没有安装依赖、创建虚拟环境或运行 Python 导入。
 - 没有运行 `pytest`、`llama-dev test`、`make test`、`pants`、`pre-commit`、`mypy`。
 - 没有运行 `uv build`、wheel 安装、PyPI 发布或 GitHub attestation。
-- 没有读取远程新提交的源码内容，没有声称远程版本与本地实现兼容。
+- 远程 `main` 已同步到当前 HEAD；本文不把远程提交之外的内容当作本地实现证据。
 - 没有对所有 621 个 integration 的 `stores_text`、filters、async、persist、delete、错误码和外部依赖做契约矩阵。
 - 没有验证 `llama-index-cli`（仓库外/独立包）的当前版本，也没有把它的源码纳入本项目架构范围。
 
@@ -487,7 +498,7 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 
 ## 17. 后续通用底座映射：文档/检索支持库、RAG 模块与运行核心
 
-> 本节是后续裁决，不是把 LlamaIndex 直接复制进平台。映射只回答“哪一类能力由哪个底座 owner 持有、哪条链路允许被复用、哪些语义必须升级或隔离”。当前证据仍以本地 `llama-index-core` 源码为准；`project_context` 曾错绑到无关项目，目标目录无 `.codegraph/`，因此不把 MCP/codegraph 失败结果冒充为目标项目证据。
+> 本节是后续裁决，不是把 LlamaIndex 直接复制进平台。映射只回答“哪一类能力由哪个底座 owner 持有、哪条链路允许被复用、哪些语义必须升级或隔离”。当前证据仍以本地 `llama-index-core` 源码、Git 与 CodeGraph 为准；本轮未使用 MCP，不引用其他项目的 MCP/代码图/验证记录。
 
 ### 17.1 三类底座 owner 的裁决
 
@@ -610,4 +621,4 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 
 ---
 
-**首轮结论**：`llama_index` 的稳定底座是 `llama-index-core` 的数据模型/转换/索引/检索/合成/存储契约；具体模型、向量库、读取器和工具通过 621 个独立 integration 包解耦；`llama-index-instrumentation` 与 `llama-dev` 分别承担观测和仓库工程自动化。当前本地源码可完成静态架构建档，但 Git 远程已前进、代码图不可用、全量测试和构建尚未执行，后续复核必须保留这些边界。
+**首轮结论**：`llama_index` 的稳定底座是 `llama-index-core` 的数据模型/转换/索引/检索/合成/存储契约；具体模型、向量库、读取器和工具通过 621 个独立 integration 包解耦；`llama-index-instrumentation` 与 `llama-dev` 分别承担观测和仓库工程自动化。当前本地源码与远程 `main` 同步、CodeGraph 索引最新；全量测试和构建尚未执行，后续复核必须保留这些边界。

@@ -1,3 +1,5 @@
+# Supermemory 架构取证
+
 ```text
 外部 AI 应用 / Agent / 用户
         │
@@ -513,3 +515,4 @@ success + value
 本轮执行：`git fetch origin --prune`、`git pull --ff-only`、`codegraph status`、`codegraph sync`、平台文档 `wc -l` 与 `git diff --check`。源码 checkout 未改动；平台唯一文档达到 500 行以上。未执行 Bun 安装、TypeScript 构建、Vitest、Python 测试、Cloudflare Worker、OAuth/JWKS、MCP 客户端、真实 API、上传中断、429/5xx 重试、缓存并发、连接器同步、崩溃恢复和远端删除对账。
 
 本轮严格未使用 MCP；CodeGraph 仅作为目标源码定位工具。所有关于 API 内部队列、数据库、embedding、索引、连接器 worker、服务端鉴权持久化和性能的结论均保留为外部边界或待验证项，不升级为本地实现事实。
+ # Supermemory 架构取证

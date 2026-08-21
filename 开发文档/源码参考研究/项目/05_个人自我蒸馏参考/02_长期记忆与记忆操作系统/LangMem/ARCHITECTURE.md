@@ -1,3 +1,5 @@
+# LangMem 架构取证
+
 ```text
 LangMem
 ├── 对外 Python API（src/langmem/__init__.py）
@@ -1097,3 +1099,4 @@ tests ─────────── short_term 的确定性覆盖 + 外部�
 - CodeGraph：目标仓库索引可用；本轮 `codegraph explore` 定位了 `MemoryStoreManager`、`MemoryManager`、memory tools、`create_prompt_optimizer`、`MultiPromptOptimizer` 等关键符号。CodeGraph 用于定位，不替代源码逐行证据。
 - 本轮复核重点：确认 MemoryStoreManager 的异步 `gather` 与同步查询/写入差异、namespace 与 Store 缓存边界、Local/Remote ReflectionExecutor 的 Future/取消模型、SummarizationNode 状态更新、三种 prompt optimizer 及 LangGraph graphs/auth 部署边界。
 - 运行证据：未安装依赖、未执行 pytest/ruff/build、未启动 LangGraph 或外部 LLM/embedding/Store；所有新增结论仍为静态源码与配置证据，不能宣称运行态通过。
+ # LangMem 架构取证

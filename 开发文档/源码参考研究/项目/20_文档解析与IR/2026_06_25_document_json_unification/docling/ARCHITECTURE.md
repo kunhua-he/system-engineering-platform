@@ -1,5 +1,16 @@
 # Docling 架构建档
 
+## 0. 顶部流程图
+
+```text
+PDF/Office/HTML/图片等输入
+  → DocumentConverter 选择格式与后端
+  → Pipeline 解析、布局/表格/图片处理
+  → DoclingDocument 统一中间结构
+  → JSON/Markdown/HTML/DocTags 序列化
+  → Chunk/RAG/下游模块
+```
+
 > 本文是目标仓库本地快照的架构事实基线。说明、备注、风险、结论使用中文；源码标识、类名、函数名、枚举值、路径和接口路径保留原文。
 
 ## 1. 建档范围与证据边界
@@ -27,8 +38,8 @@
 
 ### 1.3 证据限制
 
-- 首次 `project_context` 返回的是另一项目 `华世王镞_v3` 及其根目录，不能作为本仓库身份、代码地图或验证证据；随后已用绝对路径重新核对本仓库。
-- `codegraph_explore` 明确返回本目录及其上级没有 `.codegraph/`，因此本仓库没有可用代码图；没有把其他仓库的代码地图、记忆或验证记录混入本建档。
+- 本轮按用户授权未使用 MCP；目标仓库身份以本节绝对路径和 Git 证据为准。
+- 目标 checkout 已有独立 `.codegraph/`；本轮使用源码目录内 `codegraph status` 与 `codegraph explore` 导航，关键结论仍回读当前源码，不使用其他仓库的代码图、记忆或验证记录。
 - 本次未安装依赖、未启动服务、未构建、未运行全量测试，也未修改源码/依赖/测试/配置。
 
 ## 2. 版本与快照基线
@@ -36,16 +47,16 @@
 ### 2.1 本地工作树
 
 - 当前分支：`main`。
-- 本地 `HEAD`：`9b51f4f857176cdd95cef53e2ec7f5f32ffbc6a5`。
-- 本地 `HEAD` 提交主题：`fix: guard scipy import in to avoid crash in docling-slim[service-client] (#3860)`。
+- 本地 `HEAD`：`e1cb2b234c48ff29746b0f2f843d07f8e23905a0`。
+- 本地 `HEAD` 提交主题：`test: increase coverage (#4044)`。
 - `origin`：`https://github.com/docling-project/docling.git`。
 - 建档前工作树存在一个未跟踪文件：`细探-docling.md`；本文件已读取并吸收其结论，随后完成单一文档收口。
 
 ### 2.2 远程版本信息与独立快照
 
-`git ls-remote origin` 返回远程 `HEAD/main`：`06faa09deef1c195f2004224fa970f3caff23e0f`，与本地 `HEAD` 不同。因此本文的“已实现”结论以本地 `9b51f4f...` 为准；远程最新差异单独记录，不覆盖工作树。
+本轮 `git fetch origin main` 与 `git ls-remote origin refs/heads/main` 均返回 `e1cb2b234c48ff29746b0f2f843d07f8e23905a0`，本地与远程一致，不执行覆盖式更新。本文当前事实以该 checkout 为准。
 
-按要求通过 `127.0.0.1:4780` 代理读取远程 SHA `06faa09deef1c195f2004224fa970f3caff23e0f` 的独立 raw 快照并做文本差异，确认远程已出现而本地尚未纳入的方向包括：
+此前记录曾通过 `127.0.0.1:4780` 读取旧远程 SHA `06faa09deef1c195f2004224fa970f3caff23e0f`；该快照仅作为历史升级线索，本轮未通过代理或 MCP 读取外部快照。历史差异方向包括：
 
 - `docling-slim` 版本从 `2.115.0` 变为 `2.121.0`，`docling-core` 下限从 `2.86.0` 变为 `2.91.0`。
 - 新增 `format-iwork`、Apple Pages `IWORK_PAGES` 和 `EBCDIC` 输入格式及对应 backend/选项。
@@ -53,7 +64,7 @@
 - uv 工作区新增 `packages/docling-client`。
 - 远程 `document_converter.py` 已新增 `IWorkPagesDocumentBackend`、`EbcdicDocumentBackend` 路由。
 
-上述远程差异只作为升级风险和未来复核线索，不是本地已实现能力。
+上述历史差异只作为升级风险和未来复核线索，不是本地已实现能力；当前本地实现以 `e1cb2b2...` 源码为准。
 
 ## 3. 项目分层总览
 
@@ -388,11 +399,11 @@ _unload(conv_res)
 8. **服务结果有生命周期**：presigned URL 会过期，task/result 可先后达到不同状态；客户端已有 `ResultExpiredError`、`ResultNotReadyError` 等分类，调用方仍需处理重试和持久化策略。
 9. **转换资源具有状态性**：pipeline cache、模型权重、线程池、页 backend、image cache 均需在失败/超时路径释放；新增阶段必须遵守 `BasePipeline.execute()` 的 finally 释放边界。
 
-### 14.2 本次工具链异常
+### 14.2 本次工具链边界
 
-- 专属 `project_context` 的返回项目与目标目录不一致；该结果已降级为“工具配置异常”记录，未用于目标仓库事实判断。
-- `codegraph_explore` 因目标仓库未初始化 `.codegraph/` 无法提供代码图；本次改用目标绝对路径下的文件读取、静态搜索和 git 只读信息。
-- `127.0.0.1:4780` 由 ClashX 监听，作为远程独立快照代理使用；没有把远程文件写回工作树。
+- 本轮按用户授权未使用 MCP，不产生 `project_context`、MCP feedback 或 `verify_and_record` 证据。
+- 目标 checkout 已有独立 `.codegraph/`；shell `codegraph status` 与 `codegraph explore` 可用，代码图只用于导航，关键结论仍以源码回读为准。
+- 远程版本仅通过 `git fetch`/`git ls-remote` 核对，没有把远程文件写回工作树。
 
 ## 15. 架构结论
 
@@ -420,7 +431,7 @@ Docling 的稳定核心不是某一个 PDF 模型，而是“格式 backend + �
 
 当前核对事实证据只来自目标仓库当前本地快照：`docling/document_converter.py:95-220,431-723`、`docling/datamodel/document.py:616-779`、`docling/backend/abstract_backend.py:19-86`、`docling/backend/docling_parse_backend.py:48-220`、`docling/pipeline/base_pipeline.py:46-148`、`docling/pipeline/standard_pdf_pipeline.py:157-403`、`docling/models/base_model.py:38-218`、`docling/models/factories/ocr_factory.py:9-11`、`docling/utils/model_downloader.py:41-249`、`docling/datamodel/pipeline_options.py:95-260,1203-1269`、`docling/datamodel/document.py:400-550`。远程快照、README 声明、测试文件存在和外部平台能力均不能替代本地实现证据。
 
-`project_context` 实际返回了错误项目 `华世王镞_v3`，其代码图元信息也携带错误项目根；随后目标目录的 `codegraph_explore` 明确报告没有 `.codegraph/`。因此当前核对代码图状态是**不可用**，未把错误项目上下文用于 Docling 事实，以下映射是目标目录直接读取后的静态架构输入。
+本轮不使用 MCP；目标目录的独立 `.codegraph/` 已由 shell CLI 验证可用，以下映射以目标目录直接读取的源码和 Git 证据为准。
 
 ### 16.2 唯一文档链路：适配差异，不复制执行核心
 
@@ -603,7 +614,7 @@ created → queued → running → succeeded
 
 | 等级 | 当前核对必须验证的内容 | 证据要求 | 当前状态 |
 |---|---|---|---|
-| **L0 静态事实** | 本地项目身份、版本、输入/backend/pipeline/model/export 路径；四类 owner；资源创建/释放箭头；失败分类；唯一链路 | `ARCHITECTURE.md` 源码路径/行号、错误 MCP 上下文、`.codegraph/` 状态、修改范围 | **当前核对完成**：已直接读取目标文件；代码图不可用 |
+| **L0 静态事实** | 本地项目身份、版本、输入/backend/pipeline/model/export 路径；四类 owner；资源创建/释放箭头；失败分类；唯一链路 | `ARCHITECTURE.md` 源码路径/行号、Git、`.codegraph/` 状态、修改范围 | **当前核对完成**：已直接读取目标文件；独立 CodeGraph 索引正常 |
 | **L1 契约** | 输入互斥/大小/页限、格式路由、统一文档字段、错误映射、状态枚举、模型/provider 声明、导出结果形状 | 定向测试总数/跳过数/退出码；不能把测试存在、mock 或 import 成功算通过 | **未执行**：未安装依赖、未运行 pytest |
 | **L2 组件集成** | input→backend→pipeline→model provider→统一文档；PDF/Office/OCR/table/image 结果转换；资产 save/load；临时目录清理 | 真实/受控 provider 调用次数、结果 schema、文件摘要、session/模型/队列释放 | **未执行** |
 | **L3 真实端到端** | 真实 PDF/Office/图片，至少一条 OCR/layout/table，真实模型制品或明确的 `HOST_UNAVAILABLE`，真实导出并读回 | 环境/依赖/模型摘要、输入/输出摘要、任务状态、退出码、进程/线程/临时目录/显存现场 | **未执行**：未下载权重、未启动 provider/服务 |
@@ -616,24 +627,21 @@ L0-L4 通过口径是“当前核对真实命令 + 退出码 + 现场读回”�
 - **吸收**：Docling 的输入归一化、backend/pipeline 分离、分页/声明式解析契约、版面/表格/图片/OCR 富化、`DoclingDocument` 外部 IR 边界、`ConversionResult` 错误/部分成功语义和多种导出投影，作为文档解析支持库与文档解析模块的契约输入。
 - **升级**：模型制品下载/校验、provider 注册、统一结果转换、文件/HTTP/临时目录支持库，以及运行核心的任务账本、资源租约、超时、取消、进程隔离、崩溃恢复和残留审计必须进入平台已有 owner；不得由 Docling 模块复制一套。
 - **隔离**：Docling 的第三方 backend/model 对象、CLI、MCP、service client wire model、pipeline 内存队列和 `ConversionStatus` 的项目内部细节留在项目适配层/provider/协议适配层；平台只接收统一文档、统一任务和统一制品契约。
-- **待核**：目标平台现有文档/OCR/模型/HTTP/任务/资源能力的实际注册表、能力 id、占用租约、契约版本和运行验证均因 MCP 错绑/代码图不可用而未核；不能直接开生产底座工作包。
+- **待核**：目标平台现有文档/OCR/模型/HTTP/任务/资源能力的实际注册表、能力 id、占用租约、契约版本和运行验证本轮未执行；不能直接开生产底座工作包。
 - **P0 风险**：线程停止超时可遗留资源；native/第三方模型崩溃隔离与恢复未证；取消/远端 job 未确认不能安全标记 canceled；大文件解压总量、模型显存峰值、批量导出原子性和临时目录崩溃清理未形成统一可读回证据。
 - **当前核对边界**：仅修改本项目根目录 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git，未删除旧细探或其他文件。
 
-## 17. 后续 MCP、修改与验证记录
+## 17. 本轮修改与验证记录
 
 | 项目 | 结果 |
 |---|---|
-| 开工 id | **未取得**：`project_context` 返回的 `开工id` 为空，且项目错误绑定为 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`；不能伪造目标项目开工 id。 |
-| MCP 实例 | 工具实际返回 `project_toolkit`；任务指定的 `system_engineering_toolkit`/目标 HTTP `127.0.0.1:8766/mcp/` 未能为本目标项目提供正确身份绑定。 |
-| `project_context` | **错误绑定**：返回项目名 `华世王镞_v3`，根目录与目标 Docling 不一致；结果未用于目标项目事实。 |
-| `codegraph_explore` | **不可用/错误上下文**：目标目录无 `.codegraph/`；工具返回 `codegraph` 不可用，元信息项目根仍是错误的 V3 根。 |
-| MCP 五字段反馈 | 当前核对完成文档映射后调用；若后端仍拒绝，将以工具原始结果为准，不宣称已入账。 |
-| `verify_and_record` | 当前核对仅允许执行 `git diff --check` 作为文档工作包验证；退出码必须为 0 才能记录成功。由于 MCP 上下文错绑，即使命令退出 0 也只证明目标文件差异格式，不证明平台装配完成。 |
+| MCP | 本轮按用户授权未使用；没有开工 id、MCP feedback 或 `verify_and_record` 记录。 |
+| `codegraph status` | 目标仓库独立索引正常：477 files、10,436 nodes、26,705 edges、29.65 MB。 |
+| `codegraph explore` | 已定位 `DocumentConverter`、`InputDocument`、`BasePipeline`、`ConversionAssets` 等关键符号及调用/测试关系。 |
 | 项目根 | `/Users/hekunhua/Documents/Agent/github 源码参考/20_文档解析与IR/2026_06_25_document_json_unification/docling` |
 | 修改文件 | 仅 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git，旧细探未删除。 |
-| 代码图 | 不可用：目标目录没有 `.codegraph/`。 |
-| 真实验证 | L0 静态映射完成；L1-L4 未执行。 |
+| 代码图 | 可用，独立 `.codegraph/` 已同步；只作导航，不替代源码回读。 |
+| 真实验证 | L0 静态映射完成；L1 关键调用链完成源码复核；L2-L4 未执行。 |
 
 ## 18. 后续底座映射收口：从统一入口到可验收制品
 
@@ -936,3 +944,45 @@ Path / URL / DocumentStream / HttpSource
 - 资源结论：正常路径存在局部 `unload()`/`finally`/临时清理，但 threaded stop 超时、pipeline cache 无 eviction、模型缓存无统一校验、delete-false 临时文件和直接覆盖资产文件仍是明确风险。
 - 文档结论：公开概念文档与源码主链一致；根文档此前的设计性“原子提交/租约/取消/崩溃监督”已在本节标明为平台目标，不再冒充当前实现。
 - 验证边界：未安装依赖、未下载模型、未启动外部服务、未运行 pytest；当前核对没有 L1-L4 运行证据。仅可使用 `git diff --check` 验证 Markdown 差异格式。
+
+## 22. 2026-08-22 复审收口
+
+### 22.1 当前版本与代码地图
+
+- 源码根目录：`/Users/hekunhua/Documents/Agent/github 源码参考/20_文档解析与IR/2026_06_25_document_json_unification/docling`。
+- 当前 `HEAD` 与 `origin/main`：`e1cb2b234c48ff29746b0f2f843d07f8e23905a0`，主题为 `test: increase coverage (#4044)`；本轮不执行覆盖式 pull。
+- 工作树仅有未跟踪 `.codegraph/`、根 `ARCHITECTURE.md`，以及已存在的 `.agents/skills/.../ARCHITECTURE.md` 删除状态；未修改源码 checkout。
+- `codegraph status`：477 files、10,436 nodes、26,705 edges、29.65 MB，index up to date；文件语言以 Python 434 个为主。
+- 本轮按用户授权未使用 MCP；CodeGraph 只用于导航，关键行为已回读源码行号。
+
+### 22.2 关键调用链复核
+
+1. `DocumentConverter` 位于 `docling/document_converter.py:325`，CodeGraph 显示 268 个调用方，CLI、示例和测试均从该入口进入。
+2. 输入统一由 `InputDocument`（`docling/datamodel/document.py:125`）承载；CodeGraph 显示其被 backend 及 40 余个测试/示例路径调用，避免每个 backend 自行定义来源模型。
+3. `BasePipeline`（`docling/pipeline/base_pipeline.py:46`）由 converter 和 ASR/实验 pipeline 复用；实际执行负责 build、assemble、enrich、status 和 unload，失败页保留 `ErrorItem`。
+4. `ConversionAssets`（`docling/datamodel/document.py:394-470`）保存 `DoclingVersion`、状态、errors、pages、timings、confidence 和 `DoclingDocument`；`save()` 先构造内存 ZIP，再写目标文件，原子替换与崩溃恢复仍未实现。
+5. backend 契约由 `AbstractDocumentBackend` 提供；分页/声明式 backend 均必须把结果转换到统一 `docling_core.types.doc.DoclingDocument`，不能把 provider 原始对象泄露到公共出口。
+6. `codegraph explore "DocumentConverter InputDocument BasePipeline DoclingDocument ConversionAssets service client CLI"` 找到 31 个符号，并确认 `DocumentConverter`、`InputDocument`、`BasePipeline`、`ConversionAssets` 的调用/测试覆盖关系。
+
+### 22.3 L0-L4 状态
+
+| 等级 | 本轮状态 | 证据 |
+|---|---|---|
+| L0 静态 | 完成 | Git SHA、远程 SHA、目录、版本和 CodeGraph 状态已执行 |
+| L1 源码调用链 | 完成 | converter/input/backend/pipeline/IR/assets/service/CLI 有 file:line 证据 |
+| L2 单元测试 | 未执行 | 测试文件和 marker 已盘点，未安装依赖或运行 pytest |
+| L3 集成 | 未执行 | 未启动 docling-serve、外部模型、服务 client 或真实文档批处理 |
+| L4 生产故障 | 未执行 | 未做线程超时、native crash、模型缓存损坏、临时文件残留、并发写和重启恢复验证 |
+
+### 22.4 可复现验证命令
+
+```bash
+git fetch origin main
+git rev-parse HEAD
+git ls-remote origin refs/heads/main
+codegraph status
+codegraph explore "DocumentConverter InputDocument BasePipeline DoclingDocument ConversionAssets service client CLI"
+git diff --check -- '开发文档/源码参考研究/项目/20_文档解析与IR/2026_06_25_document_json_unification/docling/ARCHITECTURE.md'
+```
+
+本轮上述版本核对、CodeGraph 查询与 `git diff --check` 均已执行并退出 0；依赖、服务、模型和测试命令没有执行，不得写成通过。

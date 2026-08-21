@@ -1,3 +1,5 @@
+# iai-personal-memory-engine 架构取证
+
 ```text
 [MCP 宿主：Claude Code / Codex / Cursor / Hermes / 其他 MCP-over-stdio 客户端]
                                   │ stdio MCP
@@ -509,3 +511,4 @@ L4 宿主/Provider
 **待核：** 正确 MCP 项目上下文/开工 id；目标代码图是否建立；event buffer 写失败重放；native crash 后句柄/临时文件残留；强杀 SleepPipeline/模型/索引 worker 后的真实恢复；队列溢出策略是否符合平台数据保留要求。
 
 本后续内容继续只维护本 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README 或 Git，也未删除旧细探。
+ # iai-personal-memory-engine 架构取证

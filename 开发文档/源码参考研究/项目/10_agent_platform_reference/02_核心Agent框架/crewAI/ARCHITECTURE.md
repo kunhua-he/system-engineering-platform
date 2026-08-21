@@ -725,7 +725,19 @@ Python/配置/CLI 项目
 - `Task.execute_async` 的 daemon thread、Flow 的 `to_thread`、MCP/A2A 网络会话和外部 memory provider 的崩溃清理边界仍待强杀/超时验证。
 - checkpoint 能恢复本地模型/执行上下文，不等价于 LLM、工具、MCP、A2A 外部副作用可回滚；若平台要求可重放，必须另建幂等键/效果账本。
 - `Telemetry` 的安全失败保护降低了观测对业务的耦合，但也可能丢失证据；生产平台需要独立可靠事件/证据账本，不可只依赖 OTel。
-- 当前核对首个 `project_context` 返回的是另一项目 `华世王镞_v3` 且代码图实例为 `project_toolkit`；随后按任务给出的 crewAI 绝对路径做了人工源码取证，专属 `system_engineering_toolkit` 的开工/验证服务在当前核对调用时不可达。因此 MCP 开工 id、反馈入账和验证记录尚待服务恢复后补登记，不能伪造为已成功。
+- 本轮严格未使用 MCP。目标 crewAI checkout 自带 CodeGraph，已执行 `codegraph status` 与 `codegraph sync`，统计为 2,073 files、28,248 nodes、73,089 edges；源码结论以当前 checkout 和 Git 提交为准。
+
+## 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 源码同步 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `f4731f5025f861c78e3af0487cc80bf5e7c64782` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 2,073 files / 28,248 nodes / 73,089 edges，索引最新 |
+| 文档 | `wc -l ARCHITECTURE.md` | 952 行，满足 500 行要求 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮只修改平台研究文档，未修改 crewAI 源码、依赖、测试或配置；严格未使用 MCP，仅使用 shell、git、CodeGraph 和静态源码证据。未验证依赖安装、pytest、真实模型/provider、Redis/数据库、异步 worker、并发取消、网络断连、进程崩溃恢复、部署和性能 benchmark。
 
 ## 18. 后续证据索引
 
