@@ -14,7 +14,7 @@ CLI/TUI/Web/Desktop/SDK
 > 本文是对当前本地源码快照的全量静态架构记录，不是实现计划，也不把规格文档当成已实现事实。
 >
 > - 仓库：`~/Documents/Agent/github 源码参考/10_agent_platform_reference/01_成品Agent平台/opencode`
-> - 当前代码基线：`ba72a6ff2b62aaf614b8e745193e86a51be6142c`（`dev` 与 `origin/dev`，2026-08-21）
+> - 当前代码基线：`1b937c860b6fd8a83e69f916b1236515aa17ea0d`（本轮 fast-forward 后的 `dev`/`origin/dev`，2026-08-21）
 > - 许可证：MIT；语言/运行时：TypeScript ESM monorepo，Bun workspace
 > - 读取范围：根 README、根及局部 AGENTS、CONTEXT/specs、依赖清单、入口、核心模型、事件/存储、LLM、权限/工具、HTTP API、CLI/TUI/UI、SDK 和测试；另对最新版本做增量复核。
 > - 本次边界：只新增本文件；不改源码、依赖、测试、配置，不安装依赖、不启动服务、不构建、不运行测试、不提交 Git。
