@@ -1,6 +1,6 @@
 # AutoLinker 架构归档
 
-> 本文是 AutoLinker 项目根目录唯一的架构事实文档。说明、结论、风险和验证记录使用中文；源码路径、类名、函数名、字段名、路由、命令、协议名和第三方名称保留原文。后续架构细探应归并到本文件，不再创建平行架构报告。
+> 本文是 AutoLinker 项目根目录唯一的架构事实文档。说明、结论、风险和验证记录使用中文；源码路径、类名、函数名、字段名、路由、命令、协议名和第三方名称保留原文。后续架构历史研究应归并到本文件，不再创建平行架构报告。
 
 ## 1. 项目定位
 
@@ -30,7 +30,7 @@ AutoLinker 是加载到易语言 IDE 进程内的支持库插件：构建产物�
 | 远程与本地差异 | 远程只比本地新增文档/技能内容：`README.md`、`CONFIG.md`、`skills/autolinker-usage/SKILL.md` 和 `.claude/skills/autolinker-usage/SKILL.md`；未发现 `src/`、项目文件或测试实现差异 |
 | 当前版本常量 | `src/AutoLinkerVersion.h:5` 为 `AUTOLINKER_VERSION "0.0.0"`；`src/AutoLinker.h:75-87` 的支持库版本/描述仍为固定宏 |
 | 代码图 | 目标根没有 `.codegraph/`，`codegraph_explore` 明确返回未索引；本次源码证据采用直接读取、路径检索、静态调用链和项目文件分析 |
-| 旧细探 | 目标根没有 `细探-*.md`；本文件为首次根架构归档 |
+| 历史研究 | 目标根没有 `历史研究-*.md`；本文件为首次根架构归档 |
 
 本次只允许、也只修改了目标根 `ARCHITECTURE.md`；没有修改源码、依赖、测试、配置、Git 元数据、远程仓库，没有安装依赖、启动 IDE 或构建工程。
 
@@ -293,11 +293,11 @@ MSBuild.exe AutoLinkerTest\AutoLinkerTest.vcxproj /t:Build "/p:Configuration=fne
 
 维护规则：源码改变时先更新对应调用链、数据模型和风险段，再更新本文件的版本基线与验证记录；任何 README/技能中的新协议能力都必须在 `src/`、运行时工具目录和 Windows 集成测试中找到证据后才能升格为“已实现”。
 
-## 11. 第三轮通用底座映射：动态库、ABI、符号与生命周期
+## 11. 当前裁决通用底座映射：动态库、ABI、符号与生命周期
 
-### 11.1 本轮边界、证据等级与环境问题
+### 11.1 当前审计边界、证据等级与环境问题
 
-本轮只对目标目录当前源码、项目文件、已有 `ARCHITECTURE.md` 和 `AGENTS.md` 做静态取证；目标根没有 `细探-*.md` 或其他旧细探文件，不能把不存在的旧材料当作证据。开工时调用 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与本目标不一致，因此本轮**不采用**该项目的代码图、记忆、验证或任务状态，改以目标目录本地文件为唯一证据，并将本次结论标为弱验证。
+当前审计只对目标目录当前源码、项目文件、已有 `ARCHITECTURE.md` 和 `AGENTS.md` 做静态取证；目标根没有 `历史研究-*.md` 或其他历史研究文件，不能把不存在的旧材料当作证据。开工时调用 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与本目标不一致，因此当前审计**不采用**该项目的代码图、记忆、验证或任务状态，改以目标目录本地文件为唯一证据，并将本次结论标为弱验证。
 
 本文采用以下事实标记，避免把声明、骨架和真实实现混写：
 
@@ -305,7 +305,7 @@ MSBuild.exe AutoLinkerTest\AutoLinkerTest.vcxproj /t:Build "/p:Configuration=fne
 - **声明/配置**：头文件、宏、`.def`、`#pragma comment(lib, ...)`、`.vcxproj` 或 README 只说明接口/构建意图，不证明宿主加载、运行库存在或调用成功；例如 `src/AutoLinker.h:67` 的通知声明、`src/AutoLinker.def:1-3` 的导出声明。
 - **骨架/未证实**：存在入口或适配代码，但缺少当前 Windows 构建物、宿主实跑、依赖检查或失败场景证据；例如 x64 `fne_release` 只在 `AutoLinker.vcxproj:139-141,444-447` 显式保留少量属性，不能据此声称 x64 `.fne` 已成功构建。
 
-L0-L4 是本轮的证据成熟度，不是功能名称：
+L0-L4 是当前审计的证据成熟度，不是功能名称：
 
 | 等级 | 允许的结论 | 本项目当前证据 |
 |---|---|---|
@@ -315,7 +315,7 @@ L0-L4 是本轮的证据成熟度，不是功能名称：
 | L3 | 脱离 IDE 的真实 Windows 运行/故障注入通过 | `AutoLinkerTest` 只是入口，未在本机运行；没有加载/卸载/位数/缺 DLL 专项结果 |
 | L4 | 易语言 IDE + 目标 `.fne` + WebView2/私有 ABI/网关的端到端通过 | 未执行，必须在 Windows/易语言环境完成 |
 
-因此，本轮能把多数源码节点定到 **L1（实现存在）**，但不能把整个动态库链路定为 L2-L4。以下“已实现”均只表示源代码事实，不表示宿主验收通过。
+因此，当前审计能把多数源码节点定到 **L1（实现存在）**，但不能把整个动态库链路定为 L2-L4。以下“已实现”均只表示源代码事实，不表示宿主验收通过。
 
 ### 11.2 构建、链接和加载事实矩阵
 
@@ -445,7 +445,7 @@ LocalMcpServer
 3. 当前已有的动态库探测很少：`TimeManager` 只解析 `GetTickCount64`，WebView2 只探测 Runtime API，WinINet 只在格式化错误时回退加载 `wininet.dll`。未发现统一的 `LoadLibraryEx` 搜索策略、`GetProcAddress` 签名登记、`FreeLibrary` 配对、PE machine 检查、导出表校验或依赖图报告。
 4. 现有错误形状以 `bool`、空字符串、`std::pair<string,int>`、日志和 HRESULT 为主，尚未形成跨动态库/进程/网关的稳定错误码、可重试字段、资源清单和证据 id。底座接入时必须在支持库边界一次转换，禁止各调用方自行翻译。
 5. `AutoLinkerTest/AutoLinkerTest.cpp:1556-1648` 的 `main` 提供无参数 smoke、版本比较、链接命令字符串、GameAnalytics、模型集成和 `headless-compile` 命令；`src/AutoLinkerTestApi.h:15-81` 是脱离 IDE 的 C ABI 测试导出声明。当前没有专门的 `LoadLibrary/GetProcAddress/FreeLibrary`、缺库、坏 ABI、Win32/x64、Hook 回滚或 DLL 卸载测试入口。
-6. `AGENTS.md:31-58` 要求 Windows/VS 构建后把 `.fne` 覆盖到易语言 `lib` 并打开 `test_a.e`；这属于宿主集成验收说明，不是本轮已执行证据。当前 macOS 环境不能运行 MSBuild、易语言 IDE、WebView2 Runtime、`.fne` loader 或 Windows 进程清理测试。
+6. `AGENTS.md:31-58` 要求 Windows/VS 构建后把 `.fne` 覆盖到易语言 `lib` 并打开 `test_a.e`；这属于宿主集成验收说明，不是当前审计已执行证据。当前 macOS 环境不能运行 MSBuild、易语言 IDE、WebView2 Runtime、`.fne` loader 或 Windows 进程清理测试。
 
 ### 11.8 通用底座装配计划与裁决
 
@@ -478,13 +478,13 @@ LocalMcpServer/其他入口
 - **待核**：x64 `fne_release` 实际产物、PE import/export 与 machine、易语言 IDE 对 `LIB_INFOX` 的真实兼容矩阵、WebView2 COM callback 在窗口销毁时的排空、Detours 主 Hook 的卸载、e-packager 卡死/子进程树残留、MCP 客户端断开到 AI/WinINet cancel 的传播。
 - **废弃/禁止复用**：把 `LoadLibraryA`、`GetProcAddress`、固定 RVA、`TerminateProcess` 或 `DependencyCatalogCache` 搜索逻辑散落复制到新的模块/网关；把 README/技能中宣称的网关线程池、会话协商、503 和多实例能力当作当前 loader/运行核心证据。
 
-### 11.10 本轮安全验证记录
+### 11.10 当前审计安全验证记录
 
-本轮只执行了本地静态读取、路径检索和 Git 状态检查；没有创建或修改源码/依赖/配置/测试，也没有启动服务、IDE 或构建。现场命令及结果：
+当前审计只执行了本地静态读取、路径检索和 Git 状态检查；没有创建或修改源码/依赖/配置/测试，也没有启动服务、IDE 或构建。现场命令及结果：
 
 ```text
 git status --short -- ARCHITECTURE.md
-→ ?? ARCHITECTURE.md（该根架构文档本来就是未跟踪文件；本轮仅继续修改它）
+→ ?? ARCHITECTURE.md（该根架构文档本来就是未跟踪文件；当前审计仅继续修改它）
 
 git rev-parse --show-toplevel
 → /Users/hekunhua/Documents/Agent/github 源码参考/90_历史与专项/易语言/源码仓库/公开仓库/GitHub_aiqinxuancai/AutoLinker
@@ -492,11 +492,11 @@ git rev-parse --show-toplevel
 git rev-parse HEAD
 → b3a1358a1ca80f201c14327cd082c65914c9a7e0
 
-git ls-files '*细探*.md' '*ARCHITECTURE*.md'
-→ 无输出（旧细探和架构文档均未纳入 Git 索引；磁盘上的 ARCHITECTURE.md 是本项目唯一架构文件）
+git ls-files '*历史研究*.md' '*ARCHITECTURE*.md'
+→ 无输出（历史研究和架构文档均未纳入 Git 索引；磁盘上的 ARCHITECTURE.md 是本项目唯一架构文件）
 ```
 
-以上命令退出码均为 `0`。本机为 macOS，以下命令本轮**未执行**，不能声称通过：
+以上命令退出码均为 `0`。本机为 macOS，以下命令当前审计**未执行**，不能声称通过：
 
 ```powershell
 MSBuild.exe ..\AutoLinker.vcxproj /t:Build "/p:Configuration=fne_release;Platform=Win32" /m
@@ -504,4 +504,4 @@ MSBuild.exe AutoLinkerTest\AutoLinkerTest.vcxproj /t:Build "/p:Configuration=fne
 .\bin\fne_release\AutoLinkerTest.exe
 ```
 
-本轮唯一修改文件仍是目标根 `ARCHITECTURE.md`；未删除旧细探（目标目录现场未发现旧细探）。下一轮若要把 L1 提升到 L2-L4，必须在 Windows 环境实际生成并检查 Win32/x64 `.fne`、用 `dumpbin /headers /exports /dependents` 或等价工具核验 PE/导出/依赖，再以易语言 5.95/5.71 宿主完成加载、卸载、缺依赖、取消、超时、崩溃和残留验证。
+当前审计唯一修改文件仍是目标根 `ARCHITECTURE.md`；未删除历史研究（目标目录现场未发现历史研究）。下一轮若要把 L1 提升到 L2-L4，必须在 Windows 环境实际生成并检查 Win32/x64 `.fne`、用 `dumpbin /headers /exports /dependents` 或等价工具核验 PE/导出/依赖，再以易语言 5.95/5.71 宿主完成加载、卸载、缺依赖、取消、超时、崩溃和残留验证。

@@ -1,19 +1,19 @@
 # LightRAG 架构事实与一致性审计
 
-> 本文是本地 checkout 的架构事实入口。源码标识、配置键、接口路径和测试文件名保留原文；结论按“实现已确认 / 有定向测试断言但本轮未执行 / 未验证”区分。本文只修改文档，不代表服务、远程后端或测试已运行。
+> 本文是本地 checkout 的架构事实入口。源码标识、配置键、接口路径和测试文件名保留原文；结论按“实现已确认 / 有定向测试断言但当前核对未执行 / 未验证”区分。本文只修改文档，不代表服务、远程后端或测试已运行。
 
 ## 1. 范围、基线与证据
 
 - 项目：LightRAG（仓库 `HKUDS/LightRAG`），本地版本 `lightrag.__version__ = 1.5.5`，API 版本 `0321`。
 - 根目录：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/55_knowledge_graph_rag/LightRAG`。
 - 研究范围：`ingest → chunk → extraction → KV/Graph/Vector/DocStatus → query → queue → API → tests → docs`。
-- 本轮未使用 MCP/Hermes；目标仓库没有 `.codegraph` 索引，已先行确认 CodeGraph 不可用，未自行初始化索引。
-- 本轮未安装依赖、启动服务、构建前端或运行测试。测试文件只证明存在回归意图，不证明通过。
+- 当前核对未使用 MCP/Hermes；目标仓库没有 `.codegraph` 索引，已先行确认 CodeGraph 不可用，未自行初始化索引。
+- 当前核对未安装依赖、启动服务、构建前端或运行测试。测试文件只证明存在回归意图，不证明通过。
 
 证据等级：
 
 - **E1**：实现、异常路径或源码注释直接确认。
-- **E2**：实现与定向测试共同覆盖，但本轮未执行。
+- **E2**：实现与定向测试共同覆盖，但当前核对未执行。
 - **E3**：仓库文档、配置或测试配置确认。
 - **U**：需要真实服务、远程后端、强杀、性能或故障注入才能确认。
 
@@ -100,7 +100,7 @@ Native parser 生成 LightRAG Document 和 sidecar，保留 heading、paragraph�
 4. 合并描述、source tracking、关系权重，再写 Graph、Vector 和关联 KV。
 5. 由 `wait_tasks_with_drain` 在任一子任务失败或等待器取消时 cancel 并等待兄弟任务终态。
 
-同一 document/chunk/source identity 重试不能重复累加描述、tracking 或关系权重；相关回归包括 `tests/extraction/test_merge_description_dedup.py`、`test_edge_weight_reprocess.py`、`test_write_ahead_indexes.py`、`test_kg_recovery_primitives.py`。E2（本轮未执行）。
+同一 document/chunk/source identity 重试不能重复累加描述、tracking 或关系权重；相关回归包括 `tests/extraction/test_merge_description_dedup.py`、`test_edge_weight_reprocess.py`、`test_write_ahead_indexes.py`、`test_kg_recovery_primitives.py`。E2（当前核对未执行）。
 
 图与向量不是跨后端事务。图先提交而向量 flush 失败时，代码抛 `VectorStorageConsistencyError`，恢复策略是以图为权威、停止服务并运行 `lightrag-rebuild-vdb`，不是假装完成 rollback。E1/E2：`lightrag/utils_graph.py`、`lightrag/tools/rebuild_vdb.py`。
 
@@ -202,7 +202,7 @@ QueryParam
 6. `BaseGraphStorage.search_labels` 是标签模糊搜索，不等于独立全文/BM25；当前 query 链没有被源码证明的独立全文 provider。OpenSearch 后端存在也不能改写成全文能力已通过。
 7. 取消、恢复、重试、force reset 和 rebuild 不是同义词；尤其 force reset 不修复部分提交。
 
-本轮仍未验证：真实 Gunicorn/Manager worker SIGKILL 后重启恢复、断电/OOM 下 tmp reaper、远程后端 bulk partial failure/refresh/workspace 隔离、真实 provider timeout 与资源回收、图向量不一致后的完整 rebuild、API 对 embedding 异常空结果的可观测性、完整 pytest/前端测试、性能容量和安全扫描。
+当前核对仍未验证：真实 Gunicorn/Manager worker SIGKILL 后重启恢复、断电/OOM 下 tmp reaper、远程后端 bulk partial failure/refresh/workspace 隔离、真实 provider timeout 与资源回收、图向量不一致后的完整 rebuild、API 对 embedding 异常空结果的可观测性、完整 pytest/前端测试、性能容量和安全扫描。
 
 ## 11. 结论
 
@@ -227,3 +227,280 @@ LightRAG 的可恢复骨架由以下事实组成：
 - API：`lightrag/api/lightrag_server.py`、`lightrag/api/routers/document_routes.py`、`query_routes.py`、`graph_routes.py`。
 - 处理说明：`docs/FileProcessingPipeline.md`、`docs/LightRAG-API-Server.md`、`docs/ParagraphSemanticChunking.md`。
 - 定向测试：`tests/pipeline/`、`tests/extraction/`、`tests/chunker/`、`tests/kg/`、`tests/api/`。
+
+## 13. 目录与交付物盘点（当前 checkout）
+
+以下盘点来自 `rg --files`，用于防止把示例、部署脚本或 WebUI 误认成核心运行时：
+
+| 区域 | 代表文件/目录 | 架构职责 | 证据 |
+|---|---|---|---|
+| 核心门面 | `lightrag/lightrag.py` | dataclass 配置、生命周期、同步兼容门面 | E1 |
+| 编排 | `lightrag/operate.py` | 抽取、图查询、朴素查询、上下文构造 | E1 |
+| 流水线 | `lightrag/pipeline.py`、`lightrag/utils_pipeline.py` | 入队、扫描、解析、分析、处理和状态更新 | E1 |
+| 入口 API | `lightrag/api/lightrag_server.py` | FastAPI 应用组装、认证、静态 WebUI 和健康检查 | E1 |
+| 文档路由 | `lightrag/api/routers/document_routes.py` | 上传、文本、扫描、追踪、删除、取消、恢复 | E1 |
+| 查询路由 | `lightrag/api/routers/query_routes.py` | 普通、流式、结构化 query | E1 |
+| 图路由 | `lightrag/api/routers/graph_routes.py` | 标签、子图、节点边编辑、合并删除 | E1 |
+| 存储抽象 | `lightrag/base.py` | KV、Vector、Graph、状态和 embedding 接口 | E1 |
+| 存储工厂 | `lightrag/kg/factory.py`、`lightrag/kg/__init__.py` | 默认实现和懒加载 provider 注册 | E1 |
+| 并发协调 | `lightrag/kg/shared_storage.py`、`pipeline_ingress.py` | workspace 锁、reservation、mailbox | E1 |
+| 解析器 | `lightrag/parser/`、`lightrag/sidecar/` | legacy/native/MinerU/Docling 和旁车数据 | E1/E3 |
+| 角色 LLM | `lightrag/llm.py`、`lightrag/llm_roles.py` | EXTRACT/KEYWORD/QUERY/VLM 队列和 provider | E1 |
+| 迁移与工具 | `lightrag/tools/` | storage 迁移、rebuild-vdb、诊断 CLI | E1 |
+| WebUI | `lightrag_webui/src/` | API 类型、上传、状态和图可视化 | E1 |
+| 测试 | `tests/` | 按 pipeline/extraction/chunker/kg/api 等分域回归 | E2 |
+| 文档 | `docs/`、`README*.md` | 部署、API、解析和分块说明 | E3 |
+| 部署 | `Dockerfile*`、`docker-compose*`、`k8s-deploy/` | 镜像、外部数据库和 Kubernetes | E3 |
+
+根目录同时包含 `pyproject.toml`、`setup.py`、`uv.lock`、多套 offline requirements、`Makefile`、`scripts/test.sh` 和 Docker/K8s 制品。依赖锁和 compose 文件是版本事实；不能仅依据 README 的安装命令推断 provider 已可运行。
+
+## 14. 真实调用链 file:line 索引
+
+### 14.1 SDK 插入链
+
+1. `LightRAG.insert` 在 `lightrag/lightrag.py:1736-1772` 做同步包装，实际转向 `ainsert`。
+2. `LightRAG.ainsert` 在 `lightrag/lightrag.py:1774-1842` 校验输入、生成 `doc_id`/tracking 并调用内部插入管线。
+3. 自定义 chunk 入口为 `insert_custom_chunks`/`ainsert_custom_chunks`（`lightrag/lightrag.py:1844-1935`），绕过 parser 但仍需要向量和文档状态语义。
+4. 自定义知识图谱入口为 `insert_custom_kg`/`ainsert_custom_kg`（`lightrag/lightrag.py:3454-3578`），直接接收 entities/relationships，仍要经过 workspace 和存储生命周期。
+5. 初始化和关闭在 `lightrag/lightrag.py:1568-1668`；任何 SDK 示例缺失 `initialize_storages` 都是不完整运行契约。
+
+### 14.2 文档流水线链
+
+1. `lightrag/api/routers/document_routes.py:约 5526` 的 `insert_text` 接收单文本并返回 tracking。
+2. 同文件 `约 5658` 的 `insert_texts` 批量创建 tracking，容量和重复判断在入队层执行。
+3. `/documents/scan` 和 `/documents/reprocess_failed` 的处理入口在同路由的 scan/retry handlers；前者访问 input 目录，后者仅依据状态 storage。
+4. `lightrag/pipeline.py` 将解析器、chunker、sidecar、抽取器和写入器串联；`utils_pipeline.py` 保存状态转换和失败原因。
+5. `lightrag/kg/pipeline_ingress.py:503` 的 `PipelineIngressHub` 只唤醒 supervisor；它不保存全文、不承诺 exactly-once。
+6. worker 每个阶段都检查 cancellation event；取消后的 document item 在边界处变为 FAILED，并由状态扫描决定是否再次接管。
+
+### 14.3 查询链
+
+1. `query_routes.py:447-733` 的 `query_text` 负责认证、参数限制、调用 `rag.aquery` 并转换 HTTP 响应。
+2. `query_routes.py:736-1307` 的 `query_text_stream` 使用异步迭代器，客户端取消只取消响应消费，不等同 provider 已释放。
+3. `query_routes.py:1309-` 的 `query_data` 走结构化结果，不复用文本拼接作为内部真相。
+4. `lightrag/lightrag.py:3896-3951` 的 `query/aquery` 是兼容包装，真正完整结果在 `aquery_llm`。
+5. `lightrag/lightrag.py:3978-4182` 的 `aquery_data` 负责 retrieval data、metadata、references。
+6. `lightrag/lightrag.py:4184-4330` 的 `aquery_llm` 负责 role LLM 调用、bypass、流式和 response format。
+7. `lightrag/operate.py:4504-6456` 的 `kg_query` 负责 local/global/hybrid/mix 检索、去重、rerank 和 token 截断。
+8. `lightrag/operate.py:6458-` 的 `naive_query` 只查 chunk vector，不应被描述成知识图谱查询。
+
+### 14.4 API 与 WebUI 链
+
+1. `lightrag/api/lightrag_server.py:2468` 注册根路由，`2525` 注册 login，`2601` 开始健康/配置相关路由。
+2. 应用将 `document_routes`、`query_routes`、`graph_routes` 和 Ollama-compatible router 组合；协议适配层调用同一 `LightRAG` 门面。
+3. WebUI `lightrag_webui/src/api/lightrag.ts:362-368` 创建 axios 基址和 JSON headers，`370-` 管理 token 刷新；它不持有检索状态。
+4. WebUI `lightrag_webui/src/api/lightrag.ts:534-570` 调用图标签和 `/health`，`572-` 调用 documents；API 类型明确暴露 queue、pipeline、workspace 和 keyed lock 状态。
+5. `StatusCard.tsx:16-` 按 `extract/keyword/query/vlm` 展示角色队列；展示数据来自 `/health`，不是本地猜测。
+
+## 15. 组件边界与扩展约束
+
+### 15.1 Parser 与 chunker
+
+- `lightrag/parser/routing.py` 将环境、文件名 hint 和显式 API 选项归一化；同一文档的 parser 选择在入队时冻结。
+- `lightrag/chunker/` 维护 F/R/V/P 四种策略；semantic-vector 依赖 embedding 断点，失败回退必须保留策略元数据，避免重试改变 chunk identity。
+- `lightrag/parser/external/mineru/` 和 `docling/` 使用 HTTP 外部边界；客户端应限制 endpoint、重定向、响应大小和轮询次数。
+- `lightrag/sidecar/` 的 sidecar 是溯源输入，不是可无条件信任的最终实体；VLM 失败时必须能回退纯文本处理。
+
+### 15.2 Storage provider
+
+| 类型 | 默认实现 | 可选实现举例 | 需要独立验证的语义 |
+|---|---|---|---|
+| KV | `json_kv_impl.py` | Redis、Postgres、Mongo | flush、批量失败、workspace 前缀 |
+| Vector | `nano_vector_db_impl.py` | Qdrant、Milvus、FAISS、PGVector | 维度、refresh、read-your-writes |
+| Graph | `networkx_impl.py` | Neo4j、Memgraph、OpenSearch | 节点边原子性、标签隔离 |
+| DocStatus | `json_doc_status_impl.py` | Redis、Postgres 等 | 单条 upsert durability、分页一致性 |
+
+provider 工厂的懒加载避免未安装依赖在 import 阶段崩溃，但会把错误推迟到初始化；部署检查必须显式 import、连接、写入、读取、删除和 finalize。对于远程 provider，bulk 成功响应不代表每一条记录成功，必须读取 partial failure 明细。
+
+### 15.3 LLM、embedding、rerank
+
+- `lightrag/llm.py` 暴露 provider 适配函数；`llm_roles.py` 以角色分离 queue、timeout、priority 和运行状态。
+- `MAX_ASYNC_LLM`、`MAX_ASYNC_EMBEDDING`、`MAX_ASYNC_RERANK` 是并发上限，不是总吞吐保证；provider 自身连接池可能形成第二层限制。
+- role 热更新需要 drain 旧 queue；配置写成功而旧 worker 仍运行时，健康状态必须报告迁移中。
+- embedding 维度、模型名、前缀和归一化方式构成 index identity；变化后应阻断增量写入并要求 rebuild/migration。
+- rerank 只在检索候选之后改变排序；rerank timeout 不能回滚已写入的 graph/vector。
+
+## 16. 并发、锁与资源释放检查表
+
+| 资源 | 获取点 | 释放点 | 当前判断 |
+|---|---|---|---|
+| workspace reservation | `shared_storage.py` reservation helpers | owner-checked finally | E1；需进程杀验证 |
+| keyed entity/edge lock | `utils_graph.py` merge path | context manager finally | E1 |
+| pipeline mailbox | `pipeline_ingress.py` hub | manager 生命周期/clear | E1；空 mailbox 会累积 |
+| LLM queue slot | `llm_roles.py` submit/worker | completion/cancel drain | E1 |
+| vector pending buffer | NanoVector `upsert` | `index_done_callback` | E1；失败保留待重试 |
+| temp snapshot | JSON storage save | `os.replace`/reaper | E1；SIGKILL 仍 U |
+| HTTP response stream | query stream route | client disconnect/finally | E1；真实断连 U |
+| external parser task | MinerU/Docling poll | cancel/timeout/finally | E1；供应商语义 U |
+
+资源风险不是“有 finally 就已解决”：finally 可能在进程强杀、解释器终止、provider 卡死或 event loop 销毁时不执行。生产部署必须配合 watchdog、超时、幂等重扫和外部连接池回收。
+
+## 17. 权限、路径和安全边界
+
+- API key/JWT 校验位于 API 依赖层；健康路由仍需确认是否暴露工作目录、provider 名称和 queue 计数。
+- input/working directory 必须做 canonical path 校验；basename/content hash 去重不能代替路径穿越防护。
+- 外部 parser URL 允许配置时应拒绝 loopback、link-local 和内部 DNS 解析结果，除非部署策略显式允许。
+- graph label、entity id、document id 来自请求时必须限制长度和字符集，避免日志、SQL、图查询和文件名注入。
+- 错误响应应返回稳定 error code 和可操作说明，不能把 provider 原始 token、URL、SQL、绝对路径或密钥回显到客户端。
+- WebUI token 刷新要限制并发、重试次数和失效窗口；axios 拦截器的刷新锁只解决客户端竞态，不解决服务端撤销。
+
+## 18. 部署与运维证据
+
+- `Dockerfile`、`Dockerfile.lite`、`Dockerfile.postgres` 区分完整、轻量和 PostgreSQL 组合；镜像并不自动证明外部 embedding/LLM 可达。
+- `docker-compose.yml` 和 `docker-compose-full.yml` 声明 Redis/Postgres/Qdrant/Neo4j 等组合；生产必须固定版本和持久卷，避免 `latest` 漂移。
+- `k8s-deploy/lightrag/templates/deployment.yaml`、`service.yaml`、`pvc.yaml` 描述服务、卷和探针；应核对 readiness 是否等待 storage 初始化完成。
+- `k8s-deploy/databases/` 的脚本负责数据库安装与卸载，属于运维层，不是 LightRAG 事务保证。
+- `lightrag.service.example` 和 `docker-entrypoint.sh` 是启动样板；真实部署还需核对 worker 数、Manager/fork 关系和 graceful shutdown 超时。
+- 端口默认 `9621`，本次审计未启动服务；任何运行态验证应使用独立端口 4780，避免碰撞平台 MCP 端口。
+
+## 19. 测试覆盖矩阵与证据边界
+
+| 风险主题 | 代表测试 | 本次状态 |
+|---|---|---|
+| failed retry 一次性语义 | `tests/pipeline/test_pipeline_failed_retry_semantics.py` | 文件存在，未执行 |
+| mailbox 溢出和退出 | `tests/pipeline/test_pipeline_ingress_exit.py`、`feed.py` | 文件存在，未执行 |
+| cancel/drain | `tests/pipeline/test_pipeline_cancellation.py` | 文件存在，未执行 |
+| graph/vector recovery | `tests/extraction/test_write_ahead_indexes.py`、`tests/kg/test_kg_recovery_primitives.py` | 文件存在，未执行 |
+| chunk F/R/V/P | `tests/chunker/` | 目录存在，未执行 |
+| provider dimension | `tests/llm/test_dimension_mismatch.py` | 文件存在，未执行 |
+| API stream | `tests/api/routes/test_query_stream_routes.py` | 文件存在，未执行 |
+| auth/path | `tests/api/auth/test_whitelist_path_prefix.py` | 文件存在，未执行 |
+| error sanitization | `tests/api/test_error_message_sanitization.py` | 文件存在，未执行 |
+| workspace isolation | `tests/workspace/test_workspace_migration_isolation.py` | 文件存在，未执行 |
+
+“文件存在”仅是 E2 的测试意图证据，不是通过证据。未安装依赖和未配置 provider 时，不能把 import、收集或静态 grep 当运行成功。
+
+## 20. 剩余风险清单（按优先级）
+
+1. **高**：跨 KV/Graph/Vector/DocStatus 没有统一事务；需在业务层暴露 partial commit 和 rebuild 状态。
+2. **高**：外部 parser 和 LLM provider 的 timeout、断连、重试和计费边界需真实注入验证。
+3. **高**：workspace reservation、Manager mailbox 和多 worker graceful shutdown 需 SIGTERM/SIGKILL 双路径验证。
+4. **高**：embedding identity 变化若未阻断，可能产生静默的向量维度或语义混库。
+5. **中**：健康接口包含较多运行配置，生产需确认脱敏和最小暴露。
+6. **中**：有限 terminal request-id 窗口不能提供无限 exactly-once；客户端必须保存 tracking 和状态结果。
+7. **中**：空查询结果与 embedding failure 的响应区分不足，需增加 provider error telemetry。
+8. **中**：图编辑、删除、clear 与流水线并发时的 reservation 竞争需要长时间压力测试。
+9. **低**：WebUI 类型与后端新增字段可能短暂漂移，应在 CI 运行生成/契约检查。
+10. **低**：文档中仍有英文 provider 名称和协议字段，这是外部契约保留，不应翻译成业务别名。
+
+## 21. 审计交付元数据
+
+- 源码仓库：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/55_knowledge_graph_rag/LightRAG`。
+- 审计 HEAD：`ddecea9e`（`git log -1 --oneline`，2026-08-22 本地核对）。
+- 源码文件规模：`rg --files` 可见核心 Python、TypeScript、部署、文档和测试文件；完整清单留在 checkout，本文只保留架构相关索引。
+- 文档唯一写入：`/Users/hekunhua/Documents/Agent/PHP/系统工程平台/开发文档/源码参考研究/项目/30_多模态与媒体分析/55_knowledge_graph_rag/LightRAG/ARCHITECTURE.md`。
+- 代码仓库中的未跟踪 `.codegraph/` 和 `ARCHITECTURE.md` 未纳入平台文档修改；本审计未在源码仓库写入任何文件。
+- MCP 证据：`project_context` 返回项目根为华世王镞_v3，`codeexplore` 返回同一错绑根目录并以错误码 `TOOL_EXECUTION_ERROR` 结束；两者不用于 LightRAG 事实。
+- 验证命令：本次只执行 `git status`、`git log`、`wc -l`、`rg --files`、`rg -n` 和文档静态检查；未运行 pytest、服务、Docker、K8s 或 provider。
+- 结论状态：源码静态事实已整理；运行态、性能、强杀、远程后端和安全扫描仍为 U。
+
+## 22. 关键配置与默认值索引
+
+配置字段由 `LightRAG` dataclass 和环境变量共同决定，以下只列会改变架构语义的字段：
+
+| 配置 | 作用 | 失败/漂移后果 | 证据 |
+|---|---|---|---|
+| `WORKING_DIR` | KV、vector、graph、status 文件根目录 | 误指向旧 workspace 造成数据混用 | `lightrag/lightrag.py:392-500` |
+| `INPUT_DIR` | scan 和上传默认目录 | 路径越界或扫描遗漏 | `document_routes.py` |
+| `KV_STORAGE` | KV provider 名称 | provider 懒加载失败 | `kg/factory.py` |
+| `VECTOR_STORAGE` | vector provider | 维度/刷新语义改变 | `kg/factory.py` |
+| `GRAPH_STORAGE` | graph provider | 图事务、标签能力改变 | `kg/factory.py` |
+| `DOC_STATUS_STORAGE` | 状态 provider | 恢复锚点丢失或分页不一致 | `kg/factory.py` |
+| `MAX_ASYNC_LLM` | 默认 LLM 并发 | provider 限流、内存放大 | `lightrag.py:688-770` |
+| `MAX_ASYNC_EMBEDDING` | embedding 并发 | 请求堆积、batch 超时 | `lightrag.py:659-684` |
+| `EMBEDDING_BATCH_NUM` | embedding batch | 单批过大导致 OOM | `lightrag.py:659-662` |
+| `LLM_TIMEOUT` | role LLM 超时 | 取消和重试边界改变 | `llm_roles.py` |
+| `EMBEDDING_TIMEOUT` | embedding 超时 | pending index ops 保留 | `lightrag.py:684-686` |
+| `RERANK_TIMEOUT` | rerank 超时 | 候选不排序但不回滚检索 | `lightrag.py:771-781` |
+| `COSINE_THRESHOLD` | 向量候选阈值 | 结果数量与 no_results 变化 | `operate.py` |
+| `MIN_RERANK_SCORE` | rerank 过滤阈值 | 过高造成空上下文 | `lightrag.py:778-781` |
+| `MAX_PENDING_DOCUMENTS` | ingress/status 待处理上限 | 溢出转 rescan 或拒绝 | `lightrag.py:876-880` |
+| `PIPELINE_REQUIRE_STRICT_STORAGE_READS` | 严格 status 读取 | false 可能静默跳过坏记录 | `lightrag.py:857-863` |
+| `VLM_PROCESS_ENABLE` | sidecar VLM 总开关 | 多模态块回退纯文本 | `lightrag.py:795-799` |
+| `PARSER_ROUTING` | parser 路由规则 | 文档语义与 chunk identity 改变 | `parser/routing.py` |
+
+环境变量加载通常在 import/dataclass 默认值阶段发生；改变 `.env` 后必须重启所有 worker，不能只刷新 WebUI。多 worker 环境下配置热更新还需核对旧 queue 是否 drain。
+
+## 23. 失败语义与客户端动作
+
+| 失败位置 | 可观察信号 | 客户端动作 | 不应做的假设 |
+|---|---|---|---|
+| parser HTTP | track FAILED、error 字段 | 修 parser/重试 | 认为文档已入图 |
+| chunk semantic embedding | fallback metadata 或 FAILED | 检查 embedding provider | 认为语义 chunk 一定生效 |
+| entity extraction | extraction error/partial anchors | inspect recovery anchors | 认为 LLM 输出是事实 |
+| graph write | reservation/graph error | rebuild 或人工核对 | 认为 vector 同步完成 |
+| vector flush | pending ops/consistency error | graph-authoritative rebuild | 直接重新 query |
+| doc status upsert | status storage error | 停止恢复扫描并修 provider | 依据 mailbox 推断状态 |
+| queue overflow | auto-rescan bit | 等待 supervisor scan | 认为每个 doc 通知都存在 |
+| cancellation | `cancellation_requested` | 轮询 track/status | 把 HTTP 200 当作 worker 已停 |
+| stream disconnect | client close | 等待 server finally/timeout | 认为 provider 已取消 |
+| auth failure | 401/403 稳定错误码 | refresh token 或重新登录 | 重试无限次 |
+| force reset | `recovery_required` 清除 | 先备份再 rebuild | 当作数据修复完成 |
+
+错误处理应该保留 `track_id`、`doc_id`、`workspace`、provider role 和可重试标志；只返回自然语言错误会让运维无法区分 provider failure 与业务 no-result。
+
+## 24. 版本与兼容性边界
+
+- Python 包版本以 `lightrag/__init__.py`/发布脚本和当前 checkout 为准；本文记录的 `1.5.5` 不代表远端最新版本。
+- API `0321` 与核心版本独立；前端 `LightragStatus` 同时暴露两者，客户端应按 capability 判断 `/docs`、stream 和 graph API。
+- `aquery` 保留旧文本/流式返回，`aquery_data`、`aquery_llm` 是新结构化入口；调用方迁移时不能把字典直接当字符串。
+- parser hint 格式（例如 `[mineru-iteP]`）属于文档处理协议；未知 flag 应拒绝或显式回退并写入 metadata。
+- storage namespace、workspace 前缀和 embedding fingerprint 属于持久数据协议；升级 provider 前需要迁移脚本和回滚指针。
+- `force_reset`、rebuild-vdb 和 migration 是运维命令，不属于普通 query/insert API；权限应比读写接口更严格。
+
+## 25. 复核命令清单（未执行项）
+
+以下命令是后续运行态复核入口，本次不执行以避免未安装依赖或外部 provider 造成误判：
+
+```text
+cd /Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/55_knowledge_graph_rag/LightRAG
+python -m pytest tests/pipeline/test_pipeline_cancellation.py -q
+python -m pytest tests/extraction/test_write_ahead_indexes.py -q
+python -m pytest tests/api/routes/test_query_stream_routes.py -q
+python -m pytest tests/api/auth/test_whitelist_path_prefix.py -q
+python -m pytest tests/workspace/test_workspace_migration_isolation.py -q
+python -m lightrag.api.lightrag_server --port 4780
+curl -fsS http://127.0.0.1:4780/health
+```
+
+运行前应固定 Python、依赖锁、工作目录、临时数据库和 provider endpoint 指纹；测试产生的 storage、日志和外部数据库必须使用独立临时目录。真实 server 验证要在测试完成后清理进程和端口，不能把开发实例当平台 MCP。
+
+## 26. 最终审计判定
+
+本次交付满足“单一 ARCHITECTURE.md、顶部流程图、全量模块盘点、真实调用链、并发/资源/失败/恢复、测试部署和剩余风险”的静态源码审计范围。源码未改动，所有结论均绑定当前 checkout 的文件和行号或明确标注 E3/U。
+
+MCP 项目错绑是本次工具链缺陷而非 LightRAG 事实：project_context 返回 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，代码地图摘要也显示该项目 2,055 个文件；因此没有将其文件、索引或验证证据混入本文。LightRAG 仓库此前存在未跟踪 `.codegraph/` 与 `ARCHITECTURE.md`，本次没有修改或删除，平台文档是唯一写入目标。
+
+在依赖、服务和外部 provider 未就绪前，本文不声称“测试通过”“接口可用”“断电可恢复”“性能达标”或“安全已通过”。下一阶段只需按第 25 节命令在隔离环境执行定向验证，再将成功退出码和环境指纹追加到平台项目证据，而无需创建第二份架构文档。
+
+## 27. 快速导航：事实到源码
+
+| 事实 | 主要源码锚点 |
+|---|---|
+| 门面类与配置 | `lightrag/lightrag.py:389-950` |
+| storage 初始化 | `lightrag/lightrag.py:1568-1668` |
+| SDK insert | `lightrag/lightrag.py:1736-1842` |
+| custom chunks | `lightrag/lightrag.py:1844-1935` |
+| custom KG | `lightrag/lightrag.py:3454-3578` |
+| sync query | `lightrag/lightrag.py:3896-3918` |
+| async query | `lightrag/lightrag.py:3920-3951` |
+| structured query | `lightrag/lightrag.py:3978-4182` |
+| query + LLM | `lightrag/lightrag.py:4184-4330` |
+| KG query | `lightrag/operate.py:4504-6456` |
+| naive query | `lightrag/operate.py:6458-` |
+| ingress hub | `lightrag/kg/pipeline_ingress.py:503-` |
+| document text API | `lightrag/api/routers/document_routes.py:5526-5750` |
+| query API | `lightrag/api/routers/query_routes.py:447-1400` |
+| app assembly | `lightrag/api/lightrag_server.py:2400-3000` |
+| role queue | `lightrag/llm_roles.py` |
+| graph merge | `lightrag/utils_graph.py` |
+| parser routing | `lightrag/parser/routing.py` |
+| Docling constants | `lightrag/parser/external/docling/client.py:74-90` |
+| WebUI status type | `lightrag_webui/src/api/lightrag.ts:56-157` |
+| WebUI graph calls | `lightrag_webui/src/api/lightrag.ts:534-570` |
+| pipeline retry tests | `tests/pipeline/` |
+| extraction recovery tests | `tests/extraction/` |
+| provider tests | `tests/kg/` |
+| API security tests | `tests/api/auth/`、`tests/api/test_error_message_sanitization.py` |
+
+这张表是导航索引，不替代源码；行号随未来远程更新可能变化，更新 checkout 后应重新核对并在文档元数据中记录新的 commit。

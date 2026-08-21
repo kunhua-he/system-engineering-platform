@@ -69,7 +69,7 @@
 
 ```text
 mysql/
-├── ARCHITECTURE.md                 # 本文，唯一架构事实文档（本轮新增）
+├── ARCHITECTURE.md                 # 本文，唯一架构事实文档（当前核对新增）
 ├── mysql.sln                       # Visual Studio 解决方案，mysql + mysql_static
 ├── mysql.vcxproj                   # 动态库项目
 ├── mysql.vcxproj.filters           # 动态库 IDE 分组
@@ -343,7 +343,7 @@ mysql/
 - `mysql.vcxproj.filters` 仅对源码/头文件做 IDE 分组，没有测试项目。
 - 因而不存在“测试通过”的证据；只能记录源码和工程静态取证结果。
 
-### 10.2 本轮已做的静态验证
+### 10.2 当前核对已做的静态验证
 
 - 现场核对仓库文件清单、项目/解决方案配置、源文件编码和主要源码。
 - 统计并人工核对：53 个命令声明/实现函数、104 个参数元数据槽位、57 个常量、2 个自定义复合数据类型。
@@ -404,7 +404,7 @@ mysql/
 ### 12.4 基线核对
 
 - Git 分支、提交、远程和工作树状态：仓库根执行 `git status --short --branch`、`git log -1 --format='%H%n%aI%n%s'`、`git remote -v`、`git rev-parse HEAD origin/master`。
-- 本轮静态取证未修改上述源码、工程、依赖、测试或 Git；唯一写入目标为仓库根 `ARCHITECTURE.md`。
+- 当前核对静态取证未修改上述源码、工程、依赖、测试或 Git；唯一写入目标为仓库根 `ARCHITECTURE.md`。
 
 ## 13. 首轮结论
 

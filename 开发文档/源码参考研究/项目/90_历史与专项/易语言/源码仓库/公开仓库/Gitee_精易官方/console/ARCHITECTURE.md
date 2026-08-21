@@ -289,7 +289,7 @@ LoadLibrary(console.fne)
 - 无 README 或开发文档；
 - `.vcxproj.user` 只有空 `PropertyGroup`，没有可复现的调试命令；
 - Git 是浅克隆，当前可见历史只有初始化提交；
-- 没有在本轮执行构建，因为当前宿主为 macOS，项目依赖 Visual Studio/MSVC/Windows SDK，且任务明确禁止构建。
+- 没有在当前核对执行构建，因为当前宿主为 macOS，项目依赖 Visual Studio/MSVC/Windows SDK，且任务明确禁止构建。
 
 ### 9.2 可执行验证命令（未执行）
 
@@ -347,19 +347,19 @@ msbuild console.sln /p:Configuration=Release /p:Platform=x64
 - 提交时间：`2022-12-19 16:53:58 +0800`
 - 提交信息：`初始化仓库`
 - 远程：`https://gitee.com/JYtechnology/console.git`
-- 本地 `origin/master` 与远程 `HEAD/refs/heads/master` 均为 `0835dc3b1bb3cb3265a85df6065144d9ca9846e6`（本轮未 fetch/pull）。
-- 本项目根不存在旧 `细探-*.md`；在源码参考库范围按 `细探-*` 与项目名检索未找到 `console` 对应旧细探，因此本轮无旧细探可吸收。
+- 本地 `origin/master` 与远程 `HEAD/refs/heads/master` 均为 `0835dc3b1bb3cb3265a85df6065144d9ca9846e6`（当前核对未 fetch/pull）。
+- 本项目根不存在旧 `细探-*.md`；在源码参考库范围按 `细探-*` 与项目名检索未找到 `console` 对应旧细探，因此当前核对无旧细探可吸收。
 - `codegraph_explore` 已按要求调用，但目标目录没有 `.codegraph/` 索引，工具返回不可查询；本归档改用真实文件读取和只读文本/工程盘点完成。未自行初始化索引。
 
-## 12. 本轮结论
+## 12. 当前核对结论
 
 `console` 的真实架构是一个非常小的易语言 Windows 支持库骨架：`CONSOLE_DEF` 统一声明 12 个对象命令，元数据层把命令、参数和两个自定义数据类型注册到 `LIB_INFO`，`fnshare` 提供易语言系统通知/内存辅助，动态入口仅导出 `GetNewInf`。但是命令执行层当前没有完成 Windows 控制台行为，也没有测试和可复现构建验证；后续若要生产化，应先冻结并验证 ABI，再逐条实现命令与句柄生命周期，补 Windows 宿主冒烟/回归测试，最后修复并验证 x64 导出与静态工程配置。
 
-## 13. 第三轮底座映射：终端 I/O、编码、进程/管道/句柄与失败治理
+## 13. 后续底座映射：终端 I/O、编码、进程/管道/句柄与失败治理
 
-> 本节是第三轮“基于底座的映射与裁决”，不是把目标平台已经存在的能力写成事实。凡只在本仓库 ABI 中声明、没有 Windows API 调用、测试或目标平台代码支撑的内容，均标记为“待核/装配计划”。当前源码事实仍然是：12 个命令函数没有执行控制台操作或填充返回值；本节只规定应如何归属，不宣称本仓库已具备终端执行能力。
+> 本节是后续“基于底座的映射与裁决”，不是把目标平台已经存在的能力写成事实。凡只在本仓库 ABI 中声明、没有 Windows API 调用、测试或目标平台代码支撑的内容，均标记为“待核/装配计划”。当前源码事实仍然是：12 个命令函数没有执行控制台操作或填充返回值；本节只规定应如何归属，不宣称本仓库已具备终端执行能力。
 >
-> 事实证据：`console_cmdDef.cpp:34-44,53-62,67-92,113-134` 只取 `pArgInf` 局部参数；`console_dtType.cpp:15` 只在对象元数据中声明一个隐藏的 `SDT_INT`“控制台句柄”；`elib/fnshare.h:20-39,58-103,129-169` 提供通知、易语言内存分配和文本/字节集复制；`elib/lib2.h:780-824` 定义 `MDATA_INF` 文本、字节集和传址槽位，`:1094-1123` 定义数组/内存/运行时错误通知，`:1150-1173` 定义支持库生命周期通知；`console_dllMain.cpp:101-178` 对释放、卸载、延迟释放分支没有清理实现。本轮对 `console*.cpp` 与 `elib/*` 的静态检索未发现 `CreateProcess`、`CreatePipe`、`ReadConsole`、`WriteConsole`、`ReadFile`、`WriteFile` 或 `CloseHandle` 调用。
+> 事实证据：`console_cmdDef.cpp:34-44,53-62,67-92,113-134` 只取 `pArgInf` 局部参数；`console_dtType.cpp:15` 只在对象元数据中声明一个隐藏的 `SDT_INT`“控制台句柄”；`elib/fnshare.h:20-39,58-103,129-169` 提供通知、易语言内存分配和文本/字节集复制；`elib/lib2.h:780-824` 定义 `MDATA_INF` 文本、字节集和传址槽位，`:1094-1123` 定义数组/内存/运行时错误通知，`:1150-1173` 定义支持库生命周期通知；`console_dllMain.cpp:101-178` 对释放、卸载、延迟释放分支没有清理实现。当前核对对 `console*.cpp` 与 `elib/*` 的静态检索未发现 `CreateProcess`、`CreatePipe`、`ReadConsole`、`WriteConsole`、`ReadFile`、`WriteFile` 或 `CloseHandle` 调用。
 
 ### 13.1 单链路与职责边界
 
@@ -383,7 +383,7 @@ msbuild console.sln /p:Configuration=Release /p:Platform=x64
 
 ### 13.2 现有能力命中表与归属裁决
 
-| 现有事实/目标能力 | 系统/终端支持库 | 运行核心 | 统一网关 | 第三轮裁决 |
+| 现有事实/目标能力 | 系统/终端支持库 | 运行核心 | 统一网关 | 后续裁决 |
 |---|---|---|---|---|
 | `GetNewInf`、`LIB_INFO`、`CMD_INFO[]`、`PFN_EXECUTE_CMD` | 保留为易语言 legacy ABI adapter 的注册/调用边界；不把元数据当功能实现 | 通过唯一能力调用器调度 adapter；记录版本、调用 id 和结果 | 不暴露 `MDATA_INF`/函数指针，只映射公共 JSON/CLI 契约 | **吸收为契约证据；隔离为兼容适配层** |
 | 控制台输入 `InPut` | 实现受管 console read：坐标、回显、回车结束、最大长度、EOF/中断、编码和底层错误；当前源码没有实现 | 为一次读取分配 task/lease/deadline/cancel；决定阻塞、超时、取消和完成的最终状态 | 校验输入大小/编码声明、鉴权、流式投影；连接关闭不隐式取消 | **升级/新建 `terminal.console.read`；当前命令壳不复用为已实现能力** |
@@ -450,4 +450,4 @@ msbuild console.sln /p:Configuration=Release /p:Platform=x64
 4. **最后接统一网关**：只做鉴权、限流、参数/编码校验、协议映射和事件投影；不创建进程、不关闭核心资源、不通过 HTTP 连接存活推断任务状态。
 5. **按 L0→L4 放行**：每一级记录源码/测试/真实执行/外部依赖/退出码/测试数/进程与句柄清理结果；当前本仓库只能报告 L0 静态完成，不能报告 L1-L4 通过。
 
-第三轮结论：**吸收**的是易语言支持库 ABI、GBK legacy 边界、宿主内存通知和库生命周期通知的契约事实；**升级**的是系统/终端支持库的编码、console I/O、错误和句柄所有权，以及运行核心的 deadline/cancel/进程组/恢复；**新建**的是本仓库完全没有的 process/pipe 原子能力；**隔离**的是网关传输和 `console` 的旧 ABI 适配；**待核**的是任何真实 Windows Console API 行为、进程/管道实现、卸载清理和 L1-L4 运行证据。当前源码不得被描述为已具备终端、进程或资源回收能力。
+后续结论：**吸收**的是易语言支持库 ABI、GBK legacy 边界、宿主内存通知和库生命周期通知的契约事实；**升级**的是系统/终端支持库的编码、console I/O、错误和句柄所有权，以及运行核心的 deadline/cancel/进程组/恢复；**新建**的是本仓库完全没有的 process/pipe 原子能力；**隔离**的是网关传输和 `console` 的旧 ABI 适配；**待核**的是任何真实 Windows Console API 行为、进程/管道实现、卸载清理和 L1-L4 运行证据。当前源码不得被描述为已具备终端、进程或资源回收能力。

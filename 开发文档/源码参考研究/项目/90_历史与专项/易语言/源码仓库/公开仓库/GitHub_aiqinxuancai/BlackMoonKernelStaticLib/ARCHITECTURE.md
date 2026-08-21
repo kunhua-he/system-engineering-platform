@@ -1,6 +1,6 @@
 # BlackMoonKernelStaticLib 架构档案
 
-> 本文件是本项目唯一的架构归档文件。本文档已按当前源码、工程文件、CI 配置和远程版本复核；没有发现旧 `细探-*.md` 文件。后续细探直接增量维护本文件，不另建平行事实源。
+> 本文件是本项目唯一的架构归档文件。本文档已按当前源码、工程文件、CI 配置和远程版本复核；没有发现旧 `历史研究-*.md` 文件。后续历史研究直接增量维护本文件，不另建平行事实源。
 
 ## 1. 项目定位
 
@@ -164,6 +164,60 @@ E_DestroyRes
 - 窗口/剪贴板/图像/输入：`krnln_MsgBox.cpp`、`krnln_InputBox.cpp`、`krnln_GetWinPic.cpp`、`krnln_GetClipBoardText.cpp`、`krnln_SetClipBoardText.cpp`、光标/屏幕/颜色命令。
 - 网络/进程/DLL/媒体/COM：`krnln_ping.cpp`、`krnln_HostNameToIP.cpp`、`krnln_IPToHostName.cpp`、`krnln_RunConsoleApp.cpp`、`BlackMoonCallUserDll.cpp`、`krnln_PlayMID.cpp`、`krnln_PlayMusic.cpp`、`krnln_Dispatch.cpp`、`krnln_Variant.cpp`。
 
+## 8.1 源码覆盖与关键实现证据
+
+本仓库不是一个只有少数导出函数的薄封装。当前工作树的可核对规模是：`krnln/` 有 256 个文件，其中 249 个 C++ 源文件、13 个头文件以及已提交的对象文件；`MFCObj/` 有 13 个文件；`Project/` 有 13 个工程/过滤器/用户配置文件；`.github/workflows/` 有 3 个 Windows 工作流。下面按实际文件而不是文件名猜测归纳核心实现。
+
+| 能力链 | 关键源码与行号 | 实际行为 | 不能推断的内容 |
+|---|---|---|---|
+| 宿主 ABI 元数据 | `krnln/lib.h:804-805`、`krnln/lib2.h` | 以 `GetNewInf` 返回 `PLIB_INFO`，宿主再按 `LIBAPI` 命令签名调用函数 | 本仓库不包含完整宿主注册表或 IDE 端装配代码 |
+| 命令入口 | `krnln/krnln_abs.cpp:10`、`krnln/krnln_open.cpp:22-88`、`krnln/krnln_write.cpp:18-54` | 统一从 `MDATA_INF ArgInf` 读取参数；数值命令直接写 ABI 返回槽，文件命令创建/登记 Windows 句柄 | 仅有工程配置不能证明每个命令在目标 Windows 版本都可运行 |
+| DLL 初始化 | `krnln/BlackMoonDll.cpp:11-31`、`krnln/BlackMoonDll2.cpp` | `DLL_PROCESS_ATTACH` 设置实例句柄、调用 `E_Init` 和 `DllEntryFunc`；分离时调用 `E_DestroyRes` | 未验证宿主重复加载、异常卸载和并发加载 |
+| EXE 入口 | `krnln/BlackMoonExe.cpp`、`MFCObj/MFCBlackMoon.cpp:64-86`、`MFCObj/MFCBlackMoonCon.cpp:15-55` | 入口保存栈保护值，初始化后转入外部 `ECodeStart`；部分路径使用内联汇编 | macOS 无法证明 MSVC 汇编、栈恢复和 x64 变体正确 |
+| MFC 适配 | `MFCObj/BlackMoonMFCdll.cpp:40-81`、`MFCObj/EyMFCComInit.cpp:17-36` | `InitInstance` 调用 `E_Init`/`EDllMain`，`ExitInstance` 调用资源销毁；初始化含 `AfxOleInit` 和 `CoInitialize` | 未在 Windows/MFC 宿主中执行消息循环或 DLL 生命周期测试 |
+| 运行时内存 | `krnln/eHelpFunc.cpp`、`krnln/BlackMoonLibNotifySys.cpp:313` 起、`krnln/lib.h:508-526` | 文本、字节集、数组通过通知码使用宿主分配器；核心同时维护进程堆和全局销毁回调 | 不能把 `malloc/free` 与宿主数组/文本内存混用 |
+| 文件资源 | `krnln/FileManager.cpp`、`krnln/MyMemFile.cpp`、`krnln/krnln_open.cpp` | Windows 文件句柄和内存文件都进入全局登记链；关闭、重置和进程退出走不同释放路径 | 没有测试证明异常路径都能从登记链移除 |
+| 外部支持库 | `krnln/eHelpFunc.cpp`、`krnln/BlackMoonLibNotifySys.cpp` | `BlackMoonInitAllElib`/`BlackMoonFreeAllElib` 通过通知协议初始化和释放外部库 | 外部库实现、排序和注册来源不在本仓库 |
+| 用户 DLL | `krnln/BlackMoonCallUserDll.cpp:23-69` | `LoadLibrary`/`GetProcAddress` 支持名称和序号；失败会回调错误或终止运行时 | 不能将该路径视为沙箱或可恢复插件系统 |
+| COM/Variant | `krnln/krnln_Dispatch.cpp`、`krnln/krnln_Variant.cpp`、`krnln/EyComInit.cpp:13-31` | COM 变体先初始化 COM，再通过 `IDispatch`/`VARIANT` 命令工作，销毁时撤销 COM 初始化 | 未运行真实 COM 对象和跨线程公寓测试 |
+
+### 8.2 命令实现不是统一安全层
+
+`LIBAPI` 只是 ABI 入口宏，不代表命令具备统一错误处理、权限隔离或资源事务。源码中至少存在三类不同实现：
+
+1. 纯计算命令，例如 `krnln_abs.cpp`、`krnln_sin.cpp`，主要改写 `ArgInf` 中的数值槽位。
+2. 宿主内存命令，例如 `krnln_StrToUTF8.cpp`、`krnln_BinMid.cpp`，需要通过 `NotifySys` 或 `E_MAlloc` 创建结果并遵守文本/字节集所有权。
+3. 有外部副作用的命令，例如 `krnln_open.cpp`、`krnln_create.cpp`、`krnln_GetNumRegItem.cpp`、`krnln_ping.cpp` 和 `BlackMoonCallUserDll.cpp`，直接触达文件、注册表、ICMP 或 DLL 装载。
+
+因此接入系统工程平台时，不能把整个仓库注册成一个“通用执行能力”。应按原子能力拆分：纯计算可以进入数学/文本支持库；文件、注册表、网络、进程、DLL、COM 必须分别经过权限、超时、资源释放和失败结果转换；旧 ABI 只在适配层保留。
+
+### 8.3 资源释放的真实顺序
+
+```text
+DLL_PROCESS_DETACH / MFC ExitInstance
+  -> E_DestroyRes
+     -> DestroyAddress（程序入口/对象）
+     -> HFileDestroyAddress（登记的文件/内存文件）
+     -> DestroyMidiPlayer（媒体资源）
+     -> BlackMoonFreeAllElib（外部支持库通知）
+     -> BlackMoonFreeAllUserDll（用户 DLL）
+     -> CoUninitialize（仅 COM 变体）
+```
+
+`krnln/EyComInit.cpp:19-31` 和 `MFCObj/EyMFCComInit.cpp:24-36` 明确了这条顺序；其中 MFC 变体的 `CoUninitialize` 当前被注释掉，不能把两个初始化实现当成完全等价。`FileManager.cpp` 的全局链表和临界区也说明“函数返回”不等于资源已释放，平台适配层必须建立句柄/临时文件/外部模块的显式所有权记录。
+
+### 8.4 当前工程矩阵的可验证边界
+
+| 工程 | 类型 | 配置事实 | 当前可验证状态 |
+|---|---|---|---|
+| `Project/krnln_VS2019.vcxproj` | 静态库 | Win32/x64、Debug/Release、v142 | 已读取 XML；当前 macOS 未执行 MSBuild |
+| `Project/krnln_VS2019_Obj.vcxproj` | 静态库 | 对象/入口子集、Win32/x64、Debug/Release | 已读取 XML；未证明链接产物与主库兼容 |
+| `Project/MFCBlackMoon_VS2019.vcxproj` | 动态库 | MFC、Win32/x64、Debug/Release/ReleaseDll | 已读取 XML；未执行 MFC 构建 |
+| `Project/*_VC6.dsp` | 旧工程 | VC6 兼容入口 | 仅作为历史工程文件，未在 VC6 环境验证 |
+| `.github/workflows/*.yml` | CI | Windows runner + MSBuild，分别覆盖三类工程 | 仅静态核对工作流，未取得远端运行记录 |
+
+工程文件中的 x64 配置不能覆盖源文件中的 32 位假设。`DllEntryFunc.cpp`、`BlackMoonExe.cpp` 和 `Myfunctions.cpp` 使用寄存器/内联汇编或旧调用约定，x64 只能标为“待 Windows/MSVC 实跑”，不能在平台能力目录中声明为已验证能力。
+
 ## 9. 测试、CI 与验证状态
 
 ### 已存在的验证结构
@@ -178,7 +232,7 @@ E_DestroyRes
 
 - 已读取源码、README/Readme.txt、许可证、工程文件、CI 文件、依赖边界、入口、数据模型、调用链和远程版本。
 - 未在当前 macOS 宿主上安装依赖、启动服务或构建；Windows/MSBuild/MFC/Win32 依赖不可在当前环境直接验证。
-- 未发现项目内架构文档或旧细探文件，本文档为首次正式归档。
+- 未发现项目内其他架构事实文档；本文件是当前项目唯一架构事实源，后续复核只更新本文件。
 
 ## 10. 风险、未确认项与后续复核点
 

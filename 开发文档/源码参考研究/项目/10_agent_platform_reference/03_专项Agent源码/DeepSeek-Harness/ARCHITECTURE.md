@@ -254,9 +254,9 @@ TS SDK要求显式 `command/args` 启动 runtime；Python SDK负责 bundled runt
 
 ## 11. 未确认项与首轮风险
 
-以下项目在本轮未通过构建、启动或完整测试确认，后续工作应以源码和实际验证为准：
+以下项目在当前核对未通过构建、启动或完整测试确认，后续工作应以源码和实际验证为准：
 
-- **专属 MCP 代码地图未对目标仓库生效**：本轮 `system_engineering_toolkit` 的 `project_context` 返回的根与代码地图指向 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，`codegraph_explore` 也返回该平台的符号；因此本文没有把该错误地图当作 DeepSeek-Harness 证据，目标仓库架构依据直接源码/文档读取建立。需要后续为目标仓库建立或绑定正确 CodeGraph 索引。
+- **专属 MCP 代码地图未对目标仓库生效**：当前核对 `system_engineering_toolkit` 的 `project_context` 返回的根与代码地图指向 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，`codegraph_explore` 也返回该平台的符号；因此本文没有把该错误地图当作 DeepSeek-Harness 证据，目标仓库架构依据直接源码/文档读取建立。需要后续为目标仓库建立或绑定正确 CodeGraph 索引。
 - **当前 profile 的真实 bundle 树**：profile 解析与内置模板已确认，未启动 `dsh --dump-config`，因此某一台机器当前实际挂载的第三方/用户 patch 集合未确认。
 - **API 完整 endpoint 清单**：Typert gateway 的 `/api/<namespace>/<method>` 机制已确认，但具体 endpoint 由运行时服务和 generated definitions 动态决定，本文未宣称固定业务路由表。
 - **Web/ACP 运行组合细节**：包和 snapshot 位置已确认，未启动浏览器、ACP server 或 Web server，具体运行时端口、环境变量和当前界面组合未确认。
@@ -265,15 +265,15 @@ TS SDK要求显式 `command/args` 启动 runtime；Python SDK负责 bundled runt
 - **跨平台 native/Windows 细节**：Landlock 与 Windows ACL 的职责已定位，但本机 macOS 之外的编译和行为未确认。
 - **持久化并发边界**：JSONL provider 的单 live writer 与 SQLite `DatabaseSync`/锁错误语义来自包文档；多进程共用同一数据库/日志的部署约束仍需单独验证。
 
-## 12. 本轮证据与范围
+## 12. 当前核对证据与范围
 
 已读取并用于建档：根 `AGENTS.md`、`细探-DeepSeek-Harness.md`、`docs/architecture.md`、`docs/AGENTS.md`、`docs/testing.md`、根 `package.json`、Python SDK README、native README、CLI/agent-loop/session-persistence/DeepSeek adapter/SDK README，以及 agent-loop、session、app-boot/profile、API gateway/remotes、SDK client/API、subprocess 等关键源码。
 
-本轮允许的唯一工作区变更是新增根文件 `ARCHITECTURE.md`；未修改源码、依赖、测试、配置、已有细探文档，未安装、启动、构建、提交 Git 或删除证据。
+当前核对允许的唯一工作区变更是新增根文件 `ARCHITECTURE.md`；未修改源码、依赖、测试、配置、已有细探文档，未安装、启动、构建、提交 Git 或删除证据。
 
-## 13. 第三轮底座映射：抽取边界与裁决
+## 13. 后续底座映射：抽取边界与裁决
 
-本轮不是把 DeepSeek-Harness 的包目录照搬为平台目录，而是把包族映射到“运行核心原子能力、可复用模块、仅供参考”三类。凡是依赖 Agent/Session/模型提示词/工具语义的实现，不能因为抽象名称相似就下沉到通用运行核心；凡是涉及资源、取消、所有权、持久化、投影、缓存和故障收敛的机制，才有资格进入运行核心候选。
+当前核对不是把 DeepSeek-Harness 的包目录照搬为平台目录，而是把包族映射到“运行核心原子能力、可复用模块、仅供参考”三类。凡是依赖 Agent/Session/模型提示词/工具语义的实现，不能因为抽象名称相似就下沉到通用运行核心；凡是涉及资源、取消、所有权、持久化、投影、缓存和故障收敛的机制，才有资格进入运行核心候选。
 
 | 包族 | 真实职责 | 底座裁决 | 可吸收的最小边界 | 不应吸收的部分 |
 |---|---|---|---|---|
@@ -398,16 +398,16 @@ DeepSeek-Harness 的能力只能沿下列单链路映射，不允许每个包族
 - `plan` 的 `plan/mode` 事件只进入 SessionEvent fold；UI、prompt、resume 和 compaction 都读同一 fold，不创建 live mirror。
 - 任何 provider 失败必须返回统一可分类结果（如 unavailable/timeout/cancelled/unknown），不得隐藏 fallback；任何 cache 或 projection 异常都不能覆盖权威事件。
 
-### 18.1 第三轮结论分级
+### 18.1 后续结论分级
 
 - **吸收**：`SessionEvent`/persistence/projection 的事实—派生链、生命周期/取消/quiescence、per-call sandbox policy、资源预算和 worker/process 清理模式；这些能映射到平台运行核心或公共模块边界。
 - **升级现有模块**：checkpoint policy、projection cache、jobs/资源监督、subagent continuation、workflow host protocol、skill discovery registry；先复用平台已有唯一 owner，不新建平行中心。
 - **仅作参考**：具体 Agent loop、重复提醒文案、Ralph、plan mode、skill 文件系统排序、JSONL/SQLite 物理细节、ACP/Codex/Claude/SDK provider、worker `vm` 沙箱化表述。
-- **待核**：跨进程 writer 的部署约束、不同平台 sandbox enforcement 的完整性、cache 并发 cold-read 去重、真实外部 provider 在断网/崩溃后的实测残留，以及平台现有底座对上述能力的准确代码图落点。本轮不因文档映射直接改平台生产代码。
+- **待核**：跨进程 writer 的部署约束、不同平台 sandbox enforcement 的完整性、cache 并发 cold-read 去重、真实外部 provider 在断网/崩溃后的实测残留，以及平台现有底座对上述能力的准确代码图落点。当前核对不因文档映射直接改平台生产代码。
 
-第三轮没有启动任何底座实现、迁移、依赖安装或发布动作；下一步若要生产化，必须先在系统工程平台登记需求、搜索能力、确认复用/升级裁决、取得能力占用和验收契约，再按唯一链路装配，并用真实组合、制品和外部状态验证。
+后续没有启动任何底座实现、迁移、依赖安装或发布动作；下一步若要生产化，必须先在系统工程平台登记需求、搜索能力、确认复用/升级裁决、取得能力占用和验收契约，再按唯一链路装配，并用真实组合、制品和外部状态验证。
 
-## 19. 第二轮深挖收口：运行时、工具、沙箱、模型、事件与进程
+## 19. 后续深挖收口：运行时、工具、沙箱、模型、事件与进程
 
 本节是对旧 `细探-DeepSeek-Harness.md` 的逐条源码复核结果。旧细探仍保留为历史证据，但其中的“everything is a plugin”、guard、双后端持久化、sandbox 分层和子代理等概括，均以本节和前文的真实包边界为准；后续只维护本文，不在旧细探上继续增加架构事实。
 
@@ -464,20 +464,20 @@ DeepSeek-Harness 的能力只能沿下列单链路映射，不允许每个包族
 | 反向场景 | 当前源码行为 | 验证边界 |
 |---|---|---|
 | 缺 provider/model | `buildRequest()` 在 provider 或 model 为空时抛错，未进行模型 I/O。 | 源码确定；需真实入口验证 profile 是否确实提供 route，不能只看配置声明。 |
-| 缺 LLM adapter | `prepareCall()` 的 `NO_ADAPTER` 可回退为未 prepared config，最终 `LlmRuntime.adapterStream()` 产生 terminal failure chunk。 | 源码确定；未在本轮启动 profile 验证真实输出和退出码。 |
+| 缺 LLM adapter | `prepareCall()` 的 `NO_ADAPTER` 可回退为未 prepared config，最终 `LlmRuntime.adapterStream()` 产生 terminal failure chunk。 | 源码确定；未在当前核对启动 profile 验证真实输出和退出码。 |
 | 非法/空工具参数 | `executeToolCalls.parseArguments()` 将空字串映射 `{}`，非法 JSON 保留原始文本；registry 再做 lossless snapshot，output schema 对成功 value 校验。 | 源码确定；必须分别测试空、非法 JSON、非 JSON value 和 oversized value，不能把“工具返回 error”算参数校验通过。 |
 | 重复 tool call/并发竞态 | `isConcurrencySafe()` 只有 exact `true` 才并行；异常或未知 classifier fail closed 为 exclusive；`repeat-tool-reminder` 只是同 Agent 连续完全相同调用的启发式提示。 | 源码/README 确定；未执行真实多步模型和恢复后行为。 |
 | 工具超时/取消 | `timeoutMs` 由 `tools/execute` policy 使用 cooperative signal；registry 根据 body 是否启动选择两个 abort code，已启动 promise 仍须 settle。 | 源码确定；不能宣称能强杀同进程代码；需外部检查未留下子进程/文件/锁。 |
-| sandbox provider 缺失/runner 不可用 | `SandboxUnavailableError(SANDBOX_UNAVAILABLE)` fail closed；Local provider 多候选 probe 全失败则 unavailable；runner signature/exit gate 与 denial signature 分离。 | 源码确定；本机 macOS Seatbelt 是否可实际启动未本轮验证。 |
+| sandbox provider 缺失/runner 不可用 | `SandboxUnavailableError(SANDBOX_UNAVAILABLE)` fail closed；Local provider 多候选 probe 全失败则 unavailable；runner signature/exit gate 与 denial signature 分离。 | 源码确定；本机 macOS Seatbelt 是否可实际启动未当前核对验证。 |
 | stream 断线/HTTP 错误/空 body | DeepSeek 将 fetch transport、HTTP status、无 body、SSE/translate failure 分类；401/403=`AUTH`、429=`RATE_LIMIT`、400 context overflow 或 `INVALID_REQUEST`、5xx=`SERVER`。 | 源码确定；未使用 API key 做真实 provider e2e，网络/配额/代理状态未知。 |
 | event listener throw/reject | `session/event`、`tools/result` 等 observe feed 隔离 listener failure；waterfall listener 不调 `next()` 是 veto；`parallel` 汇总 rejection。 | Cordis/owner 源码确定；未用实际插件 unload 组合验证所有 listener 顺序。 |
 | persistence 部分写/损坏尾部 | JSONL 写入/`sync()` 失败尝试恢复旧 size；读取识别 torn frame，恢复 committed prefix 并通过 coordinator 写 repair/closer；SQLite 使用事务和当前 schema 约束。 | 源码/包文档确定；未制造真实磁盘故障或跨进程竞争。 |
-| 子进程 direct child 退出但 helper 存活 | `done` 受 close/drain grace 约束，`waitForExit()` 继续观察 process group；terminate 的 SIGKILL timer 不因 direct child settle 清掉。 | 源码和 fixture 存在；未在本轮启动树形 fixture 做 survivor sweep。 |
-| runtime closure/发布依赖缺失 | `scripts/verify-runtime-closure.ts` 从 `python/sdk-runtime/package.json` BFS workspace dependencies，要求必需 workspace peer 直接出现在 runtime dependencies；失败退出 1。 | gate 源码确定；本轮未执行 `pnpm run verify-runtime-closure`，不能写成 gate pass。 |
+| 子进程 direct child 退出但 helper 存活 | `done` 受 close/drain grace 约束，`waitForExit()` 继续观察 process group；terminate 的 SIGKILL timer 不因 direct child settle 清掉。 | 源码和 fixture 存在；未在当前核对启动树形 fixture 做 survivor sweep。 |
+| runtime closure/发布依赖缺失 | `scripts/verify-runtime-closure.ts` 从 `python/sdk-runtime/package.json` BFS workspace dependencies，要求必需 workspace peer 直接出现在 runtime dependencies；失败退出 1。 | gate 源码确定；当前核对未执行 `pnpm run verify-runtime-closure`，不能写成 gate pass。 |
 
 ### 19.6 真假验证表：存在、执行与外部事实分栏
 
-| 验证层级 | 仓库中的证据 | 本轮状态 | 可宣称范围 |
+| 验证层级 | 仓库中的证据 | 当前核对状态 | 可宣称范围 |
 |---|---|---|---|
 | 源码/静态契约 | 直接读取上述源码、README、`docs/architecture.md`、`docs/testing.md`、`docs/subsystems/{sandbox,subprocess}.md`；路径和函数已回链。 | **已完成（静态取证）** | 可确认实现边界、状态机和错误分类；不能证明当前安装制品可启动。 |
 | 测试源码存在性 | agent-loop、tools、sandbox-local、subprocess-local、LLM adapter、CLI shutdown、persistence、snapshot/e2e 等 `tests/` 与 fixture 存在。 | **已核对存在；未执行** | 只能说“有覆盖意图/测试代码”，不能说 pass。 |
@@ -488,7 +488,7 @@ DeepSeek-Harness 的能力只能沿下列单链路映射，不允许每个包族
 | 文档/生成 gate | `pnpm run doc-sync`、`verify-*`（含 `verify-runtime-closure`、catalog/invariant/links）。 | **未执行** | 本文的源码路径已人工核对；不宣称仓库文档门禁、生成物新鲜度或 runtime dependency closure 通过。 |
 | 外部状态/清理 | 重新读取文件、进程树、端口、临时目录、spill/ACL/数据库锁，验证“世界”而不是 Agent 自报。 | **未执行** | 不能宣称工具副作用 exactly-once、进程树无残留、spill/ACL 无残留或崩溃恢复成功。 |
 
-### 19.7 旧细探逐条裁决与第二轮剩余风险
+### 19.7 旧细探逐条裁决与后续剩余风险
 
 | 旧细探条目 | 收口结论 |
 |---|---|
@@ -500,4 +500,4 @@ DeepSeek-Harness 的能力只能沿下列单链路映射，不允许每个包族
 | `python/`、`native/`、`vendor/` | **吸收为运行/发布边界**：Python 是 SDK/bundled runtime，native 是 Landlock launcher，vendor 是 Cordis source of record；均不另造 Agent 核心层。 |
 | “开发者预览、破坏性变更” | **保留为版本风险**：根 `AGENTS.md` 的 pre-release stance 仍有效，session format/schema 和 public package contract 不应被旧细探的概括性兼容假设覆盖。 |
 
-第二轮收口后的未确认项仍是实测边界，而不是实现缺陷的推断：本机 profile 的实际 Loader 组合、Seatbelt/Landlock/Windows backend 的运行态 enforcement、真实 DeepSeek API、跨进程 persistence writer、built/Python/native artifact、崩溃后的子进程/临时目录/ACL survivor sweep 均未在本轮执行。本文因此把“源码存在”“测试存在”“本轮静态核对”“真实执行”“外部状态复核”严格分栏，不把任何 `skip`、历史制品、日志或模型自报写成通过。
+后续收口后的未确认项仍是实测边界，而不是实现缺陷的推断：本机 profile 的实际 Loader 组合、Seatbelt/Landlock/Windows backend 的运行态 enforcement、真实 DeepSeek API、跨进程 persistence writer、built/Python/native artifact、崩溃后的子进程/临时目录/ACL survivor sweep 均未在当前核对执行。本文因此把“源码存在”“测试存在”“当前核对静态核对”“真实执行”“外部状态复核”严格分栏，不把任何 `skip`、历史制品、日志或模型自报写成通过。

@@ -3,7 +3,7 @@
 > **项目根目录**：`/Users/hekunhua/Documents/Agent/github 源码参考/12_工作流编排/prefect`
 > **项目名称**：Prefect —— Python 工作流编排与观测平台
 > **许可证**：Apache-2.0
-> **建档范围**：深读当前源码、测试、README、`pyproject.toml` 与已有 `细探-prefect.md`；本轮只修改本文件，未调用 MCP/Hermes，未启动服务、安装依赖、构建或运行 Prefect 测试。
+> **建档范围**：深读当前源码、测试、README、`pyproject.toml` 与已有 `细探-prefect.md`；当前核对只修改本文件，未调用 MCP/Hermes，未启动服务、安装依赖、构建或运行 Prefect 测试。
 
 ## 1. 结论摘要
 
@@ -218,7 +218,7 @@ FastAPI `create_app` 同时组装 API 与 UI 应用，并在 lifespan 中执行�
 - `ui-v2/tests/`、`ui-v2/e2e/`：Vitest/Testing Library/MSW 和 Playwright UI/E2E。
 - `benches/`、`load_testing/`：基准与压力测试。
 
-项目文档给出的常用命令（本轮未执行）：
+项目文档给出的常用命令（当前核对未执行）：
 
 ```bash
 uv run pytest tests/
@@ -244,7 +244,7 @@ cd ui-v2 && npm run validate:types
 9. **事件 schema 双维护**：客户端 `events/` 与服务端 `server/events/` 是平行契约，结构相似但不能假定同一实现。
 10. **UI 双版本共存**：V1/V2 bundle、路由和偏好重定向需保持兼容，服务端打包前必须具备所需 UI bundle。
 
-## 10. 第三轮底座映射：运行核心与工作流模块
+## 10. 后续底座映射：运行核心与工作流模块
 
 本节不是把 Prefect 的实现宣称为平台现成代码，而是把当前源码已经证实的机制裁决为底座输入：**工作流模块只描述工作流、部署和策略；运行核心统一拥有运行状态、尝试、截止时间、租约、事务、取消和资源收口；调度器/工作器/运行器只负责把可运行意图装配到执行环境**。所有映射均以本目录源码为证据，平台落点属于“吸收/升级/新建/隔离”的设计裁决，不能反向当作 Prefect 已实现的平台契约。
 
@@ -267,7 +267,7 @@ Prefect 当前可以压缩成一条可审计的执行链；Flow 与 Task 在状�
 
 映射到平台时只保留一个规范能力入口和一个写 owner：
 
-| 平台边界 | Prefect 事实落点 | 第三轮底座裁决 |
+| 平台边界 | Prefect 事实落点 | 后续底座裁决 |
 |---|---|---|
 | 工作流模块 | `flows.py`、`tasks.py`、`deployments/`、`schedules.py` | 只生成 `WorkflowSpec/RunIntent` 等声明和策略；不直接写状态表、租约表或结果缓存，不直连 provider。 |
 | 运行核心 | `flow_engine.py`、`task_engine.py`、`states.py`、`transactions.py`、`results.py` | 升级为唯一的运行生命周期 owner：状态、尝试、重试、截止时间、结果、事务、取消检查和资源清理均在此编排。 |
@@ -378,17 +378,17 @@ WorkflowSpec/Deployment
 
 ### 10.7 真实验证与验证等级
 
-本轮只允许修改根 `ARCHITECTURE.md`，未启动 Prefect server、Worker、Runner、UI 或外部数据库；因此不能把源码存在、测试文件存在或文档中的命令写成“运行通过”。验证应按以下等级入账：
+当前核对只允许修改根 `ARCHITECTURE.md`，未启动 Prefect server、Worker、Runner、UI 或外部数据库；因此不能把源码存在、测试文件存在或文档中的命令写成“运行通过”。验证应按以下等级入账：
 
-| 等级 | 可证明内容 | 本轮事实/命令 |
+| 等级 | 可证明内容 | 当前核对事实/命令 |
 |---|---|---|
 | 源码事实 | 类、枚举、调用边界和终态存在 | 已读取 `states.py`、`transactions.py`、`task_engine.py`、`runner/AGENTS.md`、`workers/AGENTS.md`、`events/AGENTS.md` 及对应源码索引 |
 | 测试存在 | 有针对性测试入口，但不代表通过 | 已定位 `tests/public/{tasks,flows}/test_*_timeouts.py`、`tests/test_transactions.py`、`tests/concurrency/test_raise_on_lease_renewal_failure.py`、`tests/runner/test__event_emitter.py`、`tests/events/client/test_events_client.py` |
 | 静态真实验证 | 文档格式/差异无空白错误 | 修改后应执行 `git diff --check`；退出码以现场命令回执为准 |
-| 进程内真实验证 | 需真实执行 timeout/retry/cache/lease/event/runner 测试 | 本轮未执行 `uv run pytest`，不能标记通过 |
-| 服务/数据库验证 | 需启动 API、SQLite/PostgreSQL、Worker/Runner，读回状态、租约、进程和事件 | 本轮未执行；调度精度、WebSocket、取消时序和双 dialect 仍为待核 |
+| 进程内真实验证 | 需真实执行 timeout/retry/cache/lease/event/runner 测试 | 当前核对未执行 `uv run pytest`，不能标记通过 |
+| 服务/数据库验证 | 需启动 API、SQLite/PostgreSQL、Worker/Runner，读回状态、租约、进程和事件 | 当前核对未执行；调度精度、WebSocket、取消时序和双 dialect 仍为待核 |
 
-最小可复核命令（后续工作包，不在本轮宣称已通过）为：
+最小可复核命令（后续工作包，不在当前核对宣称已通过）为：
 
 ```bash
 uv run pytest tests/public/tasks/test_task_timeouts.py tests/public/flows/test_flow_timeouts.py tests/test_transactions.py
@@ -419,14 +419,14 @@ git diff --check
 ## 11. 未确认项与风险
 
 - **代码地图风险（已确认）**：按任务要求调用的专属 MCP `system_engineering_toolkit`（`http://127.0.0.1:8766/mcp/`）返回的 `project_context` 和 `codegraph_explore` 均绑定到其当前项目 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，未切换到 Prefect；因此本档不采用该错误项目的符号/调用链证据，架构事实来自 Prefect 目录内实际读取的源码、`AGENTS.md`、README、`pyproject.toml` 和 `细探-prefect.md`。后续若需要完整代码地图，应先修复专属 MCP 的项目绑定，再按 Prefect 根目录重建/查询地图。
-- 本轮没有启动 Prefect server、Runner、Worker、UI 或外部数据库，未对运行时调用链、真实 HTTP/WebSocket、迁移、调度精度和取消时序做动态验证。
+- 当前核对没有启动 Prefect server、Runner、Worker、UI 或外部数据库，未对运行时调用链、真实 HTTP/WebSocket、迁移、调度精度和取消时序做动态验证。
 - 未执行依赖解析、构建、pytest、Vitest、Playwright、lint 或类型检查；测试命令仅记录项目约定，不能视为通过证据。
 - 代码存在新旧架构并存面：Worker 与新 Runner 同时存在，旧 `Runner.execute_bundle()` 等路径仍有迁移缺口；UI v1 与 UI v2 并存。
 - `prefect-client` 的裁剪构建依赖跨文件依赖闭包和 root/client pyproject 同步，本档未实际运行 `client/build_client.sh`。
 - OSS 服务端不提供 Cloud 同等级 RBAC/多租户能力；Cloud-only 的 Metric trigger、RBAC 和租户隔离不能从本地 OSS 实现推断。
-- `细探-prefect.md` 是本轮之前已有的未跟踪细探文档，基线提交/规模描述与当前源码可能随归档更新而漂移；本文件优先引用当前磁盘源码和当前 `git` 基线，旧细探已逐项裁决，后续只维护本文件。
+- `细探-prefect.md` 是当前核对之前已有的未跟踪细探文档，基线提交/规模描述与当前源码可能随归档更新而漂移；本文件优先引用当前磁盘源码和当前 `git` 基线，旧细探已逐项裁决，后续只维护本文件。
 
-## 12. 本轮边界记录
+## 12. 当前核对边界记录
 
 仅修改：`ARCHITECTURE.md`。未修改源码、依赖、测试、配置、锁文件或 `细探-prefect.md`；未删除任何文件；未安装、启动、构建或提交 Git。
 
@@ -451,11 +451,11 @@ git diff --check
 | 旧细探中的源码行数、目录规模与“124MB”统计 | 不吸收为架构事实 | 属于随提交和工作树变化的快照统计；本文件只保留当前基线的粗粒度计数，并明确来源。 |
 | “SequentialTaskRunner 为 v3 默认、内置 DaskTaskRunner” | 不吸收 | 当前 `task_runners.py` 没有 `SequentialTaskRunner`，`ConcurrentTaskRunner` 是线程池兼容别名，Dask 通过外部集成示例接入；见第 4.2 节。 |
 | 旧细探中未在当前源码重新核实的固定默认秒数、批次上限和历史 API 版本分支 | 不吸收为无条件事实 | 这些值受当前 settings、API 版本和部署模式影响；仅保留源码中可定位的行为，不把旧快照默认值推广为平台契约。 |
-| Cloud/RBAC/多租户、真实 HTTP/WebSocket、调度精度和取消时序的运行时结论 | 待核 | OSS 源码可说明边界，但本轮未启动服务或外部系统；保留在第 11 节，后续需动态验证。 |
+| Cloud/RBAC/多租户、真实 HTTP/WebSocket、调度精度和取消时序的运行时结论 | 待核 | OSS 源码可说明边界，但当前核对未启动服务或外部系统；保留在第 11 节，后续需动态验证。 |
 
-## 14. 第二轮收口：Flow/Task、调度队列、Worker 与恢复事实表
+## 14. 后续收口：Flow/Task、调度队列、Worker 与恢复事实表
 
-本节是对旧 `细探-prefect.md` 的第二轮逐项收口，不新增平行实现说明。以下结论均以当前工作树源码为证据；“源码存在”与“已运行通过”严格分开。源码版本基线仍为 `2cc0f474c027cd8e19ecf6b34386908dcb301213`。
+本节是对旧 `细探-prefect.md` 的后续逐项收口，不新增平行实现说明。以下结论均以当前工作树源码为证据；“源码存在”与“已运行通过”严格分开。源码版本基线仍为 `2cc0f474c027cd8e19ecf6b34386908dcb301213`。
 
 ### 14.1 契约与状态所有权表
 
@@ -487,7 +487,7 @@ DeploymentSchedule(active)
 | 快速调度 | `schedule_recent_deployments()` 只扫描最近更新且有 active schedule 的 Deployment；与主调度重叠是允许的，因为插入逻辑必须幂等 | 新建/更新部署不必等完整主循环；不能将“5 秒”等历史默认值写成无条件平台契约，实际值来自 settings；`scheduler.py:130-167,288-358` |
 | 队列领取 | Worker 以 work-pool 名称、队列名列表和 `scheduled_before=now+prefetch` 查询；Server 只取未暂停 pool/queue、`SCHEDULED`、非 `in_process` 重试运行，按最早 `next_scheduled_start_time` 排序 | PostgreSQL 使用 `FOR UPDATE SKIP LOCKED`；队列/Pool 可用槽位限制每队列和整个 Pool 的返回量；`src/prefect/client/orchestration/_work_pools/client.py:278-320`、`server/database/sql/{postgres,sqlite}/get-runs-from-worker-queues.sql.jinja` |
 | 队列优先级 | 查询可由 `respect_queue_priorities` 选择按 `work_queue.priority ASC` 再按计划时间排序；Worker 常规 work-pool 拉取路径必须以服务端返回顺序为准，不能假定所有调用都启用优先级 | 优先级不是全局状态，也不替代 Pool/Queue 并发；SQLite 用窗口函数，PostgreSQL 用 lateral join，双 dialect 语义需锁步；`server/database/query_components.py:124-243` |
-| Worker 本地限流 | `_submit_scheduled_flow_runs()` 对每个 `flow_run.id` 使用 `CapacityLimiter.acquire_on_behalf_of_nowait`；满额立即停止本轮提交，重复 ID 由 `_submitting_flow_run_ids` 跳过 | 领取槽位、提交槽位和基础设施槽位必须在异常/未就绪路径释放；`_submit_run_and_capture_errors()` 的 `finally` 释放，重复释放只记录 debug；`src/prefect/workers/base.py:1495-1553,1616-1706` |
+| Worker 本地限流 | `_submit_scheduled_flow_runs()` 对每个 `flow_run.id` 使用 `CapacityLimiter.acquire_on_behalf_of_nowait`；满额立即停止当前核对提交，重复 ID 由 `_submitting_flow_run_ids` 跳过 | 领取槽位、提交槽位和基础设施槽位必须在异常/未就绪路径释放；`_submit_run_and_capture_errors()` 的 `finally` 释放，重复释放只记录 debug；`src/prefect/workers/base.py:1495-1553,1616-1706` |
 
 因此，“队列”不是内存 FIFO：计划运行先落 Server 数据库，Worker 按服务端过滤/锁定/排序领取；本地 `CapacityLimiter` 只限制正在提交/执行的 Worker 任务。WorkPool/WorkQueue 的并发与 Task tag/deployment concurrency 是不同层次，不能合并成一个 `queue_size` 字段。
 
@@ -507,16 +507,16 @@ DeploymentSchedule(active)
 
 | 资源 | 创建/持有 | 正常完成 | 失败、取消、崩溃收口 | 未确认风险 |
 |---|---|---|---|---|
-| Task thread/process pool | `ThreadPoolTaskRunner`/`ProcessPoolTaskRunner` 创建 executor；Future 持有运行引用 | runner 上下文退出，`cancel_all`/executor 收口 | 线程阻塞 I/O 不可强杀；ProcessPool 数据必须可 pickle；嵌套 submit 在有界池可能饥饿 | 仅源码/测试存在，未本轮运行 fd、线程和进程残留探针 |
+| Task thread/process pool | `ThreadPoolTaskRunner`/`ProcessPoolTaskRunner` 创建 executor；Future 持有运行引用 | runner 上下文退出，`cancel_all`/executor 收口 | 线程阻塞 I/O 不可强杀；ProcessPool 数据必须可 pickle；嵌套 submit 在有界池可能饥饿 | 仅源码/测试存在，未当前核对运行 fd、线程和进程残留探针 |
 | Server concurrency lease / Worker limiter | Task engine 取得 tag lease；Flow/Deployment/WorkPool/Queue 分层占槽；Worker 取得本地 limiter token | 终态或提交异常释放；lease 续约线程停止并有限 join | 续约失败默认告警，严格模式取消；Server lease expiry/Repossessor 兜底；重复 release 必须幂等 | 外部 Server/Redis lease storage 未启动，active slots 未读回 |
-| Runner child process | `ProcessManager` map 保存 PID/handle；`ControlChannel` 绑定 attempt token | executor 收到退出、移除 map；Runner 退出逐个 kill 后清空 map | SIGTERM→最多 grace→SIGKILL；control ack 失败可能落 `Crashed`；子进程已死但状态未确认需 finalizer | 本轮未实际创建 PID，无法宣称 kill 时序通过 |
+| Runner child process | `ProcessManager` map 保存 PID/handle；`ControlChannel` 绑定 attempt token | executor 收到退出、移除 map；Runner 退出逐个 kill 后清空 map | SIGTERM→最多 grace→SIGKILL；control ack 失败可能落 `Crashed`；子进程已死但状态未确认需 finalizer | 当前核对未实际创建 PID，无法宣称 kill 时序通过 |
 | Result/transaction | Task engine 创建 cache key、`Transaction`、`ResultStore`；ResultRecord 写入后需 `mark_persisted()` | stage/commit 后 State 只保存 metadata 引用 | exception/timeout/cancel 回滚；外部存储异步写入时读取最多有限重试 | 未接真实块存储，写入/断线/半提交需动态验收 |
 | Events/logs/Worker channel | EventsWorker/Emitter、HTTP/WebSocket subscriber、WorkerChannel 队列 | checkpoint/flush 后关闭；EventEmitter 连接失败可降级 `NullEventsClient` | telemetry 丢失不应改变主状态；队列写入失败需重试/丢弃计数；channel 断线回退 REST/轮询 | 未实测低流量时间 checkpoint、重连、协议版本和丢弃边界 |
 | Worker attribution/env | `BaseWorker.setup()` 写 `PREFECT__WORKER_NAME`；首次心跳成功后写 ID；子进程由 `prepare_for_flow_run` 注入 | `teardown()` 仅在值仍属于当前 Worker 时清理 | Worker 同进程复用/心跳失败不能提前假定 backend ID；缺注入参数会丢 child attribution | 只读源码确认，未启动两个 Worker 进行环境隔离实测 |
 
-### 14.5 本轮真实验证等级与剩余闭口
+### 14.5 当前核对真实验证等级与剩余闭口
 
-| 等级 | 本轮结果 |
+| 等级 | 当前核对结果 |
 |---|---|
 | 源码取证 | 已读取并核对 `flow_engine.py`、`task_engine.py`、`flows.py`、`tasks.py`、`task_runners.py`、`states.py`、`transactions.py`、`server/orchestration/core_policy.py`、`server/services/scheduler.py`、队列 SQL 模板、`workers/base.py`、`runner/_cancellation_manager.py`、`runner/_process_manager.py` 及对应 `AGENTS.md`。 |
 | 旧细探吸收 | `细探-prefect.md` 已完整读取；其“SequentialTaskRunner v3 默认”“内置 DaskTaskRunner”“固定默认批次/秒数”等与当前源码或 settings 不一致的说法不升格为事实，旧文件继续保留。 |
@@ -524,7 +524,7 @@ DeploymentSchedule(active)
 | 静态验证 | 已执行 `git diff --no-index --check /dev/null ARCHITECTURE.md`；无 trailing whitespace 输出。因目标文档在基线中是未跟踪文件，比较命令返回 1 属于差异存在，不是检查错误。 |
 | 动态验证 | 未启动 Server、SQLite/PostgreSQL、Worker、Runner、WebSocket、外部 lease/result storage；未执行 `pytest`/UI 测试，因此调度时延、真实锁竞争、取消时序、双 dialect 和残留资源仍标“待核”。 |
 
-**第二轮裁决：** 吸收 Prefect 的 Flow/Task 分层、状态类型与终态闭包、服务端编排、schedule→scheduled run→queue→Worker/Runner、重试/退避、租约/事务、取消权单一归属和时间驱动补偿；升级平台时必须复用一个 `AttemptCoordinator`/取消协调/资源台账边界，隔离 WorkPool provider、Cloud-only 自动化、旧 Runner 兼容路径和客户端/服务端平行 schema。后续只维护本 `ARCHITECTURE.md`，不得把 `细探-prefect.md` 继续作为并行架构事实源。
+**后续裁决：** 吸收 Prefect 的 Flow/Task 分层、状态类型与终态闭包、服务端编排、schedule→scheduled run→queue→Worker/Runner、重试/退避、租约/事务、取消权单一归属和时间驱动补偿；升级平台时必须复用一个 `AttemptCoordinator`/取消协调/资源台账边界，隔离 WorkPool provider、Cloud-only 自动化、旧 Runner 兼容路径和客户端/服务端平行 schema。后续只维护本 `ARCHITECTURE.md`，不得把 `细探-prefect.md` 继续作为并行架构事实源。
 
 ## 15. 源码复核补充：Flow/Task、队列、心跳与恢复闭环
 
@@ -551,7 +551,7 @@ active DeploymentSchedule
 ```
 
 - Server 数据库中的 scheduled run 才是队列事实；Worker 内的 `_submitting_flow_run_ids` 只是防止同一进程重复提交，不能作为恢复依据。
-- `ScheduledRunPoller` 对计划时间排序后从 `LimitManager` 非阻塞取得令牌；容量耗尽即停止本轮提交，已取得的令牌由单次 `_submit_run` 在 `finally` 中释放。它还会在启动前提议 `Pending`，使 Pending 事件和状态自动化语义保持一致。
+- `ScheduledRunPoller` 对计划时间排序后从 `LimitManager` 非阻塞取得令牌；容量耗尽即停止当前核对提交，已取得的令牌由单次 `_submit_run` 在 `finally` 中释放。它还会在启动前提议 `Pending`，使 Pending 事件和状态自动化语义保持一致。
 - Runner 的 `query_seconds`、`prefetch_seconds` 和 Worker 的 query/prefetch/heartbeat 都来自 settings 或构造参数；文档可以记录机制，不能把旧细探的 5 秒、10 秒、30 秒等快照当成所有部署的公共契约。
 - Worker 的 `sync_with_backend()` 同时负责 WorkPool/Worker 元数据同步和心跳；计划运行查询仍走 API。Worker 的取消观察采用实时事件加轮询兜底，且直接取消只适用于基础设施尚未真正启动的 FlowRun。
 
@@ -585,11 +585,11 @@ active DeploymentSchedule
 
 ## 16. 深度源码研究记录：事实、测试与未验证运行行为
 
-本节是本轮研究的证据索引。标记为“源码”只表示当前磁盘代码路径已读取；标记为“测试”只表示仓库中存在针对性测试并已阅读断言；标记为“运行”才表示本轮实际启动了组件并读回结果。本轮没有 Prefect 动态运行，因此本节不把测试源码或测试命令当作运行绿灯。
+本节是当前核对研究的证据索引。标记为“源码”只表示当前磁盘代码路径已读取；标记为“测试”只表示仓库中存在针对性测试并已阅读断言；标记为“运行”才表示当前核对实际启动了组件并读回结果。当前核对没有 Prefect 动态运行，因此本节不把测试源码或测试命令当作运行绿灯。
 
 ### 16.1 Flow/Task/Runner/Future/map/cancel
 
-| 主题 | 当前源码事实 | 测试证据 | 本轮运行证据 |
+| 主题 | 当前源码事实 | 测试证据 | 当前核对运行证据 |
 |---|---|---|---|
 | Flow 默认执行器 | `Flow.__init__` 默认创建 `ThreadPoolTaskRunner`；`ConcurrentTaskRunner` 是兼容别名，不是另一种独立实现；当前核心还有 `ProcessPoolTaskRunner` 和 `PrefectTaskRunner` | `tests/test_task_runners.py` 覆盖线程池、进程池、异步任务、上下文传播和嵌套提交 | 未运行；线程/进程数量和退出时资源未读回 |
 | submit/map | `Task.submit()` 依赖当前 `FlowRunContext`，提交后立即返回 Future；`TaskRunner.map()` 先解析 Future 输入、物化 iterable、校验所有可映射长度相同，再逐项 submit；映射提交本身可能阻塞等待上游 Future | `tests/test_task_runners.py` 覆盖 map、Future 解析、长度和上下文；`tests/test_background_tasks.py` 覆盖 deferred map | 未运行；大 iterable 的内存峰值未测 |
@@ -599,19 +599,19 @@ active DeploymentSchedule
 
 ### 16.2 调度、FlowRun、WorkPool/WorkQueue、Worker/Runner
 
-- **调度器是数据库计划生成器，不是执行器。** `SchedulerService` 对 deployment 做游标分页，按 active schedule 计算未来运行并批量插入；最近变更 deployment 有单独快速扫描。重复扫描是设计允许的，插入路径必须幂等。源码证据：`server/services/scheduler.py`；测试证据：`tests/server/services/test_scheduler.py`。本轮未启动服务，未测时间精度、并发调度器和 SQLite/PostgreSQL 差异。
+- **调度器是数据库计划生成器，不是执行器。** `SchedulerService` 对 deployment 做游标分页，按 active schedule 计算未来运行并批量插入；最近变更 deployment 有单独快速扫描。重复扫描是设计允许的，插入路径必须幂等。源码证据：`server/services/scheduler.py`；测试证据：`tests/server/services/test_scheduler.py`。当前核对未启动服务，未测时间精度、并发调度器和 SQLite/PostgreSQL 差异。
 - **队列事实在数据库。** WorkPool/WorkQueue 查询过滤 `SCHEDULED`、暂停状态、`scheduled_before`、队列/池容量，并可按队列优先级排序。队列优先级是数值越小越优先，源码模型明确 `1` 为最高优先级；它不是全局 FlowRun 优先级，也不改变 deployment/task/tag 的其他容量闸门。源码证据：`server/models/work_queues.py`、队列 SQL/query components、`client/schemas/objects.py`。
-- **领取顺序不是任意 FIFO。** 普通工作池路径由服务端排序和数据库查询决定；新 Runner 再按 `next_scheduled_start_time` 排序，并在本地 `LimitManager` 无令牌时停止本轮提交。Worker 的 `_submitting_flow_run_ids` 仅是进程内去重集合，进程退出即丢失，不能用于恢复或证明租约。
-- **Worker 与 Runner 的断线策略不同但目标一致。** Worker channel 有 `CONNECTING/HEALTHY/FALLBACK_RETRYING/DISABLED` 状态；健康 WebSocket 不可用时 REST fallback 仍启用，快照以 `snapshot_sequence` 拒绝旧序列；Worker 取消观察则是事件订阅失败后切轮询。测试证据：`tests/test_observers.py`、`tests/server/utilities/test_worker_channel.py`、`tests/client/schemas/test_worker_channel.py`。本轮未模拟真实断线、重复 frame 或服务端重启。
+- **领取顺序不是任意 FIFO。** 普通工作池路径由服务端排序和数据库查询决定；新 Runner 再按 `next_scheduled_start_time` 排序，并在本地 `LimitManager` 无令牌时停止当前核对提交。Worker 的 `_submitting_flow_run_ids` 仅是进程内去重集合，进程退出即丢失，不能用于恢复或证明租约。
+- **Worker 与 Runner 的断线策略不同但目标一致。** Worker channel 有 `CONNECTING/HEALTHY/FALLBACK_RETRYING/DISABLED` 状态；健康 WebSocket 不可用时 REST fallback 仍启用，快照以 `snapshot_sequence` 拒绝旧序列；Worker 取消观察则是事件订阅失败后切轮询。测试证据：`tests/test_observers.py`、`tests/server/utilities/test_worker_channel.py`、`tests/client/schemas/test_worker_channel.py`。当前核对未模拟真实断线、重复 frame 或服务端重启。
 - **Runner 的单次执行闭包明确。** `ScheduledRunPoller` 取得 limiter token 后创建一次 `FlowRunExecutor`；executor 先检查 Cancelling/Cancelled，再提议 Submitting，启动器先通过 `task_status.started(handle)` 暴露句柄，进程退出后读取 attempt conclusion，再移除 ProcessManager 注册，最后按退出码决定是否提议 Crashed。token 在 poller 的 `finally` 释放。源码证据：`runner/_scheduled_run_poller.py`、`runner/_flow_run_executor.py`；测试证据：`tests/runner/test__flow_run_executor.py`、`tests/runner/test_runner.py`。
 
 ### 16.3 重试、锁、租约、心跳与结果失败
 
-1. **重试不是一次状态覆盖。** Task 的 `retry_condition_fn` 异常按“不重试”处理；延迟可为数值、列表或 callable，列表最后一个值可复用，最多配置 50 个延迟；每次 retry 从 `Retrying`/`AwaitingRetry` 再进入运行。Flow 的 retry policy 写入 FlowRun policy，服务端规则 `RetryFailedFlows` 决定是否接受下一轮。测试证据：`tests/test_task_engine.py`、`tests/public/tasks/test_task_timeouts.py`、`tests/public/flows/test_flow_timeouts.py`；本轮未运行，未确认实际 run count 和 scheduled time。
-2. **结果写入不是跨对象原子事务。** `ResultStore` 无 metadata storage 时把 ResultRecord 一次写入；配置 metadata storage 时先写 result，再写 metadata，是两个独立 block I/O。`Transaction.commit()` 捕获序列化/存储异常后调用 rollback 并释放 SERIALIZABLE lock，但已经成功写入的外部对象不会由该代码自动做分布式删除。因此“函数成功”不等价于“远端结果可读”，结果引用必须在读回确认后才可作为完成事实。源码证据：`results.py:1067-1129`、`transactions.py:335-391`；测试证据：`tests/results/test_result_store.py`、`tests/test_transactions.py`；本轮未对半写、远端断线或重试读回做运行实验。
+1. **重试不是一次状态覆盖。** Task 的 `retry_condition_fn` 异常按“不重试”处理；延迟可为数值、列表或 callable，列表最后一个值可复用，最多配置 50 个延迟；每次 retry 从 `Retrying`/`AwaitingRetry` 再进入运行。Flow 的 retry policy 写入 FlowRun policy，服务端规则 `RetryFailedFlows` 决定是否接受下一轮。测试证据：`tests/test_task_engine.py`、`tests/public/tasks/test_task_timeouts.py`、`tests/public/flows/test_flow_timeouts.py`；当前核对未运行，未确认实际 run count 和 scheduled time。
+2. **结果写入不是跨对象原子事务。** `ResultStore` 无 metadata storage 时把 ResultRecord 一次写入；配置 metadata storage 时先写 result，再写 metadata，是两个独立 block I/O。`Transaction.commit()` 捕获序列化/存储异常后调用 rollback 并释放 SERIALIZABLE lock，但已经成功写入的外部对象不会由该代码自动做分布式删除。因此“函数成功”不等价于“远端结果可读”，结果引用必须在读回确认后才可作为完成事实。源码证据：`results.py:1067-1129`、`transactions.py:335-391`；测试证据：`tests/results/test_result_store.py`、`tests/test_transactions.py`；当前核对未对半写、远端断线或重试读回做运行实验。
 3. **锁是可选能力。** `READ_COMMITTED` 不要求 lock manager；`SERIALIZABLE` 没有 lock manager 会配置失败。事务在 begin 获取锁，在 commit 或 rollback 的 finally 路径释放；commit 失败会回滚，但 hook 或外部存储自身的副作用不具备通用补偿。测试证据：`tests/test_transactions.py`、`tests/test_locking.py`、`tests/results/test_result_store.py`。
-4. **租约失效有明确的保守/宽松分叉。** 续约线程在 lease duration 的 0.75 处续约，每次最多 3 次指数退避；`raise_on_lease_renewal_failure=True` 取消执行，默认值只告警并允许继续，此时 active slot 可能暂时被超额使用。服务端 `Repossessor` 扫描过期 lease，按 lease metadata 扣回 active slots 并撤销 lease。测试证据：`tests/concurrency/test_leases.py`、`tests/concurrency/test_raise_on_lease_renewal_failure.py`、`tests/server/concurrency/test_memory_lease_storage.py`；本轮未运行，未读回 active slots 为零。
-5. **心跳是观测，不是租约。** Flow heartbeat 使用 daemon thread，最小间隔由源码钳制为 30 秒；它在检测到终态后停止，发送异常只 debug 记录。Worker heartbeat 更新 worker/backend 健康；Foreman 根据过期 heartbeat 标记 Worker offline，并进一步标记没有在线 Worker 的 Pool、长期未 poll 的 deployment/queue 为 not ready。心跳事件不自动延长 concurrency lease，也不证明用户进程存活。测试证据：`tests/server/services/test_foreman.py`、`tests/test_observers.py`；本轮未运行。
+4. **租约失效有明确的保守/宽松分叉。** 续约线程在 lease duration 的 0.75 处续约，每次最多 3 次指数退避；`raise_on_lease_renewal_failure=True` 取消执行，默认值只告警并允许继续，此时 active slot 可能暂时被超额使用。服务端 `Repossessor` 扫描过期 lease，按 lease metadata 扣回 active slots 并撤销 lease。测试证据：`tests/concurrency/test_leases.py`、`tests/concurrency/test_raise_on_lease_renewal_failure.py`、`tests/server/concurrency/test_memory_lease_storage.py`；当前核对未运行，未读回 active slots 为零。
+5. **心跳是观测，不是租约。** Flow heartbeat 使用 daemon thread，最小间隔由源码钳制为 30 秒；它在检测到终态后停止，发送异常只 debug 记录。Worker heartbeat 更新 worker/backend 健康；Foreman 根据过期 heartbeat 标记 Worker offline，并进一步标记没有在线 Worker 的 Pool、长期未 poll 的 deployment/queue 为 not ready。心跳事件不自动延长 concurrency lease，也不证明用户进程存活。测试证据：`tests/server/services/test_foreman.py`、`tests/test_observers.py`；当前核对未运行。
 
 ### 16.4 取消、孤儿 run、恢复和释放
 
@@ -619,10 +619,10 @@ active DeploymentSchedule
 - `CancellationCleanup` 为 `CANCELLING` 安排带 run/state id 的超时任务，并用行锁复核当前状态；超时后把仍未收口的 FlowRun 标为 `Cancelled`，同时向 Worker cleanup queue 投递清理消息。它不是对已消失进程的直接证明，而是状态侧补偿。
 - `Foreman` 只改变健康状态，`Repossessor` 只回收过期 concurrency lease；二者都不会凭空知道用户代码是否已停止。孤儿 FlowRun 的安全恢复必须联合读取状态、heartbeat、基础设施句柄/PID、lease 和 cleanup queue，而不能看到 Worker offline 就直接重跑。
 - 资源释放依赖多层 `finally`：TaskRunner 关闭 executor，Task engine 退出 concurrency context，Runner poller 释放 limiter token，FlowRunExecutor 移除 ProcessManager handle，Worker 清理 zip/bundle 临时目录，EventsWorker 删除被丢弃事件的 context cache。任一层外部 provider 不响应，都可能留下需要扫描的资源；源码中没有跨 provider 的全局事务。
-- 测试源码覆盖取消清理、observer 的 WebSocket→polling fallback、worker cleanup、runner cancellation、repossessor 和 lease storage：`tests/server/services/test_cancellation_cleanup.py`、`tests/test_observers.py`、`tests/workers/test_cleanup.py`、`tests/runner/test__cancellation_manager.py`、`tests/server/services/test_repossessor.py`。本轮没有真实进程、容器、数据库、WebSocket 或 provider，因此所有“孤儿已回收”“PID 已消失”“lease 已归零”均未验证。
+- 测试源码覆盖取消清理、observer 的 WebSocket→polling fallback、worker cleanup、runner cancellation、repossessor 和 lease storage：`tests/server/services/test_cancellation_cleanup.py`、`tests/test_observers.py`、`tests/workers/test_cleanup.py`、`tests/runner/test__cancellation_manager.py`、`tests/server/services/test_repossessor.py`。当前核对没有真实进程、容器、数据库、WebSocket 或 provider，因此所有“孤儿已回收”“PID 已消失”“lease 已归零”均未验证。
 
 ### 16.5 研究结论与边界
 
 静态代码足以确认：状态机有终态闭包和按优先级排列的编排规则；重试由客户端策略与服务端裁决共同完成；队列是数据库事实而非内存 FIFO；取消是有 owner 的多阶段序列；租约和临时资源有过期/`finally` 补偿；事件与 heartbeat 是观测通道而非主状态事实。测试源码足以确认：项目主动覆盖了 map/future 超时、嵌套线程池死锁警告、重试、事务回滚、租约续约失败、取消 observer fallback、scheduler 和 cleanup。
 
-本轮不能确认：真实部署下的调度延迟和优先级公平性、数据库锁竞争、结果双写断线后的残留对象、Worker channel 重连期间的重复领取、真实 SIGTERM/SIGKILL 时序、容器/PID 清理、孤儿 run 是否被安全重排、以及资源释放最终是否归零。唯一实际执行的验证是文档级 `git diff --check`；未执行 pytest、服务启动或外部系统联调。
+当前核对不能确认：真实部署下的调度延迟和优先级公平性、数据库锁竞争、结果双写断线后的残留对象、Worker channel 重连期间的重复领取、真实 SIGTERM/SIGKILL 时序、容器/PID 清理、孤儿 run 是否被安全重排、以及资源释放最终是否归零。唯一实际执行的验证是文档级 `git diff --check`；未执行 pytest、服务启动或外部系统联调。

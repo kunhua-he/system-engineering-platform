@@ -1,6 +1,6 @@
 # jywke 架构建档
 
-> 首轮全量源码建档。本文是本仓库唯一架构事实源；结论按“源码已实现 / 仅声明或部分实现 / 未验证”区分。源码中的乱码注释不作为事实依据，优先以可执行代码、工程文件和符号引用为证据。
+> 当前全量源码建档。本文是本仓库唯一架构事实源；结论按“源码已实现 / 仅声明或部分实现 / 未验证”区分。源码中的乱码注释不作为事实依据，优先以可执行代码、工程文件和符号引用为证据。
 
 ## 1. 项目定位
 
@@ -55,7 +55,7 @@ wke_webkit*.cpp            fun_javascript.cpp        fun_tb.cpp             fun_
 | 工程工具集 | Visual Studio `v143`，Windows SDK `10.0` |
 | 工作树基线 | 建档前 `git status --short --branch` 仅显示分支信息，无源码修改 |
 
-本仓库未发现既有 `ARCHITECTURE.md`，也未发现名称包含“细探”的旧细探文档；本轮仅新增本文档，未删除任何文件。
+本仓库未发现既有 `ARCHITECTURE.md`，也未发现名称包含“细探”的既有细探材料文档；当前取证仅新增本文档，未删除任何文件。
 
 ## 4. 目录与工程地图
 
@@ -320,7 +320,7 @@ POST 数据模型：
 
 ### 未执行/未验证
 
-- 当前主机为 macOS，不能直接执行 Windows Visual Studio `v143` 工程；本轮遵守只改架构文档约束，没有启动构建、安装依赖、运行 DLL、运行易语言 IDE 或运行示例。
+- 当前主机为 macOS，不能直接执行 Windows Visual Studio `v143` 工程；当前取证遵守只改架构文档约束，没有启动构建、安装依赖、运行 DLL、运行易语言 IDE 或运行示例。
 - 未验证 Win32 Debug/Release 产物能否在目标 Windows 环境完整链接；未验证 x64 配置是否可产出可加载的易语言支持库。
 - 未验证外部 miniblink DLL 版本、位数、导出符号、Cookie/缓存路径权限和实际事件可达性。
 - 未验证 `GetNewInf` 返回的命令数量、属性序列化在真实易语言 IDE 中的兼容性；命令表与函数符号已通过源码静态盘点确认。
@@ -405,5 +405,11 @@ POST 数据模型：
 - `testCallNode_Dll/testCallNode_Dll.vcxproj`：测试应用的四配置工程。
 - `testCallNode_Dll/testCallNode_Dll.cpp:63-147`、`:217-303`：3 个 WebView、消息循环、URL/UA/定时和销毁测试。
 - `jywke/更新日志.txt:1-80`：1.7.903、1.7.620、1.7.616 和历史功能线索。
-- `jywke/易语言源码/例程/`：9 个易语言二进制例程；本轮未运行。
+- `jywke/易语言源码/例程/`：9 个易语言二进制例程；当前取证未运行。
 - `README.md:5-24`：miniblink 项目定位和上游链接。
+
+## 12. 规模与证据边界
+
+仓库共有 103 个跟踪文件，主体是 `jywke/` 下的 WebKit/miniblink 封装、MinHook 代码、易语言 ABI 头文件及一个调用测试工程；没有可在当前 macOS 主机直接运行的 Windows 构建产物。源码链路可按以下顺序复核：`wke_dllMain.cpp` 注册导出，`wke_cmdDef.cpp`/`wke_cmd_typedef.h` 绑定命令，`wke_webkit*.cpp` 调用 WebKit，`fun_*.cpp` 实现易语言侧功能，`testCallNode_Dll.cpp` 驱动窗口与消息循环。
+
+资源与失败边界包括浏览器实例销毁、消息循环退出、Hook trampoline 释放、网络/脚本回调异常和 GDI 位图清理。现有测试工程只覆盖显式调用样例，未证明多实例并发、跨线程回调、崩溃恢复或 ABI 版本兼容。后续补证应固定 miniblink 二进制版本、运行时 DLL 路径和 Win32/x64 配置，并记录每个实例的创建/销毁配对。

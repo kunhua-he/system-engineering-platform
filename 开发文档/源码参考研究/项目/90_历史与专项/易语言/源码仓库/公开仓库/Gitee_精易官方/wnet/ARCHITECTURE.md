@@ -241,7 +241,7 @@ wnet_*.cpp / include_wnet_header.h
 
 现场扫描到：没有 `README`、`test/`、`tests/`、测试源文件、CI 工作流、构建脚本、发布脚本或已编译 `.fne/.dll/.lib` 产物。Solution 与两个 `.vcxproj` 是唯一构建描述。
 
-### 本轮实际验证
+### 当前核对实际验证
 
 - 已人工读取根目录源文件、`elib` SDK 头/实现、Solution、动态/静态工程、过滤器、`.def` 和 Git 元数据。
 - 已确认本地 `master` 与 `origin/master` 指向同一提交；远程 `HEAD` 为 `master`，且远程最新提交与本地一致。

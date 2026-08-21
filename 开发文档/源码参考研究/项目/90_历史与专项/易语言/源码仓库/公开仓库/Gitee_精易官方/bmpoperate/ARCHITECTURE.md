@@ -197,9 +197,9 @@ LoadLibrary(.fne)
 4. 修正或确认命令索引 8、31、32、34 的英文名/参数索引后，再生成动态库和静态库并在易语言实际运行时验证命令表一致性。
 5. 对 `GetPointers`、透明色复制和 `MapFile` 增加资源泄漏、失效指针和异常路径测试。
 
-## 10. 第三轮：图像支持库、运行核心与统一网关的底座映射
+## 10. 后续：图像支持库、运行核心与统一网关的底座映射
 
-> 本节是第三轮底座映射和装配输入，不是对当前仓库实现程度的改写。当前项目上下文工具错绑到了 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，其代码图和验证结果已丢弃；以下结论只使用本目录源码的静态证据，属于弱验证。源码事实仍以第 1～9 节为准。
+> 本节是后续底座映射和装配输入，不是对当前仓库实现程度的改写。当前项目上下文工具错绑到了 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，其代码图和验证结果已丢弃；以下结论只使用本目录源码的静态证据，属于弱验证。源码事实仍以第 1～9 节为准。
 
 ### 10.1 边界总裁决：什么归谁
 
@@ -220,7 +220,7 @@ LoadLibrary(.fne)
 
 ### 10.2 现有能力命中、缺口与复用裁决
 
-| 能力系列 | 现有源码命中 | 缺口/真实性 | 第三轮裁决 |
+| 能力系列 | 现有源码命中 | 缺口/真实性 | 后续裁决 |
 |---|---|---|---|
 | DIB 类型与 35 个命令注册 | `bmpoperate_dtType.cpp:5-37`、`bmpoperate_cmd_typedef.h:12-47`、`bmpoperate_cmdInfo.cpp:91-101` | 元数据和函数表存在，但命令体没有状态、结果或错误写回 | **复用适配层，升级图像支持库**；不把注册表当能力已实现 |
 | BMP 文件/字节集输入输出 | `LoadBmpFile`、`LoadBin`、`GetBmFileBin` 的声明和 `m_pText/m_pBin` 取参（`bmpoperate_cmdDef.cpp:35-56`） | 无解析、长度校验、编码处理、返回字节集和失败回滚 | **新建图像解析/编码原子能力**；旧命令只做兼容映射，待 Windows 验证 |
@@ -283,15 +283,15 @@ LoadLibrary(.fne)
 
 ### 10.6 L0-L4 验证等级（本项目现状）
 
-| 等级 | 证明内容 | 本轮证据/命令 | 当前状态 |
+| 等级 | 证明内容 | 当前核对证据/命令 | 当前状态 |
 |---|---|---|---|
 | **L0 源码存在** | 目标仓库、文件、符号和声明确实存在 | 目标目录静态读取；`git log -1 --format='%H%n%ad%n%D' --date=iso-strict` 得 `fd2dff40176f7dcdb858796ff2a9727a6abdf595`；`bmpoperate_cmdDef.cpp:6-315` | **已确认**：源码骨架和命令契约存在；不等于功能存在 |
-| **L1 结构静态** | 命令表、数据类型、导出、通知、工程配置可静态对齐 | `BMPOPERATE_DEF` 35 项；`GetNewInf`/`Source_bmpoperate.def`；`bmpoperate.sln`、两个 `.vcxproj`；本轮未使用错绑代码图 | **已确认（弱验证）**：可证明结构，不证明编译/运行 |
+| **L1 结构静态** | 命令表、数据类型、导出、通知、工程配置可静态对齐 | `BMPOPERATE_DEF` 35 项；`GetNewInf`/`Source_bmpoperate.def`；`bmpoperate.sln`、两个 `.vcxproj`；当前核对未使用错绑代码图 | **已确认（弱验证）**：可证明结构，不证明编译/运行 |
 | **L2 构建/装载** | Windows VS/v141 真实编译、链接、导出和支持库加载 | 本机 macOS ARM64；未执行 `msbuild/cl`，未生成 DLL/静态库；既有文档记录 `PlatformToolset=v141` | **未验证**：没有构建产物、退出码或装载回读 |
 | **L3 运行契约** | Windows/易语言 ABI 下成功、失败、边界、返回值、错误文本和资源释放均真实通过 | 仓库无测试目录/夹具；未运行易语言 IDE、Windows GDI 或真实 `PMDATA_INF` 调用 | **未验证**：尤其未证明 x64 句柄、`pRetData`、映射和崩溃边界 |
 | **L4 外部集成/韧性** | 真实宿主、系统 GDI、外部 provider、超时/取消/崩溃恢复、泄漏和重启现场通过 | `NL_GET_DEPENDENT_LIBS` 仅静态返回空依赖；无 provider manifest、worker、压力/泄漏/崩溃报告；项目上下文错绑 | **未验证/阻断**：不能宣称零外部依赖、无泄漏或可恢复 |
 
-因此本项目第三轮交付等级为 **L1（弱验证）**；能力实现和底座集成不得写成“已完成”。
+因此本项目后续交付等级为 **L1（弱验证）**；能力实现和底座集成不得写成“已完成”。
 
 ### 10.7 验收契约与装配计划
 
@@ -329,7 +329,7 @@ LoadLibrary(.fne)
 - `elib/lib2.h`、`elib/fnshare.h`、`elib/fnshare.cpp`、`elib/untshare.h`：易语言 ABI、内存/数组辅助、系统通知与 Windows 辅助边界。
 - `bmpoperate.vcxproj`、`bmpoperate_static/bmpoperate_static.vcxproj`、`bmpoperate.sln`：动态/静态构建配置。
 - `Source_bmpoperate.def`：DLL 导出边界。
-- 第三轮新增裁决的直接证据：`bmpoperate_cmd_typedef.h:12-47`（命令/资源/失败声明）、`bmpoperate_cmdDef.cpp:6-315`（入口空实现、句柄/指针/参数取值）、`bmpoperate_cmdInfo.cpp:5-101`（ABI 参数与非法输入警告）、`bmpoperate_dtType.cpp:5-37`（DIB 隐藏成员）、`bmpoperate_dllMain.cpp:7-178`（DLL/通知/依赖边界）、`elib/fnshare.h:20-169`（通知与 allocator）、`elib/lib2.h:780-824,989-991,1137-1169,1234-1239`（数据所有权、位图通知、生命周期通知与命令 ABI）。
+- 后续新增裁决的直接证据：`bmpoperate_cmd_typedef.h:12-47`（命令/资源/失败声明）、`bmpoperate_cmdDef.cpp:6-315`（入口空实现、句柄/指针/参数取值）、`bmpoperate_cmdInfo.cpp:5-101`（ABI 参数与非法输入警告）、`bmpoperate_dtType.cpp:5-37`（DIB 隐藏成员）、`bmpoperate_dllMain.cpp:7-178`（DLL/通知/依赖边界）、`elib/fnshare.h:20-169`（通知与 allocator）、`elib/lib2.h:780-824,989-991,1137-1169,1234-1239`（数据所有权、位图通知、生命周期通知与命令 ABI）。
 - 版本：本地与远程 `fd2dff40176f7dcdb858796ff2a9727a6abdf595`，远程地址 `https://gitee.com/JYtechnology/bmpoperate.git`。
 
 本文件是项目根唯一架构事实文档；后续复核应直接更新本文件，不另建平行架构报告。

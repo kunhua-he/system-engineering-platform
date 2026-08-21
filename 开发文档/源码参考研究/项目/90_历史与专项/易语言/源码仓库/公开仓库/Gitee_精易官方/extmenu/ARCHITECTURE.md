@@ -30,7 +30,7 @@
 | 建档时工作树 | 干净；建档前无已跟踪或未跟踪源码变更 |
 | 历史范围 | 当前仓库为 shallow/grafted 单提交视图，不能据此推断更早历史 |
 
-远程 `HEAD` 与本地 `HEAD` 一致，因此本轮没有执行 `fetch`、`pull` 或任何远程写操作。
+远程 `HEAD` 与本地 `HEAD` 一致，因此当前核对没有执行 `fetch`、`pull` 或任何远程写操作。
 
 ## 3. 运行与构建形态
 
@@ -62,7 +62,7 @@ solution 将 `x86` 映射为工程的 `Win32` 配置，将 `x64` 映射为工程
 
 ```text
 extmenu/
-├── ARCHITECTURE.md                    # 本轮新增；唯一架构建档
+├── ARCHITECTURE.md                    # 当前核对新增；唯一架构建档
 ├── extmenu.sln                        # Visual Studio solution
 ├── extmenu.vcxproj                    # 动态库工程
 ├── extmenu.vcxproj.filters            # 动态库工程筛选器
@@ -390,9 +390,9 @@ IDE/运行时读取或修改属性
 - 没有已提交二进制产物；
 - 只有 `extmenu_cmdInfo.cpp` 的 `_DEBUG` 参数数量辅助常量 `dbg_cmd_arg_count__`，不是完整测试。
 
-### 14.2 本轮实际执行
+### 14.2 当前核对实际执行
 
-本轮只做只读盘点和文档写入：
+当前核对只做只读盘点和文档写入：
 
 - 已读取项目文件清单、C++ 源码、公共 ABI 头、工程 XML、solution、`.def`、Git 状态和远程引用；
 - 已执行 `git ls-remote origin HEAD refs/heads/master`，远程 HEAD 与本地一致；
@@ -469,4 +469,4 @@ IDE/运行时读取或修改属性
 | solution 配置映射 | `extmenu.sln:1-40` |
 | 远程与提交基线 | Git `remote -v`、`git log -1`、`git ls-remote origin HEAD refs/heads/master` |
 
-> 旧 `细探-*.md` 未发现。本文件已吸收本轮源码盘点结果；后续只维护本文件，不建立同项目平行架构报告。
+> 旧 `细探-*.md` 未发现。本文件已吸收当前核对源码盘点结果；后续只维护本文件，不建立同项目平行架构报告。

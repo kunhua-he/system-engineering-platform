@@ -354,15 +354,15 @@ EasyR1 README 声明 Python 3.9+、`transformers>=4.51.0`、`flash-attn>=2.4.3`�
 - 官方文档：`docs/LLaVA_OneVision.md`、`docs/LLaVA_Video_1003.md`、`docs/LLaVA-NeXT-Interleave.md`、`docs/LLaVA-NeXT-Video.md`
 - 扩展子项目：`llava-critic-r1/EasyR1/README.md`、`llava-critic-r1/EasyR1/verl/README.md`
 - Git 基线：本地 `main` 与 `origin/main` 均为 `bce12e479bc4dfee2b9c50c88137b01ff51bd483`；远程地址 `https://github.com/LLaVA-VL/LLaVA-NeXT.git`
-- CodeGraph：目标仓库没有 `.codegraph/` 索引，目标路径探索返回“CodeGraph isn't available here”；因此本次架构事实以现场读取的源码/README/文档/依赖/ Git 版本信息为证据，不运行 `codegraph init`，也不改目标仓库其他文件。
+- CodeGraph：目标仓库项目本地 `.codegraph/` 已存在且索引最新；`codegraph status` 显示 195 files、3,841 nodes、8,163 edges、10.85 MB、node:sqlite WAL（Python 188、YAML 7）。本次使用项目本地 CodeGraph 做符号探索，不经过 MCP；架构事实同时绑定源码/README/文档/依赖/Git 版本信息。
 
-## 11. 第三轮：通用底座映射与唯一推理链路
+## 11. 后续：通用底座映射与唯一推理链路
 
-本节是第三轮增量结论：不把平台概念反写成 LLaVA-NeXT 已经具备的实现，而是把源码中的真实职责映射到“多模态模型支持库、视觉模块、模型提供者、运行核心”四个底座边界。凡写“应落点/候选/待核”的地方均是平台装配建议，不是本仓库已经存在的目录或接口。
+本节是后续增量结论：不把平台概念反写成 LLaVA-NeXT 已经具备的实现，而是把源码中的真实职责映射到“多模态模型支持库、视觉模块、模型提供者、运行核心”四个底座边界。凡写“应落点/候选/待核”的地方均是平台装配建议，不是本仓库已经存在的目录或接口。
 
 ### 11.1 取证范围与裁决口径
 
-本轮重新核对的主要证据为：
+当前核对重新核对的主要证据为：
 
 - `llava/mm_utils.py`：`process_images()`、`process_anyres_image()`、`process_highres_image()`、`tokenizer_image_token()`、`KeywordsStoppingCriteria`。
 - `llava/model/builder.py`：`load_pretrained_model()` 的模型名分派、HF/LoRA/projector 权重装载、量化、视觉塔装载和上下文长度推断。
@@ -375,7 +375,7 @@ EasyR1 README 声明 Python 3.9+、`transformers>=4.51.0`、`flash-attn>=2.4.3`�
 
 ### 11.2 四类底座的职责映射
 
-| 源码能力 | 真实实现位置 | 归属底座 | 第三轮裁决 |
+| 源码能力 | 真实实现位置 | 归属底座 | 后续裁决 |
 |---|---|---|---|
 | 文本 prompt、Conversation 模板、角色与停止串 | `llava/conversation.py`、`llava/mm_utils.py::tokenizer_image_token` | **多模态模型支持库** | 吸收“文本+媒体占位符→统一 token 序列”的纯转换契约；模板枚举、模型名猜模板不能继续散落在服务层。 |
 | 图片 RGB 解码、base64 解码、尺寸记录 | `load_image_from_base64()`、`PIL.Image.open()`、训练 `process_image()` | 多模态模型支持库；Pillow/视频解码器属于**模型提供者** | 升级为可声明的媒体输入提供者；解码失败要有稳定错误码和尺寸/字节上限，不能把第三方异常直接透出。 |
@@ -459,7 +459,7 @@ Gradio http_bot() / CLI / 直接 HTTP
   → 服务适配器响应
 ```
 
-这是一条**平台规范链**，不是对当前仓库已经有统一门面的误述。当前 `cli.py`、Gradio 和 worker 的输入限制、停止条件、超时和错误转换有重复；第三轮裁决为：**吸收核心算子，升级为唯一入口；隔离多套服务侧拼接逻辑和 NUL 私有协议**。
+这是一条**平台规范链**，不是对当前仓库已经有统一门面的误述。当前 `cli.py`、Gradio 和 worker 的输入限制、停止条件、超时和错误转换有重复；后续裁决为：**吸收核心算子，升级为唯一入口；隔离多套服务侧拼接逻辑和 NUL 私有协议**。
 
 ### 11.5 L0-L4 五级落点
 
@@ -482,7 +482,7 @@ Gradio http_bot() / CLI / 直接 HTTP
 #### GPU/显存事实
 
 - `load_pretrained_model()` 支持 `device_map`、FP16/BF16、4/8 bit `BitsAndBytesConfig`、`attn_implementation`；视觉塔在 `device_map != "auto"` 时直接 `.to(device="cuda", dtype=torch.float16)`。
-- worker 将图像 tensor `.to(self.model.device, dtype=torch.float16)`，文本 `input_ids` 使用 `.cuda()`；CLI 同样是 CUDA/FP16 假设。CPU、MPS、混合设备路径不是本轮实测能力。
+- worker 将图像 tensor `.to(self.model.device, dtype=torch.float16)`，文本 `input_ids` 使用 `.cuda()`；CLI 同样是 CUDA/FP16 假设。CPU、MPS、混合设备路径不是当前核对实测能力。
 - anyres/highres/S2/视频帧和 `mm_newline_position` 会改变视觉 token 数，随后 `max_new_tokens` 受 `max_context_length - input_ids - num_image_tokens` 限制；这说明视觉 token 是上下文和显存预算的一部分。
 - 源码未在请求前读取 `torch.cuda.mem_get_info()`、未设显存硬预算、未对输入 patch/帧数作统一上限，也未在 OOM 后隔离/重启模型进程。平台的 GPU 预算与回收只能归运行核心，不能由某个视觉塔自行决定。
 
@@ -516,7 +516,7 @@ Gradio http_bot() / CLI / 直接 HTTP
 | controller 重启 | `worker_info`、调度和心跳状态丢失，worker heartbeat 发现不存在后重新注册 | worker 可重新注册，但在途请求不恢复 | L4 状态重建与请求终态对账；不能把内存状态当持久权威。 |
 | `max_new_tokens`/上下文超限 | worker 上限 1024，Gradio 上限 1536；上下文不足时返回文本提示 `Exceeds max token length` | 可由调用方缩短输入或输出重新提交 | L0 预估文本+视觉 token，统一拒绝/降级，不让不同入口各自截断。 |
 
-### 11.9 第三轮复用、升级、隔离裁决
+### 11.9 后续复用、升级、隔离裁决
 
 | 裁决 | 内容 | 原因 |
 |---|---|---|
@@ -525,12 +525,14 @@ Gradio http_bot() / CLI / 直接 HTTP
 | **新建** | 多模态输入契约、模型句柄/权重制品契约、执行单元、GPU/显存预算、deadline/取消、OOM 分类、崩溃重启、统一流式事件、资源终态证据 | 当前仓库没有这些平台治理能力，不能把局部代码包装为已有能力。 |
 | **隔离** | Pillow/decord/av、Transformers、PEFT、bitsandbytes、CUDA、FlashAttention、DeepSpeed、SGLang/vLLM | 重型/可选第三方依赖必须在模型提供者或独立进程边界，主运行核心不直接承载其崩溃风险。 |
 | **废弃/禁止复制** | 服务层按 `model_name` 大量字符串分支；各入口直调 `process_images()`/`model.generate()`；`.cuda()`、FP16 硬编码；NUL 私有流；无取消的后台线程；内存 worker 注册表 | 会形成多套推理链、隐式 fallback、不可回收 GPU 任务和错误语义漂移。 |
-| **待核** | EasyR1/veRL/vLLM 的批处理、分布式显存和多节点故障语义；SGLang worker 是否能完全满足同一模型句柄契约 | 属于独立扩展/外部运行时，本轮未执行其真实环境，不能直接纳入主链。 |
+| **待核** | EasyR1/veRL/vLLM 的批处理、分布式显存和多节点故障语义；SGLang worker 是否能完全满足同一模型句柄契约 | 属于独立扩展/外部运行时，当前核对未执行其真实环境，不能直接纳入主链。 |
 
-### 11.10 第三轮事实边界与验证等级
+### 11.10 后续事实边界与验证等级
 
-- **源码事实（已确认）**：上述函数、数据形状、入口和异常分支来自当前工作树源码；目标仓库无 CodeGraph 索引，不能提供代码图调用关系证据。
-- **静态架构映射（本轮完成）**：完成 L0-L4、四类底座职责、唯一推理链、执行单元、生命周期和失败矩阵的文档化映射；没有把映射建议写成生产实现。
+- **源码事实（已确认）**：上述函数、数据形状、入口和异常分支来自当前工作树源码；项目本地 CodeGraph 已提供 Python 符号与调用关系辅助证据，但不覆盖所有文档、shell、配置和外部运行时。
+
+CodeGraph 复核记录：`codegraph sync` 返回 Already up to date；`codegraph explore process_images tokenizer_image_token LlavaMetaForCausalLM --max-files 8` 返回 15 symbols across 1 file，确认 `process_images` 位于 `llava/mm_utils.py:314`，有 4 个调用者（`model_worker.py`、`onevision_trial.py`、`sglang_worker.py`），`tokenizer_image_token` 位于 `llava/mm_utils.py:341`，有 27 个调用者，覆盖 CLI、worker、训练和 DPO 路径。该查询为项目本地 CodeGraph，不经过 MCP。
+- **静态架构映射（当前核对完成）**：完成 L0-L4、四类底座职责、唯一推理链、执行单元、生命周期和失败矩阵的文档化映射；没有把映射建议写成生产实现。
 - **本机功能验证（未执行）**：未安装依赖、未下载 checkpoint、未运行 CUDA/模型、未启动 FastAPI/controller/worker/Gradio，故没有推理质量、吞吐、显存峰值、取消、OOM 或崩溃恢复的实测证据。
 - **测试真假边界**：仓库没有成体系的离线 `tests/`；`llava/serve/test_message.py` 依赖正在运行的服务，只能作为外部服务冒烟，不可替代 L0-L4 单元/集成测试。
 - **后续平台装配前置**：需要先登记能力需求、搜索现有能力、冻结唯一契约 owner、申请资源租约，再决定是否新建多模态支持库/视觉模块/provider/运行核心能力；本节不直接修改平台生产底座。

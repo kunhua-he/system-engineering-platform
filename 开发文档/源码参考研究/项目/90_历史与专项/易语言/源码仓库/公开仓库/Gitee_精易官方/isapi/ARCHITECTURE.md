@@ -15,7 +15,7 @@
 
 ## 2. 首轮范围与结论分级
 
-| 分级 | 本轮结论 |
+| 分级 | 当前核对结论 |
 |---|---|
 | 源码已实现 | Visual Studio solution/project 配置；动态库与静态库目标定义；`GetNewInf` 导出；库级 `LIB_INFO` 元数据；命令/参数/自定义数据类型登记表；通知转发骨架；`elib/fnshare.*` 中的内存、数组、文本/字节集辅助函数。 |
 | 仅声明/元数据 | `isapi_cmd_typedef.h` 中命令宏登记的 83 个命令签名；`isapi_cmdDef.cpp` 中各命令的函数入口及参数局部变量；IIS 事件、返回值、服务器变量和扩展函数枚举；`Source_isapi.def` 对 `GetNewInf` 的导出声明。 |
@@ -309,7 +309,7 @@ EXPORTS
 
 现场盘点未发现测试目录、测试源文件、CI 配置、README 或独立验证脚本。`isapi.sln` 只包含构建项目，没有测试项目。
 
-### 本轮已做的静态验证
+### 当前核对已做的静态验证
 
 - 人工读取 `isapi.sln`、两个 `.vcxproj`、两个 `.filters`、两个 `.user`、`Source_isapi.def`。
 - 人工读取核心源文件 `isapi_dllMain.cpp`、`isapi_cmdDef.cpp`、`isapi_cmdInfo.cpp`、`isapi_dtType.cpp`、`isapi_const.cpp`、`isapi_cmd_typedef.h`、`include_isapi_header.h`。
@@ -348,7 +348,7 @@ EXPORTS
 - 提交时间：`2022-12-19 16:56:10 +0800`
 - 提交说明：`初始化仓库`
 - 远程：`https://gitee.com/JYtechnology/isapi.git`
-- 现场状态：初始工作树干净，`master...origin/master`，HEAD 与 `origin/master`/`origin/HEAD` 一致；本轮只新增/更新本文件，未修改源码、工程、依赖、测试、配置或 Git 元数据。
+- 现场状态：初始工作树干净，`master...origin/master`，HEAD 与 `origin/master`/`origin/HEAD` 一致；当前核对只新增/更新本文件，未修改源码、工程、依赖、测试、配置或 Git 元数据。
 
 ### 关键证据路径
 

@@ -1,6 +1,6 @@
 # MiniCPM-V 架构归档
 
-> 本文是本项目根目录唯一的架构事实文档。源码参考仓库默认只读；本轮只新增本文件，未修改源码、依赖、测试、配置、权重或启动脚本。
+> 本文是本项目根目录唯一的架构事实文档。源码参考仓库默认只读；当前核对只新增本文件，未修改源码、依赖、测试、配置、权重或启动脚本。
 >
 > 项目根：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/70_multimodal_models/MiniCPM-V`
 
@@ -203,8 +203,8 @@ README 明确要求 `downsample_mode` 同时传给 `apply_chat_template()` 和 `
 ## 7. 测试、验证与未执行事项
 
 - 现场未发现独立单元测试目录或 `test_*.py` 测试套件；项目验证主要由评测脚本、Demo 手工运行、README 示例和模型服务接口组成。
-- 本轮只做源码、README、依赖、入口、API、评测/训练脚本和远程版本的只读核对；未安装依赖、未下载权重、未启动 CUDA/HTTP/WebSocket/Demo、未运行 benchmark、未启动训练或构建前端。
-- 可执行验证入口（仅记录，不代表本轮已执行）：`python chat.py`、`python web_demos/web_demo_2.6.py --device cuda|mps`、`python web_demos/minicpm-o_2.6/model_server.py --port 32550`、`python eval_mm/vlmevalkit/run.py --data <DATASET> --model <MODEL>`、`torchrun ... finetune/finetune.py`。
+- 当前核对只做源码、README、依赖、入口、API、评测/训练脚本和远程版本的只读核对；未安装依赖、未下载权重、未启动 CUDA/HTTP/WebSocket/Demo、未运行 benchmark、未启动训练或构建前端。
+- 可执行验证入口（仅记录，不代表当前核对已执行）：`python chat.py`、`python web_demos/web_demo_2.6.py --device cuda|mps`、`python web_demos/minicpm-o_2.6/model_server.py --port 32550`、`python eval_mm/vlmevalkit/run.py --data <DATASET> --model <MODEL>`、`torchrun ... finetune/finetune.py`。
 - 运行前置条件包括匹配的 PyTorch/CUDA 或 Apple MPS 环境、模型权重、视频/音频编解码依赖、评测数据集；这些条件在当前 macOS 工作树中未作可用性假设。
 
 ## 8. 版本基线与远程复核
@@ -225,7 +225,7 @@ README 明确要求 `downsample_mode` 同时传给 `apply_chat_template()` 和 `
 5. **训练数据异常恢复**：`SupervisedDataset.__getitem__()` 捕获所有异常后随机递归取样，坏样本可能被掩盖，并可能在数据普遍损坏时递归耗尽；未有测试覆盖。
 6. **API 文档凭证处理**：`docs/api.md` 的凭证已由读取层脱敏；实际调用不得把 API key 写入源码、日志或架构文档。
 7. **旧代码路径可维护性**：`omnilmm/model/omnilmm.py` 含硬编码视觉权重路径 `/tt/data/public/...` 的初始化分支；该分支是否仍是支持路径、如何提供 EVA02 权重尚未在本机验证。
-8. **评测依赖数据外置**：`vlmevalkit`/`vqaeval` 需要外部 benchmark 数据、GPU、多进程和可能的 GPT 评审服务；本轮没有把“脚本存在”误记为“评测通过”。
+8. **评测依赖数据外置**：`vlmevalkit`/`vqaeval` 需要外部 benchmark 数据、GPU、多进程和可能的 GPT 评审服务；当前核对没有把“脚本存在”误记为“评测通过”。
 
 ## 10. 证据路径
 
@@ -239,9 +239,9 @@ README 明确要求 `downsample_mode` 同时传给 `apply_chat_template()` 和 `
 - 此前细探材料（已人工吸收并清理）
 - 远程只读复核快照：`/tmp/MiniCPM-V-latest`，基线 `8e7209ccf1ce28d94a9fd841a673b3b9d6caae72`
 
-## 11. 第三轮：通用底座映射与裁决（2026-08-21）
+## 11. 后续：通用底座映射与裁决（2026-08-21）
 
-本节是第二轮项目事实之后的底座输入，不是对 MiniCPM-V 生产化改造的承诺。它只把源码中已经存在的视觉输入、处理器、模型推理、权重/量化、设备、批处理和入口映射到平台的四类职责：**图像/多模态支持库、模型模块、提供者、运行核心**。平台若要吸收，必须按本节的单链路和验收契约重新实现；不能把 `trust_remote_code=True`、Demo 全局变量或模型对象直接搬进平台核心。
+本节是后续项目事实之后的底座输入，不是对 MiniCPM-V 生产化改造的承诺。它只把源码中已经存在的视觉输入、处理器、模型推理、权重/量化、设备、批处理和入口映射到平台的四类职责：**图像/多模态支持库、模型模块、提供者、运行核心**。平台若要吸收，必须按本节的单链路和验收契约重新实现；不能把 `trust_remote_code=True`、Demo 全局变量或模型对象直接搬进平台核心。
 
 ### 11.1 证据边界与归图总图
 
@@ -260,7 +260,7 @@ README 明确要求 `downsample_mode` 同时传给 `apply_chat_template()` 和 `
 - **模型模块**应拥有模型族差异：视觉塔/Resampler/LLM 组合、图像占位符与 token 对齐、`model.chat()`/`model.generate()` 参数、版本返回值归一化、视频与全模态的模型专用提示策略。`omnilmm/model/omnilmm.py` 是仓库内模型模块的真实例子；4.6/4.5 主体在 Hugging Face remote code 中，仓库本地只有适配边界。
 - **提供者**应拥有外部重量、第三方运行库、硬件后端和外部 API。权重下载/缓存、`trust_remote_code`、CUDA/MPS/CPU、`decord`/`torchcodec`/`PyAV`、`Modelbest`、vLLM/SGLang/llama.cpp/Ollama 都不能成为运行核心的内嵌实现。
 - **运行核心**应拥有可观测和可回收的执行生命周期。现有仓库没有统一预算、租约、取消、OOM 恢复、崩溃隔离或结果证据层；`StreamManager`、`torch.cuda.empty_cache()`、评测循环中的临时文件和 `uid` 判断均不足以替代它。
-- **证据分层**：本仓库源码是“本地实现”证据；README/API 中的 4.5/4.6、GGUF/BNB/AWQ/GPTQ、`transformers serve` 和外部模型服务是“声明/外部契约”证据，除非本地有实现或本轮实跑，否则只能记为待核。
+- **证据分层**：本仓库源码是“本地实现”证据；README/API 中的 4.5/4.6、GGUF/BNB/AWQ/GPTQ、`transformers serve` 和外部模型服务是“声明/外部契约”证据，除非本地有实现或当前核对实跑，否则只能记为待核。
 
 ### 11.2 七类能力的单链路映射
 
@@ -363,7 +363,7 @@ HTTP `/stream` 或 WebSocket `/ws/stream`
 
 ### 11.6 L0-L4 交付分级
 
-| 等级 | 底座必须证明什么 | MiniCPM-V 当前证据 | 第三轮裁决 |
+| 等级 | 底座必须证明什么 | MiniCPM-V 当前证据 | 后续裁决 |
 |---|---|---|---|
 | **L0 输入与契约** | 媒体格式、大小/帧/像素/Token 上限；文本+视觉消息结构；错误码和返回形状稳定 | README/API、旧 Demo、`chat.py` 有多套输入形状；缺统一 schema、长度和错误码 | **升级图像/多模态支持库**；先统一输入和 Processor 契约，不能直接复用 `chat.py` 字典 |
 | **L1 Processor 与模型适配** | Processor/Tokenizer 版本锁定；模板、占位符、视觉 token、`batch_decode` 对齐；4x/16x 等参数不漂移 | 4.6 `AutoProcessor` 是外部 remote code；旧路径手工 transform/token；OmniLMM 对 token 边界有局部校验 | **新建/升级模型模块适配层**，把 remote Processor 留在 provider；必须有版本兼容和契约测试 |
@@ -413,7 +413,7 @@ HTTP `/stream` 或 WebSocket `/ws/stream`
 4. **L3**：真实 HTTP/SSE/WebSocket 或 CLI 入口覆盖并发有界、队列背压、断开、主动取消、单请求超时、单项失败和批次结果顺序；读取回进程、端口、临时文件和 GPU lease 无残留。
 5. **L4**：注入缺权重、缺 decoder、非法模板、OOM、provider SIGKILL、模型异常和主进程重启；每个场景有可读 evidence_id、有限重试/回滚和退出码，不以打印日志或“自动重试成功”代替证据。
 
-### 11.9 装配计划与第三轮结论
+### 11.9 装配计划与后续结论
 
 ```text
 波次 A：冻结 multimodal 输入/Processor/错误码/资源上限契约
@@ -430,7 +430,7 @@ HTTP `/stream` 或 WebSocket `/ws/stream`
   → 单图/视频/批处理/服务/失败注入/重启恢复，未通过项保持待核
 ```
 
-第三轮裁决：
+后续裁决：
 
 - **吸收**：`slice_image` 的“尺寸—分片—占位符”思想、Processor/Tokenizer 参数契约、模型模块的视觉 hidden state 注入边界、评测结果逐条持久化模式，可作为候选设计输入；吸收的是契约和证据，不是复制源码。
 - **升级**：现有图像/视频/音频输入支持库需加入统一媒体 schema、上限、解码错误、临时文件和 provider 选择；模型模块需统一 chat/generate 返回形状和版本兼容。

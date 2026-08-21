@@ -200,19 +200,19 @@ README 只明确给出 npm 包名 `@letta-ai/letta-code`，并将当前源代码
 
 ---
 
-# 10. 第三轮：当前 Letta Code 到通用底座的映射（2026-08-21）
+# 10. 后续：当前 Letta Code 到通用底座的映射（2026-08-21）
 
 ## 10.1 证据边界与降级声明
 
-本轮先核对了本地目标树、`ARCHITECTURE.md`、`AGENTS.md`、Git 引用和旧细探路径，结果必须分层记录：
+当前核对先核对了本地目标树、`ARCHITECTURE.md`、`AGENTS.md`、Git 引用和旧细探路径，结果必须分层记录：
 
 | 证据项 | 真实结果 | 证据等级与影响 |
 |---|---|---|
 | 本地目标项目 | `/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Letta`，`main`，HEAD `87fd37a` | L0；这里只是 landing page，不能作为 Agent runtime 源码 |
 | 本地运行时代码 | 不存在 `letta/`、`src/`、`server/`、`api/`、`tests/` 等实现目录；Git HEAD 只有 9 个受跟踪文件 | L0；本地目标树不能验证 Agent、数据库、队列或服务端实现 |
-| 代码图 | `codegraph_explore` 明确返回目标项目没有 `.codegraph/`，未建立索引 | 代码图不可用；本轮没有冒充代码图证据 |
+| 代码图 | `codegraph_explore` 明确返回目标项目没有 `.codegraph/`，未建立索引 | 代码图不可用；当前核对没有冒充代码图证据 |
 | `project_context` | 专属 MCP 返回错误绑定到华世王镞_v3，不是 Letta | MCP 身份/最近成功验证均作废，不用于 Letta 证据 |
-| 旧细探 | 目标目录、上级 `02_长期记忆与记忆操作系统` 和参考库中均未找到 `细探-Letta.md`；本地 `ARCHITECTURE.md` 只能证明它曾被引用过 | 不能声称本轮读取了不存在的旧文件；不删除、不重建、不把聊天记忆当细探 |
+| 旧细探 | 目标目录、上级 `02_长期记忆与记忆操作系统` 和参考库中均未找到 `细探-Letta.md`；本地 `ARCHITECTURE.md` 只能证明它曾被引用过 | 不能声称当前核对读取了不存在的旧文件；不删除、不重建、不把聊天记忆当细探 |
 | 当前实现入口 | 目标 `README.md`/`AGENTS.md` 指向外部 `letta-ai/letta-code` | 仅在明确“外部当前实现证据”标签下使用 |
 | 外部当前源码快照 | 只读取得 `letta-ai/letta-code` `main`，`git ls-remote` 返回 `4f2d0d13496117e8fbf584aa24bea595c464f11b`；读取了 `src/agent/`、`src/backend/`、`src/queue/`、`src/tools/`、`src/types/`、`src/app-server-client.ts` 等公开源码 | L1 源码证据，但不改变本地目标树的“非运行时仓库”结论；该外部仓库未被本地 MCP/代码图绑定 |
 
@@ -350,12 +350,12 @@ Letta 当前实现只能吸收“ID 关联 + cancel/timeout 触发点”，不�
 
 ### 数据库边界
 
-本轮读取的 `letta-code` 当前源码中没有 SQLite、PostgreSQL、ORM、迁移器或服务端数据库实现。LocalBackend 的 `LocalStore` 明确使用内存 Map 加 JSON/JSONL 文件：`agents/<agent>.json`、`conversations/<scope>/conversation.json`、消息 transcript JSONL 和 `system-prompt.json`。因此：
+当前核对读取的 `letta-code` 当前源码中没有 SQLite、PostgreSQL、ORM、迁移器或服务端数据库实现。LocalBackend 的 `LocalStore` 明确使用内存 Map 加 JSON/JSONL 文件：`agents/<agent>.json`、`conversations/<scope>/conversation.json`、消息 transcript JSONL 和 `system-prompt.json`。因此：
 
 - “Letta 有数据库表/事务/WAL/服务端队列”不能从本目标仓库或 `letta-code` 客户端源码得出。
 - 远程 API 返回的 Agent/Conversation/Message/Run 由 App Server/Cloud 负责存储；数据库 schema、事务边界、索引、迁移、备份和 server crash recovery 均是服务端边界外证据。
 - 通用支持库可以提供 JSON/JSONL、SQLite/外部数据库 provider，但必须由项目适配层声明选型；不能因为平台已有数据库能力就把 Letta LocalStore 改写成数据库。
-- LocalStore 当前未证明 atomic rename、fsync、文件锁、跨进程并发写和损坏恢复，第三轮只能裁决为“可复用数据形状/待补存储契约”，不能判定为可靠持久化实现。
+- LocalStore 当前未证明 atomic rename、fsync、文件锁、跨进程并发写和损坏恢复，后续只能裁决为“可复用数据形状/待补存储契约”，不能判定为可靠持久化实现。
 
 ### 队列边界
 
@@ -398,7 +398,7 @@ Letta 当前实现只能吸收“ID 关联 + cancel/timeout 触发点”，不�
 
 ## 10.8 L0-L4 验证矩阵
 
-| 等级 | 目标 | 本轮真实执行/证据 | 结果 |
+| 等级 | 目标 | 当前核对真实执行/证据 | 结果 |
 |---|---|---|---|
 | L0 身份与边界 | 核对目标根、项目名、分支、当前文件树、MCP/代码图绑定 | `project_context` 返回了错误的华世王镞_v3，已明确废弃；`git status --short --branch`、`git branch -a`、`git ls-files`、`git log --oneline`、`git ls-tree -r --name-only HEAD`；本地搜索 `ARCHITECTURE.md`/`细探-Letta.md` | 目标树身份确认；代码图/MCP 目标证据阻断 |
 | L1 源码/契约静态核验 | 读取当前实现源码和公开契约，不把声明当运行结果 | 只读取得 `letta-code` main commit；核对 `src/agent/memory.ts`、`memory-filesystem.ts`、`memory-runtime.ts`、`context.ts`、`message.ts`、`backend/backend.ts`、`backend/local/local-backend.ts`、`backend/local/local-store.ts`、`queue/queue-runtime.ts`、`queue/turn-queue-runtime.ts`、`tools/README.md`、`tools/manager.ts`、`types/protocol.ts`、`app-server-client.ts`、`settings-manager.ts` | L1 通过（外部公开源码快照）；目标本地仓库仍无 runtime |
@@ -406,7 +406,7 @@ Letta 当前实现只能吸收“ID 关联 + cancel/timeout 触发点”，不�
 | L3 集成链路 | 真实 LocalBackend/App Server/WS/REST/本地 MemFS 回路 | 目标仓库无服务；未启动外部 server，未执行 `letta server`，未连接 Cloud/API，未改写环境/依赖 | 未验证；数据库、服务端队列、鉴权、stream、cancel 端到端均待核 |
 | L4 故障与恢复 | 强制 timeout/cancel/disconnect/工具崩溃/Git 冲突/文件部分写/重启恢复/资源残留 | 未对外部 `letta-code` 运行故障注入；本地目标只允许改文档且没有运行时 | 未验证；不能声称租约、崩溃一致性、残留清零或恢复通过 |
 
-本轮 L0/L1 的“通过”只表示证据边界与静态源码映射成立，不是 Letta runtime 的功能验收。要把 L2-L4 升级为真实结果，下一工作包必须取得并固定 `letta-ai/letta-code` 本地源码/依赖许可，另行验证 LocalBackend 与 App Server；不得在本 landing-page 仓库内补造实现。
+当前核对 L0/L1 的“通过”只表示证据边界与静态源码映射成立，不是 Letta runtime 的功能验收。要把 L2-L4 升级为真实结果，下一工作包必须取得并固定 `letta-ai/letta-code` 本地源码/依赖许可，另行验证 LocalBackend 与 App Server；不得在本 landing-page 仓库内补造实现。
 
 ## 10.9 现有能力命中、缺口与装配计划
 
@@ -434,9 +434,9 @@ Letta 当前实现只能吸收“ID 关联 + cancel/timeout 触发点”，不�
 7. 以 L2→L4 真实测试决定“吸收/升级/新建/待核”，未验证项不得进入生产底座
 ```
 
-本节是第三轮映射输入，不是对 `letta-ai/letta-code` 的代码迁移计划；允许修改范围仍只有本文件，旧细探不存在于现场但也未被删除。
+本节是后续映射输入，不是对 `letta-ai/letta-code` 的代码迁移计划；允许修改范围仍只有本文件，旧细探不存在于现场但也未被删除。
 
-## 10.10 本轮新增证据路径与剩余风险
+## 10.10 当前核对新增证据路径与剩余风险
 
 - 本地事实：`AGENTS.md`、`README.md`、`ARCHITECTURE.md`、`git ls-files`、`git ls-tree -r --name-only HEAD`、`git status --short --branch`。
 - 外部当前实现只读路径：`letta-ai/letta-code` `main`，提交 `4f2d0d13496117e8fbf584aa24bea595c464f11b`；重点源码路径见 10.3、10.8。
@@ -449,11 +449,11 @@ Letta 当前实现只能吸收“ID 关联 + cancel/timeout 触发点”，不�
 
 ## 11.1 证据层级与纠偏
 
-本轮没有找到此前文档提到的独立 `细探-Letta.md` 文件，因此不声称读取了该文件，也不把聊天上下文当作细探证据。为核对旧细探中提到的 Agent loop、Block/Memory、消息、REST/WS、ORM 和后台任务，本轮只读获取并读取了同一远程仓库 `origin/archive`，提交为 `56ba9c25552605eec89de8ed3dc6394b625c1993` 的源码与迁移文件。
+当前核对没有找到此前文档提到的独立 `细探-Letta.md` 文件，因此不声称读取了该文件，也不把聊天上下文当作细探证据。为核对旧细探中提到的 Agent loop、Block/Memory、消息、REST/WS、ORM 和后台任务，当前核对只读获取并读取了同一远程仓库 `origin/archive`，提交为 `56ba9c25552605eec89de8ed3dc6394b625c1993` 的源码与迁移文件。
 
 该分支是**退役 V1 历史实现**，不是当前 `main`，也不是当前 `letta-code`。下文所有“archive 证据”只用于补齐历史架构和通用底座映射；不能把它描述成当前产品实现，不能据此推断 `letta-code` 的服务端行为。
 
-本轮实际核对的代表性路径包括：
+当前核对实际核对的代表性路径包括：
 
 - Agent：`letta/schemas/agent.py`、`letta/agents/agent_loop.py`、`letta/agents/letta_agent_v3.py`。
 - 记忆：`letta/schemas/memory.py`、`letta/orm/block.py`、`letta/services/memory_repo/git_operations.py`。
@@ -589,7 +589,7 @@ Service managers / Agent loop
 8. **资源释放** 归入生命周期治理器；DB session、HTTP/WS、stream generator、Redis buffer、scheduler lock、子进程、MCP、sandbox、Git temp/lock 都要有成功/异常/取消/crash recovery 的出口。
 9. **失败矩阵** 应作为验收契约的一部分；未执行的 L2-L4 继续标为待核，archive 静态源码证据不能升级为运行通过。
 
-## 11.9 本轮核对结论与剩余风险
+## 11.9 当前核对核对结论与剩余风险
 
 - 已补齐旧 V1 archive 中可直接确认的 AgentState、Agent loop、Memory/Block、Tool、Message/Conversation/Run/Step/Job、ORM/迁移、Redis SSE、scheduler leader、REST/WS 和 DB session 边界。
 - 未修改旧 archive 分支、未修改 `README.md`、未修改 `AGENTS.md`、未安装依赖、未启动服务、未执行外部运行时测试。
@@ -602,9 +602,9 @@ Service managers / Agent loop
 
 ## 12.1 审计范围与证据等级
 
-本轮按用户指定主题继续只读核对 `origin/archive` 的退役 V1 源码、迁移、测试、配置和文档入口。目标 `main` 仍是 landing page；因此本节不是当前 Letta 产品行为说明，而是**退役 V1 的历史实现审计**，用于辨认状态、资源和底座契约，不能升级为 `letta-code` 或 Cloud server 的事实。
+当前核对按用户指定主题继续只读核对 `origin/archive` 的退役 V1 源码、迁移、测试、配置和文档入口。目标 `main` 仍是 landing page；因此本节不是当前 Letta 产品行为说明，而是**退役 V1 的历史实现审计**，用于辨认状态、资源和底座契约，不能升级为 `letta-code` 或 Cloud server 的事实。
 
-代码图复核结果仍为目标目录没有 `.codegraph/`，所以本轮没有伪造 CodeGraph 调用链证据；使用的定位方式是 Git 对象级 `git show`、`git grep` 和文件清单。没有安装依赖、启动服务、连接数据库/Redis、运行 pytest 或执行故障注入；所有 L2-L4 结论继续标为未验证。
+代码图复核结果仍为目标目录没有 `.codegraph/`，所以当前核对没有伪造 CodeGraph 调用链证据；使用的定位方式是 Git 对象级 `git show`、`git grep` 和文件清单。没有安装依赖、启动服务、连接数据库/Redis、运行 pytest 或执行故障注入；所有 L2-L4 结论继续标为未验证。
 
 ## 12.2 真实交互主线：请求到 Agent loop 再到流投影
 
@@ -644,7 +644,7 @@ ORM `Block` 提供 `version` 与 SQLAlchemy `version_id_col` 的乐观并发控�
 - 进程崩溃后从半写文件、半上传对象或旧 history pointer 自动恢复；
 - 只读、路径安全和秘密脱敏在所有 executor/HTTP/Git 入口一致执行。
 
-`GitOperations` 使用 `tempfile`、Git 子进程和对象存储全量/增量上传。正常与异常路径有删除临时目录的意图，但本轮没有执行取消、SIGKILL、磁盘满、Git 冲突、上传半失败或残留扫描，因此不能把“finally/shutil.rmtree 存在”写成恢复通过。
+`GitOperations` 使用 `tempfile`、Git 子进程和对象存储全量/增量上传。正常与异常路径有删除临时目录的意图，但当前核对没有执行取消、SIGKILL、磁盘满、Git 冲突、上传半失败或残留扫描，因此不能把“finally/shutil.rmtree 存在”写成恢复通过。
 
 ## 12.4 Tool、审批与取消传播
 
@@ -675,7 +675,7 @@ ORM `Block` 提供 `version` 与 SQLAlchemy `version_id_col` 的乐观并发控�
 1. Redis 的 `[DONE]` 只说明流投影已终止，不证明 Message/Step/Run 的完整事务已经提交。
 2. finalizer 的再次 `mark_complete` 是保护性重复写，不能替代 stream entry 幂等、跨实例 writer fencing 或 Redis durability 保证。
 
-`DatabaseRegistry.async_session` 对取消单独 rollback、`expunge_all`、close 并归还连接，这是正确的资源责任边界；但真实连接断开、连接池耗尽、数据库 failover、提交成功后响应丢失和重复请求的端到端语义没有在本轮运行验证。
+`DatabaseRegistry.async_session` 对取消单独 rollback、`expunge_all`、close 并归还连接，这是正确的资源责任边界；但真实连接断开、连接池耗尽、数据库 failover、提交成功后响应丢失和重复请求的端到端语义没有在当前核对运行验证。
 
 ## 12.6 状态、取消、崩溃与恢复判定
 
@@ -687,19 +687,19 @@ ORM `Block` 提供 `version` 与 SQLAlchemy `version_id_col` 的乐观并发控�
 - **崩溃不等于 failed 已写入**：进程在 commit、Redis flush、callback 或状态更新之间退出，会产生不同层的部分完成；启动恢复必须扫描非终态 Run、未完成 Job、过期 stream、临时 Git/锁和外部工具残留。
 - **scheduler leader 不等于执行 owner**：advisory lock 释放后可由新实例接管轮询，但代码没有因此为每个 Run/Batch item 提供 generation、heartbeat、fencing 或 CAS 防旧实例继续写入。
 
-本轮没有发现可把 `Run`、Redis stream 或 advisory lock直接升级为通用持久租约的证据。底座若要支持恢复，仍需单独的 execution intent、owner/generation、deadline、cancel intent、幂等 release、reclaim 和 recovery decision 账本。
+当前核对没有发现可把 `Run`、Redis stream 或 advisory lock直接升级为通用持久租约的证据。底座若要支持恢复，仍需单独的 execution intent、owner/generation、deadline、cancel intent、幂等 release、reclaim 和 recovery decision 账本。
 
 ## 12.7 测试、配置与文档质量审计
 
-- 测试目录覆盖 agent tool graph、async sandbox、batch/cron、cancellation、conversation、Git push sync、HITL、MCP、summarizer、managers、SDK 和性能场景；取消测试明确检查消息与 `agent.message_ids` 不脱节，并验证取消后可继续运行。这些是良好的回归意图，但不是本轮执行通过证据。
+- 测试目录覆盖 agent tool graph、async sandbox、batch/cron、cancellation、conversation、Git push sync、HITL、MCP、summarizer、managers、SDK 和性能场景；取消测试明确检查消息与 `agent.message_ids` 不脱节，并验证取消后可继续运行。这些是良好的回归意图，但不是当前核对执行通过证据。
 - 多个集成测试依赖 `LETTA_SERVER_URL`、Redis、数据库、LLM provider key 或外部 sandbox；缺少环境时通过 `skipif`、配置选择或 fixture 分支跳过/降级。测试数量因此不能直接等价于故障矩阵覆盖率。
 - 测试同时混合本地 server thread、外部已运行 server、真实 provider 和 AsyncMock；若没有固定依赖版本、数据库隔离、Redis 清理、临时目录清理和进程终止报告，失败归因和资源泄漏难以稳定复现。
 - `pyproject.toml` 清楚声明 Python `<3.14,>=3.11`、可选 PostgreSQL/Redis/server/provider/sandbox 依赖和 pytest 配置；但根 `main` 的 README/CONTRIBUTING/SECURITY 已把当前开发迁移到 `letta-code`，archive 的测试/配置不能作为当前产品文档。
 - 根 `ARCHITECTURE.md` 的主要文档风险不是缺少概念，而是容易把 main、letta-code 客户端、archive V1 服务端三套证据混成“当前 Letta”。本文件现用 L0/L1/L2-L4、当前/外部/历史标签显式分隔；后续新增内容必须保持同一证据纪律。
 
-## 12.8 本轮最终裁决与未完成验证
+## 12.8 当前核对最终裁决与未完成验证
 
-| 审计项 | 静态源码可确认 | 本轮真实验证 | 结论 |
+| 审计项 | 静态源码可确认 | 当前核对真实验证 | 结论 |
 |---|---|---|---|
 | Agent loop 与 stop reason | `max_steps`、tool/approval、compaction、Run/Step 更新路径存在 | 未启动 LLM/服务 | L1 结构成立，行为未验 |
 | Memory/Block/ORM | Block version/history、Conversation isolated blocks、Message sequence、Alembic 演进存在 | 未执行并发写/取消提交/崩溃恢复 | 一致性设计可读，恢复未证 |
@@ -709,4 +709,4 @@ ORM `Block` 提供 `version` 与 SQLAlchemy `version_id_col` 的乐观并发控�
 | Jobs/scheduler | APScheduler、advisory lock、retry、shutdown 释放路径存在 | 未运行多实例/抢锁/进程杀死 | leader 机制可读，不是 run lease |
 | tests/config/docs | 场景、环境变量、可选依赖和迁移清单广泛存在 | 未安装依赖、未执行测试 | 覆盖意图可确认，不能声称通过 |
 
-本轮只修改本文件；未修改 `main` 之外的源码、测试、配置、迁移、文档或 Git 分支。剩余最高风险仍是：当前 `letta-code` 配套服务端不可由本仓库验证；archive 的 DB/Redis/scheduler 静态实现没有 L2-L4 故障证据；取消、恢复、幂等、租约/fencing 和资源残留必须在取得明确运行时源码与隔离环境后另行验证。
+当前核对只修改本文件；未修改 `main` 之外的源码、测试、配置、迁移、文档或 Git 分支。剩余最高风险仍是：当前 `letta-code` 配套服务端不可由本仓库验证；archive 的 DB/Redis/scheduler 静态实现没有 L2-L4 故障证据；取消、恢复、幂等、租约/fencing 和资源残留必须在取得明确运行时源码与隔离环境后另行验证。

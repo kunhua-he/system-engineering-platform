@@ -1,8 +1,8 @@
 # Memoria 架构建档
 
-> 本文是本仓库根目录唯一正式架构文档。内容以当前工作树实际源码、依赖清单、测试与根 README 为依据；根目录的 `细探-Memoria.md` 仅作为施工材料读取，不作为事实源机械复制。
+> 本文是本仓库根目录唯一正式架构文档。内容以当前工作树实际源码、依赖清单、测试与根 README 为依据；根目录的 `细探-Memoria.md` 仅作为研究材料读取，不作为事实源机械复制。
 >
-> 建档边界：本轮只读源码与文档并新增本文件；未修改已有源码、依赖、测试、配置；未安装依赖、启动服务、生成构建产物或提交 Git。
+> 建档边界：当前核对只读源码与文档并新增本文件；未修改已有源码、依赖、测试、配置；未安装依赖、启动服务、生成构建产物或提交 Git。
 
 ## 1. 项目定位
 
@@ -246,7 +246,7 @@ observe/session summary/reflect/entity extraction
 - `update`、`benchmark`、`plugin ...`：更新、基准、插件 init/dev-keygen/publish/list/activate/review/score/matrix/events/rules。
 - `migrate legacy-to-multi-db`：legacy 单库迁移 dry-run/execute，支持用户筛选、并发与 JSON report。
 
-根 `Makefile` 的真实开发入口为 `make up`（Docker MatrixOne+API）、`make dev`、`make build`/`build-local`、`make check`、`make test*`、`make python-sdk-test*`；本轮未执行这些命令。
+根 `Makefile` 的真实开发入口为 `make up`（Docker MatrixOne+API）、`make dev`、`make build`/`build-local`、`make check`、`make test*`、`make python-sdk-test*`；当前核对未执行这些命令。
 
 ### 7.3 Python SDK
 
@@ -273,11 +273,11 @@ SDK 的 pyproject 实际要求 Python >=3.10、运行依赖 `httpx>=0.27`；dev 
 | 插件运行时 | Rhai sandbox；Tonic/Prost gRPC；Ed25519 签名；semver。proto 编译由 `memoria-service/build.rs` 使用 vendored protoc。 |
 | Python | Python >=3.10、httpx、Hatchling 打包；pytest/ruff/mypy 等开发工具。 |
 | OpenClaw | TypeScript/Node >=22、Vitest，OpenClaw plugin SDK peer dependency。 |
-| 运维 | Docker Compose、Prometheus/Grafana 配置、shell 安装脚本；Kubernetes/deployment 文档存在但本轮未逐文件审查。 |
+| 运维 | Docker Compose、Prometheus/Grafana 配置、shell 安装脚本；Kubernetes/deployment 文档存在但当前核对未逐文件审查。 |
 
 ## 9. 测试布局与验证方式
 
-本轮只读取测试，未执行测试、未启动数据库或服务。测试命令与测试文件中明确依赖 MatrixOne 的行为如下：
+当前核对只读取测试，未执行测试、未启动数据库或服务。测试命令与测试文件中明确依赖 MatrixOne 的行为如下：
 
 - **core/service 单元**：`memoria-core` 内置 tests；`memoria-service/tests/service_unit.rs` 使用 `MockStore`、`MockEmbedder` 验证 store/retrieve/correct/purge、六类 memory type、四类 trust tier、无 embedder 与 edit-log buffer。
 - **storage 集成**：`memoria-storage/tests/store_crud.rs` 连接真实 MatrixOne，验证 CRUD、soft delete、全文/向量/混合检索、字段 round-trip、metadata、entity link；`branch_ops.rs` 验证 active branch table、branch 写入隔离、merge、回退与显式列名规避 MatrixOne `vecf32`/`INSERT IGNORE SELECT *` 问题。
@@ -293,24 +293,24 @@ SDK 的 pyproject 实际要求 Python >=3.10、运行依赖 `httpx>=0.27`；dev 
 
 ### 已确认
 
-1. 当前 commit 为 `efd3d65`（`feat: restore filtered fulltext memory search (#232)`）；当前工作树已有未跟踪的 `细探-Memoria.md`，本轮未改动它。
+1. 当前 commit 为 `efd3d65`（`feat: restore filtered fulltext memory search (#232)`）；当前工作树已有未跟踪的 `细探-Memoria.md`，当前核对未改动它。
 2. Rust workspace、Python SDK、OpenClaw plugin 的入口与依赖均已实际读取；仓库内未发现 `AGENTS.md` 或 `CLAUDE.md`，因此没有项目级代理规则可补充。
 3. `README.md` 的总体定位、运行模式、工具名与 CLI 名称，已用真实 route、MCP dispatch、CLI `Commands` 与 plugin source 交叉核对；本文件对“真实分层”优先按源码模块边界描述。
-4. 根目录没有既有 `ARCHITECTURE.md`；本轮新建本文件作为唯一正式架构文档。
+4. 根目录没有既有 `ARCHITECTURE.md`；当前核对新建本文件作为唯一正式架构文档。
 
 ### 未确认/需要后续审查
 
-- 本轮没有运行 `cargo check/test`、clippy、Python pytest、Vitest，也没有连接 MatrixOne；因此没有对当前依赖锁、SQLx offline metadata、MatrixOne 版本兼容或 E2E 绿状态做结论。
-- `memoria-storage/src/store.rs` 体量很大，包含 schema bootstrap、compat migration、CRUD、检索、治理与大量缓存/运维逻辑；本轮建立边界但没有逐函数审计所有 SQL、事务边界、DDL 并发与回滚语义。
+- 当前核对没有运行 `cargo check/test`、clippy、Python pytest、Vitest，也没有连接 MatrixOne；因此没有对当前依赖锁、SQLx offline metadata、MatrixOne 版本兼容或 E2E 绿状态做结论。
+- `memoria-storage/src/store.rs` 体量很大，包含 schema bootstrap、compat migration、CRUD、检索、治理与大量缓存/运维逻辑；当前核对建立边界但没有逐函数审计所有 SQL、事务边界、DDL 并发与回滚语义。
 - 多 DB 自动迁移会在 serve/mcp 启动路径执行真实数据库探测与可能的 legacy migration；生产启动是否应自动迁移、备份/恢复窗口与权限边界需要部署级复核。
-- MatrixOne 原生 snapshot/data branch/`vecf32`/fulltext 语义依赖具体 MatrixOne 版本；源码和测试包含版本差异/workaround，但本轮未实测目标版本。
+- MatrixOne 原生 snapshot/data branch/`vecf32`/fulltext 语义依赖具体 MatrixOne 版本；源码和测试包含版本差异/workaround，但当前核对未实测目标版本。
 - API 认证既支持 master/Bearer/API key，也允许 `MASTER_KEY` 为空进入 open mode；部署是否始终显式设置密钥、admin 与 group policy 是否满足目标安全要求，需安全审计。
 - `MemoryPipeline` 是可选 REST pipeline，普通写入/observe/reflect 等入口各自存在；敏感度过滤、审计、快照保护是否覆盖每一种 destructive path，需进一步做入口矩阵审计。
 - REST、MCP、Python SDK、OpenClaw 对返回形状有多处文本/JSON/partial 兼容层；尤其 OpenClaw embedded 模式依赖 Rust MCP 文本解析，接口漂移风险需用跨出口契约测试持续验证。
-- 插件系统含签名、review、score、binding、Rhai 与 gRPC 多运行时；本轮只确认模块与 proto 边界，未核查信任根、沙箱权限、远程 endpoint、升级/回滚的完整安全模型。
+- 插件系统含签名、review、score、binding、Rhai 与 gRPC 多运行时；当前核对只确认模块与 proto 边界，未核查信任根、沙箱权限、远程 endpoint、升级/回滚的完整安全模型。
 - `skills/`、deployment/Kubernetes 文档、Docker/Grafana/Prometheus 配置、安装脚本未全部逐文件审查；本文仅记录已读取 README、架构/API skill、Makefile、核心源码与代表性测试所得结论。
 
-## 11. 本轮实际读取清单（摘要）
+## 11. 当前核对实际读取清单（摘要）
 
 - 根文档：`README.md`；未发现 `AGENTS.md`/`CLAUDE.md`。
 - 依赖/构建：`memoria/Cargo.toml`、9 个 crate `Cargo.toml`、根 `Makefile`、`memoria/Makefile`、`memoria-service/build.rs`、`proto/.../strategy.proto`、`sdk/python/pyproject.toml`、`plugins/openclaw/package.json`。
@@ -324,22 +324,22 @@ SDK 的 pyproject 实际要求 Python >=3.10、运行依赖 `httpx>=0.27`；dev 
 
 ---
 
-## 12. 第三轮：通用底座映射与裁决
+## 12. 后续：通用底座映射与裁决
 
-### 12.1 本轮边界、证据等级与命名
+### 12.1 当前核对边界、证据等级与命名
 
-本轮不是把 Memoria 的目录直接改造成平台目录，而是回答“哪些机制可以进入公共底座、哪些仍属于记忆领域、哪些只能进入制品/证据治理，以及迁移前必须保留的失败语义是什么”。本节只增量维护本文件；没有修改 Memoria 源码、依赖、配置、测试或 Git。
+当前核对不是把 Memoria 的目录直接改造成平台目录，而是回答“哪些机制可以进入公共底座、哪些仍属于记忆领域、哪些只能进入制品/证据治理，以及迁移前必须保留的失败语义是什么”。本节只增量维护本文件；没有修改 Memoria 源码、依赖、配置、测试或 Git。
 
-本轮证据优先级如下：
+当前核对证据优先级如下：
 
 1. 当前工作树源码与 SQL schema；
 2. 当前工作树测试源码、RFC、README/API 文档；
-3. 本轮现场命令结果；
+3. 当前核对现场命令结果；
 4. 旧细探材料（仅作线索，不能覆盖源码）。
 
-现场事实：目标根目录为 `/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Memoria`；首次 `project_context` 错绑到 `华世王镞_v3`（返回根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`），不能作为 Memoria 的项目身份或代码图证据。随后对明确 Memoria 路径调用 `codegraph_explore`，结果为“未发现 `.codegraph/`，无法查询”；因此本轮所有源码事实均来自直接读取，不能声称有代码图佐证。根目录当前只有 `ARCHITECTURE.md` 被 Git 标记为未跟踪；预期的根目录 `细探-Memoria.md` 当前现场未找到，不能宣称对旧细探做了本轮逐文件复核或删除。
+现场事实：目标根目录为 `/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Memoria`；首次 `project_context` 错绑到 `华世王镞_v3`（返回根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`），不能作为 Memoria 的项目身份或代码图证据。随后对明确 Memoria 路径调用 `codegraph_explore`，结果为“未发现 `.codegraph/`，无法查询”；因此当前核对所有源码事实均来自直接读取，不能声称有代码图佐证。根目录当前只有 `ARCHITECTURE.md` 被 Git 标记为未跟踪；预期的根目录 `细探-Memoria.md` 当前现场未找到，不能宣称对旧细探做了当前核对逐文件复核或删除。
 
-为避免把“源码存在”写成“平台已接入”，本轮使用以下判断：
+为避免把“源码存在”写成“平台已接入”，当前核对使用以下判断：
 
 - **源码事实**：实现、字段、调用链或测试源码中可直接定位；
 - **可吸收模式**：抽象边界和失败/资源语义有足够证据，可作为平台候选，但不表示已经迁入；
@@ -374,7 +374,7 @@ MatrixOne / 外部提供者 / Rhai 或 gRPC 插件 / HTTP embedding 与 LLM
 
 #### 12.3.1 当前源码事实
 
-| 主题 | 当前实现证据 | 第三轮判断 |
+| 主题 | 当前实现证据 | 后续判断 |
 |---|---|---|
 | 记忆主记录 | `memoria/crates/memoria-core/src/types.rs::Memory`；字段含 `memory_id`、scope/user/author/subject、content、embedding、`source_event_ids`、`superseded_by`、`is_active`、trust、时间戳 | `Memory` 是记忆域实体，不应成为公共事件类型 |
 | 记忆类型 | `MemoryType` 固定六种：semantic、working、episodic、profile、tool_result、procedural | 类型枚举属于记忆模块；公共契约只应承载可扩展的领域类型标识 |
@@ -446,7 +446,7 @@ REST / MCP snapshot 或 branch 命令
 
 #### 12.4.3 项目特有语义与隔离项
 
-MatrixOne 的 snapshot/data branch、COW/MVCC、`vecf32`、fulltext index、DDL 20631/23860/23861 workaround 是提供者适配语义；平台只接收标准 snapshot/branch provider，不应在运行核心复制 SQL 方言。`memoria-git` 目前的 rollback、merge 和 diff 依赖具体 MatrixOne 版本，且 RFC 中“已对真实 MatrixOne 验证”与本轮未运行现场不等价；因此 runtime readiness 仍为待核。
+MatrixOne 的 snapshot/data branch、COW/MVCC、`vecf32`、fulltext index、DDL 20631/23860/23861 workaround 是提供者适配语义；平台只接收标准 snapshot/branch provider，不应在运行核心复制 SQL 方言。`memoria-git` 目前的 rollback、merge 和 diff 依赖具体 MatrixOne 版本，且 RFC 中“已对真实 MatrixOne 验证”与当前核对未运行现场不等价；因此 runtime readiness 仍为待核。
 
 ### 12.5 审核、审计、证据账本：两条链不可混为一谈
 
@@ -476,7 +476,7 @@ package directory
 
 可吸收：内容寻址/不可变版本、签名与信任根、审核状态机、兼容范围、绑定/灰度、运行时预算、审计事件、失败降级。该链可以作为“制品治理”候选，不应直接复用为“记忆发布”——记忆内容不是插件包，记忆快照的回滚/合并具有不同的原子性与 scope。
 
-审核缺口：需要核对生产策略是否始终 `enforce_signatures=true`、签名公钥来源是否独立可信、binding 激活与 runtime cache 是否原子、审核拒绝是否覆盖所有 destructive memory 操作；本轮未启动服务或读取生产数据库，不能升级为已验证安全结论。
+审核缺口：需要核对生产策略是否始终 `enforce_signatures=true`、签名公钥来源是否独立可信、binding 激活与 runtime cache 是否原子、审核拒绝是否覆盖所有 destructive memory 操作；当前核对未启动服务或读取生产数据库，不能升级为已验证安全结论。
 
 ### 12.6 检索：公共查询契约 + 记忆域排序模块 + 运行资源监督
 
@@ -536,7 +536,7 @@ query + scope/session/subject/type filters
 | 审计写入失败/拥塞 | `mem_edit_log` 异步 buffer 满时静默丢 entry（有 warning）；direct insert 失败也不让调用者失败 | 这是不能吸收的默认语义；平台证据治理必须阻止静默丢失或标注证据缺口 |
 | 回滚中途失败 | table rollback DELETE 成功、INSERT 失败时可能留下空/部分表；源码承认非原子 | 必须隔离为 destructive provider；平台恢复状态机/前后 digest/安全点验证待建 |
 | 异步任务超时 | session summary `tokio::spawn` 后只写 processing/completed/failed；没有 deadline/cancel endpoint | 当前为明显缺口；不得映射成平台“可取消任务” |
-| 主进程崩溃 | DB locks 依靠 TTL/expired cleanup；async task 可能永久 processing，重启恢复/僵尸扫描未在本轮确认；后台 tokio task随宿主退出 | 运行核心必须有 owner/lease/heartbeat、启动扫描 processing、可恢复/unknown 状态与孤儿清理 |
+| 主进程崩溃 | DB locks 依靠 TTL/expired cleanup；async task 可能永久 processing，重启恢复/僵尸扫描未在当前核对确认；后台 tokio task随宿主退出 | 运行核心必须有 owner/lease/heartbeat、启动扫描 processing、可恢复/unknown 状态与孤儿清理 |
 | 取消 | API/MCP 没有统一 cancellation token；客户端断开与后台任务取消的传播未形成契约 | 判为待核/缺失，不能声称支持取消 |
 | 部分 batch 成功 | pipeline 返回 stored/rejected/redacted/errors；selective_apply 返回 applied/skipped 分桶并在事务提交 | 吸收结构化 partial result；公共契约要固定重试/补偿与是否已提交 |
 | 版本/数据库不兼容 | MatrixOne snapshot 列大小写兼容、diff columns runtime downgrade；storage 有 compat migrations | 吸收 capability negotiation/provider downgrade evidence；不要把 fallback 当版本兼容完成 |
@@ -545,7 +545,7 @@ query + scope/session/subject/type filters
 
 | 资源 | 创建/持有 | 正常释放 | 失败/超时/取消/崩溃要求 | 当前证据与剩余风险 |
 |---|---|---|---|---|
-| MatrixOne 主连接池 | `SqlMemoryStore`/`DbRouter` 创建；service 持有 Arc；governance 可创建 isolated background pool | store/service shutdown 时由 pool drop | DDL/查询 deadline、连接断开、进程退出需 drain；崩溃由 DB/锁 TTL 接管 | pool、背景 pool、graph pool 有源码；本轮未实测连接泄漏/停机 drain |
+| MatrixOne 主连接池 | `SqlMemoryStore`/`DbRouter` 创建；service 持有 Arc；governance 可创建 isolated background pool | store/service shutdown 时由 pool drop | DDL/查询 deadline、连接断开、进程退出需 drain；崩溃由 DB/锁 TTL 接管 | pool、背景 pool、graph pool 有源码；当前核对未实测连接泄漏/停机 drain |
 | 治理分布式锁 | `mem_distributed_locks` INSERT IGNORE；holder+TTL 持有，heartbeat renew | task 完成 release；过期行清理 | 任务超时/进程死由 TTL 回收；必须防旧 holder 过期后误释放新 holder | 有 `try_acquire/renew/release`，但 owner fencing token/epoch 未见，需补强 |
 | 异步任务记录 | `mem_async_tasks` create 为 processing；后台 `tokio::spawn` 持有 state clone | complete/fail 后治理清理 72h | cancel/deadline/crash 要写 cancelled/abandoned/unknown，并重启扫描 | 当前只有 processing/completed/failed；无 cancel handle，存在永久 processing 风险 |
 | snapshot/branch DDL | GitForDataService pool + MatrixOne snapshot/branch；注册表保存内部名 | drop snapshot/branch；weekly retention 清理 | restore 非原子；并发 restore 需串行；crash 后需 reconcile registry vs DB | 已有 cleanup/orphan 分支；未建立统一 lease/operation 状态 |
@@ -561,13 +561,13 @@ query + scope/session/subject/type filters
 
 本项目采用以下研究/采用等级，而不是把 Memoria 的 T1–T4 trust tier 混用为平台成熟度：
 
-| 等级 | 定义 | 必须具备 | Memoria 本轮对应 |
+| 等级 | 定义 | 必须具备 | Memoria 当前核对对应 |
 |---|---|---|---|
 | **L0 事实** | 只证明源码/字段/入口存在 | 路径、符号、调用链、未运行声明 | `Memory`/`MemoryStore`、snapshot/branch API、plugin package/review 表、retrieval stages、task/lock 表 |
 | **L1 契约候选** | 能提炼输入/输出/错误/资源责任，但未证明跨实现稳定 | 请求/结果/错误、owner、版本、deadline、evidence 草案 | EventEnvelope、MemoryRevision、Snapshot/Branch、RetrievalResult、Release 状态机候选 |
-| **L2 模式证据** | 有单元/集成测试或多处实现支持，但仍有外部依赖/缺口 | 正反场景、边界、部分成功、重试/回滚证据 | correction lineage、diff/selective apply、plugin review/signature/limits、graph→hybrid→fulltext fallback；外部 MatrixOne 未本轮运行 |
+| **L2 模式证据** | 有单元/集成测试或多处实现支持，但仍有外部依赖/缺口 | 正反场景、边界、部分成功、重试/回滚证据 | correction lineage、diff/selective apply、plugin review/signature/limits、graph→hybrid→fulltext fallback；外部 MatrixOne 未当前核对运行 |
 | **L3 平台候选** | 已映射唯一 owner，跨入口调用、资源和证据契约齐全 | 适配器、版本兼容、取消/崩溃恢复、验收命令、无第二中心 | 目前只有候选：插件制品治理、快照 provider、检索 provider；不能称为已接入平台 |
-| **L4 可生产复用** | 真实外部环境与故障矩阵验证，发布/回滚/残留/审计闭环通过 | 真实运行退出码 0、重启恢复、证据完整性、负载/权限/安全验证 | 本轮没有任何 Memoria L4 结论；`cargo`/MatrixOne/API/Python/Vitest 均未执行 |
+| **L4 可生产复用** | 真实外部环境与故障矩阵验证，发布/回滚/残留/审计闭环通过 | 真实运行退出码 0、重启恢复、证据完整性、负载/权限/安全验证 | 当前核对没有任何 Memoria L4 结论；`cargo`/MatrixOne/API/Python/Vitest 均未执行 |
 
 具体裁决：
 
@@ -579,7 +579,7 @@ query + scope/session/subject/type filters
 - async session task 作为“可取消、可恢复任务”：**暂不吸收**；当前只有后台 spawn + 三态持久记录，没有 cancel/deadline/crash recovery。
 - MatrixOne 原生 snapshot/branch 细节、`correct:<id>`、六 memory types、T1–T4、dedup 阈值、Rhai plugin key：**项目特有语义/适配层**。
 
-### 12.11 第三轮单链路落点与实施前验收契约
+### 12.11 后续单链路落点与实施前验收契约
 
 如果将来把这些候选接入系统工程平台，单链路应是：
 
@@ -603,9 +603,9 @@ Memoria 项目适配层
 5. **资源**：连接池、锁、task、branch、snapshot、buffer、provider runtime 都有 owner/lease/release；超时与取消能停止或标记后台工作；进程崩溃后可扫描、回收、恢复；现场无无界残留。
 6. **发布门禁**：只允许唯一契约 owner、唯一注册路径、唯一证据写入路径；源码、测试存在、真实运行、外部依赖实测分栏记录，不能把 skip、历史 RFC 或日志打印算通过。
 
-本轮因此输出的是“可吸收模式 + 项目特有语义 + 明确缺口”的底座输入，不是对生产平台的改造批准。
+当前核对因此输出的是“可吸收模式 + 项目特有语义 + 明确缺口”的底座输入，不是对生产平台的改造批准。
 
-## 13. 第三轮源码证据索引与验证状态
+## 13. 后续源码证据索引与验证状态
 
 | 结论 | 主要证据路径 |
 |---|---|
@@ -616,6 +616,6 @@ Memoria 项目适配层
 | 治理安全快照、审计、breaker/fallback | `memoria/crates/memoria-service/src/governance.rs`；`memoria/crates/memoria-service/src/scheduler.rs`；`memoria/crates/memoria-api/src/routes/governance.rs` |
 | 分布式锁与异步任务三态 | `memoria/crates/memoria-service/src/distributed.rs`；`memoria/crates/memoria-api/src/routes/sessions.rs` |
 | 插件发布/审核/激活/审计 | `memoria/crates/memoria-service/src/plugin/repository.rs`、`manifest.rs`、`rhai_runtime.rs`；`memoria/crates/memoria-api/src/routes/plugins.rs` |
-| 测试存在但本轮未运行 | `memoria/crates/memoria-storage/tests/`、`memoria/crates/memoria-git/tests/git_ops.rs`、`memoria/crates/memoria-service/tests/`、`memoria/crates/memoria-api/tests/`、`memoria/crates/memoria-mcp/tests/`、`sdk/python/tests/`、`plugins/openclaw/openclaw/__tests__/` |
+| 测试存在但当前核对未运行 | `memoria/crates/memoria-storage/tests/`、`memoria/crates/memoria-git/tests/git_ops.rs`、`memoria/crates/memoria-service/tests/`、`memoria/crates/memoria-api/tests/`、`memoria/crates/memoria-mcp/tests/`、`sdk/python/tests/`、`plugins/openclaw/openclaw/__tests__/` |
 
-**第三轮状态：已完成源码级映射和裁决，未完成真实运行验证。** `project_context` 错绑、Memoria 无代码图、旧细探现场缺失、MatrixOne/外部 provider 未启动，以及异步任务取消/崩溃恢复、snapshot 非原子恢复、审计 buffer 丢失等均保留为剩余风险；没有把它们写成已解决。后续只维护本文件，不删除或改写旧细探材料。
+**后续状态：已完成源码级映射和裁决，未完成真实运行验证。** `project_context` 错绑、Memoria 无代码图、旧细探现场缺失、MatrixOne/外部 provider 未启动，以及异步任务取消/崩溃恢复、snapshot 非原子恢复、审计 buffer 丢失等均保留为剩余风险；没有把它们写成已解决。后续只维护本文件，不删除或改写旧细探材料。

@@ -234,9 +234,9 @@ WASM 是 CLI package 的条件分支，不是独立核心层：`pandoc-cli.cabal
 
 ### 7.2 CI/发布
 
-根目录存在 `.github/workflows/`，包含 `ci.yml`、`benchmark.yml`、`docx-validation.yaml`、`nix.yml`、`release-candidate.yml`，并有 `.circleci/config.yml`。本轮只做静态阅读，没有启动 CI、构建、安装或运行完整测试。
+根目录存在 `.github/workflows/`，包含 `ci.yml`、`benchmark.yml`、`docx-validation.yaml`、`nix.yml`、`release-candidate.yml`，并有 `.circleci/config.yml`。当前核对只做静态阅读，没有启动 CI、构建、安装或运行完整测试。
 
-### 7.3 本轮验证限制
+### 7.3 当前核对验证限制
 
 按任务边界未执行安装、启动、构建、源码/依赖/测试/配置修改，也没有将目标仓库接入其他 MCP、记忆或外部代码地图。最终仅对新增 `ARCHITECTURE.md` 做静态文件存在性、首行和根目录写入范围核对；随后通过专属 `system_engineering_toolkit` 的 `verify_and_record` 记录该静态核对。
 
@@ -250,7 +250,7 @@ WASM 是 CLI package 的条件分支，不是独立核心层：`pandoc-cli.cabal
 6. **外部 AST 依赖（建议）**：`Text.Pandoc.Definition` 来自 `pandoc-types`，JSON 的具体实例和 `pandoc-api-version` 语义不能仅凭本地 `src/` 完整复原；集成方要锁定 `pandoc-types` 版本并把 JSON 样例纳入契约测试。
 7. **生成文档边界（建议）**：README 是生成物，维护应修改 `README.template`/`MANUAL.txt`/Lua filter，而不是直接改 `README.md`。
 8. **纯服务与 CLI 语义不同（建议）**：CLI 默认允许 I/O、filters 和外部资源；HTTP server 使用 `PandocPure`，同样的 `from/to` 在两个入口可能有不同可用能力，适配层应分别声明。
-9. **测试未在本轮执行（备注）**：没有真实 build/test 结果，不能据此声称当前环境可构建或所有 golden 测试通过。
+9. **测试未在当前核对执行（备注）**：没有真实 build/test 结果，不能据此声称当前环境可构建或所有 golden 测试通过。
 10. **专属 MCP 上下文偏差（备注）**：本次 `system_engineering_toolkit` 的 `project_context` 与 `codegraph_explore` 服务固定返回“系统工程平台”上下文，而不是目标 `pandoc` 仓库；其证据可信度（50，部分可信）和最近成功验证记录均属于平台，不能作为 pandoc 的实现/测试证明。本档已以目标仓库本地文件、Git 元数据和独立远程快照为事实来源，没有把该平台证据写成 pandoc 通过证据。
 
 ## 9. 可复用架构结论
@@ -278,7 +278,7 @@ WASM 是 CLI package 的条件分支，不是独立核心层：`pandoc-cli.cabal
 
 后续如发现旧细探与源码冲突，以当前源码路径、版本基线和本文件的“未确认项/风险”记录为准；不得通过修改旧细探制造第二份正式架构结论。
 
-## 10. 第二轮收口：转换链、进程、资源与真假验证
+## 10. 后续收口：转换链、进程、资源与真假验证
 
 本节是对旧细探中“Reader→AST→Writer、JSON 版本、Filter”的逐条源码收口，不改变旧细探文件。重点补齐此前没有展开的执行顺序、外部进程、错误传播、临时文件、资源释放和验证等级。以下均以本地工作树 `0f17d3966f3ff53c23ebcb9a325e9fb167523c07` 为准。
 
@@ -344,7 +344,7 @@ Lua filter 通过 `engineApplyFilter` 执行；Lua 模块另提供 `pandoc.pipe`
 
 | 场景 | 创建/持有 | 成功路径 | 失败/取消路径与已证实清理 | 未证实项 |
 |---|---|---|---|---|
-| JSON filter / Lua `pandoc.pipe` | `Text.Pandoc.Process.pipeProcess` 用 `proc` + stdin/stdout pipe 创建子进程；stderr `Inherit` | `BL.hGetContents` 强制消费 stdout，关闭 stdin/stdout，`waitForProcess` 返回退出码 | `withCreateProcess` 负责进程/句柄范围；`withForkWait` 在异步异常时杀死消费 stdout 的线程；写 stdin/close stdin 忽略 `EPIPE`（`Process.hs:51-112`） | 本轮未实际启动 hostile filter，故未做子进程树/残留现场验证；没有源码级 wall-clock timeout |
+| JSON filter / Lua `pandoc.pipe` | `Text.Pandoc.Process.pipeProcess` 用 `proc` + stdin/stdout pipe 创建子进程；stderr `Inherit` | `BL.hGetContents` 强制消费 stdout，关闭 stdin/stdout，`waitForProcess` 返回退出码 | `withCreateProcess` 负责进程/句柄范围；`withForkWait` 在异步异常时杀死消费 stdout 的线程；写 stdin/close stdin 忽略 `EPIPE`（`Process.hs:51-112`） | 当前核对未实际启动 hostile filter，故未做子进程树/残留现场验证；没有源码级 wall-clock timeout |
 | PDF `typst`/HTML engine | `makePDF` 用 `withTempDir` 创建工作目录；媒体先 `extractMedia`；`toPdfViaTempFile` 用 `withTempFile` 创建输入和输出文件 | 关闭临时文件初始 handles，写 source，外部 engine 退出后以 strict bytes 读 PDF，再返回 bytes（`PDF.hs:491-527`） | `withTempDirectory`/`withSystemTempDirectory`/`withTempFile` 是 bracket 风格范围；strict 读取明确为了 Windows 删除目录；外部程序异常映射为 PDF 错误 | 未实测各 engine 的崩溃、SIGKILL、子进程树和残留目录 |
 | TeX/ConTeXt/Tectonic | 临时目录中写 `input.tex`；TeX 可能写 `.pdf/.log/.toc` 等；`inDirectory` 用 `bracket` 保存/恢复 cwd（`PDF.hs:269-467,529-563`；`Shared.hs:767-772`） | 读取 log/PDF 为 strict bytes；TeX 按 rerun warning 最多运行 4 次；成功只返回 PDF bytes | 临时目录作用域退出时清理；外部 `DoesNotExist` 转 `PandocPDFProgramNotFoundError`；非零退出转 `PandocPDFError` 上层 | 未实测引擎写出额外文件、锁文件或异常中断后的残留 |
 | 图片转换 | TeX 路径可能调用 `rsvg-convert`，PNG/JPEG 通过 JuicyPixels 写入同一临时目录，文件名由 SHA1 路径派生（`PDF.hs:221-267`） | 成功返回临时目录中的新路径，writer 使用该路径 | 转换失败仅报告 `CouldNotConvertImage` 并保留原引用；`makePDF` 的临时目录负责范围清理 | 未实测恶意 SVG、超大图片、工具挂死 |
@@ -375,23 +375,23 @@ Lua filter 通过 `engineApplyFilter` 执行；Lua 模块另提供 `pandoc.pipe`
 | 外部子进程挂死/宿主崩溃 | 本地源码无统一 wall-clock/进程组协议 | 不能从 `ExitCode` 证明已清理 | HTTP middleware 只包请求 | **未验证/能力缺口** |
 | 目标文件部分写入 | `writeFile`/`BL.writeFile` 直写 | 失败时无源码级 rollback | server 返回 bytes，不直接写用户目标 | **源码确认的风险** |
 
-### 10.7 真假验证账本（本轮不把“存在”冒充“通过”）
+### 10.7 真假验证账本（当前核对不把“存在”冒充“通过”）
 
-| 验证层 | 本地证据 | 本轮状态 | 可宣称内容 |
+| 验证层 | 本地证据 | 当前核对状态 | 可宣称内容 |
 |---|---|---|---|
 | 源码存在 | `App.hs`、`Input.hs`、`Filter.hs`、`Filter/JSON.hs`、`Process.hs`、`PDF.hs`、`Error.hs`、`Class/*` 等路径实际读取 | 已确认 | 可以写实现事实和路径引用 |
 | 测试源码存在 | `test/test-pandoc.hs` 注册 `Tests.Command`、Readers/Writers、MediaBag/XML 等；`pandoc.cabal:839-927` 注册 `test-pandoc` | 已确认 | 只能说“有测试入口/夹具”，不能说测试通过 |
 | 历史构建/CI | `.github/workflows/*`、`.circleci/config.yml` 存在 | 已确认为配置存在 | 不能当作本地当前版本通过证据 |
-| 本轮静态核对 | 逐段读取旧细探并与上述源码、Cabal、文档路径对照；新增本节与收口表 | 已执行 | 可以宣称“文档结论已按源码校正” |
-| 本轮真实 build/test | 未执行 `cabal build`、`cabal test`、安装依赖、启动服务 | 明确未执行 | 不得宣称可构建、测试通过或服务可用 |
+| 当前核对静态核对 | 逐段读取旧细探并与上述源码、Cabal、文档路径对照；新增本节与收口表 | 已执行 | 可以宣称“文档结论已按源码校正” |
+| 当前核对真实 build/test | 未执行 `cabal build`、`cabal test`、安装依赖、启动服务 | 明确未执行 | 不得宣称可构建、测试通过或服务可用 |
 | 外部依赖实测 | 未启动 Python/Lua/PDF engine/`rsvg-convert`/HTTP provider；未做 hostile filter、超时、SIGKILL、OOM、磁盘满或残留扫描 | 明确未执行 | 只能写“源码声明/未验证”，不能写运行时保证 |
 | 文档结构/范围 | 本次只修改目标根 `ARCHITECTURE.md`；旧 `细探-pandoc.md` 保留 | 收口后需现场复核 | 可以宣称改动范围满足任务边界，前提是最终 `git status` 复核通过 |
 
-因此本轮的“验证通过”仅指源码路径、旧细探逐条对照、Markdown 章节和改动范围的静态验证；不等于 Pandoc 本地 build/test、外部 engine、filter 进程清理或 HTTP 运行验证通过。
+因此当前核对的“验证通过”仅指源码路径、旧细探逐条对照、Markdown 章节和改动范围的静态验证；不等于 Pandoc 本地 build/test、外部 engine、filter 进程清理或 HTTP 运行验证通过。
 
-### 10.8 第二轮补正：资源作用域与测试真假边界
+### 10.8 后续补正：资源作用域与测试真假边界
 
-本轮进一步按实现逐项复核后，以下细节需要从“可能清理”收窄为可证和不可证两部分：
+当前核对进一步按实现逐项复核后，以下细节需要从“可能清理”收窄为可证和不可证两部分：
 
 - `pipeProcess` 的成功路径是“消费完整 stdout → 关闭 stdin/stdout → `waitForProcess`”；`stderr = Inherit`，所以 filter/PDF engine 的 stderr 不是返回值的一部分，而是直接进入父进程 stderr。`withCreateProcess` 的 bracket 作用域负责句柄和子进程的异常清理，`withForkWait` 只负责 stdout 消费线程的等待与异常时杀线程；这不等价于统一的子进程组清理或 wall-clock timeout。
 - `pipeProcess` 对写入 stdin 和关闭 stdin 忽略 `EPIPE`，但其他 I/O 异常仍会抛出。调用方看到 `PandocFilterError` 或 PDF 错误时，可以确认错误已归类，不能仅凭错误返回确认外部进程树、孙进程或宿主工具已经终止。
@@ -410,12 +410,12 @@ Lua filter 通过 `engineApplyFilter` 执行；Lua 模块另提供 `pandoc.pipe`
 | `test/Tests/Command.hs` | 从 `test/command/*.md` 读取 `%` 命令，用 `shell` 启动测试命令，捕获 stdout/stderr 和退出码；golden 比较可更新期望 | CLI 场景的协议和预期输出格式 | 没有 shell 风险、超时、进程树清理、磁盘回滚或真实发布环境等保证 |
 | golden 输入/输出、Office archive 比较 | 对文本、归档成员、XML 和媒体内容做确定性比较 | 某个已执行场景的输出与基线一致 | 未覆盖的格式、资源耗尽、异常取消、宿主程序版本差异 |
 | `Makefile`、`.github/workflows`、`.circleci` | 声明 `cabal test`、检查和 CI 任务 | 项目维护者定义了验证路径 | 本地当前快照已经跑过这些任务 |
-| 本轮源码阅读 | 读取并对照 `App`、`Input`、`Filter`、`Process`、`PDF`、`Class`、错误和测试实现 | 本档的执行顺序、错误边界、资源作用域已按源码校正 | Pandoc build/test、filter/PDF 实测、超时/SIGKILL/OOM、残留和并发安全 |
+| 当前核对源码阅读 | 读取并对照 `App`、`Input`、`Filter`、`Process`、`PDF`、`Class`、错误和测试实现 | 本档的执行顺序、错误边界、资源作用域已按源码校正 | Pandoc build/test、filter/PDF 实测、超时/SIGKILL/OOM、残留和并发安全 |
 
 测试命令自身没有为每个 command fixture 增加 wall-clock timeout；因此测试“退出码为 0”也只代表该测试进程完成并通过比较，不代表被测 filter 或 PDF engine 具备独立超时。真实接入验收至少要把以下项目作为独立证据：构建成功、定向 Reader/Writer golden 通过、故意失败的 filter/PDF 错误归类、超时取消后的进程/目录残留扫描、目标文件失败后的部分写入检查，以及 HTTP pure 路径对 filters/PDF/网络资源不可用的断言。
 
 ## 11. 结论
 
-`pandoc` 的真实核心仍是 `输入 → Reader → Pandoc AST → Filter/Transform → Writer → 输出`，但可落地的调用契约还包括：输入先整体读入、文本/二进制分流、filters 串行 JSON/Lua 进程边界、MediaBag 资源策略、PDF 临时目录与外部 engine、`PandocIO`/`PandocPure` 双运行模型，以及 CLI/server 各自的错误表。旧细探关于统一 AST、`pandoc-api-version` 和 filter 的方向有效；本轮已将“对称扩展”“纯确定性”“GPL 只能独立进程”等过宽或未充分证实的表述收窄为源码可证事实和明确风险。
+`pandoc` 的真实核心仍是 `输入 → Reader → Pandoc AST → Filter/Transform → Writer → 输出`，但可落地的调用契约还包括：输入先整体读入、文本/二进制分流、filters 串行 JSON/Lua 进程边界、MediaBag 资源策略、PDF 临时目录与外部 engine、`PandocIO`/`PandocPure` 双运行模型，以及 CLI/server 各自的错误表。旧细探关于统一 AST、`pandoc-api-version` 和 filter 的方向有效；当前核对已将“对称扩展”“纯确定性”“GPL 只能独立进程”等过宽或未充分证实的表述收窄为源码可证事实和明确风险。
 
-当前工作树仍为本地 `3.10.1` 快照，远程 main 已到 `3.10.2`。本轮只更新本文件，未改源码、依赖、测试、配置、旧细探或 Git；未安装、启动、构建、运行完整测试或实测外部进程。后续若要将 Pandoc 接入平台，最低验收契约应显式包含格式白名单、AST API 版本、filter 禁止/允许策略、输入/输出大小、PDF/filter wall-clock timeout、进程组清理、临时目录残留扫描、目标文件原子写入和失败证据。
+当前工作树仍为本地 `3.10.1` 快照，远程 main 已到 `3.10.2`。当前核对只更新本文件，未改源码、依赖、测试、配置、旧细探或 Git；未安装、启动、构建、运行完整测试或实测外部进程。后续若要将 Pandoc 接入平台，最低验收契约应显式包含格式白名单、AST API 版本、filter 禁止/允许策略、输入/输出大小、PDF/filter wall-clock timeout、进程组清理、临时目录残留扫描、目标文件原子写入和失败证据。

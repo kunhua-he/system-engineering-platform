@@ -67,7 +67,7 @@ enetintercept_GetInterface_NetIntercept
 
 ```text
 enetintercept/
-├── ARCHITECTURE.md                         # 本档案；本轮唯一新增文件
+├── ARCHITECTURE.md                         # 本档案；当前核对唯一新增文件
 ├── enetintercept.sln                        # Visual Studio solution，DLL + static 两个项目
 ├── enetintercept.vcxproj                    # 动态库工程
 ├── enetintercept.vcxproj.filters            # 动态库文件过滤器
@@ -337,7 +337,7 @@ Win32 链接显式使用 `Source_enetintercept.def`（`enetintercept.vcxproj:121
 - 初始检查时工作树为 `## master...origin/master`，无源码改动；
 - 本仓库是浅克隆（`.git/shallow` 存在），历史仅现场可见这一条 grafted 提交，不能据此推断完整项目历史。
 
-## 11. 本轮结论与后续复核方向
+## 11. 当前核对结论与后续复核方向
 
 ### 已确认
 

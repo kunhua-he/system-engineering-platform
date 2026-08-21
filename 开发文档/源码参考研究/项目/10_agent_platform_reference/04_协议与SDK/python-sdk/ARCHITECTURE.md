@@ -278,17 +278,17 @@ coverage erase
 
 ## 10. 未确认项与风险
 
-以下项目在本轮没有运行时验证，不能仅凭静态阅读宣称已闭环：
+以下项目在当前核对没有运行时验证，不能仅凭静态阅读宣称已闭环：
 
 1. **目标代码地图未建立**：对目标目录的 codegraph 查询返回“未发现 `.codegraph/`”；专属 `system_engineering_toolkit` 当前自身根目录是系统工程平台，无法为该外部仓库提供同仓库地图。本文因此以本地源码/目录/已有细探文档为依据，没有采用其他仓库地图结果。
 2. **MCP 开工上下文根目录不匹配**：专属 MCP 返回的项目根是 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，不是本目标目录，因而不能为外部目标仓库建立受控 worktree/文件账本。架构文档仍只写入目标根的 `ARCHITECTURE.md`；该隔离差异需后续将专属 MCP 配置到目标仓库或提供跨仓库只读模式。
-3. **未跑测试/覆盖率/conformance**：本轮没有安装、启动、构建或执行测试；测试数量、100% coverage、跨 Python 3.10–3.14、Windows/POSIX 行为均只是配置和静态结构事实。
+3. **未跑测试/覆盖率/conformance**：当前核对没有安装、启动、构建或执行测试；测试数量、100% coverage、跨 Python 3.10–3.14、Windows/POSIX 行为均只是配置和静态结构事实。
 4. **现代协议仍在演进**：当前版本表已含 2026-07-28，但 Tasks 等扩展在 methods surface 中存在按版本缺失/延后情况；后续扩展应同时核对规范、wire models、methods map、runner、client parser 与 conformance。
-5. **CLI 外部依赖边界**：`mcp dev` 需要 Node/npx Inspector，`mcp install` 依赖 Claude Desktop 配置；本轮未探测宿主工具是否存在。
+5. **CLI 外部依赖边界**：`mcp dev` 需要 Node/npx Inspector，`mcp install` 依赖 Claude Desktop 配置；当前核对未探测宿主工具是否存在。
 6. **可选依赖/平台路径**：uv dynamic dependencies、Windows fd/process 实现、OAuth provider、OTel exporter、事件存储后端等未做实际启动探针；第三方库版本与运行时兼容性需按锁文件和 CI 重新验证。
 7. **根目录细探文档的时效性**：`细探-MCP官方SDK.md` 标注了细粒度探索和若干未实现项，但它是已有调研文档，不替代当前源码、测试或规范；当其结论与源码/版本表不一致时以源码为准。
 
-## 11. 本轮变更与证据边界
+## 11. 当前核对变更与证据边界
 
 - 允许修改范围：仅目标项目根目录。
 - 实际修改：新增本文件 `ARCHITECTURE.md`；未修改源码、依赖、测试、配置、锁文件或 Git 提交。
@@ -331,8 +331,8 @@ coverage erase
 ### 12.4 未吸收、保留为待核的旧细探内容
 
 - 旧细探中的 `src ~38k`、`tests ~84k`、单文件行数等规模数字没有并入架构事实；它们是随 checkout 漂移的统计，不是稳定契约。
-- 旧细探列出的 Inspector、规范仓库、SEP 编号、跨 SDK 看板和 issue 只作为旁路线索，不在本轮当作当前源码实现证据；正式判断仍需逐项对规范、`mcp-types.methods`、runner、client parser 和 conformance 复核。
-- “Tasks、DPoP、jwt-bearer workload identity 未实现”等负面结论未直接升级为当前架构结论；未实现判断必须以当前方法表、导出面、运行路径和 conformance 结果共同证明。本轮没有运行 conformance，也没有对外部规范仓库做版本复核。
+- 旧细探列出的 Inspector、规范仓库、SEP 编号、跨 SDK 看板和 issue 只作为旁路线索，不在当前核对当作当前源码实现证据；正式判断仍需逐项对规范、`mcp-types.methods`、runner、client parser 和 conformance 复核。
+- “Tasks、DPoP、jwt-bearer workload identity 未实现”等负面结论未直接升级为当前架构结论；未实现判断必须以当前方法表、导出面、运行路径和 conformance 结果共同证明。当前核对没有运行 conformance，也没有对外部规范仓库做版本复核。
 - 旧细探中关于 `mcp dev`、`mcp install` 是否能调用宿主 Inspector/Claude Desktop 的运行时结论未吸收；第 10 节仍诚实标为未探测。
 - 旧细探与当前源码不一致之处，以当前源码为准；例如传输安全 middleware 本身为兼容性默认关闭，但应用装配可传入安全设置，不能笼统写成“任何构造路径都自动开启”（`transport_security.py:39-41`）。
 
@@ -340,9 +340,9 @@ coverage erase
 
 - 权威架构文档只有目标根的 `ARCHITECTURE.md`。
 - `细探-MCP官方SDK.md` 已完整读取并保留，不删除、不改写；其已吸收内容见本文件第 12 节，未吸收内容及原因也在第 12.4 节明确记录。
-- 本轮仍只修改 `ARCHITECTURE.md`；未修改源码、配置、依赖、锁文件、测试或旧细探。
+- 当前核对仍只修改 `ARCHITECTURE.md`；未修改源码、配置、依赖、锁文件、测试或旧细探。
 
-## 14. 第三轮：MCP 底座映射与薄网关裁决（2026-07-28 modern 时代）
+## 14. 后续：MCP 底座映射与薄网关裁决（2026-07-28 modern 时代）
 
 本节不是把 MCP SDK 当作平台实现方案，而是把源码已经证明的协议边界，逐项映射到平台的公共契约、运行核心和 HTTP 能力网关。平台的权威执行链仍是：
 
@@ -489,9 +489,9 @@ MCP 适配层至少需要把下列字段映射到已有公共契约；字段名�
 | MCP session、initialize/discover、Mcp-Session-Id | **隔离为 transport session** | 不进入平台权威状态；验证重启、凭证不匹配、idle cleanup、stateless/modern 差异。 |
 | 完整 MCP server runtime、独立任务/授权/状态/发布流 | **不吸收/废弃为平台底座方案** | 会产生第二执行权威、第二授权根和第二错误/证据链；平台只接入其协议边界。 |
 
-### 14.10 第三轮验收契约与剩余风险
+### 14.10 后续验收契约与剩余风险
 
-第三轮若进入平台实现，最小验收不是“能连上 MCP”，而是以下闭环：
+后续若进入平台实现，最小验收不是“能连上 MCP”，而是以下闭环：
 
 1. `tools/list` 只返回公共能力目录中已公开且调用者有权看到的条目；未知/撤销/契约漂移不进入列表。
 2. legacy 与 modern 同一能力调用得到同一内部命令、授权判定、执行 owner 和结果语义；只允许协议投影不同。
@@ -501,11 +501,11 @@ MCP 适配层至少需要把下列字段映射到已有公共契约；字段名�
 6. MCP 错误、工具级 `isError`、平台统一失败结果三者有固定转换表；内部堆栈和凭证不出线。
 7. MCP 适配层源码只能调用公共契约/模块公开入口，静态依赖审计不得出现直连 provider、绕过授权、旁路写状态或重复注册表。
 
-第三轮映射阶段仅完成架构映射，未在目标仓库实现 MCP 网关；第二轮已补做下述 SDK 针对性测试，但未运行完整套件、conformance 或平台验收。剩余风险：专属 `system_engineering_toolkit` 的 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，而目标项目是外部源码参考仓；目标无 `.codegraph/`，`codegraph_explore` 返回未索引，因此本节证据仍来自目标工作树的源码、测试和既有细探，不能把错误项目的代码图当作目标证据。
+后续映射阶段仅完成架构映射，未在目标仓库实现 MCP 网关；后续已补做下述 SDK 针对性测试，但未运行完整套件、conformance 或平台验收。剩余风险：专属 `system_engineering_toolkit` 的 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，而目标项目是外部源码参考仓；目标无 `.codegraph/`，`codegraph_explore` 返回未索引，因此本节证据仍来自目标工作树的源码、测试和既有细探，不能把错误项目的代码图当作目标证据。
 
-## 15. 第二轮收口：传输、能力、session、错误、取消与生命周期
+## 15. 后续收口：传输、能力、session、错误、取消与生命周期
 
-本节是对旧细探逐项回到当前源码后的第二轮收口，不是新的平台设计。证据基线为当前工作树 `HEAD 0d92192765fa7d6a20fbfe7e62e242e44933574f`（2026-08-18），源码路径以仓库真实布局为准：协议实现包在 `src/mcp-types/mcp_types/`，`src/mcp/types/` 是向 `mcp_types` 的兼容镜像；服务端/客户端 SDK 在 `src/mcp/`。旧细探未删除，后续事实只维护本文。
+本节是对旧细探逐项回到当前源码后的后续收口，不是新的平台设计。证据基线为当前工作树 `HEAD 0d92192765fa7d6a20fbfe7e62e242e44933574f`（2026-08-18），源码路径以仓库真实布局为准：协议实现包在 `src/mcp-types/mcp_types/`，`src/mcp/types/` 是向 `mcp_types` 的兼容镜像；服务端/客户端 SDK 在 `src/mcp/`。旧细探未删除，后续事实只维护本文。
 
 ### 15.1 传输契约与真实调用链
 
@@ -566,28 +566,28 @@ MCP 适配层至少需要把下列字段映射到已有公共契约；字段名�
 | 资源 | 创建 | 持有/转移 | 正常完成 | 业务失败 | 主动取消/超时 | 宿主/子进程崩溃后的证据 |
 |---|---|---|---|---|---|---|
 | `_pending` waiter / `_in_flight` handler | dispatcher 发请求或收到 request | dispatcher dict；request id 是关联键，不是幂等键 | response/error 唤醒并 finally pop；handler finally identity-check pop | error response；普通异常不使读循环退出 | pending pop + courtesy cancel；handler scope cancel，结果丢弃 | EOF fan-out `CONNECTION_CLOSED`，task group cancel；未知 late id 丢弃。 |
-| AnyIO memory streams | transport/session context 建立 | 成对 send/receive 端分散在 client/transport/router | 每个 context manager 关闭四端；request stream writer/reader 单独清理 | 解析/HTTP error 仍关闭；cleanup 不依赖成功结果 | outer task group cancel 后 finally 逐端 close | `test_transport_stream_cleanup.py` 强制 GC 检查 `ResourceWarning`；本轮三项通过。 |
-| stdio 子进程与管道 | `_create_platform_compatible_process` 新 session/process group | stdio client 持有 process、pipe bridge、reader/writer tasks | close stdin → poll returncode → reap，保留子进程自有 exit code | pipe error 关闭 read side，避免 pending 永久等待 | shielded flush、SIGTERM/SIGKILL、kill tree、close pipes | 生命周期测试覆盖自愿退出、mid-session exit code、取消杀全树；本轮未执行该 real-subprocess 文件，源码与已有测试证据分开记录。 |
+| AnyIO memory streams | transport/session context 建立 | 成对 send/receive 端分散在 client/transport/router | 每个 context manager 关闭四端；request stream writer/reader 单独清理 | 解析/HTTP error 仍关闭；cleanup 不依赖成功结果 | outer task group cancel 后 finally 逐端 close | `test_transport_stream_cleanup.py` 强制 GC 检查 `ResourceWarning`；当前核对三项通过。 |
+| stdio 子进程与管道 | `_create_platform_compatible_process` 新 session/process group | stdio client 持有 process、pipe bridge、reader/writer tasks | close stdin → poll returncode → reap，保留子进程自有 exit code | pipe error 关闭 read side，避免 pending 永久等待 | shielded flush、SIGTERM/SIGKILL、kill tree、close pipes | 生命周期测试覆盖自愿退出、mid-session exit code、取消杀全树；当前核对未执行该 real-subprocess 文件，源码与已有测试证据分开记录。 |
 | stateful HTTP session | manager lock 内生成 id，登记 transport/owner | manager dict + transport task + app lifespan state | DELETE/transport terminate/manager shutdown 清 stream、删 owner | task exception finally 删除 registry | idle deadline cancel，remove maps，terminate | manager shutdown 清 maps；run 单次不可重启，需新 manager。 |
 | per-connection `exit_stack` / lifespan state | `Connection` factory 或 server lifespan | runner/handler/middleware 可 push cleanup | LIFO，shielded，5 秒有界 | callback 异常记录并吞掉，不遮蔽 driver | cancellation 下仍尝试清理，超时 abandons remaining callbacks | transport/session finally 统一调用；无运行时探针证明任意用户 cleanup 都幂等。 |
 | sync tool/resource/prompt worker | `anyio.to_thread.run_sync` | AnyIO worker thread | 返回后转换结果 | 异常包装 Tool/Resource/ValueError | 源码未显式配置 `abandon_on_cancel=True`；不能把取消 wire 语义等同于同步 Python 函数已停止 | 没有线程残留专项现场验证；需调用方保证函数本身幂等/可恢复。 |
 
-**反向场景核对：** 当前源码和测试已覆盖 malformed/unknown/invalid params、重复 tool、资源路径穿越/绝对路径/NUL、未知取消 id、取消后继续服务、EOF 取消 handler、pending server→client request 的关闭、HTTP stream 端泄漏；仍未由本轮运行证实的是完整跨 transport cancellation matrix、EventStore replay/live-tail、session idle timeout、manager restart rejection、Windows process tree、provider/OAuth 外部服务和完整 conformance。
+**反向场景核对：** 当前源码和测试已覆盖 malformed/unknown/invalid params、重复 tool、资源路径穿越/绝对路径/NUL、未知取消 id、取消后继续服务、EOF 取消 handler、pending server→client request 的关闭、HTTP stream 端泄漏；仍未由当前核对运行证实的是完整跨 transport cancellation matrix、EventStore replay/live-tail、session idle timeout、manager restart rejection、Windows process tree、provider/OAuth 外部服务和完整 conformance。
 
-### 15.6 第二轮验证等级与现场结果
+### 15.6 后续验证等级与现场结果
 
-| 结论项 | 源码存在 | 测试源码存在 | 本轮真实执行 | 等级 |
+| 结论项 | 源码存在 | 测试源码存在 | 当前核对真实执行 | 等级 |
 |---|---|---|---|---|
 | dispatcher 取消后 server 存活、EOF 取消 handler/pending server request | `shared/jsonrpc_dispatcher.py:315-445,476-837`、`server/runner.py:447-468` | `tests/server/test_cancel_handling.py`、`tests/interaction/lowlevel/test_cancellation.py` | `PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -q tests/server/test_cancel_handling.py`：3 passed | **已执行通过（局部）** |
 | ToolManager schema/async/sync/JSON 字符串预解析/structured output/重复项 | `mcpserver/tools/base.py`、`utilities/func_metadata.py`、`tools/tool_manager.py` | `tests/server/mcpserver/test_tool_manager.py` | 同命令：50 项全部 passed | **已执行通过（局部）** |
 | ResourceTemplate RFC6570 与 traversal/NUL/模板创建/bytes/InputRequired | `resources/templates.py`、`resource_manager.py` | `tests/server/mcpserver/resources/test_resource_template.py` | 同命令：34 项全部 passed | **已执行通过（局部）** |
 | memory stream 四端清理 | `client/streamable_http.py:639-710`、`client/sse.py` | `tests/client/test_transport_stream_cleanup.py` | 首次 2 passed、1 项因本机代理把 localhost 连接变为 502；设置 `NO_PROXY=127.0.0.1,localhost` 重跑该项 1 passed；合计 3 passed | **已执行通过（环境修正后）** |
-| stdio real process tree/lifecycle | `client/stdio.py:184-317`、`server/stdio.py:161-217` | `tests/transports/stdio/test_lifecycle.py` | 本轮未执行 | **源码+测试存在，未执行** |
-| prompts/resources/tools 跨传输交互、modern/legacy、SSE/EventStore、完整覆盖率/conformance | 入口与测试目录均存在 | `tests/interaction/`、`.github/workflows/conformance.yml` | 本轮未执行 | **未验证** |
+| stdio real process tree/lifecycle | `client/stdio.py:184-317`、`server/stdio.py:161-217` | `tests/transports/stdio/test_lifecycle.py` | 当前核对未执行 | **源码+测试存在，未执行** |
+| prompts/resources/tools 跨传输交互、modern/legacy、SSE/EventStore、完整覆盖率/conformance | 入口与测试目录均存在 | `tests/interaction/`、`.github/workflows/conformance.yml` | 当前核对未执行 | **未验证** |
 
-本轮现场没有修改源码、依赖、配置、测试、README 或 Git；`git status --short --branch` 仍只有任务开始前的 `?? ARCHITECTURE.md` 与 `?? 细探-MCP官方SDK.md`。`uv run --frozen` 首次创建的 `.venv` 属本地忽略运行环境，不是提交内容；没有写回 `uv.lock`。
+当前核对现场没有修改源码、依赖、配置、测试、README 或 Git；`git status --short --branch` 仍只有任务开始前的 `?? ARCHITECTURE.md` 与 `?? 细探-MCP官方SDK.md`。`uv run --frozen` 首次创建的 `.venv` 属本地忽略运行环境，不是提交内容；没有写回 `uv.lock`。
 
-### 15.7 第二轮裁决：已吸收、待核、不可宣称
+### 15.7 后续裁决：已吸收、待核、不可宣称
 
 **已吸收为 SDK 事实：**
 
@@ -600,7 +600,7 @@ MCP 适配层至少需要把下列字段映射到已有公共契约；字段名�
 
 **不可宣称：** 不能把存在测试文件当作测试通过；不能把 `InputRequiredResult` 当成自动多轮完成（除非显式启用 client driver/提供 input responses）；不能把 `Mcp-Session-Id` 当平台执行 session；不能把 SSE reconnect 当能力重试；不能把 `is_error=true` 当 JSON-RPC error；不能把 `CONNECTION_CLOSED` 当 provider 已停止；不能把 handler 返回的 typed result 当作已通过版本 surface/output schema。
 
-第二轮结论：MCP Python SDK 已形成可审计的“传输 → dispatcher → runner → registry/handler → wire result”单链路；取消、错误、session 和生命周期的正常/失败/关闭边界均有明确 owner，且关键局部测试已真实通过。仍需把跨 transport、真实外部依赖、EventStore race、sync worker cancellation 与 conformance 留为未验证项；这些不能由本架构文档替代运行证据。
+后续结论：MCP Python SDK 已形成可审计的“传输 → dispatcher → runner → registry/handler → wire result”单链路；取消、错误、session 和生命周期的正常/失败/关闭边界均有明确 owner，且关键局部测试已真实通过。仍需把跨 transport、真实外部依赖、EventStore race、sync worker cancellation 与 conformance 留为未验证项；这些不能由本架构文档替代运行证据。
 
 ## 16. 网络/协议专项审计：连接、收发、超时、取消、断连、重试与资源
 
@@ -610,7 +610,7 @@ MCP 适配层至少需要把下列字段映射到已有公共契约；字段名�
 
 `/Users/hekunhua/Documents/Agent/github 源码参考/10_agent_platform_reference/04_协议与SDK/python-sdk`
 
-本轮先用平台 CodeGraph 盘点候选项目与既有审计条目；目标仓库自身没有 `.codegraph/` 索引，因此没有把其他仓库的代码地图冒充目标证据。随后完整分段读取了目标根 `ARCHITECTURE.md`、`README.md`、`SECURITY.md`、`pyproject.toml`、`docs/client/transports.md`、`docs/run/deploy.md`，并按网络链路读取：
+当前核对先用平台 CodeGraph 盘点候选项目与既有审计条目；目标仓库自身没有 `.codegraph/` 索引，因此没有把其他仓库的代码地图冒充目标证据。随后完整分段读取了目标根 `ARCHITECTURE.md`、`README.md`、`SECURITY.md`、`pyproject.toml`、`docs/client/transports.md`、`docs/run/deploy.md`，并按网络链路读取：
 
 - 客户端 `src/mcp/client/streamable_http.py`、`stdio.py`，包括 HTTP POST/SSE、GET 重连、取消翻译、子进程和管道收尾；
 - 服务端 `src/mcp/server/streamable_http_manager.py`，包括 body limit、session owner、stateful/stateless、idle cleanup、lifespan 和终止；
@@ -618,7 +618,7 @@ MCP 适配层至少需要把下列字段映射到已有公共契约；字段名�
 - `tests/client/test_streamable_http.py`、`tests/client/test_stdio.py`、`tests/interaction/lowlevel/test_cancellation.py`、`tests/interaction/transports/test_client_transport_http.py`、`test_hosting_resume.py`、`test_hosting_http_modern.py`、`test_bridge.py` 及相关 requirement 目录；
 - `docs/client/transports.md`、`docs/client/subscriptions.md`、`docs/run/deploy.md`、`docs/run/legacy-clients.md`、`docs/handlers/multi-round-trip.md`、`docs/troubleshooting.md` 等连接、重连、部署和取消文档。
 
-未安装依赖、未启动服务、未访问外部网络、未运行目标项目测试；以下“测试覆盖”只表示测试源码和 requirement 映射存在，不表示本轮运行通过。
+未安装依赖、未启动服务、未访问外部网络、未运行目标项目测试；以下“测试覆盖”只表示测试源码和 requirement 映射存在，不表示当前核对运行通过。
 
 ### 16.2 总体连接与收发链
 
@@ -665,7 +665,7 @@ Client / ClientSession
 | HTTP client | SDK 创建的 client 随 transport context 退出；外部传入 client 由调用方退出 | task group/transport finally 关闭流；client 本身不由 SDK 代管 | 外部 client 生命周期若跨 session，连接池预算、close 时机和代理行为由应用负责 |
 | HTTP session/transport | manager 字典保存 transport 与 credential owner；terminate 删除/清理；manager 只允许运行一次 | lifespan shutdown 取消 task group、清空 registry；idle/crash finally 删除 session | manager 不能复用，重启必须新建；跨进程 session、订阅和事件存储不是 SDK 内建能力 |
 | SSE event | EventStore 保存 event id，客户端带 `Last-Event-ID` 恢复 | 断连后有限重连/重放；无 EventStore 不能宣称恢复 | replay 到 live-tail 的竞态在既有架构记录中仍标为待验证；事件重放不提供业务执行幂等 |
-| stdio process/tree | stdio transport 独占 process、stdin/stdout、bridge task 和 memory streams | shielded close、等待、SIGTERM/SIGKILL/Job Object、pipe close；测试含 ResourceWarning 检查 | 本轮未运行真实子进程测试；Windows Job Object、继承孙进程和平台差异仍需 CI 现场证据 |
+| stdio process/tree | stdio transport 独占 process、stdin/stdout、bridge task 和 memory streams | shielded close、等待、SIGTERM/SIGKILL/Job Object、pipe close；测试含 ResourceWarning 检查 | 当前核对未运行真实子进程测试；Windows Job Object、继承孙进程和平台差异仍需 CI 现场证据 |
 | dispatcher pending/in-flight | request id map 由 dispatcher identity-check pop；response/error 唤醒 pending | EOF fan-out `CONNECTION_CLOSED`，取消 in-flight，未知 late response 丢弃 | request id 只是关联键，不是跨重连幂等键；应用必须另设调用状态/幂等键 |
 
 ### 16.6 文档质量与事实漂移
@@ -676,7 +676,7 @@ Client / ClientSession
 
 - `README.md` 的“production client”示例不能被理解为包含生产级业务 deadline、幂等重试、TLS/代理策略或服务端 shutdown 配置；这些属于部署方和调用方。
 - “支持 SSE/自动重连”必须注明版本、EventStore、最大次数和恢复对象；当前 modern 版本删除了旧式 `Last-Event-ID` resumability，不能用跨时代总称描述。
-- `pyproject.toml` 的 100% branch coverage、3.10–3.14 分类器和 production/stable 元数据是项目门槛与声明，不是本轮运行证据；架构文档已有“未运行测试”边界，后续更新不能删掉。
+- `pyproject.toml` 的 100% branch coverage、3.10–3.14 分类器和 production/stable 元数据是项目门槛与声明，不是当前核对运行证据；架构文档已有“未运行测试”边界，后续更新不能删掉。
 - `SECURITY.md` 只描述漏洞报告流程，没有替代部署文档中的 Host/Origin、认证、body limit、requestState 和外部 client 资源责任。安全声明必须继续引用源码和专项测试，而非只引用 README。
 - 目标仓库已有根 `ARCHITECTURE.md` 与 `细探-MCP官方SDK.md`；本次没有修改旧细探，根架构档案继续作为唯一收口文档，避免两份网络语义产生漂移。
 
@@ -686,6 +686,6 @@ Client / ClientSession
 
 **条件成立：** HTTP 自动恢复只适用于协议事件流且次数有限；跨多 worker 的 legacy session、requestState 和订阅需要外部 sticky/shared key/shared bus；外部 `AsyncClient` 的关闭由调用方负责；同步工具取消只保证调用方和协议层收口，不保证底层函数立刻终止。
 
-**不可宣称：** SDK 提供通用业务重试、幂等提交、远端执行确认、跨进程 session store、生产级连接限制、强制停止任意同步/第三方函数，或本轮已完成真实网络、Windows、外部 OAuth/代理和完整 conformance 验证。
+**不可宣称：** SDK 提供通用业务重试、幂等提交、远端执行确认、跨进程 session store、生产级连接限制、强制停止任意同步/第三方函数，或当前核对已完成真实网络、Windows、外部 OAuth/代理和完整 conformance 验证。
 
-本轮唯一修改为目标项目根 `ARCHITECTURE.md`；未修改源码、测试、配置、依赖、锁文件、README 或其他参考库文件。
+当前核对唯一修改为目标项目根 `ARCHITECTURE.md`；未修改源码、测试、配置、依赖、锁文件、README 或其他参考库文件。

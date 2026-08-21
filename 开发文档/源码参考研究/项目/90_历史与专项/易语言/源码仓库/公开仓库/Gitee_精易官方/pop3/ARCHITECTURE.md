@@ -9,7 +9,7 @@
   - **源码已实现**：元数据静态表、命令入口声明/定义、易语言 `LIB_INFO` 注册、通知分发骨架、数组/类型索引表。
   - **仅声明或仅生成入口**：POP3 连接、收信、解析、删除、代理、回调等业务命令；函数虽然有签名并在命令表中注册，但没有业务逻辑和返回值写入。
   - **未验证**：Visual Studio 编译、`.fne`/静态库产物、易语言 IDE 加载、真实 POP3 服务器交互、所有命令运行行为。
-- **范围约束**：本轮只新增本文件；未修改源码、工程、依赖、测试、配置或 Git 历史；未删除任何旧细探文件。仓库内未发现 `README`、测试文件、`AGENTS.md` 或 `细探-*.md`。
+- **范围约束**：当前核对只新增本文件；未修改源码、工程、依赖、测试、配置或 Git 历史；未删除任何旧细探文件。仓库内未发现 `README`、测试文件、`AGENTS.md` 或 `细探-*.md`。
 
 ## 2. 中文文本流程图
 
@@ -370,7 +370,7 @@ void PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 - Git 跟踪文件中没有测试目录、测试源文件、测试脚本、CI 配置或测试数据。
 - 未发现 `README` 或构建说明；工程文件是当前唯一构建入口证据。
-- 本轮未执行 Visual Studio/MSBuild 编译：当前执行环境为 macOS，仓库依赖 Windows SDK、`windows.h` 和 Visual C++ 工具集；强行替换工具链不能证明 Windows 目标构建成立。
+- 当前核对未执行 Visual Studio/MSBuild 编译：当前执行环境为 macOS，仓库依赖 Windows SDK、`windows.h` 和 Visual C++ 工具集；强行替换工具链不能证明 Windows 目标构建成立。
 - 未连接 POP3 服务器，未验证端口、认证、代理、邮件拉取、MIME、回调、删除/复位或错误处理。
 - 源码静态计数结果：`pop3_cmdDef.cpp` 有 33 个 `POP3_EXTERN_C void` 函数，返回语句为 0；这支持“入口存在、业务返回未实现”的结论，但不是运行测试。
 
@@ -381,8 +381,8 @@ void PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - HEAD 提交时间：`2022-12-19T16:56:47+08:00`
 - HEAD 提交说明：`初始化仓库`
 - 远程：`origin https://gitee.com/JYtechnology/pop3.git`
-- `origin/HEAD` 与本地 `HEAD` 均为 `57afb8de256c66cc8e2cebd3abbf18af4f15ca48`；本轮通过 `git ls-remote` 核对，远程 `master` 同一提交。
-- 写入本文件前工作树干净；本轮不提交 Git。写入后预期唯一工作树变化为根目录 `ARCHITECTURE.md`。
+- `origin/HEAD` 与本地 `HEAD` 均为 `57afb8de256c66cc8e2cebd3abbf18af4f15ca48`；当前核对通过 `git ls-remote` 核对，远程 `master` 同一提交。
+- 写入本文件前工作树干净；当前核对不提交 Git。写入后预期唯一工作树变化为根目录 `ARCHITECTURE.md`。
 
 ## 11. 风险、未确认项与后续复核点
 

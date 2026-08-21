@@ -59,7 +59,7 @@ FreeCOMObject/
     └── cpp.hint                      Visual Studio C++ 提示文件
 ```
 
-仓库当前未发现 `ARCHITECTURE.md` 以外的架构文档、细探文档、测试目录、调用示例、安装脚本或 CI 配置；本文件是项目根唯一架构归档文档。
+仓库当前未发现 `ARCHITECTURE.md` 以外的架构文档、历史研究文档、测试目录、调用示例、安装脚本或 CI 配置；本文件是项目根唯一架构归档文档。
 
 ## 4. 核心模块与真实调用链
 
@@ -207,13 +207,13 @@ README 的唯一操作提示是“请使用X86+Release编译”。本次未在 m
 - `FreeCOMObject/FreeCOMObject.vcxproj.filters`
 - Git 版本与远程引用：目标仓库 `.git` 元数据（本地 `HEAD` 与远程 `HEAD` 均为 `bc13be3ac5b96e23d6d5c796bc33eb816088f55c`）
 
-## 13. 第三轮：COM 语义与平台底座映射
+## 13. 当前裁决：COM 语义与平台底座映射
 
-### 13.1 本轮边界与证据等级
+### 13.1 当前审计边界与证据等级
 
-本轮只在目标仓库根目录补充本文件；没有修改 C++ 源码、Visual Studio 工程、依赖、测试、README、Git 或旧细探。目标仓库的源码证据以本地文件为准；平台映射读取的是系统工程平台的公开架构与现有实现，用于判断归属，不把平台代码误写成 FreeCOMObject 已有实现。
+当前审计只在目标仓库根目录补充本文件；没有修改 C++ 源码、Visual Studio 工程、依赖、测试、README、Git 或历史研究。目标仓库的源码证据以本地文件为准；平台映射读取的是系统工程平台的公开架构与现有实现，用于判断归属，不把平台代码误写成 FreeCOMObject 已有实现。
 
-任务要求的 `project_context` 当前错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与目标源码根不一致；该返回结果只作为环境问题记录，不作为目标项目、平台能力命中或验证证据。本轮改用目标仓库现场静态取证，并将平台能力命中单独标为“可复用模式/部分命中/缺口”。
+任务要求的 `project_context` 当前错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与目标源码根不一致；该返回结果只作为环境问题记录，不作为目标项目、平台能力命中或验证证据。当前审计改用目标仓库现场静态取证，并将平台能力命中单独标为“可复用模式/部分命中/缺口”。
 
 COM 的通用语义以 Microsoft 文档作为外部规范参考：`IUnknown` 的前三个 vtable 槽为 `QueryInterface`、`AddRef`、`Release`，分别用于获取接口、增加引用和减少引用（<https://learn.microsoft.com/en-us/windows/win32/api/unknwn/nn-unknwn-iunknown>）；COM 必须在使用线程上初始化，成功的 `CoInitializeEx` 需要与对应的 `CoUninitialize` 配对，STA 接口不能把裸接口指针直接复制给其他线程，而应通过 marshaling（<https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex>、<https://learn.microsoft.com/en-us/windows/win32/learnwin32/initializing-the-com-library>）。这些是规范约束，不是本仓库已运行验证的结果。
 
@@ -427,9 +427,9 @@ FreeCOMObject 的 `void*` 入口只能作为 Windows 同进程兼容层的历史
 | L3 | Windows COM 宿主真实创建/QI/AddRef/Release/apartment/跨线程/跨模块链路验证 | **未具备**：无 Windows runtime、COM server、CLSID/IID、调用方或真实宿主结果 |
 | L4 | 故障注入与恢复：重复释放、悬空指针、线程错用、超时取消、provider/宿主崩溃、重启对账和零残留 | **未具备**：没有故障注入测试、崩溃转储、进程/句柄残留核对或恢复证据 |
 
-第三轮平台映射本身也只能标为 **L0（架构/路径/契约命中）**；现有平台 Python 句柄、进程和资源治理代码不能证明 COM provider 已存在。COM 能力的 L2-L4 必须在 Windows 隔离环境中单独建立证据。
+当前裁决平台映射本身也只能标为 **L0（架构/路径/契约命中）**；现有平台 Python 句柄、进程和资源治理代码不能证明 COM provider 已存在。COM 能力的 L2-L4 必须在 Windows 隔离环境中单独建立证据。
 
-### 13.12 装配计划与验收契约（不在本轮执行）
+### 13.12 装配计划与验收契约（不在当前审计执行）
 
 若后续需求确认需要 COM 能力，应按以下顺序登记工作包，不得直接把当前 DLL 接入生产链：
 
@@ -441,4 +441,4 @@ FreeCOMObject 的 `void*` 入口只能作为 Windows 同进程兼容层的历史
 6. **验证波次**：Windows `Release|Win32` 和 `Release|x64` 构建；导出表；假 COM 对象计数器；QI 支持/不支持 IID；每个句柄一次 Release；重复释放；STA/MTA；跨线程 marshaling；超时取消；provider 崩溃/重启/零残留。
 7. **发布门禁**：包声明、能力契约、provider 版本/架构、资源预算、完整性摘要和依赖防火墙齐全；只有 L2-L4 证据闭环后才可把候选从“待核”提升为“吸收”。
 
-本轮最终裁决：**吸收的是 COM 生命周期问题的底座归属与验收约束，不吸收当前 FreeCOMObject 的裸 `void*` 释放实现为平台公共内核；对象创建、QueryInterface、引用账本、线程单元和真实崩溃恢复均为待核/新建能力。**
+当前审计最终裁决：**吸收的是 COM 生命周期问题的底座归属与验收约束，不吸收当前 FreeCOMObject 的裸 `void*` 释放实现为平台公共内核；对象创建、QueryInterface、引用账本、线程单元和真实崩溃恢复均为待核/新建能力。**

@@ -1,6 +1,6 @@
 # eapi 架构建档
 
-> 本文件是 `eapi` 项目根目录的唯一架构事实源。本轮只读源码、工程文件、Git 元数据和本地导航；未修改源码、未安装依赖、未构建、未运行 Windows 二进制或测试。
+> 本文件是 `eapi` 项目根目录的唯一架构事实源。当前取证只读源码、工程文件、Git 元数据和本地导航；未修改源码、未安装依赖、未构建、未运行 Windows 二进制或测试。
 >
 > 证据基线：本地 `master` / `c9647ab69ed4877de9d6486b9e0db13b65d7f7c4`；`origin` = `https://gitee.com/JYtechnology/eapi.git`；远程 `HEAD` 与 `refs/heads/master` 均为同一提交。
 
@@ -20,14 +20,14 @@
 | HEAD 日期 | `2023-03-03T08:02:06Z` |
 | HEAD 提交 | `!2 两个命令返回值定义错误 Merge pull request !2 from AlongsCode/master` |
 | 远程默认分支探测 | `origin/HEAD -> refs/heads/master`；远程 master 同为 `c9647ab69ed4877de9d6486b9e0db13b65d7f7c4` |
-| 工作树 | 建档前干净；本轮仅新增根 `ARCHITECTURE.md` |
+| 工作树 | 建档前干净；当前取证仅新增根 `ARCHITECTURE.md` |
 | 源码文件 | `103 .cpp`、`9 .h`、`1 .hpp`；合计 113 个 C/C++ 源文件 |
 | `cppCode/` | 98 个按编号命名的命令实现文件，约 252,636 bytes |
 | `elib/` | 9 个易语言 SDK/运行时接口头源文件，约 140,915 bytes |
 | 工程文件 | `eapi.sln`、`eapi.vcxproj`、`eapi_static/eapi_static.vcxproj` 及 VS 过滤器/用户文件 |
 | 本地测试/CI | 未发现 `tests/`、测试工程、CTest、CMake、Makefile、GitHub/Gitee CI 配置 |
 | README | 项目根没有 README；上级源码库 `源码仓库/README.md` 仅将 `eapi` 标为“应用接口支持库元数据样本” |
-| 旧细探 | 目标仓库及其上级归档目录未发现 `细探-*.md` 或 eapi 专用旧细探文件 |
+| 既有专项材料 | 目标仓库及其上级归档目录未发现 `既有专项文档` 或 eapi 专用既有专项材料文件 |
 
 ## 3. 总体流程图
 
@@ -326,7 +326,7 @@ pArgInf[0].m_int（可省略，默认0）
 
 ### 8.3 未在本机执行的验证
 
-本机为 macOS，仓库是 Windows Visual Studio 工程，不能把本机无法运行的 `msbuild`/Windows SDK 构建结果伪称为通过。本轮没有安装交叉编译依赖、没有生成 DLL/静态库、没有加载 `.fne`，因此 ABI、链接、运行时资源释放和 Windows API 行为尚未得到现场执行验证。
+本机为 macOS，仓库是 Windows Visual Studio 工程，不能把本机无法运行的 `msbuild`/Windows SDK 构建结果伪称为通过。当前取证没有安装交叉编译依赖、没有生成 DLL/静态库、没有加载 `.fne`，因此 ABI、链接、运行时资源释放和 Windows API 行为尚未得到现场执行验证。
 
 ## 9. 测试与验证现状
 
@@ -387,7 +387,7 @@ pArgInf[0].m_int（可省略，默认0）
 
 ## 11. 后续深挖建议
 
-首轮不改源码。后续若启动研究，应继续在本文件增量维护，不建立平行架构事实源：
+当前不改源码。后续核查，应继续在本文件增量维护，不建立平行架构事实源：
 
 1. **元数据闭环**：脚本解析 `EAPI_DEF`、参数偏移、实现入口，静态核对命令数/索引/参数计数/返回类型；
 2. **ABI 夹具**：在 Windows 隔离 worker 中加载 DLL，验证 `GetNewInf`、通知函数、分配/释放、数组和复合类型；
@@ -411,4 +411,24 @@ pArgInf[0].m_int（可省略，默认0）
 - 版本与远程：`.git/HEAD`、`.git/config`、`git ls-remote --symref origin HEAD refs/heads/master`
 - 归档导航：上级 `源码仓库/README.md`
 
-> 旧细探未发现；后续若出现细探材料，必须逐条回到源码核实并吸收到本文件后，继续只维护本文件，不把旧细探保留为第二事实源。
+> 未发现并列历史研究文件；后续新增材料必须逐条回到源码核实并吸收到本文件后，继续只维护本文件。
+
+## 源码实现补充
+
+- `cppCode/eapi_*.cpp` 按命令编号拆分 Windows API 适配，覆盖键盘锁、磁盘、进程、BIOS、网络端口、屏幕和字符串格式化；单文件通常负责参数转换、系统调用和易语言返回值封装。
+- `eapi_0_GetKeyboardLockState.cpp`、`eapi_3_GetHDInfo.cpp`、`eapi_10_GetProcessList.cpp` 和 `eapi_15_GetBiosInfo.cpp` 代表状态查询类接口；句柄、缓冲区和权限失败不能统一当作空结果。
+- `eapi_54_CheckPort.cpp`、`eapi_74_GetScreenBitma.cpp`、`eapi_84_sprintf.cpp` 代表网络、图像和格式化路径，分别存在超时、像素缓冲区大小、变参和编码风险。
+- 工程/导出定义决定命令编号与 ABI；仓库未提供完整自动化测试，必须在 Win32/Win64 与易语言宿主中验证返回值、错误码、资源释放和系统权限。
+
+## API 分组与资源边界
+
+- 输入模拟：`eapi_1_SimulateKey.cpp`、`eapi_2_SimulateMouse.cpp`、`eapi_11_SimulateKey.cpp` 使用窗口/进程句柄；需验证权限、目标进程退出和句柄关闭。
+- 硬件与系统信息：`eapi_3_GetHDInfo.cpp`、`eapi_14_GetSystemInfo.cpp`、`eapi_15_GetBiosInfo.cpp`、`eapi_17_GetCpuInfo.cpp`、`eapi_19_GetMemoryInfo.cpp` 读取 Windows API/WMI/SMART；权限和设备差异会导致失败。
+- 进程与模块：`eapi_10_GetProcessList.cpp`、`eapi_12_GetDllList.cpp`、`eapi_13_GetHungProgramList.cpp` 调用 `OpenProcess`；必须对访问拒绝、快照句柄和进程竞态做失败测试。
+- 文件与资源：`eapi_26_DeleteTempFile.cpp`、`eapi_33_GetIconFromResource.cpp`、`eapi_74_GetScreenBitma.cpp` 使用 `CreateFile*`、GDI 或资源句柄；异常路径需保证关闭。
+- 网络与适配器：`eapi_42_GetApapterList.cpp` 至 `eapi_54_CheckPort.cpp` 查询网卡、MAC、连接和端口；超时、IPv6、无网卡和防火墙状态未统一。
+- Shell/桌面：`eapi_55_OpenSysWindow.cpp` 至 `eapi_70_ChangeUnit.cpp` 修改窗口、任务栏、壁纸和显示设置；属于高权限副作用能力。
+- 字符串/格式：`eapi_84_sprintf.cpp` 等格式化接口涉及缓冲区长度和编码，需覆盖空指针、超长文本和 GBK/Unicode 转换。
+- 提权：`eapi_97_UpPrivilegeValue.cpp` 请求进程令牌权限；失败必须显式返回，不能把管理员权限假定为默认。
+
+所有实现均通过支持库命令表进入，返回值和数组写回依赖 `PMDATA_INF` ABI。当前仅有源码和工程证据，未在 Windows 运行真实硬件、权限、网络或桌面操作；不得将函数名和注释视为通过测试。验证应先执行 Win32/x64 Debug 构建，再装载 `GetNewInf`，按能力分组运行最小成功/失败夹具，并记录 Windows 版本、权限令牌、目标进程位数、设备列表和清理结果。仓库没有自动化测试目录、CI 配置或发布门禁，本档案仅保存源码事实和未验证风险。

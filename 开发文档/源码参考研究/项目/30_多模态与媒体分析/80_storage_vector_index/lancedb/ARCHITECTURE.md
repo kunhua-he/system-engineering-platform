@@ -222,9 +222,9 @@ Rust 的 `WithEmbeddings` 包装 `RecordBatchReader`，单个 embedding inline�
 - 此前历史细探（已人工吸收并清理）
 - 远程复核快照：`/tmp/lancedb-remote-e517ba5`，提交 `e517ba5205a42d8a311d5521c27cb2c0040fd445`
 
-## 14. 第三轮：通用底座映射与唯一存储链路
+## 14. 后续：通用底座映射与唯一存储链路
 
-本节是基于当前源码的第三轮裁决输入，不是把 LanceDB 目录直接搬进系统工程平台，也不是 LanceDB 自身的官方 L0-L4 分层。L0-L4 表示平台验收和职责边界：L0 公共契约，L1 原子支持库/受管 provider，L2 领域检索模块，L3 运行核心，L4 项目适配层/网关/SDK 与控制面。
+本节是基于当前源码的后续裁决输入，不是把 LanceDB 目录直接搬进系统工程平台，也不是 LanceDB 自身的官方 L0-L4 分层。L0-L4 表示平台验收和职责边界：L0 公共契约，L1 原子支持库/受管 provider，L2 领域检索模块，L3 运行核心，L4 项目适配层/网关/SDK 与控制面。
 
 ### 14.1 唯一存储链路
 
@@ -365,9 +365,9 @@ Python sync/async API 或其他 SDK
   → L0 静态 → L1 provider → L2 本地检索链 → L3 故障并发恢复 → L4 接入发布
 ```
 
-本轮不创建平台文件、不登记能力、不修改 LanceDB 源码；该节只形成候选底座输入。正式开工必须先完成需求确认、能力搜索、复用/升级/新建裁决、占用租约、消费者验收契约和装配计划。
+当前核对不创建平台文件、不登记能力、不修改 LanceDB 源码；该节只形成候选底座输入。正式开工必须先完成需求确认、能力搜索、复用/升级/新建裁决、占用租约、消费者验收契约和装配计划。
 
-### 14.8 第三轮结论、未确认项与验证记录
+### 14.8 后续结论、未确认项与验证记录
 
 **吸收：** `BaseTable` 的本地/远程统一形状、Arrow RecordBatch 流、Schema metadata、向量/标量/FTS 索引分工、Lance 不可变版本、branch/time travel、远程 request id/read watermark、分类型 retry、multipart 有界上传和 LSM writer drain。
 
@@ -379,9 +379,9 @@ Python sync/async API 或其他 SDK
 
 **不吸收：** LanceDB 的 Python convenience API、远程 REST JSON、本地 DataFusion 计划、具体 ANN 算法实现、模块内存锁、隐式缓存刷新和“表级 commit = 全平台事务”。这些只能作为 provider/适配实现或研究证据。
 
-## 15. 第三轮补充：通用存储能力映射（源码核对版）
+## 15. 后续补充：通用存储能力映射（源码核对版）
 
-本节把第三轮从“候选分层”收敛为可装配的通用存储能力清单。核对范围覆盖 `rust/lancedb` 核心、PyO3/Python、napi-rs/TypeScript 和 JNI/Java 入口；Java 当前公开面主要是 namespace client 与 JNI 核心，不能按 Python/Node 的完整表 API 对称假定。
+本节把后续从“候选分层”收敛为可装配的通用存储能力清单。核对范围覆盖 `rust/lancedb` 核心、PyO3/Python、napi-rs/TypeScript 和 JNI/Java 入口；Java 当前公开面主要是 namespace client 与 JNI 核心，不能按 Python/Node 的完整表 API 对称假定。
 
 ### 15.1 能力闭包与唯一 owner
 
@@ -435,8 +435,8 @@ consistency_mode / resource_state / commit_state
 | Java/JNI | 实际公开 facade、namespace/连接关闭和 JNI 异常边界 | 按 Python/Node API 猜测 Java 覆盖范围 |
 | 并发/恢复 | 同表冲突、重试幂等、`commit_unknown` 对账、SIGKILL 后无半成品引用和临时资源 | Python 锁、future drop、GC 或一次成功请求 |
 
-第三轮最终裁决：**新建一个向量存储支持库作为唯一 L1 owner，复用现有运行核心的调用器/租约/资源/证据与 HTTP provider；再由单一 L2 检索模块组合 vector、scalar、FTS 和 hybrid。** LanceDB 的 Rust 核心、多语言绑定、表/索引/查询、持久化、并发、资源和异常均作为该 provider 的受管实现证据，不直接成为平台公共 API，也不创建第二套网关、注册表、任务系统或事务恢复器。
+后续最终裁决：**新建一个向量存储支持库作为唯一 L1 owner，复用现有运行核心的调用器/租约/资源/证据与 HTTP provider；再由单一 L2 检索模块组合 vector、scalar、FTS 和 hybrid。** LanceDB 的 Rust 核心、多语言绑定、表/索引/查询、持久化、并发、资源和异常均作为该 provider 的受管实现证据，不直接成为平台公共 API，也不创建第二套网关、注册表、任务系统或事务恢复器。
 
 **待核：** 真实索引构建/删除/重建一致性、跨进程并发 commit、对象存储孤儿清理、远程服务端取消、Python 原生扩展崩溃隔离、commit_unknown 对账、Schema 演进与索引迁移、多表事务和生产负载；当前均不得标成 L2-L4 已通过。
 
-本轮 MCP/验证边界：任务指定目标是 `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/80_storage_vector_index/lancedb`。`project_context` 已调用，但实际绑定 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，MCP 实例为 `project_toolkit`，开工 id 为空，不能作为 LanceDB 身份或代码图证据；随后按要求调用 `codegraph_explore`，目标根无 `.codegraph/`，返回未索引。故本轮源码事实来自目标根 `AGENTS.md`、既有 `ARCHITECTURE.md`、目标源码/测试路径的只读核对，未冒充错绑代码图结果。仅修改本文件，未运行 LanceDB 构建/测试、未安装依赖、未启动服务、未修改 Git；文档写入成功不等于 L1-L4 通过。
+当前核对 MCP/验证边界：任务指定目标是 `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/80_storage_vector_index/lancedb`。`project_context` 已调用，但实际绑定 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，MCP 实例为 `project_toolkit`，开工 id 为空，不能作为 LanceDB 身份或代码图证据；随后按要求调用 `codegraph_explore`，目标根无 `.codegraph/`，返回未索引。故当前核对源码事实来自目标根 `AGENTS.md`、既有 `ARCHITECTURE.md`、目标源码/测试路径的只读核对，未冒充错绑代码图结果。仅修改本文件，未运行 LanceDB 构建/测试、未安装依赖、未启动服务、未修改 Git；文档写入成功不等于 L1-L4 通过。

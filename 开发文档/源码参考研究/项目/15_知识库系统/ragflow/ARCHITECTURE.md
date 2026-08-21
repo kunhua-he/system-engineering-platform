@@ -1,6 +1,6 @@
 # RAGFlow 架构建档
 
-> 首轮全量架构建档 + 第三轮通用底座映射，中文说明；源码标识、路径、命令和接口名称保留原文。
+> 首轮全量架构建档 + 后续通用底座映射，中文说明；源码标识、路径、命令和接口名称保留原文。
 >
 > 分析日期：2026-08-20
 >
@@ -14,7 +14,7 @@
 
 - 项目说明：`README.md`、`README_zh.md`。
 - 协作规则：根 `AGENTS.md`、`CLAUDE.md`、`web/CLAUDE.md`。
-- 已有细探：`细探-RAGFlow.md`。该文件是本轮之前的只读细粒度探索，包含 DeepDOC、分块、混合检索、Agent 画布、提示词和行为边界；本轮未删除、未改写。
+- 已有细探：`细探-RAGFlow.md`。该文件是当前核对之前的只读细粒度探索，包含 DeepDOC、分块、混合检索、Agent 画布、提示词和行为边界；当前核对未删除、未改写。
 - 依赖与构建：`pyproject.toml`、`uv.lock`、`go.mod`、`go.sum`、`web/package.json`、`web/pnpm-lock.yaml`、`build.sh`、`Dockerfile`、`docker/`、`helm/`。
 - 运行入口与配置：`api/ragflow_server.py`、`api/apps/__init__.py`、`cmd/ragflow_server.go`、`cmd/ragflow-cli.go`、`internal/router/router.go`、`internal/server/config.go`、`conf/service_conf.yaml`。
 - 数据模型与持久化：`api/db/db_models.py`、`api/db/services/`、`internal/entity/`、`internal/dao/database.go`。
@@ -26,7 +26,7 @@
 
 - 本地分支：`main`，HEAD：`742837ce560fdab6bea215a1c878031db59da623`，提交主题：`Feat: Add graph keyword search and fix dataset synthesizing issue. (#17342)`。
 - 远程 `origin/main`：`c87aa3b1683bc40631a35039c6d78d00341134ef`。
-- 本地明显落后远程；本地工作树初始状态有一个未跟踪文件 `细探-RAGFlow.md`，不是本轮创建。
+- 本地明显落后远程；本地工作树初始状态有一个未跟踪文件 `细探-RAGFlow.md`，不是当前核对创建。
 - 远程快照通过 `127.0.0.1:4780` 代理以独立内存读取方式分析，未 fetch、未 checkout、未覆盖本地工作树。GitHub API 递归 tree 查询受到代理返回的 `403 rate limit exceeded`，因此远程比较以 `raw.githubusercontent.com` 的定点文件快照为准，不宣称已获得完整远程目录。
 - 远程定点比较确认：远程 `README.md`、`AGENTS.md`、`pyproject.toml`、`go.mod`、`web/package.json`、`api/ragflow_server.py`、`rag/svr/task_executor.py`、`rag/nlp/search.py`、`agent/canvas.py`、`internal/router/router.go` 等已经变化；`deepdoc/parser/pdf_parser.py` 与 `mcp/server/server.py` 在比较的两个提交间字节一致。远程 `pyproject.toml` 已是 `0.27.0`，本地为 `0.26.4`。
 - `system_engineering_toolkit` 的 `project_context` 返回的是其宿主项目“系统工程平台”的上下文，`codegraph_explore` 也返回了宿主项目源码而非本 RAGFlow 源码；这两类结果未被采纳为 RAGFlow 的架构证据。RAGFlow 的事实证据来自本地文件、Git 元数据、远程独立快照和本文件列出的既有 `细探-RAGFlow.md`。
@@ -216,7 +216,7 @@ OpenAI 兼容 API 在 `api/apps/restful_apis/openai_api.py`，通过 SSE 转换�
 - Python 集成/HTTP/SDK：`test/testcases/`，`test/README.md` 要求先用 `uv sync --python 3.13 --only-group test --no-default-groups --frozen`、安装 SDK、准备 Docker 服务，再按 `HTTP_API_TEST_LEVEL` 和 `HOST_ADDRESS` 执行。
 - Go：`internal/**/*_test.go`、handler/dao/service/parser/ingestion 测试；必须优先使用 `build.sh --test`，因为 CGO 静态库和 native flags 不能由裸 `go test` 可靠替代。远程 `AGENTS.md` 新增了 unit/integration/e2e/manual build-tag 分层，但该规则不属于本地版本事实。
 - Frontend：`npm run test` 使用 Jest，另有 `lint`、`type-check`、`build`；前端规则要求查询 key factory、service 分层和 UI 共享组件边界。
-- 本轮没有运行 pytest、Go test、npm、lint、build、Docker、Helm 或服务启动；原因是任务明确禁止安装、启动、构建，且本轮仅要求架构建档。
+- 当前核对没有运行 pytest、Go test、npm、lint、build、Docker、Helm 或服务启动；原因是任务明确禁止安装、启动、构建，且当前核对仅要求架构建档。
 
 ## 9. 可复用架构模式
 
@@ -273,7 +273,7 @@ RAGFlow 当前是一个正在从 Python 主路径向 Go ingestion/parser/agent/s
 - 旧细探中的整段英文 prompt 原文、示例数量和“测试/DSL 样例是事实标准”等表述没有作为固定运行时值复制；当前文档只保留模板路径、渲染边界和 `prompt_config` 的事实源裁决，因为租户配置和代码会变化。
 - 旧细探把某些经验阈值、默认值和“当前路径”写成跨后端普遍规则的部分（例如 `rag/nlp/__init__.py::naive_merge` 与 `rag/flow/chunker` 的默认 token 数、不同 document engine 是否返回向量）不合并为单一默认；已按实际调用路径拆开，并以当前源码为准。
 - 旧细探的“架构演进方向”“可借鉴点”“旁路线索”不是当前运行事实；它们只在第 9 节以可复用模式、风险或后续复核点保存，不作为已经完成的迁移结论。远程 `origin/main` 的新增内容同样不覆盖本地事实。
-- 旧细探未提供可替代静态证据的运行结果；本轮没有把 OCR、检索、Agent、沙箱或服务启动成功写成已验证事实。
+- 旧细探未提供可替代静态证据的运行结果；当前核对没有把 OCR、检索、Agent、沙箱或服务启动成功写成已验证事实。
 
 ### 11.3 收口结论
 
@@ -289,9 +289,9 @@ RAGFlow 当前是一个正在从 Python 主路径向 Go ingestion/parser/agent/s
 - 未删除任何文件，未安装依赖，未启动服务，未构建镜像/二进制，未提交 Git。
 - 静态核对使用 Git 状态/版本、文件读取、路径/规模统计、远程代理定点快照比较，并补读 `deepdoc/parser/pdf_parser.py`、`deepdoc/vision/layout_recognizer.py`、`rag/flow/chunker/token_chunker.py`、`rag/nlp/query.py`、`rag/nlp/search.py`、`rag/svr/task_executor.py`、`agent/canvas.py`、`agent/component/agent_with_tools.py`、`agent/sandbox/executor_manager/models/schemas.py` 等当前源码；未执行运行时验证。
 
-## 13. 第三轮：通用底座映射范围与裁决
+## 13. 后续：通用底座映射范围与裁决
 
-本轮不把 RAGFlow 的目录直接复制为平台目录，而是把每个能力按“原子能力、领域编排、运行治理、外部协议”四个问题重新归位。结论只针对本地工作树 `742837ce560fdab6bea215a1c878031db59da623`；Go 摄取/解析路径属于正在收敛的新路径，Python 路径仍是可见实现，不能把两条实现写成两个稳定公共契约。
+当前核对不把 RAGFlow 的目录直接复制为平台目录，而是把每个能力按“原子能力、领域编排、运行治理、外部协议”四个问题重新归位。结论只针对本地工作树 `742837ce560fdab6bea215a1c878031db59da623`；Go 摄取/解析路径属于正在收敛的新路径，Python 路径仍是可见实现，不能把两条实现写成两个稳定公共契约。
 
 ### 13.1 唯一逻辑链路
 
@@ -310,7 +310,7 @@ L4 网关/前端/SDK/MCP/OpenAI 兼容入口
 
 ### 13.2 领域映射表
 
-| RAGFlow 能力 | 当前源码事实 | 支持库（L1） | 知识模块（L2） | 运行核心（L3） | 网关（L4） | 第三轮裁决 |
+| RAGFlow 能力 | 当前源码事实 | 支持库（L1） | 知识模块（L2） | 运行核心（L3） | 网关（L4） | 后续裁决 |
 |---|---|---|---|---|---|---|
 | 文档摄取/解析 | `deepdoc/parser/`、`rag/app/`；Go `internal/parser/parser/` + `internal/ingestion/component/parser_dispatch.go`，按 file type/`parse_method`/`output_format` 选择 parser | `文档解析`、`OCR/版面/表格识别`、`ParseResult`/通用文档结构、文件读取 | `文档摄取`：文件类型策略、parser config、解析结果到 chunk 输入的编排 | 任务上下文、超时/取消、解析阶段进度、checkpoint、失败证据 | 上传、文件同步、文档预览、解析任务 API | 吸收解析结果和 dispatch；升级为单一结构化输出，provider 差异不得穿透模块 |
 | 切分/tokenize | Python `TokenChunkerParam`/`naive_merge`；Go `internal/ingestion/component/chunker/`（token/delimiter/one、父子块、媒体上下文） | `tokenize`、`TokenChunker`、父子块/位置/媒体上下文原子能力 | `文档摄取`选择 chunk 模式、模板、字段映射和质量规则 | chunk 阶段预算、并发、取消、批次重试和中间结果生命周期 | chunk 配置/预览/人工调整 API | 吸收参数校验和父子关联；统一 `Chunk` 结构，禁止 Python/Go 各自定义对外字段 |
@@ -330,7 +330,7 @@ L4 网关/前端/SDK/MCP/OpenAI 兼容入口
 | 升级 | Python/Go 两条 parser、ingestion、agent、task 路径；MySQL 状态、对象存储、索引、Redis/MQ 分散写入；任务状态和消息 ack 的耦合；模型错误/usage 形状 | 先建立统一公共契约和适配器；生产迁移前需能力需求登记、复用决策、占用租约与回归验收 |
 | 新增候选 | 跨后端统一命令信封（`operation_id/task_id/correlation_id`）、任务租约 epoch、跨存储 outbox/对账、统一预算声明、资源释放证据、索引幂等写入 | 归 L3 运行核心；当前 RAGFlow 有局部实现但没有证据表明已形成平台级唯一 owner |
 | 隔离/废弃候选 | 业务模块直连 Redis/ES/LLM SDK、API 层各自翻译任务状态、`_prune_deleted_chunks` 代替删除事务、Python/Go 双公共入口 | 不能继续扩散；由唯一网关/L2/L1 适配层收口，旧路径仅在迁移回滚窗口保留 |
-| 待核 | Go 与 Python 在真实部署中的最终 route owner、同一 schema 的写入仲裁、各 document engine 对 vector/分页/删除的精确语义、远程 DeepDOC/DLA 的生产租约 | 必须通过配置、集成测试和运行证据裁决，本轮不宣称已收敛 |
+| 待核 | Go 与 Python 在真实部署中的最终 route owner、同一 schema 的写入仲裁、各 document engine 对 vector/分页/删除的精确语义、远程 DeepDOC/DLA 的生产租约 | 必须通过配置、集成测试和运行证据裁决，当前核对不宣称已收敛 |
 
 ## 14. 资源预算、状态与租约
 
@@ -419,7 +419,7 @@ L0-L4 不是把当前目录机械搬家：例如 `internal/ingestion/component/p
 
 ### 17.3 L0-L4 验收等级
 
-| 等级 | 证明什么 | RAGFlow 本轮状态 |
+| 等级 | 证明什么 | RAGFlow 当前核对状态 |
 |---|---|---|
 | L0 | 路径/符号/配置/接口源码存在，能描述输入输出与边界 | 已完成静态读取；代码图不可用 |
 | L1 | 单个支持能力真实调用，错误/超时/取消/资源释放有结果 | 未执行；不能把源码存在写成通过 |
@@ -427,20 +427,20 @@ L0-L4 不是把当前目录机械搬家：例如 `internal/ingestion/component/p
 | L3 | 队列租约、重投、checkpoint、kill/断连/超时/取消/崩溃恢复和对账真实通过 | 未执行；当前源码只有局部实现证据 |
 | L4 | 网关+前端/SDK/MCP 全链路、权限、流式断开、版本兼容和生产资源预算通过 | 未执行；不得宣称部署完成 |
 
-本轮结论为“第三轮映射输入”，不是底座生产变更。没有需求登记、能力搜索、复用/新建裁决、文件租约、验收契约和装配计划，不应修改系统工程平台生产代码。
+当前核对结论为“后续映射输入”，不是底座生产变更。没有需求登记、能力搜索、复用/新建裁决、文件租约、验收契约和装配计划，不应修改系统工程平台生产代码。
 
-## 18. 第三轮风险与证据边界
+## 18. 后续风险与证据边界
 
 - `project_context` 首次返回并绑定 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与目标 RAGFlow 错绑；该结果未用作 RAGFlow 证据。
-- 目标路径没有 `.codegraph/`，`codegraph_explore` 明确返回不可用；本轮改用本地文件读取和全文检索，未伪造代码图结果。
-- 本轮没有安装依赖、启动 MySQL/Redis/NATS/ES/MinIO、调用模型/OCR、运行 Go/Python/前端测试或构建 native 库；因此 L1-L4 均未通过实测。
+- 目标路径没有 `.codegraph/`，`codegraph_explore` 明确返回不可用；当前核对改用本地文件读取和全文检索，未伪造代码图结果。
+- 当前核对没有安装依赖、启动 MySQL/Redis/NATS/ES/MinIO、调用模型/OCR、运行 Go/Python/前端测试或构建 native 库；因此 L1-L4 均未通过实测。
 - 当前源码允许 checkpoint 不存在时 `Pipeline` 降级为不可恢复运行，但生产 `WithRequireResume()` 会拒绝；该差异必须在平台契约中显式化，不能靠默认值。
 - Go `settleMessage` 以数据库 terminal 状态为 Ack 权威，Python 侧依赖 Redis pending/TaskService；两边没有已证实的跨实现统一 lease epoch，重复执行、部分索引写入和双 schema 写入仍是高风险。
-- `细探-RAGFlow.md` 保留不删、不改；第三轮长期维护入口仍只有本 `ARCHITECTURE.md`。
+- `细探-RAGFlow.md` 保留不删、不改；后续长期维护入口仍只有本 `ARCHITECTURE.md`。
 
-## 19. 第二轮收口：双路径、解析/切分/Embedding/检索、队列与持久化
+## 19. 后续收口：双路径、解析/切分/Embedding/检索、队列与持久化
 
-> 本节是第二轮内部深挖的收口，不是第三轮底座设计。证据均来自本地工作树 `742837ce560fdab6bea215a1c878031db59da623`；只写已经读到的源码行为，并把“实现存在”和“跨存储恢复已证明”分开。旧 `细探-RAGFlow.md` 不删除，后续只维护本文件。
+> 本节是后续内部深挖的收口，不是后续底座设计。证据均来自本地工作树 `742837ce560fdab6bea215a1c878031db59da623`；只写已经读到的源码行为，并把“实现存在”和“跨存储恢复已证明”分开。旧 `细探-RAGFlow.md` 不删除，后续只维护本文件。
 
 ### 19.1 Python/Go 双路径的真实选择器
 
@@ -555,9 +555,9 @@ Pipeline.Run（可恢复 DSL）
 
 这张表的关键裁决是：Python 的 Redis pending、Go 的 broker Ack/Nack、Pipeline checkpoint 都只是局部恢复机制，不能互相替代，也没有当前源码证据支持 exactly-once。最诚实的共同语义仍是 `at-least-once transport + idempotent index upsert/任务状态 CAS + 需要补偿的跨存储恢复`。
 
-### 19.7 第二轮逐项真假验证表
+### 19.7 后续逐项真假验证表
 
-| 事项 | 源码存在 | 测试源码 | 本轮真实执行 | 当前等级/结论 |
+| 事项 | 源码存在 | 测试源码 | 当前核对真实执行 | 当前等级/结论 |
 |---|---|---|---|---|
 | Python Redis Stream publish/consume/pending/ack | 是：`rag/utils/redis_conn.py`、`rag/svr/task_executor.py` | 是：`test/` 与相关 unit tests 可检索 | 未执行 Redis | L0；未证明断线、pending reclaim 或 ack 后一致性 |
 | Python DeepDOC OCR/layout/TSR/分页 | 是：`deepdoc/parser/`、`deepdoc/vision/` | 是：`test/unit_test`、parser tests | 未执行 OCR/模型/真实 PDF | L0；不能宣称解析质量通过 |
@@ -568,10 +568,10 @@ Pipeline.Run（可恢复 DSL）
 | Go ES/Infinity index + document state | 是：`internal/engine/{elasticsearch,infinity}`、`internal/ingestion/task`、`internal/ingestion/service/doc_state.go` | 是：writer、engine、doc state tests | 未启动 document engine | L0；没有部分 bulk/删后插/统计失败的现场证据 |
 | 外部对象存储 Storage | 是：`internal/storage/types.go` 与 provider 实现；Python `settings.STORAGE_IMPL` | 是：mock/provider tests 可检索 | 未连接 MinIO/S3 等 | L0；未证明对象与索引/DB 对账 |
 
-### 19.8 第二轮裁决、剩余风险与后续复核点
+### 19.8 后续裁决、剩余风险与后续复核点
 
 - **吸收**：Go `ParseResult`/parser dispatch 的结构化输出契约；DeepDOC 页级质量门与显式 engine 释放；Python/Go tokenizer 的模型解析、批次、标题加权；ES 二次 KNN 分数、候选窗整除不变量；Python 母块/主块写入与 Go bulk writer；Go DB 状态 CAS、heartbeat、DB-truth settlement、Redis checkpoint/RunTracker。
 - **升级候选**：跨 Python/Go 的统一 `DocumentIR/Chunk/Embedding/IndexWriteReceipt/TaskEvent`；任务 lease epoch/idempotency key；对象→索引→关系库的 manifest/outbox；索引 bulk 部分成功后的 batch receipt 与 reconciliation；恢复时的 stale object/image、orphan index、已写索引未计数和已计数未写索引扫描。
 - **隔离/不吸收**：把 Python `CURRENT_TASKS`、Redis pending 或 `_prune_deleted_chunks` 当成 durable lease/事务；把 Go `currentTasks` 当跨进程 owner；把 DLA client 当远程 OCR/TSR；把 `docStateUpdater`/`progressSink` 的 best-effort 写入当成功提交。
 - **待核**：真实部署中 Python 与 Go 是否由同一 proxy scheme/进程角色仲裁写入；Go `internal/parser` 与 Python DeepDOC 在同一 PDF/Office 样本上的结构等价性；ES/Infinity/OceanBase 的向量、分页、delete/upsert 语义差异；NATS/Redis 故障下的 redelivery 与任务状态 CAS；对象存储失败或进程 kill 后的残留回收；`TE_RUN_MODE=1` dry-run comparator 对所有 provider 写结果的覆盖。
-- **第二轮状态**：本节完成源码逐项收口，但没有把未执行的外部服务、模型、native/CGO、队列、恢复和全链路测试标为通过。正式维护入口仍是根 `ARCHITECTURE.md`，旧细探仅保留为历史证据。
+- **后续状态**：本节完成源码逐项收口，但没有把未执行的外部服务、模型、native/CGO、队列、恢复和全链路测试标为通过。正式维护入口仍是根 `ARCHITECTURE.md`，旧细探仅保留为历史证据。

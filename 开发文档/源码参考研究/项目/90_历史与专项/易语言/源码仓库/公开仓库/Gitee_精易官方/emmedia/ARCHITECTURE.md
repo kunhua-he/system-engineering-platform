@@ -2,7 +2,7 @@
 
 > 首轮全量架构建档。本文是本项目根目录唯一的架构事实文档；后续细探、补充和复核只更新本文件。
 >
-> 研究边界：本轮仅读取源码、工程文件、协议头、Git 元数据和同级旧细探索引；未修改源码，未安装依赖，未启动服务，未执行构建，未提交 Git。
+> 研究边界：当前核对仅读取源码、工程文件、协议头、Git 元数据和同级旧细探索引；未修改源码，未安装依赖，未启动服务，未执行构建，未提交 Git。
 
 ## 1. 项目定位
 
@@ -242,7 +242,7 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 静态工程 Win32 配置显式定义 `__E_STATIC_LIB;__E_FNENAME=emmedia`，但 x64 配置未显式定义这两个宏；
 - 动态工程 x64 配置未配置 `ModuleDefinitionFile` 和 `TargetExt=.fne`，与 Win32 DLL 配置不对称；
 - 静态工程 x64 配置使用 `PrecompiledHeader=Use`，而工程文件中没有对应的 `pch.h` 条目；
-- 上述配置只作为静态检查发现记录，本轮没有在 Windows/Visual Studio 上构建验证，不应推断为已复现的构建失败。
+- 上述配置只作为静态检查发现记录，当前核对没有在 Windows/Visual Studio 上构建验证，不应推断为已复现的构建失败。
 
 ## 7. 状态、资源和错误语义
 
@@ -273,9 +273,9 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 没有真实设备模拟器或 MCI/Wave/MIDI 测试夹具；
 - 没有实现完成度检查、返回值检查或 ABI 自动校验。
 
-### 本轮实际执行
+### 当前核对实际执行
 
-本轮执行了只读盘点：Git 文件树、Git 分支/提交/远程、`git ls-remote origin`、工程 XML 静态解析、源码文本解码与符号/命令/元数据统计。没有执行 `msbuild`、Visual Studio 构建、运行 DLL、运行易语言宿主或任何设备操作。
+当前核对执行了只读盘点：Git 文件树、Git 分支/提交/远程、`git ls-remote origin`、工程 XML 静态解析、源码文本解码与符号/命令/元数据统计。没有执行 `msbuild`、Visual Studio 构建、运行 DLL、运行易语言宿主或任何设备操作。
 
 ## 9. 主要风险与后续复核点
 
@@ -288,7 +288,7 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 7. **资源生命周期未实现**：录音、MIDI、波形输入、CD/媒体播放和音频转换均应有打开/初始化、使用、暂停/恢复、停止、关闭、析构和异常路径；当前没有句柄或上下文状态。
 8. **协议返回值未验证**：命令实现应验证 `pRetData`、`nArgCount`、引用参数有效性、默认参数和文本生命周期；当前源码没有这些边界检查。
 9. **没有运行证据**：当前所有“支持”结论都来自元数据/注释/模板，不代表在实际 Windows 设备和易语言宿主中可运行。
-10. **远程版本刷新策略**：本轮本地提交与远程 `origin/master` 相同；如后续发现本地未跟踪 `ARCHITECTURE.md`，更新源码前须避免直接覆盖该文档。
+10. **远程版本刷新策略**：当前核对本地提交与远程 `origin/master` 相同；如后续发现本地未跟踪 `ARCHITECTURE.md`，更新源码前须避免直接覆盖该文档。
 
 ## 10. 版本基线与证据路径
 
@@ -312,4 +312,4 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 ## 11. 旧细探收口声明
 
-本轮在目标项目根、其上级 `公开仓库/Gitee_精易官方`、源码仓库和历史专项范围内检索 `细探-*.md`、`*细探*` 与项目名相关文件，没有发现属于 `emmedia` 的旧细探文档；目标根此前也没有 `ARCHITECTURE.md`。因此本文件为首次建档，不存在可删除的旧细探；后续只维护本文件，禁止重新建立平行架构报告。
+当前核对在目标项目根、其上级 `公开仓库/Gitee_精易官方`、源码仓库和历史专项范围内检索 `细探-*.md`、`*细探*` 与项目名相关文件，没有发现属于 `emmedia` 的旧细探文档；目标根此前也没有 `ARCHITECTURE.md`。因此本文件为首次建档，不存在可删除的旧细探；后续只维护本文件，禁止重新建立平行架构报告。

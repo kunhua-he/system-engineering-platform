@@ -450,17 +450,17 @@ MMCoreAgent tool-calling QA
 - 测试契约：`tests/test_contract.py`、`tests/test_mcp.py`、`tests/test_providers.py`、`tests/test_minimax.py`、`tests/test_eval_stats.py`、`tests/conftest.py`
 - 评测与基线：`baselines/longmemeval/run_telemem.py`、`baselines/longmemeval/stats.py`、`docs/evaluation.md`
 - 运行与发布：`examples/`、`server.json`、`Dockerfile`、`.github/workflows/ci.yml`、`.github/workflows/release.yml`
-- 本文件已吸收此前 `细探-TeleMem.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。当前工作树和 Git 索引均未发现该旧细探文件；本轮没有删除任何旧细探。
+- 本文件已吸收此前 `细探-TeleMem.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。当前工作树和 Git 索引均未发现该旧细探文件；当前核对没有删除任何旧细探。
 
-## 15. 第三轮：通用底座映射与唯一链路裁决
+## 15. 后续：通用底座映射与唯一链路裁决
 
 > 本节不是把 TeleMem 宣称成已经具备的系统工程平台，而是把本仓库当前真实实现映射到“支持库—记忆模块—运行核心—网关”的公共底座边界。凡源码没有实现、没有测试或依赖 `mem0ai` 私有 API 的地方，均明确标为“缺口/待核”，不得把目标设计当成当前能力。
 >
-> **本轮身份与证据边界**：目标根目录为 `/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/TeleMem`；代码图 MCP 已按该路径探测，返回“没有 `.codegraph/`，不可查询”，因此本节只使用现场源码、现有 `ARCHITECTURE.md`、仓库文件和测试代码，不冒充代码图证据。项目最近源码基线仍为 `a8e537c7064e00e3f3d4593f8408f32bb528d10d`（2026-08-17T07:30:12Z，`Update star-history chart`）。
+> **当前核对身份与证据边界**：目标根目录为 `/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/TeleMem`；代码图 MCP 已按该路径探测，返回“没有 `.codegraph/`，不可查询”，因此本节只使用现场源码、现有 `ARCHITECTURE.md`、仓库文件和测试代码，不冒充代码图证据。项目最近源码基线仍为 `a8e537c7064e00e3f3d4593f8408f32bb528d10d`（2026-08-17T07:30:12Z，`Update star-history chart`）。
 
 ### 15.1 映射规则：当前归属与平台目标归属分开
 
-| 底座边界 | 当前源码事实 | 第三轮归属裁决 | 证据/状态 |
+| 底座边界 | 当前源码事实 | 后续归属裁决 | 证据/状态 |
 |---|---|---|---|
 | 支持库 | `mem0ai` 的 LLM、embedding、FAISS、history、CRUD 私有 helper；视频侧 OpenCV、`yt_dlp`、`NanoVectorDB`、OpenAI-compatible client | 只把“外部 provider 薄适配、配置解析、向量/文件原子能力、MCP SDK 适配”归支持库；不把 Mem0 内部 schema 猜成 TeleMem 自有支持库 | 复用/升级；Mem0 内部待核 |
 | 记忆模块 | `TeleMemory` 负责消息规范化、角色/`events` 作用域、LLM 摘要、相似记忆检索、融合、search 合并；`MMCoreAgent` 负责视频检索编排 | TeleMem 的核心可复用资产归“记忆模块”：作用域语义、抽取/融合策略、统一记忆结果；视频记忆是独立模块或独立 provider 域，不并入文本索引 | 吸收，源码充分 |
@@ -601,7 +601,7 @@ memory_history → Memory.history
 | 凭证 | LLM/embedder/VLM API key 来自 config 或 `${ENV}` 展开；`load_config()` 只允许值层替换（`utils.py:13-59`） | 不把 key 写入记忆 metadata/事件；支持库应提供脱敏和 secret reference，日志不得打印 prompt 中的密钥 |
 | 证据 | logger、MCP error detail、Mem0 history、评测 JSON | 没有统一 request/task/event/evidence id，也没有成功/失败/拒绝都留痕的账本 |
 
-**明确结论**：TeleMem 具备“按 scope 传递”的最小来源边界，不具备“按时间、来源、权限、证据传递”的平台契约。第三轮只能吸收 scope 语义，不能吸收其缺失的安全/审计假设。
+**明确结论**：TeleMem 具备“按 scope 传递”的最小来源边界，不具备“按时间、来源、权限、证据传递”的平台契约。后续只能吸收 scope 语义，不能吸收其缺失的安全/审计假设。
 
 ### 15.9 L0-L4 归层与当前映射
 
@@ -654,7 +654,7 @@ L4 caller/task
 4. 任何 fallback 必须返回“降级/部分成功/不可用”状态并写证据；不能像当前 `_sync_memory_to_vector_store()` 那样在 JSON/LLM 失败后只得到空列表而保持成功外观。
 5. 网关只做协议、权限和流控；记忆模块只做记忆语义；运行核心只做执行治理；支持库只做外部资源边界。不得在四层之间复制第二套转换、错误码、重试或日志。
 
-### 15.11 第三轮复用/升级/新建/废弃裁决
+### 15.11 后续复用/升级/新建/废弃裁决
 
 | 候选模式 | 裁决 | 原因 |
 |---|---|---|
@@ -672,17 +672,17 @@ L4 caller/task
 
 ### 15.12 验证等级与剩余风险
 
-本轮采用以下 L0-L4 之外的证据等级，避免“源码存在”被写成“运行通过”：
+当前核对采用以下 L0-L4 之外的证据等级，避免“源码存在”被写成“运行通过”：
 
 | 等级 | 含义 | TeleMem 当前证据 |
 |---|---|---|
 | S0 | 仅目录/声明/文档线索 | provider 配置、README、发布/部署声明 |
 | S1 | 目标源码路径已读并可定位 | `telemem/mem0.py`、`utils.py`、`mcp/server.py`、MM 源码 |
 | S2 | 离线测试直接覆盖 | `tests/test_contract.py`、`tests/test_mcp.py`、provider 配置测试 |
-| S3 | 真实本地 provider/进程/文件链实跑 | 本轮未执行，不能宣称通过 |
+| S3 | 真实本地 provider/进程/文件链实跑 | 当前核对未执行，不能宣称通过 |
 | S4 | 断线、超时、取消、强杀、重启、残留审计 | 本仓库没有充分实现/证据，全部待补 |
 
-第三轮不能正式背书的事项：Mem0 真实 schema/事务/并发/恢复；模型和 embedding endpoint timeout/cancel；MCP Streamable HTTP 真实网络认证；视频 VLM/embedding/多进程崩溃恢复；索引文件原子性；跨时间日期保留；多租户权限；singleton 关闭；客户端断开时 generator/后端任务清理。
+后续不能正式背书的事项：Mem0 真实 schema/事务/并发/恢复；模型和 embedding endpoint timeout/cancel；MCP Streamable HTTP 真实网络认证；视频 VLM/embedding/多进程崩溃恢复；索引文件原子性；跨时间日期保留；多租户权限；singleton 关闭；客户端断开时 generator/后端任务清理。
 
 后续装配前的验收契约必须至少包含：
 
@@ -694,9 +694,9 @@ L4 caller/task
 恢复：任意提交前/提交后强杀只能得到旧版或新版，不得半条记忆/半个索引/孤儿任务
 ```
 
-本节的结论是“第三轮底座输入”，不是对系统工程平台的生产改造授权；任何公共底座新增能力仍需先登记需求、检索现有能力、确定唯一 owner、占用租约、编写消费者契约，再进入装配和验证。
+本节的结论是“后续底座输入”，不是对系统工程平台的生产改造授权；任何公共底座新增能力仍需先登记需求、检索现有能力、确定唯一 owner、占用租约、编写消费者契约，再进入装配和验证。
 
-## 16. 第三轮证据补充索引
+## 16. 后续证据补充索引
 
 - scope/缓冲/抽取/融合/搜索：`telemem/mem0.py:60-216,218-360,362-550,591-688`
 - 配置、环境变量和阈值：`telemem/configs.py:7-46`；`telemem/utils.py:13-59`

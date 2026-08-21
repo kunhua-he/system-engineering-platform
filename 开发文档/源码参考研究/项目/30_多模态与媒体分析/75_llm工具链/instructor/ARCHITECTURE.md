@@ -231,9 +231,9 @@ provider 和扩展通过 optional dependency 分组提供，包括 `anthropic`�
 - 此前研究原始材料（已人工吸收并清理）
 - 本次限制：未安装依赖、未启动服务、未构建、未提交 Git；因此本文件的“已确认”指源码静态证据，不等同于运行时全量通过。
 
-## 10. 第三轮：结构化输出能力的底座映射
+## 10. 后续：结构化输出能力的底座映射
 
-本节是基于当前源码的第三轮裁决输入，不是 Instructor 已经存在的“模型支持库/模块库/运行核心/网关”实现。Instructor 本身覆盖了**模型支持适配**和一部分**结构化输出运行时**，没有实现统一业务模块、租户网关、任务持久化或平台级资源账本。以下映射把源码事实和平台装配建议分开，避免把建议误写成项目现状。
+本节是基于当前源码的后续裁决输入，不是 Instructor 已经存在的“模型支持库/模块库/运行核心/网关”实现。Instructor 本身覆盖了**模型支持适配**和一部分**结构化输出运行时**，没有实现统一业务模块、租户网关、任务持久化或平台级资源账本。以下映射把源码事实和平台装配建议分开，避免把建议误写成项目现状。
 
 ### 10.1 唯一结构化输出链路
 
@@ -274,7 +274,7 @@ L4 网关/调用方
 | 流式 | L1 handler 提取 provider chunks（OpenAI 证据 `providers/openai/handlers.py:430-526`）；L1 DSL 解析器通过 `PartialBase`/`IterableBase` 增量产出，完整 JSON 才最终原模型校验（`dsl/partial.py:436-513`） | L1 处理方言和 chunk；L2 管理流的生命周期、取消、背压、完成/截断状态；L3 选择 Partial/Iterable 语义 | 不把 partial 对象当最终完整结果；L4 不直接消费 provider-specific chunk |
 | 错误边界 | `InstructorError` 为根；`IncompleteOutputException`、`ResponseParsingError`、`InstructorRetryException`、`TokenBudgetError` 等保留失败尝试、最后响应、usage 和 create kwargs | L1 把 SDK 异常映射到可识别 provider error；L2 形成平台错误码、attempt 和清理结果；L4 只展示稳定信封 | 模块不吞异常、不把 retry exhaustion 伪装成成功；网关不泄露 key、完整 prompt 或 raw response |
 
-因此，**Instructor 的 Pydantic/schema/handler/stream extractor 是 L1 候选；`patch`、`client`、`retry`、hooks 和错误上下文是 L2 候选；领域 `BaseModel`/validator 是 L3 候选；CLI 不是网关，`batch`/`distil`/cache 也不能自动升级为平台运行核心**。这也是第三轮的“复用/升级/隔离”裁决：复用 schema 和 handler 契约，升级 client 生命周期、取消和错误信封，隔离 CLI/Batch/蒸馏等旁路能力。
+因此，**Instructor 的 Pydantic/schema/handler/stream extractor 是 L1 候选；`patch`、`client`、`retry`、hooks 和错误上下文是 L2 候选；领域 `BaseModel`/validator 是 L3 候选；CLI 不是网关，`batch`/`distil`/cache 也不能自动升级为平台运行核心**。这也是后续的“复用/升级/隔离”裁决：复用 schema 和 handler 契约，升级 client 生命周期、取消和错误信封，隔离 CLI/Batch/蒸馏等旁路能力。
 
 ### 10.3 L0-L4 装配等级
 
@@ -282,7 +282,7 @@ L0-L4 是平台映射等级，不是 Instructor 源码中的现有枚举或目�
 
 | 等级 | owner | 允许内容 | 禁止内容 | 本项目证据/可吸收项 |
 |---|---|---|---|---|
-| L0 | 外部 provider/SDK/HTTP/模型服务 | 生成、原始响应、原始 usage、网络连接 | 领域契约、平台重试和网关状态 | `auto_client.py` 构造 `openai`/其他 SDK；真实服务行为本轮未实测 |
+| L0 | 外部 provider/SDK/HTTP/模型服务 | 生成、原始响应、原始 usage、网络连接 | 领域契约、平台重试和网关状态 | `auto_client.py` 构造 `openai`/其他 SDK；真实服务行为当前核对未实测 |
 | L1 | 模型支持库 | Provider/Mode 注册、factory、schema 方言、消息/多模态转换、raw response parser、stream extractor、usage/error adapter | 业务流程、租户、持久化、跨 provider 业务 fallback | `core/registry.py:46-211` 的 `ModeHandlers`/懒加载注册表；`providers/*/handlers.py` |
 | L2 | 运行核心 | 一个 run 的输入快照、attempt/reask、超时/取消、预算、并发、usage、事件、资源释放、统一错误和证据 | HTTP 路由、领域字段、provider 方言 | `core/retry.py` 提供可复用的 attempt 骨架，但 client/stream 关闭和平台 run 账本仍需补齐 |
 | L3 | 模块库 | 领域 response model、validator、提示/任务编排、结果投影；只调用 L2 | 直接 SDK、自己重试、自己写公共错误码/usage | `response_model.py` 可承接模型归一；领域模型本身由调用方提供，Instructor 不持有业务模块 |
@@ -296,7 +296,7 @@ L2 的唯一公开原子能力建议命名为 `structured_output.execute`（名�
 
 当前 Instructor 主要接收和消费外部资源，没有形成完整的资源 owner 协议：
 
-| 资源 | 创建/持有事实 | 正常完成 | 业务失败/重试 | 取消/超时/崩溃 | 第三轮裁决 |
+| 资源 | 创建/持有事实 | 正常完成 | 业务失败/重试 | 取消/超时/崩溃 | 后续裁决 |
 |---|---|---|---|---|---|
 | 同步/异步 provider client 与 HTTP transport | `auto_client.py:225-250` 等 builder 创建 `OpenAI`/`AsyncOpenAI`；`from_openai` 也接受外部 client | 当前没有 `Instructor.close()`/`aclose()`；依赖调用方/SDK | retry 只重复调用，不重建 client | 当前源码未提供宿主崩溃清理 | L1 必须声明 `created_by_adapter`；注入的 shared client 不得被模块关闭，adapter 自建 client 在 run/应用终态 `close/aclose` |
 | provider streaming iterator/async generator | L1 `extract_streaming_json`/`extract_streaming_json_async` 消费 completion；DSL 以 generator/async generator 转发 | 消费到结束即自然结束 | 解析失败可进入 retry，但已消费 stream 不能复用，必须由 L2 重新发起新请求 | `PartialBase`/handler 没有通用 `finally` 关闭底层 completion | L2 在 `finally` 检测并调用 `close`/`aclose`；取消、异常、客户端断开均走同一清理钩子，记录 `stream_closed` |
@@ -338,7 +338,7 @@ L2 的唯一公开原子能力建议命名为 `structured_output.execute`（名�
 
 失败矩阵的硬性判定是：只有“源码分支存在”不能算“已验证”；`tests/v2` 的确定性测试只能证明局部契约，真实 SDK、凭证、网络、取消、进程崩溃和资源残留仍是弱验证/未验证。任何上层复用计划必须同时记录 `provider_calls`、attempt 数、错误类别、usage 是否完整、stream/client 是否关闭和临时资源扫描结果。
 
-## 13. 第三轮复用、升级、隔离与验收契约
+## 13. 后续复用、升级、隔离与验收契约
 
 | 裁决 | 内容 | 状态 |
 |---|---|---|
@@ -355,4 +355,4 @@ L2 的唯一公开原子能力建议命名为 `structured_output.execute`（名�
 3. **流式**：Partial 每个增量标为 partial，结构完整时才 final validate；Iterable 每个对象单独产出；正常、错误、取消、断线均验证底层 iterator/async generator 的关闭。
 4. **资源**：同步/异步 client、HTTP transport、stream、锁、缓存 backend、临时文件、子进程分别标 owner；四种终态读回无端口、进程、临时目录、锁和连接残留。外部注入 shared client 不得被误关。
 5. **错误/证据**：L4 只收到稳定错误信封；raw prompt、api key、完整 provider response 按脱敏策略处理；保存 run id、attempt、错误类别、usage、释放结果和验证命令。
-6. **真假验证**：当前仓库只提供静态源码和确定性测试证据；本轮未安装依赖、未运行 `pytest`、未调用真实 LLM、未验证 provider 网络/取消/崩溃回收。因此第三轮结论中“吸收”仅指契约/静态实现可吸收，不等于平台已通过。
+6. **真假验证**：当前仓库只提供静态源码和确定性测试证据；当前核对未安装依赖、未运行 `pytest`、未调用真实 LLM、未验证 provider 网络/取消/崩溃回收。因此后续结论中“吸收”仅指契约/静态实现可吸收，不等于平台已通过。

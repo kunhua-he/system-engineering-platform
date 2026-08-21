@@ -1,9 +1,9 @@
 # OpenCode 架构建档
 
-> 本文是对本地源码归档的首轮全量静态架构记录，不是实现计划，也不把规格文档当成已实现事实。
+> 本文是对当前本地源码快照的全量静态架构记录，不是实现计划，也不把规格文档当成已实现事实。
 >
 > - 仓库：`/Users/hekunhua/Documents/Agent/github 源码参考/10_agent_platform_reference/01_成品Agent平台/opencode`
-> - 首轮代码基线：`67a04787`（`dev`，2026-07-24）；最新增量基线：`b155b156`（远程 `origin/dev`，2026-08-20）
+> - 当前代码基线：`ba72a6ff2b62aaf614b8e745193e86a51be6142c`（`dev` 与 `origin/dev`，2026-08-21）
 > - 许可证：MIT；语言/运行时：TypeScript ESM monorepo，Bun workspace
 > - 读取范围：根 README、根及局部 AGENTS、CONTEXT/specs、依赖清单、入口、核心模型、事件/存储、LLM、权限/工具、HTTP API、CLI/TUI/UI、SDK 和测试；另对最新版本做增量复核。
 > - 本次边界：只新增本文件；不改源码、依赖、测试、配置，不安装依赖、不启动服务、不构建、不运行测试、不提交 Git。
@@ -22,7 +22,7 @@ OpenCode 是一个以 CLI/TUI 为主、同时提供 Web、Desktop、HTTP Server�
 
 ### 1.1 最新版本增量审计
 
-2026-08-20 通过 `127.0.0.1:4780` 获取远程 `origin/dev`，发现本地首轮基线落后 **335 个提交**。在独立工作区
+2026-08-22 核对本地 `dev` 与 `origin/dev`，两者均指向 `ba72a6ff2b62aaf614b8e745193e86a51be6142c`，无提交差异。此前独立工作区
 `/Users/hekunhua/Documents/Agent/源码研究工作区/opencode-最新版本` 读取最新提交，未覆盖本项目原工作树。
 从 `67a04787` 到 `b155b156` 共变更 787 个文件；大量变化属于前端、多语言、发布版本和供应商适配，以下只记录影响底座判断的源码证据：
 
@@ -510,7 +510,7 @@ SDK 测试明确验证：embedded client 使用真实 router/handlers、Session 
 - **Schema contract tests**：optional encode/decode、公共 identifier 唯一性、当前契约避免 `Schema.Any`/mutable wrapper、V1 event isolation。
 - **Core/LLM unit tests**：Schema、provider route、tool runtime、session/event/history、SQLite repository、Effect services。
 - **Legacy opencode tests**：Session processor/prompt/message/compaction/retry/LLM、tool read/edit/shell/task/skill/truncation、snapshot/storage/project、provider、MCP/LSP、server HTTP API。
-- **权限与安全行为**：V1 shell 测试验证 bash pattern、always arity、外部目录路径、PowerShell AST/路径；已有细探文档补充 `findLast`、settle、output bound、snapshot 结论。
+- **权限与安全行为**：V1 shell 测试验证 bash pattern、always arity、外部目录路径、PowerShell AST/路径；已有历史研究文档补充 `findLast`、settle、output bound、snapshot 结论。
 - **HTTP/OpenAPI**：`httpapi-public-openapi.test.ts`验证 `/api` auth response、event union/SSE schema、typed errors、required bodies、provider/model/session/permission/question/PTY routes；server AGENTS要求 middleware order 与 tiny probe。
 - **SDK/import boundary**：client root 必须无 Effect/Schema/Protocol/Core/Server runtime 输入；effect entry 允许 Effect/Schema/Protocol 但拒绝 Core/Server；sdk-next bundle 必须包含 client/core/server；embedded tests 走真实 in-memory router。
 - **UI**：App unit/browser、Playwright e2e、性能稳定性和 timeline tests；TUI component/app lifecycle/CLI sync tests；UI/Storybook stories。
@@ -526,15 +526,15 @@ SDK 测试明确验证：embedded client 使用真实 router/handlers、Session 
 1. **V2 operation gaps**：`packages/core/src/session.ts`的 `shell`、`skill`、`compact`、`wait`当前返回 `OperationUnavailableError`；current Server handler 相应把 compact/wait 转成 503 ServiceUnavailable。不能把 Protocol endpoint 存在写成能力已闭环。
 2. **V2 runner follow-ups**：`packages/core/src/session/runner/llm.ts`注释列出 clustered ownership、durable status/recovery、provider retry/watchdog、完整 plugin/MCP/structured-output tool policy、stream delta coalescing、post-run maintenance 等未完成项。
 3. **Context parity**：`specs/v2/session.md`将 configured/remote/nested instructions、provider-family baseline、prompt overrides、plugin transforms、structured-output policy、native template/@ mention、agent/reference expansion 等标为 partial/missing；当前只证明已有实现 slice，不能证明完整 V1 parity。
-4. **V1/V2 并存**：`packages/opencode`的实际默认 `run/TUI/HTTP`链路仍包含 V1 `SessionPrompt`/`SessionProcessor`/V1 Permission；V2 current packages 是迁移目标和独立 API，是否所有产品表面都已切换未在本轮 runtime 验证。
+4. **V1/V2 并存**：`packages/opencode`的实际默认 `run/TUI/HTTP`链路仍包含 V1 `SessionPrompt`/`SessionProcessor`/V1 Permission；V2 current packages 是迁移目标和独立 API，是否所有产品表面都已切换未在当前审计 runtime 验证。
 5. **Generated artifacts**：Client generated files是编译产物；README/AGENTS规定 API 变更后 regenerate，但本次没有执行 generate，也没有确认生成物与所有当前 Protocol 定义的 drift。
 6. **Legacy SDK surface**：仓库同时有 `packages/sdk`、`packages/sdk/js`、`packages/client`、`sdk-next`；legacy SDK 与 current generated client 的命名、返回 envelope、错误模型不可自动等同。
-7. **Network/Provider coverage**：`specs/v2/provider-model.md`明确当前 native runner 只覆盖有限 OpenAI Responses/Completions、Anthropic、指定 AI SDK 路由；Google/Azure/Bedrock/OpenRouter/GitHub Copilot 等特定行为仍是 future provider slices。V1 AI SDK provider surface 更宽，但本轮未逐个 provider runtime 验证。
+7. **Network/Provider coverage**：`specs/v2/provider-model.md`明确当前 native runner 只覆盖有限 OpenAI Responses/Completions、Anthropic、指定 AI SDK 路由；Google/Azure/Bedrock/OpenRouter/GitHub Copilot 等特定行为仍是 future provider slices。V1 AI SDK provider surface 更宽，但当前审计未逐个 provider runtime 验证。
 8. **Bash security boundary**：V2 specs明确 bash 使用宿主 filesystem/process/network authority；绝对命令参数扫描是 advisory，真正强制的是 external workdir authority。不能把 tree-sitter/路径检查描述成完整 sandbox。
 9. **Compaction semantics split**：V1 与 V2 都有 compaction，但 message model、history boundary、Context Epoch、provider-native metadata 的处理不同；需以具体入口追踪，不能混写为一个 compactor。
 10. **Database migration compatibility**：已读取 schema/迁移入口，但未运行 migration、rollback、旧库兼容或 catalog probe；现有表结构说明是声明式源码事实，不是已验证数据库实例状态。
 11. **Runtime lifecycle**：Server listener、embedded Scope、Location services、SessionExecution process-global coordinator 的生命周期设计已在源码/测试中出现；未启动服务，因此未验证多 host、并发、断线、重连、崩溃恢复和跨进程行为。
-12. **工作树边界**：首轮建档时项目工作树有未跟踪的 `ARCHITECTURE.md` 和 `细探-opencode.md`；最新版本在独立工作区 `/Users/hekunhua/Documents/Agent/源码研究工作区/opencode-最新版本` 只读复核，未覆盖原工作树。
+12. **工作树边界**：此前建档时项目工作树有未跟踪的 `ARCHITECTURE.md` 和 `历史研究-opencode.md`；最新版本在独立工作区 `/Users/hekunhua/Documents/Agent/源码研究工作区/opencode-最新版本` 只读复核，未覆盖原工作树。
 
 ## 11. 权威阅读索引
 
@@ -568,7 +568,7 @@ SDK 测试明确验证：embedded client 使用真实 router/handlers、Session 
 
 ### 文档归并边界
 
-本文件已吸收此前 `细探-opencode.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
+本文件已吸收此前 `历史研究-opencode.md` 的源码分析结论；后续只维护本文件，历史研究笔记不再作为独立事实源。
 
 ## 12. 专项闭环：项目、会话与事件账本
 
@@ -683,3 +683,58 @@ TUI、Web、Desktop、HTTP server 和 embedded SDK 是不同消费/宿主表面�
 | Host crash | runner、server、子进程、relay 突然消失 | 依赖 durable history/resume 和分散 cleanup；无完整 durable run recovery | **未验证高风险** |
 
 **专项总裁决：** OpenCode 当前最稳固的架构事实是 Location/Project 作用域、SessionInput admission、SQLite durable event + projector、Schema 工具结算、有界输出、按键串行 runner 和锁保护的远程仓库缓存。最主要的未闭环是集群所有权、durable run recovery、provider retry/watchdog、取消结算、插件/MCP/structured-output 完整策略、后台维护和宿主崩溃后的资源证明；这些必须保持为缺口，不能用接口存在、cleanup 函数存在或测试文件存在替代运行证据。
+
+## 16. 深度取证补充（2026-08-21）
+
+### 16.1 关键节点九字段
+
+| 节点 | 目的 | 输入 | 输出 | 状态 | 资源 | 错误边界 | 证据 | 权限/重试 |
+|---|---|---|---|---|---|---|---|---|
+| `SessionInput.admit` | 将用户 prompt 写入 durable inbox | message/session/prompt/delivery | admission receipt + seq | admitted/promoted | SQLite + EventV2 | `LifecycleConflict`、缺 durable seq | `packages/core/src/session/input.ts:41-80` | 调用者授权；同 ID 幂等，不自动重试 |
+| `SessionRunCoordinator` | 按 Session 串行执行 | session key、force/wake | `run`/`interrupt` completion | active/pendingWake/stopping | FiberSet、Deferred、Scope | runner error/interrupt | `packages/core/src/session/run-coordinator.ts:24-103` | 进程内 owner；wake 合并 |
+| `SessionRunner.runTurn` | 执行一轮 provider + tools | projected history、model、agent、tools | durable text/tool/step events | streaming/settled/continuation | LLM stream、tool fibers、snapshot | provider/overflow/tool/interrupt | `packages/core/src/session/runner/llm.ts:173-348` | Location 校验；overflow 仅一次 compaction |
+| `ToolRegistry.settle` | 校验并执行本地工具 | ToolCall + registration identity | bounded ToolResult | registered/settled/failed | ToolOutputStore、Scope registration | unknown/stale/schema/tool failure | `packages/core/src/tool/registry.ts:50-82` | Permission materialize + stale identity |
+| `EventV2.commitDurableEvent` | 事件账本与投影原子提交 | typed event、aggregate/seq | event row + projector read model | appended/replayed/rejected | SQLite transaction、PubSub | aggregate/owner/sequence/replay divergence | `packages/core/src/event.ts:205-340` | strict owner；同事件深相等幂等 |
+| `RepositoryCache.ensure` | 管理远程仓库工作副本 | remote reference/branch/refresh | cached/cloned/refreshed + path | locked/checked-out/reset | EffectFlock、Git、filesystem | clone/fetch/checkout/reset/lock | `packages/core/src/repository-cache.ts:124-211` | branch 白名单；refresh 是显式操作 |
+| `AppProcess.run` | 受控子进程执行 | command、timeout/signal、output limits | exit/stdout/stderr | spawned/exited/aborted | scoped child process | `AppProcessError` | `packages/core/src/process.ts:139-212` | 超时/取消可中断；非零需 `requireSuccess` |
+
+### 16.2 正常与异常矩阵
+
+| 场景 | 已实现路径 | 结论 |
+|---|---|---|
+| 正常 | admit → projector → coordinator → `llm.stream` → tool settle → `Step.Ended` | 本地源码链路完整，L1 |
+| Provider 错误 | publisher 记录 provider error，未结算工具转 failed，assistant 失败 | 无 V2 durable retry/watchdog，L1 |
+| Context overflow | assistant 尚未开始时 compaction，重建 request；再次 overflow 终止 | 一次恢复上限，L1 |
+| Tool 拒绝/失败 | Permission Deferred reject 或 ToolFailure 转结构化结果；等待 fibers | 用户拒绝会中断当前审计，L1 |
+| 超时 | `AppProcess.run` `Effect.timeoutOrElse` 返回 `AppProcessError(Timed out)` | Scope 清理有代码证据，未做强杀探针 |
+| 取消 | 清空 tool fibers，发布 Tool.Failed/assistant interrupted | 取消结算与最终 durable run status 仍缺失 |
+| 崩溃/强杀 | 可从 durable event/history 重放；本地 owner、子进程、后台维护不保证恢复 | 高风险未验证，L0-L1 |
+
+### 16.3 证据等级与平台映射
+
+## 17. 本次复审源码增量：输入准入、事件投影与上下文代际（2026-08-21）
+
+### 17.1 V2 输入先落账再调度
+
+`packages/core/src/session/sql.ts` 的 `session_input` 表同时保存 `delivery`、`admitted_seq` 和 pending 索引；同一 session 的 admitted sequence 唯一。生成的 SDK 将 V2 prompt 暴露为 `/api/session/{sessionID}/prompt`，请求可携带 `delivery: "steer" | "queue"` 与 `resume`。这表明输入接收（admission）和 agent-loop 执行是两个阶段，不能用内存队列替代持久账本。
+
+### 17.2 Durable event 是 projector 的前置条件
+
+`packages/core/src/session/projector.ts` 对缺失 `event.durable.seq` 直接终止，并将 admitted sequence、delivery 和 promoted sequence 写入读模型；消息更新器对 `session.next.prompt.admitted`、compaction started/delta/ended 等事件分别投影。重放必须按 aggregate sequence，不能只按时间戳或 UI 消息顺序。
+
+### 17.3 Permission 在工具执行前合并
+
+`packages/opencode/src/session/tools.ts` 将 agent、session 和 MCP server 规则合并成 ruleset；命中未知权限时通过 `ctx.ask` 产生审批事件。`packages/core/src/permission.ts` 对重复 pending permission id 直接 fail-fast，避免两个请求同时结算同一审批。工具 settle 发生在 runner、background job 和 registry 多个调用面，错误结果保持 `ToolFailure`/`ToolResultValue` 结构而不直接抛出到传输层。
+
+### 17.4 Context Epoch 保护压缩期间的一致性
+
+`packages/core/src/session/context-epoch.ts` 为每个 session 持久化 baseline、snapshot 与 baseline sequence；系统上下文变化会生成 replacement generation，只有在 admitted context 可用时才替换。`packages/opencode/src/session/compaction.ts` 写入 compaction part，支持 tail turns、插件改写 prompt 和 `experimental.compaction.autocontinue`；自动续跑带 `compaction_continue` 元数据，以区别用户新输入。
+
+### 17.5 当前审计边界
+
+证据来自本地 `.codegraph` 查询 `prompt/settle/projector/context-epoch/compaction/permission` 及当前源码；未调用 MCP、未构建或运行服务。Provider 的 67 个 runtime 实现仍需按具体 provider 逐一复核，当前档案不把接口分派误写成单一实现。
+
+- `L0`：源码、注释或规格声明；`L1`：静态调用链/测试代码存在；`L2`：目标包测试真实通过；`L3`：本地 HTTP/DB/provider/process 探针通过；`L4`：发布、多进程、崩溃恢复和资源清点证据。当前审计未安装、未启动、未执行测试，因此新增结论最高为 L1。
+- 可吸收为支持库：EventV2 账本与 projector、Effect Schema/协议编解码、LLM Route、Tool registry/output bound、Permission Deferred、AppProcess、Git remote cache。
+- 可吸收为模块库：Session admission/runner、Location 服务组装、远程仓库引用工作副本、HTTP/SSE 消费。
+- 可吸收为运行核心：按 Session keyed coordinator、durable replay、Scope/Fiber 生命周期、统一错误边界。集群所有权、durable run recovery、provider retry/watchdog、完整插件/MCP 策略不得标为已完成能力。

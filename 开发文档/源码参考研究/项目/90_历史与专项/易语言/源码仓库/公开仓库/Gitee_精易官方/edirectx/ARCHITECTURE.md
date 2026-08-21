@@ -4,7 +4,7 @@
 
 `edirectx` 是一个面向易语言支持库 ABI 的 Windows C++ 项目，目标名称为“DirectX2D支持库”。仓库提供动态库工程 `edirectx` 和静态库工程 `edirectx_static`，通过易语言支持库的 `LIB_INFO`、`CMD_INFO`、`LIB_DATA_TYPE_INFO`、`PFN_EXECUTE_CMD` 等结构暴露命令、对象数据类型、常量和 IDE 交互接口。
 
-**首轮结论：**当前仓库主要是由支持库生成模板/接口元数据组成的骨架。命令表和参数/数据类型描述较完整，但 `edirectx_cmdDef.cpp` 中的 284 个命令函数只读取参数到局部变量，没有写入 `pRetData`、调用 DirectX 或返回业务结果；输入设备组件回调也保留 TODO/默认返回。因此不能把它描述为已实现的 DirectX 2D 功能库。
+**当前结论：**当前仓库主要是由支持库生成模板/接口元数据组成的骨架。命令表和参数/数据类型描述较完整，但 `edirectx_cmdDef.cpp` 中的 284 个命令函数只读取参数到局部变量，没有写入 `pRetData`、调用 DirectX 或返回业务结果；输入设备组件回调也保留 TODO/默认返回。因此不能把它描述为已实现的 DirectX 2D 功能库。
 
 ## 2. 真实调用流程
 
@@ -297,12 +297,12 @@ EXPORTS
 - `README`；
 - `AGENTS.md`、`CLAUDE.md`；
 - `test*`、`测试*` 或测试项目；
-- `细探-*.md`；
+- `既有专项文档`；
 - `CMakeLists.txt`、`Makefile`、CI 配置、资源脚本或安装脚本。
 
 `edirectx_cmdInfo.cpp:587-589` 仅有 Debug 编译期参数数量辅助变量，不能视为测试套件。
 
-### 9.2 本轮实际验证
+### 9.2 当前取证实际验证
 
 - 只读检查 Git 状态、分支、提交、远程和文件清单。
 - 本地提交：`9b8b76cfa8222da38173f32b230b082efebbb144`，提交时间 `2022-12-19T16:04:33+08:00`，提交说明 `初始化仓库`。
@@ -312,7 +312,7 @@ EXPORTS
 - 代码图工具返回项目没有 `.codegraph/` 索引，因此没有代码图调用链证据；不能把代码图不可用误写成源码不存在。
 - `system_engineering_toolkit` MCP `http://127.0.0.1:8766/mcp/` 成功完成 MCP 初始化，服务端版本 `1.28.1`；本项目没有被该代码图索引覆盖。
 
-**明确未执行：**Visual Studio/MSBuild 构建、DLL 加载、易语言宿主联调、DirectX 运行验证、静态库消费验证、单元测试/集成测试。原因是本轮建档约束禁止构建和修改源码，且当前 macOS 环境不是目标 Windows/Visual Studio 环境。
+**明确未执行：**Visual Studio/MSBuild 构建、DLL 加载、易语言宿主联调、DirectX 运行验证、静态库消费验证、单元测试/集成测试。原因是当前取证建档约束禁止构建和修改源码，且当前 macOS 环境不是目标 Windows/Visual Studio 环境。
 
 ## 10. 风险与未验证项
 
@@ -356,4 +356,20 @@ EXPORTS
 | 内存/通知桥接 | `elib/fnshare.h:20-240`、`elib/fnshare.cpp:7-71` |
 | IDE 类型/事件常量 | `elib/PublicIDEFunctions.h:31-127`、`:529-577` |
 
-本文件是 `edirectx` 项目根唯一架构建档文档；本轮没有创建或修改其他项目文档，也没有删除旧细探文件（现场未发现旧细探）。
+本文件是 `edirectx` 项目根唯一架构建档文档；当前取证没有创建或修改其他项目文档，也没有删除既有细探材料文件（现场未发现既有细探材料）。
+
+## 10. 小型仓规模说明与边界
+
+`edirectx` 只有 23 个跟踪文件，实际源码集中在支持库元数据和宿主桥接层，未发现 DirectX 调用实现、示例或测试。文件职责如下：
+
+- `edirectx_cmdDef.cpp` 与 `edirectx_cmdInfo.cpp`：命令表、名称、参数描述及处理器地址。
+- `edirectx_cmd_typedef.h`：函数指针、参数结构和返回约定；这是 ABI 检查的起点。
+- `edirectx_dtType.cpp`：数据类型及属性/事件元数据注册。
+- `edirectx_const.cpp`：常量表；当前为空表不能证明 DirectX 常量可用。
+- `edirectx_dllMain.cpp`：`GetNewInf`、库信息、通知回调及宿主生命周期入口。
+- `include_edirectx_header.h`：公共声明聚合，供动态和静态工程复用。
+- `Source_edirectx.def`：导出符号清单，必须与链接产物逐项核对。
+- `edirectx.vcxproj` / `edirectx_static/...vcxproj`：动态 DLL 与静态库的配置边界。
+- `elib/*`：易语言运行库的内存、类型、通知和 ABI 定义。
+
+没有仓内测试、资源包、第三方锁定文件或 DirectX 样例。未在 Windows/MSVC 下编译、装载或调用 DLL，未验证设备创建、错误码、资源释放、线程模型与 x86/x64 兼容性；这些均是使用前必须补充的环境证据。

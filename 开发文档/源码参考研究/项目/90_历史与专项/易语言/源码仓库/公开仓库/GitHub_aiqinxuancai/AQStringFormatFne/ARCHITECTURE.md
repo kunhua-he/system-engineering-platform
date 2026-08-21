@@ -201,9 +201,9 @@ AQStringFormatFne/
 
 本文件是该项目唯一的架构归档文档；后续复核应直接更新本文件，不另建平行架构报告。
 
-## 11. 第三轮：字符串格式化、DLL/FNE、ABI 与平台底座边界
+## 11. 当前裁决：字符串格式化、DLL/FNE、ABI 与平台底座边界
 
-本轮只做源码证据到平台边界的映射，不把目标平台的“文本/ABI 支持库、运行核心、网关”倒推成项目已有实现。项目源码中没有这些平台目录；下表中的“平台落点”是装配裁决，不是本仓库现状。
+当前审计只做源码证据到平台边界的映射，不把目标平台的“文本/ABI 支持库、运行核心、网关”倒推成项目已有实现。项目源码中没有这些平台目录；下表中的“平台落点”是装配裁决，不是本仓库现状。
 
 ### 11.1 真实实现、部分实现与骨架分界
 
@@ -321,7 +321,7 @@ SDK 明确提供了 `NRS_MFREE`（`elib/lib2.h:1135-1137`）和 `NL_FREE_LIB_DAT
 | HWND/IDE 日志辅助 | L1 | 不能声称已提供日志功能或句柄生命周期 |
 | 运行核心/统一网关 | L0（本仓库无实现，仅映射目标） | 不能把平台规划写成项目已有模块 |
 
-### 11.8 第三轮底座裁决与装配计划（不改生产底座）
+### 11.8 当前裁决底座裁决与装配计划（不改生产底座）
 
 | 裁决对象 | 结论 | 允许吸收的边界 |
 |---|---|---|
@@ -345,8 +345,8 @@ SDK 明确提供了 `NRS_MFREE`（`elib/lib2.h:1135-1137`）和 `NL_FREE_LIB_DAT
 
 对本项目现状，不能回写任何平台代码、能力注册表、网关路由或运行核心模块；后续若真正生产化，前置验收必须至少补齐：Windows Win32 x86 实机加载、命令调用、错误类型、4096 边界、宿主回调未初始化、`NRS_MALLOC` 失败、静态库接入、卸载/重复加载、并发调用和崩溃后残留检查。
 
-### 11.9 本轮证据与验证边界
+### 11.9 当前审计证据与验证边界
 
-- 本轮重新读取的关键证据：`AQStringFormatFne/AQStringFormatFne.cpp:8-288`、`AQStringFormatFne/AQStringFormatFne.h:17-129`、`AQStringFormatFne/AQStringFormatFne.def:1-4`、`AQStringFormatFne/AQStringFormatFne.dsp:5-128`、`AQStringFormatFneStatic/AQStringFormatFneStatic.dsp:5-112`、`AQStringFormatFne/elib/lib2.h:815-883,1124-1146,1171-1224,1232-1329`、`AQStringFormatFne/StdAfx.h:15-24`。
-- 本轮做了源码静态读取和编码/符号定位；没有在 macOS 上伪造 Windows 构建结果，没有安装依赖，没有启动易语言宿主，没有运行 `.fne`，也没有执行 DLL/FNE ABI、句柄释放或崩溃恢复实测。
-- 因此本轮所有 L3/L4 项均保持“未验证”，失败矩阵中的崩溃结论是由可见的空指针、越界、裸变参和未清理路径推导的静态风险，不是虚构的运行日志。
+- 当前审计重新读取的关键证据：`AQStringFormatFne/AQStringFormatFne.cpp:8-288`、`AQStringFormatFne/AQStringFormatFne.h:17-129`、`AQStringFormatFne/AQStringFormatFne.def:1-4`、`AQStringFormatFne/AQStringFormatFne.dsp:5-128`、`AQStringFormatFneStatic/AQStringFormatFneStatic.dsp:5-112`、`AQStringFormatFne/elib/lib2.h:815-883,1124-1146,1171-1224,1232-1329`、`AQStringFormatFne/StdAfx.h:15-24`。
+- 当前审计做了源码静态读取和编码/符号定位；没有在 macOS 上伪造 Windows 构建结果，没有安装依赖，没有启动易语言宿主，没有运行 `.fne`，也没有执行 DLL/FNE ABI、句柄释放或崩溃恢复实测。
+- 因此当前审计所有 L3/L4 项均保持“未验证”，失败矩阵中的崩溃结论是由可见的空指针、越界、裸变参和未清理路径推导的静态风险，不是虚构的运行日志。

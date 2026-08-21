@@ -16,7 +16,7 @@
 | 远程仓库 | `https://github.com/OpenSPG/KAG.git` |
 | 本地 Git HEAD | `fdab15b3929d2ee40dfcdd388f90233096a6afc9`，提交信息为 `Fix McpExecutor kag_project_config initialization for MCP HTTP store_path (#736)` |
 | 远程 `master` | `fdab15b3929d2ee40dfcdd388f90233096a6afc9`；本地 HEAD 与远程 `master` 一致 |
-| 本地仓库状态 | shallow clone；本轮新增本文件，并人工吸收此前细粒度研究稿；未修改源码、依赖、测试或配置 |
+| 本地仓库状态 | shallow clone；当前核对新增本文件，并人工吸收此前细粒度研究稿；未修改源码、依赖、测试或配置 |
 | 代码规模快照 | 736 个 `*.py`、47 个 `*.yaml`、5 个 `*.yml`、32 个 `*.json`、252 个 `*.md`；`kag/` 914 个文件，`knext/` 187 个文件，`tests/` 60 个文件（排除 `.git`、缓存） |
 
 ### 一句话定位
@@ -289,7 +289,7 @@ kag_merger（归一化、加权融合、可选 LLM summary）
 - 当前仓库盘点到 19 个 `test_*.py` 单元测试文件，覆盖 common、registry、LLM、vectorize model、配置、checkpointer、builder runner、scanner/reader/splitter/extractor/mapping/post_processor/writer、planner 与 logic form executor。
 - 测试数据包含 txt/md/json/csv/docx/pdf、节点/边 JSON 和多套 `kag_config.yaml`，说明构建侧文件处理和 planner 逻辑形式是主要回归面。
 - 未将真实 OpenSPG 服务、Neo4j、Java reasoner 或外部 LLM 当作本地单元测试前提；涉及这些组件的路径需要外部服务/凭据/运行配置。
-- 本轮按只读建档边界未安装依赖、未启动服务、未运行测试、未构建 wheel；因此本文件不宣称当前环境端到端可运行。
+- 当前核对按只读建档边界未安装依赖、未启动服务、未运行测试、未构建 wheel；因此本文件不宣称当前环境端到端可运行。
 
 ## 11. 目录地图（真实顶层）
 
@@ -356,7 +356,7 @@ KAG/
 5. chunk 全文写入图节点并建立互索引，可能带来图存储、索引和复制放大；具体规模未在本地验证。
 6. `knext` REST API 依赖 OpenSPG 服务端契约；本地没有服务端/Java reasoner，因此 schema diff、图写入、reasoner DSL、搜索 API 仅完成源码边界建档。
 7. `mcp` 为惰性导入是优点，但 MCP Server/Client 的具体协议行为仍依赖运行时 `mcp` 版本；仓库声明 `mcp==1.6.0`。
-8. `kag/interface/solver/` 还存在 `kag_memory_abc`、`kag_reflector_abc`、`kag_reasoner_abc` 等接口预留；本轮没有把它们解释成已落地能力。
+8. `kag/interface/solver/` 还存在 `kag_memory_abc`、`kag_reflector_abc`、`kag_reasoner_abc` 等接口预留；当前核对没有把它们解释成已落地能力。
 9. 本地仓库为 shallow clone；版本比较已通过 4780 独立网络出口读取远程 `master`，未拉取或修改远程历史。
 
 ## 14. 可借鉴的架构模式（仅作参考，不直接搬运）
@@ -369,17 +369,17 @@ KAG/
 - **可选依赖惰性导入**：MCP 仅在启用 MCP 能力时加载，非 MCP 管道不被额外依赖阻塞。
 - **评测与工具复用**：`open_benchmark` 与 `qa-pipeline` 共用求解链，评测入口可以成为可复现工具入口。
 
-## 15. 本轮结论
+## 15. 当前核对结论
 
 KAG 0.8.0 的稳定主干是“构建侧 SPG/互索引 + 推理侧逻辑形式混合求解”，`kag/` 负责业务编排，`knext/` 负责 OpenSPG REST/模型 SDK，YAML pipeline 和 ABC 注册表把组件装配连接起来。0.8.0 新增/强化的 MCP 是双向扩展面：KAG 可作为 MCP Server 被 Agent 调用，也可在推理过程中拉起外部 MCP 工具。真正运行依赖 OpenSPG 8887 服务、图存储/符号推理运行时和 LLM/向量模型；本地源码副本本身不包含这些外部系统。
 
 本文件只允许作为后续源码参考、边界裁决和版本漂移对照入口；任何生产化复用都必须重新核对上游版本、依赖、服务端契约、安全边界和真实测试结果。
 
-## 16. 第三轮通用底座映射：KAG 知识链路的唯一拆分
+## 16. 后续通用底座映射：KAG 知识链路的唯一拆分
 
-本节是基于 KAG 当前源码的第三轮底座输入，不是把 KAG 目录复制到系统工程平台，也不是宣称平台已经实现下述能力。事实证据来自本仓库源码路径和函数；所有“目标落点”“升级”“新建”“待核”均是后续需求登记、能力搜索、复用裁决、占用租约和验收契约的输入。
+本节是基于 KAG 当前源码的后续底座输入，不是把 KAG 目录复制到系统工程平台，也不是宣称平台已经实现下述能力。事实证据来自本仓库源码路径和函数；所有“目标落点”“升级”“新建”“待核”均是后续需求登记、能力搜索、复用裁决、占用租约和验收契约的输入。
 
-本轮必须先把 KAG 的一条知识增强链拆成三个职责面：**图存储/检索支持库**只提供原子 I/O 和检索 provider；**知识推理模块**只编排 schema、图知识、逻辑形式、检索、推理和工具语义；**运行核心**只负责任务、并发、超时、取消、崩溃恢复、资源和证据。L0 公共契约与 L4 项目适配/网关是上下边界，不能被三个职责面吞并。
+当前核对必须先把 KAG 的一条知识增强链拆成三个职责面：**图存储/检索支持库**只提供原子 I/O 和检索 provider；**知识推理模块**只编排 schema、图知识、逻辑形式、检索、推理和工具语义；**运行核心**只负责任务、并发、超时、取消、崩溃恢复、资源和证据。L0 公共契约与 L4 项目适配/网关是上下边界，不能被三个职责面吞并。
 
 ### 16.1 单一知识链路总图
 
@@ -397,7 +397,7 @@ L4 项目适配层 / CLI / HTTP / MCP Server / SDK
 
 ### 16.2 KAG 能力到三类职责的逐项裁决
 
-| KAG 能力/事实 | 当前源码证据 | 图存储/检索支持库（L1） | 知识推理模块（L2） | 运行核心（L3） | 第三轮裁决 |
+| KAG 能力/事实 | 当前源码证据 | 图存储/检索支持库（L1） | 知识推理模块（L2） | 运行核心（L3） | 后续裁决 |
 |---|---|---|---|---|---|
 | 知识图谱节点/边/SubGraph | `kag/builder/model/sub_graph.py`；`kg_writer.py:82-135`；`GraphClient.write_graph:66-74` | `写入子图`、UPSERT/DELETE、namespace/项目参数化、事务结果 | “数据源→抽取→对齐→互索引→写入”知识构建流程 | 写入任务、批次、重试、幂等键、失败账本和恢复 | 吸收边界；L1 只做原子写，L2 保留知识语义，L3 统一任务治理 |
 | 图节点查询/一跳/PPR | `GraphClient.query_vertex/expend_one_hop/calculate_pagerank_scores:36-95` | 参数化查询、PageRank、一跳、连接/超时/重连和结果模型 | 选择起点、约束、路径和证据解释 | 并发预算、取消、外部请求截止时间、资源回收 | 吸收并升级；不能让每个 retriever 直连 REST |
@@ -445,7 +445,7 @@ SolverMain.invoke/ainvoke
 
 ### 17.2 模型与工具资源
 
-| 资源 | 当前实现 | 第三轮契约/落点 |
+| 资源 | 当前实现 | 后续契约/落点 |
 |---|---|---|
 | Chat LLM / planner / generator / deduce | `LLMClient.from_config` 在多个 executor/planner 内按配置创建；`KAGLFStaticPlanner` 直接 `llm.ainvoke` | L1 模型 provider 统一能力、模型版本、token/并发、超时、错误码和用量；L2 只传 prompt/结构化输入；L3 监督调用和取消 |
 | 向量化/重排模型 | `kag/common/vectorize_model/`、`interface/common/vectorize_model.py` 等注册/配置路径 | L1 模型支持库；批量、维度、模型摘要、缓存键和 provider 隔离必须统一；不能由 `rc` 自己创建另一套模型 registry |
@@ -488,7 +488,7 @@ SolverMain.invoke/ainvoke
 
 下表是平台映射等级，不是 KAG 官方分层。KAG 当前源码/测试存在只能证明“可研究”；没有外部 OpenSPG、图存储、Java Reasoner、LLM、向量模型和 MCP 服务的真实读回，不得越级为 L3/L4 通过。
 
-| 层级 | 允许承载 | KAG 映射 | 本项目本轮状态 | 禁止伪装 |
+| 层级 | 允许承载 | KAG 映射 | 本项目当前核对状态 | 禁止伪装 |
 |---|---|---|---|---|
 | **L0 公共契约** | Schema、Graph、SPO、Chunk、LogicNode、Plan、Task、Result、Error、Run、Resource、Evidence 的字段/版本/错误/可重试/幂等/取消语义 | `knext` REST model、`base_model.py`、`RetrieverOutput`、`Task/Context` 的事实输入 | **部分可吸收/待冻结**；源码形状已取证，平台契约未登记 | 不放 HTTP、线程、数据库、LLM SDK、隐式 fallback |
 | **L1 支持库/provider** | 图 CRUD、schema REST、text/vector/custom search、PPR、一跳、HTTP、checkpoint、模型、MCP transport、隔离执行 | `GraphClient`、`SearchClient`、`ReasonerClient`、`KGWriter`、checkpointer、模型与 MCP 客户端 | **候选能力命中；真实 provider 未验证** | 不做知识去重/规划/答案生成，不拥有平台任务状态 |
@@ -504,11 +504,11 @@ SolverMain.invoke/ainvoke
 4. **L3：** 同组并发、跨优先级并发、超时、取消、队列满、重复提交、任务 TTL、模型/图服务断线、进程强杀、重启恢复和零残留；恢复必须新进程读权威账本，不能复用父进程 `Context`。
 5. **L4：** 冷启动配置装配、`/process submit/query`、KAG MCP Server/Client、CLI/SDK 结果形状、权限/项目/namespace 隔离和发布门禁；HTTP 200、task id、MCP tool list 或流结束只能算中间证据。
 
-本轮实际验证仅为源码读取、文档落盘和文档结构检查；未安装依赖、未启动 OpenSPG/图数据库/Reasoner/LLM/MCP、未运行 KAG 测试或端到端服务。因此 L1-L4 不能写“通过”。
+当前核对实际验证仅为源码读取、文档落盘和文档结构检查；未安装依赖、未启动 OpenSPG/图数据库/Reasoner/LLM/MCP、未运行 KAG 测试或端到端服务。因此 L1-L4 不能写“通过”。
 
 ## 20. 不复制第二知识链路：唯一 owner 与禁止事项
 
-KAG 同时存在 `kag/` 业务编排、`knext/` SDK、OpenSPG 服务端、图检索/文本检索/向量检索、Reasoner、MCP 和 checkpoint。第三轮不能把这些横向复制成平台的多套知识系统，必须收敛为以下一条链：
+KAG 同时存在 `kag/` 业务编排、`knext/` SDK、OpenSPG 服务端、图检索/文本检索/向量检索、Reasoner、MCP 和 checkpoint。后续不能把这些横向复制成平台的多套知识系统，必须收敛为以下一条链：
 
 ```text
 项目适配/HTTP/MCP/CLI/SDK
@@ -559,21 +559,21 @@ KAG 同时存在 `kag/` 业务编排、`knext/` SDK、OpenSPG 服务端、图检
 
 任何波次开工前必须有需求登记、能力搜索、复用裁决、占用租约、消费者验收契约和装配计划；本文件不授权直接修改平台生产底座。
 
-## 22. 第三轮验证边界、MCP 状态与结论
+## 22. 后续验证边界、MCP 状态与结论
 
-| 证据项 | 本轮事实 | 结论 |
+| 证据项 | 当前核对事实 | 结论 |
 |---|---|---|
 | 目标项目 | `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/55_knowledge_graph_rag/KAG` | 路径已核对 |
 | MCP 实例 | 首次 `project_context` 返回 `project_toolkit`，但错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`；未将其内容作为 KAG 证据 | 错绑事实保留，不能宣称正确项目上下文 |
-| 代码图 | `codegraph_explore` 返回 KAG 未建立 `.codegraph/`，退出码 0 但不可查询 | 代码图不可用；本轮使用目标仓库直接只读源码 |
-| 修改范围 | 仅追加本文件第三轮章节 | 未改 KAG 源码、配置、依赖、测试、README、Git；未删除旧细探 |
+| 代码图 | `codegraph_explore` 返回 KAG 未建立 `.codegraph/`，退出码 0 但不可查询 | 代码图不可用；当前核对使用目标仓库直接只读源码 |
+| 修改范围 | 仅追加本文件后续章节 | 未改 KAG 源码、配置、依赖、测试、README、Git；未删除旧细探 |
 | 运行验证 | 未安装依赖、未启动外部服务、未运行测试或端到端链路 | L1-L4 全部未验证/待核，不写成通过 |
 
-本轮第三轮完成定义是：KAG 的图存储/检索、Schema、逻辑形式、规划、检索、推理和工具执行已经明确拆到 L1/L2/L3，数据/模型/缓存/任务资源有 owner，失败/超时/取消/崩溃有矩阵，L0-L4 有验收边界，并明确不复制第二知识链路；这不等同于系统工程平台已经实施或 KAG 外部服务已可运行。
+当前核对后续完成定义是：KAG 的图存储/检索、Schema、逻辑形式、规划、检索、推理和工具执行已经明确拆到 L1/L2/L3，数据/模型/缓存/任务资源有 owner，失败/超时/取消/崩溃有矩阵，L0-L4 有验收边界，并明确不复制第二知识链路；这不等同于系统工程平台已经实施或 KAG 外部服务已可运行。
 
-后续只维护本 `ARCHITECTURE.md` 的第三轮映射和证据边界；任何平台实现必须重新读取目标源码、锁定当前版本、登记能力并执行真实 provider/故障/恢复验收。
+后续只维护本 `ARCHITECTURE.md` 的后续映射和证据边界；任何平台实现必须重新读取目标源码、锁定当前版本、登记能力并执行真实 provider/故障/恢复验收。
 
-## 23. 第二轮源码深挖：从组件实现到真实运行语义
+## 23. 后续源码深挖：从组件实现到真实运行语义
 
 本节补充对知识构建、规则/图谱、检索、推理、模型、存储、任务队列、资源释放和验证边界的源码级核对。这里的“通过”只表示源码路径和控制流已经读到；没有启动 OpenSPG、图存储、Reasoner、模型或外部工具服务，因此不把静态可读性写成运行成功。
 
@@ -653,7 +653,7 @@ HTTP `/process` 的 `submit` 返回 `success=True,status=init` 只代表入队�
 
 特别是 `run_py_code` 使用 `subprocess.run([sys.executable, temp_file_path], timeout=5)`，没有显式新建进程组、资源限制、网络/文件系统隔离或 SIGTERM→SIGKILL 回收；`MCPClient` 依赖外部 `.py`/`.js` 服务和 `AsyncExitStack`，而 `McpExecutor.download_data` 可下载 HTTP(S) 内容到 checkpoint 目录。两者都只能作为受管隔离 provider 候选，不能以“有 timeout/finally”判定安全。
 
-### 23.9 验证真假矩阵（第二轮源码核对）
+### 23.9 验证真假矩阵（后续源码核对）
 
 | 可观察证据 | 能证明 | 不能证明 |
 |---|---|---|
@@ -665,9 +665,9 @@ HTTP `/process` 的 `submit` 返回 `success=True,status=init` 只代表入队�
 | `future.result()`/`asyncio.gather` 正常返回 | 当前进程收到返回值 | 子进程树、连接、线程、临时文件和远端任务均已释放 |
 | pytest/pytest.ini 收集到测试 | 测试收集与选定断言执行 | 零测试、skip、mock provider 被误报为端到端通过 |
 
-第二轮的最小真实验收应至少覆盖：固定 fixture 的构建和图回读；schema 版本冲突；UPSERT 重复提交；图精确/模糊/PPR/向量检索的空、部分失败和短路；Reasoner DSL 成功/超时/取消；LLM 限流、重试和 token 计量；Math/MCP 强杀后零残留；队列满、TTL、重复提交、进程强杀后新进程读回任务状态。当前均未在本地执行，故统一标记为 `UNVERIFIED`，不能用日志、warning、HTTP 200 或“最终答案非空”替代。
+后续的最小真实验收应至少覆盖：固定 fixture 的构建和图回读；schema 版本冲突；UPSERT 重复提交；图精确/模糊/PPR/向量检索的空、部分失败和短路；Reasoner DSL 成功/超时/取消；LLM 限流、重试和 token 计量；Math/MCP 强杀后零残留；队列满、TTL、重复提交、进程强杀后新进程读回任务状态。当前均未在本地执行，故统一标记为 `UNVERIFIED`，不能用日志、warning、HTTP 200 或“最终答案非空”替代。
 
-### 23.10 第二轮结论
+### 23.10 后续结论
 
 KAG 的真实核心不是单一“知识图谱问答函数”，而是三类并发控制叠加的长链：Builder DAG 的批内并发、Retriever/KAGFlow 的优先级并发、Solver/HTTP 的任务并发；它们各自有局部线程池、缓存和重试，却没有统一的运行账本、全局截止时间和跨 provider 资源预算。知识事实由 schema 约束、LLM 抽取、相似链接、UPSERT 图写入共同形成；规则又分结构约束、模型提示词和外部符号 Reasoner 三种语义。检索结果、推理 alias、模型输出和任务状态必须分开验真。
 

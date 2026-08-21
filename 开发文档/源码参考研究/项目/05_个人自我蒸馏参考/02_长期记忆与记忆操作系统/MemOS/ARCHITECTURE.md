@@ -1,8 +1,8 @@
 # MemOS 架构文档
 
-> 本文是仓库根目录唯一正式架构文档。内容依据当前工作树 `7f80d13` 的实际源码、配置、测试与项目说明整理；`细探-MemOS.md` 仅作为施工材料，不是本文件的事实源。
+> 本文是平台侧为该开源项目保留的唯一架构文档。源码参考仓库当前 HEAD 为 `be68e2fb5370866bd5e2b188bb3d22bd13b49e09`（`Dev v2.0.31 (#2265)`）；内容依据该提交及当前工作树的源码、配置、测试与项目说明整理。`细探-MemOS.md` 仅作为研究材料，不是本文件的事实源。
 >
-> 本轮只新增本文件；未修改源码、依赖、测试、配置，未安装依赖、启动服务、生成构建产物或提交 Git。
+> 本轮复审只修改平台侧本文件；未修改源码参考仓库、依赖、测试或配置，未安装依赖、启动服务、生成构建产物或提交源码仓库。复审全程未使用 MCP。
 
 ## 1. 项目定位
 
@@ -15,7 +15,7 @@
 
 仓库还保留 `packages/adapter-base/`、`packages/memos-schema/`、`packages/memos-core/` 等早期/兼容性包，以及多个 `apps/` 独立应用。它们不是 Python MOS 的内部层，也不能在没有进一步运行验证的情况下视为当前本地插件的唯一入口。
 
-许可证与发布元数据：Apache-2.0、Python 发行版本 `2.0.30`（`pyproject.toml`）；本地插件 `package.json` 当前版本为 `2.0.16-beta.1` 且许可证字段为 MIT。两条实现线的许可证字段存在差异，复用代码时应分别遵守。
+许可证与发布元数据：Apache-2.0、Python 发行版本 `2.0.31`（`pyproject.toml`）；本地插件 `package.json` 当前版本为 `2.0.16-beta.1` 且许可证字段为 MIT。两条实现线的许可证字段存在差异，复用代码时应分别遵守。
 
 ## 2. 总体文本流程图
 
@@ -124,7 +124,7 @@ MemOS/
 
 | 层 | 真实路径 | 职责 |
 |---|---|---|
-| 公共出口 | `src/memos/__init__.py` | 导出 `MOS`、`GeneralMemCube`、`MOSConfig`、`GeneralMemCubeConfig`、Scheduler 工厂等；版本为 `2.0.30`。 |
+| 公共出口 | `src/memos/__init__.py` | 导出 `MOS`、`GeneralMemCube`、`MOSConfig`、`GeneralMemCubeConfig`、Scheduler 工厂等；发行版本由 `pyproject.toml` 声明为 `2.0.31`。 |
 | 顶层编排 | `src/memos/mem_os/main.py`、`mem_os/core.py` | `MOS` 负责自动配置与 PRO/CoT 入口；`MOSCore` 管理用户、Cube、聊天历史、记忆增删改查、搜索、聊天和 Scheduler。 |
 | 配置契约 | `src/memos/configs/` | Pydantic v2 配置与 `*ConfigFactory`：MOS、MemCube、Memory、LLM、Embedder、Vector DB、Graph DB、Reader、Scheduler 等。 |
 | MemCube 容器 | `src/memos/mem_cube/base.py`、`mem_cube/general.py` | `GeneralMemCube` 按配置装配 text/activation/parametric/preference 四个槽位，负责目录加载、转储、schema 校验和远程仓库初始化。 |
@@ -241,7 +241,7 @@ ASGI 入口是 `memos.api.server_api:app`，应用在启动时加载 `.env`、�
 - `memos download_examples --dest ./examples`：从 GitHub 下载 examples 压缩包并解包。
 - `memos export_openapi --output openapi.json`：导入 FastAPI app 并写出 OpenAPI JSON。
 
-Makefile 还定义 `make serve`（`uvicorn memos.api.server_api:app`）、`make openapi`（调用上述 CLI 写 `docs/openapi.json`）、`make test`、`make format`、`make pre_commit`。本轮没有执行这些会启动服务、写文件或改变工作树的命令。
+Makefile 还定义 `make serve`（`uvicorn memos.api.server_api:app`）、`make openapi`（调用上述 CLI 写 `docs/openapi.json`）、`make test`、`make format`、`make pre_commit`。当前核对没有执行这些会启动服务、写文件或改变工作树的命令。
 
 ### 6.3 Python SDK
 
@@ -288,7 +288,7 @@ Makefile 还定义 `make serve`（`uvicorn memos.api.server_api:app`）、`make 
 
 ### 8.1 已盘点的实际规模
 
-本轮用只读目录遍历核对到：
+当前核对用只读目录遍历核对到：
 
 - `src/` Python 源文件：381 个；
 - 根 `tests/` Python 测试文件：138 个；
@@ -302,14 +302,14 @@ Makefile 还定义 `make serve`（`uvicorn memos.api.server_api:app`）、`make 
 
 `tests/` 按实现目录镜像组织，实际包含：`api/`、`configs/`、`llms/`、`embedders/`、`vec_dbs/`、`graph_dbs/`、`chunkers/`、`parsers/`、`reranker/`、`memories/`、`mem_cube/`、`mem_os/`、`mem_reader/`、`mem_scheduler/`、`mem_user/`、`mem_feedback/`、`mem_chat/`、`mem_agent/`、`dream/`、`plugins/` 等。
 
-本轮实际阅读的代表性测试：
+当前核对实际阅读的代表性测试：
 
 - `tests/mem_os/test_memos_core.py`：mock LLM/Reader/UserManager/Cube，覆盖初始化、用户、注册 Cube、search/add/get_all/chat、系统 prompt、共享 Cube 和错误边界。
 - `tests/api/test_client.py`：mock requests，覆盖 SDK payload、用户/agent 互斥、知识库、分页、任务状态兼容、SSE chat 和文件句柄关闭。
 - `tests/test_cli.py`：覆盖 OpenAPI 导出、examples 下载及 CLI 子命令分派。
 - 同时枚举了根 `tests/` 的全部测试路径，以确认模块镜像关系。
 
-项目规定的命令（本轮未执行）：`poetry run pytest tests`、单文件 `poetry run pytest tests/<path>/test_xxx.py -q`、`make format`、`make pre_commit`。
+项目规定的命令（当前核对未执行）：`poetry run pytest tests`、单文件 `poetry run pytest tests/<path>/test_xxx.py -q`、`make format`、`make pre_commit`。
 
 ### 8.3 TypeScript 本地插件测试分层
 
@@ -321,24 +321,24 @@ Makefile 还定义 `make serve`（`uvicorn memos.api.server_api:app`）、`make 
 - `e2e/`：`v7-full-chain.e2e.test.ts`；
 - `helpers/`：临时 home、fake LLM、fake embedder、临时 DB。
 
-`apps/memos-local-plugin/package.json` 声明 `npm test`、`test:unit`、`test:integration`、`test:e2e` 与 `lint`（`tsc --noEmit`）。本轮未安装 npm 依赖、未运行这些命令。
+`apps/memos-local-plugin/package.json` 声明 `npm test`、`test:unit`、`test:integration`、`test:e2e` 与 `lint`（`tsc --noEmit`）。当前核对未安装 npm 依赖、未运行这些命令。
 
 ## 9. 未确认项与风险
 
-以下项目是本轮静态建档边界内的未确认/需要后续单独验证项，不应被本文当成已通过的运行结论：
+以下项目是当前核对静态建档边界内的未确认/需要后续单独验证项，不应被本文当成已通过的运行结论：
 
-1. **FastAPI OpenAPI 产物缺失**：`CLAUDE.md`/`AGENTS.md`把 `docs/openapi.json`称为 API 契约并要求 `make openapi` 生成；当前实际读取路径不存在该文件。本轮禁止生成构建/契约产物，因此没有补生成。
+1. **FastAPI OpenAPI 产物缺失**：`CLAUDE.md`/`AGENTS.md`把 `docs/openapi.json`称为 API 契约并要求 `make openapi` 生成；当前实际读取路径不存在该文件。当前核对禁止生成构建/契约产物，因此没有补生成。
 2. **服务端默认端口表述不一致**：README 自托管示例使用 `8000`，`server_api.py` 的 `__main__` 默认 `8001`，Makefile 的 `uvicorn` 未显式端口。实际部署端口需以启动方式和环境为准。
-3. **Python API 初始化副作用**：`server_router.py` 在模块导入时执行 `handlers.init_server()` 并构造全局 handler/数据库/调度组件；启动环境依赖、外部 DB 可达性和生命周期关闭行为未在本轮运行验证。
+3. **Python API 初始化副作用**：`server_router.py` 在模块导入时执行 `handlers.init_server()` 并构造全局 handler/数据库/调度组件；启动环境依赖、外部 DB 可达性和生命周期关闭行为未在当前核对运行验证。
 4. **Python 存储组合是配置驱动的**：`GeneralTextMemory` 的通用实现实际依赖 embedder + vector DB；Tree/Preference/Activation/Parametric 路线有额外 provider 和可选依赖。仅从 import/配置不能证明每种组合都可启动。
 5. **TS V7 与早期 packages 并存**：`packages/memos-core` 的入口 import 与当前文件清单存在漂移；`packages/` 没有被当作当前运行主链。需要后续确认其发布/构建历史及是否仍有外部消费者。
 6. **根 README 的“本地插件”描述范围大于 Python 主库**：README 同时介绍 Cloud Plugin、Local Plugin、Self-Host；应按本文件的两条主实现线阅读，不能把云 API、Python 服务、V7 SQLite 视作同一后端。
-7. **本地插件文档入口存在层级重复**：`apps/memos-local-plugin/ARCHITECTURE.md` 是该子项目已有细节文档；本根文档只抽取其与源码交叉核实的边界和关键路径，未删除或机械复制。两份文档后续若变更，需同步核对，根文档仍是本仓库架构总览。
-8. **本地插件本轮未运行**：没有执行 Node/TypeScript 编译、Vitest、Python pytest、SQLite migration 或启动 HTTP/bridge，因此无法确认依赖安装状态、构建状态、外部 provider 可用性和运行时端到端行为。
-9. **README/代码的版本信息可能随工作树变化**：本文依据 HEAD `7f80d13` 与当前未提交的既有 `细探-MemOS.md` 之外的源码静态状态；未来切换 commit 后应重新核对入口、路由、迁移和 package 版本。
-10. **安全边界**：V7 的日志有脱敏/loopback/API key/session 机制，但 SQLite 记忆表仍可能保存原始对话与工具输出；Python API 的生产鉴权、外部图/向量库网络边界和实际 secrets 管理未在本轮验证。
+7. **本地插件工作树文档状态**：当前源码工作树把 `apps/memos-local-plugin/ARCHITECTURE.md` 标为删除、根 `ARCHITECTURE.md` 与 `.codegraph/` 标为未跟踪；这些不是 `be68e2fb` 提交内的发布事实。本平台只保留本文件作为研究侧唯一文档，不恢复或修改源码仓库内文档。
+8. **本地插件当前核对未运行**：没有执行 Node/TypeScript 编译、Vitest、Python pytest、SQLite migration 或启动 HTTP/bridge，因此无法确认依赖安装状态、构建状态、外部 provider 可用性和运行时端到端行为。
+9. **README/代码的版本信息可能随工作树变化**：本轮已核对 `HEAD=be68e2fb5370866bd5e2b188bb3d22bd13b49e09` 与 `origin/main` 同 SHA（`Dev v2.0.31 (#2265)`）。未来切换 commit 后仍应重新核对入口、路由、迁移和 package 版本。
+10. **安全边界**：V7 的日志有脱敏/loopback/API key/session 机制，但 SQLite 记忆表仍可能保存原始对话与工具输出；Python API 的生产鉴权、外部图/向量库网络边界和实际 secrets 管理未在当前核对验证。
 
-## 10. 本轮实际读取与修改记录
+## 10. 当前核对实际读取与修改记录
 
 ### 实际读取的权威/导航/依赖文件
 
@@ -361,15 +361,16 @@ Makefile 还定义 `make serve`（`uvicorn memos.api.server_api:app`）、`make 
 ### 未做的事情
 
 - 已吸收此前 `细探-MemOS.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
+- 源码参考仓库当前工作树另有未跟踪根文件 `ARCHITECTURE.md`、未跟踪 `.codegraph/`，并显示 `apps/memos-local-plugin/ARCHITECTURE.md` 已删除；这些均不是 `be68e2fb` 提交内的已发布事实。本平台不把它们复制、恢复或纳入运行入口。
 - 未修改任何已有源码、依赖清单/锁文件、测试、配置或子项目 `ARCHITECTURE.md`；未安装依赖、未启动服务、未生成 OpenAPI/编译产物/数据库、未提交 Git。
 
-## 11. 第三轮：通用底座映射与裁决（基于当前源码）
+## 11. 后续：通用底座映射与裁决（基于当前源码）
 
-### 11.1 证据边界与本轮结论口径
+### 11.1 证据边界与当前核对结论口径
 
-本节是第三轮映射，不把 MemOS 的现有目录直接当成平台已经存在的支持库。证据优先级为：当前源码与测试路径 > 当前配置/迁移 > 文档声明。当前目标仓库内没有可单独读取的 `细探-MemOS.md`；根文档明确说旧细探结论已经吸收，且后续只维护本文件（第 3、338、363-364 行）。因此本节只能以当前工作树实际源码为证据，不能声称完成旧细探逐条复核。
+本节是后续映射，不把 MemOS 的现有目录直接当成平台已经存在的支持库。证据优先级为：当前源码与测试路径 > 当前配置/迁移 > 文档声明。当前目标仓库内没有可单独读取的 `细探-MemOS.md`；根文档明确说旧细探结论已经吸收，且后续只维护本文件（第 3、338、363-364 行）。因此本节只能以当前工作树实际源码为证据，不能声称完成旧细探逐条复核。
 
-本轮还发现专属 MCP 开工上下文错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，目标 MemOS 没有 `.codegraph/`，所以以下映射**不使用错误项目的代码图、记忆或验证结论**，而是以目标仓库的只读源码为证据。没有运行时验证的内容继续标为“待核/未验证”。
+本轮按用户授权未使用 MCP；目标仓库存在独立 `.codegraph/`，已通过源码目录内 `codegraph status` 读取索引统计，但不把代码图摘要替代源码回读。没有运行时验证的内容继续标为“待核/未验证”。
 
 ```text
 Agent/宿主
@@ -485,7 +486,7 @@ L2 的 `pendingByEpisode`/`inflightByEpisode` 和 `drain()` 证据见 `core/memo
 
 网关只调用 `MemoryCore`，不得调用 `runL2`/`repos`/Provider。Python FastAPI 同样只通过 router/handler 调 `MOSCore`，其 lifespan 调 `shutdown_components`（`src/memos/api/server_api.py:33-72`）。
 
-### 11.5 现有能力命中表与第三轮裁决
+### 11.5 现有能力命中表与后续裁决
 
 | 当前能力/证据 | 目标底座落点 | 决策 | 不能带入底座的部分 |
 |---|---|---|---|
@@ -500,21 +501,21 @@ L2 的 `pendingByEpisode`/`inflightByEpisode` 和 `drain()` 证据见 `core/memo
 | Python `MOSCore` + MemCube + GeneralScheduler | Python 产品适配/兼容运行时 | **隔离、待核** | user/Cube 产品权限、默认 prompt、Python 专有四槽模型不可直接升格通用底座 |
 | `packages/*` 早期 TS 包 | 历史兼容材料 | **废弃/隔离** | 没有当前入口、构建或消费者证据前不得接入唯一链路 |
 
-第三轮的装配计划不是立刻改生产底座，而是：先冻结 `MemoryCore`/JSON-RPC/错误/取消/事件 contract；再抽出模型与存储支持库的最小接口；随后把 L1-L3/Skill repository 与演化 runner 放入记忆/状态模块；最后让 HTTP/SSE、stdio bridge、Python REST 适配器只调用统一门面。每一步都必须有 owner、能力 id、资源预算、回滚和 L0-L4 验收；未完成前不得建立旁路。
+后续的装配计划不是立刻改生产底座，而是：先冻结 `MemoryCore`/JSON-RPC/错误/取消/事件 contract；再抽出模型与存储支持库的最小接口；随后把 L1-L3/Skill repository 与演化 runner 放入记忆/状态模块；最后让 HTTP/SSE、stdio bridge、Python REST 适配器只调用统一门面。每一步都必须有 owner、能力 id、资源预算、回滚和 L0-L4 验收；未完成前不得建立旁路。
 
 ### 11.6 资源生命周期矩阵
 
 | 资源 | 创建/持有 | 正常完成 | 业务失败 | 超时/主动取消 | 宿主崩溃/进程崩溃 | 当前证据与缺口 |
 |---|---|---|---|---|---|---|
-| SQLite DB/WAL/statement cache | `openDb` 创建目录/连接，repo 持有；`MemoryCore` shutdown 回调关闭（`connection.ts:25-43,72-145`） | `db.tx` commit，`close()` 清 cache/handle | 事务抛错由 better-sqlite3 rollback；migration 失败 bootstrap close 后抛 `config_invalid` | 当前 DB API 没有查询级 Abort；上层应在调用 deadline 到期后停止新任务，不能假称已取消 SQL | 下次启动重新 open + migrations；WAL/未完成写恢复依赖 SQLite，未做本轮 crash 注入 | 有 close/idempotent 证据；无本轮真实断电/kill 中间事务验证 |
+| SQLite DB/WAL/statement cache | `openDb` 创建目录/连接，repo 持有；`MemoryCore` shutdown 回调关闭（`connection.ts:25-43,72-145`） | `db.tx` commit，`close()` 清 cache/handle | 事务抛错由 better-sqlite3 rollback；migration 失败 bootstrap close 后抛 `config_invalid` | 当前 DB API 没有查询级 Abort；上层应在调用 deadline 到期后停止新任务，不能假称已取消 SQL | 下次启动重新 open + migrations；WAL/未完成写恢复依赖 SQLite，未做当前核对 crash 注入 | 有 close/idempotent 证据；无当前核对真实断电/kill 中间事务验证 |
 | Migration/ready 状态 | `runMigrations` 枚举 SQL，逐文件事务写 `schema_migrations` | 全部完成后 `markReady` | 单文件事务失败，bootstrap 关闭 DB | 无独立 migration deadline | 依赖 SQLite 事务重启重放；半迁移修复未单独测试 | `migrator.ts:90-145`；需 L2/L3 真实临时 DB round-trip |
 | LLM provider/HTTP/native 会话 | `LlmClient` 统一调用 Provider；provider 可 `close()` | 返回 completion，记录 status/log | 重试耗尽、JSON malformed、terminal error；可 host fallback；circuit breaker 可打开 | provider 收 `AbortSignal/deadlineAt`，调用级 timeout 不续期；超时语义仍需 provider 实测 | 进程消失由 bridge/gateway 上层感知；模型侧服务状态不由 core 恢复 | `llm/types.ts:214-251`、`client.ts:300-415`；未实测每 provider 的取消真实性 |
-| Embedder/cache/vector | embedder facade 管 cache/stats，资源仲裁器管理 admission；L2/L3/Skill 缺向量入 retry queue | 返回向量，释放 semaphore | 失败记录 `system_error`，记 `embedding_retry_queue`，检索可退化 FTS/pattern | `foreground-resources` 合并 shutdown/request signal，释放函数幂等 | retry queue/lease 需重启恢复；embedding 过程崩溃无本轮证据 | `foreground-resources.ts:104-145,204-273`、`embedding/types.ts:104-123`；retry lease 需补测 |
+| Embedder/cache/vector | embedder facade 管 cache/stats，资源仲裁器管理 admission；L2/L3/Skill 缺向量入 retry queue | 返回向量，释放 semaphore | 失败记录 `system_error`，记 `embedding_retry_queue`，检索可退化 FTS/pattern | `foreground-resources` 合并 shutdown/request signal，释放函数幂等 | retry queue/lease 需重启恢复；embedding 过程崩溃无当前核对证据 | `foreground-resources.ts:104-145,204-273`、`embedding/types.ts:104-123`；retry lease 需补测 |
 | L2/L3/Skill background task | subscriber 创建 Promise/inflight；按 episode 或 single-flight 持有 | `drain/flush` 等待并释放 map；写 row/event | 捕获后发 `l2.failed/l3.failed/skill.failed`，不向上游抛（L2/L3 subscriber） | 当前 shutdown 先 flush 15s，再 abort，最多再等 4s；超限标 `flush_abandoned` | Node 进程死时只剩已提交 SQLite rows，未完成 Promise 丢失；startup recovery 可补部分 episode | `orchestrator.ts:1610-1681`、各 subscriber；需 kill 在每个阶段的恢复探针 |
 | AbortSignal/foreground lease | `createForegroundResources` 创建 controller；每次 acquire 返回 release | `finally` release；release 幂等 | provider 异常也走 finally | abort 移除 waiter 并 reject `AbortError`；shutdown abort 全部派生 signal | 进程死由 OS 回收内存，外部 provider/子进程不一定回收 | 代码覆盖正常/取消；需验证队列 waiter 不残留、取消计数和 provider 真停 |
 | Event bus/ring buffer/listener | `createPipeline` 创建 buses/listeners/ring；订阅返回 unsubscribe | emit 给 listeners，ring 留最近 160 个 | listener 异常被记录，不阻断 emit | detach/dispose 阻止后续排队；无事件持久事务保证 | 内存事件丢失，重启只按 rows 合成 synthetic events | `orchestrator.ts:150-177,194-301`；必须把关键领域事件持久证据化 |
 | JSON-RPC bridge 子进程/stdio | Python `Popen` 持有 stdin/stdout/stderr/reader；Node PID 文件防重复 | stdin EOF/close，等待最多 5s | BrokenPipe/EOF 唤醒 pending 为 `transport_closed` | request waiter 超时移除；close 依次 stdin→wait→SIGTERM→SIGKILL | reader EOF `_abort_pending`；PID guard 清理旧 bridge；残留 PID/进程需现场验证 | `bridge_client.py:228-257,393-463,465-524`、`bridge.cts:83-195`；需真实 ps/lsof 残留检查 |
-| HTTP server/socket/SSE | `startHttpServer` bind socket，active SSE set 持有 response | stop accepting，finish in-flight，close idle，按配置销毁 SSE | handler 500 + response end；EADDRINUSE 上抛给 caller | close 时可 destroy active SSE；普通请求允许完成 | supervisor/daemon 重启；端口/PID 残留需要 lsof 验证 | `server/http.ts:55-157`；本轮未启动真实服务 |
+| HTTP server/socket/SSE | `startHttpServer` bind socket，active SSE set 持有 response | stop accepting，finish in-flight，close idle，按配置销毁 SSE | handler 500 + response end；EADDRINUSE 上抛给 caller | close 时可 destroy active SSE；普通请求允许完成 | supervisor/daemon 重启；端口/PID 残留需要 lsof 验证 | `server/http.ts:55-157`；当前核对未启动真实服务 |
 | Temp import/export/bundle buffers | gateway body reader/repository bundle 负责；import body 上限 64MB | 返回 imported/skipped，临时数据释放 | validation/row error 应隔离并返回 skipped/error | deadline/cancel 后必须删除临时文件和停止 parser | 崩溃可能留下临时文件；当前未发现统一残留扫描 | 只看到 body limit/route，需专门资源审计 |
 
 ### 11.7 失败、超时、取消、崩溃矩阵
@@ -527,7 +528,7 @@ L2 的 `pendingByEpisode`/`inflightByEpisode` 和 `drain()` 证据见 `core/memo
 | L2 → L3 | policy 不足/无 centroid/cooldown 是明确 skip；抽象失败发 `l3.failed` | L3 每 cluster LLM 可能长耗时，只有 pipeline flush 总预算 | subscriber 当前无独立 abort 参数，shutdown abort 只影响资源 provider | single-flight queued replay；进程死后 cooldown/rows决定是否重跑 | 验证同 cluster 不并发、冷却不会吞掉永久失败、恢复有证据 |
 | L3 → Skill | evidence empty、LLM 拒绝、verifier fail 都有 warning/event，不写 skill | Skill crystallize/verify 未暴露统一 deadline | 无独立 cancel 参数；需由运行核心传 signal | candidate row 可重建，active 只能由 trial/feedback/lifecycle tick | 验证 verifier fail 不产生 active skill，重启不绕过 trial |
 | model fallback/circuit | primary failure → host fallback；两者失败抛统一错误；terminal error 打开 breaker（`client.ts:348-415`） | per-call timeout + absolute deadline，host fallback 额外 `timeout+5s`（`bridge.cts:247-277`） | provider ctx 收 signal，但各 provider 是否真中断待核 | circuit state 是内存态；重启会丢 breaker，需要产品决定是否持久 | L3：模拟 401/429/timeout/host down，检查 error/status/api_logs 与请求次数 |
-| Python add/search/scheduler | Cube/user/reader/provider 缺失抛 ValueError/依赖错误；async add 需要 scheduler（`MOSCore:70-139,684-839`） | Python client 默认请求最多 30s；scheduler/backend timeout 需从实现补证 | Python `Future.result`/Redis 消费取消语义未在本轮确认 | FastAPI lifespan 关闭 components；Redis message 可能重复/未 ack 需专项验证 | 不把 Python 产品成功路径当通用底座通过 |
+| Python add/search/scheduler | Cube/user/reader/provider 缺失抛 ValueError/依赖错误；async add 需要 scheduler（`MOSCore:70-139,684-839`） | Python client 默认请求最多 30s；scheduler/backend timeout 需从实现补证 | Python `Future.result`/Redis 消费取消语义未在当前核对确认 | FastAPI lifespan 关闭 components；Redis message 可能重复/未 ack 需专项验证 | 不把 Python 产品成功路径当通用底座通过 |
 | bridge RPC/gateway | method not found/invalid params/application error 有 JSON-RPC code；HTTP 404/405/500 | Python waiter 默认 30s；Node serverRequest timeout；shutdown 20s | close/EOF 唤醒 pending；SSE 可 destroy | child exit → transport_closed；PID singleton 重启；残留进程/端口必须读回 | L4：真实启动、超时、SIGTERM/SIGKILL、重连和 `ps/lsof` |
 
 ### 11.8 唯一链路与防旁路规则
@@ -568,9 +569,9 @@ REST/SDK
 5. 失败、拒绝、超时、取消也必须留下稳定错误/事件/日志；不能以“返回空数组”掩盖是否 provider 失败、无命中或被过滤。
 6. `packages/*`、Python 与 V7 只有在 adapter contract + namespace + 数据迁移 + L0-L4 全通过后才能共享能力；在此之前是隔离产品策略，不是第二条隐藏旁路。
 
-### 11.9 L0-L4 验证分级（本轮未宣称通过）
+### 11.9 L0-L4 验证分级（当前核对未宣称通过）
 
-这里的 L0-L4 是平台验收等级，不是仓库现有记忆层级。每一级都必须记录命令、退出码、测试数、外部依赖和资源残留；本轮只做源码读取和文档修改，以下状态均为“待执行”。
+这里的 L0-L4 是平台验收等级，不是仓库现有记忆层级。每一级都必须记录命令、退出码、测试数、外部依赖和资源残留；当前核对只做源码读取和文档修改，以下状态均为“待执行”。
 
 | 等级 | 目的 | 最小验证 | MemOS 对应验收 | 通过判据 |
 |---|---|---|---|---|
@@ -580,16 +581,78 @@ REST/SDK
 | L3 跨层集成 | 证明 Core→pipeline→model/storage→事件链 | 使用 fake LLM/embedder + 临时 SQLite，调用 `bootstrapMemoryCoreFull`、turn start/end、feedback、flush、shutdown；验证 L2/L3/Skill 事件和 API logs | 只经 MemoryCore；模型失败/fallback/timeout/取消有稳定结果；flush 顺序无丢失 | 真实调用链执行，断言 rows/events/error/释放，退出 0 |
 | L4 宿主/网关/故障 | 证明真实 Node/Python bridge、HTTP/SSE、进程和资源治理 | 安装依赖后运行 TypeScript unit/integration/e2e、Python bridge tests；启动临时 HTTP/stdio；`curl`/JSON-RPC；SIGTERM/SIGKILL/port collision/timeout/cancel；`ps`、`lsof`、临时目录扫描 | 断线立即 transport_closed；重连不重复 bridge；SSE/child/stdio/PID/port 全清；FastAPI 关闭组件 | 所有专项退出 0，残留进程/端口/文件为 0；若外部 provider 不可用必须明确 `unavailable` 而非 skip/pass |
 
-**当前验证事实**：本轮没有安装依赖、没有运行 Python pytest、Vitest、TypeScript 编译、SQLite migration、HTTP、bridge 或故障注入；因此 L0-L4 均不能写成“通过”。后续执行 L0-L4 时应分别保存 stdout/stderr、退出码、测试计数和资源清理结果，避免把“源码存在”“测试存在”“测试打印 OK”“子代理自报完成”混为真实通过。
+**当前验证事实**：当前核对没有安装依赖、没有运行 Python pytest、Vitest、TypeScript 编译、SQLite migration、HTTP、bridge 或故障注入；因此 L0-L4 均不能写成“通过”。后续执行 L0-L4 时应分别保存 stdout/stderr、退出码、测试计数和资源清理结果，避免把“源码存在”“测试存在”“测试打印 OK”“子代理自报完成”混为真实通过。
 
-### 11.10 第三轮剩余风险与后续复核点
+### 11.10 后续剩余风险与后续复核点
 
-1. MCP 代码图对目标仓库不可用，且开工上下文返回了错误项目根；本节没有使用该错误证据。应由项目 owner 重新绑定专属 `system_engineering_toolkit` 后再做一次代码图/成功验证复核。
+1. 本轮按用户授权未使用 MCP；目标仓库的独立 `.codegraph/` 已由 shell `codegraph status` 读取。不能把本轮静态代码图状态冒充 MCP 开工/验证记录；若未来需要平台 MCP 证据，必须另行获得明确授权并重新绑定项目根。
 2. 当前 V7 的 event bus/ring buffer 是内存态，SQLite rows 是状态投影；尚不能证明所有关键事件都追加持久化、可重放、幂等。应补事件账本或明确哪些事件只是观测事件。
 3. L2/L3/Skill subscriber 的 drain/flush 解决了单次进程退出的主要竞态，但 L2/L3/Skill 没有统一的任务 idempotency key、持久 lease 和跨进程取消契约；崩溃窗口仍需 L2/L3/L4 验证。
 4. `LlmClient`/`Embedder` 声明了 signal/deadline/close，但 provider 是否真实停止 HTTP/native 调用、超时是否中断底层 socket，不能只凭接口声明认定已实现。
 5. Python Scheduler 的 Redis/local queue、handler ack/retry/停止恢复与 V7 subscriber 不是同一任务系统；在没有真实重启和重复消息测试前，Python 只能作为隔离产品适配。
-6. HTTP/SSE 和 bridge 的关闭代码有明确上限，但本轮未实际启动进程；端口、PID 文件、子进程组、SSE response、WAL/临时文件的残留仍是 L4 阻断项。
-7. 记忆层 L0-L4 的平台术语是本轮映射建议，源码事实仍以 L1 trace/L2 policy/L3 world/skill 和 Python MemCube 为准；跨项目裁决前不能把建议名称写回生产契约。
+6. HTTP/SSE 和 bridge 的关闭代码有明确上限，但当前核对未实际启动进程；端口、PID 文件、子进程组、SSE response、WAL/临时文件的残留仍是 L4 阻断项。
+7. 记忆层 L0-L4 的平台术语是当前核对映射建议，源码事实仍以 L1 trace/L2 policy/L3 world/skill 和 Python MemCube 为准；跨项目裁决前不能把建议名称写回生产契约。
 
-本节完成的是“第三轮通用底座输入”：命中表、分层落点、通用/策略边界、资源矩阵、失败矩阵、唯一链路和验证契约。它不等价于已经升级任何外部平台支持库，也不授权修改 MemOS 源码、依赖、配置或测试。
+本节完成的是“后续通用底座输入”：命中表、分层落点、通用/策略边界、资源矩阵、失败矩阵、唯一链路和验证契约。它不等价于已经升级任何外部平台支持库，也不授权修改 MemOS 源码、依赖、配置或测试。
+
+## 12. 2026-08-22 MemOS 复审收口（源码/代码地图证据）
+
+### 12.1 版本、工作树与代码地图
+
+本轮在源码参考目录执行了 `git fetch origin main`、`git rev-parse HEAD`、`git ls-remote origin refs/heads/main`。结果如下：
+
+| 项目 | 当前证据 |
+|---|---|
+| 本地提交 | `be68e2fb5370866bd5e2b188bb3d22bd13b49e09` |
+| 提交说明 | `Dev v2.0.31 (#2265)`，2026-08-20 22:14:58 +0800 |
+| `origin/main` | 同一 SHA；没有版本漂移，不执行 pull 覆盖工作树 |
+| 源码仓库状态 | `apps/memos-local-plugin/ARCHITECTURE.md` 删除；根 `ARCHITECTURE.md` 与 `.codegraph/` 未跟踪；均保留，未改源码仓库 |
+| CodeGraph | `codegraph status`：1,546 files、23,245 nodes、78,952 edges、100.08 MB，index up to date |
+| 文件盘点 | `git ls-files` 1,994；`src/`+`tests/` Python 519；本地插件/兼容包 TypeScript 系 553 |
+| 测试文件盘点 | Python `tests/**/test_*.py` 115；本地插件 `*.test.ts`/`*.spec.ts` 175；这是文件数，不是通过数 |
+
+CodeGraph 只用于先定位符号；关键行为均回读当前工作树源码。没有调用 MCP、没有使用其他项目的代码图/记忆/验证证据。
+
+### 12.2 Python MOS 调用链逐步证据
+
+1. `MOSCore.__init__`（`src/memos/mem_os/core.py:38-55`）保存 `MOSConfig`、构造 `LLMFactory.from_config` 的聊天模型和 `MemReaderFactory.from_config` 的读取器；有 `user_manager` 时使用线程安全 Cube 容器，未配置时使用普通字典。
+2. `MOSCore.chat`（`src/memos/mem_os/core.py:251-275`）先解析目标用户并调用 `user_manager.get_user_cubes`，再按可访问 Cube 收集记忆；后续函数体负责 prompt、LLM 生成、历史写回。权限过滤发生在聊天检索前，不应由 API handler 自行复制。
+3. `MOSCore.search`（`src/memos/mem_os/core.py:546-570`）公开 `top_k`、`mode`、`internet_search`、`session_id` 等参数，返回 `MOSSearchResult`；实现段（`src/memos/mem_os/core.py:611-681`）分别调 textual/preference 检索后合并结果。
+4. `MOSCore.add`（`src/memos/mem_os/core.py:684-710`）接受 `messages`、`memory_content` 或 `doc_path` 三种输入，并携带 Cube、用户、会话、任务标识；输入断言在进入 reader/provider 前执行。
+5. `GeneralMemCube`（`src/memos/mem_cube/general.py:13-240`）按配置装配 text、preference、activation、parametric 槽位；槽位对象负责真实 add/search/load/dump，Cube 不应被视为统一事务数据库。
+6. Vector/graph provider 仅在抽象边界内提供能力：`src/memos/vec_dbs/base.py:26-108` 定义向量 collection/search/add/update/delete，`src/memos/graph_dbs/base.py:35-170` 定义节点、边、embedding 检索和删除。跨 provider 双写的一致性仍是未验证风险。
+7. 调度消息由 `src/memos/mem_scheduler/schemas/message_schemas.py:38-174` 描述，`general_scheduler.py:16-48` 装配 handler registry；local queue 与 Redis Stream 是两种不同可靠性边界，不能在平台层合并成“必然持久队列”。
+8. FastAPI 入口为 `src/memos/api/server_api.py:19-84`，生命周期和路由装配在启动时执行；`server_router.py` 注册 handler，API 响应模型在 `product_models.py`。本轮未 import 启动应用，因此数据库/外部 provider 可达性仍未验证。
+
+### 12.3 TypeScript 本地插件调用链逐步证据
+
+1. 稳定公共入口由 `apps/memos-local-plugin/core/pipeline/index.ts:9-27` re-export：`createPipeline`、`createMemoryCore`、`bootstrapMemoryCore`、`bootstrapMemoryCoreFull` 及类型。adapter/server 应从该入口调用，避免深入 repo 实现。
+2. `bridge.cts:199-311` 动态导入并调用 `bootstrapMemoryCoreFull`；OpenClaw adapter 在 `adapters/openclaw/index.ts:49,154` 走同一 bootstrap。Hermes 通过 Python bridge，不应直接操作 SQLite。
+3. RPC 名称的唯一注册表是 `agent-contract/jsonrpc.ts:62-124` 的 `RPC_METHODS`；`bridge/methods.ts:117-366` 将 core/session/episode/turn/feedback/memory/retrieval/skill/config/hub/log/event 方法映射到统一门面。
+4. SQLite 由 `core/storage/connection.ts:25-56` 打开，默认 WAL、foreign_keys、busy_timeout 与同步级别；`connection.ts:81-100` 的 `close` 幂等清 statement cache，`tx` 使用 better-sqlite3 transaction 提交或回滚。
+5. 迁移不在 `openDb` 内执行；该文件第 11-12 行明确由 `migrator.ts` 负责。bootstrap 必须是 open → runMigrations → repos/pipeline，不能把“数据库已打开”当作“schema ready”。
+6. HTTP 是 Node 标准库实现，入口 `server/http.ts:1-12,55-157`；loopback/API-key/static-root 等安全约束写在同文件注释与实现中。当前未启动 HTTP、SSE 或 bridge，端口与子进程残留因此仍属 L4 待核。
+7. `apps/memos-local-plugin/core/session/`、`core/episode/`、`core/capture/`、`core/reward/`、`core/memory/l2/`、`core/memory/l3/`、`core/skill/` 是演化链的状态 owner；检索只读这些投影，不能绕过 `MemoryCore` 直接写表。
+
+### 12.4 当前复审结论与未验证项
+
+- 已确认：远程与本地版本一致；代码地图存在且为当前索引；平台唯一文档为本文件；Python 与 TypeScript 两条实现线边界清晰；关键入口、存储、队列、RPC 和资源关闭路径均有源码位置。
+- 未确认：Python pytest、Vitest、TypeScript `tsc --noEmit`、SQLite migration round-trip、真实 FastAPI/HTTP/SSE/stdio bridge、Redis/RabbitMQ 重启、外部 LLM/embedding/vector/graph provider、SIGTERM/SIGKILL 后的子进程/WAL/临时文件清理。
+- 版本风险：当前 `origin/main` 与本地一致，但源码工作树存在未跟踪代码地图和根文档，下一轮更新前必须再次执行 `git status` 与 CodeGraph status，不能把未跟踪文档当发布版本。
+- 证据边界：本轮没有 MCP 开工 id、MCP feedback 或 `verify_and_record`；这是按用户明确的“禁止 MCP”授权执行，不能伪造平台 MCP 验证记录。验证结论仅限 shell/git/CodeGraph 静态证据。
+
+### 12.5 本轮可复现命令
+
+```bash
+git fetch origin main
+git rev-parse HEAD
+git ls-remote origin refs/heads/main
+codegraph status
+git ls-files | wc -l
+find src tests -type f -name '*.py' | wc -l
+find tests -type f -name 'test_*.py' | wc -l
+find apps/memos-local-plugin packages -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.cts' \) | wc -l
+git diff --check -- '开发文档/源码参考研究/项目/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/MemOS/ARCHITECTURE.md'
+```
+
+上述命令中的 fetch、版本核对、CodeGraph status 和 diff-check 已执行；测试、服务、迁移与故障注入命令未执行，不能标记为通过。

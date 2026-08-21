@@ -1,6 +1,6 @@
 # nanobot 架构档案
 
-> 本文件是仓库根目录的正式架构文档。内容按当前工作树的 README、仓库规则、依赖清单、源码、测试与现有 `细探-nanobot.md` 交叉核对；`细探-nanobot.md` 仅作为施工材料，不是本文件的事实源。
+> 本文件是仓库根目录的正式架构文档。内容按当前工作树的 README、仓库规则、依赖清单、源码、测试与现有 `细探-nanobot.md` 交叉核对；`细探-nanobot.md` 仅作为研究材料，不是本文件的事实源。
 >
 > 项目根目录：`nanobot/`
 > 版本声明：`pyproject.toml` 中为 `0.3.0`
@@ -119,7 +119,7 @@ Cron/本地 trigger → InboundMessage 或 bound session turn → 同一 AgentLo
 2. 渠道调用 `MessageBus.publish_inbound()`；CLI/SDK/API 也可直接调用 `AgentLoop.process_direct()`。
 3. `AgentLoop.run()` 消费 bus；按 unified-session 或显式 override 计算 effective session key，优先处理 runtime control/斜杠命令，再按 session 建立异步锁。
 4. 恢复 `Session`，必要时提前持久化用户消息；`ContextBuilder` 读取项目 `AGENTS.md`、Agent 的 `SOUL.md`/`USER.md`、`memory/MEMORY.md`、近期 `history.jsonl`、归档摘要、Skills、媒体和 runtime context，生成 system + history + current message。
-5. `ModelRuntimeResolver`/Provider snapshot 确定本轮不可变的 provider、model、context window 和 generation settings。
+5. `ModelRuntimeResolver`/Provider snapshot 确定当前核对不可变的 provider、model、context window 和 generation settings。
 6. `AgentRunner` 把 `AgentRunSpec.initial_messages` 发给 Provider。Provider 返回文本、reasoning、tool calls 或错误；streaming delta 通过回调传给 `TurnDelivery`。
 7. 对 tool call，Runner 调 `ToolRegistry.execute()`；工具结果追加到会话消息，继续下一轮。可配置并发安全的只读工具，但 exclusive/有副作用工具不能随意并行。
 8. 最终结果经 `TurnDelivery` 变成 `OutboundMessage`，写入 outbound bus，由 `ChannelManager` 投递到原渠道；WebUI/TUI 还可消费结构化 runtime/UI 事件。
@@ -344,7 +344,7 @@ nanobot/
 └── ARCHITECTURE.md           本正式架构档案
 ```
 
-当前工作树还存在 `细探-nanobot.md`，它是分析施工材料，不属于正式架构入口。
+当前工作树还存在 `细探-nanobot.md`，它是分析研究材料，不属于正式架构入口。
 
 ### 8.2 默认运行数据
 
@@ -379,7 +379,7 @@ nanobot/
 - Prompt、tool descriptions、Skills、session replay 和 memory 都会重新进入 LLM 上下文；模板泄漏、tool-call echo、时间/本地路径等污染由 `strip_think()`、history sanitization 和上下文上限处理。
 - Dream 只能编辑限定 durable 文件；工具错误时不推进 Dream cursor，避免把不完整运行标为成功。
 
-安全规则的权威施工约束是 `.agent/security.md`；本节仅记录架构边界。
+安全规则的权威约束是 `.agent/security.md`；本节仅记录架构边界。
 
 ## 10. 测试与验证面
 
@@ -417,7 +417,7 @@ nanobot/
 | WebUI | `webui/src/tests/` 的 settings/thread/session/network 等测试 | React UI、API client、事件投影、设置与 WebSocket 状态 |
 | TUI | `tui/src/app.test.ts`、protocol/session/menu 等 `*.test.ts` | native TUI 状态、协议、会话、渲染和输入队列 |
 
-### 10.3 项目规定的验证命令（本轮未执行）
+### 10.3 项目规定的验证命令（当前核对未执行）
 
 ```bash
 pytest tests/test_openai_api.py::test_function -v
@@ -428,11 +428,11 @@ cd webui && bun run build
 cd tui && bun test
 ```
 
-本轮按任务要求没有安装依赖、启动服务、运行构建或测试；以上是仓库规则/manifest 中的验证入口，不是本轮执行结果。
+当前核对按任务要求没有安装依赖、启动服务、运行构建或测试；以上是仓库规则/manifest 中的验证入口，不是当前核对执行结果。
 
 ## 11. 未确认项与风险
 
-以下事项本轮只做静态读取，不能据此宣称已运行或完全验证：
+以下事项当前核对只做静态读取，不能据此宣称已运行或完全验证：
 
 1. **依赖与运行时状态未验证**：没有执行 `uv sync`、pip/Bun 安装、Provider 网络调用、MCP 连接、Gateway 启动或 WebUI 浏览器验收；本机环境是否满足 manifest 版本约束未确认。
 2. **当前分支/提交语义未做远程对照**：本档案依据当前工作树；README 的发布说明和源码可能随上游继续变化，不能把 README 版本信息当作运行时探针结果。
@@ -440,19 +440,19 @@ cd tui && bun test
 4. **渠道的可用性依赖额外包和配置**：manifest 能被发现不等于对应平台 runtime、凭据、网络或可选依赖已安装；`ChannelManager` 会延迟加载并记录 dependency/runtime errors。
 5. **Provider 兼容性是元数据+实现组合**：registry 中的模型/关键词/Thinking/Responses 声明不是每个上游 API 的在线保证；具体模型参数和错误/重试行为需 provider mock 或真实安全配置验证。
 6. **持久化并发范围**：Session 和 Memory 有 file lock/async lock/fsync，但本档案未进行跨进程故障注入、断电恢复、共享 workspace 争用或损坏文件演练。
-7. **WebUI 构建产物状态未确认**：`pyproject.toml` 声明 `nanobot/web/dist/` 为打包 artifact，但本轮未运行 Bun build，也未把构建产物写入工作树。
+7. **WebUI 构建产物状态未确认**：`pyproject.toml` 声明 `nanobot/web/dist/` 为打包 artifact，但当前核对未运行 Bun build，也未把构建产物写入工作树。
 8. **TUI 与 Python Gateway 协议细节未完全展开**：已确认 `tui/` 是独立 Bun/OpenTUI 客户端并有 protocol tests；跨进程/跨版本协商仍应以 `tui/src/protocol.ts`、host 和 WebSocket tests 做专项契约审计。
 9. **Dream 的长期记忆语义仍有模型参与**：代码提供真实文件嵌入、限定工具、GitStore 和错误安全阀，但 durable 内容本身仍来自模型编辑；生产借鉴时必须保留审计、diff-grounded commit 和 restore 能力。
-10. **文档与源码漂移风险**：根 `docs/architecture.md`、README、AGENTS 和本文件都描述架构；本文件是本轮正式档案，但新增入口、渠道、Provider、WebUI route 时需要同步更新。
+10. **文档与源码漂移风险**：根 `docs/architecture.md`、README、AGENTS 和本文件都描述架构；本文件是当前核对正式档案，但新增入口、渠道、Provider、WebUI route 时需要同步更新。
 
-## 12. 本轮范围说明
+## 12. 当前核对范围说明
 
 - 新增本文件：`ARCHITECTURE.md`。
 - 已吸收此前 `细探-nanobot.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 - 未修改任何已有源码、依赖清单、测试、配置、README 或其他源码文档。
 - 未安装依赖、未启动服务、未生成构建产物、未提交 Git。
 
-## 13. 第三轮：通用底座映射裁决
+## 13. 后续：通用底座映射裁决
 
 本节不是把 nanobot 的 Agent 策略直接搬进平台，而是把当前源码中可复用的契约、资源边界和运行时机制映射到四个职责面。`codegraph_explore` 已按目标根目录尝试，但该仓库没有 `.codegraph/` 索引；以下证据因此全部来自本地当前工作树源码、测试/规则文件和本档案，不能把代码图缺失冒充为图谱证据。
 
@@ -470,7 +470,7 @@ L3 统一网关：Gateway 组合根、HTTP/WS、渠道管理、Cron、配置 wat
 L4 产品策略：prompt、Skill、Dream、Goal、fallback、工具并发策略、模型选择和用户体验
 ```
 
-| nanobot 事实 | 通用支持库 | 模块库 | 运行核心 | 统一网关 | 第三轮裁决 |
+| nanobot 事实 | 通用支持库 | 模块库 | 运行核心 | 统一网关 | 后续裁决 |
 |---|---|---|---|---|---|
 | `AgentLoop` 的 bus 消费、session lock、turn scope、checkpoint、取消和关闭 | `InboundMessage`/`OutboundMessage`、任务句柄、取消/结果契约、资源注册接口 | Context/Session/Memory/Command 等领域模块 | **主落点**：跨会话并发、单会话串行、turn 编排和 teardown | 只负责启动、注入依赖和存活监督 | 吸收“监督与生命周期”，不吸收 prompt/Agent 人设；路径 `nanobot/agent/loop.py` |
 | `AgentRunner` 的 Provider→工具→Provider 多轮执行 | `ToolCallRequest`、`LLMResponse`、结构化错误、超时包装 | Provider continuation、Context governance、ToolRegistry | **主落点**：迭代预算、checkpoint、流式事件、取消传播 | 只提供运行配置、日志和 shutdown deadline | 吸收执行骨架；重试、空回复、length recovery 等作为可插拔策略；路径 `agent/runner.py` |
@@ -582,7 +582,7 @@ ADMITTED
 | SSRF/工作区越界 | SSRF 不可绕过但转为非致命 tool error；工作区重复违规会升级提示 | 安全边界必须在能力调用前检查，错误不可伪造成成功 | 越界次数、提示文本、是否继续是产品策略 |
 | 用户 `/stop`/任务取消 | cancel session active tasks、subagents、exec sessions；保存 checkpoint/部分历史；重投 pending | cancellation token、owner-index、checkpoint、cancel→await→release | `Future`/子进程/第三方 SDK 是否真正终止需能力实现证明；Python 线程不能被强杀 |
 | Channel 启动/发送失败 | start 记录 channel error/status；send 默认 1+配置次数、1/2/4s 退避；非 retryable error 直接返回 | delivery result、退避、失败状态、幂等/去重 | 各平台错误是否可重试由 channel override；不能强行统一 |
-| Session/Cron 文件损坏 | Session 尝试逐行 repair；Cron 备份 corrupt 文件并拒绝空写；两者均有原子写 | 原子提交、旧快照保留、损坏不覆盖、repair evidence | 断电/跨进程强杀、重复副作用尚未本轮真实注入 |
+| Session/Cron 文件损坏 | Session 尝试逐行 repair；Cron 备份 corrupt 文件并拒绝空写；两者均有原子写 | 原子提交、旧快照保留、损坏不覆盖、repair evidence | 断电/跨进程强杀、重复副作用尚未当前核对真实注入 |
 | Gateway/宿主崩溃 | Gateway state 记录 pid/identity；stale state 清理；POSIX 进程组 TERM→KILL；启动任务失败被 `gather(return_exceptions=True)` 收集；外层打印 crashed | 进程身份、租约、进程组、启动/停止状态机、bounded shutdown | 自动重启策略和“未完成 turn”跨进程恢复不是完整事实；不能把 checkpoint 等同于 exactly-once |
 | 配置 JSON 错误/热改 | `load_config` 区分 JSON/UTF-8/schema/env 错误；`save_config` 临时文件+原子替换；watcher 只通知刷新 | 配置版本、原子写、错误分层、变更事件 | watcher 回调不是事务；正在运行 turn 使用 snapshot，后续 turn 才可见 |
 
@@ -616,7 +616,7 @@ nanobot 主要是 asyncio 单事件循环，不是一个通用线程池 Agent：
 2. `CronService.stop()` 直接 cancel timer task 且没有 async await；若 tick 已进入 job 执行，停止语义依赖外部调用者，不应把它当作完整 graceful stop。
 3. `asyncio.gather(*tasks, return_exceptions=True)` 收集常驻任务异常，但没有统一把每个 task 的异常投影到持久状态；网关打印 crash 不等于任务级恢复完成。
 4. Runner 的 `asyncio.wait_for()` 能取消当前 awaitable，但不能保证第三方 SDK 已关闭底层连接；Provider contract 需要增加 `aclose`/abort 或隔离进程能力。
-5. Session repair 会跳过坏行并继续读，适合尽量保数据，但没有本轮证明 repair 后是否自动重写/留审计记录；公共库应把“修复读取”与“覆盖写回”分开。
+5. Session repair 会跳过坏行并继续读，适合尽量保数据，但没有当前核对证明 repair 后是否自动重写/留审计记录；公共库应把“修复读取”与“覆盖写回”分开。
 6. `ToolRegistry` 的注册冲突是覆盖并记录 warning，外部插件与内置工具的优先级带兼容包装；平台公共注册表不应默认允许静默覆盖，应要求 owner/version/replace policy。
 
 ## 18. L0-L4 交付边界与迁移顺序
@@ -631,7 +631,7 @@ nanobot 主要是 asyncio 单事件循环，不是一个通用线程池 Agent：
 
 推荐装配顺序：先冻结 L0 资源/错误/持久化契约，再以 L1 模块适配一个 Provider、一个 Tool、一个 Channel 和一种 Session；随后在 L2 做真实取消/超时/checkpoint；L3 只做一个网关组合根和单一 shutdown owner；最后把 L4 策略以版本化模块接入。没有资源 owner、取消、超时和验收契约时，不应从 nanobot 复制 AgentLoop。
 
-## 19. 第三轮现有能力命中、缺口与裁决
+## 19. 后续现有能力命中、缺口与裁决
 
 | 能力 | 证据命中 | 底座落点 | 裁决 |
 |---|---|---|---|
@@ -644,13 +644,13 @@ nanobot 主要是 asyncio 单事件循环，不是一个通用线程池 Agent：
 | Cron JSON/action journal/dirty snapshot/腐坏备份 | `cron/service.py:216-256,351-565` | L1 Cron module + L3 scheduler | **吸收/待核**：保留不覆盖原则；补 async stop、幂等副作用和 crash 注入 |
 | Gateway process identity/lease/TERM→KILL | `process_runtime.py:115-194,205-242,334-358`; `gateway/runtime.py` | L0 process supervisor + L3 gateway | **吸收**：进程身份和进程组；补跨平台实测 |
 | Dream/Goal/subagent/模型 fallback/提示模板 | `agent/memory.py`, `session/goal_state.py`, `agent/subagent.py`, `providers/factory.py` | L4 策略模块 | **隔离**：只借鉴治理接口，不进公共底座 |
-| 代码图证据 | 目标仓没有 `.codegraph/`，`codegraph_explore` 明确返回未索引 | 不作为架构事实证据 | **待核**：若需要图谱，用户另行初始化；本轮不伪造图证据 |
+| 代码图证据 | 目标仓没有 `.codegraph/`，`codegraph_explore` 明确返回未索引 | 不作为架构事实证据 | **待核**：若需要图谱，用户另行初始化；当前核对不伪造图证据 |
 
-## 20. 本轮证据、验证边界与剩余风险
+## 20. 当前核对证据、验证边界与剩余风险
 
-- 本轮实际修改范围只允许且只修改根 `ARCHITECTURE.md`；未修改 nanobot 源码、依赖、配置、测试、README、旧细探或 Git。
+- 当前核对实际修改范围只允许且只修改根 `ARCHITECTURE.md`；未修改 nanobot 源码、依赖、配置、测试、README、旧细探或 Git。
 - 已读取正式 `ARCHITECTURE.md`、根 `AGENTS.md` 及 AgentLoop/Runner、ChannelPlugin/Registry/Manager/BaseChannel、Tool Base/Registry/Loader、Provider Base/Registry/Factory、Session Store、Config loader/schema/watcher、Cron、Gateway/process runtime、SDK facade 等源码。
-- 当前工作树搜索不到 `细探-nanobot.md`；正式文档仍有三处旧引用并称其存在/已吸收。本轮不删除任何文件；该文档引用与现场文件不一致，列为文档漂移风险，不能声称本轮读取了不存在的旧细探。
-- 本轮没有安装依赖、启动服务、调用真实 Provider/渠道/MCP、做跨进程故障注入或运行全量测试；因此“源码存在”与“运行通过”严格分开。
-- 预期验证命令仍以第 10 节为准；本轮至少使用 `git diff --check` 检查 Markdown 空白，并检查工作树只有 `ARCHITECTURE.md` 变化。未执行的 Python/WebUI/TUI 命令不能写成通过。
-- 剩余风险：第三方 SDK 的 close/abort 语义、所有渠道子任务的 stop 完整性、Cron timer stop race、线程取消、Provider socket 泄漏、强杀后 exactly-once、Session repair 重写审计、配置 watcher 回调事务性均未被本轮真实运行证明。
+- 当前工作树搜索不到 `细探-nanobot.md`；正式文档仍有三处旧引用并称其存在/已吸收。当前核对不删除任何文件；该文档引用与现场文件不一致，列为文档漂移风险，不能声称当前核对读取了不存在的旧细探。
+- 当前核对没有安装依赖、启动服务、调用真实 Provider/渠道/MCP、做跨进程故障注入或运行全量测试；因此“源码存在”与“运行通过”严格分开。
+- 预期验证命令仍以第 10 节为准；当前核对至少使用 `git diff --check` 检查 Markdown 空白，并检查工作树只有 `ARCHITECTURE.md` 变化。未执行的 Python/WebUI/TUI 命令不能写成通过。
+- 剩余风险：第三方 SDK 的 close/abort 语义、所有渠道子任务的 stop 完整性、Cron timer stop race、线程取消、Provider socket 泄漏、强杀后 exactly-once、Session repair 重写审计、配置 watcher 回调事务性均未被当前核对真实运行证明。

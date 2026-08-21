@@ -70,7 +70,7 @@
 
 ```text
 javalib/
-├── ARCHITECTURE.md                  本文，架构事实源（本轮新增）
+├── ARCHITECTURE.md                  本文，架构事实源（当前核对新增）
 ├── javalib.sln                      VS Solution，动态库+静态库
 ├── javalib.vcxproj                  动态库项目
 ├── javalib.vcxproj.filters          动态库文件筛选器
@@ -274,7 +274,7 @@ javalib/
 
 - 未发现测试目录、测试源码、CI 配置、CTest、GoogleTest、单元测试框架或运行样例。
 - `javalib_cmdInfo.cpp` 仅在 `_DEBUG` 下计算参数数组数量用于调试确认，不是测试套件。
-- 当前工作环境为 macOS，不能直接执行该 Windows Visual Studio/MSBuild 工程；本轮未安装依赖、未启动服务、未生成构建物。
+- 当前工作环境为 macOS，不能直接执行该 Windows Visual Studio/MSBuild 工程；当前核对未安装依赖、未启动服务、未生成构建物。
 
 ### 9.2 已完成的静态验证
 
@@ -308,8 +308,8 @@ javalib/
 - HEAD：`8beeb2b303b75582218843e7f171ed795ac648e8`
 - 提交时间：`2022-12-19T16:56:17+08:00`
 - 提交说明：`初始化仓库`
-- 远程 `HEAD`/`master` 本轮只读查询结果与本地 HEAD 相同。
-- 初始提交统计：23 个文件、5050 行新增；当前工作树在架构文档写入前为干净状态，本轮仅允许新增本文档，不应修改其他文件或提交 Git。
+- 远程 `HEAD`/`master` 当前核对只读查询结果与本地 HEAD 相同。
+- 初始提交统计：23 个文件、5050 行新增；当前工作树在架构文档写入前为干净状态，当前核对仅允许新增本文档，不应修改其他文件或提交 Git。
 
 ## 11. 证据路径索引
 

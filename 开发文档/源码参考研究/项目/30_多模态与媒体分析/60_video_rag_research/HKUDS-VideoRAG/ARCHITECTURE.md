@@ -18,10 +18,10 @@
 | 现场文件盘点 | 排除 `.git/` 后 120 个文件：Python 51、TypeScript 19、TSX 22、JSON 5、Markdown 5、PNG 6，以及 CSS/HTML/Notebook/Shell/YAML 等 |
 | 代码图 | 目标根及父路径没有 `.codegraph/`；`codegraph_explore` 明确返回未索引，不能冒充有代码图证据 |
 
-### 1.2 本轮 MCP 记录
+### 1.2 当前核对 MCP 记录
 
 - **用户指定专属 MCP**：`system_engineering_toolkit`，HTTP `127.0.0.1:8766/mcp/`。
-- **本轮实际 MCP 实例/工具命名空间**：`project_toolkit`（调用结果中返回的 `MCP实例`；工具名为 `mcp__project_toolkit__...`）。
+- **当前核对实际 MCP 实例/工具命名空间**：`project_toolkit`（调用结果中返回的 `MCP实例`；工具名为 `mcp__project_toolkit__...`）。
 - **开工 `project_context` 结果**：绑定到 `华世王镞_v3`，根目录为 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，与本任务目标根不一致；因此该上下文不能作为本仓库身份或源码证据，已如实记录，未绕过伪装成目标项目。
 - 随后的目标路径 `codegraph_explore` 结果：`isn't indexed with codegraph (no .codegraph/ directory found walking up from it)`；本档案改用本地只读文件读取与静态检查。
 
@@ -31,9 +31,9 @@
 |---|---|---|
 | L0 | 仅有 README、论文、注释或接口声明 | 只能说明意图，不能说明闭环 |
 | L1 | 当前源码中存在实现路径 | 函数/路由/存储调用已定位，但未证明可运行 |
-| L2 | 本轮静态检查通过 | Python AST/`compileall` 通过；不代表依赖、模型或网络可用 |
-| L3 | 真实组件执行通过 | 需要隔离环境中的实际服务/文件/模型执行证据；本轮未做 |
-| L4 | 真实端到端通过并核对终态 | 需要前端→IPC→HTTP→worker→外部模型/向量/图→轮询→回答及清理证据；本轮未做 |
+| L2 | 当前核对静态检查通过 | Python AST/`compileall` 通过；不代表依赖、模型或网络可用 |
+| L3 | 真实组件执行通过 | 需要隔离环境中的实际服务/文件/模型执行证据；当前核对未做 |
+| L4 | 真实端到端通过并核对终态 | 需要前端→IPC→HTTP→worker→外部模型/向量/图→轮询→回答及清理证据；当前核对未做 |
 
 **防假绿规则**：源码存在不是测试通过；HTTP `success: true` 只表示任务启动/请求成功，不表示索引或回答成功；前端轮询日志、历史 benchmark、README 示例和子进程自报均不能单独提升到 L3/L4。
 
@@ -315,10 +315,10 @@ renderer chat submit
 
 | 资源 | 创建/持有者 | 正常释放 | 业务失败 | 超时/主动取消 | 宿主/子进程崩溃与残留验证 |
 |---|---|---|---|---|---|
-| ImageBind 模型/GPU 或 CPU 内存 | Flask `GlobalImageBindManager` 单例 | `/imagebind/release` 或 `cleanup_on_exit`：to CPU、del、`torch.cuda.empty_cache` | load 异常 re-raise；部分对象由 GC 接管，未证明显存完全回收 | HTTP 请求无后端 cancel；Electron axios 超时只断前端请求，推理仍可能继续 | SIGINT/SIGTERM/atexit 调 cleanup；硬崩溃无保证；本轮未读 GPU/进程现场 |
+| ImageBind 模型/GPU 或 CPU 内存 | Flask `GlobalImageBindManager` 单例 | `/imagebind/release` 或 `cleanup_on_exit`：to CPU、del、`torch.cuda.empty_cache` | load 异常 re-raise；部分对象由 GC 接管，未证明显存完全回收 | HTTP 请求无后端 cancel；Electron axios 超时只断前端请求，推理仍可能继续 | SIGINT/SIGTERM/atexit 调 cleanup；硬崩溃无保证；当前核对未读 GPU/进程现场 |
 | HTTP `requests.Session` | 每个 worker `HTTPImageBindClient` | 依赖进程退出/requests GC；未显式 `close()` | 异常 re-raise | 1800s client timeout；无主动取消钩子 | worker kill 由 OS 关闭 socket；未做残留连接验证 |
 | Flask 子进程 | `VideoRAGProcessManager.running_processes` | terminate/join 或 cleanup | worker catch 异常后自行退出，但 manager 不自动移除已退出条目 | terminate 5s 后 kill；查询键不对称 | `cleanup()` 再用 psutil 扫 `videorag-index-`/`videorag-query-`；重启遗留进程清理未实测 |
-| Python event loop | worker/`always_get_an_event_loop` | 正常返回时进程退出；无统一 `close()` | 异常路径未显式关闭 | 无 cancellation token；`asyncio.gather` 取消语义未封装 | 进程 kill 后由 OS 回收；本轮未做 loop 泄漏测试 |
+| Python event loop | worker/`always_get_an_event_loop` | 正常返回时进程退出；无统一 `close()` | 异常路径未显式关闭 | 无 cancellation token；`asyncio.gather` 取消语义未封装 | 进程 kill 后由 OS 回收；当前核对未做 loop 泄漏测试 |
 | 原视频 `VideoFileClip` | `split_video`、`saving_video_segments`、caption helper 的局部上下文 | 这些位置使用 `with VideoFileClip` | 大部分异常由 context manager 释放；`subvideo`/audio 临时对象关闭责任不清 | 无取消回调 | 进程硬杀可能留 ffmpeg 子进程/句柄；未做 psutil/文件句柄验证 |
 | `_cache` mp3/mp4/帧 base64 | index worker 与 caption coroutine | 成功索引后 `shutil.rmtree(_cache/<video>)`；base64 仅内存 | caption/embedding/graph 失败前不统一删除 | terminate/kill 不执行 worker finally 清理 | 崩溃可能留下大缓存；未做残留扫描 |
 | JSON KV / NanoVectorDB / GraphML | `VideoRAG` 对象内存结构 | `_save_video_segments`/`_insert_done` save | save 部分成功可留下不一致文件；无 rollback | 无写入取消协议 | 进程硬杀时文件可能截断；无 checksum/恢复验证 |
@@ -346,7 +346,7 @@ renderer chat submit
 | 删除 session | API 只调用 `delete_session`/terminate，不删除工作目录；路由忽略返回值仍返回 success | 资源/数据可能残留，前端文件与 Python 状态脱节 | 删除语义是假完成高风险点 |
 | 路径/权限/恶意请求 | CORS 全开放；本地路径直接传入；无认证、白名单、大小限制 | 无安全恢复 | 仅适合本机 Beta/研究使用 |
 
-## 10. 防假绿验证账本（本轮真实执行）
+## 10. 防假绿验证账本（当前核对真实执行）
 
 | 验证项 | 命令/证据 | 结果 | 等级 |
 |---|---|---|---|
@@ -360,7 +360,7 @@ renderer chat submit
 | 查询/前端轮询 | 未启动 Electron/Flask，未进行 HTTP/IPC E2E | 未验证回答、状态终态或取消 | L0 |
 | 端口/进程/句柄/缓存终态 | 未执行任务，不应声称“无残留” | 需后续隔离运行后读回验证 | L0 |
 
-### 10.1 后续可执行但本轮未执行的验收命令
+### 10.1 后续可执行但当前核对未执行的验收命令
 
 以下只是复核方案，不能写成已通过：
 
@@ -385,12 +385,12 @@ ps -axo pid,ppid,command | grep -E 'videorag-(api|index|query)|ffmpeg'   # 仅�
 | “抽帧 → 多模态嵌入 → 图/向量索引 → 检索 → 生成” | `split_video`、caption、ImageBind vector、`ainsert`、`videorag_query` 均有真实调用 | **吸收**，已落入第 2、6 节；标为 L1/L2，不宣称 E2E |
 | “图驱动知识索引 + 分层上下文编码双通道” | 当前实现可证实的是实体/关系图路 + 视频段 ImageBind 路；“分层上下文编码”更多来自 README/论文表述，源码未见独立层级编码模块 | **部分吸收/降级**：只保留可证实的图路 + 视觉段路 |
 | 视频采样、视觉+文本、多模态 embedding | `split.py` frame_times、caption base64、ImageBind vision/text 编码、DashScope transcript | **吸收**，加入真实参数/文件路径 |
-| 单 GPU 超长视频 | README 宣称 RTX 3090/百小时；桌面 ImageBind 在 CUDA 或 CPU，研究版 `.cuda()`；本轮未跑 | **仅保留为声明**，不吸收成能力保证 |
+| 单 GPU 超长视频 | README 宣称 RTX 3090/百小时；桌面 ImageBind 在 CUDA 或 CPU，研究版 `.cuda()`；当前核对未跑 | **仅保留为声明**，不吸收成能力保证 |
 | 视频问答与 Vimo Desktop | 根 README、桌面 README、Electron/Flask 源码均对应 | **吸收**，明确 Vimo 为 Beta 原型、服务发现和状态轮询事实 |
 | “慢速重型能力，需要独立进程 + 资源协调” | 桌面确实 spawn index/query worker，ImageBind 主进程单例；但没有统一队列/租约/总 deadline | **吸收为架构观察**，不升级为已完成治理 |
 | “平台视频检索候选/媒体能力组合” | 这是跨项目平台建议，不是本仓库事实 | **不吸收为项目实现**，仅保留在第 12 节候选裁决 |
-| Vimo 多视频、跨视频、百小时、无长度限制 | README 宣称；源码接受列表且图/向量可处理多视频，但无本轮运行证据，也有同名 key 冲突风险 | **待核**，不得写成验收能力 |
-| “许可证通常 MIT” | 旧文档未给许可证原文；当前只确认 `LICENSE` 文件存在，本轮未按许可证文本裁决 | **不吸收“通常 MIT”**，避免猜测 |
+| Vimo 多视频、跨视频、百小时、无长度限制 | README 宣称；源码接受列表且图/向量可处理多视频，但无当前核对运行证据，也有同名 key 冲突风险 | **待核**，不得写成验收能力 |
+| “许可证通常 MIT” | 旧文档未给许可证原文；当前只确认 `LICENSE` 文件存在，当前核对未按许可证文本裁决 | **不吸收“通常 MIT”**，避免猜测 |
 | HKUDS/LightRAG 旁路线索 | README acknowledgement 可作来源线索，不是当前调用链 | **保留为来源备注**，不当作运行依赖事实 |
 
 ## 12. 面向平台的吸收/不吸收裁决
@@ -433,17 +433,17 @@ ps -axo pid,ppid,command | grep -E 'videorag-(api|index|query)|ffmpeg'   # 仅�
 
 但当前证据最高只到 **L2 静态语法检查**。没有 L3 依赖/服务/模型实测，也没有 L4 前端到端、失败恢复、取消、崩溃清理或终态核对。故本项目应定位为可供研究复现和平台设计借鉴的 Beta 原型，而不是已经通过生产可靠性验收的视频分析服务。
 
-**本轮修改边界**：仅更新目标根 `ARCHITECTURE.md`；保留 `细探-HKUDS-VideoRAG.md`；未修改源码、配置、测试、依赖、模型、数据库、Git 历史或远程仓库。
+**当前核对修改边界**：仅更新目标根 `ARCHITECTURE.md`；保留 `细探-HKUDS-VideoRAG.md`；未修改源码、配置、测试、依赖、模型、数据库、Git 历史或远程仓库。
 
 ---
 
-## 15. 第三轮：通用底座映射与单链路裁决
+## 15. 后续：通用底座映射与单链路裁决
 
-本节不是把平台能力反投影成“项目已经具备”，而是根据当前源码的真实 owner、输入输出和资源边界，给出迁移到“支持库 → 知识模块 → 运行核心 → 网关”的候选落点。凡源码没有实现、没有测试或没有本轮真实运行证据的内容，均保留为“待核/不吸收”，不能作为生产能力声明。
+本节不是把平台能力反投影成“项目已经具备”，而是根据当前源码的真实 owner、输入输出和资源边界，给出迁移到“支持库 → 知识模块 → 运行核心 → 网关”的候选落点。凡源码没有实现、没有测试或没有当前核对真实运行证据的内容，均保留为“待核/不吸收”，不能作为生产能力声明。
 
 ### 15.1 目标分层与唯一 owner
 
-| 领域对象 | 当前项目真实 owner | 支持库落点（底层原子能力） | 知识模块落点（领域编排） | 运行核心落点（治理/资源） | 网关落点（统一边界） | 第三轮裁决 |
+| 领域对象 | 当前项目真实 owner | 支持库落点（底层原子能力） | 知识模块落点（领域编排） | 运行核心落点（治理/资源） | 网关落点（统一边界） | 后续裁决 |
 |---|---|---|---|---|---|---|
 | 媒体摄取 | `upload_video` 只接收本机路径；`VideoRAG.insert_video` 写入 `video_path_db` | 媒体文件探测、可读性/格式、受控路径、元数据读取、唯一内容/来源标识、临时目录和原子文件写 | `视频摄取模块`：把一个媒体来源编排成可重放的摄取任务 | 输入配额、路径沙箱、任务幂等、租约和清理 | `POST /sessions/<chat_id>/videos/upload` 只接受命令并返回 task id；不直接传模型对象 | **吸收为候选；拒绝“任意本机路径即上传”**。源码无上传字节流、认证或沙箱。 |
 | 时间片段/采样 | `split_video` 以 30 秒为默认段，`np.linspace` 生成粗帧；检索时再按 `[start,end)` 细采样 | `ffprobe/MoviePy` 元数据、时间坐标校验、段/帧采样器、音频抽取、视频段制品写入 | `视频片段模块`：维护 `media_id/segment_id/start/end/frame_times` 与 ASR/caption 关联 | 采样预算、单段大小/时长上限、取消检查点、ffmpeg 子进程组回收 | 只暴露规范化的 `segment`/进度投影，不暴露 MoviePy 对象 | **吸收数据契约，不复制当前字符串时间格式**。当前 `time` 被拼成字符串并用 `eval` 解析，不能成为底座契约。 |
@@ -462,7 +462,7 @@ ps -axo pid,ppid,command | grep -E 'videorag-(api|index|query)|ffmpeg'   # 仅�
 
 ### 15.2 唯一摄取链路（目标装配，不冒充当前已实现）
 
-当前代码能证明的桌面链路是 `upload → multiprocessing.Process → VideoRAG.insert_video`；第三轮将它收敛为以下**唯一规范链路**。箭头左侧是调用者，括号内是应由对应层承担的契约；没有括号内能力的部分是当前缺口。
+当前代码能证明的桌面链路是 `upload → multiprocessing.Process → VideoRAG.insert_video`；后续将它收敛为以下**唯一规范链路**。箭头左侧是调用者，括号内是应由对应层承担的契约；没有括号内能力的部分是当前缺口。
 
 ```text
 Electron renderer / 外部调用方
@@ -577,9 +577,9 @@ Electron renderer / 外部调用方
 | 持久索引 | 文件 KV/NanoVectorDB/GraphML，Neo4j/HNSW 是可选替换 | 同一套 storage 写 session 目录 | 否；无 manifest、版本、跨文件事务和恢复 |
 | 检索/回答 | 研究函数/Notebook 可直接调用，含 multiple-choice 无限 JSON 重试 | 查询 worker 固定 `wo_reference=True`，前端轮询 | 否；只能作为模块原型和评测脚本 |
 | 前端/网关 | 无生产 HTTP 网关 | Electron/Flask 有路由、CORS 全开、本机路径直传 | 否；应改为统一网关适配层，补认证、授权、限流、task id |
-| 测试 | 仓库没有匹配 `*test*` 的测试文件/目录；README/notebook 不是测试 | package 只有 `format/lint/dev`，未见后端测试脚本 | 否；本轮只可声明静态证据，不得把示例运行当回归 |
+| 测试 | 仓库没有匹配 `*test*` 的测试文件/目录；README/notebook 不是测试 | package 只有 `format/lint/dev`，未见后端测试脚本 | 否；当前核对只可声明静态证据，不得把示例运行当回归 |
 
-### 15.8 第三轮能力裁决表
+### 15.8 后续能力裁决表
 
 | 候选 | 结论 | 原因/边界 |
 |---|---|---|
@@ -595,23 +595,23 @@ Electron renderer / 外部调用方
 | `GPU lease/OOM/crash` | **新建运行核心原子能力** | 当前仅有锁、to CPU、empty_cache 和粗略 cleanup，无显存预算和崩溃终态。 |
 | `Flask/Electron 专属 VideoRAG API` | **隔离为项目适配层/网关适配** | 不把 `/api/imagebind/*`、`status.json`、IPC 名称提升为平台公共契约。 |
 | `MiniCPM/Whisper/DashScope/OpenAI` 具体绑定 | **隔离 provider** | 具体模型和密钥随部署变动；公共模块只能依赖能力 id。 |
-| 论文“百小时单 GPU/分层上下文编码” | **废弃为实现结论，保留为 L0 声明** | README 有宣传，当前源码和本轮没有性能、容量、L4 证据。 |
+| 论文“百小时单 GPU/分层上下文编码” | **废弃为实现结论，保留为 L0 声明** | README 有宣传，当前源码和当前核对没有性能、容量、L4 证据。 |
 
-### 15.9 第三轮验收等级与可接受证据
+### 15.9 后续验收等级与可接受证据
 
-| 等级 | 对本项目的严格含义 | 本轮状态 | 不能越级的例子 |
+| 等级 | 对本项目的严格含义 | 当前核对状态 | 不能越级的例子 |
 |---|---|---|---|
 | L0 | README/论文/注释/接口声明，或“应当如何映射”的设计 | README 的百小时/单 GPU、论文式双通道表述、OCR 缺口与平台候选映射 | 不能证明函数可运行、不能证明 provider 可用 |
 | L1 | 当前源码存在且调用关系可定位 | 研究 `insert_video/query`、桌面 Flask/IPC/worker、split/ASR/caption/embedding/storage/RAG 入口 | 不能证明依赖安装、模型权重、外部服务、清理 |
-| L2 | 本轮静态检查通过 | 既有 Python AST/compileall 记录、路径/函数/路由读取、OCR/测试文件搜索；静态检查不加载重依赖 | 不能称“测试通过”或“端到端通过” |
-| L3 | 隔离环境真实执行一个组件并读回终态 | 本轮未做视频、ASR、caption、ImageBind、向量/图、Flask 服务或 Electron 执行，故没有 L3 | 仅 HTTP `success:true`/worker 自报/日志不够 |
-| L4 | 从网关/IPC→任务→摄取或查询→模型/provider→索引/回答→状态、制品、进程/GPU清理全部读回 | 本轮未做，明确为未验证 | 不能把前端启动、README benchmark 或局部函数调用当 L4 |
+| L2 | 当前核对静态检查通过 | 既有 Python AST/compileall 记录、路径/函数/路由读取、OCR/测试文件搜索；静态检查不加载重依赖 | 不能称“测试通过”或“端到端通过” |
+| L3 | 隔离环境真实执行一个组件并读回终态 | 当前核对未做视频、ASR、caption、ImageBind、向量/图、Flask 服务或 Electron 执行，故没有 L3 | 仅 HTTP `success:true`/worker 自报/日志不够 |
+| L4 | 从网关/IPC→任务→摄取或查询→模型/provider→索引/回答→状态、制品、进程/GPU清理全部读回 | 当前核对未做，明确为未验证 | 不能把前端启动、README benchmark 或局部函数调用当 L4 |
 
 生产接入的最低验收应按 L0→L1→L2→L3→L4 顺序推进：先固定 `media/segment/transcript/caption/embedding/evidence/task/artifact` 契约，再在隔离目录使用短视频和可替换 provider 做真实组件验证，最后才接 GPU/外部模型和 Electron。每次 L3/L4 都必须记录命令、退出码、任务终态、制品可读性、进程组/PID、ffmpeg、临时目录、GPU/模型释放结果；缺任一项只能保留较低等级。
 
-## 16. 第三轮证据与修改收口
+## 16. 后续证据与修改收口
 
-### 16.1 本轮新增/复核证据路径
+### 16.1 当前核对新增/复核证据路径
 
 - `VideoRAG-algorithm/videorag/videorag.py:202-432`：研究入口、`Manager`/子进程、`.cuda()` ImageBind、索引保存、查询入口。
 - `VideoRAG-algorithm/videorag/_videoutil/asr.py:8-29`：本地 `WhisperModel` 逐段 ASR。
@@ -627,11 +627,11 @@ Electron renderer / 外部调用方
 
 ### 16.2 测试/验证边界
 
-本仓库没有匹配 `*test*` 的测试文件/目录；`package.json` 只声明 `format`、`lint`、`dev`，未声明后端测试入口。本轮没有安装依赖、下载权重、启动 Flask/Electron、调用外部 API、处理测试视频、跑 GPU/OOM/取消/崩溃场景；因此本文件新增结论最高仍为 **L2（静态取证）**，L3/L4 均明确未验证。OCR 搜索仅命中 `pnpm-lock.yaml` 中与 OCR 无关的字符串片段，未发现 OCR 实现入口。
+本仓库没有匹配 `*test*` 的测试文件/目录；`package.json` 只声明 `format`、`lint`、`dev`，未声明后端测试入口。当前核对没有安装依赖、下载权重、启动 Flask/Electron、调用外部 API、处理测试视频、跑 GPU/OOM/取消/崩溃场景；因此本文件新增结论最高仍为 **L2（静态取证）**，L3/L4 均明确未验证。OCR 搜索仅命中 `pnpm-lock.yaml` 中与 OCR 无关的字符串片段，未发现 OCR 实现入口。
 
-### 16.3 本轮修改边界（再次确认）
+### 16.3 当前核对修改边界（再次确认）
 
-本轮只修改目标根 `ARCHITECTURE.md`，没有修改源码、依赖、配置、测试、README、旧细探、Git 或运行数据。误绑定的 `project_context` 返回了华世王镞_v3 环境，已记录为环境问题并完全丢弃其代码地图、任务和证据；本节及全文的源码结论均来自目标目录本地读取。
+当前核对只修改目标根 `ARCHITECTURE.md`，没有修改源码、依赖、配置、测试、README、旧细探、Git 或运行数据。误绑定的 `project_context` 返回了华世王镞_v3 环境，已记录为环境问题并完全丢弃其代码地图、任务和证据；本节及全文的源码结论均来自目标目录本地读取。
 
 ## 17. 摄取、任务与通用底座的补充映射
 

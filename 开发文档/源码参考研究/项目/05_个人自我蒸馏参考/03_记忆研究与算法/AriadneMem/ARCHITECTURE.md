@@ -6,7 +6,7 @@
 >
 > 本文档只描述当前仓库源码可确认的结构、调用路径和接口；README、论文/细探材料中的设计目标不等同于已实现行为。源码参考库规则要求该文件作为本仓唯一架构事实入口。
 
-> 本轮已完整对照并吸收 `细探-AriadneMem.md` 中仍与当前仓库一致的架构事实；该文件保留作历史细探记录，但后续架构事实只维护本文档。
+> 当前核对已完整对照并吸收 `细探-AriadneMem.md` 中仍与当前仓库一致的架构事实；该文件保留作历史细探记录，但后续架构事实只维护本文档。
 
 ## 1. 定位与范围
 
@@ -470,7 +470,7 @@ Phase II 读取
 └── MCP/requirements.txt
 ```
 
-## 12. 本轮边界声明
+## 12. 当前核对边界声明
 
 本架构建档只新增本文件；未修改源码、依赖、测试、配置或细探文件，未安装依赖，未启动服务，未执行构建/benchmark，未提交 Git，也未删除已有 `细探-AriadneMem.md`。
 
@@ -500,7 +500,7 @@ Phase II 读取
 
 旧细探文件未删除，仍位于仓库根目录；它不再作为本文档之外的架构事实入口。
 
-## 14. 第三轮：通用底座映射边界
+## 14. 后续：通用底座映射边界
 
 本节不是把 AriadneMem 的实现直接搬进平台，而是把源码中已经可复核的能力映射到平台的公共契约、记忆存储支持库、记忆推理模块和运行核心。映射依据是本仓库当前源码与第 13 节旧细探收口结果；论文、README 中的 `Merge/Link/Add`、完整状态更新和“fully tested”不能越过源码证据成为生产能力。
 
@@ -518,7 +518,7 @@ L4 项目适配层 / MCP / Python 门面
           └───────────────────────────────────────────────────────────┘
 ```
 
-| 归属面 | AriadneMem 真实证据 | 第三轮裁决 | 不应承载的职责 |
+| 归属面 | AriadneMem 真实证据 | 后续裁决 | 不应承载的职责 |
 |---|---|---|---|
 | 公共契约 | `models/memory_entry.py:13-83` 的 `MemoryEntry`/`Dialogue`；`core/ariadne_graph_retriever.py:24-34` 的 `GraphPath`；`models/enhanced_structures.py:14-171` 的聚合、关系、时间和索引模型 | 吸收“结构化事实、图节点/边、证据条目、聚合视图”的概念；升级为版本化请求/结果/错误/证据引用契约 | 不把 Pydantic 模型直接当跨进程事务协议；不让 provider 对象、LLM 原始响应或 `MemoryEntry` 内部对象穿过网关 |
 | 记忆存储支持库 | `database/vector_store.py:59-402` 负责 LanceDB 表、三视图索引、读写、清空和 `enhanced_index.json`；`utils/embedding.py:17-213` 管理本地模型与缓存；`utils/llm_client.py:10-283` 管理 OpenAI-compatible 调用 | 复用“dense + lexical + symbolic”检索思想；把 LanceDB、JSON 快照、embedding、LLM 变成受管 provider，统一返回结果和资源状态 | 不在支持库里编排多跳流程、答案提示词、会话、任务恢复或直接决定业务状态 |
@@ -556,7 +556,7 @@ L4 项目适配层 / MCP / Python 门面
 
 ## 15. 研究基线与平台生产缺口
 
-### 15.1 研究基线（本轮确认）
+### 15.1 研究基线（当前核对确认）
 
 | 项目 | 基线事实 | 证据/状态 |
 |---|---|---|
@@ -565,8 +565,8 @@ L4 项目适配层 / MCP / Python 门面
 | 读取 | 增强索引快路径/属性快路径 → dense+lexical 召回 → 实体排序 → 实体/时间边 → 桥接 → DFS → 节点预算 → LLM 合成 | `core/ariadne_graph_retriever.py:56-106,477-591`、`core/ariadne_answer_generator.py:54-210` |
 | 持久化 | LanceDB `ariadnemem_entries` 表 + 同目录 `enhanced_index.json`；原始 `Dialogue` 没有独立持久化表 | `database/vector_store.py:69-108,110-138,375-401`；与第 4.3 节一致 |
 | 外部依赖 | OpenAI SDK、SentenceTransformers/PyTorch、LanceDB/PyArrow、FastAPI/Uvicorn 等；配置是复制 `config.py.example` 后运行 | `requirements.txt`、`config.py.example:6-10`、`MCP/server/http_server.py:22-33` |
-| 验证 | 顶层只有手写 `quick_test.py`、LoCoMo benchmark 和 demo；没有发现式单元测试、CI、迁移/协议/故障矩阵 | `ARCHITECTURE.md:376-402`；本轮未安装依赖、未启动服务、未运行 benchmark |
-| 代码图 | 目标 AriadneMem 没有 `.codegraph/`；MCP `codeexplore` 明确返回 CodeGraph 不可用 | 本轮 MCP 返回 `no .codegraph/index exists`，因此以下源码结论来自直接文件读取，不能伪称代码图验证通过 |
+| 验证 | 顶层只有手写 `quick_test.py`、LoCoMo benchmark 和 demo；没有发现式单元测试、CI、迁移/协议/故障矩阵 | `ARCHITECTURE.md:376-402`；当前核对未安装依赖、未启动服务、未运行 benchmark |
+| 代码图 | 目标 AriadneMem 没有 `.codegraph/`；MCP `codeexplore` 明确返回 CodeGraph 不可用 | 当前核对 MCP 返回 `no .codegraph/index exists`，因此以下源码结论来自直接文件读取，不能伪称代码图验证通过 |
 
 ### 15.2 生产缺口分级
 
@@ -676,7 +676,7 @@ L4 memory_query / Python ask
 | README/论文的完整状态更新、Steiner 最优、fully tested | 废弃为实现事实 | 仅研究假设/评测待核 | 与第 9 节源码差异保持一致，不得写入平台能力目录 |
 | 现有 retry、ThreadPoolExecutor、global session | 废弃为平台机制 | L1 监督器重写 | 只能作为局部实现线索，不能形成第二套运行核心 |
 
-### 18.1 生产化前置工作包（仅计划，不在本轮改平台）
+### 18.1 生产化前置工作包（仅计划，不在当前核对改平台）
 
 1. **需求与能力登记：**登记“结构化记忆写入/快照提交”“混合记忆检索”“图证据路径”“证据聚合”“答案合成”五类需求，先搜索平台已有公共契约、存储、任务和证据能力，形成复用/升级/新建裁决。
 2. **公共契约冻结：**冻结 `MemoryWriteRequest/StructuredMemory/EvidenceRef/GraphEvidence/MemoryQueryResult/MemoryTaskResult` 的版本、错误码、幂等键、预算、取消和释放字段；禁止以当前 Pydantic 对象直接替代。
@@ -688,10 +688,24 @@ L4 memory_query / Python ask
 
 没有完成上述登记、能力搜索、复用决策、租约和验收契约前，本项目只能作为研究参考，不能直接改写平台生产底座。
 
-## 19. 第三轮验证边界与风险
+## 19. 后续验证边界与风险
 
-- 本轮实际修改仅为本文件；未改 AriadneMem 源码、依赖、配置、测试、README、旧细探或 Git。
-- 目标目录没有 `.codegraph/` 索引；MCP 代码图探索失败，未把错误结果包装成代码图成功。源码证据来自直接读取，需在代码图启用后复核符号和影响面。
+- 当前核对实际修改仅为本文件；未改 AriadneMem 源码、依赖、配置、测试、README、旧细探或 Git。
+- 本轮严格未使用 MCP。目标目录已有 `.codegraph/`，已执行 `codegraph status` 与 `codegraph sync`，统计为 25 files、430 nodes、859 edges，索引最新；CodeGraph 仅用于定位，最终结论仍以源码为准。
 - 未安装依赖、未创建 `config.py`、未初始化/清空 LanceDB、未调用外部 LLM/embedding、未启动 MCP/HTTP 服务，因此“研究基线”不等同于运行通过。
 - 未把 `README` 的宣传性状态更新、Steiner 术语、性能/指标和兼容性声称当成验证事实；平台缺口均标为源码可见缺口或待核，不伪造生产能力。
-- `ARCHITECTURE.md` 与 `细探-AriadneMem.md` 在当前 Git 工作树均是未跟踪研究文档；本轮不提交 Git、不删除旧细探。
+- `ARCHITECTURE.md` 与 `细探-AriadneMem.md` 在当前 Git 工作树均是未跟踪研究文档；当前核对不提交 Git、不删除旧细探。
+
+## 20. 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `95c77548ac37fc551babec256a9230fd03066ed3` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 25 files / 430 nodes / 859 edges；Python 25，索引最新 |
+| 文档行数 | `wc -l ARCHITECTURE.md` | 当前 696 行，满足 500 行要求 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮只修改平台研究文档，源码 checkout 未改。静态审计覆盖 `AriadneMemSystem`、`AriadneMemoryBuilder`、`AriadneGraphRetriever`、`AggregationBuilder`、`VectorStore`、`EmbeddingModel`、`LLMClient`、MemoryEntry/enhanced structures、MCP stdio/HTTP handler、quick/demo/LoCoMo 脚本及配置依赖；已将图记忆、事件/实体/时间边、混合检索、bridge/DFS、答案合成、索引双写、并发和资源缺口写入唯一 ARCHITECTURE.md。
+
+本轮严格未使用 MCP，只使用 shell、git、CodeGraph CLI 与源码静态证据。未安装依赖、未创建配置、未运行 pytest/benchmark、未连接真实 LLM/embedding/LanceDB、未启动 MCP/HTTP、未做并发/超时/客户端断连/SIGKILL 恢复及残留扫描；这些仍是未验证项，不能将静态实现升级为 L2-L4 通过。

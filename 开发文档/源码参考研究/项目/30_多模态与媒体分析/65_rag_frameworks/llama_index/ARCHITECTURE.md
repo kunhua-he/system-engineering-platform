@@ -9,9 +9,9 @@
 - **本地根目录**：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/65_rag_frameworks/llama_index`。
 - **项目形态**：Python monorepo；核心框架、观测包、工具包和大量独立 integration package 同仓维护。
 - **项目定位**：面向 LLM 应用的 data framework，主链路是数据读取 → 文档/节点变换 → 索引 → 检索 → 响应合成；在此之上提供 agent、chat、workflow、memory、evaluation、tools 和多模态能力。
-- **本轮允许修改**：仅新增/更新本文；没有修改源码、依赖、测试、配置、Git 历史或运行产物。
+- **当前核对允许修改**：仅新增/更新本文；没有修改源码、依赖、测试、配置、Git 历史或运行产物。
 - **规则文件检查**：目标目录内未发现 `AGENTS.md`、`CLAUDE.md`。
-- **代码地图证据**：目标项目没有 `.codegraph/`，`codegraph_explore` 明确返回未建立索引，因此本轮不把代码图结果冒充为有效证据。
+- **代码地图证据**：目标项目没有 `.codegraph/`，`codegraph_explore` 明确返回未建立索引，因此当前核对不把代码图结果冒充为有效证据。
 - **MCP 证据异常**：首轮 `project_context` 返回并绑定了无关项目 `华世王镞_v3`（根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`），其项目身份、地图和定位结果均不适用于本项目；本文件以下结论改由目标目录的本地读取和 Git 命令建立。
 - **旧细探吸收**：已人工读取并对照此前细粒度研究稿；其中关于 core 分层、索引/检索/合成、存储、观测、VectorStore 契约、Settings、CLI 和集成解耦的内容已吸收到本文，后续正式维护只更新本文。
 
@@ -27,8 +27,8 @@
 - `git ls-remote origin` 当前返回：
   - `HEAD` / `refs/heads/main`：`d8021225eb7e7b276d5ceb476b0a4650240f27f8`。
   - `refs/remotes/origin/HEAD`：`3fc6b0e0457d58ef8fbed619f4d2e01df228ab69`。
-- **新鲜度结论**：远程 `main` 已不同于本地 `HEAD`，本地工作树不是远程最新源码；本轮未 `fetch`、未 `pull`、未创建快照或 worktree，故没有把远程新提交的实现内容写入本文。
-- 工作树状态：本轮新增正式文档 `ARCHITECTURE.md`；未修改源码、依赖、测试或配置。
+- **新鲜度结论**：远程 `main` 已不同于本地 `HEAD`，本地工作树不是远程最新源码；当前核对未 `fetch`、未 `pull`、未创建快照或 worktree，故没有把远程新提交的实现内容写入本文。
+- 工作树状态：当前核对新增正式文档 `ARCHITECTURE.md`；未修改源码、依赖、测试或配置。
 
 ## 3. 规模盘点（现场递归统计）
 
@@ -376,7 +376,7 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 - 测试框架是 `pytest`，core 测试位于 `llama-index-core/tests/`，按 schema、storage、vector stores、indices、query engine、ingestion、tools、rate limiter 等领域分目录。
 - integration 通常在自己的包目录中维护测试；本仓库递归现场统计到 1,620 个测试相关 `.py` 文件。
 - `CONTRIBUTING.md` 要求修改包后在该包目录运行 `uv run -- pytest`，远程系统应以 mock 避免外部变化导致测试不稳定，并说明 CI 有覆盖率门槛（默认低于 50% 会失败）。
-- 本轮**未运行测试、未运行 lint、未运行 typecheck、未运行构建或安装**，因此本文不声称当前源码测试通过。
+- 当前核对**未运行测试、未运行 lint、未运行 typecheck、未运行构建或安装**，因此本文不声称当前源码测试通过。
 
 ### 11.3 CI 验证与发布
 
@@ -433,12 +433,12 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 ### 已确认但需持续关注
 
 - **远程漂移**：远程 `main` 已是 `d8021225...`，本地仍是 `7359b1a...`；后续深挖应先建立最新源码快照或在允许时 fetch，再复核关键 API 是否漂移。
-- **代码地图缺失**：本项目没有 `.codegraph/`；需要符号级影响分析时应由项目负责人决定是否初始化代码图，本轮不擅自生成。
+- **代码地图缺失**：本项目没有 `.codegraph/`；需要符号级影响分析时应由项目负责人决定是否初始化代码图，当前核对不擅自生成。
 - **历史研究已收口**：此前细粒度研究稿已经人工吸收到本文并清理；后续不再创建第二份并行正式架构文档。
 - **集成规模复杂**：621 个独立 integration 未逐包阅读；本文只抽查了 `llama-index-vector-stores-chroma` 作为 provider 结构样例，不能把 Chroma 的过滤/持久化语义外推到所有向量库。
 - **外部 provider 语义**：LLM、embedding、reader、vector store、storage、tool 和 graph integration 的凭证、重试、超时、事务、TLS、并发和删除语义均需按具体包继续复核。
 
-### 尚未在本轮验证
+### 尚未在当前核对验证
 
 - 没有安装依赖、创建虚拟环境或运行 Python 导入。
 - 没有运行 `pytest`、`llama-dev test`、`make test`、`pants`、`pre-commit`、`mypy`。
@@ -485,13 +485,13 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 - 安全边界：`SECURITY.md`
 - 此前历史人工细探：已人工吸收并清理
 
-## 17. 第三轮通用底座映射：文档/检索支持库、RAG 模块与运行核心
+## 17. 后续通用底座映射：文档/检索支持库、RAG 模块与运行核心
 
-> 本节是第三轮裁决，不是把 LlamaIndex 直接复制进平台。映射只回答“哪一类能力由哪个底座 owner 持有、哪条链路允许被复用、哪些语义必须升级或隔离”。当前证据仍以本地 `llama-index-core` 源码为准；`project_context` 曾错绑到无关项目，目标目录无 `.codegraph/`，因此不把 MCP/codegraph 失败结果冒充为目标项目证据。
+> 本节是后续裁决，不是把 LlamaIndex 直接复制进平台。映射只回答“哪一类能力由哪个底座 owner 持有、哪条链路允许被复用、哪些语义必须升级或隔离”。当前证据仍以本地 `llama-index-core` 源码为准；`project_context` 曾错绑到无关项目，目标目录无 `.codegraph/`，因此不把 MCP/codegraph 失败结果冒充为目标项目证据。
 
 ### 17.1 三类底座 owner 的裁决
 
-| LlamaIndex 能力 | 平台归类 | 规范 owner 与边界 | 本轮裁决 |
+| LlamaIndex 能力 | 平台归类 | 规范 owner 与边界 | 当前核对裁决 |
 |---|---|---|---|
 | `Document`、`BaseNode`、`TextNode`、`ImageNode`、`IndexNode`、`NodeWithScore`、`QueryBundle`、关系/元数据/多模态结构 | 文档/检索支持库的 L0 公共契约 | 只定义不可变或可校验的数据形状、来源位置、节点关系、内容/embedding/metadata 语义；不负责读文件、调模型、查库 | **吸收**为通用文档与检索对象契约；不吸收 LlamaIndex 专有序列化标识作为平台业务主键 |
 | `BaseReader`、`BasePydanticReader`、`ResourcesReaderMixin`、`Document` 读取和 `TransformComponent`/node parser | 文档支持库（契约）+ Reader/解析 Provider（实现） | Reader 只负责资源发现、权限/资源信息、读取和统一文档输出；解析器只负责文档→节点变换；第三方格式库留在 provider | **吸收契约，升级资源/取消/安全边界**；不让每个 Reader 自建缓存、重试或结果格式 |
@@ -500,7 +500,7 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 | `BaseIndex`、`VectorStoreIndex`、`IndexStruct`、`VectorIndexRetriever`、`RetrieverQueryEngine`、response synthesizer | RAG 模块 | 只编排“文档/节点→转换→索引→检索→后处理→合成”的领域流程；通过公开支持库契约组合能力；不持有 provider 注册、租约、数据库事务 owner | **吸收流程骨架为唯一 RAG 模块链路**；不复制第二套索引/检索内核 |
 | `LLM`/`BaseLLM`、`BaseEmbedding`、`resolve_llm()`、`resolve_embed_model()` 及 `llama-index-integrations` 中具体包 | 模型/Embedding/LLM Provider 支持库 | Provider 适配外部 SDK、凭证、限流和网络协议；对上只返回统一 LLM/embedding 结果；注册、版本、健康、资源和失败治理由运行核心托管 | **吸收 Provider 解耦与显式解析**；升级隐式默认模型、fallback、客户端关闭和取消语义 |
 | `Settings`、`CallbackManager`、`Dispatcher`、`async_utils` | 运行核心的配置/观测/执行适配，不是 RAG 业务 | 运行核心持有请求上下文、资源预算、超时/取消、观测和 provider 生命周期；业务模块不得依赖全局可变 singleton | **只吸收机制，不复制全局状态**；`Settings` 作为兼容适配层隔离 |
-| `agent`、`chat_engine`、`workflow`、`memory`、`evaluation`、tools | L4 应用/编排层或独立模块 | 这些不是文档检索支持库，也不是本轮 RAG 核心；需要接入时只能调用唯一 RAG 模块公开入口 | **隔离**，不把它们并入第二 RAG 链路 |
+| `agent`、`chat_engine`、`workflow`、`memory`、`evaluation`、tools | L4 应用/编排层或独立模块 | 这些不是文档检索支持库，也不是当前核对 RAG 核心；需要接入时只能调用唯一 RAG 模块公开入口 | **隔离**，不把它们并入第二 RAG 链路 |
 
 ### 17.2 唯一可复用链路与“第二 RAG 链路”禁令
 
@@ -601,12 +601,12 @@ core 的 `command_line/__init__.py` 仅写明“Deprecated. CLI is now its own p
 4. **L3 唯一 RAG 模块**：只按本节单链路组合 ingestion、index、retriever、query engine、synthesizer；不新建平行 `RAG2`、`VectorRAG`、`LocalRAG` 或 provider 专属 query engine。
 5. **L4 接入**：应用/API/agent/workflow 只调用 L3 公开入口并携带租户、权限、operation id、取消 token 和审计关联；不得跨层直连。
 
-### 17.9 第三轮结论与剩余风险
+### 17.9 后续结论与剩余风险
 
 - **吸收**：LlamaIndex 最有价值的底座不是某个具体模型或数据库，而是可替换的文档/节点/向量/模型契约，以及从 ingestion 到 query 的单一 RAG 编排骨架。
 - **升级**：平台必须补足 provider 发现与版本、懒加载失败、资源所有权、超时/取消传播、持久化原子性、损坏恢复和失败证据；不能把当前 `StorageContext`、`asyncio.to_thread()` 或进程级 `Settings` 直接当作生产治理能力。
 - **隔离**：LlamaIndex 的 agent/chat/workflow/memory、第三方默认 fallback 和每个 integration 的专有语义不进入第二 RAG 链路；它们只能作为 L4 或 provider 适配参考。
-- **未验证**：本轮只完成静态源码映射，未安装依赖、未执行 core/integration 测试、未对 621 个 provider 做真实外部服务验证；不声称 L0-L4 平台能力已经实现。
+- **未验证**：当前核对只完成静态源码映射，未安装依赖、未执行 core/integration 测试、未对 621 个 provider 做真实外部服务验证；不声称 L0-L4 平台能力已经实现。
 
 ---
 

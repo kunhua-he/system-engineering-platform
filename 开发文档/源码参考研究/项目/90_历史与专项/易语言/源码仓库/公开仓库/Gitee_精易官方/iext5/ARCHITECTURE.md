@@ -8,7 +8,7 @@
 
 - **源码已实现**：源码中存在可执行实现，并且能够从静态代码确认其行为。
 - **仅声明/注册**：有类型、命令、接口或工程配置声明，但没有可确认的完整业务实现。
-- **未验证**：本轮未在 Windows/Visual Studio/易语言 IDE 或运行时中编译、装载、拖放、执行和回归验证。
+- **未验证**：当前核对未在 Windows/Visual Studio/易语言 IDE 或运行时中编译、装载、拖放、执行和回归验证。
 
 ### 首轮结论
 
@@ -278,7 +278,7 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 ### 工程配置注意事项
 
 - 根动态工程 Win32 Debug/Release 设置了 `__E_FNENAME=iext5`、`TargetExt=.fne` 和 `Source_iext5.def`；x64 配置没有同样的 `__E_FNENAME=iext5`、`TargetExt`、模块定义文件链接配置，需在 Windows/VS 中复核是否为可构建的完整配置。
-- 静态工程的 Win32 Debug/Release 设置了 `__E_STATIC_LIB;__E_FNENAME=iext5`；但 x64 Debug/Release 的预处理器定义只有 `_DEBUG;_LIB` 或 `NDEBUG;_LIB`，未声明 `__E_STATIC_LIB` 与 `__E_FNENAME`，而 `elib/lib2.h:15-25` 要求先定义 `__E_FNENAME`。这是静态工程配置上的高风险未验证项，不在本轮修改。
+- 静态工程的 Win32 Debug/Release 设置了 `__E_STATIC_LIB;__E_FNENAME=iext5`；但 x64 Debug/Release 的预处理器定义只有 `_DEBUG;_LIB` 或 `NDEBUG;_LIB`，未声明 `__E_STATIC_LIB` 与 `__E_FNENAME`，而 `elib/lib2.h:15-25` 要求先定义 `__E_FNENAME`。这是静态工程配置上的高风险未验证项，不在当前核对修改。
 
 ## 10. 测试、构建与验证状态
 
@@ -286,9 +286,9 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 未发现测试源文件、测试工程、测试脚本、CI 配置、README 或构建说明。Git 跟踪文件名中没有 `test`、`spec`、`CMakeLists.txt`、`Makefile`、`.yml` 或 `.yaml`。
 
-### 10.2 本轮已执行的验证
+### 10.2 当前核对已执行的验证
 
-本轮只做了静态人工取证，没有安装依赖、没有启动服务、没有执行 Windows 构建：
+当前核对只做了静态人工取证，没有安装依赖、没有启动服务、没有执行 Windows 构建：
 
 - 盘点 Git 跟踪文件和工程文件。
 - 读取 `iext5.sln`、两个 `.vcxproj`、`.filters`、`.def`。
@@ -326,7 +326,7 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 提交作者：`精易科技`
 - 提交时间：`2022-12-19T16:12:04+08:00`
 - 远程：`origin https://gitee.com/JYtechnology/iext5.git`
-- 本轮约束：仅新增/更新本文件；不改源码、工程、依赖、测试、配置或 Git 历史。
+- 当前核对约束：仅新增/更新本文件；不改源码、工程、依赖、测试、配置或 Git 历史。
 
 ### 12.2 关键证据路径
 

@@ -7,7 +7,7 @@
 > - **仅声明/协议**：源码有结构、宏、回调或工程声明，但当前项目没有完整实现，或没有运行证据。
 > - **未验证**：从源码可以推断设计意图，但本机未能在目标 Windows/易语言环境中编译、加载或执行确认。
 >
-> **当前源码基线**：`master` / `312b4f9d02df0c62b584d301feb27738ef8284db`，提交时间 `2023-02-13T01:27:35Z`，提交主题 `!3 修复注册热键参数注释不对的情况 Merge pull request !3 from AlongsCode/master`。远程 `origin` 为 `https://gitee.com/JYtechnology/shellex.git`；现场 `git ls-remote origin HEAD refs/heads/master` 与本地 HEAD 均为同一提交。仓库为浅克隆（存在 `.git/shallow`），历史深度未在本轮展开。
+> **当前源码基线**：`master` / `312b4f9d02df0c62b584d301feb27738ef8284db`，提交时间 `2023-02-13T01:27:35Z`，提交主题 `!3 修复注册热键参数注释不对的情况 Merge pull request !3 from AlongsCode/master`。远程 `origin` 为 `https://gitee.com/JYtechnology/shellex.git`；现场 `git ls-remote origin HEAD refs/heads/master` 与本地 HEAD 均为同一提交。仓库为浅克隆（存在 `.git/shallow`），历史深度未在当前核对展开。
 
 ## 1. 项目定位
 
@@ -63,7 +63,7 @@
                                 └─ 转发用户通知回调
 ```
 
-静态库路线如下，实际是否由易语言静态编译器正确消费，本轮未在 Windows 环境验证：
+静态库路线如下，实际是否由易语言静态编译器正确消费，当前核对未在 Windows 环境验证：
 
 ```text
 shellex_static.vcxproj（StaticLibrary，__E_STATIC_LIB）
@@ -421,7 +421,7 @@ shellex_static/shellex_static.vcxproj
 
 ## 9. 测试、验证和当前可确认程度
 
-### 9.1 本轮已完成的静态取证
+### 9.1 当前核对已完成的静态取证
 
 - 人工读取了解决方案、动态/静态 `.vcxproj`、筛选器、用户工程文件、`.def`、全部根目录 C++/头文件和 `elib` 共享接口文件。
 - 通过 `git status`、`git branch`、`git log`、`git remote -v`、`git ls-remote`、`git ls-files` 建立了本地/远程基线。
@@ -438,11 +438,11 @@ shellex_static/shellex_static.vcxproj
 - **未执行 ABI/内存布局测试**：`MDATA_INF`、易语言字节集/数组布局、指针宽度、`WINAPI` 调用约定、复合字体 `EFONT` 均只依据源码静态读取。
 - **未执行并发/资源测试**：源码包含全局窗口过程、全局计数器、单例标签、字体和 tooltip 句柄，尚未做多窗口、多线程、卸载和异常路径测试。
 
-因此，本文把“代码路径存在”与“Windows/易语言环境下可用”严格分开；命令表中的“已实现”不表示本轮已经运行通过。
+因此，本文把“代码路径存在”与“Windows/易语言环境下可用”严格分开；命令表中的“已实现”不表示当前核对已经运行通过。
 
 ## 10. 已确认风险与后续复核点
 
-以下是基于当前源码的风险/疑点，不是本轮修复项：
+以下是基于当前源码的风险/疑点，不是当前核对修复项：
 
 1. **x64 工程配置不完整的疑点**：动态工程的 `.fne` 后缀和 `.def` 链接只出现在 Win32 配置；静态工程 x64 使用预编译头但仓库无 `pch.h`。应在 Visual Studio 中分别构建四种动态配置和四种静态配置确认。
 2. **指针宽度风险**：`GetAddr` 返回 `SDT_INT`，`CallPtr` 通过 `DWORD`/`INT` 风格 ABI 传地址；`elib/mtypes.h` 也定义 `HWND` 为 `DWORD`。x64 支持声明存在，但指针是否可无损穿过易语言类型和工程 ABI 未验证。
@@ -461,13 +461,13 @@ shellex_static/shellex_static.vcxproj
 建议后续深挖顺序：
 
 ```text
-第一轮（本文）
+初始（本文）
   └─ 完成结构、命令、ABI、状态、工程和证据建档
-第二轮：Windows 构建与加载
+后续：Windows 构建与加载
   ├─ x86/x64 Debug/Release 动态库构建
   ├─ .fne 导出和 GetNewInf 检查
   └─ 易语言 IDE 登记/版本兼容
-第三轮：命令行为
+后续：命令行为
   ├─ tooltip 生命周期/编码/资源
   ├─ 拖放多控件和窗口过程恢复
   ├─ 热键多窗口/失败/注销
@@ -484,8 +484,8 @@ shellex_static/shellex_static.vcxproj
 - 分支：`master`
 - HEAD：`312b4f9d02df0c62b584d301feb27738ef8284db`
 - 远程：`origin https://gitee.com/JYtechnology/shellex.git`
-- `origin/HEAD`、`origin/master` 和本地 `HEAD` 在本轮现场均指向同一提交。
-- 初始工作树无已记录的源码修改；本轮只新增根目录 `ARCHITECTURE.md`。
+- `origin/HEAD`、`origin/master` 和本地 `HEAD` 在当前核对现场均指向同一提交。
+- 初始工作树无已记录的源码修改；当前核对只新增根目录 `ARCHITECTURE.md`。
 - 未执行 `git add`、`git commit`、`git pull`、`git merge`、`git reset` 或其他 Git 写操作。
 - 未发现可供吸收的旧 `细探-*.md`；因此没有删除旧细探，也没有把任何旧细探当作事实来源。
 

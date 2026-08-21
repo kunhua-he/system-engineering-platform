@@ -374,19 +374,19 @@ EvolveMem 的 `MemoryStore` 默认 SQLite/FTS5，并把演化缓存、结果、p
 
 本文件已吸收此前 `细探-SimpleMem.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 
-## 12. 第三轮：通用底座映射与裁决（仅基于源码证据）
+## 12. 后续：通用底座映射与裁决（仅基于源码证据）
 
-### 12.1 本轮范围、证据边界与总裁决
+### 12.1 当前核对范围、证据边界与总裁决
 
-本轮在既有建档和内部细探之上，专门回答：记忆压缩、分层存储、召回、上下文、embedding/重排、批任务和资源，若接入系统工程平台，分别应归入**记忆支持库、记忆模块、运行核心、统一网关**的哪一层；同时固定唯一写入/检索链路、幂等语义、失败/超时/取消/崩溃处置和 L0-L4 验证门槛。
+当前核对在既有建档和内部细探之上，专门回答：记忆压缩、分层存储、召回、上下文、embedding/重排、批任务和资源，若接入系统工程平台，分别应归入**记忆支持库、记忆模块、运行核心、统一网关**的哪一层；同时固定唯一写入/检索链路、幂等语义、失败/超时/取消/崩溃处置和 L0-L4 验证门槛。
 
-本轮代码图事实：第一次 `project_context` 返回的是错误项目 `华世王镞_v3`（根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，开工 id 为空），不能作为 SimpleMem 证据；随后按目标绝对路径调用 `codegraph_explore`，服务明确返回“SimpleMem 未建立 `.codegraph/`，不可查询”。因此本节的源码证据全部来自目标工作树的文件读取和静态交叉核对，**不把错误项目代码图或不可用代码图冒充 SimpleMem 证据**。仓库内未找到独立的 `细探-SimpleMem.md`；既有文档已声明其结论已吸收到本文件，本轮继续以当前源码为准。
+本轮严格未使用 MCP。目标 checkout 自带 `.codegraph/`，现场 `codegraph status` 与 `codegraph sync` 成功，统计为 361 files、7,615 nodes、17,115 edges（Python 356、YAML 3、JavaScript 2），索引为最新。因此本节不引用其他项目上下文、代码图或验证；源码证据以目标工作树当前文件和 Git 提交为准。仓库内未找到独立的 `细探-SimpleMem.md`；既有文档已声明其结论已吸收到本文件，当前核对继续以当前源码为准。
 
-**总裁决：吸收边界契约，隔离平行实现；不把 SimpleMem 任何一套实现直接升级为平台生产底座。** 当前仓库不是一条链，而是文本核心、MCP 服务副本、Omni 多模态链、Cross 跨会话链、`OmniSimpleMem/` 和 Skill/参考副本并存。第三轮要做的是把能力语义收敛到平台四层的唯一 owner，而不是把这些目录互相串接。
+**总裁决：吸收边界契约，隔离平行实现；不把 SimpleMem 任何一套实现直接升级为平台生产底座。** 当前仓库不是一条链，而是文本核心、MCP 服务副本、Omni 多模态链、Cross 跨会话链、`OmniSimpleMem/` 和 Skill/参考副本并存。后续要做的是把能力语义收敛到平台四层的唯一 owner，而不是把这些目录互相串接。
 
 ### 12.2 四层归属表：能力、源码落点与裁决
 
-| 通用能力 | 记忆支持库（原子能力/提供者） | 记忆模块（领域流程） | 运行核心（执行与资源治理） | 统一网关（协议与边界） | 本轮裁决 |
+| 通用能力 | 记忆支持库（原子能力/提供者） | 记忆模块（领域流程） | 运行核心（执行与资源治理） | 统一网关（协议与边界） | 当前核对裁决 |
 |---|---|---|---|---|---|
 | 语义结构化压缩 | LLM 调用、JSON 解析、`MemoryEntry`/`MAU` 序列化契约 | 窗口切分、指代消解、绝对时间、事实抽取、冗余/熵门控 | 批窗口调度、重试预算、任务状态、取消和恢复 | `memory_add`/`memory_add_batch` 请求校验与结果投影 | **模块吸收流程，支持库只提供调用与模型契约；不复制 `MemoryBuilder`** |
 | 分层存储 | LanceDB/FAISS/BM25/SQLite/JSONL/文件/S3 适配器，原子读写、摘要、索引重建 | 记忆实体、事件、来源、状态、归档与血缘关系 | 连接/句柄/文件/临时目录/锁、原子提交、残留清理 | 租户、namespace/table 映射，禁止外部直连存储 | **吸收提供者接口；MAUStore、Cross SQLite、MCP per-user table 只保留项目适配语义** |
@@ -510,17 +510,17 @@ Omni `query()` 先 `QueryProcessor` 决定策略，再 `PyramidRetriever.retriev
 
 L0-L4 是平台接入验收等级，不是 SimpleMem 当前已经通过的等级。当前文档阶段只做静态研究，没有安装依赖、启动服务、调用外部 LLM/embedding、运行 benchmark 或修改源码；因此不能把测试文件存在、README 描述、日志打印或历史数字记为通过。
 
-| 等级 | 验证内容 | SimpleMem 需要的最小命令/证据 | 本轮判定 |
+| 等级 | 验证内容 | SimpleMem 需要的最小命令/证据 | 当前核对判定 |
 |---|---|---|---|
 | **L0 静态契约** | 目标项目身份、源码路径、公开入口、模型/字段、依赖和四层映射；检查文档结构、路径存在、无旁路写入口 | `git diff --check -- ARCHITECTURE.md`；静态 AST/路径扫描；逐条源码路径回读 | **部分具备**：源码路径和入口已回读；目标 codegraph 不可用，错误 project_context 已明确隔离 |
-| **L1 确定性单元** | 不依赖网络/模型的窗口、规范化、ID 幂等、过滤、去重、预算、错误形状、取消状态机 | `python -m pytest tests/test_vector_store_backend.py`、对应 Cross/Omni 单元（需环境满足）；新增平台实现须有确定性 fake provider | **只有历史测试源码证据**；本轮未执行，且现有测试多使用 fake/mock，不能覆盖完整外部链 |
+| **L1 确定性单元** | 不依赖网络/模型的窗口、规范化、ID 幂等、过滤、去重、预算、错误形状、取消状态机 | `python -m pytest tests/test_vector_store_backend.py`、对应 Cross/Omni 单元（需环境满足）；新增平台实现须有确定性 fake provider | **只有历史测试源码证据**；当前核对未执行，且现有测试多使用 fake/mock，不能覆盖完整外部链 |
 | **L2 真实本地持久化** | 临时 LanceDB/SQLite/JSONL/FAISS 写读、重启加载、索引重建、重复提交、部分失败对账、租户隔离 | `python -m pytest tests/ cross/tests/test_storage.py OmniSimpleMem/tests/test_vector_store.py`（独立临时目录）；读回计数/ID/文件残留 | **未验证**：既有 Cross E2E 使用临时 SQLite 但向量多为 mock；现有存储没有统一跨表事务 |
-| **L3 真实 provider/网关** | 真实 embedding/LLM、MCP Streamable HTTP/REST、认证租户、超时、断线、限流、取消和错误码 | 启动隔离服务后用真实 HTTP/MCP 客户端逐条走 add/batch/query/retrieve/clear；记录端口、provider、deadline、退出码 | **未执行**：本轮禁止启动/外部调用；源码也没有统一 timeout/cancel 契约 |
+| **L3 真实 provider/网关** | 真实 embedding/LLM、MCP Streamable HTTP/REST、认证租户、超时、断线、限流、取消和错误码 | 启动隔离服务后用真实 HTTP/MCP 客户端逐条走 add/batch/query/retrieve/clear；记录端口、provider、deadline、退出码 | **未执行**：当前核对禁止启动/外部调用；源码也没有统一 timeout/cancel 契约 |
 | **L4 崩溃/恢复/生产式验收** | kill/重启 worker 或网关，恢复未完成 job，核对事实/索引/冷文件，验证幂等重放、无半写入、无孤儿资源和性能/成本预算 | 独立临时数据目录；注入窗口/embedding/存储/HTTP/进程故障，`kill` 后全新进程恢复；读回 job ledger、索引、文件、进程和端口 | **未验证且当前实现不满足**：没有统一 job ledger、checkpoint、监督器和崩溃恢复证据 |
 
-**本轮最低验收结论：**可把 L0 的源码事实和映射写入底座需求输入；不能把 SimpleMem 作为已通过 L1-L4 的生产记忆组件。后续任何平台实现必须先补能力需求、契约 owner、幂等键、资源/失败矩阵和 L1-L4 验收工作包，再决定复用或新建。
+**当前核对最低验收结论：**可把 L0 的源码事实和映射写入底座需求输入；不能把 SimpleMem 作为已通过 L1-L4 的生产记忆组件。后续任何平台实现必须先补能力需求、契约 owner、幂等键、资源/失败矩阵和 L1-L4 验收工作包，再决定复用或新建。
 
-### 12.9 第三轮装配计划（只作为候选，不代表已修改平台）
+### 12.9 后续装配计划（只作为候选，不代表已修改平台）
 
 1. **先冻结公共契约：**统一 `MemoryId/Scope/Source/Validity/SchemaVersion/EmbeddingFingerprint/OperationId/IdempotencyKey`，定义 `写入结果`、`检索结果`、`ContextBundle`、`JobStatus` 和稳定错误码；明确事实写 owner 与派生索引状态。
 2. **再登记支持库能力：**embedding（query/document）、向量索引、lexical/BM25、structured filter、冷对象、JSON/SQLite/Lance/FAISS provider、摘要/原子文件、可选 rerank；每个能力一个 id、一个契约 owner、一个 provider 注册路径。
@@ -529,11 +529,26 @@ L0-L4 是平台接入验收等级，不是 SimpleMem 当前已经通过的等级
 5. **最后收敛网关：**认证/租户/namespace、参数校验、限流、同步短任务与异步长任务分流、统一错误/事件/来源和版本兼容；`memory_clear` 等破坏性操作必须显式授权和证据。
 6. **以 L0→L4 门禁推进：**L0 先证明唯一入口和无旁路；L1 验证确定性契约；L2 验证本地持久化和幂等；L3 验证真实 provider/网关；L4 验证杀进程、重启、重放、对账和残留清理。任一级失败都只能标为“待核”，不得用下一层的静态通过覆盖。
 
-### 12.10 本轮新增剩余风险
+### 12.10 当前核对新增剩余风险
 
-- `project_context` 错绑项目且未产生开工 id；目标项目专属 `system_engineering_toolkit` 上下文未建立，代码图也未索引。上述事实已记录，不能当作平台项目证据。
+- 本轮不使用 MCP，不产生 MCP work_id、反馈或验证入账；目标 `.codegraph/` 已索引，统计为 361 files、7,615 nodes、17,115 edges，仅用于源码定位，不替代源码证据。
 - 源码存在多套同构实现和多个默认数据目录；未完成迁移前，任何“唯一链路”都只是目标约束，不是当前行为。
 - 当前 embedding 维度在文本、MCP、Omni、Cross 间可不同，模型/维度指纹和迁移策略尚未统一；跨表直接复用会失败或产生不可比结果。
 - 失败窗口、重复 finalize、重复 MAU、raw/metadata/vector/event/KG 半写入、模型/HTTP 句柄释放、超时取消和崩溃恢复均缺少端到端证据。
 - parametric distillation 的真实训练路径和 `MemoryConsolidator` 的重要性注册/归档完整性尚未通过真实 provider 验证；mock training 不能算蒸馏完成。
-- 本轮只允许并实际修改项目根 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README 或 Git。
+- 当前核对只允许并实际修改项目根 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README 或 Git。
+
+## 13. 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 远程版本 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `db80b6a7c591e0ea730a058e9f5fc4eb06572299` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 361 files / 7,615 nodes / 17,115 edges，索引最新 |
+| 文档行数 | `wc -l ARCHITECTURE.md` | 539 行，满足 500 行要求 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 需以本轮执行退出码为准；未发现空白错误 |
+| 修改边界 | 目标源码 `git status` 与平台定向 diff | 源码未修改，仅平台侧唯一 `ARCHITECTURE.md` 发生研究文档变更 |
+
+本轮源码与文档证据覆盖：`simplemem/router.py`、`simplemem/text/system.py`、`simplemem/core/memory_builder.py`、`simplemem/core/hybrid_retriever.py`、`simplemem/core/database/*`、`simplemem/multimodal/orchestrator.py`、`multimodal/processors/*`、`multimodal/retrieval/*`、`multimodal/storage/*`、`cross/*`、`MCP/*`、`simplemem/integrations/server/*`、`OmniSimpleMem/*`、`EvolveMem/*`、测试与 Docker/Compose 文件。文档中的 file:line 结论均以当前 checkout 静态源码交叉核对，旧细探文件不再作为独立事实源。
+
+本轮严格未使用 MCP，只使用 shell、git、CodeGraph CLI 和源码静态证据。未执行依赖安装、pytest、真实 LLM/embedding、LanceDB/FAISS/SQLite 重启对账、MCP/REST 服务、认证租户、并发压测、取消/超时、强杀恢复、Docker build 或 benchmark；这些仍属于 L1-L4 未验证风险。

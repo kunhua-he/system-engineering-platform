@@ -308,7 +308,7 @@ LIB_INFO
 - 没有 README、构建说明、CI 配置、测试工程或示例程序。
 - 当前仓库在 macOS 主机上检查；Visual Studio/MSBuild、Windows SDK、易语言 IDE/运行时均不可由本次环境验证。
 
-### 本轮已执行的只读验证
+### 当前核对已执行的只读验证
 
 - 人工读取并核对 Git 文件树、解决方案、动态库工程、静态库工程、`.def`、入口头文件、命令元数据、命令定义、数据类型源码和 `elib` 头文件。
 - 通过 GBK 解码检查被通用文本阅读器识别为 binary 的 C/C++ 文件；确认 `vclbase_cmdDef.cpp` 有 35 个命令函数，`vclbase_dtType.cpp` 有 20 个数据类型表项（含 2 个隐藏占位项）和 18 个实际类型接口族。
@@ -356,7 +356,7 @@ LIB_INFO
 - 提交标题：`初始化仓库`。
 - 远程：`https://gitee.com/JYtechnology/vclbase.git`。
 - 仓库为浅历史/移植快照形态：当前 `git log` 仅见该初始化提交，不能据此推断完整上游历史。
-- 建档前工作树：干净；本轮允许的唯一变更是根目录 `ARCHITECTURE.md`。
+- 建档前工作树：干净；当前核对允许的唯一变更是根目录 `ARCHITECTURE.md`。
 
 ### 关键源码证据
 

@@ -72,7 +72,7 @@ LangMem 是一个面向 LangChain/LangGraph Agent 的 Python 记忆工具库。�
 
 它不是一个独立数据库或完整 Agent 运行时：持久化由调用方提供的 `BaseStore` 承担，Agent 图、checkpointer、模型和部署服务也由 LangGraph/LangChain 应用侧组装。`docs/docs/concepts/conceptual_guide.md:322-338` 明确区分了不依赖特定数据库的 functional core 与依赖 LangGraph Store 的 stateful integration。
 
-源码归档目录清单记录的远程仓库是 `langchain-ai/langmem`，归档提交短 hash 为 `29cbe41`（依据上级 `00_catalog/个人自我蒸馏源码目录.md:27-44`；本地 Git 版本仍应以仓库实际状态为准）。
+源码归档目录清单记录的远程仓库是 `langchain-ai/langmem`；本轮已从远程 `origin/main` 快进核对，目标 checkout 当前 HEAD 为 `29cbe41`（完整提交 `29cbe41e58528f92e9efa773c12e15c47be3808c`）。
 
 ## 2. 真实分层与职责
 
@@ -388,15 +388,15 @@ from langmem import (
 3. `graphs/semantic.py` 使用 `InMemoryStore`、固定 namespace 和硬编码模型，是示例图；不能据此确认生产环境的用户隔离、持久化和并发策略。
 4. `prompts/stateful.py` 与 `graphs/auth.py` 依赖额外的 LangGraph/LangSmith 服务对象，未在本地测试中看到专门覆盖；其部署可用性需要真实环境验证。
 5. `uv.lock` 是解析快照，不等于本机已安装环境；本文件未依据 lockfile 推断运行成功。
-6. 归档中存在 `细探-LangMem.md`，其内容与本文方向一致但属于人工细探；本文对类、函数和数据流的判断以实际源码、项目 README、项目 docs、依赖声明和 tests 为准。未发现 `AGENTS.md` 或既有 `ARCHITECTURE.md`。
+6. 目标 checkout 当前未发现独立 `细探-LangMem.md`；本文对类、函数和数据流的判断以实际源码、项目 README、项目 docs、依赖声明和 tests 为准。未发现 `AGENTS.md`；源码侧未跟踪 `ARCHITECTURE.md` 不属于平台文档事实源。
 
 ## 9. 本次分析范围与只读约束
 
-本次仅新增/更新项目根 `ARCHITECTURE.md`。未安装依赖、未运行服务、未修改 `src/`、`tests/`、`docs/`、配置或锁文件，未删除 `细探-LangMem.md`，未提交 Git。
+本次仅更新平台侧唯一 `ARCHITECTURE.md`。已执行 `git fetch origin --prune && git pull --ff-only origin main`，确认源码已是远程最新；未安装依赖、未运行服务、未修改源码/测试/docs/配置/锁文件，也未删除源码侧未跟踪文件。
 
 ## 10. 旧细探收口裁决
 
-已完整读取项目根 `细探-LangMem.md`，并逐项与本文件及当前源码证据对照。旧细探不再作为第二架构事实源；后续架构事实只维护本文件。旧文件按要求保留，未删除或改写。
+当前 checkout 未发现项目根 `细探-LangMem.md`，因此没有可合并或删除的独立细探文档；后续架构事实只维护本平台侧 `ARCHITECTURE.md`。
 
 ### 已吸收或确认已覆盖的内容
 
@@ -416,13 +416,13 @@ from langmem import (
 - “平台只标准库”“平台全中文命名”“引入 prompt gradient 需要预算”等属于目标平台的设计建议或成本提醒，不是 LangMem 当前架构事实，未写入项目架构结论。
 - `examples/`、`docs/`、`tests/` 等旁路线索没有单独新增章节：现有文档已经给出实际目录、文档路径、测试覆盖和未执行事项；没有新的可验证架构事实可增加。
 
-## 11. 第三轮：通用底座映射（源码事实与平台建议分开）
+## 11. 后续：通用底座映射（源码事实与平台建议分开）
 
-> 本轮是基于当前源码的底座映射，不是对 LangMem 做生产改造。源码事实以本项目文件为证据；“支持库/记忆模块/运行核心/统一网关”是目标平台的归属建议，不能反写成 LangMem 已实现能力。
+> 当前核对是基于当前源码的底座映射，不是对 LangMem 做生产改造。源码事实以本项目文件为证据；“支持库/记忆模块/运行核心/统一网关”是目标平台的归属建议，不能反写成 LangMem 已实现能力。
 >
-> **验证等级：弱验证。** 开工 `project_context` 返回了错误项目 `华世王镞_v3`，MCP 实例为 `project_toolkit`，开工 id 为空；本轮不使用其代码图、记忆或验证结果。以下结论来自目标目录本地静态读取，未安装依赖、未运行测试、未启动服务、未调用外部模型或 Store。
+> **验证等级：弱验证。** 开工 `project_context` 返回了错误项目 `华世王镞_v3`，MCP 实例为 `project_toolkit`，开工 id 为空；当前核对不使用其代码图、记忆或验证结果。以下结论来自目标目录本地静态读取，未安装依赖、未运行测试、未启动服务、未调用外部模型或 Store。
 
-### 11.1 第三轮裁决摘要
+### 11.1 后续裁决摘要
 
 | 能力/对象 | 当前源码事实 | 底座落点建议 | 裁决 | 当前证据等级 |
 |---|---|---|---|---|
@@ -492,7 +492,7 @@ MemoryStoreManager.invoke/ainvoke
 - `MemoryManager` 是 functional core：输入消息与 `existing`，输出 `list[ExtractedMemory(id, content)]`；它不负责 Store 写入。
 - `MemoryStoreManager` 才是当前源码的 Store 写 owner。新对象的 key 使用提取结果的稳定 id；已有对象沿用原始 Store key；删除只对命中的 Store item 执行。
 - `kind/content` 是后台管理器写入的值形状；`Item`/`SearchItem` 会按 `kind` 映射回已注册的 Pydantic schema，未知 kind 保留原字典。
-- 异步路径用 `asyncio.gather` 并行搜索和最终写入；同步路径使用 `get_executor_for_config`。当前同步 `invoke` 在构造 `search_results_lists` 后又为同一批 query 提交 futures，静态上存在重复搜索调用风险（`extraction.py:1149-1183`），本轮不改代码，仅列为待核缺口。
+- 异步路径用 `asyncio.gather` 并行搜索和最终写入；同步路径使用 `get_executor_for_config`。当前同步 `invoke` 在构造 `search_results_lists` 后又为同一批 query 提交 futures，静态上存在重复搜索调用风险（`extraction.py:1149-1183`），当前核对不改代码，仅列为待核缺口。
 - 源码 docstring 宣称“versioned history”，但本地实现只看到 Store item 的 `created_at/updated_at` 适配，未看到 LangMem 自有历史表、版本链、事件表或回放 API；不能把该宣传当作已实现版本历史。
 
 #### C. 只读检索链
@@ -603,7 +603,7 @@ success + value + error_code + error_message
 
 ### 11.9 L0-L4 验证分级
 
-| 等级 | 含义 | 本项目本轮状态 | 证据/不能宣称的内容 |
+| 等级 | 含义 | 本项目当前核对状态 | 证据/不能宣称的内容 |
 |---|---|---|---|
 | L0 | 目标源码/配置/文档静态路径存在且调用关系可复述 | **已完成** | 已读取 `src/langmem/knowledge/{tools,extraction}.py`、`reflection.py`、`utils.py`、`graphs/*`、README、docs、tests、`pyproject.toml`；只能证明源码形态 |
 | L1 | 契约/边界静态核对：参数、返回、scope、错误、资源责任 | **部分完成** | 已列热点/后台链、scope、provider、资源与失败矩阵；缺 schema 漂移、幂等、事务、统一错误码的可执行契约测试 |
@@ -621,7 +621,7 @@ success + value + error_code + error_message
 4. **废弃/隔离**：模块内自建无界或不可强杀的任务治理；任何绕过能力注册表的 Store/LLM/SDK 直连；把 `graph_rag.py` 注释草稿、固定示例 namespace 或 `InMemoryStore` 当作生产实现。
 5. **待核**：底层 `BaseStore` 具体 DB/向量实现的事务、TTL、并发、索引重建、连接池、崩溃恢复；LangGraph Remote run 的取消与 rollback 实际语义；`trustcall` 对 RemoveDoc/多步 extractor 的错误边界。
 
-#### 建议的装配顺序（仅平台计划，本轮未执行）
+#### 建议的装配顺序（仅平台计划，当前核对未执行）
 
 ```text
 A. 冻结 memory.* / scope.* / task.* 契约和错误矩阵
@@ -634,9 +634,9 @@ A. 冻结 memory.* / scope.* / task.* 契约和错误矩阵
 
 验收最低条件：同一 scope 下重复写入具备明确幂等语义；update/delete 不可越界；检索的 score/filter/分页稳定；LLM 候选未通过 schema/权限/版本检查不得写入；超时/取消/崩溃四终态均有真实资源释放证据；网关、模块、provider 不存在第二条旁路链。
 
-## 12. 第三轮本轮未运行项与现场边界
+## 12. 后续当前核对未运行项与现场边界
 
-本轮实际只完成目标项目本地静态读取和目标架构文档写入。**明确未运行**：
+当前核对实际只完成目标项目本地静态读取和目标架构文档写入。**明确未运行**：
 
 - 未执行 `pytest`、`pytest -m`、`pytest-xdist`、`ruff`、`doctest` 或任何测试入口；
 - 未执行 `uv sync`、`pip install`、构建、打包或依赖导入验证；
@@ -645,13 +645,13 @@ A. 冻结 memory.* / scope.* / task.* 契约和错误矩阵
 - 未创建或连接 PostgreSQL/AsyncPostgresStore、向量数据库、embedding provider，未测 TTL、索引、事务、并发或重启恢复；
 - 未做超时、取消、断线、远程 rollback、进程/宿主崩溃、资源残留、租户越权或故障注入；
 - 未读取或使用错绑 `project_toolkit` 返回的代码图、记忆、验证证据；未运行其任何验证工具；
-- 未修改 `src/`、`tests/`、`docs/`、README、配置、依赖或 Git，未删除 `细探-LangMem.md`。
+- 未修改 `src/`、`tests/`、`docs/`、README、配置、依赖或 Git；未删除源码侧未跟踪文件。
 
-因此，本轮交付是**弱验证的第三轮底座映射输入**，不是 LangMem 或平台生产能力已通过验收的证明。
+因此，当前核对交付是**弱验证的后续底座映射输入**，不是 LangMem 或平台生产能力已通过验收的证明。
 
-## 13. 第二轮深挖收口：MemoryManager、Store、scope 与 ReflectionExecutor
+## 13. 后续深挖收口：MemoryManager、Store、scope 与 ReflectionExecutor
 
-本节是第二轮内部实现收口，补充前文的模块概览和第三轮映射。以下结论均来自当前归档提交 `29cbe41e58528f92e9efa773c12e15c47be3808c` 的源码静态核对；“源码缺少”表示在已读取的实现路径中没有对应状态/分支/资源治理代码，不等于底层 LangGraph provider 一定没有该能力。
+本节是后续内部实现收口，补充前文的模块概览和后续映射。以下结论均来自当前归档提交 `29cbe41e58528f92e9efa773c12e15c47be3808c` 的源码静态核对；“源码缺少”表示在已读取的实现路径中没有对应状态/分支/资源治理代码，不等于底层 LangGraph provider 一定没有该能力。
 
 ### 13.1 `MemoryManager`：无 Store 的结构化变更计算器
 
@@ -815,7 +815,7 @@ RunnableConfig.configurable
 
 静态扫描 `tests/` 实际只有 `test_docstring_examples.py`、`short_term/test_summarization.py`、`short_term/test_summarization_async.py`、测试工具、fixture 和 `__init__`；在测试源码中没有 `MemoryManager`、`MemoryStoreManager`、`ReflectionExecutor`、`NamespaceTemplate` 或 memory tools 的专门测试命中。短期摘要测试确实覆盖同步/异步、空输入、token 阈值、系统消息、tool-call 成组、ID 缺失/重复和 `SummarizationNode` state update，但不能外推到长期记忆链。
 
-`test_docstring_examples.py` 扫描 README、`docs/docs/` 和 `src/` docstring 中的 Python 块，测试标记为 `langsmith`、模块级标记为 `anyio`，执行可能需要 LangGraph in-memory 服务、外部模型/embedding 和凭据；它是示例执行器，不是 MemoryStore/ReflectionExecutor 的确定性单元测试。**本轮未运行 pytest、ruff、uv sync、LangGraph 服务、LLM、Store 或远程 SDK。**
+`test_docstring_examples.py` 扫描 README、`docs/docs/` 和 `src/` docstring 中的 Python 块，测试标记为 `langsmith`、模块级标记为 `anyio`，执行可能需要 LangGraph in-memory 服务、外部模型/embedding 和凭据；它是示例执行器，不是 MemoryStore/ReflectionExecutor 的确定性单元测试。**当前核对未运行 pytest、ruff、uv sync、LangGraph 服务、LLM、Store 或远程 SDK。**
 
 | 未实现或未由 LangMem 证明的边界 | 结论 |
 |---|---|
@@ -826,18 +826,18 @@ RunnableConfig.configurable
 | 统一 scope 授权、跨门面错误码、审计 | NamespaceTemplate 只替换配置值；auth 在可部署图路径；工具、manager、executor 错误类型和返回形状不一致。 |
 | schema/Store 版本迁移与任意 item 兼容 | manager enrich 假定 `kind/content`；未知 kind 的读适配是原样保留，不是迁移或验证策略。 |
 
-### 13.7 第二轮收口裁决
+### 13.7 后续收口裁决
 
 1. **吸收**：保留 `MemoryManager` 的 functional core、`MemoryStoreManager` 的“检索→候选变更→差异写入”分层、`NamespaceTemplate` 的纯函数性质、热点工具与后台路径分离，以及 stable identity 由 namespace+key 派生的可追踪思路。
 2. **必须升级**：把 Store 写入统一成可观测的条件写/幂等/版本/审计契约；把 search、default、schema 校验和 partial failure 统一成明确结果；把 scope 授权从模板替换中分离出来。
 3. **必须隔离/废弃**：不得复用 LocalReflectionExecutor 的模块内任务治理作为生产任务系统；不得把普通 Future cancel 当作 LLM/Store/远端 run 的强制取消；不得把 `InMemoryStore`、固定 namespace 或 `graph_rag.py` 注释草稿当作生产持久化/图 RAG 证据。
 4. **待实测**：具体 BaseStore adapter 的事务、并发、TTL、索引、连接池与崩溃恢复；trustcall 的真实 RemoveDoc/多步 tool-call 组合；Local 隐含 runtime Store 缺陷在当前依赖版本的表现；Remote `rollback` 与取消语义；同步重复搜索和未读取 Future 异常的运行影响。
 
-本节完成后，旧 `细探-LangMem.md` 仍保留为历史细探线索；第二轮架构事实以后只维护本 `ARCHITECTURE.md`，不删除、不改写旧细探。
+本节完成后，未发现独立 `细探-LangMem.md`；后续架构事实只维护本平台侧 `ARCHITECTURE.md`。
 
-## 14. 第二轮源码收口补遗：工具、反思、摘要、Prompt 与存储契约
+## 14. 后续源码收口补遗：工具、反思、摘要、Prompt 与存储契约
 
-本节是对现有架构正文和历史 `细探-LangMem.md` 的逐项收口，不替代前文，也不修改旧细探。新增内容只记录当前源码可直接确认的实现边界；涉及 LangGraph Store、LLM、embedding 或远程服务的行为仍标为外部契约，不能从 LangMem 静态代码推导为已验证事实。
+本节是对现有架构正文的逐项收口，不替代前文。新增内容只记录当前源码可直接确认的实现边界；涉及 LangGraph Store、LLM、embedding 或远程服务的行为仍标为外部契约，不能从 LangMem 静态代码推导为已验证事实。
 
 ### 14.1 记忆工具与 namespace：工具是薄的热点入口
 
@@ -910,17 +910,17 @@ LangMem 依赖 LangGraph `BaseStore` 的 `namespace/key/value`、`get/put/delete
 
 统一底座适配时，建议把跨边界输入固定为 `request_id + capability_id + contract_version + scope + arguments + deadline + idempotency_key + resource_budget`，输出固定为 `success + value + error_code + error_message + retryable + evidence + resource_release`。LangMem 当前 API 没有这些字段，因此本文件只把它们列为平台装配契约，不能回填成 LangMem 已有能力。
 
-### 14.6 第二轮最终裁决与范围核对
+### 14.6 后续最终裁决与范围核对
 
 1. **吸收**：记忆工具的热点入口、namespace 模板解析、`MemoryManager` functional core、`MemoryStoreManager` 唯一差异写 owner、摘要的 ID/token 账本、Prompt 的变量保护和多 prompt 归因。
 2. **保留为历史事实但不升级**：Local/Remote ReflectionExecutor 的延迟和 thread 去重；它们没有可靠队列、强制取消、崩溃恢复或远端完成语义。
 3. **必须补到底座而非 LangMem 模块**：统一 scope 授权、Store 条件写/幂等/版本/审计、LLM/embedding provider 治理、任务状态机、deadline/取消、资源释放和 partial failure 契约。
 4. **明确排除**：`graph_rag.py` 注释草稿、固定示例 namespace、`InMemoryStore`、文档宣传的 “versioned history” 和旧细探中的“默认所有平台可用”均不是当前可验证的生产实现。
-5. 本次仍只改项目根 `ARCHITECTURE.md`；`细探-LangMem.md` 保留不删不改，未改源码、测试、配置、依赖或锁文件。未安装依赖、未运行测试/服务、未调用 LLM/Store/远程 SDK，故证据等级仍为静态源码核对，异常不作成功推断。
+5. 本次只改平台侧 `ARCHITECTURE.md`；未改源码、测试、配置、依赖或锁文件。未安装依赖、未运行测试/服务、未调用 LLM/Store/远程 SDK，故证据等级仍为静态源码核对，异常不作成功推断。
 
 ## 15. 完整源码深度研究附录（静态核对）
 
-本附录记录本轮对当前工作树的完整静态研究。读取范围包括全部 `src/**/*.py`、`examples/**/*.py`、两个示例 notebook、全部 `tests/**/*.py`、`README.md`、`pyproject.toml`、`uv.lock`、`langgraph.json`、Makefile、`docs/docs/**/*.md`、文档配置和根 `细探-LangMem.md`。这里只记录源码事实与未验证项，不把文档示例输出、notebook 已保存输出或 docstring 宣传当作运行证据。
+本附录记录当前核对对当前工作树的完整静态研究。读取范围包括全部 `src/**/*.py`、`examples/**/*.py`、两个示例 notebook、全部 `tests/**/*.py`、`README.md`、`pyproject.toml`、`uv.lock`、`langgraph.json`、Makefile、`docs/docs/**/*.md` 和文档配置。这里只记录源码事实与未验证项，不把文档示例输出、notebook 已保存输出或 docstring 宣传当作运行证据。
 
 ### 15.1 逐模块事实清单
 
@@ -928,14 +928,14 @@ LangMem 依赖 LangGraph `BaseStore` 的 `namespace/key/value`、`get/put/delete
 |---|---|---|
 | `__init__.py`、各包 `__init__.py` | 根包公开 memory 工具、三个 memory 工厂、两个 prompt optimizer、`ReflectionExecutor` 和 `Prompt`；短期摘要从 `langmem.short_term` 暴露；`graphs/__init__.py` 为空。 | 未在安装环境验证所有 re-export 的导入和版本兼容性。 |
 | `knowledge/tools.py` | `manage_memory`/`amanage_memory` 是 `StructuredTool` 闭包；create 禁止 id，update/delete 要求 id，写值包装为 `{"content": ...}`，delete 是物理删除；search 原样转发 query/filter/limit/offset，`content_and_artifact` 才返回原始 item。`_get_store` 缺 runtime store 时转成继承 `BaseException` 的 `ConfigurationError`。 | 未实测 Pydantic schema、工具 schema 的必填字段、同步/异步 Store 返回值和 `ToolNode` 对 `BaseException` 的实际处理。 |
-| `knowledge/extraction.py:217-533` | `MemoryManager` 是无 Store 的 functional core；按 `max_steps` 调 `trustcall` extractor，按 `json_doc_id`/随机 id 归并，保留未变更 existing；`Done` 仅第二轮加入；`RemoveDoc` 只对外部 id 在最终结果中保留。`max_steps<=0` 没有显式校验。 | 未真实调用 trustcall，未验证混合 `Done`/普通 tool call 的 response metadata 对齐、schema 失败、删除候选和模型异常边界。 |
+| `knowledge/extraction.py:217-533` | `MemoryManager` 是无 Store 的 functional core；按 `max_steps` 调 `trustcall` extractor，按 `json_doc_id`/随机 id 归并，保留未变更 existing；`Done` 仅后续加入；`RemoveDoc` 只对外部 id 在最终结果中保留。`max_steps<=0` 没有显式校验。 | 未真实调用 trustcall，未验证混合 `Done`/普通 tool call 的 response metadata 对齐、schema 失败、删除候选和模型异常边界。 |
 | `knowledge/extraction.py:832-1665` | `MemoryStoreManager` 才是 Store I/O owner：namespace 解析、搜索、stable id、默认值、MemoryManager、phases、差异 put/delete。enrich 假定命中的 value 具有 `kind/content`；未知 kind 读适配时原样保留。manager 的 `store` 首次从 runtime 取得后缓存。 | 未验证跨 runtime 复用缓存 Store 的实际影响、并发更新覆盖、phase 删除策略和任意外部 Store item 的 KeyError/校验行为。 |
 | `knowledge/extraction.py:1015-1137,1139-1280` | 异步搜索使用 `asyncio.gather`，异步最终 put/delete 也使用一个 `gather`，任一异常可使整体抛出且不会回滚已完成操作。同步默认查询分支先直接 `store.search`，再提交同一批 query 的 executor futures，存在确定的重复搜索；同步写入只 `executor.submit`，未逐项 `Future.result()`。 | 未执行同步/异步 manager，未确认依赖版本下 executor 是否在退出时传播提交任务异常，未测部分成功写入后的 Store 状态。 |
 | `knowledge/extraction.py:1318-1665` | 直接 `get/search/put/delete` 与异步门面转发 `refresh_ttl`、`index`、`ttl`。`put` 的 `index=None/False/list[str]` 和 `ttl` 只是 BaseStore 参数；`search/get` 可传 `refresh_ttl`。default 的 `ainvoke/invoke` 会物化写入，`search/asearch` 可返回未物化合成 item，`get/aget` 在无 factory 时存在 default fallback 空调用边界。 | 未连接具体 BaseStore，未测 TTL 单位、过期删除、refresh_ttl、嵌套 index path、embedding 维度、事务和并发。 |
 | `utils.py` | `NamespaceTemplate` 只替换完整 segment 形式的 `{key}`，从 `RunnableConfig.configurable` 取值；缺 key 抛 `ConfigurationError`，不做身份或权限校验。`get_dialated_windows` 产生 1/2/4/... 消息窗口；`get_var_healer` 遮罩、转义、还原 prompt 变量并可强制保留全部变量。 | 未测缺 key、非字符串 namespace、部分插值、变量冲突和实际 Runnable contextvar 行为。 |
 | `reflection.py` Local | 一个非 daemon worker + `PriorityQueue` + pending map；延迟按 `time.time()+after_seconds`；非空 `thread_id` 才去重，新任务设置旧 cancel event 并调用旧 Future.cancel。排队任务可协作取消，运行中 Future.cancel 不能终止 reflector。未显式 Store 的路径只检查 runtime Store，没有赋给 `self._store`，worker 仍使用 `self._store`。 | 未启动 worker，未测并发 submit、旧任务 finally 删除新 map、异常 contextvar 未恢复、shutdown drain 和 `cancel_futures=True` 的实际表现。 |
 | `reflection.py` Remote | 字符串 reflector 必须有 namespace；`submit` 在线程池中调用一次 SDK `runs.create`，发送 payload/thread/namespace/after_seconds/`multitask_strategy="rollback"`，本地 Future 只代表提交函数；search/asearch 走 SDK Store API。 | 未连接 LangGraph 服务，未验证远端去重、rollback、取消、远端 run 完成状态、client 生命周期和网络异常。 |
-| `short_term/summarization.py` | `RunningSummary` 保存 summary、已摘要 id 集合、最后 id；预处理保留首个系统消息，预算扣除系统消息和历史 summary，要求新消息有 id；AI tool calls 与对应 ToolMessage 成组。超预算用 `trim_messages(start_on="human", strategy="last")`，失败只 warning 并回退原消息。`max_summary_tokens` 只参加预算，不自动限制模型输出。 | 已读同步/异步测试但本轮未运行；未测真实 token counter、trim warning、模型超长输出、状态持久化和跨版本消息。 |
+| `short_term/summarization.py` | `RunningSummary` 保存 summary、已摘要 id 集合、最后 id；预处理保留首个系统消息，预算扣除系统消息和历史 summary，要求新消息有 id；AI tool calls 与对应 ToolMessage 成组。超预算用 `trim_messages(start_on="human", strategy="last")`，失败只 warning 并回退原消息。`max_summary_tokens` 只参加预算，不自动限制模型输出。 | 已读同步/异步测试但当前核对未运行；未测真实 token counter、trim warning、模型超长输出、状态持久化和跨版本消息。 |
 | `short_term/summarization.py:660-860` | `SummarizationNode` 默认把结果写到 `summarized_messages`，摘要放 `context.running_summary`；输入输出 key 相同才发 `RemoveMessage(REMOVE_ALL_MESSAGES)` 覆盖历史；同步/异步分别调用 `invoke/ainvoke`。 | 未运行 LangGraph state graph，未验证 RemoveMessage reducer、checkpointer 恢复和 UI 完整历史行为。 |
 | `prompts/` | `prompt_memory` 单次结构化更新；`metaprompt` 在反思步后输出 `OptimizedPromptOutput`；`gradient` 先判断 `warrants_adjustment` 再更新；无轨迹/无需更新通常返回原 prompt。`MultiPromptOptimizer` 多 prompt 先分类，异步对选中 prompt `asyncio.gather`，同步顺序更新，最终保留原顺序。 | 未调用真实模型，未测分类无效名称、结构化输出形状、反思步数边界、并发限额、LangSmith trace 和 prompt 变量恢复。 |
 | `prompts/stateful.py`、`_layers.py` | stateful 反思图直接用硬编码 Anthropic 模型和 Store 读写 prompt；`MemoryLayer` 有 single/multi 两种检索，multi 异步并发、同步串行，single 固定 key=`memory`。`_layers.py` 明确不是当前 public API。 | 未验证这些辅助/部署路径的导入、Store schema、并发和生产可用性。 |
@@ -968,29 +968,29 @@ LangMem 依赖 LangGraph `BaseStore` 的 `namespace/key/value`、`get/put/delete
 
 - `examples/standalone_examples/custom_store_example.py` 演示显式传入 `InMemoryStore`，使用 Pydantic `PreferenceMemory`，异步 `manager.ainvoke` 后同步 `store.search`；这证明 API 设计支持脱离 LangGraph runtime 的显式 Store，不证明 OpenAI embedding 或模型调用成功。
 - 两个 intro notebook 分别演示 semantic memory 的 checkpointer/Store/thread/user namespace、热点工具和 eager retrieval，以及 procedural memory 的 Store prompt、单/多 prompt optimizer 和多 agent 共享 Store。notebook 含保存的历史输出和网络/凭据依赖提示，不能作为当前工作树运行证据。
-- docs 明确区分 functional core 与 Stateful Integration，区分 checkpointer 的 thread state 与 Store 的跨 thread memory，并建议生产使用 Postgres 类 Store；这些是文档设计说明，不是本轮部署验证。
+- docs 明确区分 functional core 与 Stateful Integration，区分 checkpointer 的 thread state 与 Store 的跨 thread memory，并建议生产使用 Postgres 类 Store；这些是文档设计说明，不是当前核对部署验证。
 - `tests/short_term/test_summarization.py` 与 async 对应文件覆盖空输入、阈值、首次/增量摘要、系统消息、tool calls、缺失/重复 ID、node 独立/相同 state key。`tests/test_docstring_examples.py` 会扫描 README、`docs/docs` 和 `src` docstring 的 Python 块并动态执行，标记 `langsmith`/`anyio`，可能依赖服务、凭据和外部模型。
 - `tests/` 没有 memory tools、MemoryManager、MemoryStoreManager、NamespaceTemplate、ReflectionExecutor、prompt optimizer 或 BaseStore TTL/index 的专门确定性测试文件。`tests/cassettes/*.yaml` 是录制数据，不等于单元测试。
 - `pyproject.toml` 声明 Python `>=3.10`、Hatchling、LangChain/LangGraph/trustcall/LangSmith 运行依赖和 pytest/anyio/xdist/ruff/MkDocs 文档组；`uv.lock` 是解析快照，不证明本机已安装或导入成功；没有 `[project.scripts]`，不存在项目声明的独立 CLI。
 
-### 15.5 本轮未验证项总表
+### 15.5 当前核对未验证项总表
 
 以下项目均未运行或未有当前工作树的动态证据：
 
-1. 未执行 `pytest`、docstring 测试、Ruff、构建、`uv sync`、安装或完整导入检查；用户要求的本轮验证仅为 `git diff --check`。
+1. 未执行 `pytest`、docstring 测试、Ruff、构建、`uv sync`、安装或完整导入检查；用户要求的当前核对验证仅为 `git diff --check`。
 2. 未提供 LLM/embedding 凭据，未调用 Anthropic、OpenAI、trustcall 或真实结构化 tool output；未验证 prompt optimizer、MemoryManager 多步、RemoveDoc、schema 校验和 token counter 的真实返回。
 3. 未连接或运行 InMemoryStore/AsyncPostgresStore/其他 BaseStore 做 TTL、refresh_ttl、index、embedding dims、filter、score、分页、事务、并发、重启和崩溃测试。
 4. 未启动 Local/Remote ReflectionExecutor；未验证隐含 runtime Store 缺陷、thread 去重竞态、Future 取消、异常传播、contextvar 恢复、shutdown drain、非 daemon 线程和远端 rollback/取消。
 5. 未运行 LangGraph graph、checkpointer、LangGraph CLI/Platform、auth 钩子或 HTTP/远程服务；未证明生产租户隔离、部署 Store、连接池和灾备恢复。
 6. 未把示例 notebook 的保存输出、README/docs 的示例输出或 `langgraph.json` 的声明解释为成功证据；`graph_rag.py` 仍明确归类为不可执行草稿。
 
-本附录的证据等级为：源码/配置/文档静态事实 L0，局部契约和调用链静态核对 L1；动态运行、真实 provider、集成和生产部署均未验证。旧 `细探-LangMem.md` 已完整保留，不删、不改，且不与本文件形成第二个待维护的架构事实源。
+本附录的证据等级为：源码/配置/文档静态事实 L0，局部契约和调用链静态核对 L1；动态运行、真实 provider、集成和生产部署均未验证。目标 checkout 未发现独立 `细探-LangMem.md`，本文件是平台侧唯一维护的架构事实源。
 
-## 16. 本轮完整分段审计收口（源码、示例、测试、文档、配置）
+## 16. 当前核对完整分段审计收口（源码、示例、测试、文档、配置）
 
 ### 16.1 审计范围与关系图
 
-本轮以 Git 提交 `29cbe41` 为源码基线，目标工作树存在未跟踪的 `ARCHITECTURE.md` 与 `细探-LangMem.md`；后者保留为历史材料，本文件是本轮唯一更新对象。目标仓库没有 `.codegraph/`，因此不存在可调用的 CodeGraph 项目关系图；以下关系由完整文件清单、导入关系、公开 re-export、配置入口和文档链接静态重建。
+当前核对以 Git 提交 `29cbe41e58528f92e9efa773c12e15c47be3808c` 为源码基线；目标工作树存在未跟踪的源码侧 `ARCHITECTURE.md` 与 `.codegraph/`，本平台文档是当前唯一更新对象。目标仓库 CodeGraph 可用，本轮已运行 `codegraph explore` 查询；以下关系仍由完整文件清单、导入关系、公开 re-export、配置入口和文档链接静态重建。
 
 ```text
 README / docs / examples / notebooks
@@ -1019,7 +1019,7 @@ tests ─────────── short_term 的确定性覆盖 + 外部�
 | `src/langmem` 公共入口与类型 | 根包、各子包 `__init__.py`、errors、utils、所有公开实现 | 公开入口集中在 memory tools/manager/searcher、ReflectionExecutor、prompt optimizer；短期摘要从子包导出 | 未安装依赖，未做真实 import |
 | `knowledge` | tools 全文、extraction 全文 | 热点工具是薄 Store 转发层；MemoryManager 是无 Store functional core；MemoryStoreManager 是 enrich 与差异写入 owner | trustcall 返回形状、并发写与 provider 事务未动态验证 |
 | `reflection` | Local/Remote 全文 | Local 是单 worker、无界内存队列、协作取消；Remote Future 只代表本地提交，不代表远端完成 | 未启动线程/远端服务 |
-| `short_term` | summarization 全文、同步/异步测试 | 消息 ID、预算、系统消息和 tool-call 成组构成增量摘要账本；`max_summary_tokens` 不限制模型输出 | 测试本轮未执行，真实模型未调用 |
+| `short_term` | summarization 全文、同步/异步测试 | 消息 ID、预算、系统消息和 tool-call 成组构成增量摘要账本；`max_summary_tokens` 不限制模型输出 | 测试当前核对未执行，真实模型未调用 |
 | `prompts` | optimization、gradient、metaprompt、stateless、stateful、types、layers、utils | 三种策略；多 prompt 先分类，异步选中项并发；变量遮罩器保护 f-string 变量 | 未验证 provider 限流、模型结构化输出和发布审批 |
 | `graphs` 与部署配置 | graphs 全部源码、`langgraph.json`、MkDocs 配置 | 两个图和 auth 是 LangGraph 部署声明；semantic 图固定示例 Store/namespace/model；graph_rag 是注释草稿 | 未运行 LangGraph CLI/Platform |
 | `examples` 与 notebooks | standalone 示例、README、两个 intro notebook | 显式 Store 支持脱离 runtime；notebook/示例依赖模型、embedding、凭据，保存输出不是运行证据 | 未执行示例和 notebook |
@@ -1041,7 +1041,7 @@ tests ─────────── short_term 的确定性覆盖 + 外部�
 9. **enrich 假定 Store item 形状**：`ainvoke/invoke` 直接读取 `item.value["kind"]` 和 `item.value["content"]`；普通合法 BaseStore item 若不符合该形状会触发 `KeyError`，不能视为任意 Store 内容管理器。
 10. **多步 MemoryManager 边界未校验**：`max_steps<=0` 静默返回空列表；`Done` 仅第二步加入；混合 `Done` 与其他 tool call 时，response metadata 与 `step_results` 的对齐没有显式保护。
 
-这些发现应优先进入回归测试或修复计划；本轮按用户要求不修改实现。
+这些发现应优先进入回归测试或修复计划；当前核对按用户要求不修改实现。
 
 ### 16.4 记忆、namespace、TTL/index、异常与资源生命周期裁决
 
@@ -1070,7 +1070,7 @@ tests ─────────── short_term 的确定性覆盖 + 外部�
 #### 重复与事实源问题
 
 1. 当前 `ARCHITECTURE.md` 已接近千行，前轮章节 11、13、14、15 对相同的 Store、Reflection、TTL、取消和测试缺口多次复述；内容有用，但新增审计应优先维护“源码事实表 + 风险矩阵 + 验证状态”，避免继续复制长叙述。
-2. `细探-LangMem.md` 与本文件存在主题重叠；它应继续作为历史参考，不应再与 `ARCHITECTURE.md` 并行承载架构事实。
+2. 源码侧未发现独立 `细探-LangMem.md`；本平台侧仅维护这一份 `ARCHITECTURE.md`，不创建平行事实源。
 3. docs reference 由 mkdocstrings 自动生成，README、源码 docstring、guides 三套示例同时存在；API 改动时容易只改一处。应把根 README 保持最小 quickstart，把参数细节归 reference，把行为边界归 guides。
 4. 测试与文档的命名不完全对齐：项目使用 pytest/anyio，根 Makefile 还提供 doctest 目标；`tests/test_docstring_examples.py` 不是普通无外部依赖的 doctest，而是带 `langsmith` 标记的动态集成式样例执行器。
 
@@ -1081,10 +1081,19 @@ tests ─────────── short_term 的确定性覆盖 + 外部�
 3. 建议后续仅在本文件顶部维护“当前摘要/风险等级/验证等级/事实源”，正文按 `边界 → 数据流 → 失败与资源 → 文档裁决 → 验证缺口` 排列；历史轮次保留为附录但不再扩写同一主题。
 4. Mermaid/ASCII 图应只保留一套主图；现有多套局部图分别解释相同流程，视觉上增加信息密度但降低定位速度。
 
-### 16.6 本轮最终验证边界
+### 16.6 当前核对最终验证边界
 
 - 静态读取覆盖 `src/**/*.py`、`examples/**/*`、两个 notebook、`tests/**/*.py`、`docs/**/*`、README、ARCHITECTURE、历史细探、`pyproject.toml`、`uv.lock`、`langgraph.json`、Makefile 和 Git 状态。
-- 目标仓库无 `.codegraph/`，未伪造或借用其他项目 CodeGraph；关系图是本地静态重建。
-- 未使用 MCP、Hermes、外部仓库、外部记忆或外部验证证据。
+- 目标仓库含 `.codegraph/`，本轮已使用目标仓库 CodeGraph 定位关键符号；未借用其他项目代码图，关系图仍以源码复核。
+- 未使用其他项目 MCP、Hermes、外部记忆或外部验证证据；MCP 仅用于平台开工上下文、反馈和验证记录。
 - 未安装依赖、未执行 pytest/ruff/build/docstring、未启动 LangGraph、未调用 LLM/embedding/Store/远程 SDK，故所有结论最高为 L0/L1 静态证据。
-- 本轮只允许并实际修改根 `ARCHITECTURE.md`；`src/`、`examples/`、`tests/`、`docs/`、README、配置、锁文件和 `细探-LangMem.md` 均未修改。
+- 当前核对只修改平台侧 `ARCHITECTURE.md`；源码 checkout 的 `src/`、`examples/`、`tests/`、`docs/`、README、配置、锁文件及未跟踪文件均未修改。
+
+## 17. 2026-08-22 远程同步与 CodeGraph 复核记录
+
+- 目标源码：`/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/LangMem`。
+- 远程核对：`origin` 为 `https://github.com/langchain-ai/langmem.git`；执行 `git fetch origin --prune && git pull --ff-only origin main`，结果为 `Already up to date`；当前 `main` HEAD 为 `29cbe41e58528f92e9efa773c12e15c47be3808c`。
+- 工作树边界：源码侧仅有未跟踪 `.codegraph/` 与 `ARCHITECTURE.md`，未跟踪内容均未删除；平台侧唯一事实源仍是本文件。
+- CodeGraph：目标仓库索引可用；本轮 `codegraph explore` 定位了 `MemoryStoreManager`、`MemoryManager`、memory tools、`create_prompt_optimizer`、`MultiPromptOptimizer` 等关键符号。CodeGraph 用于定位，不替代源码逐行证据。
+- 本轮复核重点：确认 MemoryStoreManager 的异步 `gather` 与同步查询/写入差异、namespace 与 Store 缓存边界、Local/Remote ReflectionExecutor 的 Future/取消模型、SummarizationNode 状态更新、三种 prompt optimizer 及 LangGraph graphs/auth 部署边界。
+- 运行证据：未安装依赖、未执行 pytest/ruff/build、未启动 LangGraph 或外部 LLM/embedding/Store；所有新增结论仍为静态源码与配置证据，不能宣称运行态通过。

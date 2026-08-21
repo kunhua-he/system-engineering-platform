@@ -407,20 +407,20 @@ Docling 的稳定核心不是某一个 PDF 模型，而是“格式 backend + �
 
 - 对后续二次开发最重要的边界是：新增能力应沿“输入格式映射 → backend → pipeline/stage → options/extras → API/CLI → 测试/文档”完整接入；统一 IR 继续由 `docling-core` 作为单一事实源；本地版本与 `docling-serve`、`docling-core`、模型包版本必须显式对齐。
 
-## 16. 第三轮通用底座映射：Docling 的唯一归属与单文档链路
+## 16. 后续通用底座映射：Docling 的唯一归属与单文档链路
 
-### 16.1 本轮目标、边界与证据口径
+### 16.1 当前核对目标、边界与证据口径
 
-本节是第三轮“基于底座的映射与裁决”，不是把 Docling 目录直接复制进系统工程平台，也不是宣称平台已经实现 Docling 能力。它回答四个问题：
+本节是后续“基于底座的映射与裁决”，不是把 Docling 目录直接复制进系统工程平台，也不是宣称平台已经实现 Docling 能力。它回答四个问题：
 
 1. 文档输入、PDF/Office backend、版面/表格/图片/OCR、统一 `DoclingDocument`、模型和导出分别归哪个唯一 owner；
 2. 大文件、模型权重、显存/设备、临时目录、HTTP 会话和输出制品由谁创建、持有、释放和验收；
 3. 失败、超时、主动取消、线程/进程崩溃和远端任务未确认时，哪一层写入事实，哪些结果不能伪装成成功；
 4. 以 L0-L4 验证等级冻结唯一文档链路，区分源码存在、组件集成和真实韧性证据。
 
-本轮事实证据只来自目标仓库当前本地快照：`docling/document_converter.py:95-220,431-723`、`docling/datamodel/document.py:616-779`、`docling/backend/abstract_backend.py:19-86`、`docling/backend/docling_parse_backend.py:48-220`、`docling/pipeline/base_pipeline.py:46-148`、`docling/pipeline/standard_pdf_pipeline.py:157-403`、`docling/models/base_model.py:38-218`、`docling/models/factories/ocr_factory.py:9-11`、`docling/utils/model_downloader.py:41-249`、`docling/datamodel/pipeline_options.py:95-260,1203-1269`、`docling/datamodel/document.py:400-550`。远程快照、README 声明、测试文件存在和外部平台能力均不能替代本地实现证据。
+当前核对事实证据只来自目标仓库当前本地快照：`docling/document_converter.py:95-220,431-723`、`docling/datamodel/document.py:616-779`、`docling/backend/abstract_backend.py:19-86`、`docling/backend/docling_parse_backend.py:48-220`、`docling/pipeline/base_pipeline.py:46-148`、`docling/pipeline/standard_pdf_pipeline.py:157-403`、`docling/models/base_model.py:38-218`、`docling/models/factories/ocr_factory.py:9-11`、`docling/utils/model_downloader.py:41-249`、`docling/datamodel/pipeline_options.py:95-260,1203-1269`、`docling/datamodel/document.py:400-550`。远程快照、README 声明、测试文件存在和外部平台能力均不能替代本地实现证据。
 
-`project_context` 实际返回了错误项目 `华世王镞_v3`，其代码图元信息也携带错误项目根；随后目标目录的 `codegraph_explore` 明确报告没有 `.codegraph/`。因此本轮代码图状态是**不可用**，未把错误项目上下文用于 Docling 事实，以下映射是目标目录直接读取后的静态架构输入。
+`project_context` 实际返回了错误项目 `华世王镞_v3`，其代码图元信息也携带错误项目根；随后目标目录的 `codegraph_explore` 明确报告没有 `.codegraph/`。因此当前核对代码图状态是**不可用**，未把错误项目上下文用于 Docling 事实，以下映射是目标目录直接读取后的静态架构输入。
 
 ### 16.2 唯一文档链路：适配差异，不复制执行核心
 
@@ -560,7 +560,7 @@ created → queued → running → succeeded
 
 ### 16.8 现有能力命中、缺口与复用/升级/新建/隔离裁决
 
-| 能力 | 源码命中 | 底座落点 | 第三轮裁决 |
+| 能力 | 源码命中 | 底座落点 | 后续裁决 |
 |---|---|---|---|
 | 输入路径/URL/stream、格式探测、限制 | `_DocumentConversionInput`、`InputDocument`、`DocumentLimits` | 文档解析支持库 + 运行核心资源监督 | **吸收语义，升级统一输入/安全/大文件契约** |
 | PDF/Office/image backend | `AbstractDocumentBackend`、`FormatOption`、各 backend | 文档解析支持库/provider 适配 | **吸收适配模式，禁止每格式复制公共入口** |
@@ -601,26 +601,26 @@ created → queued → running → succeeded
 
 ### 16.10 L0-L4 防假绿验证阶梯
 
-| 等级 | 本轮必须验证的内容 | 证据要求 | 当前状态 |
+| 等级 | 当前核对必须验证的内容 | 证据要求 | 当前状态 |
 |---|---|---|---|
-| **L0 静态事实** | 本地项目身份、版本、输入/backend/pipeline/model/export 路径；四类 owner；资源创建/释放箭头；失败分类；唯一链路 | `ARCHITECTURE.md` 源码路径/行号、错误 MCP 上下文、`.codegraph/` 状态、修改范围 | **本轮完成**：已直接读取目标文件；代码图不可用 |
+| **L0 静态事实** | 本地项目身份、版本、输入/backend/pipeline/model/export 路径；四类 owner；资源创建/释放箭头；失败分类；唯一链路 | `ARCHITECTURE.md` 源码路径/行号、错误 MCP 上下文、`.codegraph/` 状态、修改范围 | **当前核对完成**：已直接读取目标文件；代码图不可用 |
 | **L1 契约** | 输入互斥/大小/页限、格式路由、统一文档字段、错误映射、状态枚举、模型/provider 声明、导出结果形状 | 定向测试总数/跳过数/退出码；不能把测试存在、mock 或 import 成功算通过 | **未执行**：未安装依赖、未运行 pytest |
 | **L2 组件集成** | input→backend→pipeline→model provider→统一文档；PDF/Office/OCR/table/image 结果转换；资产 save/load；临时目录清理 | 真实/受控 provider 调用次数、结果 schema、文件摘要、session/模型/队列释放 | **未执行** |
 | **L3 真实端到端** | 真实 PDF/Office/图片，至少一条 OCR/layout/table，真实模型制品或明确的 `HOST_UNAVAILABLE`，真实导出并读回 | 环境/依赖/模型摘要、输入/输出摘要、任务状态、退出码、进程/线程/临时目录/显存现场 | **未执行**：未下载权重、未启动 provider/服务 |
 | **L4 逆向韧性** | 超大/损坏/恶意输入、provider 缺失、模型下载失败、断线、超时、主动取消、线程卡死、SIGKILL/native crash、部分导出、重启恢复、重复幂等 | 四终态状态轨迹、重试/取消确认、PID/线程/端口/租约/临时目录/制品残留读回；退出码必须真实 | **未执行**：当前仓库不能推出端到端取消或崩溃安全 |
 
-L0-L4 通过口径是“本轮真实命令 + 退出码 + 现场读回”。历史测试报告、README、模型目录存在、`ConversionResult` 对象返回、warning、HTTP 200、线程停止日志或 MCP tool 可注册都不能越级算通过。外部 provider 不可用时必须记为 `HOST_UNAVAILABLE`/`UNVERIFIED` 并写明阻塞原因，不能改成 skip 后绿色。
+L0-L4 通过口径是“当前核对真实命令 + 退出码 + 现场读回”。历史测试报告、README、模型目录存在、`ConversionResult` 对象返回、warning、HTTP 200、线程停止日志或 MCP tool 可注册都不能越级算通过。外部 provider 不可用时必须记为 `HOST_UNAVAILABLE`/`UNVERIFIED` 并写明阻塞原因，不能改成 skip 后绿色。
 
-### 16.11 第三轮最终裁决与剩余风险
+### 16.11 后续最终裁决与剩余风险
 
 - **吸收**：Docling 的输入归一化、backend/pipeline 分离、分页/声明式解析契约、版面/表格/图片/OCR 富化、`DoclingDocument` 外部 IR 边界、`ConversionResult` 错误/部分成功语义和多种导出投影，作为文档解析支持库与文档解析模块的契约输入。
 - **升级**：模型制品下载/校验、provider 注册、统一结果转换、文件/HTTP/临时目录支持库，以及运行核心的任务账本、资源租约、超时、取消、进程隔离、崩溃恢复和残留审计必须进入平台已有 owner；不得由 Docling 模块复制一套。
 - **隔离**：Docling 的第三方 backend/model 对象、CLI、MCP、service client wire model、pipeline 内存队列和 `ConversionStatus` 的项目内部细节留在项目适配层/provider/协议适配层；平台只接收统一文档、统一任务和统一制品契约。
 - **待核**：目标平台现有文档/OCR/模型/HTTP/任务/资源能力的实际注册表、能力 id、占用租约、契约版本和运行验证均因 MCP 错绑/代码图不可用而未核；不能直接开生产底座工作包。
 - **P0 风险**：线程停止超时可遗留资源；native/第三方模型崩溃隔离与恢复未证；取消/远端 job 未确认不能安全标记 canceled；大文件解压总量、模型显存峰值、批量导出原子性和临时目录崩溃清理未形成统一可读回证据。
-- **本轮边界**：仅修改本项目根目录 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git，未删除旧细探或其他文件。
+- **当前核对边界**：仅修改本项目根目录 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git，未删除旧细探或其他文件。
 
-## 17. 第三轮 MCP、修改与验证记录
+## 17. 后续 MCP、修改与验证记录
 
 | 项目 | 结果 |
 |---|---|
@@ -628,16 +628,16 @@ L0-L4 通过口径是“本轮真实命令 + 退出码 + 现场读回”。历�
 | MCP 实例 | 工具实际返回 `project_toolkit`；任务指定的 `system_engineering_toolkit`/目标 HTTP `127.0.0.1:8766/mcp/` 未能为本目标项目提供正确身份绑定。 |
 | `project_context` | **错误绑定**：返回项目名 `华世王镞_v3`，根目录与目标 Docling 不一致；结果未用于目标项目事实。 |
 | `codegraph_explore` | **不可用/错误上下文**：目标目录无 `.codegraph/`；工具返回 `codegraph` 不可用，元信息项目根仍是错误的 V3 根。 |
-| MCP 五字段反馈 | 本轮完成文档映射后调用；若后端仍拒绝，将以工具原始结果为准，不宣称已入账。 |
-| `verify_and_record` | 本轮仅允许执行 `git diff --check` 作为文档工作包验证；退出码必须为 0 才能记录成功。由于 MCP 上下文错绑，即使命令退出 0 也只证明目标文件差异格式，不证明平台装配完成。 |
+| MCP 五字段反馈 | 当前核对完成文档映射后调用；若后端仍拒绝，将以工具原始结果为准，不宣称已入账。 |
+| `verify_and_record` | 当前核对仅允许执行 `git diff --check` 作为文档工作包验证；退出码必须为 0 才能记录成功。由于 MCP 上下文错绑，即使命令退出 0 也只证明目标文件差异格式，不证明平台装配完成。 |
 | 项目根 | `/Users/hekunhua/Documents/Agent/github 源码参考/20_文档解析与IR/2026_06_25_document_json_unification/docling` |
 | 修改文件 | 仅 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git，旧细探未删除。 |
 | 代码图 | 不可用：目标目录没有 `.codegraph/`。 |
 | 真实验证 | L0 静态映射完成；L1-L4 未执行。 |
 
-## 18. 第三轮底座映射收口：从统一入口到可验收制品
+## 18. 后续底座映射收口：从统一入口到可验收制品
 
-本节是第三轮映射的收口版，按“调用入口 → 统一文档 → 解析器与转换 → 分块/结果 → 外部依赖 → 制品 → 异常终态 → 验证等级”给出一条不可分叉的实现边界。它描述的是对 Docling 的架构归纳，不表示目标平台已经拥有这些组件。
+本节是后续映射的收口版，按“调用入口 → 统一文档 → 解析器与转换 → 分块/结果 → 外部依赖 → 制品 → 异常终态 → 验证等级”给出一条不可分叉的实现边界。它描述的是对 Docling 的架构归纳，不表示目标平台已经拥有这些组件。
 
 ### 18.1 唯一入口和请求生命周期
 
@@ -725,7 +725,7 @@ created → queued → running → succeeded
 
 验证不自动升级：README、测试文件存在、import 成功、mock 返回、模型目录存在、日志出现 completed、`ConversionResult` 对象返回或 HTTP 200 均不能替代对应等级的真实证据。外部依赖不可用时必须明确记录 `HOST_UNAVAILABLE`/`UNVERIFIED` 及阻塞原因；不得将未执行改写成绿色通过。
 
-### 18.7 第三轮最终映射
+### 18.7 后续最终映射
 
 1. **吸收**：统一输入归一化、`FormatOption` 路由、backend/pipeline 分层、`DoclingDocument` 外部 IR、`ConversionResult`/`ErrorItem`、分块和导出投影。
 2. **复用**：`docling-core` 作为 IR 单一事实源，现有 serializer/chunker 作为投影基础，现有 optional extras 作为依赖分层参考。
@@ -804,15 +804,15 @@ convert()/convert_all()/convert_string()
 
 - 这套选择器能证明测试分层和 CI 选择规则，不能证明被忽略的模型、外部服务、取消、native crash 或资源清理路径通过。
 - 测试大量使用 `tmp_path`/`tmp_path_factory` 生成样本；这证明测试自身的临时目录隔离策略，不证明生产路径的 `mkdtemp`、delete-false 文件、模型 cache 和服务结果会被统一回收。
-- `test_failed_pages.py`、`test_threaded_pipeline.py`、`test_conversion_result_json.py`、各 backend 测试和 marker 选择测试覆盖了若干局部契约；在未安装依赖、未下载权重、未运行 pytest 的本轮中，不把测试文件存在或静态读取升级为 L1-L4 通过。
+- `test_failed_pages.py`、`test_threaded_pipeline.py`、`test_conversion_result_json.py`、各 backend 测试和 marker 选择测试覆盖了若干局部契约；在未安装依赖、未下载权重、未运行 pytest 的当前核对中，不把测试文件存在或静态读取升级为 L1-L4 通过。
 
-### 19.7 本轮深度研究结论
+### 19.7 当前核对深度研究结论
 
 1. **吸收**：`DocumentConverter → _DocumentConversionInput → InputDocument → FormatOption → backend/pipeline → ConversionResult → DoclingDocument → chunk/export` 是当前源码唯一主链，格式差异应收敛在 backend/provider 和 provenance 中。
 2. **明确边界**：声明式 backend、分页 backend、OCR/model stage、chunker 和 serializer 的职责已可分别定位；`docling-core` 继续是统一 IR 与 chunker 基础能力的 owner。
 3. **保留事实**：PDF/Office/Web/XML/media 路径并非完全同质，尤其是 Office/EPUB/DCLX/ASR/video 的临时目录和外部进程处理存在不同清理语义，不能用一个“finally 已清理”结论覆盖。
 4. **P0 缺口**：threaded stage 15 秒放弃、Python 线程不可强杀、native/provider 崩溃隔离、主动取消确认、delete-false 临时文件登记、模型权重校验/租约、导出原子提交和恢复证据仍不由当前源码统一保证。
-5. **验证裁决**：本轮只做静态深度源码研究，唯一后置命令是 `git diff --check`；未执行安装、模型下载、服务启动、pytest 或真实 provider，因此 L1-L4 继续保持未验证。只修改本文件，旧细探材料不删除。
+5. **验证裁决**：当前核对只做静态深度源码研究，唯一后置命令是 `git diff --check`；未执行安装、模型下载、服务启动、pytest 或真实 provider，因此 L1-L4 继续保持未验证。只修改本文件，旧细探材料不删除。
 
 ## 20. 本次指定目录的实际源码映射
 
@@ -877,9 +877,9 @@ OCR、layout、table structure、picture description 等共用此模式；外部
 
 本次只进行源码和测试静态读取，没有安装依赖或执行 pytest。因此：测试文件存在只能证明测试意图和覆盖位置，不能证明对应 backend、模型、缓存、导出、取消、native crash 或资源清理路径实际通过；本文件的 L1-L4 结论仍保持“未验证”。
 
-## 21. 本轮完整分段审计收口
+## 21. 当前核对完整分段审计收口
 
-本轮按实际物理布局分段核对了 `docling/document_converter.py`、`docling/datamodel/document.py`、`docling/backend/`、`docling/pipeline/`、`docling/datamodel/`、`docling/chunking/`、`docling/cli/export_utils.py`、`docling/models/`、`docling/utils/ocr_utils.py`、`docling/utils/model_downloader.py`、`tests/`、`docs/`、根 `pyproject.toml` 及包 README。目标树没有根级 `converter/`、`input/`、`document/`、`export/`、`OCR/`、`model/`、`cache/` 目录；这些名称是概念分区，源码事实以第 20 节映射为准。
+当前核对按实际物理布局分段核对了 `docling/document_converter.py`、`docling/datamodel/document.py`、`docling/backend/`、`docling/pipeline/`、`docling/datamodel/`、`docling/chunking/`、`docling/cli/export_utils.py`、`docling/models/`、`docling/utils/ocr_utils.py`、`docling/utils/model_downloader.py`、`tests/`、`docs/`、根 `pyproject.toml` 及包 README。目标树没有根级 `converter/`、`input/`、`document/`、`export/`、`OCR/`、`model/`、`cache/` 目录；这些名称是概念分区，源码事实以第 20 节映射为准。
 
 ### 21.1 端到端事实链
 
@@ -928,11 +928,11 @@ Path / URL / DocumentStream / HttpSource
 1. 根 `ARCHITECTURE.md` 是本次审计的唯一综合建档；不新增另一份 `细探` 类事实笔记，也不把 `docs/concepts/*` 改造成平台设计文档。
 2. `docs/concepts/*` 保持面向 Docling 用户的简洁公共说明：`architecture.md` 说明 converter/backend/pipeline/result，`docling_document.md` 说明 IR，`chunking.md` 和 `serialization.md` 说明下游投影。资源治理、失败矩阵和本地快照版本差异只在根建档维护，避免用户文档重复平台审计内容。
 3. 根文档中的“当前源码事实”不得由 README、示例、测试文件存在、模型目录存在、HTTP 200、日志或对象返回升级为运行证据；真实状态仍由 L1-L4 验证命令决定。
-4. 当前工作树在审计前已存在未跟踪的 `ARCHITECTURE.md`；本轮只修改该文件，不吸收、不删除、不重写其他未由本轮创建的文件。
+4. 当前工作树在审计前已存在未跟踪的 `ARCHITECTURE.md`；当前核对只修改该文件，不吸收、不删除、不重写其他未由当前核对创建的文件。
 
-### 21.5 本轮结论与验证边界
+### 21.5 当前核对结论与验证边界
 
 - 审计结果：静态 L0 完成；输入、路由、backend、pipeline、IR、chunker、export、OCR、model、cache、tests 和 docs 均有实际路径与责任边界记录。
 - 资源结论：正常路径存在局部 `unload()`/`finally`/临时清理，但 threaded stop 超时、pipeline cache 无 eviction、模型缓存无统一校验、delete-false 临时文件和直接覆盖资产文件仍是明确风险。
 - 文档结论：公开概念文档与源码主链一致；根文档此前的设计性“原子提交/租约/取消/崩溃监督”已在本节标明为平台目标，不再冒充当前实现。
-- 验证边界：未安装依赖、未下载模型、未启动外部服务、未运行 pytest；本轮没有 L1-L4 运行证据。仅可使用 `git diff --check` 验证 Markdown 差异格式。
+- 验证边界：未安装依赖、未下载模型、未启动外部服务、未运行 pytest；当前核对没有 L1-L4 运行证据。仅可使用 `git diff --check` 验证 Markdown 差异格式。

@@ -4,7 +4,7 @@
 >
 > 审计方式：CodeGraph 首次尝试后发现目标仓库没有 `.codegraph/` 索引；未初始化索引，改用源码、配置、Compose、前端、测试和文档的分段静态读取。
 >
-> 变更边界：本轮只修改本文件。未安装依赖、未启动 Docker/模型/数据库、未调用 API、未执行测试或构建，因此本文是静态证据，不是运行通过证明。
+> 变更边界：当前核对只修改本文件。未安装依赖、未启动 Docker/模型/数据库、未调用 API、未执行测试或构建，因此本文是静态证据，不是运行通过证明。
 
 ## 1. 一句话结论
 
@@ -94,6 +94,162 @@ HTTP 返回 `code=200` 只代表登记成功。响应没有独立 `task_id`，�
 - parent sidecar：`MysqlStore.mget` 在缺少本地 JSON 时补写 `<file_name>_<doc_index>.json`。
 
 这些制品没有统一 manifest、版本、owner、保留策略或 run 级清理器。失败、取消、重复重试或宿主崩溃可能留下中间文件、图片、sidecar 或数据库辅助文档。
+
+## 4.3 解析实现证据补充
+
+`qanything_kernel/core/retriever/general_document.py:65-520` 是插入侧统一文件对象。构造阶段区分 FAQ、URL、本地路径，并创建 `RecursiveCharacterTextSplitter`；`split_file_to_docs` 按后缀选择 loader。解析不是纯函数：URL、PDF、OCR、XLSX 会写 `tmp_files` 或图片目录，Markdown 表格会先写 MySQL Documents。
+
+关键证据：
+
+- `get_ocr_result_sync:36-45` 请求 OCR 服务，超时 120 秒，失败返回 `None`；`image_ocr_txt:97-122` 随后写文本文件。
+- `get_pdf_result_sync:47-62` 请求 PDF parser，超时 240 秒；`split_file_to_docs:395-405` 失败后回退 `UnstructuredPaddlePDFLoader`。
+- `url_to_documents_async:216-253` 与同步版本 `255-291` 最多重试三次，失败后进入 newspaper/MyRecursiveUrlLoader fallback。
+- `markdown_process:190-214` 按标题和表格切分，表格过大时保留表头。
+- `excel_to_markdown:294-336` 使用只读 workbook；失败时按 sheet 输出 CSV 并使用 `CSVLoader`。
+- `inject_metadata:455-520` 注入用户、知识库、文件、页码、图片、FAQ 和 headers，再合并相邻短文档。
+
+这些路径没有统一解析版本号。相同 file_id 在 parser、chunk_size 或标题策略变化后重试，旧 Documents 与向量难以区分；平台接入应把 parser version 和 chunk policy 写入制品元数据。
+
+## 5. 向量、全文和父子检索
+
+### 5.1 Embedding 写入
+
+`qanything_kernel/dependent_server/insert_files_serve/insert_files_server.py` 轮询黄色文件，调用 `LocalFileForInsert.split_file_to_docs`，组装 parent/child 文档并请求 embedding 服务。批量失败主要依赖异常和 File 状态回写，未见跨 Milvus/MySQL 事务协调。
+
+### 5.2 Milvus child 与 MySQL parent
+
+`qanything_kernel/core/retriever/parent_retriever.py:159+` 的 `ParentRetriever` 将 child 向量命中映射回 parent；`docstrore.py:22+` 的 `MysqlStore` 读取完整上下文并可能补写 JSON sidecar。Milvus 命中而 MySQL parent 缺失时，结果只能降级或丢弃。
+
+### 5.3 ES 混合检索
+
+启用 Elasticsearch 时，child 文本同时写入 ES；查询把 Milvus semantic score 与 ES BM25 结果合并，再进入 rerank。两类 score 标度不同，混合不是天然可比，必须用固定数据集验证归一化和 top-k。
+
+### 5.4 Rerank 与 token 预算
+
+rerank 服务接收 query/passages 并返回 relevance score。LocalDocQA 按分数排序，再按 token budget 截断 parent 上下文；召回 top-k 不等于最终送入 LLM 的片段数，部署应记录召回数、重排数、最终 token 数与截断原因。
+
+## 6. 问答、RAG 与多轮会话
+
+### 6.1 初始化
+
+`qanything_kernel/core/local_doc_qa.py` 初始化 MySQL、Milvus、ES、embedding、rerank、LLM client 和 ParentRetriever。初始化成功只表示 client 构造完成，不表示后端索引或模型健康。
+
+### 6.2 问答链
+
+```text
+chat endpoint -> LocalDocQA.get_knowledge_based_answer
+ -> query/history normalization -> vector + optional BM25 recall
+ -> parent restore -> rerank -> token budget/context
+ -> OpenAI-compatible LLM -> citation/source -> QaLogs -> SSE/JSON
+```
+
+多轮历史通常随请求体传入；QaLogs 是审计记录，不是 checkpoint。客户端断线后，已生成 token 和中间状态没有自动续传协议。
+
+### 6.3 SSE 与无命中
+
+流式接口推送增量文本、引用和结束标志。LLM 异常、客户端断开、超时和空答案分支不完全一致，可能在已发送前缀后才失败；生产侧需要 request id、终态事件、heartbeat、发送队列上限和断线清理。
+
+Milvus/ES 无命中时，系统可返回无法回答模板或转通用 LLM；HTTP 200 不能证明知识命中。答案应携带 retrieval status、source count 和 fallback reason。
+
+## 7. API 与前端契约
+
+`handler.py` 覆盖知识库 CRUD、上传/删除、文件状态、FAQ、chunk 编辑、Bot、问答、QA 日志和模型探针；`docs/API.md` 是说明性文档，字段仍以 Sanic handler 为准。
+
+### 7.1 文件状态机
+
+```text
+gray -> yellow -> green
+  \-> red
+```
+
+gray 表示已登记，yellow 表示 worker 处理中，green 表示代码认为解析/embedding/索引/parent 写入完成，red 表示失败。状态字段没有可见 lease token、owner、attempt 或 heartbeat；green 不是跨后端原子完成。
+
+### 7.2 删除和编辑
+
+删除需要同时处理原始目录、MySQL Documents、Milvus/ES child、FAQ 和日志关联；后台删除缺少统一 tombstone。chunk 编辑若先改 MySQL 再更新向量，期间会出现旧向量+新 parent 混合版本。
+
+### 7.3 前端状态
+
+Pinia 保存上传、知识库、聊天、Bot 和 chunk 状态。Axios 注入用户信息和错误提示，但取消重复请求逻辑部分注释；前端显示完成依赖轮询，不读取 worker lease 或内部服务健康。
+
+## 8. Worker、队列和资源生命周期
+
+`insert_files_server.py` 是数据库轮询 worker，不是持久消息队列。其任务边界是 File 查询、领取、解析、embedding、索引和状态回写；未见通用优先级、可见 claim token、跨进程幂等 key 或死信表。
+
+PDF/URL 解析的 120/240 秒超时会长期占用 worker；多文件上传可登记大量 gray 行，缺少全局并发预算和用户级配额。embedding/rerank client 的连接复用和关闭依赖 HTTP 库/进程。
+
+资源所有权分散：原始文件和 tmp 目录由解析器创建，HTTP 临时文件部分在 finally unlink；Milvus/ES/MySQL 无统一 close 顺序；Sanic 启动的多个模型进程没有 supervisor 级重启和组回收；前端轮询/SSE 没有后端重启恢复游标。
+
+## 9. 数据库与索引一致性
+
+MySQL 保存用户、知识库、File、Documents、Faqs、QaLogs 和 Bot；Milvus 保存 child 向量；ES 可保存 child 全文；本地文件系统保存原始与解析制品。它们没有共同事务，必须把阶段写成可重试且可核对的状态转换。
+
+### 9.1 失败窗口
+
+1. File=yellow，解析成功但 embedding 超时，留下 tmp 文件和黄色记录；
+2. Milvus child 成功、MySQL parent 失败，向量可召回但无法恢复上下文；
+3. MySQL green、ES 未写完，混合检索不完整；
+4. 删除 MySQL 成功、Milvus 删除失败，孤儿向量继续召回；
+5. sidecar JSON 成功、数据库删除，可能产生残留或重复；
+6. 进程被 kill 后 yellow 需要显式 stale recovery。
+
+部署验收应记录每个 file_id 的阶段事件、Documents 数、Milvus/ES child 数、parent 可读性、磁盘路径和最终状态，不能只检查 File=green。
+
+## 10. 测试、部署和平台映射
+
+测试包括 Python 单测/脚本、API/文档静态检查、前端 test.js 和 Compose/服务脚本；没有看到覆盖完整上传→解析→索引→问答→删除的单一端到端门禁。模型和基础设施测试依赖 Docker、GPU、MySQL、Milvus、ES 及外部模型。
+
+部署由 `docker-compose-*.yaml`、`scripts/entrypoint.sh` 和环境文件拼接。Linux host network 与 Mac/Windows 端口映射不同；只检查 8777 可达不等于 9001/8001/9009/7001/8110 健康。
+
+平台吸收边界：
+
+| 能力 | 可吸收模块 | 不能直接复用 |
+|---|---|---|
+| 上传/状态 | durable ingest | gray/yellow/green 无 lease |
+| 解析/OCR | parser support library | 中间制品无 manifest/版本 |
+| parent-child 检索 | RAG module | MySQL/Milvus/ES 无原子事务 |
+| embedding/rerank | 外部模型适配器 | 维度/健康/超时未统一 |
+| SSE 多轮 | 流式响应模块 | 无断线游标/终态账本 |
+| Compose | 受管服务编排 | entrypoint 无 supervisor |
+
+## 11. 风险与验证边界
+
+高风险：跨存储 green 假完成、yellow 无租约、删除孤儿索引、HTTP 无背压/取消、模型服务阻塞、多进程无 supervisor。中风险：解析版本漂移、sidecar 生命周期、ES/Milvus score 合并、前端取消失效、LLM 晚到异常。低风险：文档/脚本参数漂移。
+
+本轮未安装 Python/Node 依赖，未启动 Docker 或 4780 服务，未调用真实 OCR/PDF/embedding/rerank/LLM，未执行完整 pytest、前端构建、Milvus/ES/MySQL 一致性、压力和崩溃恢复测试。结论均为目标 checkout 静态源码、配置和测试布局证据。
+
+## 12. 本轮审计记录
+
+- 目标分支：`qanything-v2`；HEAD=`65de10426b99d5945b8c616a4814afa5a92826cb`，与 `origin/qanything-v2` 一致。
+- 远程同步：尝试 `git fetch origin --prune && git pull --ff-only origin main`；远程不存在 `main`，未误切换分支，按远程默认分支完成状态核对。
+- CodeGraph：目标 `.codegraph/` 存在；已查询 `LocalFileForInsert`、`MysqlStore`、`ParentRetriever` 及解析调用链。
+- 平台唯一文档：仅修改本文件；源码侧未跟踪 `.codegraph/` 和 `ARCHITECTURE.md` 保留。
+
+## 13. 入口与证据索引
+
+| 调用链 | 入口证据 | 关键阶段 | 终态/副作用 |
+|---|---|---|---|
+| 文件上传 | `handler.py` upload_files | LocalFile 写盘、File gray | 返回 file_id，后台异步处理 |
+| URL 上传 | `handler.py` upload_weblink | URL 登记、Jina/newspaper 解析 | Markdown/tmp 制品 |
+| FAQ 上传 | `handler.py` upload_faqs | FAQ/MySQL、虚拟文件 | question/answer 进入检索 |
+| 解析 | `general_document.py:367-452` | 后缀 loader、fallback | LangChain Document |
+| 元数据 | `general_document.py:455-520` | user/kb/file/page/title/image | child chunk 输入 |
+| Embedding | insert worker + embedding HTTP | batch 文本向量化 | Milvus child |
+| Parent | `parent_retriever.py:159+` | child 命中、MySQL 恢复 | 上下文文档 |
+| 混合召回 | LocalDocQA + ES/Milvus | score 合并、rerank | token 截断 |
+| 问答 | handler chat | LLM prompt、历史、引用 | SSE/JSON + QaLogs |
+| 删除 | handler + 后台任务 | 文件、DB、向量、全文 | 可能部分成功 |
+
+## 14. 部署前最小验收
+
+1. 固定源码提交、镜像 tag、模型 revision、embedding 维度和 rerank 版本。
+2. 启动探针逐一检查 Sanic、insert worker、OCR、PDF、embedding、rerank、MySQL、Milvus、ES，而不是只检查 8777。
+3. 上传代表性 PDF、图片、DOCX、XLSX、URL、FAQ，核对解析文档数、child 数、parent 可读性和原始制品。
+4. 检索记录 Milvus/ES top-k、rerank 分数、最终 token、引用 file_id 和 fallback 状态。
+5. 在 embedding/ES/Milvus/MySQL 任一阶段注入失败，确认 yellow/red、重试、孤儿清理和人工诊断记录。
+6. 删除后确认磁盘、MySQL、Milvus、ES 均无可召回残留；编辑后确认向量与 parent 版本一致。
+7. 对 SSE 断线、慢客户端、大上传、并发用户和 worker kill 做有界资源检查。
+8. 只有上述动态证据齐全，才能把静态架构结论升级为部署通过。
 
 ## 4. 解析、规范化与分块
 
@@ -273,7 +429,7 @@ POST /api/local_doc_qa/get_file_base64
 
 `front_end/package.json` 的 `test` 命令是 `vite build --mode test`，不是单元测试 runner；根 `front_end/test.js` 也不是端到端测试入口。
 
-本轮未执行任何测试，因此以下均为未验证：
+当前核对未执行任何测试，因此以下均为未验证：
 
 - 格式解析、表格切分和 parent/child 边界。
 - embedding 维度、批量并发和模型服务错误处理。
@@ -319,6 +475,27 @@ QAnything 已实现一条可导航的 RAG 领域链：上传登记、异步解�
 
 但源码尚不足以证明它具备可靠的任务系统。失败、取消、恢复、删除完成、跨后端一致性、模型超时、SSE 断线、制品回收和服务自动恢复都存在未闭合边界。本文将这些边界明确记录为审计结果，未把任何未执行的运行验证或目标架构写成现状能力。
 
-## 13. 施工材料吸收记录
+## 13. 研究材料吸收记录
 
 已人工回读并吸收 `细探-QAnything.md` 的增量事实：URL/Markdown/PDF/OCR/DOCX/XLSX/FAQ 解析分派、父子块与来源 metadata、Milvus/ES/MySQL 的实际写入顺序、embedding/rerank/FAQ 直返与 token 裁剪、SSE/JSON 双出口、MySQL 状态轮询长任务、`to_thread` 超时无法强杀、未等待 flush/background delete、删除残留和启动无 supervisor。以上均保持“源码事实与未验证边界”区分。
+
+本文件是平台侧唯一架构事实汇总；源码 checkout 的未跟踪 `ARCHITECTURE.md` 与 `.codegraph/` 均保留，未作为平台事实源修改。
+
+## 14. 交付判定
+
+本轮满足 500 行级源码审计要求的目标是证据密度而非文字长度：每条主链都对应目标仓库的源码路径、函数或配置边界；运行态仍未验证。后续动态验收应保存源码提交、容器镜像、模型版本、数据库/索引版本、请求样本、阶段状态、资源探针、测试命令和退出码。
+
+缺少这些证据时，不得把 `File=green`、HTTP 200、SSE 结束或前端“完成”状态解释为解析、索引、问答和清理均成功。平台接入应将每一阶段建模为可查询任务，并在恢复、删除和重试时保留原 task_id/run_id，避免生成不可审计的第二条事实链。
+
+最终结论：QAnything 是可复用的 RAG 领域参考实现，不是已闭合的生产任务底座。可吸收的是文档解析、父子检索和引用拼装流程；必须重建的是租约、事务、幂等、背压、取消、失败账本、制品清理和多后端对账。
+
+本轮没有修改 QAnything 源码、Compose、前端、依赖或测试；没有创建新的细探文档。所有新增章节均写入平台侧唯一 `ARCHITECTURE.md`，并以当前 `qanything-v2` checkout 为基线。
+
+- 源码提交：`65de10426b99d5945b8c616a4814afa5a92826cb`。
+- 分支：`qanything-v2`。
+- CodeGraph：目标 `.codegraph/` 已存在并已查询。
+- 平台文档：唯一更新对象。
+- 动态服务：未启动。
+- 外部模型：未调用。
+- 数据库/索引：未连接。
+- 验证等级：静态源码审计。

@@ -277,18 +277,18 @@ MCP server 是 `mcp-wrapper/src/index.ts` 的 `buildServer()`；默认通过 `St
 
 ---
 
-# 第三轮：通用底座映射与归属裁决
+# 后续：通用底座映射与归属裁决
 
-本轮不是把本项目改造成平台代码，而是把当前 checkout 已经实现的证据链、投影链、召回链、上下文链、模型调用链和资源/任务边界映射到“支持库—记忆模块—运行核心—统一网关”的通用底座。下面的“应归”是底座归属建议，不等于本项目已经接入该底座；“现状”只引用本项目源码事实。
+当前核对不是把本项目改造成平台代码，而是把当前 checkout 已经实现的证据链、投影链、召回链、上下文链、模型调用链和资源/任务边界映射到“支持库—记忆模块—运行核心—统一网关”的通用底座。下面的“应归”是底座归属建议，不等于本项目已经接入该底座；“现状”只引用本项目源码事实。
 
 ## 1. 研究现场与证据等级
 
 - 目标根目录：`/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/01_个人模型与数字分身/iai-personal-memory-engine`。
 - 项目身份：`iai-personal-memory-engine`，源码 Python 包为 `iai_mcp`；下载目录记录的基线为仓库 `CodeAbra/iai-personal-memory-engine`、`main`、提交 `91887e085964dda17edbff4ad77854b82da82062`。
-- 旧细探：目标目录内本轮未发现独立 `细探-*.md` 文件；现有 `ARCHITECTURE.md` 已声明此前 `细探-iai.md` 的结论已吸收。本轮不删除、不重建旧细探，也不把聊天回执当事实源。
+- 旧细探：目标目录内当前核对未发现独立 `细探-*.md` 文件；现有 `ARCHITECTURE.md` 已声明此前 `细探-iai.md` 的结论已吸收。当前核对不删除、不重建旧细探，也不把聊天回执当事实源。
 - MCP 开工核对：首次 `project_context` 返回的是**错误绑定**的项目 `华世王镞_v3`、根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，不是本目标；该返回没有提供本目标的开工 id，不能冒充本项目开工证据。
 - 代码图：对目标根目录调用 `codegraph_explore` 的真实结果是“未索引，未找到 `.codegraph/`，不能查询”；以下源码路径、函数和行号均来自本地只读读取，不来自代码图。不能把错误项目的代码图摘要迁移到本项目。
-- 本轮验证边界：只修改本文件；未安装依赖、未启动 daemon、未调用外部模型、未运行 pytest/npm/cargo，因此下面的“已实现”是静态源码事实，“已验证”仍须按最后的验证表区分。
+- 当前核对验证边界：只修改本文件；未安装依赖、未启动 daemon、未调用外部模型、未运行 pytest/npm/cargo，因此下面的“已实现”是静态源码事实，“已验证”仍须按最后的验证表区分。
 
 ## 2. 一条真实的端到端链路
 
@@ -305,7 +305,7 @@ MCP server 是 `mcp-wrapper/src/index.ts` 的 `buildServer()`；默认通过 `St
   → L3 统一结果/JSON-RPC/MCP 返回
 ```
 
-捕获 hook 的正常路径不是 hook 直接 RPC：`plugin/hooks/hooks.json` 将 SessionStart、UserPromptSubmit、Stop 接到脚本；脚本落盘 session/deferred 文件，由 `capture.py:drain_deferred_captures()` 认领后调用 `capture_turn()`。这是一条“文件先行、daemon 后排空”的链。daemon 不可用时，`direct_write.py:write_turn_direct()` 直接以 `HippoDB(AccessMode.SHARED)` 写入，这保证可用性但形成了第二个写入口，属于本轮明确的底座缺口，不应在平台复制为第二套写内核。
+捕获 hook 的正常路径不是 hook 直接 RPC：`plugin/hooks/hooks.json` 将 SessionStart、UserPromptSubmit、Stop 接到脚本；脚本落盘 session/deferred 文件，由 `capture.py:drain_deferred_captures()` 认领后调用 `capture_turn()`。这是一条“文件先行、daemon 后排空”的链。daemon 不可用时，`direct_write.py:write_turn_direct()` 直接以 `HippoDB(AccessMode.SHARED)` 写入，这保证可用性但形成了第二个写入口，属于当前核对明确的底座缺口，不应在平台复制为第二套写内核。
 
 ## 3. 原始证据、派生状态与唯一 owner
 
@@ -423,7 +423,7 @@ MCP server 是 `mcp-wrapper/src/index.ts` 的 `buildServer()`；默认通过 `St
 
 ## 7. L0-L4 分层落点
 
-本轮采用“L0 最小可复用原子能力、L4 外部宿主/供应者”的定义；L4 不是本项目内部新一层，而是必须被网关/支持库包住的外部边界。
+当前核对采用“L0 最小可复用原子能力、L4 外部宿主/供应者”的定义；L4 不是本项目内部新一层，而是必须被网关/支持库包住的外部边界。
 
 | 层 | 目标职责 | 本项目命中 | 不应放入 |
 |---|---|---|---|
@@ -467,7 +467,7 @@ L4 宿主/Provider
 | MCP wrapper/socket/core | L3 网关 | **复用并收敛 fallback** | wire schema/parity/reconnect 已存在；禁止 gateway direct-store 变第二业务入口 |
 | native Rust / 第三方扩展 | L0/L4 | **隔离高风险 provider** | 当前 PyO3 与 daemon 同进程；宿主崩溃会连带记忆网关，平台应为 crash-prone provider 设独立进程边界 |
 
-### 8.3 待建立的原子能力（不在本轮修改底座）
+### 8.3 待建立的原子能力（不在当前核对修改底座）
 
 1. `evidence.append`：统一 envelope、source/session/project、idem key、原文加密、ack、dead-letter、read-back。
 2. `projection.refresh`：投影名、source watermark、算法/模型 identity、generation、失败/重试/过期状态，原始事实只读。
@@ -479,15 +479,15 @@ L4 宿主/Provider
 
 ## 9. L0-L4 验收契约与证据缺口
 
-| 层 | 必须可读回的证据 | 本轮源码状态 |
+| 层 | 必须可读回的证据 | 当前核对源码状态 |
 |---|---|---|
-| L0 | 原子写前后文件/DB 读回；事务回滚；加密不可读；provider schema/identity；进程/连接/锁释放 | 代码已有多处单测目标，但本轮未执行；`events.flush_event_buffer()` 写失败后的 pending 是否 rebuffer 需复核 |
+| L0 | 原子写前后文件/DB 读回；事务回滚；加密不可读；provider schema/identity；进程/连接/锁释放 | 代码已有多处单测目标，但当前核对未执行；`events.flush_event_buffer()` 写失败后的 pending 是否 rebuffer 需复核 |
 | L1 | record literal/provenance 不变；projection source ids/watermark；recall trace 与 mode/预算；context hash/delta | 主要路径已实现；`direct_write`、user-model JSON 和多 fallback 仍存在 owner 分裂 |
 | L2 | task id/progress/lease/cancel/crash recovery；sleep step attempt/quarantine；资源残留为零 | SleepPipeline 有 progress/quarantine/interrupt，但没有统一 task receipt/lease/cancel registry |
 | L3 | MCP schema↔Python parity；未知方法/缺参/断线/重连；写请求不重复提交 | wrapper/socket 有真实处理；pending RPC 重连的写幂等仍需统一契约 |
-| L4 | hook/provider/OS 真实故障：断电/kill、CLI timeout、HTTP refusal、native crash、文件权限/磁盘满 | 源码和测试覆盖不少反向场景；本轮未启动外部服务或运行故障注入，不能宣称端到端通过 |
+| L4 | hook/provider/OS 真实故障：断电/kill、CLI timeout、HTTP refusal、native crash、文件权限/磁盘满 | 源码和测试覆盖不少反向场景；当前核对未启动外部服务或运行故障注入，不能宣称端到端通过 |
 
-### 本轮剩余风险
+### 当前核对剩余风险
 
 - MCP `project_context` 错绑且 `codegraph` 未索引目标，无法给出本项目的可信开工 id/代码图摘要；后续应在正确项目上下文中重新绑定并由维护者决定是否 `codegraph init`。
 - `direct_write.py`、CLI/bank fallback、brainview/direct-store 与 daemon `MemoryStore` 形成多个访问面；虽然目标是可用性和只读降级，但写 owner/幂等/投影边界仍需平台级收敛。
@@ -496,9 +496,9 @@ L4 宿主/Provider
 - `MemoryStore.close()` 对多数 flush 失败采用日志吞掉；record buffer 有可恢复 quarantine，而 event buffer 的失败重放语义仍需实测确认。源码存在 `catch` 不等于失败恢复已经验证。
 - `Queue.prune_oldest()` 真实删除超限 pending；这应作为容量/数据保留策略单独合规裁决，不可被包装成“无损持久队列”。
 - native Rust/PyO3、Numba、NumPy 与存储引擎在 daemon 进程内组合；本项目有 watchdog/内存门，但通用平台仍应把高风险 provider 的崩溃域隔离到受监督子进程。
-- 本轮未运行测试，不能把 `tests/` 中存在的测试当作当前 checkout 全绿；正式接入前必须按 L0-L4 逐层执行真实验证并读回资源现场。
+- 当前核对未运行测试，不能把 `tests/` 中存在的测试当作当前 checkout 全绿；正式接入前必须按 L0-L4 逐层执行真实验证并读回资源现场。
 
-## 10. 第三轮结论
+## 10. 后续结论
 
 **吸收：** 原文 `literal_surface` 不被摘要覆盖；provenance/source_ids 先验核验；record/edge/event 分离；召回的 ANN+exact authority+graph/lexical/temporal 多路降级；上下文 L0/L1/L2 预算与 per-turn delta；SleepPipeline 的持久 progress/attempt/quarantine/interrupt；模型子进程的 allow-list/timeout/cancel/output cap；原子 temp+fsync+replace 和 RO snapshot fence。
 
@@ -508,4 +508,4 @@ L4 宿主/Provider
 
 **待核：** 正确 MCP 项目上下文/开工 id；目标代码图是否建立；event buffer 写失败重放；native crash 后句柄/临时文件残留；强杀 SleepPipeline/模型/索引 worker 后的真实恢复；队列溢出策略是否符合平台数据保留要求。
 
-本第三轮内容继续只维护本 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README 或 Git，也未删除旧细探。
+本后续内容继续只维护本 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README 或 Git，也未删除旧细探。

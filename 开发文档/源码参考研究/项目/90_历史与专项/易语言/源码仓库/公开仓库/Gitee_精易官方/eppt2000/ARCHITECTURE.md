@@ -22,7 +22,7 @@
 - 旧细探文件：目标根及其子树未发现匹配 `*细探*` 的文件
 - 代码地图：目标仓库没有 `.codegraph/`，因此 `codegraph_explore` 返回“未建立索引”；本次改用源码、工程文件和 Git 只读盘点
 - 专属 MCP：`system_engineering_toolkit` HTTP `http://127.0.0.1:8766/mcp/` 可连接；其 `project_context` 当前绑定系统工程平台而非本仓库，不能把平台代码地图或平台验证记录当作本项目证据
-- 本轮未构建、未安装依赖、未启动 PowerPoint、未提交 Git；结论均来自当前源码和工程配置静态证据
+- 当前核对未构建、未安装依赖、未启动 PowerPoint、未提交 Git；结论均来自当前源码和工程配置静态证据
 
 ## 3. 总体流程图
 
@@ -377,7 +377,7 @@ IDE 选择 PPTApp/PPTPresentations/PPTPlay 组件
 - 没有在本机 macOS 上构建；目标工程依赖 Windows/MSVC/易语言 ABI，当前环境不具备直接运行条件。
 - 没有启动 PowerPoint，也没有做 COM/宿主实测。
 
-### 12.2 本轮已完成的只读验证
+### 12.2 当前核对已完成的只读验证
 
 - 盘点 23 个 Git 跟踪文件、分支、提交和远程地址。
 - `git ls-remote origin HEAD refs/heads/master` 确认远程与本地同为 `be7e9b7592f83fd328ab88ae601e15661fb027f2`。
@@ -424,7 +424,7 @@ IDE 选择 PPTApp/PPTPresentations/PPTPlay 组件
 
 ### 中风险：工程配置不对称
 
-动态工程 Win32 设置 `.fne` 和 `.def`，x64 没有同样的显式设置；静态工程 x64 使用预编译头但仓库没有 `pch.h`。这些是配置事实，不在本轮通过构建推断是否可用。
+动态工程 Win32 设置 `.fne` 和 `.def`，x64 没有同样的显式设置；静态工程 x64 使用预编译头但仓库没有 `pch.h`。这些是配置事实，不在当前核对通过构建推断是否可用。
 
 ### 中风险：ABI/指针宽度与现代 Windows
 
@@ -440,7 +440,7 @@ IDE 选择 PPTApp/PPTPresentations/PPTPlay 组件
 
 ## 14. 后续研究边界
 
-后续深挖应沿以下顺序增量补充本文件，不改写本轮事实：
+后续深挖应沿以下顺序增量补充本文件，不改写当前核对事实：
 
 1. **实现核验**：确认是否存在同仓库历史提交、发布二进制或同系列项目提供真正 COM 实现；若无，明确其为未完成模板。
 2. **ABI 核验**：在对应易语言 SDK 中确认 `LIB_INFO`、`LIB_DATA_TYPE_INFO`、`UNIT_PROPERTY`、`EVENT_INFO2` 和 `PMDATA_INF` 的精确内存布局。
@@ -448,4 +448,4 @@ IDE 选择 PPTApp/PPTPresentations/PPTPlay 组件
 4. **COM 设计**：若要实现功能，单独设计 PowerPoint Application/Presentations/Presentation/Slides/Slide/Shapes/Shape/播放对象的持有、引用、释放和错误传播，不要把当前空函数当作实现基础事实。
 5. **测试闭环**：先建立宿主加载测试，再建立 PowerPoint 可用/不可用、版本差异、文件错误、对象释放和事件回调测试。
 
-本轮仅完成架构建档；不得将上述后续事项表述为当前已实现能力。
+当前核对仅完成架构建档；不得将上述后续事项表述为当前已实现能力。

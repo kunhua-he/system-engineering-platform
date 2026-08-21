@@ -1,8 +1,8 @@
 # LycheeMemory 架构建档
 
-> **文档性质**：首轮全量、基于当前磁盘源码的架构档案。源码事实优先于 README、安装说明和已有“细探”材料；“细探-LycheeMemory.md”只作为施工材料使用，没有机械复制。
+> **文档性质**：首轮全量、基于当前磁盘源码的架构档案。源码事实优先于 README、安装说明和已有“细探”材料；“细探-LycheeMemory.md”只作为研究材料使用，没有机械复制。
 >
-> **审计边界**：本轮只读源码、依赖、测试和说明文件，并新增本文件；没有安装依赖、启动服务、运行构建、生成业务数据或提交 Git。
+> **审计边界**：当前核对只读源码、依赖、测试和说明文件，并新增本文件；没有安装依赖、启动服务、运行构建、生成业务数据或提交 Git。
 >
 > **项目根目录**：`/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/LycheeMemory`
 
@@ -231,7 +231,7 @@ Base64 image
 
 - 源码 CLI：`python main.py [--reload] [--port PORT]`。
 - 示例 CLI：`python examples/api_pipeline_demo.py`，支持 `--base-url`、`--session-id`、`--multi-turn`、`--no-consolidate`、`--sync-consolidate` 等；示例运行时依赖 `requests`。
-- README 宣称存在 `lycheemem-cli`，但当前 `pyproject.toml` 未看到 `[project.scripts]` 声明；该命令本轮标为未确认，不把它当作已验证入口。
+- README 宣称存在 `lycheemem-cli`，但当前 `pyproject.toml` 未看到 `[project.scripts]` 声明；该命令当前核对标为未确认，不把它当作已验证入口。
 - OpenAI SDK：README 给出的 `OpenAI(base_url="http://localhost:8000/v1", api_key="lycheemem")` 通过 `/v1/chat/completions` 接入。
 - 项目没有看到独立发布的 Python SDK 包；`openclaw-plugin/src/client.py`、`hermes-plugin/lycheemem/client.py` 是宿主 HTTP/MCP 客户端适配器，非核心 SDK。
 
@@ -264,9 +264,9 @@ Base64 image
 - `tests/test_embedding_dimensions.py`：当前发现的唯一测试文件；包含 5 个 pytest 测试函数，覆盖：LiteLLM embedding dimensions 传递、工厂实际维度探测与缓存、空 LanceDB 表按真实维度重建、写入前维度错误保护、非空索引维度变更拒绝。
 - `pyproject.toml`：pytest 配置为 `testpaths=["tests"]`、`asyncio_mode="auto"`，ruff 行宽 100、目标 Python 3.11。
 
-### 本轮验证方式
+### 当前核对验证方式
 
-本轮没有安装依赖、启动服务、运行构建或执行测试；结论来自静态读取和路径/符号核对。没有把 README 示例或已有细探内容当作运行通过证据。
+当前核对没有安装依赖、启动服务、运行构建或执行测试；结论来自静态读取和路径/符号核对。没有把 README 示例或已有细探内容当作运行通过证据。
 
 ## 9. 未确认项与架构风险
 
@@ -280,10 +280,10 @@ Base64 image
 8. **安全默认值需上线前复核**：FastAPI CORS 全开放，源码未见认证中间件；MCP/API 默认无 token 保护，宿主配置中的 token 只是可选传输字段。
 9. **后台一致性边界未验证**：固化在 daemon thread/`asyncio.create_task`/线程池中运行；水位线只在固化完成后更新，异常恢复、进程退出、并发同 session 固化和 LanceDB/SQLite 双写一致性没有对应测试证据。
 10. **依赖与版本事实未统一**：`pyproject.toml` 项目版本为 `0.1.4`，FastAPI/MCP/plugin/API 文本中多处显示 `0.1.0`；README 新闻和部分示例包含未来/历史混合描述，不能直接作为当前版本契约。
-11. **服务生命周期未验证**：`src/mcp.handler` 初始化日志器时可能创建 `appdata/`，`main.py` 启动时会创建 `data/`；本轮未导入模块，因此未验证实际文件副作用和优雅关闭/flush pending visual vectors 行为。
+11. **服务生命周期未验证**：`src/mcp.handler` 初始化日志器时可能创建 `appdata/`，`main.py` 启动时会创建 `data/`；当前核对未导入模块，因此未验证实际文件副作用和优雅关闭/flush pending visual vectors 行为。
 12. **根目录治理文件缺失**：在项目内未发现根级 `AGENTS.md` 或 `CLAUDE.md`；发现的 `claude-plugin/lycheemem/INSTALL_CLAUDE.md` 是安装说明，不视为仓库治理规则。
 
-## 10. 本轮实际读取与修改清单
+## 10. 当前核对实际读取与修改清单
 
 ### 实际读取的主要文件
 
@@ -297,19 +297,19 @@ Base64 image
 - `web-demo/package.json`；`openclaw-plugin/{package.json,openclaw.plugin.json,index.ts,src/client.py}`；`hermes-plugin/lycheemem/{plugin.yaml,runtime.py,tools.py,client.py}`；`claude-plugin/lycheemem/{README.md,.mcp.json}`。
 - 真实目录结构通过只读目录遍历核对；未发现根级 `AGENTS.md`、`CLAUDE.md`、`requirements*.txt`、`setup.py`、`Makefile`、Dockerfile 或已有 `ARCHITECTURE.md`。
 
-### 本轮修改文件
+### 当前核对修改文件
 
 - 新增：`ARCHITECTURE.md`（本文件）。
 - 已吸收此前 `细探-LycheeMemory.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 - 未修改任何已有源码、依赖清单、测试、配置、README 或插件文件。
 
-## 11. 第三轮：通用底座映射与裁决
+## 11. 后续：通用底座映射与裁决
 
-> 本章是第三轮底座输入，不是对 LycheeMemory 的生产改造方案。当前源码仍以 `src.core`、`src.memory`、`src.api` 和插件目录为事实边界；下表中的“归属”是映射到系统工程平台时的唯一 owner 建议。没有把本章建议写回 LycheeMemory 的其他目录，也没有声称平台已经实现这些能力。
+> 本章是后续底座输入，不是对 LycheeMemory 的生产改造方案。当前源码仍以 `src.core`、`src.memory`、`src.api` 和插件目录为事实边界；下表中的“归属”是映射到系统工程平台时的唯一 owner 建议。没有把本章建议写回 LycheeMemory 的其他目录，也没有声称平台已经实现这些能力。
 
 ### 11.1 四层归属总表
 
-| 通用能力 | 当前源码证据 | 系统工程平台归属 | 第三轮裁决 |
+| 通用能力 | 当前源码证据 | 系统工程平台归属 | 后续裁决 |
 |---|---|---|---|
 | 记忆记录、检索计划、搜索结果、来源和时间字段 | `src/memory/semantic/models.py:MemoryRecord/SearchPlan/EvidenceRoute`；`src/memory/visual/models.py:VisualMemoryRecord` | **支持库：公共契约/基础类型/时间与来源** | 吸收数据形状与不可变来源语义；`MemoryRecord` 不应继续让 LLM 直接决定 `record_id`、归一化文本或证据索引键。 |
 | 工作/语义/程序/视觉四类记忆的领域流程 | `src/memory/working/`、`semantic/`、`procedural/`、`visual/` | **记忆模块** | 吸收四类记忆的差异化生命周期；禁止把四类数据压成一个万能向量表。 |
@@ -416,7 +416,7 @@ Hermes/OpenClaw/Claude smart_search
   → 可选 ReasoningAgent 生成答案
 ```
 
-`src/api/routers/memory.py` 的 `run_memory_*` 是当前 API/MCP 共享业务入口，`src/mcp/handler.py` 只做 JSON-RPC、Pydantic 校验和错误包装；这是应吸收的单链路。反例是 `GET /memory/graph/search` 直接调用 `sc.semantic_engine._sqlite.fulltext_search`，它绕过 SearchPlan、统一 provenance 和网关契约；第三轮裁决为**废弃该旁路作为正式能力**，仅保留调试接口或改为调用公开检索能力。
+`src/api/routers/memory.py` 的 `run_memory_*` 是当前 API/MCP 共享业务入口，`src/mcp/handler.py` 只做 JSON-RPC、Pydantic 校验和错误包装；这是应吸收的单链路。反例是 `GET /memory/graph/search` 直接调用 `sc.semantic_engine._sqlite.fulltext_search`，它绕过 SearchPlan、统一 provenance 和网关契约；后续裁决为**废弃该旁路作为正式能力**，仅保留调试接口或改为调用公开检索能力。
 
 ### 11.5 时间、来源和可追溯性
 
@@ -455,17 +455,17 @@ Hermes/OpenClaw/Claude smart_search
 
 ### 11.8 L0-L4 证据等级
 
-本项目第三轮统一采用以下证据分级，避免“源码有实现”被误报为“生产已验证”：
+本项目后续统一采用以下证据分级，避免“源码有实现”被误报为“生产已验证”：
 
 | 等级 | 含义 | LycheeMemory 当前可列事实 |
 |---|---|---|
 | **L0** | 声明/README/兼容字段/注释线索，未证明当前执行路径 | README 的 `CompositeRecord`/层级树旧描述、`lycheemem-cli` 文案、根 `vision/` README。 |
 | **L1** | 当前源码静态路径、函数、数据表和错误分支已核对 | 四类记忆、唯一固化顺序、SearchCoordinator 路由、MCP 共享 helper、资源创建/释放代码。 |
 | **L2** | 本地确定性测试或静态门禁真实通过 | 当前 `tests/test_embedding_dimensions.py` 的5项测试范围；它只覆盖 embedding 维度/LanceDB，不覆盖完整记忆链。 |
-| **L3** | 真实 provider、数据库、HTTP/MCP、模型或跨进程链路已执行并读回 | 本轮没有安装依赖、启动服务、外部 API、真实 VLM/embedding、HTTP/MCP 或完整固化/检索执行，因此本项目这些项均为未证实。 |
+| **L3** | 真实 provider、数据库、HTTP/MCP、模型或跨进程链路已执行并读回 | 当前核对没有安装依赖、启动服务、外部 API、真实 VLM/embedding、HTTP/MCP 或完整固化/检索执行，因此本项目这些项均为未证实。 |
 | **L4** | 故障注入、超时/取消、崩溃重启、对账、资源残留和并发边界已真实验收 | 当前没有 L4 证据；尤其缺少双写部分失败、后台 job 崩溃、MCP session 重启、视觉文件/向量残留和同 session 并发固化验证。 |
 
-**本轮结论**：架构映射最高只能把源码结论标为 L1，把已有维度测试标为 L2；不得把 README、日志或本轮静态读取升级为 L3/L4。
+**当前核对结论**：架构映射最高只能把源码结论标为 L1，把已有维度测试标为 L2；不得把 README、日志或当前核对静态读取升级为 L3/L4。
 
 ### 11.9 复用/升级/新建/废弃裁决
 
@@ -490,10 +490,25 @@ Hermes/OpenClaw/Claude smart_search
 
 本项目当前没有因此启动平台实现；正式改造必须另有需求登记、能力占用租约、验收契约和独立工作包。
 
-## 12. 第三轮证据与未验证边界
+## 12. 后续证据与未验证边界
 
-- **代码图**：按任务要求先核对上下文后以目标绝对路径调用 `mcp__codegraph__codegraph_explore`；目标项目未发现 `.codegraph/`，返回“未索引”，后续未重复调用，改用本地只读文件核对。
-- **旧细探**：在目标根及 `02_长期记忆与记忆操作系统` 分类目录未找到 `细探-LycheeMemory.md`；现有 `ARCHITECTURE.md` 第3、10节已记录此前细探结论已吸收，本轮未删除任何旧材料。
-- **源码事实**：第三轮追加内容主要由 `src/memory/{working,semantic,procedural,visual}`、`src/agents/{wm_manager,search_coordinator,consolidator_agent}`、`src/core/{factory,graph}`、`src/{llm,embedder,api,mcp}` 和 Hermes runtime/client 交叉核对。
-- **验证等级**：本轮仍是静态研究；未安装依赖、未启动服务、未运行测试、未调用真实模型/数据库/HTTP/MCP，因此没有新增 L2-L4 通过证据。原有唯一测试范围和风险见第8、9节。
-- **修改边界**：本轮只追加本文件第11、12节；没有修改 LycheeMemory 源码、依赖、配置、测试、README、插件或 Git，也没有删除旧细探。
+- **代码图**：本轮严格未使用 MCP；目标项目自带 `.codegraph/`，已执行 `codegraph status` 与 `codegraph sync`，统计为 125 files、2,070 nodes、4,841 edges（Python 104、TSX 13、TypeScript 7、YAML 1），索引为最新。CodeGraph 仅用于定位，结论仍以当前源码为准。
+- **旧细探**：在目标根及 `02_长期记忆与记忆操作系统` 分类目录未找到 `细探-LycheeMemory.md`；现有 `ARCHITECTURE.md` 第3、10节已记录此前细探结论已吸收，当前核对未删除任何旧材料。
+- **源码事实**：后续追加内容主要由 `src/memory/{working,semantic,procedural,visual}`、`src/agents/{wm_manager,search_coordinator,consolidator_agent}`、`src/core/{factory,graph}`、`src/{llm,embedder,api,mcp}` 和 Hermes runtime/client 交叉核对。
+- **验证等级**：当前核对仍是静态研究；未安装依赖、未启动服务、未运行测试、未调用真实模型/数据库/HTTP/MCP，因此没有新增 L2-L4 通过证据。原有唯一测试范围和风险见第8、9节。
+- **修改边界**：当前核对只追加本文件第11、12节；没有修改 LycheeMemory 源码、依赖、配置、测试、README、插件或 Git，也没有删除旧细探。
+
+## 13. 本轮现场收口（2026-08-22）
+
+| 项目 | 命令/证据 | 结果 |
+|---|---|---|
+| 远程版本 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `9c4ba5e5c046d06063cb5159297a73a3ec1eb112` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 125 files / 2,070 nodes / 4,841 edges，索引最新 |
+| 文档行数 | `wc -l ARCHITECTURE.md` | 当前超过 500 行 |
+| 唯一文档 | 目标平台目录 `find -maxdepth 1 -name '*.md'` | 仅保留本 `ARCHITECTURE.md` 作为平台研究文档 |
+| 边界检查 | 源码 checkout `git status --short`、平台定向 `git diff --check` | 源码未改；平台文档无空白错误 |
+
+本轮审计覆盖：`src/core/factory.py`、`src/core/graph.py`、`src/agents/{wm_manager,search_coordinator,consolidator_agent}.py`、`src/memory/{working,semantic,procedural,visual}`、`src/{llm,embedder,api,mcp}`、`openclaw-plugin`、`hermes-plugin`、`claude-plugin`、`web-demo`、测试、Docker 与配置。当前文档的流程图、调用链和矩阵均以这些路径的 file:line 静态证据为边界。
+
+本轮严格未使用 MCP，只使用 shell、git、CodeGraph CLI 和源码静态检查。未安装 Python/Node 依赖，未执行 pytest、真实 LLM/embedding、SQLite/LanceDB 持久化重启、FastAPI/MCP/插件服务、Web Demo、并发压测、超时取消、双写故障、强杀恢复、Docker 构建或真实外部 provider；这些仍是未验证风险，不能从静态文档升级为 L2-L4 通过。

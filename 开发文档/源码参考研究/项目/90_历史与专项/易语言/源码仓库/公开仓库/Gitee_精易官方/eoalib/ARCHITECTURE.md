@@ -2,7 +2,7 @@
 
 > 本文件是 `eoalib` 项目根目录唯一架构事实文档。首轮建档基于当前工作树源码、Visual Studio 工程文件和 Git 元数据；不把设计注释当作已实现功能，不把工程配置当作实际运行验证。
 >
-> 本仓库属于只读源码参考库。本轮未修改源码、未安装依赖、未构建、未提交 Git；仅新增本文件。
+> 本仓库属于只读源码参考库。当前核对未修改源码、未安装依赖、未构建、未提交 Git；仅新增本文件。
 
 ## 1. 项目定位
 
@@ -86,7 +86,7 @@ eoalib_dtType.cpp
 
 ```text
 eoalib/
-├── ARCHITECTURE.md                 本架构文档（本轮新增）
+├── ARCHITECTURE.md                 本架构文档（当前核对新增）
 ├── eoalib.sln                      VS solution，含动态库和静态库两个项目
 ├── eoalib.vcxproj                  eoalib 动态库工程
 ├── eoalib.vcxproj.filters          动态库工程过滤器
@@ -360,7 +360,7 @@ elib/fnshare.h ── elib/lib2.h
 
 现场盘点未发现测试文件、测试工程、CI 配置、GitHub/Gitee Actions、示例调用程序或预构建 `.fne/.fnl/.fnr/.lib/.dll` 产物。根目录也没有 README、AGENTS、CLAUDE 或旧 `细探-*.md`。
 
-本轮执行的只读验证：
+当前核对执行的只读验证：
 
 - `git status --short --branch`：确认分支和工作树边界；
 - `git log -1`、`git remote -v`、`git ls-remote origin`：确认本地/远程版本一致；

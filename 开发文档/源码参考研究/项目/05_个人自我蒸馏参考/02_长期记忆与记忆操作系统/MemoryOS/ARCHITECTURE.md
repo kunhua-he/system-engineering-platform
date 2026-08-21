@@ -1,10 +1,10 @@
 # MemoryOS 架构建档
 
-> 本文是本仓库唯一正式架构文档，依据当前磁盘源码、README、依赖清单、测试/评估脚本和仓库内已有施工材料整理。文档描述“实际存在的代码”，不把论文设计或 README 宣称当作已验证实现。
+> 本文是本仓库唯一正式架构文档，依据当前磁盘源码、README、依赖清单、测试/评估脚本和仓库内已有研究材料整理。文档描述“实际存在的代码”，不把论文设计或 README 宣称当作已验证实现。
 >
-> 目标仓库：`MemoryOS/`  
-> 读取基线：工作树为 `main` 分支。  
-> 本轮限制：未安装依赖、未启动服务、未生成构建产物、未运行会触发 LLM/向量模型/数据写入的测试、未提交 Git。
+> 目标仓库：`MemoryOS/`
+> 读取基线：工作树为 `main` 分支。
+> 当前核对限制：未安装依赖、未启动服务、未生成构建产物、未运行会触发 LLM/向量模型/数据写入的测试、未提交 Git。
 
 ## 1. 项目定位
 
@@ -108,7 +108,7 @@ MemoryOS/
 ├── ARCHITECTURE.md                   # 本正式文档
 ├── Dockerfile                        # 仅基于 memoryos-pypi 的 Python 3.10 镜像步骤
 ├── LICENSE                           # 仓库许可证文件；README 标示 Apache-2.0
-├── Paper-MemoryOS.pdf                # 论文材料（本轮未把论文当实现证据）
+├── Paper-MemoryOS.pdf                # 论文材料（当前核对未把论文当实现证据）
 ├── docs/                             # 静态 HTML 文档和图片
 │   └── docs.html
 ├── memoryos-pypi/                    # JSON + FAISS SDK 变体
@@ -167,7 +167,7 @@ MemoryOS/
 关键公开方法（PyPI 版本）：
 
 - `add_memory()`：`memoryos-pypi/memoryos.py:226-250`，短期满时先晋升再追加 QA。
-- `get_response()`：`memoryos-pypi/memoryos.py:252-348`，检索、组 prompt、调用 LLM，并把本轮交互再写回记忆。
+- `get_response()`：`memoryos-pypi/memoryos.py:252-348`，检索、组 prompt、调用 LLM，并把当前核对交互再写回记忆。
 - `get_user_profile_summary()`、`get_assistant_knowledge_summary()`：读取长期层。
 - `force_mid_term_analysis()`：临时把热度阈值降为 0，触发热点分析。
 - `get_memory_stats()`：读取当前短期数量、中期 session 数和长期概要。
@@ -423,7 +423,7 @@ PyPI 包导出由 `memoryos-pypi/__init__.py:1-2` 完成。README 宣称可 `pip
 
 ## 8. 测试与验证现状（仅静态读取）
 
-本轮没有执行测试，因为各测试会加载 embedding 模型、调用外部 LLM、创建/修改数据目录或启动 MCP/Flask，不符合“禁止启动服务、生成构建产物”的范围。
+当前核对没有执行测试，因为各测试会加载 embedding 模型、调用外部 LLM、创建/修改数据目录或启动 MCP/Flask，不符合“禁止启动服务、生成构建产物”的范围。
 
 已读取的测试/评估材料及其性质：
 
@@ -452,7 +452,7 @@ PyPI 包导出由 `memoryos-pypi/__init__.py:1-2` 完成。README 宣称可 `pip
 10. **时间语义有限。** 时间是本地时区字符串，热度和衰减没有时区/时钟注入；非法时间静默返回低衰减值。
 11. **安全边界未建立。** MCP server 使用全局单用户实例；Flask 将 API key 放进 Flask session 配置并维护全局实例表；未看到认证、授权、租户隔离或密钥脱敏策略。
 12. **评估链与主链分叉。** `eval/` 使用另一组 `short_term_memory`、`mid_term_memory`、`long_term_memory`、`DynamicUpdate` 和 `RetrievalAndAnswer`，结果不能直接证明当前 PyPI/Chroma/MCP 入口的行为。
-13. **构建/发布状态未确认。** README 宣称 PyPI 包名 `memoryos-pro`，但仓库快照中未发现 `pyproject.toml`、`setup.py` 或发布流水线；没有在本轮安装验证。
+13. **构建/发布状态未确认。** README 宣称 PyPI 包名 `memoryos-pro`，但仓库快照中未发现 `pyproject.toml`、`setup.py` 或发布流水线；没有在当前核对安装验证。
 14. **文档/论文性能声明未复核。** README 中的 LoCoMo 指标和“5 倍加速”等是项目声明，本架构文档没有将其当作当前环境的测试结果。
 
 ## 10. 建档结论
@@ -461,9 +461,9 @@ PyPI 包导出由 `memoryos-pypi/__init__.py:1-2` 完成。README 宣称可 `pip
 
 本文件已吸收此前 `细探-MemoryOS.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 
-## 11. 第三轮：通用底座映射与产品边界
+## 11. 后续：通用底座映射与产品边界
 
-本轮只追加底座映射，不把 MemoryOS 改造成平台实现。证据仍以本仓库当前源码为准：`memoryos-pypi/memoryos.py`、`updater.py`、`retriever.py`、`short_term.py`、`mid_term.py`、`long_term.py`、`utils.py`，以及 `memoryos-chromadb/storage_provider.py`、`memoryos-mcp/server_new.py`。目标树当前没有独立的 `细探-MemoryOS.md` 文件；本轮未删除任何旧细探，沿用本文件已经吸收的旧结论。
+当前核对只追加底座映射，不把 MemoryOS 改造成平台实现。证据仍以本仓库当前源码为准：`memoryos-pypi/memoryos.py`、`updater.py`、`retriever.py`、`short_term.py`、`mid_term.py`、`long_term.py`、`utils.py`，以及 `memoryos-chromadb/storage_provider.py`、`memoryos-mcp/server_new.py`。目标树当前没有独立的 `细探-MemoryOS.md` 文件；当前核对未删除任何旧细探，沿用本文件已经吸收的旧结论。
 
 ### 11.1 映射总图：MemoryOS 能力如何进入平台
 
@@ -485,11 +485,11 @@ Agent/业务调用方
   → 统一结果、事件投影、资源释放证据
 ```
 
-上图是平台落点，不是当前 MemoryOS 已经实现的调用链。当前源码的真实情况是：`Memoryos` 直接实例化记忆对象、`Updater`、`Retriever` 和 `OpenAIClient`；各对象直接读写 JSON/Chroma、直接建 FAISS 索引和线程池；MCP 工具直接调用 `Memoryos`，Flask 路由直接持有全局实例表。因而本轮裁决是“提取能力并归位”，不是把这些跨层直连当作可复用底座契约。
+上图是平台落点，不是当前 MemoryOS 已经实现的调用链。当前源码的真实情况是：`Memoryos` 直接实例化记忆对象、`Updater`、`Retriever` 和 `OpenAIClient`；各对象直接读写 JSON/Chroma、直接建 FAISS 索引和线程池；MCP 工具直接调用 `Memoryos`，Flask 路由直接持有全局实例表。因而当前核对裁决是“提取能力并归位”，不是把这些跨层直连当作可复用底座契约。
 
 ### 11.2 分层映射表
 
-| 当前源码能力/资源 | 当前证据 | 平台归属 | 第三轮裁决 |
+| 当前源码能力/资源 | 当前证据 | 平台归属 | 后续裁决 |
 |---|---|---|---|
 | QA、时间戳、随机 id、JSON 序列化 | `short_term.py:18-25, 41-66`；`utils.py:119-126` | 支持库原子能力；schema 由公共契约冻结 | 吸收；禁止让每个记忆模块自定义时间/id/错误形状 |
 | `short_term` 容量 deque 与逐次保存 | `short_term.py:9-45` | 记忆/状态模块调用存储支持库 | 吸收语义，升级为有版本、原子写、恢复和事件留痕的状态记录 |
@@ -669,10 +669,10 @@ Agent 产品策略（可替换，不污染底座）
 
 本项目不是“直接接入一个 MemoryOS 包”，而是提供一组 Agent 记忆策略候选。真正进入平台前，至少要冻结：领域事件与状态 schema、唯一能力 id、L1-L3 存储/索引一致性、巩固任务的幂等/恢复、模型与向量 provider 的资源契约、网关请求/响应契约，以及四种终态（正常、业务失败、超时/取消、崩溃）的实测证据。
 
-### 11.9 本轮修改与验证边界
+### 11.9 当前核对修改与验证边界
 
 - 允许修改且实际修改：仅目标根 `ARCHITECTURE.md`；未修改 MemoryOS 源码、依赖、配置、测试、README、论文或 Git。
-- 本轮没有安装依赖、启动 MCP/Flask、调用外部 LLM/Embedding、写入 MemoryOS 数据目录或执行会改变记忆数据的集成测试。
-- 代码图事实：已按任务先调用 `codegraph_explore`，返回目标项目未发现 `.codegraph/`，因此本轮按内置只读文件读取完成；不能把代码图查询当作成功证据。
-- 开工上下文事实：首条 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，返回项目名与目标不一致；随后已显式以 MemoryOS 绝对路径做文件盘点。专属 MCP `system_engineering_toolkit`/`project_toolkit` 本轮在 `development_start` 时不可达，故 MCP 开工 id、反馈入账和正式验证状态必须如实标为未完成，不能伪造成功。
-- 旧细探：目标树未发现独立 `细探-MemoryOS.md`，本轮未删除旧细探；现有正式文档的吸收声明保留。
+- 当前核对没有安装依赖、启动 MCP/Flask、调用外部 LLM/Embedding、写入 MemoryOS 数据目录或执行会改变记忆数据的集成测试。
+- 代码图事实：已按任务先调用 `codegraph_explore`，返回目标项目未发现 `.codegraph/`，因此当前核对按内置只读文件读取完成；不能把代码图查询当作成功证据。
+- 开工上下文事实：首条 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，返回项目名与目标不一致；随后已显式以 MemoryOS 绝对路径做文件盘点。专属 MCP `system_engineering_toolkit`/`project_toolkit` 当前核对在 `development_start` 时不可达，故 MCP 开工 id、反馈入账和正式验证状态必须如实标为未完成，不能伪造成功。
+- 旧细探：目标树未发现独立 `细探-MemoryOS.md`，当前核对未删除旧细探；现有正式文档的吸收声明保留。

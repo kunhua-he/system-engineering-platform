@@ -7,10 +7,10 @@
 - **上游**：`https://github.com/facebookresearch/sam2.git`
 - **当前分支/提交**：`main` / `2b90b9f5ceec907a1c18123530e92e794ad901a4`
 - **提交主题**：`remove .pin_memory() in obj_pos of SAM2Base to resolve and error in MPS (#495)`
-- **远程比对**：`git ls-remote origin refs/heads/main` 与本地提交相同；本地相对 `origin/main` 为 `0 ahead / 0 behind`。本轮未创建 4780 独立快照。
-- **工作树基线**：架构建档前已有未跟踪文件 `细探-sam2.md`；本轮保留，不删除、不改写。
+- **远程比对**：`git ls-remote origin refs/heads/main` 与本地提交相同；本地相对 `origin/main` 为 `0 ahead / 0 behind`。当前核对未创建 4780 独立快照。
+- **工作树基线**：架构建档前已有未跟踪文件 `细探-sam2.md`；当前核对保留，不删除、不改写。
 - **许可证**：主模型、demo、training 为 Apache-2.0；SA-V 数据集为 CC BY 4.0；`sav_dataset` 评估代码另含 BSD-3-Clause、DAVIS 与 VOS-Benchmark 授权文件；demo 字体含 SIL OFL 约束。
-- **本轮允许变更**：仅项目根目录 `ARCHITECTURE.md`。
+- **当前核对允许变更**：仅项目根目录 `ARCHITECTURE.md`。
 
 ## 2. 项目定位与总体架构
 
@@ -236,7 +236,7 @@ python sav_dataset/sav_evaluator.py ...  # SA-V 评估
 # demo：docker compose up --build，或 gunicorn demo/backend/server/app.py 对应配置
 ```
 
-本轮未执行安装、启动、构建或模型推理；以上为源码/README 中记录的入口。
+当前核对未执行安装、启动、构建或模型推理；以上为源码/README 中记录的入口。
 
 ## 8. 测试、质量门与可验证性
 
@@ -288,13 +288,13 @@ python sav_dataset/sav_evaluator.py ...  # SA-V 评估
 - **API 结论**：公共 Python 入口是 `build_sam2*`、`SAM2ImagePredictor`、`SAM2VideoPredictor`、`SAM2AutomaticMaskGenerator`；demo 公共入口是 `/healthy`、`/graphql` 与 `/propagate_in_video`。预测输出核心形状为 masks + IoU + low-res logits；demo 再转为 COCO RLE。
 - **版本结论**：当前工作树已与远程 `main` 对齐，属于 2024-12-15 的 SAM 2.1 developer suite 后续提交状态；没有“落后远程”的证据，不需要 4780 独立快照。
 
-## 11. 本轮结论
+## 11. 当前核对结论
 
 **架构建档完成：** SAM 2 是以 `sam2/build_sam.py` 为装配根、以 `SAM2Base` 为模型骨架、以 `SAM2ImagePredictor`/`SAM2VideoPredictor` 为推理门面、以 `training/` 和 `demo/` 为两条应用扩展面的 PyTorch 视觉分割仓库。核心时序能力由 `inference_state`、`MemoryAttention`、`MemoryEncoder` 和 per-object output dictionaries 共同实现；demo 通过 `InferenceAPI` 将会话式 predictor 封装为 Flask + GraphQL + multipart 流。
 
 **就绪判断：** 源码、README、规则/贡献说明、依赖、配置、入口、模型/会话/API 数据模型、远程版本和已有细探已完成读取并写入本档案；项目级测试文件未发现，完整运行能力仍需真实依赖、权重、媒体数据和设备环境验证。当前最优先的后续工程事项是先修正并测试 demo 层已识别的接口/属性契约风险，再建立不依赖 checkpoint 的最小单测与带小样本权重的冒烟路径。
 
-**本轮未做：** 未安装依赖、未启动服务、未构建 CUDA、未运行训练/推理、未修改源码/依赖/测试/配置、未删除或修改 `细探-sam2.md`、未提交 Git。
+**当前核对未做：** 未安装依赖、未启动服务、未构建 CUDA、未运行训练/推理、未修改源码/依赖/测试/配置、未删除或修改 `细探-sam2.md`、未提交 Git。
 
 ## 12. 旧细探逐条吸收裁决（本文件为唯一正式架构档案）
 
@@ -418,8 +418,8 @@ HTTP 层目前是单进程内存架构：`app.py:29-35` 导入即预加载和构
 | `inference_state` | `init_state` 建 dict，demo 放入 `session_states` | `propagate` 追加 outputs；可 `reset_state` 清内容 | preflight 中途失败可能留下已写对象/临时输出；无事务快照 | cancel 保留 state 及已产出结果，便于继续/重置 | 进程重启全部丢失；无持久化/恢复/TTL |
 | cache/memory/output tensors | predictor per-state dict；可 CPU offload/bfloat16 | 作为后续帧 memory 被读取 | 部分 frame 写入可能保留；无 finally 清理 | 取消后仍在 state 中；只有 reset/close 释放引用 | Python/torch 引用随进程回收；需读 `session_states`、GPU allocator 和进程状态验证 |
 | 上传临时文件 | `TemporaryDirectory` 中 `in.mp4/out.mp4` | move 到 `UPLOADS_PATH` 后临时目录退出 | 普通异常退出上下文清理；`in_path` 在 move 前显式删除 | 无上传取消 API；客户端断连依赖 WSGI/异常路径 | 崩溃可能留下系统临时文件；应检查 temp 目录与 uploads，源码未提供清扫任务 |
-| demo 全局锁/线程 | `InferenceAPI.inference_lock`；可选 AsyncVideoFrameLoader daemon thread | 锁自动释放（`with`）；线程完成或持续至加载结束 | 异常仍释放锁；线程错误延迟抛出 | 取消不杀线程，不释放锁外资源 | daemon 线程不保证业务收尾；需要运行时读取线程/进程，没有本轮实测 |
-| 训练进程/日志/checkpoint | `single_node_runner` spawn 或 Submitit；`makedir` 创建 experiment dir | logger/checkpoint 由 Trainer 训练循环写入 | 子进程异常向上抛；Submitit 记录 job；checkpoint 采用临时文件替换（源码/文档约定） | SLURM timeout/preemption 依赖 Submitit checkpointable，非模型状态机保证 | 需外部检查 rank 进程、NCCL/端口、临时 checkpoint；本轮未启动训练 |
+| demo 全局锁/线程 | `InferenceAPI.inference_lock`；可选 AsyncVideoFrameLoader daemon thread | 锁自动释放（`with`）；线程完成或持续至加载结束 | 异常仍释放锁；线程错误延迟抛出 | 取消不杀线程，不释放锁外资源 | daemon 线程不保证业务收尾；需要运行时读取线程/进程，没有当前核对实测 |
+| 训练进程/日志/checkpoint | `single_node_runner` spawn 或 Submitit；`makedir` 创建 experiment dir | logger/checkpoint 由 Trainer 训练循环写入 | 子进程异常向上抛；Submitit 记录 job；checkpoint 采用临时文件替换（源码/文档约定） | SLURM timeout/preemption 依赖 Submitit checkpointable，非模型状态机保证 | 需外部检查 rank 进程、NCCL/端口、临时 checkpoint；当前核对未启动训练 |
 
 **资源结论：** 源码对正常 Python 上下文有局部清理（锁、TemporaryDirectory、reset/close），但没有统一的超时、强取消、崩溃恢复、会话 TTL、显存泄漏探针或跨进程状态持久化。任何“资源已释放”只能按路径分别验证，不能用生成器结束或健康端点代替。
 
@@ -440,15 +440,15 @@ HTTP 层目前是单进程内存架构：`app.py:29-35` 导入即预加载和构
 
 ## 18. 防假绿验证等级 L0-L4
 
-| 等级 | 何时可标记 | 本项目证据/本轮状态 | 不允许冒充 |
+| 等级 | 何时可标记 | 本项目证据/当前核对状态 | 不允许冒充 |
 |---|---|---|---|
-| **L0 存在性** | 文件、符号、配置、依赖声明存在 | 本轮读取源码；找到 63 个 Python 文件，根 `tests/` 与测试文件未发现 | 不能说功能可运行 |
+| **L0 存在性** | 文件、符号、配置、依赖声明存在 | 当前核对读取源码；找到 63 个 Python 文件，根 `tests/` 与测试文件未发现 | 不能说功能可运行 |
 | **L1 静态可解释** | 入口、调用链、分支、错误路径能由源码逐行解释 | 已核对 `build_sam*`、image/video predictor、memory、demo、训练入口；Python AST 解析 63/63 成功，退出码 0 | 不能说权重、设备、外部依赖已验证 |
-| **L2 隔离执行** | 在无生产写入、明确 fixture/无权重环境执行最小契约探针 | 本轮仅运行 AST 与 Git/远程只读检查；未执行模型推理/HTTP/GraphQL/训练 | 不能把 import、打印日志或文档示例算 L2 |
-| **L3 真实链路** | 真实依赖+权重+小图片/小视频跑通并读回输出、状态与资源 | 未执行；缺少本轮安装/权重/设备/媒体准备证据 | 不能把 README 指标、历史二进制或子代理回执算通过 |
+| **L2 隔离执行** | 在无生产写入、明确 fixture/无权重环境执行最小契约探针 | 当前核对仅运行 AST 与 Git/远程只读检查；未执行模型推理/HTTP/GraphQL/训练 | 不能把 import、打印日志或文档示例算 L2 |
+| **L3 真实链路** | 真实依赖+权重+小图片/小视频跑通并读回输出、状态与资源 | 未执行；缺少当前核对安装/权重/设备/媒体准备证据 | 不能把 README 指标、历史二进制或子代理回执算通过 |
 | **L4 受压/故障验收** | 真实链路上验证超时、取消、断连、OOM/重启、残留清理、并发和回滚 | 未执行；源码没有完整统一治理实现 | 不能宣称生产就绪、实时 SLA 或崩溃恢复 |
 
-本轮可验证结论是 **L0-L1：静态建档完成；L2-L4 未验证**。`git ls-remote origin refs/heads/main` 返回 `2b90b9f5ceec907a1c18123530e92e794ad901a4`，与本地 `HEAD` 相同，退出码 0；工作树只有未跟踪的 `ARCHITECTURE.md` 与 `细探-sam2.md`，没有源码/配置/依赖/测试改动。
+当前核对可验证结论是 **L0-L1：静态建档完成；L2-L4 未验证**。`git ls-remote origin refs/heads/main` 返回 `2b90b9f5ceec907a1c18123530e92e794ad901a4`，与本地 `HEAD` 相同，退出码 0；工作树只有未跟踪的 `ARCHITECTURE.md` 与 `细探-sam2.md`，没有源码/配置/依赖/测试改动。
 
 ## 19. 未验证项、吸收/不吸收与剩余风险
 
@@ -476,14 +476,14 @@ HTTP 层目前是单进程内存架构：`app.py:29-35` 导入即预加载和构
 
 ## 20. 维护规则与证据索引
 
-- `ARCHITECTURE.md` 是本项目唯一正式架构事实源；`细探-sam2.md` 本轮不删除，定位为历史细探底稿，后续不并行维护。
+- `ARCHITECTURE.md` 是本项目唯一正式架构事实源；`细探-sam2.md` 当前核对不删除，定位为历史细探底稿，后续不并行维护。
 - 任何后续更新必须附当前提交/工作树、源码路径（必要时行号）、验证命令和退出码；声明、历史 benchmark、子代理回执不得单独升级为通过。
 - 当前关键证据索引：`sam2/build_sam.py`；`sam2/modeling/sam2_base.py`；`sam2/modeling/memory_attention.py`；`sam2/modeling/memory_encoder.py`；`sam2/sam2_image_predictor.py`；`sam2/sam2_video_predictor.py`；`sam2/automatic_mask_generator.py`；`demo/backend/server/app.py`；`demo/backend/server/inference/predictor.py`；`demo/backend/server/data/schema.py`；`training/train.py`；`training/trainer.py`；`setup.py`；`README.md`。
-- 当前基线：本地 `HEAD=2b90b9f5ceec907a1c18123530e92e794ad901a4`，远程 `origin/main` 同值；本轮只允许并只修改本文件，旧细探保留。
+- 当前基线：本地 `HEAD=2b90b9f5ceec907a1c18123530e92e794ad901a4`，远程 `origin/main` 同值；当前核对只允许并只修改本文件，旧细探保留。
 
-## 20A. 第二轮收口补充：模型、predictor、状态、显存、批处理与崩溃边界
+## 20A. 后续收口补充：模型、predictor、状态、显存、批处理与崩溃边界
 
-本节只补充第二轮项目内部事实，优先记录前文尚未展开、容易被“能导入/能打印日志”掩盖的边界；不是第三轮底座方案。所有结论均来自当前提交源码静态核对，仍属于 L1，未因写入本节而升级为真实设备或权重验证。
+本节只补充后续项目内部事实，优先记录前文尚未展开、容易被“能导入/能打印日志”掩盖的边界；不是后续底座方案。所有结论均来自当前提交源码静态核对，仍属于 L1，未因写入本节而升级为真实设备或权重验证。
 
 ### 20A.1 模型装配的真实阶段与失败点
 
@@ -609,18 +609,18 @@ set_image / set_image_batch
 | OOM/MPS 进程崩溃 | 依赖 PyTorch/OS 的进程级处置；无应用恢复 | 不能声称 session 连续性、自动重试或 GPU context 健康 |
 | 上传 ffmpeg/磁盘失败 | 临时目录覆盖常规异常；ffmpeg 返回码、超时、并发目标和崩溃残留无统一治理 | 不能声称 content hash 已提交即具备原子索引/回滚 |
 
-### 20A.7 第二轮收口结论与验证边界
+### 20A.7 后续收口结论与验证边界
 
 - **已确认的关键硬边界**：模型是“CPU checkpoint 读取 → strict key 检查 → `.to(device)`”的同步装配；图像 predictor 缓存 embedding；视频 predictor 全量持有/加载帧并用可变 `inference_state` 管理 per-object memory；自动 mask 只对 points/crops 做分批，不是无界流式；demo 的 CUDA autocast、MPS CPU frame offload、全局锁和全局 session map 都是应用层行为。
 - **最容易被误判的事实**：`offload_state_to_cpu` 只移动部分输出 tensor；`reset_state` 不清 frame/cache/constants；`close_session` 不等于 predictor close；取消不等于回滚；`max_frame_num_to_track` 不严格等于产出帧数；`points_per_batch` 不限制总候选数；`TemporaryDirectory` 不覆盖 SIGKILL/ffmpeg timeout/同 hash 并发。
 - **阻断级崩溃边界**：compile 失败、checkpoint/配置失败、坏视频/全量帧内存峰值、CUDA/MPS OOM 或设备崩溃、活动 generator 断连、上传 ffmpeg 非零退出和进程 SIGKILL 都没有项目级恢复/资源审计闭环。
-- **本轮未执行**：没有安装依赖、下载权重、启动服务、创建 fixture、运行图像/视频推理、测量 CUDA/MPS/CPU 显存、注入 OOM/断连/磁盘故障或检查临时目录；上述内容保持 L1 静态证据，不冒充 L2-L4。
+- **当前核对未执行**：没有安装依赖、下载权重、启动服务、创建 fixture、运行图像/视频推理、测量 CUDA/MPS/CPU 显存、注入 OOM/断连/磁盘故障或检查临时目录；上述内容保持 L1 静态证据，不冒充 L2-L4。
 
-## 21. 第三轮：通用底座映射范围与证据边界
+## 21. 后续：通用底座映射范围与证据边界
 
-本节是第三轮“项目能力 → 通用底座”的裁决，不是对 SAM2 源码的再次建档，也不是对平台生产代码的改造方案。前两轮已经证明：SAM2 的图像/视频分割、视频会话、mask memory 传播、权重装配和 demo 入口都存在于同一仓库，但当前实现把模型、会话和 HTTP 应用放在一个 Python 进程内。本轮只把这些能力放入平台既有的**视觉支持库、视觉模块、运行核心、提供者**四个边界，并明确哪些行为必须被平台契约补齐。
+本节是后续“项目能力 → 通用底座”的裁决，不是对 SAM2 源码的再次建档，也不是对平台生产代码的改造方案。前两轮已经证明：SAM2 的图像/视频分割、视频会话、mask memory 传播、权重装配和 demo 入口都存在于同一仓库，但当前实现把模型、会话和 HTTP 应用放在一个 Python 进程内。当前核对只把这些能力放入平台既有的**视觉支持库、视觉模块、运行核心、提供者**四个边界，并明确哪些行为必须被平台契约补齐。
 
-证据等级仍按本档案的 L0-L4 执行：下文带 `源码事实` 的内容来自本项目真实路径；带 `底座裁决` 的内容是平台接入边界；二者不能混写。当前没有安装依赖、下载权重、启动 demo 或运行推理，因此本轮第三轮映射仍只能把项目证据推进到 L1，不能把映射方案写成 L2-L4 已通过。
+证据等级仍按本档案的 L0-L4 执行：下文带 `源码事实` 的内容来自本项目真实路径；带 `底座裁决` 的内容是平台接入边界；二者不能混写。当前没有安装依赖、下载权重、启动 demo 或运行推理，因此当前核对后续映射仍只能把项目证据推进到 L1，不能把映射方案写成 L2-L4 已通过。
 
 ### 21.1 现有能力命中表
 
@@ -640,7 +640,7 @@ set_image / set_image_batch
 
 ### 21.2 缺口表与裁决
 
-| 缺口 | SAM2 当前状态 | 第三轮裁决 | 归属/优先级 |
+| 缺口 | SAM2 当前状态 | 后续裁决 | 归属/优先级 |
 |---|---|---|---|
 | 主进程隔离 | `app.py` 导入时构造全局 `InferenceAPI`；`InferenceAPI` 在同进程 import `torch` 并加载 SAM2 | 拒绝把此结构作为平台底座；主进程只运行入口、契约、租约和监督，不加载 `torch`、SAM2、PyAV、CUDA 扩展或大 Tensor | 运行核心 + SAM2 provider，阻断级 |
 | 会话状态权威性 | `session_states: Dict[str, Any]` 为进程内全局字典；重启即丢失 | 会话元数据由运行核心持有并带租约；provider state 是从属资源；无 checkpoint 时崩溃后必须返回 `SESSION_LOST`，不得静默重跑 | 运行核心，阻断级 |
@@ -661,7 +661,7 @@ set_image / set_image_batch
 
 ## 22. 目标单链路与四层职责
 
-第三轮的唯一正式链路如下；入口可以有 HTTP、GraphQL、CLI 或 Python SDK，但它们只能在最左侧做协议适配，不能各自拥有模型调用逻辑：
+后续的唯一正式链路如下；入口可以有 HTTP、GraphQL、CLI 或 Python SDK，但它们只能在最左侧做协议适配，不能各自拥有模型调用逻辑：
 
 ```text
 Flask/GraphQL/demo/CLI/SDK 入口
@@ -853,17 +853,17 @@ multipart/GraphQL upload
 
 ### 26.3 验收命令和当前状态
 
-本轮只允许修改本项目根 `ARCHITECTURE.md`，没有安装依赖、下载权重、启动服务或修改源码；因此当前真实验证仍为：
+当前核对只允许修改本项目根 `ARCHITECTURE.md`，没有安装依赖、下载权重、启动服务或修改源码；因此当前真实验证仍为：
 
 ```text
 L0：已完成。目标文件、关键入口、配置、provider 依赖和 demo 路由存在性已核对。
 L1：已完成。已根据 build_sam、image/video predictor、demo predictor/app/schema 解释真实调用链与失败边界。
-L2：未完成。本轮没有启动隔离 provider，也没有运行无权重协议/资源探针。
+L2：未完成。当前核对没有启动隔离 provider，也没有运行无权重协议/资源探针。
 L3：未完成。没有真实 checkpoint、短图/短视频、CUDA/MPS/CPU 结果与资源读回。
 L4：未完成。没有真实超时、取消、断连、OOM、SIGKILL、重启、同 hash 并发和残留审计。
 ```
 
-若后续执行本轮映射验收，命令必须逐项记录退出码、测试数、设备、权重摘要和清理读回结果，至少包括：
+若后续执行当前核对映射验收，命令必须逐项记录退出码、测试数、设备、权重摘要和清理读回结果，至少包括：
 
 ```bash
 # 仅示意；依赖、权重和 provider 隔离环境准备完成后才能执行
@@ -886,4 +886,4 @@ python <故障注入> --timeout --cancel --disconnect --provider-crash
 7. **唯一资源证据**：权重、显存、帧、memory、临时上传、管道、线程和进程的创建/释放必须有同一条可审计链；“删除 Python 引用”不等于显存/子进程已释放。
 8. **禁止旁路**：正式模块不得 `from sam2...`；demo 不得直接构造 `InferenceAPI` 作为平台全局单例；任何兼容旧 API 的别名只能在唯一适配入口归一化，不能复制第二套视觉内核。
 
-**第三轮最终裁决：** SAM2 值得作为视觉 provider 的算法实现和模型权重/设备适配参考，图像与视频能力吸收到同一视觉支持库/模块契约族；会话租约、资源释放、失败/取消/崩溃和主进程隔离必须由通用运行核心补齐；Flask/GraphQL/demo 只保留为入口适配，不进入视觉底座。当前项目本身仍停在 L0-L1，第三轮映射是可装配输入而不是生产就绪证明。
+**后续最终裁决：** SAM2 值得作为视觉 provider 的算法实现和模型权重/设备适配参考，图像与视频能力吸收到同一视觉支持库/模块契约族；会话租约、资源释放、失败/取消/崩溃和主进程隔离必须由通用运行核心补齐；Flask/GraphQL/demo 只保留为入口适配，不进入视觉底座。当前项目本身仍停在 L0-L1，后续映射是可装配输入而不是生产就绪证明。

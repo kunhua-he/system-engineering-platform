@@ -357,9 +357,9 @@ figures_ProcessNotifyLib_figures
 - `figures.vcxproj` 仅声明 Visual Studio 编译配置，不等于已经构建通过；
 - 源码中的 `_DEBUG` 参数数量检查（`figures_cmdInfo.cpp:126-128`）是编译期调试辅助，不是行为测试。
 
-### 10.2 本轮实际验证
+### 10.2 当前核对实际验证
 
-本轮只读检查了：
+当前核对只读检查了：
 
 - 解决方案、动态库和静态库 `.vcxproj`/`.filters`/`.user`；
 - `Source_figures.def`；
@@ -409,8 +409,8 @@ figures_ProcessNotifyLib_figures
 - 提交主题：`初始化仓库`
 - 提交时间：`2022-12-19T16:09:02+08:00`
 - 远程：`https://gitee.com/JYtechnology/figures.git`
-- 本轮未执行 fetch、pull、checkout、commit、reset 或其他 Git 写操作。
-- 本轮唯一允许的写入是新增本文件 `ARCHITECTURE.md`；未修改源码、工程、依赖、测试、配置或 Git 元数据。
+- 当前核对未执行 fetch、pull、checkout、commit、reset 或其他 Git 写操作。
+- 当前核对唯一允许的写入是新增本文件 `ARCHITECTURE.md`；未修改源码、工程、依赖、测试、配置或 Git 元数据。
 
 ### 12.2 关键证据索引
 

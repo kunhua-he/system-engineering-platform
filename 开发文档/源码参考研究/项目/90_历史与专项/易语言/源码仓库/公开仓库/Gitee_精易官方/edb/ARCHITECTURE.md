@@ -19,7 +19,7 @@
 - 参数描述：60 项，索引 `0..59`。
 - 常量：64 项，索引 `0..63`，均为数值型 ADO/记录集相关常量。
 - 自定义数据类型：2 项，`DBConnection`（数据库连接）和 `RecordSet`（记录集）；两者均为 `LDT_WIN_UNIT | LDT_IS_FUNCTION_PROVIDER` 类型，源码未实现实际组件实例。
-- 测试：仓库未发现 README、CI、测试目录或测试文件；本轮未安装依赖、未构建、未启动运行时，符合只读建档边界。
+- 测试：仓库未发现 README、CI、测试目录或测试文件；当前核对未安装依赖、未构建、未启动运行时，符合只读建档边界。
 
 ## 2. 总体流程图
 
@@ -210,7 +210,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 动态 Win32 的预处理定义包含 `__E_FNENAME=edb; WIN32; EDB_EXPORTS; _WINDOWS; _USRDLL`；
 - 静态 Win32 的预处理定义包含 `__E_STATIC_LIB; __E_FNENAME=edb; WIN32; _LIB`；
 - `elib/lib2.h:23-25` 强制要求先定义 `__E_FNENAME`，否则预处理直接报错；
-- 两个工程的 x64 配置没有看到 `__E_FNENAME=edb`；静态 x64 也没有 `__E_STATIC_LIB`。此外静态 x64 配置把 `PrecompiledHeader` 设为 `Use` 并指定 `pch.h`，仓库中没有 `pch.h`。这些是未执行构建前的高风险配置缺口，不能在本轮断言具体编译错误。
+- 两个工程的 x64 配置没有看到 `__E_FNENAME=edb`；静态 x64 也没有 `__E_STATIC_LIB`。此外静态 x64 配置把 `PrecompiledHeader` 设为 `Use` 并指定 `pch.h`，仓库中没有 `pch.h`。这些是未执行构建前的高风险配置缺口，不能在当前核对断言具体编译错误。
 - 动态 x64 配置未配置 `TargetExt=.fne`，也未看到 `ModuleDefinitionFile=Source_edb.def`；这与 Win32 动态配置存在差异，应在后续 Windows 构建复核。
 
 ### 7.3 运行时依赖声明
@@ -249,7 +249,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 本地 Git 工作树在建档前无改动，本地与远程 `master` 指针一致；
 - 全仓库未发现 `README*`、`AGENTS.md`、`CLAUDE.md`、`细探-*.md`、`ARCHITECTURE.md`、测试目录、测试脚本或 CI 配置。
 
-### 本轮未执行
+### 当前核对未执行
 
 - 未安装 Visual Studio/Windows SDK/ADO 或其他依赖；
 - 未执行构建、链接、DLL 导出检查、静态库链接、Windows 运行验证；
@@ -265,7 +265,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 4. **ABI 位宽（待核）**：`elib/mtypes.h` 和 `lib2.h` 使用 `DWORD` 保存句柄、组件 ID、通知参数，并存在把指针转换为 `DWORD`/`INT` 的历史 ABI 约定；x64 下是否可用必须在目标 Windows/易语言运行时实测，不能仅由当前工程配置推断。
 5. **ADO 依赖（待核）**：库说明声称基于 ADO，但源码没有 COM/ADO 实现或显式链接；需要后续确认该提交是否仅为待填充模板，或实现位于未纳入仓库的外部支持库。
 6. **错误/内存/并发（待核）**：没有数据库对象状态、锁、超时实际控制、错误码转译、内存释放、线程模型或失败恢复路径。
-7. **命令元数据质量（待核）**：常量索引 `059/060/061` 的英文名存在重复/可疑命名，需与正式易语言文档或可运行版本对照，但本轮不擅自修正源码。
+7. **命令元数据质量（待核）**：常量索引 `059/060/061` 的英文名存在重复/可疑命名，需与正式易语言文档或可运行版本对照，但当前核对不擅自修正源码。
 
 ## 11. 证据索引
 
@@ -284,13 +284,13 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 ## 12. 维护边界
 
-本文件已吸收本轮源码、工程、入口/ABI/API、依赖、测试、Git 远程和旧细探现场信息。当前未发现旧 `细探-*.md`，后续只维护项目根 `ARCHITECTURE.md`；不得把构建产物、外部快照或其他临时报告作为第二事实源。
+本文件已吸收当前核对源码、工程、入口/ABI/API、依赖、测试、Git 远程和旧细探现场信息。当前未发现旧 `细探-*.md`，后续只维护项目根 `ARCHITECTURE.md`；不得把构建产物、外部快照或其他临时报告作为第二事实源。
 
-## 13. 第三轮：数据库能力到底落在哪一层
+## 13. 后续：数据库能力到底落在哪一层
 
-### 13.1 本轮范围与证据等级
+### 13.1 当前核对范围与证据等级
 
-本轮不是把 `edb` 的声明当成可运行实现，而是把它声明的数据库连接、SQL、事务、游标、记录集、句柄和 ADO/驱动边界映射到系统工程平台的四个职责层。目标仓库的源码证据仍以当前提交为准：
+当前核对不是把 `edb` 的声明当成可运行实现，而是把它声明的数据库连接、SQL、事务、游标、记录集、句柄和 ADO/驱动边界映射到系统工程平台的四个职责层。目标仓库的源码证据仍以当前提交为准：
 
 - `edb_cmd_typedef.h:12-27,65-67` 声明了连接、关闭、执行 SQL、连接超时、开始/保存/回滚事务、记录集置/取连接、打开、游标和命令超时等契约。
 - `edb_cmdDef.cpp:5-128,468-487` 可见命令函数只读取 `pArgInf` 或保留空函数体；`pRetData` 只出现在 56 个函数签名中，没有写返回值。`edb_cmdDef.cpp:82-101` 的事务三命令、`122-128` 的打开记录集、`468-479` 的持久文件/命令超时均没有后端调用。
@@ -298,7 +298,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - `edb_cmdInfo.cpp:28-39,83-85` 与 `edb_const.cpp:25-26,54-56,79-80` 说明 SQL、ADO `CursorLocationEnum`、OLE `IDispatch/IUnknown`、XML/ADTG 和存储过程等概念，但这些是声明/常量，不是实现证据。
 - `edb_dllMain.cpp:44-46,65-86` 的 ADO 说明字符串和空依赖列表不能证明 ADO/COM 已装载；全仓库静态搜索没有 `CoCreate`、`#import`、ADO 类型库、驱动连接、SQL 执行或实际句柄释放路径。
 
-因此，本节分为“源码已确认”和“平台应如何落位”两种语气。后者是第三轮架构裁决输入，不代表 `edb` 当前已经具备这些平台组件。前置的 `project_context` 工具本轮错误绑定到华世王镞_v3，属于环境问题；以下结论不使用该错误项目的代码图，完全基于目标 `edb` 本地源码静态证据，验证强度标为弱验证。
+因此，本节分为“源码已确认”和“平台应如何落位”两种语气。后者是后续架构裁决输入，不代表 `edb` 当前已经具备这些平台组件。前置的 `project_context` 工具当前核对错误绑定到华世王镞_v3，属于环境问题；以下结论不使用该错误项目的代码图，完全基于目标 `edb` 本地源码静态证据，验证强度标为弱验证。
 
 ### 13.2 唯一单链路
 
@@ -332,7 +332,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 ### 13.4 现有命中、缺口与复用裁决
 
-| `edb` 现有命令/概念 | 源码命中 | 第三轮落点 | 裁决 |
+| `edb` 现有命令/概念 | 源码命中 | 后续落点 | 裁决 |
 |---|---|---|---|
 | `Connect/ConnectAccess/ConnectSQLServer/Close`、连接超时 | `edb_cmd_typedef.h:13-16,20-21`；函数骨架 `edb_cmdDef.cpp:5-40,69-80` | 数据库支持库定义连接契约；专属执行单元实现 ADO/驱动连接；运行核心持有连接句柄 | **吸收契约，升级支持库**；不复用空函数体 |
 | `ExecuteSQL`、存储过程、命令超时 | `edb_cmdDef.cpp:42-50,473-486`；`edb_const.cpp:79` | 支持库定义 SQL/参数/超时/错误；专属执行单元执行；核心监督取消 | **吸收边界，建立专属执行单元**；网关禁止直连 |
@@ -404,7 +404,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 ## 17. L0-L4 验证等级与本项目结论
 
-本轮采用以下统一等级，避免把“命令存在”误写成“数据库功能通过”：
+当前核对采用以下统一等级，避免把“命令存在”误写成“数据库功能通过”：
 
 | 等级 | 含义 | 必须有的证据 |
 |---|---|---|
@@ -427,7 +427,7 @@ PFN_EXECUTE_CMD(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 
 所以本项目整体不能标记为 L2、L3 或 L4。后续若平台实现数据库能力，必须分别取得 L2（平台/适配器可装载）、L3（真实数据库链路）和 L4（故障闭环）的独立证据，不能用本仓库的元数据补齐。
 
-## 18. 第三轮交付：依赖、验收与装配计划
+## 18. 后续交付：依赖、验收与装配计划
 
 ### 18.1 依赖与资源契约
 
@@ -531,7 +531,7 @@ SQL/记录集错误     SQL_FAILED / RESULT_STATE_INVALID / FIELD_TYPE_MISMATCH
 
 ## 21. 旧细探承接结论与证据边界
 
-本次复核没有发现仓库内独立的 `细探-*.md` 或其他架构事实源；已有根 `ARCHITECTURE.md` 的第三轮内容已保留，本轮只在其后追加源码补证。新增结论来自 `edb_cmdDef.cpp`、`edb_cmd_typedef.h`、`edb_dtType.cpp`、`elib/lib2.h`、`elib/mtypes.h`、`elib/fnshare.h` 和 `elib/fnshare.cpp` 的直接阅读。
+本次复核没有发现仓库内独立的 `细探-*.md` 或其他架构事实源；已有根 `ARCHITECTURE.md` 的后续内容已保留，当前核对只在其后追加源码补证。新增结论来自 `edb_cmdDef.cpp`、`edb_cmd_typedef.h`、`edb_dtType.cpp`、`elib/lib2.h`、`elib/mtypes.h`、`elib/fnshare.h` 和 `elib/fnshare.cpp` 的直接阅读。
 
 可升级为“源码已确认”的事实：
 

@@ -1,6 +1,6 @@
 # Claude Code 源码快照架构档案
 
-> **唯一权威架构文档。** 本文只描述当前目录中的 Claude Code source-map 泄露镜像与可由源码确认的事实；原有 `细探-Claude-Code.md` 保留为历史细探证据，不再作为后续维护入口。后续若继续研究，只更新本文，并回到当前源码复核。
+> **唯一权威架构文档。** 本文只描述当前目录中的 Claude Code source-map 泄露镜像与可由源码确认的事实；项目根未发现平行架构文档，后续复核只更新本文，并回到当前源码复核。
 >
 > **研究边界：** 该目录是 Anthropic 专有源码的公开暴露快照，README 将用途限定为教育、供应链与防御性安全研究；本文不复制源码、不改源码、不提供商业或对抗性使用指导。
 
@@ -24,9 +24,7 @@
 
 ### 1.2 代码图与项目绑定结果
 
-本轮按任务要求先调用 `project_context`，但专属 MCP 返回的绑定项目是 **`华世王镞_v3`**，根目录为 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，MCP 实例标识为 `project_toolkit`，不是本任务目标。随后调用 `codegraph_explore` 时显式传入目标根，返回：目标目录不存在 `.codegraph/`，未建立代码图，不能查询符号或调用图。
-
-因此本档案的源码证据来自当前快照的现场盘点、`README.md`、旧细探和定向源码阅读；**不把错误项目的代码图结果冒充为 Claude Code 代码图，也不把代码图缺失写成代码图通过。**
+当前目录已建立独立 `.codegraph/`，由本地 `codegraph init` 生成并完成索引：1,902 个文件、43,514 个节点、139,910 条边；`codegraph status` 退出码为 0 且报告索引最新。源码证据来自当前快照、README、代码地图和定向源码阅读；不引用错误项目的项目绑定或 MCP 结果。
 
 ## 2. 总体流程图
 
@@ -208,13 +206,13 @@ Bash 专用边界在 `src/tools/BashTool/bashPermissions.ts:1663-1768`：先 tre
 | transcript 文件/目录 | Project 首次写入 materialize；append queue 持有 entry resolve | drain 后 resolve；flush 等 pending 清空；cleanup reappend metadata | append 失败 mkdir 重试；进程 kill 可能留下已写前缀/未 drain 队列；resume 通过链修复 | 路径/权限/队列规则有源码证据；未实际写临时 session 验证 |
 | JSONL chain metadata | `uuid`/`parentUuid`、compact boundary、snip/preserved segment | 追加式；不物理删除，加载期 skip/relink | 畸形 preserved chain 可 no-op，snip 用 removed UUID；崩溃恢复依赖边界之前已持久化 | 未用样本 JSONL 做 round-trip |
 | API HTTP/stream | `services/api/claude.ts`/provider 创建；query 消费 async stream | stream 结束或 abort；cost/usage 更新 | retry/fallback/error 分类；prompt-too-long 触发 compact/recovery；provider 实测缺失 | 仅源码结构证据；无 API key/外部服务实测 |
-| Bash 子进程/沙箱 | BashTool 执行器创建 shell/后台任务，SandboxManager 提供边界 | 正常退出或 tool stop；后台任务由 task/stop 体系管理 | 默认/最大 timeout、autobackground、run_in_background；崩溃/孤儿进程未在本轮运行验证 | 旧细探与 prompt 记录限制；源码未构成现场清理证据 |
+| Bash 子进程/沙箱 | BashTool 执行器创建 shell/后台任务，SandboxManager 提供边界 | 正常退出或 tool stop；后台任务由 task/stop 体系管理 | 默认/最大 timeout、autobackground、run_in_background；崩溃/孤儿进程未在当前环境运行验证 | 旧细探与 prompt 记录限制；源码未构成现场清理证据 |
 | MCP/LSP client | main/services 初始化连接、资源与工具 | shutdown/cleanup registry | server unavailable、elicitation、tool error 走 MCP 错误/用户交互；断线重连未做运行验证 | 代码路径存在，连接生命周期未实测 |
 | Permission dialog/bridge/channel | interactive handler 建 queue item、remote request、abort listener | `removeFromQueue`、unsubscribe、cancelRequest、clear classifier state | claim winner；channel send 失败只记录错误，local dialog 作为底 | 静态清理路径明确；多路并发未实测 |
 | CCR relay/WS/timer | relay 绑定 localhost ephemeral port；每连接 WS、pending buffers、30s pinger | `stop()`、`cleanupConn` 清 interval/close WS；upstream registerCleanup | CONNECT 不完整超 8192→400；WS error 未 established→502；close/已 established→end；无显式 relay handshake timeout | 代码有 `closed` guard；无 socket/WS 压测 |
 | CA/token 文件 | 读取 token，下载/写 CA bundle | relay listener 确认后 unlink token；cleanup relay | CA/relay 失败保留 token 便于 supervisor retry；`prctl(PR_SET_DUMPABLE,0)` 降低 heap 泄露面 | 仅静态证据；未在 CCR 容器验证 |
 
-**资源结论：** 源码明确覆盖正常完成、业务失败、权限取消、部分网络失败和部分压缩失败；对进程崩溃后的所有临时进程、端口、锁、WS、MCP/LSP、后台任务是否无界残留，当前没有本轮运行证据，必须标记未验证，不得由 cleanup 函数存在推导“已清理”。
+**资源结论：** 源码明确覆盖正常完成、业务失败、权限取消、部分网络失败和部分压缩失败；对进程崩溃后的所有临时进程、端口、锁、WS、MCP/LSP、后台任务是否无界残留，当前没有运行证据，必须标记未验证，不得由 cleanup 函数存在推导“已清理”。
 
 ## 7. 失败、超时、取消、崩溃矩阵
 
@@ -239,7 +237,7 @@ Bash 专用边界在 `src/tools/BashTool/bashPermissions.ts:1663-1768`：先 tre
 
 ## 8. 防假绿验证分级（L0-L4）
 
-| 等级 | “通过”所需证据 | 本轮状态 |
+| 等级 | “通过”所需证据 | 当前状态 |
 |---|---|---|
 | L0 源码存在 | 文件、导出符号、源码路径和关键分支可读 | **通过（静态）**：已核对入口、QueryEngine、query、Tool、permissions、Bash、compact、sessionStorage、relay、SDK 类型等 |
 | L1 结构闭合 | 入口→门面→注册/路由→provider→结果/事件/释放链能由路径串起来；关键契约不只在 README | **部分通过**：CLI 主链、权限链、transcript/compact/relay 链闭合；代码图不可用，且 feature-gated 分支需逐构建确认 |
@@ -270,7 +268,7 @@ Bash 专用边界在 `src/tools/BashTool/bashPermissions.ts:1663-1768`：先 tre
 - “约 46K/29K/25K 行”的历史规模说法：当前 `QueryEngine.ts` 1,295 行、`Tool.ts` 792 行、`commands.ts` 754 行，说明旧细探与当前快照的单文件规模描述存在明显漂移；本文以现场当前文件统计为准；
 - 具体模型名、内部后门变量、遥测成本/拒绝比例、CCR 后端私有设计文档；
 - tree-sitter、Bash sandbox、MCP/LSP、Ink 的真实运行版本与跨平台行为；
-- 旧细探提及但本轮未逐文件重新读取的 `permissions.ts` 其他分支、`systemPrompt` 全量动态段、`sessionStorage` 全量 loader 分支、多代理任务实现细节。
+- 旧细探提及但当前未逐文件重新读取的 `permissions.ts` 其他分支、`systemPrompt` 全量动态段、`sessionStorage` 全量 loader 分支、多代理任务实现细节。
 
 ### 9.3 不吸收为架构事实
 
@@ -279,7 +277,7 @@ Bash 专用边界在 `src/tools/BashTool/bashPermissions.ts:1663-1768`：先 tre
 - 将 Anthropic 内部实现直接映射为本平台生产契约的建议；
 - 任何绕过权限、沙箱、供应链或所有权边界的操作性内容。
 
-## 10. 本轮验证命令与退出码
+## 10. 当前验证命令与退出码
 
 以下命令均为只读盘点，不安装依赖、不启动源码服务、不生成构建物：
 
@@ -287,20 +285,20 @@ Bash 专用边界在 `src/tools/BashTool/bashPermissions.ts:1663-1768`：先 tre
 |---|---|
 | `python3` 递归统计目标根文件、扩展名、顶层目录、关键文件行数 | **退出码 0**；1,904 文件，1,902 个 `src` 文件；`.ts/.tsx/.js/.md` 分布如 §1 |
 | `git -C '/Users/hekunhua/Documents/Agent/github 源码参考/90_历史与专项/非Git源码/Claude-Code' status --short --branch` | 命令返回 Git fatal；目录确认为非 Git，不能记录 commit/branch |
-| `search_files` 查找 `ARCHITECTURE.md` | 写入前不存在；本轮创建本文 |
+| `find` 查找 `ARCHITECTURE.md` | 当前项目根只有本文一个架构事实文件 |
 | `search_files` 查找根 `package*.json`、`bun.lock*`、`tsconfig*.json`、`*.test.tsx`、`*.spec.*`、`__tests__` | 根配置/独立测试证据缺失；不能运行项目测试 |
-| `project_context(task=...)` | 工具调用成功，但错绑 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`；不作为本项目代码图证据 |
-| `codegraph_explore(projectPath=目标根, ...)` | 返回目标根无 `.codegraph/`；**代码图不可用**，未冒充通过 |
+| `python3` 调用 `codegraph init <项目根>` | 退出码 0；建立独立 `.codegraph/`，未修改 `src/` |
+| `codegraph status <项目根>` | 退出码 0；1,902 文件、43,514 节点、139,910 边，索引最新 |
 
-本轮没有声称 TypeScript 编译、单元测试、API、MCP、sandbox、终端 UI、CCR relay 或崩溃恢复通过。
+当前没有声称 TypeScript 编译、单元测试、API、MCP、sandbox、终端 UI、CCR relay 或崩溃恢复通过。
 
 ## 11. 后续复核清单与剩余风险
 
-1. 如需继续建档，先修正 `project_context` 的项目绑定，或明确为该非 Git 目录建立独立代码图；不得查询错误项目后引用其结果。
+1. 该目录没有 Git 远程和完整构建清单；任何版本升级或依赖恢复都必须先获得可验证的来源与锁文件，不能把 source-map 快照当成可发布仓库。
 2. 若要 L2，必须获得完整依赖/构建入口或建立隔离的快照验证环境；验证产物和运行缓存不得写入源码快照目录。
 3. 优先补充：`query.ts` 状态转换全表、`services/api/withRetry.ts` 重试分类、工具 orchestration、`sessionStorage` loader 全链、MCP/LSP disconnect、后台 Bash/task 进程回收。
 4. 设计故障注入：API timeout/429/413、用户 abort、权限五路竞态、JSONL 中断写、compact boundary 中断、Bash 子进程超时、WS half-open/断线、宿主 SIGKILL；每项要读回文件/进程/端口/临时目录状态。
-5. 重新核对当前快照与旧细探的漂移，尤其是 feature gate 的构建可达性、SDK stub 与 CLI 实现是否属于同一发布目标。
+5. 继续核对当前快照与旧细探的漂移，尤其是 feature gate 的构建可达性、SDK stub 与 CLI 实现是否属于同一发布目标。
 6. 许可证与供应链风险持续存在：该目录不应被当作可再分发的官方源码或生产依赖。
 
 ## 12. 证据索引
@@ -316,4 +314,4 @@ Bash 专用边界在 `src/tools/BashTool/bashPermissions.ts:1663-1768`：先 tre
 - `src/hooks/toolPermission/handlers/interactiveHandler.ts:46-146,300-429,433-499`：多路权限竞态与清理。
 - `src/upstreamproxy/upstreamproxy.ts:79-152,160-204`；`src/upstreamproxy/relay.ts:49-126,295-455`：CCR proxy/relay。
 - `src/entrypoints/agentSdkTypes.ts:1-31,73-182`：SDK 类型与当前 stub 边界。
-- `细探-Claude-Code.md`：旧细探，已逐章吸收/裁决，**保留不删除**。
+- `.codegraph/`：本地代码地图数据库；可删除并按当前源码重新生成，不是业务源码或发布制品。

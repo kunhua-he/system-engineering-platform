@@ -1,6 +1,6 @@
 # echartbar 架构建档
 
-> 本文是本项目首轮全量架构档案，事实基线为当前工作树与 Git 提交 `4282922aed8711406c3ef7bf50643c4e566c71d9`。源码参考仓库按只读方式研究；本轮只新增本文件，未修改源码、工程配置、依赖或构建产物。
+> 本文是本项目首轮全量架构档案，事实基线为当前工作树与 Git 提交 `4282922aed8711406c3ef7bf50643c4e566c71d9`。源码参考仓库按只读方式研究；当前核对只新增本文件，未修改源码、工程配置、依赖或构建产物。
 
 ## 1. 项目定位
 
@@ -217,7 +217,7 @@ echartbar/
 ## 9. 测试与验证现状
 
 - 仓库没有测试目录、测试源码、测试夹具、CI 配置或独立验证脚本；
-- 没有执行构建，符合本轮“禁止构建”的边界；
+- 没有执行构建，符合当前核对“禁止构建”的边界；
 - 没有在 macOS 上执行 Visual Studio/MSBuild，也没有 Windows SDK、`v141` 工具链或易语言宿主环境验证；
 - 已做只读静态核对：目录清单、工程文件、源文件、头文件、命令宏、组件属性表、导出定义、Git 状态和远程引用；
 - 代码图工具报告该仓库没有 `.codegraph/` 索引，因此本档案使用现场源码与工程文件作为证据，不把其他项目代码地图结果混入本项目。
@@ -236,7 +236,7 @@ echartbar/
 8. `DllMain` 不做生命周期初始化/清理，当前安全性取决于实现没有实际资源；一旦加入窗口、GDI、线程或缓存，需要重新设计释放顺序。
 9. `echartbar_cmdDef.cpp` 直接按固定索引读取 5 个参数，未使用 `nArgCount` 做边界保护。
 
-### 本轮未验证
+### 当前核对未验证
 
 - Windows 10/11 + Visual Studio v141/v143 下四种动态配置是否可编译、链接和装载；
 - `GetNewInf` 导出是否在 x86/x64 两种动态产物中一致可见；
@@ -254,8 +254,8 @@ echartbar/
 - 当前提交时间：`2022-12-19T08:35:16Z`；
 - 提交说明：`add LICENSE.`；
 - 远程：`origin = https://gitee.com/JYtechnology/echartbar.git`；
-- 本地是 shallow repository；现场 `git ls-remote origin HEAD refs/heads/master` 返回同一提交 `4282922aed8711406c3ef7bf50643c4e566c71d9`，因此本轮观察到本地与远程 `master` 一致；
-- 工作树在建档前干净；本轮预期唯一变更是根目录 `ARCHITECTURE.md`。
+- 本地是 shallow repository；现场 `git ls-remote origin HEAD refs/heads/master` 返回同一提交 `4282922aed8711406c3ef7bf50643c4e566c71d9`，因此当前核对观察到本地与远程 `master` 一致；
+- 工作树在建档前干净；当前核对预期唯一变更是根目录 `ARCHITECTURE.md`。
 
 ## 12. 后续复核顺序
 

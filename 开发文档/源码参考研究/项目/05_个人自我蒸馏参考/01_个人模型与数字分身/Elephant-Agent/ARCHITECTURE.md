@@ -229,20 +229,20 @@ README/规则/设计：`README.md`、`AGENTS.md`、`apps/README.md`、`apps/AGEN
 
 ---
 
-## 第三轮：通用底座映射与运行闭环裁决（现场源码证据）
+## 后续：通用底座映射与运行闭环裁决（现场源码证据）
 
 ### 1. 证据边界与裁决口径
 
-本轮把项目事实映射到“支持库 / 模块库 / 运行核心 / 网关”四类通用底座边界，但不把 Elephant Agent 的产品语义伪装成平台通用能力。证据优先级为：当前源码 > 当前 schema/测试契约 > `docs/system-design/system-layer-model.md` 与 `docs/agent/**` 设计说明 > 旧细探结论。目标仓库内未发现独立 `细探-*.md` 文件；现有文件已经声明此前 `细探-Elephant-Agent.md` 已吸收，本轮不删除、不另建平行细探。
+当前核对把项目事实映射到“支持库 / 模块库 / 运行核心 / 网关”四类通用底座边界，但不把 Elephant Agent 的产品语义伪装成平台通用能力。证据优先级为：当前源码 > 当前 schema/测试契约 > `docs/system-design/system-layer-model.md` 与 `docs/agent/**` 设计说明 > 旧细探结论。目标仓库内未发现独立 `细探-*.md` 文件；现有文件已经声明此前 `细探-Elephant-Agent.md` 已吸收，当前核对不删除、不另建平行细探。
 
 专属 `system_engineering_toolkit` MCP 的真实开工上下文返回的是项目 `系统工程平台`（根目录 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，MCP 实例 `system_engineering_toolkit`，开工 id `e8d1ecb90f4444d6`），其代码图也固定指向该平台，不是本项目；`codegraph_explore` 因此只能提供平台映射基线，不能作为 Elephant-Agent 源码证据。本节涉及 Elephant-Agent 的事实均来自目标根目录现场读取；验证结果也必须按目标仓库本地命令单独判定。
 
-本轮最重要的真实性裁决：
+当前核对最重要的真实性裁决：
 
 - `EventEnvelope` 是通用事件契约和运行中输入信封：`packages/contracts/runtime.py:829-835`，由 `packages/kernel/runtime_support.py:258-291` 的 `KernelSourceRequest.to_event()` 生成；当前 kernel 把它放入 `KernelOutcome` 和 Step `payload_refs`，但未在 `KernelService.run()` 中写入独立事件表。
 - `ReconciliationPipeline`/`StateReconciler` 形式上接收 `durable_events`，但 `packages/evidence/recall_runtime.py:171-173` 的 `RecallRuntime.append_event()` 当前直接丢弃事件。因此“事件契约存在、事件被构造”是已实现事实；“事件账本可重放/可查询”不是当前实现事实。
 - 当前真实可持久化的执行证据是 `Step`：`KernelStepRecorder.record()` 在 `packages/kernel/lifecycle_support.py:57-109` 构造带 `phase/action/status/sequence/payload_refs/metadata` 的 Step 并调用 `storage.upsert_step()`；`StepEvidenceStore` 在 `packages/evidence/recall_runtime.py:21-119` 只读地把 Step 投影为召回证据，并明确拒绝持久化独立 `RecallEvidence`。
-- 因而本轮底座接入不得把 `EventEnvelope` 当作已落盘的事件源；若平台需要事件溯源、事件重放、幂等消费或跨进程审计，必须另行登记“事件持久化能力”缺口，不得由模块层旁路写库补齐。
+- 因而当前核对底座接入不得把 `EventEnvelope` 当作已落盘的事件源；若平台需要事件溯源、事件重放、幂等消费或跨进程审计，必须另行登记“事件持久化能力”缺口，不得由模块层旁路写库补齐。
 
 ### 2. 四层底座映射表
 
@@ -377,7 +377,7 @@ cron / 非 IM 进程
 | Model HTTP/stream session | `packages/models` provider adapter 持有 | provider 返回/异常由 adapter 处理 | provider overflow 触发 context compact retry；取消只由 kernel 的 `cancel_check` 在循环边界感知；SSE partial 有 checkpoint 字段 | 支持库 provider + 运行核心预算；需实测连接关闭/超时/断流 |
 | Tool invocation/executor | `ToolRuntime.invoke` 建 invocation，executor 执行；session context 带 cwd/roots/cancel_check | executor 完成；Episode close 调 `cleanup_session` | 未注册/禁用/不可用/不可见/审批拒绝在 invoke 边界返回错误或 blocked/deferred；executor 异常发 failure event 后上抛，kernel `_invoke_tool_call` 转失败 ExecutionResult；崩溃清理依赖 executor 实现 | 支持库 tools/sandbox；运行核心只传 session/owner |
 | Loop checkpoint | `LoopCheckpointService` 创建；storage checkpoint 表/方法持有 | complete/fail/cancel/park 状态落盘 | budget exhausted park；cancel 标记 cancelled；crash 用 heartbeat/crash_marker/pending tool 供 resume 规划；async tool `poll` 仍是 Phase 2 预留 | 运行核心 + storage；需 supervisor 现场证明真实重启恢复 |
-| SQLite 连接/事务 | `RuntimeStorageRepository.connection()` | context manager/commit | `claim_learning_job` 用 `BEGIN IMMEDIATE` 抢占；锁/损坏/迁移异常的现场恢复未在本轮执行 | 支持库 storage；禁止模块和网关直连库 |
+| SQLite 连接/事务 | `RuntimeStorageRepository.connection()` | context manager/commit | `claim_learning_job` 用 `BEGIN IMMEDIATE` 抢占；锁/损坏/迁移异常的现场恢复未在当前核对执行 | 支持库 storage；禁止模块和网关直连库 |
 | Semantic index/vector | index bundle/service 创建；state-dir 物理文件共享 | 索引服务管理；失败为 best effort warning | embedding 不可用时 lexical/degraded；索引失败不应阻断 Step 写入，但召回质量下降 | 支持库 embeddings/index；evidence 模块编排 |
 | Learning job | episode close enqueue 到 SQLite；worker claim 持有 | complete/failed/cancelled 更新 | worker 异常按 attempt/backoff 重试；达到 max_attempts 进入 failed；worker kill 会把 active job 标记 terminal failure，但此路径未验证重试策略一致性 | 支持库队列原子操作 + 运行核心 worker supervision |
 | Learning worker process | gateway factory `Popen(... start_new_session=True)` 创建，runtime record 记 pid/log | idle/once/stop 后写 stopped record | pid 不活跃时可重新拉起；SIGTERM stop；运行异常由 job fail；SIGKILL/孤儿进程/重复 worker 竞争需真实故障测试 | 网关/daemon 只拉起；通用进程监督应归运行核心 |
@@ -407,15 +407,15 @@ cron / 非 IM 进程
 
 ### 7. L0-L4 现场验证阶梯
 
-以下是针对本次架构文档和后续底座接入的分级验收，不把“源码存在”当作“运行通过”。本轮只改文档，L0-L2 为本次可执行范围；L3-L4 记录为后续真实运行/外部依赖门。
+以下是针对本次架构文档和后续底座接入的分级验收，不把“源码存在”当作“运行通过”。当前核对只改文档，L0-L2 为本次可执行范围；L3-L4 记录为后续真实运行/外部依赖门。
 
-| 等级 | 证明目标 | 目标仓库命令/证据 | 本轮状态 |
+| 等级 | 证明目标 | 目标仓库命令/证据 | 当前核对状态 |
 |---|---|---|---|
 | L0 静态身份与文档完整性 | 根目录、唯一 `ARCHITECTURE.md`、流程图、源码路径、只改允许文件 | `test -s ARCHITECTURE.md` + `git diff --check` + 必需章节/源码路径脚本：退出码 0；`make agent-report CHANGED_FILES="ARCHITECTURE.md"`：退出码 0；现场状态仅出现 `?? ARCHITECTURE.md`（目标文档为既有未跟踪交付文件） | 通过（静态脚本退出码 0）；Git 不提交、不修复未跟踪基线 |
 | L1 仓库规则/文档门禁 | manifest、文档、契约引用和上下文映射无明显漂移 | `make agent-validate`：退出码 2，既有 `apps/cli/cli_main_elephant_support.py:1` parse-error；`make agent-context-audit CHANGED_FILES="ARCHITECTURE.md"`：退出码 0，但报告该顶层文件未归属 task surface | 部分通过；阻断与本次文档无关，未修改规则文件 |
 | L2 本地回归 | harness 回归与 Python/结构检查不因文档变更破坏 | `make agent-lint`：退出码 2（同一 parse-error + 顶层文档无 task surface）；`make agent-test`：退出码 2，64 tests 中 2 个既有 `AgentGateTests` 失败，均由同一 parse-error 引起 | 未通过既有仓库门禁；不能宣称全绿，也未为修绿而越界修改 |
-| L3 运行核心纵向链 | 临时 state dir 中真实完成 gateway/CLI/API → kernel → Step/Loop/Episode → learning_jobs → worker/result；取消、预算 park、重启 resume、队列 claim/retry 都有读回证据 | `make test-integration-scenarios`、相关 `tests/integration/kernel/**`、`tests/integration/storage_system_layers/**`、`tests/integration/reflect/**`、gateway e2e | 本轮未执行；需 Python 依赖和较长运行环境，不能宣称通过 |
-| L4 外部/灾难闭环 | 真实 provider/IM adapter、流式断线、provider overflow、executor 崩溃、worker SIGKILL、SQLite 锁/损坏、gateway queue 损坏与恢复，且资源无残留 | `make e2e`、`make test-live-provider-smoke`（需明确 secrets）、故障注入与进程/文件/DB 读回 | 本轮未执行；代码图/外部服务也未提供证据 |
+| L3 运行核心纵向链 | 临时 state dir 中真实完成 gateway/CLI/API → kernel → Step/Loop/Episode → learning_jobs → worker/result；取消、预算 park、重启 resume、队列 claim/retry 都有读回证据 | `make test-integration-scenarios`、相关 `tests/integration/kernel/**`、`tests/integration/storage_system_layers/**`、`tests/integration/reflect/**`、gateway e2e | 当前核对未执行；需 Python 依赖和较长运行环境，不能宣称通过 |
+| L4 外部/灾难闭环 | 真实 provider/IM adapter、流式断线、provider overflow、executor 崩溃、worker SIGKILL、SQLite 锁/损坏、gateway queue 损坏与恢复，且资源无残留 | `make e2e`、`make test-live-provider-smoke`（需明确 secrets）、故障注入与进程/文件/DB 读回 | 当前核对未执行；代码图/外部服务也未提供证据 |
 
 L3/L4 的最低验收断言：
 
@@ -425,7 +425,7 @@ L3/L4 的最低验收断言：
 - 资源：正常完成、业务失败、主动取消/超时、SIGKILL 四种终态都检查无遗留 worker、锁文件、临时目录、未关闭 session 或无限 running job。
 - 队列：learning_jobs 与 gateway outbound queue 分开测试；前者验证 SQLite claim/retry，后者验证 flock/atomic replace/backoff/max attempts/损坏文件告警。
 
-### 8. 第三轮底座工作包（只作为映射输入，不在本项目落地平台改造）
+### 8. 后续底座工作包（只作为映射输入，不在本项目落地平台改造）
 
 | 工作包 | 唯一 owner 候选 | 验收契约 | 现状裁决 |
 |---|---|---|---|
@@ -437,17 +437,17 @@ L3/L4 的最低验收断言：
 | 资源/失败恢复 | kernel lifecycle + checkpoint + tools/sandbox + worker supervisor | 四终态清理、stale running 回收、SIGKILL 读回、无旁路释放 | 部分实现；需 L3/L4 故障验证 |
 | 网关接入 | `apps/gateway` + `packages/gateway_core` | adapter 只做身份/传输/投递；所有认知调用进入 kernel；出站单一发送路径 | 基本符合；不应把 gateway queue 当 kernel queue |
 
-**第三轮最终结论：** Elephant-Agent 已经具备可映射的通用执行骨架（契约、Step 证据、Loop checkpoint、Tool/Model provider、SQLite learning queue、gateway outbound queue），但“事件”仍是运行信封而非 durable event log，“普通模型异常后的统一收口”和“跨重启资源/队列恢复”仍未闭环。可吸收的是能力边界和调用链，不可吸收的是产品层的 Personal Model/四 lens/Reflect feature 业务规则。任何平台化改造须先登记上述缺口、冻结唯一 owner、补 L3/L4 验收，再决定升级支持库或新建通用原子能力。
+**后续最终结论：** Elephant-Agent 已经具备可映射的通用执行骨架（契约、Step 证据、Loop checkpoint、Tool/Model provider、SQLite learning queue、gateway outbound queue），但“事件”仍是运行信封而非 durable event log，“普通模型异常后的统一收口”和“跨重启资源/队列恢复”仍未闭环。可吸收的是能力边界和调用链，不可吸收的是产品层的 Personal Model/四 lens/Reflect feature 业务规则。任何平台化改造须先登记上述缺口、冻结唯一 owner、补 L3/L4 验收，再决定升级支持库或新建通用原子能力。
 
 ---
 
 ## 第四轮：全交互链、状态机与流式传输审计
 
-### 1. 本轮范围与证据规则
+### 1. 当前核对范围与证据规则
 
-本轮只读取目标仓库当前磁盘源码、SQLite schema、测试和设计文档，不使用 MCP/Hermes，不启动服务、不调用真实 provider、不修改源码和测试。目标仓库没有 `.codegraph/` 索引，因此未把 CodeGraph 结果冒充源码证据；定位依据是现场目录、全文检索和逐段源码读取。唯一落盘文件仍是本根 `ARCHITECTURE.md`。
+当前核对只读取目标仓库当前磁盘源码、SQLite schema、测试和设计文档，不使用 MCP/Hermes，不启动服务、不调用真实 provider、不修改源码和测试。目标仓库没有 `.codegraph/` 索引，因此未把 CodeGraph 结果冒充源码证据；定位依据是现场目录、全文检索和逐段源码读取。唯一落盘文件仍是本根 `ARCHITECTURE.md`。
 
-本轮纠正前文可能造成的三个误读：
+当前核对纠正前文可能造成的三个误读：
 
 1. 项目**确实存在 SSE**：API 有 WSGI SSE 和 daemon 的 `aiohttp` SSE 两层适配，均调用 `ElephantAPIApp.stream_loop_events()`；它们是 UI/HTTP 事件投影，不是 provider 原始流的持久化日志。
 2. 项目**确实存在 WebSocket**：WeCom 使用独立的 `aiohttp.ClientSession` 与 WebSocket Bot 长连接；它与 API SSE、provider SSE、gateway 出站 JSON 队列是四种不同传输/队列，不应合并成一个“事件总线”。
@@ -515,7 +515,7 @@ POST /v1/episodes/{episode_id}/loops/stream
 
 `packages/models/providers/http.py::UrllibJSONHTTPTransport.post_json_stream()` 在首个 chunk 前使用有限 retry；拿到首个 chunk 后，连接异常转换为 `ProviderSSEIncompleteError`，携带累计 `partial_text`。`runtime_capability.py` 用 scoped observer 将 delta 投影到 API/CLI。
 
-这条链与 API SSE 是嵌套关系：provider SSE 是上游模型传输，API SSE 是下游 UI 投影。当前架构只把 partial 文本定义在 `LoopState.partial_assistant` 的 checkpoint 契约中；本轮读取到的 `resume_support.py` 和 `harness/supervisor.py` 能识别、消费和持久化该字段，但 supervisor 不会再次调用 provider，也不会自动 re-enter kernel。
+这条链与 API SSE 是嵌套关系：provider SSE 是上游模型传输，API SSE 是下游 UI 投影。当前架构只把 partial 文本定义在 `LoopState.partial_assistant` 的 checkpoint 契约中；当前核对读取到的 `resume_support.py` 和 `harness/supervisor.py` 能识别、消费和持久化该字段，但 supervisor 不会再次调用 provider，也不会自动 re-enter kernel。
 
 #### 2.4 WeCom WebSocket 链
 
@@ -602,7 +602,7 @@ gateway daemon
 - `tests/integration/models_auth/`：provider adapter、HTTP fallback、响应解析和 reasoning 形状；不等于真实网络断流恢复。
 - `tests/scenarios/continuity/`、`tests/scenarios/context/`、`tests/scenarios/recall/`：产品连续性、压缩、召回和恢复论点；部分是场景规范文件，不等于每项都有灾难注入测试。
 
-仍缺少或本轮未执行的高价值验收：
+仍缺少或当前核对未执行的高价值验收：
 
 1. API SSE 客户端在 `assistant.delta` 中途断开后，确认 worker 终止、Queue 不堵塞、observer/delegate/lock/cancel map 无残留。
 2. Provider SSE 首 chunk 后断流，确认 partial assistant 写入 SQLite checkpoint，重启后由真正 supervisor/调用面恢复，而不是只生成 `ResumeSnapshot`。
@@ -625,4 +625,4 @@ Elephant-Agent 的可复用主干是“surface → Kernel → Context/Recall →
 - 事件账本仍是缺口；`append_event()` no-op、无 events 表、无 event_id 重放查询，不能在平台映射或产品说明中写成已实现。
 - 普通异常统一收口、SSE 断开资源终止、learning running job 租约回收、WebSocket dispatch drain 和出站死信仍是主要可靠性缺口。
 
-本轮未运行测试和服务，仅完成静态审计；因此不能把上表的源码路径存在性升级为 L3/L4 运行通过。
+当前核对未运行测试和服务，仅完成静态审计；因此不能把上表的源码路径存在性升级为 L3/L4 运行通过。

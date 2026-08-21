@@ -35,7 +35,7 @@ README 明确警告：`main` 的训练栈是 post-refactor 版本；若需要旧
 | 本地 HEAD 提交 | `Set the default eval length for NaFlex ViT-B-16` |
 | 本地 HEAD 时间 | `2026-07-18 00:15:33 +0800` |
 | 上游远端 | `https://github.com/mlfoundations/open_clip.git` |
-| 远端 `origin/main`（本地 Git 引用） | `a3c2605ab3adab2eea5dc387ac02ed2ea0a8ef87`（与本地 HEAD 相同；本轮未 fetch） |
+| 远端 `origin/main`（本地 Git 引用） | `a3c2605ab3adab2eea5dc387ac02ed2ea0a8ef87`（与本地 HEAD 相同；当前核对未 fetch） |
 | 独立远端 `main` 快照（此前通过 4780 读取） | `602d4af74f86df6f2ff81ba0f0a847b0b70ad2e5`，时间 `2026-08-10 14:11:02 -0700` |
 | 新鲜度判断 | 本地 Git 引用未证明已追平独立远端快照；不能把本地归档视为最新上游 |
 | 工作区 | 已有未跟踪 `细探-open_clip.md`；本次不改、不删除该文件 |
@@ -121,7 +121,7 @@ open_clip/
 └── 细探-open_clip.md                   # 本地已有的中文细探，保留为辅助材料
 ```
 
-目录核实结果（本轮现场只读计数）：`src/open_clip/model_configs` 有 190 个 JSON；仓库共有 122 个 Python（其中 `src/` 70 个、`tests/` 47 个、`scripts/` 5 个）；非 `.git` 文件 376 个、共 15,434,694 bytes（含模型配置、图片、数据/教程等归档资源）。
+目录核实结果（当前核对现场只读计数）：`src/open_clip/model_configs` 有 190 个 JSON；仓库共有 122 个 Python（其中 `src/` 70 个、`tests/` 47 个、`scripts/` 5 个）；非 `.git` 文件 376 个、共 15,434,694 bytes（含模型配置、图片、数据/教程等归档资源）。
 
 ## 5. 核心运行链路
 
@@ -419,15 +419,15 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 
 本项目的“测试存在”“测试被收集”“测试通过”“外部能力可用”必须分开记账。以下是本次文档任务采用的判级规则，不把历史 README 或旧细探算作执行证据。
 
-| 等级 | 必须证明什么 | 本轮状态 | 不能冒充的结论 |
+| 等级 | 必须证明什么 | 当前核对状态 | 不能冒充的结论 |
 |---|---|---|---|
 | L0 文件/声明 | `ARCHITECTURE.md`、旧细探、源码路径存在；旧细探未删除；文档章节完整 | **已完成**：现场读回两份文档并检查路径 | 不能证明 Python 可导入或模型可运行 |
-| L1 静态源码 | 当前源码可被 AST 解析；关键函数/类/测试文件可定位；工作树只改目标文档 | **已完成**：本轮现场计数 `src/*.py=70`、`tests/*.py=47`、配置 JSON=190，且读到关键实现；验证命令见第 22 节 | 不能证明依赖、CUDA、HF、timm 或运行时环境可用 |
+| L1 静态源码 | 当前源码可被 AST 解析；关键函数/类/测试文件可定位；工作树只改目标文档 | **已完成**：当前核对现场计数 `src/*.py=70`、`tests/*.py=47`、配置 JSON=190，且读到关键实现；验证命令见第 22 节 | 不能证明依赖、CUDA、HF、timm 或运行时环境可用 |
 | L2 本地单进程 | 使用实际安装依赖运行无网络、CPU、小模型/夹具的目标单测，记录测试数/skip/退出码 | **未执行**：本任务禁止安装依赖/构建，且不以静态读代替测试 | 不能把测试源码中 `skipif`/`importorskip` 当通过 |
 | L3 真实边界 | 真实 checkpoint round-trip、NaFlex/timm、WebDataset/CSV、FSDP/DDP/compile、坏数据与保存中断探针 | **未执行** | 不能声称 GPU/分布式/断点恢复/失败清理已验证 |
 | L4 外部系统 | 真实 HF Hub/URL/S3/远端日志同步与权限/断网/超时/崩溃证据 | **未执行** | 不能声称外部下载、remote sync 或线上权重可用 |
 
-测试树中确实有 `pytest.importorskip`、CUDA skip、macOS skip 和 NaFlex/timm 条件 skip（例如 `tests/test_task_compile.py:51-103`、`test_retrieval_metrics.py:164-185`、`test_naflex_mammut.py:19`、`test_training_simple.py:11-100`）；这些是条件覆盖线索，不是本轮通过数。旧细探提出“重型 PyTorch/GPU 应独立进程”的边界已吸收为第 16、17、19 节的未验证风险，但源码当前并未提供统一外部进程隔离层。
+测试树中确实有 `pytest.importorskip`、CUDA skip、macOS skip 和 NaFlex/timm 条件 skip（例如 `tests/test_task_compile.py:51-103`、`test_retrieval_metrics.py:164-185`、`test_naflex_mammut.py:19`、`test_training_simple.py:11-100`）；这些是条件覆盖线索，不是当前核对通过数。旧细探提出“重型 PyTorch/GPU 应独立进程”的边界已吸收为第 16、17、19 节的未验证风险，但源码当前并未提供统一外部进程隔离层。
 
 ## 19. 当前源码与旧细探的吸收/不吸收裁决
 
@@ -464,7 +464,7 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 9. 远端 `origin/main` 与本地 HEAD 的差异只记录，不自动合并；上游 `main` 新提交需重新读取 README、factory、NaFlex、tokenizer、训练 CLI。
 10. 细探旧文档已吸收但保留；若未来发现其与源码冲突，必须在本文修正并保留冲突说明，不回写旧细探制造双事实源。
 
-## 22. 本轮验证与证据
+## 22. 当前核对验证与证据
 
 ### 22.1 实际执行命令与退出码
 
@@ -473,7 +473,7 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 | `git status --short; git branch --show-current; git rev-parse HEAD; git log -1 --format='%H%n%ci%n%s'; git rev-parse origin/main` | 0 | `main`；本地 HEAD=`a3c2605ab3adab2eea5dc387ac02ed2ea0a8ef87`；origin/main 同一提交；工作区原本已有未跟踪 `ARCHITECTURE.md` 与 `细探-open_clip.md` |
 | Python 只读计数脚本（`src` Python/`tests` Python/模型配置/非 Git 文件及字节数） | 0 | `70 / 47 / 190 / 376 / 15434694`；与本文原有规模叙述一致（测试主文件数以现场 glob 为准） |
 | 目标仓库只读结构校验（读取文档标记、旧细探大小与存在性，并对 `src`+`tests` 共 117 个 Python 文件执行 `ast.parse`） | 0 | `doc_bytes=51213`、`doc_lines=495`、旧细探 `2064` bytes；`ast_failures=0`、`markdown_structure=PASS`；旧细探 SHA256=`97b6ef31e9c6c6d66914b0591a274f96f5cf3d38d1450e064ff86159270ec62c` |
-| 本轮 `read_file` 完整读取 `细探-open_clip.md` 与 `ARCHITECTURE.md` | 0 | 旧细探 65 行、当前架构文档原 289 行，已逐段对照；旧文件仍存在 |
+| 当前核对 `read_file` 完整读取 `细探-open_clip.md` 与 `ARCHITECTURE.md` | 0 | 旧细探 65 行、当前架构文档原 289 行，已逐段对照；旧文件仍存在 |
 | 系统工程平台 MCP `project_context` | 0 | **MCP 实例**=`system_engineering_toolkit`；项目根=`/Users/hekunhua/Documents/Agent/PHP/系统工程平台`；首次上下文开工 id=`423841005f574e6c`；代码图对平台可用，证据等级“已验证”/分数 100 |
 | 系统工程平台 MCP `development_start` | 0 | 受控任务开工 id=`d8d27ded1b3142f4`；目标路径被登记为唯一修改路径；系统 MCP 代码图仍绑定平台，可信度分数 50（目标源码未被索引） |
 | 系统工程平台 MCP `codegraph_explore`（查询目标 open_clip 路径） | 0 | **错绑/无代码图**：返回的是系统工程平台自身 38 个符号/平台文件，未覆盖目标源码；不能冒充 open_clip 代码图，本文后续源码证据均来自目标路径现场只读读取 |
@@ -482,10 +482,10 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 
 ### 22.2 文档验收口径
 
-- 本轮只允许并只修改：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/open_clip/ARCHITECTURE.md`。
+- 当前核对只允许并只修改：`/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/open_clip/ARCHITECTURE.md`。
 - `细探-open_clip.md` 未删除、未改写；源码、README、配置、依赖、测试未修改。
 - 本文现在包含流程图、真实调用链、契约表、节点表、资源生命周期、失败/超时/取消/崩溃矩阵、L0-L4 防假绿、未验证项和吸收/不吸收裁决。
-- 本轮未把“源码存在/测试存在/历史成功证据”写成当前测试通过；未验证项保持明确。
+- 当前核对未把“源码存在/测试存在/历史成功证据”写成当前测试通过；未验证项保持明确。
 
 ## 23. 本次建档变更记录
 
@@ -494,13 +494,13 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 - 未修改：源码、README、依赖、模型配置、测试、Git 配置。
 - 未执行：安装、服务启动、权重/数据下载、训练、pytest 全量、GPU/分布式/外部系统验证、提交。
 
-## 24. 第三轮通用底座映射（本轮增补）
+## 24. 后续通用底座映射（当前核对增补）
 
-> 本节是第三轮“项目能力 → 公共底座”的裁决输入，不是 open_clip 的生产改造方案。当前系统工程平台 `system_engineering_toolkit` 的能力搜索对“多模态嵌入、图文嵌入、模型提供者、资源预算、取消/超时/断点恢复、checkpoint/远程同步/分布式”等关键词均返回空候选；因此以下能力 id、包名和装配均标记为**待登记/未实现**，不能把本仓库代码或平台说明当作已装配能力。
+> 本节是后续“项目能力 → 公共底座”的裁决输入，不是 open_clip 的生产改造方案。当前系统工程平台 `system_engineering_toolkit` 的能力搜索对“多模态嵌入、图文嵌入、模型提供者、资源预算、取消/超时/断点恢复、checkpoint/远程同步/分布式”等关键词均返回空候选；因此以下能力 id、包名和装配均标记为**待登记/未实现**，不能把本仓库代码或平台说明当作已装配能力。
 
 ### 24.1 归属裁决：支持库、模型提供者、运行核心
 
-| open_clip 能力/事实 | 公共底座归属 | 单链路职责 | 第三轮裁决 | 源码证据 |
+| open_clip 能力/事实 | 公共底座归属 | 单链路职责 | 后续裁决 | 源码证据 |
 |---|---|---|---|---|
 | `CLIP`/`CustomTextCLIP` 的 `encode_image`、`encode_text`，L2 归一化和 `logit_scale` 点积 | **多模态嵌入支持库**的原子契约；具体模型执行下沉到 provider | 定义输入/输出向量、维度、dtype、归一化、模型/预处理摘要和错误码；不暴露 `torch.Tensor`/模型对象 | **新建候选能力，待需求登记**；现有能力搜索无命中 | `src/open_clip/model.py:421-455` |
 | `CoCa`/`MaMMUT` 的双向编码与 caption 路径、`CLAP` 的音频/文本编码、GenLIP/GenLAP 的媒体前缀生成 | **多模态嵌入支持库**的同一契约下的模型策略；仅图文嵌入首期落地 | provider 可按模型族选择策略；模块不得复制第二套编码流程 | **吸收为策略，不拆成多条公开图文链** | `src/open_clip/coca_model.py:142-164,280-285`；`clap_model.py:72-103`；`naflex_genlip_model.py:772-854` |
@@ -515,19 +515,19 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 
 | 结论 | 依据 | 处理 |
 |---|---|---|
-| 现有“多模态嵌入/图文编码”公开能力 | `system_engineering_toolkit` `capability_search` 本轮 7 组关键词均返回 `[]` | **缺口**；登记一个能力 owner 后再做装配，当前不声称复用 |
+| 现有“多模态嵌入/图文编码”公开能力 | `system_engineering_toolkit` `capability_search` 当前核对 7 组关键词均返回 `[]` | **缺口**；登记一个能力 owner 后再做装配，当前不声称复用 |
 | 现有 `支持库/后端/资源管理` 的原子写入、临时登记、CAS/摘要模式 | 平台 `开发文档/支持库总览.md` 的资源管理边界 | **复用/升级候选**：用于 checkpoint 制品、临时目录、摘要和幂等释放；不承载模型推理 |
 | 现有 `支持库/适配层/本地LLM提供者` | 平台现有提供者目录是本地文本模型边界，与 open_clip 的图文塔、NaFlex、GPU 训练契约不同；能力搜索无命中 | **不直接复用**；只借鉴受管 provider 生命周期，避免把文本模型 provider 改成多模态万能包 |
 | `启动监督器`/`运行核心` 的独立进程、租约、超时、取消、崩溃回收原则 | 平台 `开发文档/项目说明.md` 的执行单元契约与 provider 统一边界 | **复用运行核心治理**；不让 `open_clip_train.main` 自己成为平台调度器 |
 | `open_clip` 的 `file_utils.py`、`main.py` remote sync 和训练 CLI | 源码是项目内脚本：无请求 deadline、无取消令牌、S3 `subprocess.run` 无超时，周期进程仅正常尾部 `terminate()` | **废弃为公共底座实现**；只保留为适配 provider 的历史参考 |
 | 零样本分类、检索指标、caption 生成 | 这些是上层任务流程，不是图文编码原子能力 | **待建模块**；先复用唯一嵌入能力，不能再各自加载模型和 tokenizer |
 
-**第三轮归属结论：**
+**后续归属结论：**
 
 1. **多模态嵌入支持库**：拥有唯一的图文编码契约、预处理/Tokenizer 元数据、向量结果、模型 revision/权重摘要、维度/dtype/归一化和输入边界；首期只定义图像+文本对齐编码，音频/生成式路径作为同契约策略扩展。
 2. **OpenCLIP 模型提供者**：唯一允许加载 `torch`、`open_clip`、`timm`、`transformers`、HF 权重和 CUDA 依赖；把 `create_model_and_transforms`、tokenizer、`encode_image`/`encode_text`、NaFlex batch 转换为公共结果。provider 不向模块或网关暴露模型对象、第三方异常、GPU context 或本地 checkpoint 路径。
 3. **运行核心**：拥有 execution unit/lease、CPU/GPU/显存/内存/文件/队列/进程预算、按需启动或有界缓存、超时、取消、进程组终止、健康检查、崩溃回收、checkpoint 原子提交、远程同步和恢复证据。HTTP 网关只传统一请求/响应，不复制一套执行逻辑。
-4. **不在本轮归属**：模型训练损失、检索业务、零样本分类和 caption 生成不进入图文嵌入支持库的原子入口；需要时由上层模块组合同一编码能力。
+4. **不在当前核对归属**：模型训练损失、检索业务、零样本分类和 caption 生成不进入图文嵌入支持库的原子入口；需要时由上层模块组合同一编码能力。
 
 ### 24.3 唯一图文嵌入链路
 
@@ -551,7 +551,7 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 
 ### 24.4 资源预算、取消、超时、崩溃和断点恢复契约
 
-| 维度 | open_clip 当前事实 | 底座应如何接管 | 本轮状态 |
+| 维度 | open_clip 当前事实 | 底座应如何接管 | 当前核对状态 |
 |---|---|---|---|
 | 输入/输出 | 图像受 transform/patch 上限约束，文本受 context/pad cap 约束；向量通常按 `N×D` 累积到 CPU | 契约声明最大字节、像素、音频秒数、文本 token、batch、向量字节和输出制品大小 | **待实现** |
 | NaFlex 显存/批预算 | `max_tokens_per_batch` 可显式传入，否则按 batch × 最大 seq_len（GenLIP 另加 text cap）推导；`batch_divisor` 约束批量 | 启动前预算校验；GPU 显存不足返回稳定错误或排队，不静默改 seq/batch；记录实际 peak/吞吐 | **源码有预算，平台未接管** |
@@ -565,7 +565,7 @@ NaFlex 训练在 `NaFlexBatcher.run()` 中先从源取样，按 schedule 选择 
 | remote sync | S3 `aws s3 sync` 排除 `epoch_latest.pt`；fsspec 逐 key 复制；周期同步在独立进程 | 同步任务要有 deadline、取消、重试退避、完整制品 manifest、远端摘要和半成品隔离；进程由监督器管理 | **部分实现，未真实验证** |
 | resume/断点恢复 | `--resume latest` 由 master 选路径并广播；恢复 epoch、optimizer、scaler、global_step、samples_seen；未证明 RNG/精确样本位点恢复 | 恢复契约必须区分“epoch 级恢复”和“精确样本级恢复”；只对可验证 manifest 的 checkpoint 返回成功 | **epoch 级部分实现；样本级待核** |
 
-### 24.5 第三轮失败/终态验收矩阵
+### 24.5 后续失败/终态验收矩阵
 
 ```text
 正常完成
@@ -593,15 +593,15 @@ provider/宿主崩溃/OOM
 
 open_clip 当前能证明的是部分正常路径和源码级恢复意图；它不能证明上述四种终态已经由平台实现。尤其是 URL 下载半文件、fsspec/S3 中途失败、远程同步子进程、DCP 目录交换、DDP collective 阻塞和 GPU OOM 均必须由运行核心的真实边界测试补齐。
 
-### 24.6 第三轮 L0-L4 验收等级（映射专用）
+### 24.6 后续 L0-L4 验收等级（映射专用）
 
-| 等级 | 本轮必须证明 | 当前事实/状态 | 禁止声称 |
+| 等级 | 当前核对必须证明 | 当前事实/状态 | 禁止声称 |
 |---|---|---|---|
-| L0 文档/声明 | 唯一 `ARCHITECTURE.md` 有本轮映射、归属、链路、预算、终态和风险；旧细探仍保留 | **已完成**：本文追加第 24 节，旧 `细探-open_clip.md` 未删除 | 不能声称能力已登记或 provider 已装配 |
+| L0 文档/声明 | 唯一 `ARCHITECTURE.md` 有当前核对映射、归属、链路、预算、终态和风险；旧细探仍保留 | **已完成**：本文追加第 24 节，旧 `细探-open_clip.md` 未删除 | 不能声称能力已登记或 provider 已装配 |
 | L1 静态源码 | `model.py`、`factory.py`、`transform.py`、`naflex_*`、checkpoint、remote sync、distributed、tests 路径存在且 AST/结构检查通过 | **已完成**：目标仓库 `src/open_clip` 与 `src/open_clip_train` 共 70 个 Python 文件，`ast.parse` 失败数 0；文档标记检查通过，旧细探仍存在 | 不能声称依赖、权重、CUDA、HF/S3 可用 |
 | L2 本地单进程 | 在隔离环境用小模型/夹具真实完成图文编码、预处理、向量维度/归一化、checkpoint 往返、坏输入和取消清理 | **未执行**；未安装依赖、未下载权重 | 不能把测试存在、importorskip 或历史证据当通过 |
 | L3 真实执行边界 | NaFlex token budget/length bucketing/prefetch、GPU OOM/峰值预算、DDP/FSDP2/compile、full/sharded checkpoint、强杀后恢复和资源零残留 | **未执行**；需专门 GPU/多进程工作包 | 不能声称分布式、GPU 预算、崩溃恢复或精确断点恢复已验证 |
-| L4 外部系统 | HF Hub/URL 权重、SHA256、S3/fsspec 远端同步、断网/超时/取消/权限失败/远端恢复和多节点证据 | **未执行**；本轮未触碰外部网络或云存储 | 不能声称线上模型、远端同步或跨节点恢复可用 |
+| L4 外部系统 | HF Hub/URL 权重、SHA256、S3/fsspec 远端同步、断网/超时/取消/权限失败/远端恢复和多节点证据 | **未执行**；当前核对未触碰外部网络或云存储 | 不能声称线上模型、远端同步或跨节点恢复可用 |
 
 **L1 现场验证的最低命令集合**（不改变源码、依赖、配置或测试）：
 
@@ -615,7 +615,7 @@ git diff --check -- ARCHITECTURE.md
 ### 24.7 装配计划与唯一 owner（不启动实现）
 
 1. **需求登记**：以 `多模态嵌入.编码图文` 为候选能力，明确输入是受控制品引用还是字节、最大尺寸、向量格式、模型许可、归一化和幂等键。
-2. **复用搜索**：再次搜索资源管理、制品摘要、执行单元、GPU 探针、进程组和对象存储能力；本轮多模态搜索无命中，不能绕过登记直接写 provider。
+2. **复用搜索**：再次搜索资源管理、制品摘要、执行单元、GPU 探针、进程组和对象存储能力；当前核对多模态搜索无命中，不能绕过登记直接写 provider。
 3. **能力占用**：能力只允许一个支持库 owner；`OpenCLIP模型提供者` 作为该能力的唯一初始策略，其他模型必须在同一契约下注册，禁止另建图文入口。
 4. **支持库契约**：定义模型/预处理/tokenizer/checkpoint manifest、向量 dtype/维度/归一化、错误码、deadline/cancel/resource_budget、制品引用和释放证据。
 5. **provider 工作包**：隔离 `torch/open_clip/timm/transformers/CUDA/HF`，先做冷启动探针，再做 CPU 夹具；禁止把 provider 对象导出到模块或网关。
@@ -623,11 +623,11 @@ git diff --check -- ARCHITECTURE.md
 7. **模块装配**：零样本/检索/媒体分析只调用唯一图文嵌入能力，不得重复加载模型、tokenizer、权重或 preprocessing。
 8. **分级验收**：先 L0/L1，再 L2 单进程，最后 L3 GPU/分布式/强杀和 L4 外部同步；每一级只在真实证据达到要求后晋级。
 
-本轮没有登记需求、占用能力、生成 provider、修改平台底座或启动任何训练；上述步骤只是经证据约束的后续装配计划。
+当前核对没有登记需求、占用能力、生成 provider、修改平台底座或启动任何训练；上述步骤只是经证据约束的后续装配计划。
 
-## 25. 第二轮收口：注册、加载、预处理、推理与资源终态
+## 25. 后续收口：注册、加载、预处理、推理与资源终态
 
-> 本节是第二轮对当前本地源码的函数级收口，专门回答“模型如何被注册、权重如何进入模型、预处理如何绑定、batch/设备/显存如何流动、缓存和失败如何收尾”。它不把源码中缺少的 deadline、取消、显存配额或释放 API 写成已实现能力。
+> 本节是后续对当前本地源码的函数级收口，专门回答“模型如何被注册、权重如何进入模型、预处理如何绑定、batch/设备/显存如何流动、缓存和失败如何收尾”。它不把源码中缺少的 deadline、取消、显存配额或释放 API 写成已实现能力。
 
 ### 25.1 两套注册表及覆盖/变异规则
 
@@ -680,7 +680,7 @@ git diff --check -- ARCHITECTURE.md
 
 ### 25.5 设备、dtype、缓存和显存的真实边界
 
-| 维度 | 当前源码事实 | 第二轮结论 |
+| 维度 | 当前源码事实 | 后续结论 |
 |---|---|---|
 | 设备迁移 | `_set_model_device_and_precision()` 对 fp32/其他精度执行 `model.to(device)`；`fp16/bf16` 先迁移再把适用参数转 LP，timm 额外把 `LayerNormFp32` 权重恢复为 fp32；`pure_fp16/pure_bf16` 把整个模块直接转目标 dtype（`factory.py:986-1015`） | 设备选择是构造期动作，不是按请求动态租约；dtype 组合必须按模型族验证 |
 | 输入 dtype | task 的 `prepare_batch()` 只改浮点输入 dtype，token/索引保持整数；普通 inference API 不替调用方搬输入或改 dtype | CPU transform 结果不会自动跟随 model device |
@@ -716,9 +716,9 @@ git diff --check -- ARCHITECTURE.md
 
 因此，当前 OpenCLIP 能证明的是“部分输入/配置/权重错误可见失败、正常推理/训练路径存在、评估有 CPU feature spill 和 score chunk”；不能证明四种终态（成功、业务失败、取消/超时、崩溃/OOM）都做到资源零残留。
 
-### 25.8 第二轮验收矩阵与剩余风险
+### 25.8 后续验收矩阵与剩余风险
 
-| 子域 | L1 源码事实 | 本轮真实执行 | 收口结论 |
+| 子域 | L1 源码事实 | 当前核对真实执行 | 收口结论 |
 |---|---|---|---|
 | 模型/预训练注册 | 已逐条读取 `factory.py:38-143`、`pretrained.py:460-810` | 未调用依赖/未在线注册 | **已静态收口；动态覆盖、并发注册未验证** |
 | full/tower 权重加载 | 已逐条读取 `factory.py:230-296,387-763` | 未加载真实 checkpoint | **加载顺序和失败差异已收口；真实格式兼容未验证** |
@@ -728,4 +728,4 @@ git diff --check -- ARCHITECTURE.md
 | cache/下载 | 已逐条读取 `pretrained.py:818-954` | 未联网、未断点/并发下载 | **校验和半文件风险已收口；HF/URL 边界未实测** |
 | 失败/释放 | 已静态搜索 close/release/empty_cache/destroy/join 与主退出路径 | 未注入异常、取消、强杀、OOM | **缺口已证实；不能声称资源安全** |
 
-第二轮只修改了本文件；旧 `细探-open_clip.md` 继续保留且未改写。后续若要把 OpenCLIP 接入平台，最低新增验收不是“能加载一个模型”，而是：canonical model/preprocess/tokenizer/checkpoint manifest、下载临时文件原子提交与并发锁、请求 deadline/cancel、batch/显存预算拒绝、provider 独立进程、四终态资源清理和失败后现场读回。
+后续只修改了本文件；旧 `细探-open_clip.md` 继续保留且未改写。后续若要把 OpenCLIP 接入平台，最低新增验收不是“能加载一个模型”，而是：canonical model/preprocess/tokenizer/checkpoint manifest、下载临时文件原子提交与并发锁、请求 deadline/cancel、batch/显存预算拒绝、provider 独立进程、四终态资源清理和失败后现场读回。

@@ -258,16 +258,16 @@ Hub 的 `EventBus` 将 Engine、频道、DM、Bridge、插件和 UI 事件接在
 
 ---
 
-## 第三轮：通用底座映射（基于当前源码的真实边界）
+## 后续：通用底座映射（基于当前源码的真实边界）
 
 ### 3.1 证据边界与方法
 
-本轮不是把 HanaAgent 的 Agent 工作流当成平台底座，而是把当前源码中已经存在的**契约、注册表、持久化 owner、运行时句柄和外部进程边界**映射到四类平台职责：支持库、模块库、运行核心、网关。映射中的“应落点”是平台复用裁决，不等于 HanaAgent 已经实现了目标平台；凡源码没有证据的内容标为“待核”，不向上推断。
+当前核对不是把 HanaAgent 的 Agent 工作流当成平台底座，而是把当前源码中已经存在的**契约、注册表、持久化 owner、运行时句柄和外部进程边界**映射到四类平台职责：支持库、模块库、运行核心、网关。映射中的“应落点”是平台复用裁决，不等于 HanaAgent 已经实现了目标平台；凡源码没有证据的内容标为“待核”，不向上推断。
 
 - **当前源码证据**：`core/engine.ts:349-729,2373-2668,2696-2812`、`hub/event-bus.ts:31-218`、`hub/event-bus-capabilities.ts:664-738`、`core/session-manifest/store.ts:237-360`、`lib/task-registry.ts:73-511`、`lib/session-execution-registry.ts:21-125`、`core/plugin-manager.ts:220-245,386-445,491-612,614-800`、`core/provider-registry.ts:489-741`、`server/index.ts:435-547,1285-1369`、`core/mcp/clients/stdio-client.ts:20-180`、`server/bootstrap.ts:32-73`、`lib/terminal/terminal-session-manager.ts:51-180`、`lib/resource-io/providers/url-provider.ts:28-220`。
-- **旧细探状态**：当前工作树没有 `细探-HanaAgent.md`，Git 索引也没有该文件；正式文档第 249、255 行曾引用并声明吸收它。因此本轮只能以当前源码和现有 `ARCHITECTURE.md` 为证据，不能伪称已读取一个当前不存在的旧笔记；旧笔记若在其他归档位置，应由主协调者另行提供后再复核。
-- **代码图状态**：目标目录没有 `.codegraph/`，`codegraph_explore` 返回“未建立代码图”；本轮未使用错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3` 的项目上下文结果，也未把任何其他仓库证据写入本文件。
-- **当前文档事实与本轮映射分离**：已有章节描述“项目是什么”；本章只新增“哪些真实能力可以抽象为底座契约、哪些仍是项目编排”。未因存在 `Agent`、`workflow`、`prompt`、`memory` 等词就认定存在通用运行核心。
+- **旧细探状态**：当前工作树没有 `细探-HanaAgent.md`，Git 索引也没有该文件；正式文档第 249、255 行曾引用并声明吸收它。因此当前核对只能以当前源码和现有 `ARCHITECTURE.md` 为证据，不能伪称已读取一个当前不存在的旧笔记；旧笔记若在其他归档位置，应由主协调者另行提供后再复核。
+- **代码图状态**：目标目录没有 `.codegraph/`，`codegraph_explore` 返回“未建立代码图”；当前核对未使用错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3` 的项目上下文结果，也未把任何其他仓库证据写入本文件。
+- **当前文档事实与当前核对映射分离**：已有章节描述“项目是什么”；本章只新增“哪些真实能力可以抽象为底座契约、哪些仍是项目编排”。未因存在 `Agent`、`workflow`、`prompt`、`memory` 等词就认定存在通用运行核心。
 
 ### 3.2 四层边界总图（映射目标，不是现状宣称）
 
@@ -340,9 +340,9 @@ Hub 的 `EventBus` 将 Engine、频道、DM、Bridge、插件和 UI 事件接在
 
 L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当作底座通过；每级都要求真实对象和可回读证据。
 
-| 等级 | 目标 | 必须验证的真实内容 | HanaAgent 本轮状态 |
+| 等级 | 目标 | 必须验证的真实内容 | HanaAgent 当前核对状态 |
 |---|---|---|---|
-| **L0 静态边界** | 证明目录/契约/owner 没有明显越界 | 仅 `ARCHITECTURE.md` 变更；所有证据路径存在；四层映射、唯一 owner、禁止 route 直写和 workflow 非底座声明齐全；代码图不可用必须留痕 | **本轮可执行**，但不等价于源码行为通过 |
+| **L0 静态边界** | 证明目录/契约/owner 没有明显越界 | 仅 `ARCHITECTURE.md` 变更；所有证据路径存在；四层映射、唯一 owner、禁止 route 直写和 workflow 非底座声明齐全；代码图不可用必须留痕 | **当前核对可执行**，但不等价于源码行为通过 |
 | **L1 单元/契约** | 证明纯契约和状态机 | `event-bus-capabilities`、`event-bus-request`、`task-registry`、`session-execution-registry`、`execution-lease-registry`、`tool-invocation-permission`、`plugin-manager`；覆盖重复注册、权限拒绝、超时、幂等 release/cancel | 测试文件存在；依赖未安装，执行结果待命令验证 |
 | **L2 组合/持久化** | 证明一个 owner 跨模块可恢复 | manifest SQLite WAL+迁移、JSONL/sidecar、TaskRegistry restart recovery、session ref/locator、plugin contribution cleanup、ResourceAccess 脱敏/审计；重启后读回同一 ID/版本 | 源码有组合链和测试名；未运行，不能宣称通过 |
 | **L3 真实外部边界** | 证明网关到真实 provider/process/service | 启动真实 Server；HTTP/WS auth+scope；Pi provider；MCP child；node-pty；URL SSRF/redirect/size/timeout；CLI/native helper；真实取消、SIGTERM/SIGKILL、进程树/端口清理 | 当前仅有源码/测试契约，未安装依赖且未启动服务 |
@@ -359,7 +359,7 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 5. **隔离**：`HanaEngine`、Pi SDK session workflow、人格/记忆 prompt、Heartbeat/Cron 业务规则、Bridge 频道语义和 UI 交互不作为通用底座事实；只通过适配层接入底座能力。
 6. **装配波次**：先冻结公共契约和 owner → 接入句柄/租约/取消/释放 → 接入 store/process supervisor → 迁移 session/task/tool/model/plugin/resource 模块 → 最后接 REST/WS/CLI/插件网关；任何缺 L2 资源回读或 L3 外部实测的能力不得进入发布。
 
-本第三轮结论是**底座升级输入，不是生产改造批准**：未修改 HanaAgent 源码、依赖、配置、测试或 Git；后续若要把上述候选能力落到系统工程平台，必须另开能力需求、复用检索、租约占用、验收契约和非重叠工作包。
+本后续结论是**底座升级输入，不是生产改造批准**：未修改 HanaAgent 源码、依赖、配置、测试或 Git；后续若要把上述候选能力落到系统工程平台，必须另开能力需求、复用检索、租约占用、验收契约和非重叠工作包。
 
 ---
 
@@ -369,9 +369,9 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 
 本节是对当前工作树的静态源码研究，不是运行报告。为避免把“文件存在”误写成“行为已通过”，结论分为三类：
 
-- **源码事实**：本轮直接读取的实现文件中可以定位到的控制流、状态、持久化路径或默认值。
+- **源码事实**：当前核对直接读取的实现文件中可以定位到的控制流、状态、持久化路径或默认值。
 - **测试存在**：当前工作树存在相关测试文件或测试策略声明，只能证明测试意图/覆盖入口存在。
-- **未运行验证**：本轮没有安装依赖、启动 Server/Electron、调用真实 Provider/MCP/Bridge，也没有运行 Vitest、typecheck 或 lint；因此不对本机运行结果、测试通过率或外部服务可用性作结论。
+- **未运行验证**：当前核对没有安装依赖、启动 Server/Electron、调用真实 Provider/MCP/Bridge，也没有运行 Vitest、typecheck 或 lint；因此不对本机运行结果、测试通过率或外部服务可用性作结论。
 
 ### 4.2 完整入口链
 
@@ -385,7 +385,7 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 
 **测试存在**：`tests/startup-contract.test.ts`、`tests/server-port-ownership.test.ts`、`tests/cli-local-server.test.ts`、`tests/cli-server-runner.test.ts`、`tests/build-server-artifact.test.ts`、`tests/standalone-server-smoke.test.ts`、`tests/desktop-onboarding-completion.test.ts` 等文件存在；`tests/README.md` 将启动、构建和平台行为归入 contract/build/platform 层。
 
-**未运行验证**：上述测试没有在本轮执行；`node_modules`、构建产物、端口占用和 Electron/原生 helper 的当前状态没有据此确认。
+**未运行验证**：上述测试没有在当前核对执行；`node_modules`、构建产物、端口占用和 Electron/原生 helper 的当前状态没有据此确认。
 
 ### 4.3 模型路由与调用边界
 
@@ -440,7 +440,7 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 | 会话身份 | Session Manifest SQLite 的 `session_manifests`、locator history、capability snapshots、executor metadata、branch heads | 源码事实；WAL、schema migration、locator 解析和关闭路径在 `core/session-manifest/store.ts` |
 | 文件与资源 | SessionFile sidecar `*.jsonl.files.json`、`session-files/` cache、Resource envelope、资源票据和 resource-io | 源码事实；远程边界会脱敏 `filePath/realPath`，内容 ticket 使用 HMAC + TTL |
 | Provider/偏好/用量 | `auth.json`、`models.json`、`providers/`、`user/preferences.json`、`usage-ledger.json` | 源码事实；真实文件内容取决于运行时 HANA_HOME，当前未读取 |
-| Cron/任务/Loop | Studio Cron jobs/runs 文件、`.ephemeral/plugin-tasks.json`、LoopStore JSON；写入使用原子替换或恢复文件 | 源码事实；恢复分支和损坏文件处理存在，但没有本轮重启实测 |
+| Cron/任务/Loop | Studio Cron jobs/runs 文件、`.ephemeral/plugin-tasks.json`、LoopStore JSON；写入使用原子替换或恢复文件 | 源码事实；恢复分支和损坏文件处理存在，但没有当前核对重启实测 |
 
 `SessionManifestStore` 显式启用 SQLite WAL、创建 schema 并按 user_version 迁移；构造失败会尝试关闭数据库并重新抛出原始错误。`CronStore` 对主文件缺失/损坏和 `.tmp` 恢复有备份与错误码路径；`LoopStore` 对损坏 JSON 会重命名为 `.corrupt-<timestamp>` 后以空态启动，而不是静默覆盖现场。上述是实现设计，不代表故障恢复已在本机验证。
 
@@ -460,17 +460,17 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 
 **未运行验证**：没有等待真实分钟级调度、强杀进程、重启恢复、外部任务取消或检查残留 PID/定时器；不能把“有恢复代码/测试文件”表述成队列至少一次/至多一次语义、任务不重复执行或崩溃一致性已经验证。
 
-### 4.8 测试存在性与本轮验证结论
+### 4.8 测试存在性与当前核对验证结论
 
 **源码事实**：`tests/README.md` 定义了 `contract`、`regression`、`unit`、`route`、`build`、`platform` 六类风险驱动测试，并要求清理工作至少运行 `npm test`、`npm run typecheck`、`npm run lint`。`package.json` 的 `test` 使用 Vitest，`typecheck` 执行三套 TypeScript 检查，`lint` 执行 ESLint。
 
-**测试存在**：当前工作树中存在入口、模型/provider、工具权限、EventBus/WS、manifest/JSONL、memory、Cron/Heartbeat/Loop、插件、Bridge、资源和平台边界等大量测试文件；文件名可用于定位测试意图，但不代表每个测试都被本轮运行。
+**测试存在**：当前工作树中存在入口、模型/provider、工具权限、EventBus/WS、manifest/JSONL、memory、Cron/Heartbeat/Loop、插件、Bridge、资源和平台边界等大量测试文件；文件名可用于定位测试意图，但不代表每个测试都被当前核对运行。
 
-**未运行验证**：本轮严格按任务要求只做源码/测试文件读取和文档编辑；没有调用 MCP/Hermes，没有安装依赖，没有运行任何测试、lint、typecheck、Server、Electron、CLI、Provider、MCP、Bridge 或真实心跳/任务。因而本轮交付状态是“静态事实已整理，动态验证未执行”。
+**未运行验证**：当前核对严格按任务要求只做源码/测试文件读取和文档编辑；没有调用 MCP/Hermes，没有安装依赖，没有运行任何测试、lint、typecheck、Server、Electron、CLI、Provider、MCP、Bridge 或真实心跳/任务。因而当前核对交付状态是“静态事实已整理，动态验证未执行”。
 
-### 4.9 本轮研究范围与文件边界
+### 4.9 当前核对研究范围与文件边界
 
-本轮只修改项目根 `ARCHITECTURE.md`。读取重点包括 `package.json`、`server/main-full.ts`、`server/index.ts`、`hub/index.ts`、`hub/event-bus.ts`、`hub/scheduler.ts`、`core/engine.ts`、`core/agent.ts`、`core/model-manager.ts`、`core/provider-registry.ts`、`core/execution-router.ts`、`core/tool-catalog.ts`、`core/session-manifest/store.ts`、`lib/task-registry.ts`、`lib/desk/heartbeat.ts`、`lib/desk/cron-scheduler.ts`、`lib/desk/cron-store.ts`、`lib/loop/loop-controller.ts`、`lib/loop/loop-store.ts`、`tests/README.md` 以及相关测试文件清单。没有修改源码、配置、依赖锁、测试或构建产物。
+当前核对只修改项目根 `ARCHITECTURE.md`。读取重点包括 `package.json`、`server/main-full.ts`、`server/index.ts`、`hub/index.ts`、`hub/event-bus.ts`、`hub/scheduler.ts`、`core/engine.ts`、`core/agent.ts`、`core/model-manager.ts`、`core/provider-registry.ts`、`core/execution-router.ts`、`core/tool-catalog.ts`、`core/session-manifest/store.ts`、`lib/task-registry.ts`、`lib/desk/heartbeat.ts`、`lib/desk/cron-scheduler.ts`、`lib/desk/cron-store.ts`、`lib/loop/loop-controller.ts`、`lib/loop/loop-store.ts`、`tests/README.md` 以及相关测试文件清单。没有修改源码、配置、依赖锁、测试或构建产物。
 
 ---
 
@@ -478,13 +478,13 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 
 ### 5.1 审计边界与证据等级
 
-本轮按“入口 → 关系 → 运行面 → 持久化 → 调度/任务 → 测试/文档”分段读取当前工作树，目标是补齐前几轮文档中的状态与资源结论，而不是重复描述产品功能。
+当前核对按“入口 → 关系 → 运行面 → 持久化 → 调度/任务 → 测试/文档”分段读取当前工作树，目标是补齐前几轮文档中的状态与资源结论，而不是重复描述产品功能。
 
-- **代码图状态**：目标仓库没有 `.codegraph/`；在仓库根执行 `codegraph explore "project entrypoints, Electron CLI server hub engine provider tools events JSONL SQLite cron task tests docs architecture"` 返回索引不存在。因此本轮不能提供 CodeGraph 节点/调用边证据，入口关系改由 `package.json`、入口文件的静态 import、组合根和路由注册源码核对；不能把全文搜索结果冒充代码图关系。
-- **工作区状态**：基线分支为 `main`，HEAD 为 `c6d0405 chore(release): prepare v0.447.4 digest`。本轮开始时仅发现根 `ARCHITECTURE.md` 为未跟踪文件；本轮只更新该文件，未修改源码、配置、锁文件、测试或构建产物。
-- **源码事实**：来自本轮实际读取的文件和静态关系；可说明实现意图、状态字段、边界和清理路径。
+- **代码图状态**：目标仓库没有 `.codegraph/`；在仓库根执行 `codegraph explore "project entrypoints, Electron CLI server hub engine provider tools events JSONL SQLite cron task tests docs architecture"` 返回索引不存在。因此当前核对不能提供 CodeGraph 节点/调用边证据，入口关系改由 `package.json`、入口文件的静态 import、组合根和路由注册源码核对；不能把全文搜索结果冒充代码图关系。
+- **工作区状态**：基线分支为 `main`，HEAD 为 `c6d0405 chore(release): prepare v0.447.4 digest`。当前核对开始时仅发现根 `ARCHITECTURE.md` 为未跟踪文件；当前核对只更新该文件，未修改源码、配置、锁文件、测试或构建产物。
+- **源码事实**：来自当前核对实际读取的文件和静态关系；可说明实现意图、状态字段、边界和清理路径。
 - **测试存在**：仅说明测试文件/测试策略存在，不说明测试通过。
-- **未运行验证**：本轮没有安装依赖、启动服务、运行 Electron/CLI、连接 Provider/MCP/Bridge、等待 Cron/Heartbeat，也没有运行 Vitest、typecheck 或 lint；动态状态不能写成通过。
+- **未运行验证**：当前核对没有安装依赖、启动服务、运行 Electron/CLI、连接 Provider/MCP/Bridge、等待 Cron/Heartbeat，也没有运行 Vitest、typecheck 或 lint；动态状态不能写成通过。
 
 ### 5.2 入口与关系核对
 
@@ -513,15 +513,15 @@ package.json main/bin/scripts
 
 | 运行对象 | 创建/拥有者 | 外部句柄 | 正常释放 | 当前恢复事实与缺口 |
 |---|---|---|---|---|
-| Server HTTP/WS | `server/index.ts:startServer()` | 监听 host/port、WS clients、`server-info.json` | graceful shutdown 中停止接受、dispose Engine/Hub 并清理状态 | 有同宅互斥、端口 fallback、stale server probe；本轮未实测端口、WS、强杀和重启残留 |
+| Server HTTP/WS | `server/index.ts:startServer()` | 监听 host/port、WS clients、`server-info.json` | graceful shutdown 中停止接受、dispose Engine/Hub 并清理状态 | 有同宅互斥、端口 fallback、stale server probe；当前核对未实测端口、WS、强杀和重启残留 |
 | Engine/Agent | `HanaEngine`、`AgentManager` | Agent runtime、FactStore、session runtime、插件贡献 | `Hub.dispose()` → `engine.dispose()`；Agent 并行 dispose | 有明确 dispose 链和初始化并发限制；跨进程并发只靠同宅闸，冷启动写 server-info 前存在源码注释明确承认的秒级竞态 |
 | EventBus | `Hub` | subscriber id、handler、capability type | unsubscribe/unhandle/clear | sessionPath/global 索引会清理；request 超时使用 `Promise.race`，不能证明底层 handler 自动停止 |
 | Cron/Heartbeat | `hub/Scheduler` | timer、per-job `AbortController`、heartbeat instance | stop heartbeat、stop cron、清理 executing map | job 有 per-job 锁、超时 abort、失败退避；定时器不是持久队列，崩溃时运行中的 Promise 不可恢复 |
 | TaskRegistry | `lib/task-registry.ts` | `taskId`、schedule timer、内存 handler | complete/fail/cancel/abort、清 timer | 元数据可持久化，active 状态可进入 `recovering`；handler 仍是内存函数，写失败主要记录 warning，不能保证状态账本与实际 runner 一致 |
-| Session JSONL | Pi SDK/`SessionCoordinator` | session file、stream runtime、execution AbortController | flush/rewrite、session teardown | 超长行投影、inline media 清理、`.repair.json` 备份已实现；本轮未做损坏文件、并发写、恢复追加演练 |
-| Session manifest SQLite | `SessionManifestStore` | better-sqlite3 DB handle、WAL | 构造失败 close；Engine dispose 关闭 | WAL、schema migration、locator history、capability/executor/branch 快照有源码证据；本轮未实际打开 DB 或验证迁移回滚 |
+| Session JSONL | Pi SDK/`SessionCoordinator` | session file、stream runtime、execution AbortController | flush/rewrite、session teardown | 超长行投影、inline media 清理、`.repair.json` 备份已实现；当前核对未做损坏文件、并发写、恢复追加演练 |
+| Session manifest SQLite | `SessionManifestStore` | better-sqlite3 DB handle、WAL | 构造失败 close；Engine dispose 关闭 | WAL、schema migration、locator history、capability/executor/branch 快照有源码证据；当前核对未实际打开 DB 或验证迁移回滚 |
 | Plugin | `PluginManager` | plugin context、route/tool/provider/extension registrations、disposables | unload、逆序 disposable cleanup | 15 秒加载边界和 cleanup 存在；restricted/full-access 不是进程隔离，插件主进程崩溃隔离未解决 |
-| MCP/PTY/native child | 对应 client/manager/provider | child process、stdin/stdout、PTY、pending request | EOF → SIGTERM → SIGKILL 或 handle.dispose | stdio client 有升级关闭链和 pending reject；本轮未检查真实进程组、pipe、临时目录和残留 PID |
+| MCP/PTY/native child | 对应 client/manager/provider | child process、stdin/stdout、PTY、pending request | EOF → SIGTERM → SIGKILL 或 handle.dispose | stdio client 有升级关闭链和 pending reject；当前核对未检查真实进程组、pipe、临时目录和残留 PID |
 | Resource/SessionFile | `SessionFileRegistry` + `ResourceAccessService` | `sf_*`、`res_sf_*`、HMAC ticket、watcher | sidecar/managed cache 写入、ticket 到期、watch dispose | 远程路径脱敏、ticket TTL、sidecar 原子替换存在；缓存 GC、watcher 崩溃恢复和删除/恢复全矩阵未动态核验 |
 
 ### 5.4 持久化与失败恢复结论
@@ -531,7 +531,7 @@ package.json main/bin/scripts
 - **Cron JSON**：`CronStore` 对主文件缺失/损坏会读取 `.tmp`，必要时保留 `.corrupt-<timestamp>-<pid>-<attempt>.bak`，再原子 rename；同步 mutator 禁止 reentrant/async 写入。该恢复是文件级恢复，不等价于一次性 Cron 执行的 exactly-once 保证。
 - **Activity JSON**：启动时把遗留 `running` 标为 `interrupted`，并可按执行超时标为 `timeout`；最多保留 100 条且会删除对应活动 session 文件。此处属于元数据回收策略，不能恢复已中断的模型调用。
 - **Task/Loop**：TaskRegistry、LoopStore、CronStore 分别维护自己的状态和计时器；已有 `recovering`、失败退避、Loop alarm 重建等逻辑，但没有统一的持久 in-flight journal、全局幂等键或跨模块恢复协调器。崩溃恢复语义应记录为“恢复可调度元数据”，而非“恢复原 Promise”。
-- **启动失败**：桌面 bootstrap 写 `launch-marker.json`、`launch.log` 和错误诊断；Server bootstrap 用独立 Worker keepalive 避免 native import 阻塞被 Electron 误判启动失败；server 启动前有 HANA_HOME 同宅互斥和 data epoch 闸。上述路径改善诊断与拒绝启动，但本轮未做故障注入。
+- **启动失败**：桌面 bootstrap 写 `launch-marker.json`、`launch.log` 和错误诊断；Server bootstrap 用独立 Worker keepalive 避免 native import 阻塞被 Electron 误判启动失败；server 启动前有 HANA_HOME 同宅互斥和 data epoch 闸。上述路径改善诊断与拒绝启动，但当前核对未做故障注入。
 
 ### 5.5 Provider、工具和事件审计
 
@@ -545,8 +545,8 @@ package.json main/bin/scripts
 
 - 测试体系设计质量较高：`tests/README.md` 明确区分 contract、regression、unit、route、build、platform，并优先保护权限、凭证、资源、SessionFile、迁移、Provider、Bridge、插件和跨平台边界。当前测试树覆盖入口、Server/WS、Provider、工具权限、manifest/JSONL、Cron/Heartbeat/Loop、插件、资源、媒体和平台 helper 等主题。
 - 文档质量的优点是 README 提供了运行面、数据目录、脚本、平台和安全能力摘要；`PLUGINS.md`/`PLUGIN_SDK.md` 提供扩展协议；`tests/README.md` 提供验证政策；本文件补充了源码级 owner、句柄和恢复边界。
-- 文档质量的限制是 README 的“支持/已签名/已公证/可用”表述属于项目声明，不是本轮运行证据；`ARCHITECTURE.md` 中所有“源码事实”和“测试存在”都不能替代动态验证。当前仍存在 open/full composition、mobile-workbench、发行产物和具体 Provider 可用性需要构建或实机核对的边界。
-- 本轮未发现应把不存在的 CodeGraph 索引、未运行测试或外部运行状态写成事实的依据；文档已显式保留这些限制。后续若仓库启用 `.codegraph/`，应重新生成入口节点/调用边证据并复核本文件，而不是仅追加文字。
+- 文档质量的限制是 README 的“支持/已签名/已公证/可用”表述属于项目声明，不是当前核对运行证据；`ARCHITECTURE.md` 中所有“源码事实”和“测试存在”都不能替代动态验证。当前仍存在 open/full composition、mobile-workbench、发行产物和具体 Provider 可用性需要构建或实机核对的边界。
+- 当前核对未发现应把不存在的 CodeGraph 索引、未运行测试或外部运行状态写成事实的依据；文档已显式保留这些限制。后续若仓库启用 `.codegraph/`，应重新生成入口节点/调用边证据并复核本文件，而不是仅追加文字。
 
 ### 5.7 当前风险分级与后续建议
 
@@ -557,9 +557,9 @@ package.json main/bin/scripts
 | P1 | EventBus 超时不自动停止 handler | `Promise.race` 只结束等待者 | 使用可观测副作用 handler 验证超时后取消、重复提交和终态记录 |
 | P1 | 跨 store 一致性依赖模块级恢复 | facts、manifest、JSONL、cron/task 各自 owner/格式 | 设计统一恢复报告和读回校验，不把多个原子替换宣传为跨 store 事务 |
 | P2 | 同一 HANA_HOME 冷启动存在 server-info 写入前竞态 | `server/index.ts` 注释明确承认秒级窗口 | 并发启动压力测试，确认端口、SQLite、server-info 和退出清理结果 |
-| P2 | 资源 watcher/cache/外部 child 的残留需真实核验 | 源码有 cleanup，但本轮未启动和强杀 | L3/L4 验证进程树、端口、文件句柄、watcher、tmp、pipe 和 cache |
-| P2 | 文档动态状态不可由源码推断 | 本轮未安装/未运行 | 在 CI 或发布流程记录命令、退出码、测试数、跳过项和实机平台矩阵 |
+| P2 | 资源 watcher/cache/外部 child 的残留需真实核验 | 源码有 cleanup，但当前核对未启动和强杀 | L3/L4 验证进程树、端口、文件句柄、watcher、tmp、pipe 和 cache |
+| P2 | 文档动态状态不可由源码推断 | 当前核对未安装/未运行 | 在 CI 或发布流程记录命令、退出码、测试数、跳过项和实机平台矩阵 |
 
-### 5.8 本轮交付边界
+### 5.8 当前核对交付边界
 
-本轮只更新根 `ARCHITECTURE.md`，没有调用 MCP/Hermes，没有安装依赖，没有运行测试/lint/typecheck，也没有启动或修改 HanaAgent 运行数据。交付结论为：**入口、静态关系、资源 owner、持久化格式、失败恢复设计、调度/任务边界、测试意图和文档质量已完成静态审计；动态运行状态、故障注入、真实外部 Provider/进程和发布通过状态仍未验证。**
+当前核对只更新根 `ARCHITECTURE.md`，没有调用 MCP/Hermes，没有安装依赖，没有运行测试/lint/typecheck，也没有启动或修改 HanaAgent 运行数据。交付结论为：**入口、静态关系、资源 owner、持久化格式、失败恢复设计、调度/任务边界、测试意图和文档质量已完成静态审计；动态运行状态、故障注入、真实外部 Provider/进程和发布通过状态仍未验证。**

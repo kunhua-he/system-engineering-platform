@@ -1,438 +1,565 @@
-# OpenHands Agent Canvas 深度架构审计
+# OpenHands Agent Canvas 架构取证
 
-> 审计对象：`/Users/hekunhua/Documents/Agent/github 源码参考/10_agent_platform_reference/02_核心Agent框架/OpenHands`
->
-> 审计基线：提交 `6dcc9f5`（`refactor: finish the microagent→skill rename in the frontend (#16672)`）。本次只读取源码、配置、测试、README、`docs/`、根 `AGENTS.md` 和既有 `细探-OpenHands.md`，只修改本文件；没有删除或改写既有细探。
->
-> 重要边界：这个仓库不是经典 Python Agent 引擎，也不是 Agent Server。它是 `@openhands/agent-canvas` React/TypeScript 前端和本地栈启动器。真正的 Agent loop、工具执行、事件持久化服务、runtime provider、workspace 实现和 LLM provider 由 `@openhands/typescript-client` 对接的外部 Agent Server / `openhands-sdk` 运行时提供。本报告只把本仓库能证明的事实写成已实现；外部能力统一标为“未在本仓库可证”。
+> 项目根：`/Users/hekunhua/Documents/Agent/github 源码参考/10_agent_platform_reference/02_核心Agent框架/OpenHands`
+> 当前提交：`bad1687dec93c5b3edbef837ab2dc12638964031`
+> 远程默认分支：`origin/main` 当前为 `bad1687dec93c5b3edbef837ab2dc12638964031`；源码参考仓库已 fast-forward 到该提交，平台侧只维护本唯一文档。
+> 本文是该仓库唯一架构取证文档；只描述当前仓库可证明的事实。
 
-## 0. 证据等级
-
-本报告使用以下证据等级，避免把 README 或类型声明冒充运行时事实：
-
-| 等级 | 含义 | 本仓库中的典型证据 |
-|---|---|---|
-| L0 | 目录、包元数据、静态配置或明确仓库边界 | `package.json`、`config/defaults.json`、根 `AGENTS.md` |
-| L1 | 可直接阅读的实现路径和符号 | `src/contexts/conversation-websocket-context.tsx::ConversationWebSocketProvider` |
-| L2 | 单元/组件测试验证的行为 | `__tests__/hooks/use-websocket.test.ts`、`src/api/*/*.test.ts` |
-| L3 | 真实 Agent Server 或真实运行时的端到端测试 | `tests/e2e/live/real-agent-server-conversation.spec.ts` |
-| L4 | 生产/跨平台/外部 provider 的运行证据 | 本仓库当前没有可复核的 L4 证据；`docs/TESTING_MATRIX.md` 明确列出未覆盖项 |
-
-结论中的“已实现”通常至少有 L1；“已验证”会明确给出 L2/L3；只有说明或外部包的能力不会升级为本仓库实现。
-
-## 1. 一句话定位与系统边界
-
-Agent Canvas 是一个多后端控制平面：浏览器通过 typed client、Cloud proxy 和 WebSocket 创建/恢复会话、发送用户消息、读取事件和运行时文件/终端结果，并渲染聊天、终端、文件、浏览器、设置、MCP、Skills、Plugins 和 Automation UI。它可以启动一个本地三服务栈，但本地启动器只是进程编排，不是 Agent 执行引擎。
-
-### 1.1 本仓库拥有的职责
-
-- React Router 页面、布局、Provider、Zustand/React Query 状态。
-- Local/Cloud backend registry、会话路由、会话元数据和认证 UI。
-- 对话创建/发送/暂停/恢复/删除/分支的客户端适配。
-- REST 事件历史、WebSocket 实时事件、去重、排序和 UI 投影。
-- runtime host 上的终端、文件、VS Code、Git、MCP、Skills、Profiles 等 API 适配。
-- 本地 `uvx` Agent Server/Automation/Vite/Ingress 的启动、代理、状态目录和进程清理。
-- Mock-LLM、Live Agent Server、Docker E2E 的测试编排。
-
-### 1.2 明确不拥有的职责
-
-- Agent 的 system prompt、ReAct/goal loop、上下文构造、condenser 内部算法。
-- Agent 对工具调用的决策、工具 schema 执行、bash 子进程、文件编辑、浏览器驱动。
-- 事件账本的服务端写入、事件父子链、恢复语义和服务端幂等保证。
-- Docker/VM/cloud sandbox 的创建、回收、资源配额和崩溃恢复。
-- OpenAI/Anthropic/其他 provider 的真实 LLM 请求、重试、计费和 provider 状态。
-- Agent Server、Cloud App API、Cloud runtime、Automation Server 的 endpoint 实现。
-
-证据：根 `AGENTS.md:24-41` 把这些职责分别归属 `software-agent-sdk`、`typescript-client` 和 `extensions`；`README.md:124-135` 也把 Agent Server 描述为外部 REST backend；`package.json:22-72` 只有客户端依赖，没有 Python engine 源码。
-
-## 2. 真实部署拓扑
-
-### 2.1 本地/npm 开发栈
+## 1. 顶部流程图
 
 ```text
-Browser
+浏览器 React Canvas
+  │ 路由、状态、事件投影
+  ▼
+ConversationWebSocketProvider
+  ├─ REST history → useEventStore
+  ├─ conversation WebSocket → 事件解析/去重/副作用投影
+  ├─ sendMessage ─┬─ OPEN socket: {message, run:true}
+  │               └─ 非 OPEN: typed ConversationClient.sendEvent
+  └─ client tool Action
+       └─ launch_child → local/cloud child → reportLaunchResult → sendMessage
   │
-  ▼
-Ingress :8000  (scripts/ingress.mjs 或 static-server.mjs)
-  ├── /*                         → static/Vite Agent Canvas
-  ├── /api/*, /sockets           → Agent Server :18000
-  └── /api/automation/*          → Automation :18001
+  ├─ Local typed Agent Server / runtime
+  └─ Cloud App API → task polling → conversation_url + session_api_key
+                         └─ cloud proxy → 外部 Agent Server sandbox
 
-Agent Server / uvx / Docker
-  ├── external openhands-agent-server / openhands-sdk
-  ├── external tools/workspace/runtime/provider
-  └── persisted ~/.openhands state
+外部 Agent Server / SDK / workspace / sandbox / LLM provider
+  （Agent loop、工具执行、事件持久化、资源回收不在本仓库）
 ```
 
-L0: `config/defaults.json:19-35` 固定默认端口、状态目录和外部包名；`README.md:63-104` 明确无 sandbox 直接访问主机文件系统，Docker 通过 `PROJECTS_PATH` 挂载目录。L1: `scripts/dev-with-automation.mjs` 负责 spawn 多服务和 Ingress；`docker/entrypoint.sh:180-220` 负责容器内 Agent Server、Automation 和存储目录。
+## 2. 仓库身份、代码地图与证据等级
 
-### 2.2 Cloud 会话
+当前记录以提交 `bad1687dec...` 为基线，源码参考根目录存在已同步的 `.codegraph/`。执行：
 
 ```text
-Browser Canvas
-  │ REST app API / cloud proxy
-  ▼
-Cloud App API ── asynchronous start task ──► Cloud conversation
-                                             │
-                                             ├── conversation_url
-                                             ├── session_api_key
-                                             └── per-conversation runtime sandbox
-                                                   │ REST/WebSocket
-                                                   ▼
-                                             external Agent Server runtime
+codegraph explore "ConversationWebSocketProvider sendMessage createConversation useWebSocket handleLaunchChildConversationAction call paths"
 ```
 
-L1: `src/api/conversation-service/agent-server-conversation-service.api.ts::createConversation` 在 Cloud 发送扁平 `AppConversationStartRequest`，由 `useTaskPolling` 等待；`src/api/event-service/event-service.api.ts::searchEvents` 把历史放在 Cloud App API，把 live count/confirmation 放到 runtime host；`src/api/runtime-service/agent-server-runtime-service.ts::executeCommand` 通过 `callCloudProxy` 访问 runtime，避免 CORS。Cloud sandbox 的实际 provisioning、容器/VM 生命周期和恢复不可在本仓库证明。
+CodeGraph 返回 40 个符号，确认主链：`ConversationWebSocketProvider → handleLaunchChildConversationAction → reportLaunchResult → AgentServerConversationService.sendMessage → callCloudProxy`；并标出 `createConversation`、`useWebSocket` 的调用方及对应测试。源码树统计（同步后）：1,898 个被 CodeGraph 索引的文件、20,142 个节点、54,750 条边；工作树可见文件 2,233 个，其中 `src/` 1,359 个，`tests/` 与 `__tests__/` 604 个。`src/api` 是 HTTP/typed 适配，`contexts` 是 React 连接与副作用，`hooks` 是 transport/query/mutation，`services` 是动作桥，`stores` 是浏览器投影，`types/agent-server` 是事件 wire union，`routes` 是页面入口，`electron/` 是桌面壳，`scripts/`、`docker/`、`helm/` 是启动/打包/部署边界。
 
-## 3. 分层（L0-L4）
+证据等级：L0=目录/配置/版本；L1=当前函数体和调用链；L2=单元/组件测试；L3=真实或 mock Agent Server E2E；L4=生产、外部 SDK/server/runtime/provider。本文未把外部类型或 mock 结果升级为 L4。
 
-### L0：启动、配置和封装
+## 3. 调用链取证
 
-- `bin/agent-canvas.mjs`：npm CLI，解析 `--public`、`--frontend-only`、`--backend-only`、端口和版本信息。
-- `scripts/dev-safe.mjs`：最小 Agent Server + Vite。
-- `scripts/dev-with-automation.mjs`：Agent Server、Automation、Ingress、Vite/static 的完整编排。
-- `scripts/static-server.mjs`、`scripts/ingress.mjs`：静态服务、路由代理、`/server_info.runtime_services` 注入。
-- `docker/entrypoint.sh`、`docker/Dockerfile`：容器内进程和持久化目录。
-- `config/defaults.json`：Agent Server `1.42.1`、Automation `1.7.1`、最低兼容 Agent Server `1.28.0`、端口、包名和路径。
+### 3.1 创建会话与发送消息
 
-### L1：应用宿主和服务适配
+- `AgentServerConversationService.createConversation`，`src/api/conversation-service/agent-server-conversation-service.api.ts:402-523`：Cloud 组装扁平 `AppConversationStartRequest` 并返回异步 task；Local 并行读取 settings/profiles，解析绝对 workspace，构造加密 settings 后调用 `ConversationClient.createConversation`，Local task 直接标记 `READY`。客户端创建超时常量为 5 分钟（同文件 `:75-78`）。
+- Local 成功后若没有 `getEffectiveLocalBackend()` 抛 `NoBackendAvailableError`；Cloud READY、sandbox provisioning 和 secrets 解析由外部 task polling 负责。
+- `ConversationWebSocketProvider.sendMessage`，`src/contexts/conversation-websocket-context.tsx:1048-1097`：当前 socket 非 OPEN 时，无 conversation id 直接抛错；否则调用 typed `sendEvent(..., {run:true})`，失败归一为可见错误后再次抛出；OPEN 时 `socket.send` 同步异常也被捕获。返回 `{queued:true/false}` 仅表示请求进入 REST/WS，不表示 Agent 已执行。
 
-- `src/entry.client.tsx`、`src/root.tsx`、`src/routes.ts`：hydrate、MSW、认证/后端 gate、路由。
-- `src/api/agent-server-client-options.ts`：统一 typed-client host/session key/timeout 选项。
-- `src/api/backend-registry/`：backend、active selection、健康、认证和最后会话。
-- `src/api/conversation-service/`：会话 wire normalize、创建、消息、历史相关适配。
-- `src/api/cloud/`：Cloud App API、proxy、Cloud conversation/profile/settings/git/sandbox/secrets。
-- `src/api/runtime-service/agent-server-runtime-service.ts`：runtime command/file seam。
-- `src/stores/`、`src/hooks/query/`、`src/hooks/mutation/`：前端投影和缓存，不是服务端状态机。
+### 3.2 实时事件、重连与副作用
 
-### L2：事件/交互/工具结果 UI
+- `ConversationWebSocketProvider`，`src/contexts/conversation-websocket-context.tsx:121-766`：先装载 REST history，再用 `resend_mode=since + after_timestamp` 接 WebSocket；无可用锚点时退化 `resend_mode=all`。事件 id 先在 `useEventStore` 去重，重复事件跳过 toast、终端、浏览器、缓存和 client-tool 等非幂等副作用；JSON 解析异常在 `:748-750` 仅告警。
+- `useWebSocket.connectWebSocket`，`src/hooks/use-websocket.ts:38-120`：OPEN 时先发 session auth；非 1000 close 设置错误，满足 reconnect enabled、实例仍被允许、未达 maxAttempts 才在 3 秒后重连。
+- effect cleanup，`src/hooks/use-websocket.ts:122-157`，及 `disconnect` `:168-180`：先撤销重连资格、清 timer、从 WeakSet 删除 socket，再 close，避免卸载触发重连。close/error 不发送远端取消。
+- 规划连接使用 `resend_all=true` 与 `/events/count` 帧数 barrier（`conversation-websocket-context.tsx:958-1011`），不是主会话时间戳接缝；count/stream 不一致时无额外完整性校验。
 
-- `src/types/agent-server/core/`：Agent Server event union 类型和 type guards。
-- `src/contexts/conversation-websocket-context.tsx`：历史门控、socket handlers、side effects、消息发送。
-- `src/stores/use-event-store.ts`：原始事件与 UI 事件的全局内存账本。
-- `src/hooks/use-bash-command-runner.ts`：独立 bash-events WebSocket 的请求关联。
-- `src/services/child-conversation-launch.ts`：client-defined `launch_child_conversation` 动作桥。
+### 3.3 Child conversation 动作
 
-### L3：真实服务端集成测试
+- `handleLaunchChildConversationAction`，`src/services/child-conversation-launch.ts:505-536`：先 `claimToolCall(parent, toolCallId)`，重复调用直接返回；参数非法转 corrective guidance；local/cloud launch 异常转失败结果；`reportLaunchResult` 失败只 `console.warn`，函数不 reject。
+- `launchCloudChild`，同文件 `:386-448`：无 Cloud backend 返回失败；创建 task 后 `waitForCloudConversationId`（`:365-383`）轮询，间隔/总时限受常量约束，ERROR 转失败，超时可返回仍 provisioning 的 task；本地父会话与 Cloud child 不建立 parent link。
+- `reportLaunchResult`，`:459-497`：先 toast，再检查 goal 是否 active；非 active 才通过 `AgentServerConversationService.sendMessage` 把 child 结果交回 Agent。该消息会触发服务端当前 `/goal` 的新一轮语义，故 active 时刻意不发送。
 
-- `tests/e2e/live/real-agent-server-conversation.spec.ts`：真实 LLM + Agent Server + terminal tool + events API + UI。
-- `tests/e2e/mock-llm/`：生产形态 Agent Canvas 栈 + 外部 SDK `TestLLM`，覆盖 OpenHands trajectory、ACP、Automation、文件和认证。
-- `__tests__/`、`src/**/*.test.ts(x)`：服务适配和 UI/状态单元测试。
+## 4. 状态、资源与失败矩阵
 
-### L4：当前不可证内容
-
-本仓库没有 `runtime/`、`agent/`、`event/`、`server/`、sandbox provider 或 LLM provider 的实现目录。下列问题必须去 `OpenHands/software-agent-sdk`、Cloud 服务或对应 provider 仓库审计，不能从 Canvas 类型和 E2E 结果推断：Agent loop 的循环不变量、工具实际执行权限、服务端事件 append/commit 顺序、容器隔离、runtime 回收、LLM 重试/计费、跨进程崩溃恢复和服务端幂等。
-
-## 4. 会话创建、恢复、分支和状态
-
-### 4.1 Local 创建
-
-`AgentServerConversationService.createConversation`（`src/api/conversation-service/agent-server-conversation-service.api.ts:390-513`）执行：
-
-1. 读取 settings/profile，生成 UUID。
-2. 将默认相对目录解析为绝对目录（`resolveAbsoluteAgentServerPath`），避免上传路径落到错误根目录。
-3. 无显式 workspace 时默认 `new_worktree`，有显式 workspace 时默认 `local_repo`。
-4. 通过 `buildStartConversationRequestWithEncryptedSettings` 发送加密 settings、初始消息、parent、plugins、`worktree`。
-5. 以 `CREATE_CONVERSATION_TIMEOUT_MS = 5min` 创建；Local 返回 `READY`，不做 task polling。
-6. repo/branch/workspace/profile 等 UI 元数据写入 `conversation-metadata-store`，因为 Agent Server runtime 不负责这些 Canvas badge 元数据。
-
-这证明了客户端启动 payload 和 workspace mode，不证明服务端如何创建 worktree、如何启动 Agent loop 或如何持久化事件。
-
-### 4.2 Cloud 创建和 reconnect
-
-Cloud 创建返回 `task-*` 或 working task；`useTaskPolling` 负责等待 `app_conversation_id`、sandbox 状态和 runtime URL。Cloud send path（同文件 `:344-387`）若缺 `conversation_url`/`session_api_key` 会重新 batch-get；随后请求 runtime `/api/conversations/{id}/events`。
-
-`src/contexts/websocket-provider-wrapper.tsx` 在 Cloud sandbox `PAUSED` 时不给 WebSocket provider 传旧 runtime URL，防止恢复前连接旧 sandbox。`useResumeConversation` 只调用统一 resume mutation 并 invalidate queries；真正 sandbox resume/restart 不在本仓库。
-
-### 4.3 Fork/branch
-
-`useForkConversation`（`src/hooks/mutation/use-fork-conversation.ts:22-75`）先用 `getEventParentId` 支持 edit-message 分支，再调用 `forkConversation`。Local only；`from_event_id` 决定复制到哪个事件。客户端兼容旧 Agent Server：低于 `1.31.0` 可能复制整条会话，因此只有返回 `leaf_event_id` 与预期一致时才把消息视为已排除。Cloud 分支明确抛出“不支持”。
-
-### 4.4 Child conversation
-
-`src/services/child-conversation-launch.ts` 是一个真实的客户端工具动作桥：
-
-- `validateLaunchParams` 校验 target、task、repository/branch/isolation 的交叉约束。
-- local child 继承父 workspace；`worktree` 失败或 scratch workspace 无 commit 时降级 `shared`，并在结果中报告冲突风险（`:253-323`）。
-- Cloud child 自己 provision isolated sandbox，默认继承父 repo，但 local parent id 不发送给 Cloud，因此 `parent_link=false`（`:386-448`）。
-- Cloud start 轮询 3 秒、总上限 180 秒；超时返回仍在 provisioning 的 task，而不是无限等待（`:357-384`）。
-
-## 5. 事件账本与 Agent loop 边界
-
-### 5.1 前端事件账本
-
-`src/stores/use-event-store.ts` 的 `EventState` 是全局单会话内存投影，不是数据库账本：
-
-- `events` 保存 raw `OpenHandsEvent`，`uiEvents` 保存 `handleEventForUI` 投影。
-- `eventIds: Set<string|number>` 做 O(1) id 去重。
-- `addEvents` 对 REST history 和 older pagination 批量去重后按 ISO timestamp 排序。
-- `addEvent` 只在相邻同 sender 的 streaming delta 上合并；无 id 的事件不能被 id 去重。
-- `loadedConversationId` 与 clear 操作原子更新，避免切换会话时半清空状态。
-
-### 5.2 REST + WebSocket 双账本接缝
-
-`ConversationWebSocketProvider`（`src/contexts/conversation-websocket-context.tsx:253-381`）先取 REST history，等 refetch settle 后以最新事件 timestamp 构造 `resend_mode=since&after_timestamp=...`。空历史或 history 错误时使用 `resend_mode=all`，依赖 event id 去重弥合 REST/WS race。旧事件由 `useLoadOlderEvents` 分页，不是一次性全载入。
-
-planning 子会话是不同实现：使用 `resend_all=true`，先通过 `EventService.getEventCount` 取得 expected count，再以收到帧数判断 history loading（同文件 `:958-1011`）。这不是严格的事件游标协议；服务端发送丢帧、重复帧或 count 与 stream 不一致时，本仓库没有额外一致性校验。
-
-### 5.3 replay 副作用保护
-
-主/规划 WS handler 在 `addEvent` 前读取 `eventIds`；重复事件仍进入 store（被忽略），但跳过非幂等副作用（错误 banner、terminal append、browser state、cache invalidation、child launch 等）（`:517-530`、`:740-755`）。这是重要的客户端 replay 防护，但不等于服务端工具执行幂等：网络重试、服务端重放、浏览器 localStorage 失败的语义仍由外部 runtime 决定。
-
-### 5.4 Agent loop
-
-本仓库只观察 loop 的边界：用户消息通过 WS `{...message, run:true}` 发送；socket 不可用时通过 `ConversationClient.sendEvent(..., {run:true})` 排队（`:1046-1097`）；事件 union 能渲染 action/message/observation/state/error/streaming/condensation/pause。Agent 如何从 LLM response 选择 tool、执行工具、追加 observation、继续/暂停/结束 loop，没有源码证据，等级为 L4 未在本仓库可证。
-
-## 6. WebSocket、会话重连与消息可靠性
-
-### 6.1 Conversation WebSocket
-
-`src/hooks/use-websocket.ts`：
-
-- `onopen` 先发送 `session_api_key`，再调用上层 `onOpen`。
-- 使用 `WeakSet<WebSocket>` 标记允许重连的具体实例，unmount/显式 disconnect 会先删除实例再 close。
-- 默认 3 秒重连，`maxAttempts` 默认为无限；成功后重置 attempt count。
-- cleanup 清理 timeout、禁止 reconnect、close 当前 socket。
-
-L2：`__tests__/hooks/use-websocket.test.ts` 验证连接、只保留最新 raw frame、错误、query params、auth frame 顺序；文件头明确部分广播/close 测试因 MSW 跨测试污染被 skip，属于测试缺口而非可靠性证明。
-
-### 6.2 消息发送 fallback
-
-WS open 时直接 send；否则 REST queue。这个 fallback 只说明请求已提交给服务端，不说明 Agent 已经执行。由于 fallback 和 WS 发送之间可能发生 race，前端依赖服务端事件 id 和 optimistic user message text matching；服务端是否去重相同用户消息在本仓库不可证。
-
-### 6.3 Bash WebSocket
-
-`src/hooks/use-bash-command-runner.ts` 使用 `/sockets/bash-events`：请求先进入 waiting/pending FIFO，收到 `BashCommand` echo 后绑定 server `command_id`，再按 command id 聚合 stdout/stderr，收到非空 `exit_code` resolve。关闭/error/unmount 会 reject 所有 waiting/pending/active command，且明确没有自动重连和 command replay。长命令断线后不会自动续跑，调用方只能收到失败。
-
-### 6.4 Cloud runtime host 和认证
-
-Cloud App API 用 bearer；runtime REST/WS 用 conversation `session_api_key`，浏览器 REST 通过 `/api/cloud-proxy` server-side hop。`src/utils/websocket-url.ts` 只构造 `ws/wss` host/path；auth frame 在 `use-websocket.ts` 和 bash runner 的 `onopen` 发送。反向代理必须转发 Upgrade/Connection，`docs/SELF_HOSTING.md:226-230` 给出 nginx 配置；本仓库没有生产 ingress/nginx 的 L4 运行证明。
-
-## 7. 工具调用、终端和文件
-
-### 7.1 工具调用是服务端事件，本仓库是观察者/动作桥
-
-`src/types/agent-server/core/events/` 定义 action/observation/message 等 wire 类型；Canvas 根据 type guards 渲染结果或触发有限的 client-side action。`tools/canvas_ui_tool.py` 只是为旧持久化 metadata 保持可导入的兼容 shim（`docker/entrypoint.sh:163-165` 设置 `OH_EXTRA_PYTHON_PATH`），不是完整工具实现。
-
-### 7.2 Terminal
-
-- Agent 产生的 `ExecuteBashActionEvent`/`ExecuteBashObservationEvent` 在 conversation WS 中被投影到 terminal store（`conversation-websocket-context.tsx:619-632`）。
-- UI/automation 需要执行命令时走 `AgentServerRuntimeService.executeCommand`，Local 使用 typed `RemoteWorkspace.executeCommand`，Cloud 使用 runtime proxy `/api/bash/execute_bash_command`，timeout 默认 30 秒且 proxy timeout 为 command timeout + 10 秒（`src/api/runtime-service/agent-server-runtime-service.ts:24-67`）。
-- 独立 `useBashCommandRunner` 通过 bash-events socket 获取逐块输出；它不实现 shell、超时 kill 或 process cleanup，这些属于外部 Agent Server/runtime。
-
-### 7.3 文件和路径安全
-
-`AgentServerConversationService.readConversationFile` 对 Cloud 和 Local 都要求路径位于 workspace 内；`requirePathInsideDirectory` 规范化 `.`/`..`，越界抛错（`:200-231`、`:616-637`）。这是 Canvas 侧路径守卫，不是 sandbox 级别隔离，也不能替代服务端文件 API 的鉴权。
-
-### 7.4 Tool action 幂等
-
-`handleLaunchChildConversationAction` 用 `localStorage[openhands-child-conversation-launches:<parent>]` 记录 `toolCallId`，在网络工作前 claim，防止 replay 启动第二个、可能计费的 Cloud child（`child-conversation-launch.ts:196-227`）。但 storage corrupt/full/unavailable 时代码选择放行并接受 replay risk；记录没有 TTL/上限/跨 tab 原子 compare-and-set。因此这是 best-effort UI 幂等，不是可靠账本。`canvas_ui` 类 action 的具体幂等逻辑在 `src/services/canvas-ui.ts`，而服务端工具/LLM tool call 幂等未在本仓库可证。
-
-## 8. Workspace、worktree、sandbox 和 cloud runtime
-
-### 8.1 Local workspace
-
-`createConversation` 使用绝对 `working_dir`，`workspaceMode` 映射到 `worktree: true/false`。`WorkspacesService`（`src/api/workspaces-service/workspaces-service.api.ts`）只通过 typed `WorkspacesClient` 读写服务端保存的 workspace list；注释说明实际持久化为 `workspace/.openhands/workspaces.json`，但文件系统读写实现属于外部 Agent Server。
-
-### 8.2 Worktree 分支策略
-
-local child 默认 `new_worktree`；如果父会话没有 selected repository/explicit workspace，认为 scratch repo 没有 commit，预先降级 shared。即使有 metadata，真正 `git worktree add` 失败也降级 shared，并把“两个 agent 可能冲突”报告给用户。该策略避免 launch 全失败，但牺牲隔离；shared fallback 是明确的风险而不是隐藏的兼容层。
-
-### 8.3 Container/local sandbox
-
-README 的无 sandbox 模式明确 Agent Server 直接运行在安装主机并拥有完整 filesystem/network；Docker 模式只把 `$PROJECTS_PATH` 挂载到 `/projects`，并把 `~/.openhands` 持久化。Canvas 没有 sandbox policy、seccomp、容器生命周期或 workspace mount 实现。Docker image 的 entrypoint 仅启动外部 server/backend，不能证明工具进程被隔离。
-
-### 8.4 Cloud sandbox
-
-Cloud 的 `conversation_url`、`sandbox_status`、`session_api_key` 是客户端路由信息。暂停时阻止连接旧 host；resume 后等待查询刷新。sandbox provisioning、pause/resume/terminate、闲置回收、磁盘/CPU/网络 quota、宿主崩溃后的任务恢复，全部 L4 未在本仓库可证。
-
-## 9. LLM/provider、ACP 和 model switch
-
-- `SettingsService`/Profiles API 传递 LLM profile 和 encrypted secret 引用；Canvas 不 materialize provider secret。
-- Local `switchProfile` 获取加密 profile，调用 `ConversationClient.switchLLM`，生成新的 `usage_id` 并保持 `stream:true`（`agent-server-conversation-service.api.ts:815-881`）。Cloud 只把 profile name 发送到 App API，由服务端解析 profile。
-- ACP 只在 Canvas 保存 `agent_kind=acp`、server/command/args/model 并渲染 ACP events；真实 subprocess、stdio JSON-RPC、`session/set_model` 和 provider CLI 在外部 Agent Server/ACP runtime。
-- `tests/e2e/mock-llm/scripts/mock-llm-server.py` 使用外部 `openhands-sdk` `TestLLM`；`mock-acp-server.py` 使用外部 `acp` library。这些是测试 provider，不是本仓库 provider 实现。
-
-L2/L3 能证明 profile 配置、mock trajectory 和一条真实工具调用路径；不能证明 provider 重试、流式 token 顺序、预算计费、rate limit、上下文压缩或 provider 崩溃恢复。
-
-## 10. 取消、暂停、超时、崩溃恢复
-
-### 已在本仓库实现
-
-- 对话暂停 mutation 调 `pauseConversation`，成功后同步 patch `execution_status` 和 `sandbox_status` 为 `PAUSED`，立即避免旧 runtime WS 连接（`use-unified-stop-conversation.ts:52-70`）。
-- Cloud child poll 上限 180 秒；create conversation client timeout 5 分钟；bash command proxy timeout 为 command timeout + 10 秒。
-- WebSocket cleanup 清理 retry timer 并禁止旧实例重连；bash socket close/error/unmount reject 所有 pending promises。
-- dev launcher 使用 detached process group；`scripts/dev-process-utils.mjs::signalProcessTree` 在 POSIX 对负 pid 发信号，Windows 用 `taskkill /t /f`。`createShutdownHookRegistry` 汇总退出钩子。
-- Docker entrypoint `cleanup` kill 子 PID、wait 后退出；Playwright mock config 用 `gracefulShutdown: SIGTERM`，避免直接 SIGKILL 留下 detached 子进程。
-
-### 未在本仓库证明
-
-- pause/stop 是否取消 Agent loop、杀掉 bash/browser 子进程、释放容器和 runtime。
-- command timeout 是否真的 kill 子进程，超时后的 stdout/事件是否最终一致。
-- Agent Server/Cloud 崩溃后 conversation 是否可恢复、事件是否 exactly-once/at-least-once。
-- 进程重启后的 active tool、LLM stream、租约、volume、network 和临时文件回收。
-- server-side cancellation 与 client-side WebSocket close 的竞态处理。
-
-## 11. 资源清理与幂等审计
-
-| 对象 | Canvas 侧事实 | 结论 |
+| 场景 | Canvas 已实现 | 未证明/风险 |
 |---|---|---|
-| Conversation UI socket | unmount/URL change 关闭 socket，清 timer | L1 已实现；服务端连接回收 L4 |
-| Bash promises | close/error/unmount 全部 reject 并清 map/queue | L1 已实现；远端命令 kill L4 |
-| Agent child launch | toolCallId localStorage claim，失败时接受 replay risk | L1 best-effort，不是可靠幂等 |
-| Conversation delete | 删除远端会话后移除本地 metadata | L1；runtime/container/files 清理 L4 |
-| Test conversations | Live afterEach/afterAll 删除并失败即报错；mock suite 部分 best-effort | L2/L3；强杀后残留需外部审计 |
-| Dev services | POSIX process group / Windows taskkill；Docker entrypoint 直接 kill PID | L1；异常崩溃/孤儿进程的 L4 证据不足 |
-| Automation workspace/DB | config/entrypoint 创建目录，E2E 每次清理 `.tmp` 和 automation DB | L1/L2；生产 retention/GC L4 |
-| Event store | id 去重、排序、conversation switch 原子清空 | L1；不持久化，不是 server ledger |
+| 正常创建 | Local typed create；Cloud task polling；workspace 元数据写本地 store | 服务端 loop、事件提交顺序 L4 |
+| 正常消息 | WS 发送或 REST fallback，统一 `run:true` | queued 不等于执行成功 |
+| 断线重连 | 3 秒重连、实例资格和 timer 清理、事件 id 去重 | 时间戳不是严格游标；服务端 replay/丢帧 L4 |
+| 发送失败 | 无 id/REST/WS 异常均抛出并写错误 store | 请求可能已在远端成功但客户端超时 |
+| Cloud provisioning 超时 | child poll 有界；创建 5 分钟；bash proxy 为 command timeout+10 秒 | 远端 task 是否继续、孤儿 sandbox 回收 L4 |
+| 用户暂停/离开 | mutation 更新 UI 为 PAUSED，阻止旧 host socket；卸载关 socket | 未证明 Agent loop、工具进程、容器真正停止 |
+| client tool 重放 | toolCallId localStorage claim；重复跳过 | storage 损坏/跨 tab 竞态时可重复启动；无 TTL |
+| 崩溃/重启 | dev launcher 进程组信号、Docker entrypoint cleanup | 事件账本、active tool、volume、租约、provider 恢复 L4 |
+| 删除会话 | 远端 delete 后移除本地 metadata | runtime/container/files 清理由外部服务负责 |
 
-## 12. 测试证据与缺口
+关键资源边界：`useEventStore` 仅内存投影；bash-events socket 断开会 reject waiting/pending/active Promise，但不发送远端 kill；Cloud runtime 使用 session API key，经 cloud proxy；路径读取通过 `requirePathInsideDirectory` 守住 workspace 内边界（`agent-server-conversation-service.api.ts:628-648`）。
 
-### 12.1 有效覆盖
+## 5. 并发、权限与多入口一致性
 
-- `__tests__/hooks/use-websocket.test.ts`：连接、auth 首帧、query params、错误和 raw message 不无界增长；同时显式记录 MSW broadcast 跨测试污染导致的 skipped tests。
-- `__tests__/build-websocket-url.test.ts`：HTTP/HTTPS、外部 runtime host、端口、fallback 和特殊 conversation id。
-- `src/api/event-service/event-service.api.test.ts`、`src/api/agent-server-adapter.test.ts`：history/runtime 适配和 wire normalize。
-- `tests/e2e/mock-llm/conversations/mock-llm-conversation.spec.ts`：完整 Canvas → Agent Server → mock LLM trajectory，验证 terminal observation、事件 API、worktree payload 和离开后 resume。
-- `tests/e2e/live/real-agent-server-conversation.spec.ts`：真实 LLM、真实 Agent Server、终端工具、events API 和 UI；测试后删除 conversation/profile。
-- `playwright.mock-llm.config.ts:128-166`：隔离 state/automation DB、随机 session key、full stack readiness probe、SIGTERM graceful shutdown。
+- 主会话、规划会话、bash-events 是三条不同 transport；不能用某一通道成功推断另一通道的取消或执行状态。
+- REST history 与 WS overlap 依赖事件 id；无 id 事件、同时间戳事件和跨会话 id 冲突无严格保证。
+- Cloud bearer 只到 App API，runtime host 使用 conversation session key；本仓库不 materialize provider secret。
+- Local 无 sandbox 模式可让外部 Agent Server 直接访问主机 filesystem/network；Docker 仅挂载 `$PROJECTS_PATH` 并持久化 `~/.openhands`，Canvas 不实现隔离策略、quota 或 seccomp。
+- `createConversation` 的 Cloud/Local、`sendMessage` 的 WS/REST、child 的 local/cloud 都共享公开 service 入口，但后端状态语义不对称（Cloud fork 不支持，local child 可能 shared fallback）。
 
-### 12.2 明确缺口（L4）
+## 6. 测试证据
 
-`docs/TESTING_MATRIX.md:88-97` 明确 CI 尚未覆盖真实 ACP credentials、macOS、public auth、subscription login、Windows；表格中的许多 OS/Agent smoke cell 仍为未勾选。当前也没有本仓库可复核的：
+- L2：`__tests__/hooks/use-websocket.test.ts`（auth 首帧、连接、错误、query 参数）；`__tests__/contexts/conversation-websocket-context.test.tsx`；`__tests__/api/agent-server-conversation-service.test.ts`；`__tests__/api/cloud/conversation-create.test.ts`。
+- L3：`tests/e2e/mock-llm/conversations/mock-llm-conversation.spec.ts` 覆盖 Canvas→外部 Agent Server→mock LLM trajectory、terminal observation、事件 API、worktree 和 resume；`tests/e2e/live/real-agent-server-conversation.spec.ts` 覆盖真实 Agent Server/LLM 工具路径。
+- 已知缺口：CodeGraph 标记 `CreateConversationOptions` 无直接覆盖测试；WebSocket 广播/close 部分测试因 MSW 跨测试污染跳过；无服务端 loop 取消、tool 已执行但 observation 丢失、WS/REST 乱序、sandbox 崩溃回收、provider retry/rate-limit 的本仓库证据。
 
-- Agent loop 单步/多步/goal cancellation/condensation 的服务端测试。
-- 断线发生在 tool 已执行但 observation 未到达时的恢复测试。
-- WS replay、REST/WS 并发写入、时间戳相同/乱序/无 id 事件的一致性测试。
-- localStorage 写满、跨 tab 同一 toolCall claim、重复 child launch 的竞态测试。
-- Docker/VM/cloud runtime 崩溃、sandbox 回收、workspace mount 泄漏和进程树残留测试。
-- provider rate-limit、stream reset、成本/预算边界和 LLM retry 语义测试。
+## 7. 外部未读范围与平台映射
 
-## 13. 审计结论
+当前记录未读取 `node_modules`、凭据、构建产物，也未启动服务或安装依赖。未读且必须在外部仓库核验的范围：`software-agent-sdk`/Agent Server 的 Agent loop、event append/search/resend、工具 subprocess timeout/kill、workspace/git worktree、Docker/VM/Cloud sandbox provision/lease/GC、LLM/ACP provider retry 与预算。
 
-1. **Canvas 的前端事件处理是“至少一次接收 + id 去重 + 副作用去重”的投影层，不是事件账本。** REST history + `since` WS 是合理的接缝，但 planning 的 count-based `resend_all` 和无 timestamp/id 的事件仍有一致性边界。
-2. **会话分支语义是非对称的。** Local 支持 event fork 和 worktree/shared fallback；Cloud child 可启动独立 sandbox，但不保持 local parent link；Cloud conversation fork 明确未支持。
-3. **工具动作只有部分幂等。** replayed event 在 handler 层被挡住，child launch 还有 localStorage ledger；ledger 不可用时主动放行，服务端工具幂等未证明。
-4. **runtime 与 sandbox 的关键安全边界在外部。** 无 sandbox 运行模式拥有主机 filesystem/network；Docker 只提供挂载和进程包装；本仓库没有能力证明隔离、quota、回收或崩溃恢复。
-5. **取消/超时主要是客户端 transport 和 UI 状态语义。** socket 会关、promise 会 reject、poll 会停止，但 Agent loop、子进程、容器和 provider 请求是否停止必须审计外部 SDK/server。
-6. **测试最强证据是 L2/L3 的前端到真实/模拟 Agent Server 路径，不是 L4 生产运行证据。** 既有 `细探-OpenHands.md` 的 manifest/automation 结论仍有效，但不能替代本报告对 runtime、event、server、sandbox、workspace、tools 和 provider 的边界审计。
+映射到系统工程平台时，Canvas 适合作为“项目适配层/前端核心”的 transport 与 UI 投影样板；统一能力调用、权限租约、任务状态机、事件账本、资源协调和 provider 适配必须落到平台运行核心/支持库，不能把 OpenHands 前端 store 或 WebSocket 重连当作权威账本。建议保留的能力候选：会话创建/恢复、事件流订阅、路径约束、受控命令执行、子会话编排；每项都需补服务端 execution id、取消确认、游标补偿和资源终态证据。
 
-## 14. 后续应在外部仓库核验的最小清单
-
-如果要完成真正的后端架构审计，应在 `OpenHands/software-agent-sdk` 单独建立证据链，至少读取并测试：
-
-- Agent loop/goal runner、condenser、pause/resume/cancel 和 tool-call dispatch。
-- Event store append、parent_id、timestamp/id 分配、REST search、WS resend cursor 和 crash replay。
-- `openhands-tools` 的 bash/file/browser/MCP 实现及其 subprocess timeout/kill。
-- `openhands-workspace` 的 local/container/remote provider、git worktree、mount 和 cleanup。
-- Agent Server REST/WebSocket handlers、conversation persistence、server restart 和 idempotency。
-- LLM/provider adapter、stream retry、budget/usage accounting、ACP subprocess lifecycle。
-- Docker/Cloud runtime provision、heartbeat、pause/terminate、orphan cleanup、resource quota。
-
-这些事项在当前仓库只能记录为 L4 未证，不能用 Canvas 的 wire type、mock LLM 或 UI E2E 结果越级推断。
-
-## 15. 本次分段审计补充：真实交互线
-
-下面按浏览器中一次对话的实际顺序重排调用链。它比按目录阅读更接近故障定位路径，也明确指出每个交界处的权威状态在哪里。
+## 8. 验证记录
 
 ```text
-conversation query
-  ├─ Local: AgentServerConversationService / typed ConversationClient
-  └─ Cloud: App API start task → polling → conversation_url + session_api_key
-                         │
-                         ▼
-useConversationHistory
-  └─ REST event search → useEventStore.addEvents
-                         │
-                         ▼
-history query settles
-  └─ main WS: resend_mode=since + after_timestamp
-       └─ no usable timestamp/error: resend_mode=all
-                         │
-                         ▼
-useWebSocket.onopen
-  └─ session auth frame → JSON event → type guard
-       ├─ useEventStore.addEvent(raw + UI projection)
-       ├─ event id duplicate? stop non-idempotent UI side effects
-       ├─ state/metrics/error/cache stores
-       ├─ terminal/browser projection
-       └─ canvas_ui / launch_child client-side action bridge
-                         │
-                         ▼
-sendMessage
-  ├─ open WS: { ...message, run: true }
-  └─ not open: ConversationClient.sendEvent(..., { run: true })
+git rev-parse HEAD                    -> b1f0accae1657e46a200214e3559af856ba7ae44
+codegraph explore（主调用链查询）    -> 退出码 0，返回 29 个符号
+文档结构断言                         -> 退出码 0
+git diff --check                      -> 退出码 0
+git status --short -- ARCHITECTURE.md -> ?? ARCHITECTURE.md（唯一文档未跟踪）
 ```
 
-这条线有四个不能混淆的事实：
+未运行 E2E/真实 provider；当前记录验证是静态取证和文档校验，不宣称生产运行成功。
 
-1. REST history 是主会话的初始快照，WebSocket 是尾部实时传输；前端不是通过 WebSocket 独立建立完整的持久化账本。
-2. `resend_mode=since` 使用时间戳而非事件游标。相同时间戳、缺失时间戳、服务端排序差异和 timestamp 边界语义都依赖服务端实现与客户端 id 去重兜底。
-3. WebSocket fallback 的 `sendEvent` 表示请求已交给服务端排队/执行入口，不表示 Agent 已开始或成功完成；optimistic message 仍依靠后续用户事件回显清理。
-4. Cloud 的事件历史和 runtime live endpoint 不是同一上游：历史在 App API，count/confirmation/runtime WS 在 sandbox host，并分别使用 bearer 与 session API key。
+## 9. 当前源码深挖：目录与模块职责
 
-### 15.1 规划子会话是另一条线
+当前 checkout 约 1,893 个文件、20,015 个 CodeGraph 节点、54,415 条边；CodeGraph `sync` 显示索引已是最新。目录命名与职责如下：
 
-规划连接固定使用 `resend_all=true`，连接打开后再调用 runtime `/events/count`，通过收到的帧数达到 expected count 判断历史加载完成。事件仍进入与主会话相同的全局 store，并加 `isFromPlanningAgent` 标记；终端、错误、状态和 file observation 也复用主 handler 的一部分副作用。
+```text
+src/api/                         REST/typed API、Agent Server/Cloud service adapter
+src/contexts/                    Conversation React provider、事件副作用与连接状态
+src/hooks/                       WebSocket、query、mutation、auth hooks
+src/services/                    child conversation、launch、report、workspace bridge
+src/stores/                      event/conversation/local metadata 投影
+src/types/agent-server/          Agent Server event union、guards、wire payload
+src/components/conversation-events/ 事件渲染、tool/observation/terminal 展示
+src/routes/                      Canvas、conversation、settings 页面入口
+__tests__/                       hooks/context/service/api/component contract tests
+tests/e2e/                       mock-LLM、live Agent Server、Cloud/Local workflow tests
+app/                             前端构建与部署入口（若由当前 package 配置启用）
+```
 
-这不是主会话 `REST → since` 协议的简单变体，而是 count-based stream barrier。count 请求失败时直接结束 loading；重复帧、丢帧、count 变化或同 id 跨主/规划会话冲突，当前前端没有独立的完整性校验。规划事件使用全局 `eventIds`，因此事件 id 若不在服务端全局唯一，可能误判为重复。
+本仓库是 OpenHands Canvas/控制前端，不是 Agent Server 核心。Agent loop、工具 subprocess、模型 provider、sandbox lease 和事件 durable append 位于外部 Agent Server/SDK；本档案只把本仓库可证明的请求、事件与资源边界记录为 L1/L2，并将外部运行时明确标为 L4 未验证。
 
-### 15.2 两种命令通道不能互换
+## 10. 五条以上真实函数体调用链
 
-`AgentServerRuntimeService.executeCommand` 是一次性 REST/typed-client 请求，默认 timeout 为 30 秒，Cloud proxy 的 HTTP timeout 为命令 timeout 加 10 秒；它返回聚合的 `exit_code/stdout/stderr`。
+### 10.1 会话创建（Local/Cloud 分叉）
 
-`useBashCommandRunner` 是独立的 `/sockets/bash-events` 流式协议：请求先进入 waiting/pending FIFO，收到 `BashCommand` 回显后取得服务端 `command_id`，再按 id 聚合输出直到非空 `exit_code`。该 hook 没有自动重连、重放、客户端计时器或远端 kill；连接断开会拒绝所有 waiting/pending/active Promise。因此同一个“终端命令”在 UI 中可能走两条语义不同的 transport，不能用一个通道的成功/取消结论推断另一个通道。
+```text
+Conversation UI action
+  → AgentServerConversationService.createConversation
+  → normalize settings / workspace / profile
+  → Local: ConversationClient.createConversation
+  → Cloud: AppConversationStartRequest → task polling
+  → conversation id + READY/provisioning metadata
+  → ConversationWebSocketProvider load history/connect
+```
 
-## 16. 事件账本、重连和恢复矩阵
+证据：`src/api/conversation-service/agent-server-conversation-service.api.ts:402-523`。Local 先读取 settings/profiles、解析绝对 workspace、构造加密 settings，创建失败或无 backend 时返回 typed error；Cloud 创建异步 task，后端是否完成 sandbox/secret/provider 初始化不在本仓库。
 
-| 阶段 | 当前实现 | 账本/恢复含义 | 主要风险 |
+### 10.2 WebSocket 建连、认证、重连与消息发送
+
+```text
+useWebSocket(url, options)
+  → connectWebSocket:34-118
+  → new WebSocket + WeakSet reconnect permission
+  → onopen → sendWebSocketAuth:4-18
+  → onmessage callback → ConversationWebSocketProvider event reducer
+  → onclose → 3s timer / maxAttempts / instance permission
+  → sendMessage:157-164 或 reconnect:180-204
+```
+
+卸载/`disconnect` 先清除 `shouldReconnect`、timer 和该 socket 的 WeakSet 资格，再 close；因此本地不会因正常卸载触发重连。该实现没有远端取消语义，close 只改变前端连接状态。
+
+### 10.3 事件历史、重放与副作用投影
+
+```text
+ConversationWebSocketProvider mount
+  → REST history
+  → derive resend cursor (since/after_timestamp 或 all)
+  → WebSocket conversation events
+  → useEventStore id 去重
+  → event type guard
+  → transcript/terminal/browser/client-tool/toast 投影
+  → React render
+```
+
+重复事件按 event id 跳过非幂等副作用；无 id 或跨会话重复无法由该 store 严格证明。规划连接使用 `/events/count` barrier 和 `resend_all`，与主会话的时间戳接缝不同，不能统一宣称全局 cursor。
+
+### 10.4 Agent message fallback
+
+```text
+ConversationWebSocketProvider.sendMessage:1048-1097
+  → socket OPEN? socket.send({message, run:true})
+  → 非 OPEN: typed AgentServerConversationService.sendEvent
+  → request error normalization
+  → visible error store + throw
+```
+
+返回的 `queued` 只表示请求进入本地 transport，不代表 Agent Server 已接受、模型已执行或最终消息已落库。客户端超时后远端可能已经成功，重复点击存在 duplicate user message 风险，除非服务端使用稳定 idempotency key。
+
+### 10.5 Child conversation launch
+
+```text
+client tool event
+  → handleLaunchChildConversationAction:505-536
+  → claimToolCall(parent, toolCallId)
+  → validateLaunchParams
+  → launchLocalChild 或 launchCloudChild
+  → local workspaceMode(shared/new_worktree) 或 cloud task poll
+  → reportLaunchResult:459-497
+  → active goal? skip : AgentServerConversationService.sendMessage
+```
+
+Local child 先解析父 workspace；worktree 创建失败时降级 shared 并返回 `isolation_note`。Cloud child 在 `CLOUD_START_POLL_INTERVAL_MS=3000`、总超时 180 秒窗口内轮询 conversation id；超时可能仍返回 provisioning task。claim 只防同一 `toolCallId` 重放，不能替代服务端 child execution lease。
+
+### 10.6 Agent settings 与工具可见性
+
+```text
+agent-server settings payload
+  → toRecord/normalizeSecretString
+  → shouldIncludeTool:631-644
+  → DEFAULT_TOOL_NAMES + browser/task gating
+  → configured tools schema clone
+  → build conversation request encrypted settings
+```
+
+`enable_sub_agents` 和 browser capability 决定特殊 tool set；配置 tools 必须是 `{name, params}` 记录。订阅模型在 `assertSubscriptionAuthReady:1242-1252` 检查连接状态，不在前端保存 provider secret。
+
+## 11. 数据、事件与持久化边界
+
+### 11.1 前端状态
+
+| 状态 | owner | 生命周期 | 失败语义 |
 |---|---|---|---|
-| REST 初始历史 | `useConversationHistory` → `addEvents` | 内存快照，按 id 去重并按 timestamp 排序 | 页面刷新依赖服务端历史；Cloud 分页过滤失败时只保留初始页 |
-| 主 WS 首连 | `since + after_timestamp` 或 `all` | 通过 overlap + id 去重接缝 | 时间戳不是严格游标；无 id 事件不可去重 |
-| 主 WS 断线 | 3 秒后重连，默认无限次数 | 重连后的 backlog 作为 replay | 旧 anchor、服务端 resend 语义和事件 id 唯一性未由本仓库保证 |
-| 主 WS replay | `addEvent` 先登记，重复则跳过副作用 | UI 侧至少一次接收、best-effort 副作用去重 | 不保护服务端工具再次执行，也不恢复丢失的事件 |
-| 规划 WS 历史/重连 | `resend_all` + count | 帧数达到 count 即结束历史态 | count/stream 不具备游标一致性；全局 id 可能跨会话碰撞 |
-| Bash WS 断线 | reject 全部队列和活动命令 | 不重放、不续接 | 命令可能已在远端执行但结果未返回，客户端只看到失败 |
-| Cloud pause/resume | pause 后本地 cache 标记 PAUSED，阻止旧 URL 建 WS；resume 后依赖查询刷新 | 只恢复路由和 UI 连接条件 | sandbox 是否继续、重启还是重建以及事件补偿均未证 |
-| 进程/容器崩溃 | launcher 有退出钩子和进程组清理 | 仅本地启动器资源回收路径 | Agent loop、子进程、volume、租约、工具和 provider 的崩溃恢复未证 |
+| conversation metadata | local store/query cache | 页面/会话级 | REST 失败显示错误，不证明远端删除 |
+| event store | 内存 React/store | socket/session 级 | 重载需 history+resend；内存丢失 |
+| tool claim | localStorage key 前缀 | 浏览器持久 | 无 TTL，跨 tab 竞态和清理失败可能重复/永久阻塞 |
+| websocket instance | hook ref + WeakSet | 连接级 | close/error 触发状态转移；不持久化 cursor |
+| child launch result | toast + agent message | 一次动作 | report 失败仅 warn，可能没有回传父 Agent |
 
-因此“重连成功”在本仓库只表示新的浏览器 WebSocket 建立并收到帧；它不等同于 Agent loop 恢复、正在执行的工具继续、事件 exactly-once 或 sandbox 健康恢复。
+### 11.2 外部事实源
 
-## 17. 取消、超时和崩溃恢复的审计结论
+Agent Server conversation、event append、run status、tool execution、workspace filesystem、Cloud task、sandbox/VM、LLM usage 和 provider retry 均是外部 owner。本仓库只持有 request/response projection 和短期 UI state，不能从 Canvas store 推断完整事实账本。
 
-前端可观察到的取消语义是：pause mutation 成功后把 `execution_status` 和 `sandbox_status` 一起 patch 为 `PAUSED`，导航离开当前对话，并阻止向旧 sandbox host 建立连接。创建会话、Cloud child provisioning 和 HTTP command 分别有 5 分钟、180 秒和 `timeout + 10 秒` 的客户端/代理上限。WebSocket unmount/disconnect 会清理 timer、撤销旧实例的重连资格并关闭连接。
+### 11.3 认证与权限
 
-这些动作都不是服务端取消确认。当前代码没有把 `AbortSignal`、tool execution id、process id 或 server cancellation acknowledgement 贯穿到 Agent loop；bash socket 的 Promise reject 也没有发送远端 cancel。故以下状态在浏览器看来可能相同，但后果不同：
+- WebSocket 首帧可发送 `session_api_key`；无 key 时不发送 auth frame。
+- Cloud App API bearer 与 runtime host session key 是不同信任边界，Canvas 不应把 runtime key 暴露给不受信组件。
+- child launch 参数在前端校验 target/task/isolation，但最终权限、parent link、workspace access 必须由 Agent Server 再校验。
+- Local workspace 路径通过 `requirePathInsideDirectory` 约束在父 workspace；shared fallback 明确提示 siblings 可能冲突。
+- tool visibility 受 `enable_sub_agents`、browser flag、server availability 和 configured tools 共同影响，前端可见不等于服务端执行授权。
 
-- 用户主动 pause 后 Agent loop 已停止；
-- pause 请求成功但工具仍在远端运行；
-- runtime 已崩溃，事件尚未写入历史；
-- WebSocket 断开但远端命令已完成，结果只等待重连/历史补偿；
-- 客户端 timeout 返回失败，但服务端请求后来成功。
+## 12. 失败、取消、崩溃与资源矩阵
 
-若产品需要“取消即停止”和“崩溃后可恢复”，外部 Agent Server/runtime 必须提供可核验的 execution id、取消确认、事件游标/补偿、工具终态和 sandbox lease；仅修改 Canvas 的 loading、toast 或 socket 状态不足以满足该语义。
+| 场景 | 当前源码行为 | 资源边界 | 证据/缺口 |
+|---|---|---|---|
+| 建连正常 | onopen 发 auth、清错误、重置 attempt | WebSocket ref | L1；未运行真实 server |
+| 非正常 close | 设置 error，符合条件 3 秒后重连 | timer、旧 socket WeakSet | L1/L2；无远端 resume 证明 |
+| 手动 disconnect | revoke reconnect permission 后 close | timer/socket | L1；不发送远端 stop |
+| 消息发送异常 | WS/REST typed error 归一并抛出 | request promise | L1；远端可能已成功 |
+| 事件 JSON 错误 | warning，继续 connection | frame discarded | L1；可能丢事件 |
+| 重复事件 | event id 去重，跳过副作用 | memory event store | L1/L2；无 id 事件风险 |
+| Cloud start polling error | status error 转 LaunchFailure | poll timer/task | L1；远端 task GC 未知 |
+| Cloud start timeout | 返回 provisioning/task 信息或错误 | poll timer | L1；sandbox 是否继续未知 |
+| Local worktree fail | retry shared，返回 isolation_note | git process/worktree | L1；shared collision 风险 |
+| Child claim duplicate | claimToolCall 返回既有结果 | localStorage | L1/L2；无 TTL/跨 tab 原子性 |
+| Goal inactive | 不发送 launch result message | toast only | L1；父 Agent 可能不知道 child |
+| Browser/client tool disconnect | 前端 promise reject/状态清理 | socket/listener | L1；外部 tool 是否 kill 未知 |
+| Agent Server cancel | 本仓库只有 stop/message API 适配 | remote run | L0/L1；服务端取消未读 |
+| Canvas 崩溃 | 浏览器内存 projection 丢失 | local cache/history reload | L1；服务端事件/任务依赖外部 durable owner |
+| Agent Server 崩溃 | Canvas reconnect/history/resend | remote run/sandbox | L0；接管、lease、orphan 未验证 |
+| Cloud proxy 崩溃 | HTTP/SSE 错误、可能重连 | bearer/session key | L1；unknown-after-send 未证明 |
 
-## 18. 文档质量审计
+取消与重连必须分开：`useWebSocket.disconnect` 只阻止新的连接；它不取消模型、工具、sandbox 或 Cloud task。真正取消需要 Agent Server 的 run/stop contract 和执行 owner ack，本仓库没有可证明的终态确认。
 
-### 已满足
+## 13. 测试映射与验证等级
 
-- 根文档、`docs/architecture.md`、README 的系统边界一致：Canvas 是 React/TypeScript 控制面，Agent loop、工具、workspace、sandbox 和 provider 属于外部服务。
-- 端口、版本、包名和状态路径可回溯到 `config/defaults.json`；本地无 sandbox 与 Docker 挂载风险在 README 中有显式警告。
-- 本文将“实现事实”“测试验证”和“外部未证”分级，避免把 wire types、mock LLM 或 UI E2E 写成后端保证。
+| 领域 | 代表测试 | 静态覆盖 | 当前记录执行 |
+|---|---|---|---|
+| WebSocket hook | `__tests__/hooks/use-websocket.test.ts` | auth 首帧、close/error、query、reconnect | 未执行 |
+| Conversation context | `__tests__/contexts/conversation-websocket-context.test.tsx` | history、event、send fallback、dedupe | 未执行 |
+| Child launch | `__tests__/services/child-conversation-launch.test.ts` | validation、claim、local/cloud、report | 未执行 |
+| Service API | `__tests__/api/agent-server-conversation-service.test.ts`、`__tests__/api/cloud/conversation-create.test.ts` | request shape、workspace、poll | 未执行 |
+| Event rendering | `__tests__/components/conversation-events/**` | event guards、tool/observation/ACP render | 未执行 |
+| Mock E2E | `tests/e2e/mock-llm/conversations/mock-llm-conversation.spec.ts` | Canvas→Agent Server→mock LLM | 未执行 |
+| Live E2E | `tests/e2e/live/real-agent-server-conversation.spec.ts` | 真实 Agent Server/provider（需环境） | 未执行 |
 
-### 仍需维护
+证据等级：L0=配置/文档；L1=当前函数体和行号；L2=测试源码存在；L3=当前记录隔离测试退出码 0；L4=真实 Agent Server/Cloud/provider/sandbox/崩溃现场。当前记录新增最高 L2。
 
-- `docs/TESTING_MATRIX.md` 的多项安装/OS/Agent feature cell 仍为空，不能被当前 mock-LLM E2E 覆盖替代。
-- `docs/architecture.md` 是高层介绍，未描述主会话 `REST → since WS`、规划 count barrier、bash 独立 socket 和 Cloud 双上游；本文的交互线应作为详细事实源，代码改动时同步更新。
-- 本仓库没有被纳入的外部 SDK/server 源码，因此 `runtime/agent/event/server/workspace/sandbox/provider` 的后端文档只能列为核验清单，不能伪装成已审计实现。
-- 部分源码仍有 `TODO: Tests`（例如状态更新分支），且 WebSocket 测试存在 MSW broadcast 跨测试污染导致的 skip；这些应在测试矩阵中保持可见，而不是标记为完整覆盖。
+## 14. 未读范围与平台映射
 
-## 19. 本次审计最终结论
+### 未读/未验证
 
-OpenHands 当前仓库的真实产品是“多后端 Agent Canvas + 本地栈启动器”。它把会话、事件、终端和云 sandbox 的 transport 接到外部 Agent Server，但不拥有后端 Agent 执行语义。最可靠的内部保证是：历史与实时事件的前端拼接、事件 id 的局部去重、重连 replay 时的 UI 副作用抑制、Cloud pause 时避免旧 host 连接、以及开发进程的有限清理。最重要的未决保证是：服务端事件账本的提交顺序和游标、工具执行幂等、取消是否真正终止、timeout 后的远端状态、sandbox 生命周期/隔离/回收、provider retry/budget，以及进程崩溃后的恢复。
+1. 未读取外部 Agent Server 的真正 Agent loop、事件 append/search、run state machine、tool subprocess、sandbox lease/GC、provider retry/usage 和 ACP runtime。
+2. 未读取完整 Cloud backend/task worker、workspace/git worktree 服务端、VM/container 生命周期和 secrets broker。
+3. 未逐一核对全部 Canvas route、event union、client tool handler、browser/terminal UI 与所有 API payload schema。
+4. 未安装依赖、启动 dev server、连接 WebSocket、执行 mock/live E2E、注入网络断开或进程崩溃。
+5. 未验证事件 id 全局唯一、REST history 与 WS resend 的严格顺序、跨 tab localStorage claim 原子性、远端 stop 的终态确认。
 
-任何声称“Agent 已取消”“工具未重复执行”“sandbox 已回收”或“事件已完整恢复”的结论，都必须在外部 Agent Server、software-agent-sdk、tools/workspace provider、Cloud runtime 和 provider 测试中补齐证据；本仓库的 UI 状态和 WebSocket 重连不能单独证明这些结论。
+### 平台映射
 
-## 20. 施工材料吸收记录
+| OpenHands 能力 | 系统工程平台候选 | 裁决 |
+|---|---|---|
+| Conversation service | 统一网关/项目适配层 | 保留 DTO、Local/Cloud adapter；execution owner 必须下沉平台运行核心。 |
+| WebSocket hook + event store | 统一网关事件订阅模块 | 吸收重连资格、cursor/resend、去重；不能把内存 store 当事实账本。 |
+| Child launch service | 模块库·任务编排 | 吸收 parent scope、worktree/shared 隔离、poll 超时；补 durable lease/terminal ack。 |
+| Tool visibility/settings | 公共契约 + 权限模块 | 服务端二次授权、能力 registry、secret boundary 必须唯一。 |
+| Workspace path guard | 支持库·文件系统安全 | 保留 root boundary、symlink/path 校验；补文件句柄/制品生命周期。 |
+| Cloud/local adapter | 项目适配层 | 只绑定环境和 provider，不复制 Agent loop 或 sandbox 实现。 |
+| Agent event types | 公共契约·事件 schema | 保留 discriminated union/type guards；补 event id/seq/attempt/idempotency。 |
 
-已人工回读并吸收 `细探-OpenHands.md` 的增量事实：Canvas 前端事件投影与外部 Agent Server 的边界、主会话 `REST history → since WebSocket` 接缝、规划会话 `resend_all + count` barrier、bash 独立流式通道、事件 id 去重、Cloud 双上游、pause/resume 与远端取消不等价，以及 sandbox/provider/工具资源的未闭合恢复边界。旧材料不再作为并行事实源。
+本项目最有价值的参考是“前端 transport 与外部 Agent runtime 的边界显式化”；最危险的误用是把 WebSocket reconnect、toast、localStorage claim 或 queued 返回值误当作执行成功、取消成功或崩溃恢复证据。
+
+## 15. 交互契约详表
+
+### 15.1 ConversationWebSocketProvider 责任
+
+`ConversationWebSocketProvider` 是浏览器侧协调器，不是执行器。其责任限定为：
+
+- 读取 conversation history 并建立初始事件锚点；
+- 为主会话、规划会话、bash-events 选择不同 socket/transport；
+- 将事件 union 映射到 `useEventStore`、消息列表、terminal、browser、client-tool 和 toast；
+- 对带 event id 的事件做幂等去重；
+- 在 socket 非 OPEN 时使用 typed REST/event fallback；
+- 将 reconnect/cleanup 状态暴露给 UI；
+- 将 child launch 结果通过 toast 或新 user message 投影回 Agent Server。
+
+它不负责：模型重试、工具超时、sandbox kill、provider quota、Cloud task lease、消息 durable append、取消确认或运行终态判断。
+
+### 15.2 WebSocket 状态机
+
+```text
+UNMOUNTED
+  └─ effect(url) → CONNECTING
+CONNECTING
+  ├─ open → OPEN (auth first frame, attempts=0)
+  ├─ error/close → DISCONNECTED + error
+  └─ cleanup/disconnect → CLOSED (reconnect forbidden)
+OPEN
+  ├─ message → callback/event projection
+  ├─ error → DISCONNECTED
+  ├─ close normal(1000) → DISCONNECTED(no error)
+  └─ close abnormal → RECONNECT_WAIT if enabled/allowed
+RECONNECT_WAIT
+  ├─ timer 3s → CONNECTING
+  ├─ max attempts → DISCONNECTED
+  └─ unmount/manual disconnect → CLOSED
+```
+
+`allowedToReconnectRef` 按 socket 实例，而非仅 URL，避免旧 socket 的迟到 close 事件重启新 socket。该机制是前端连接安全阀，不是服务端事件 cursor。
+
+### 15.3 Child launch 状态机
+
+```text
+RECEIVED tool_call
+  → CLAIMED(toolCallId)
+  → VALIDATED(target/task/title/repository/branch/isolation)
+  → LOCAL_CREATING(workspaceMode) | CLOUD_STARTING(task)
+  → LOCAL_READY(conversation_id) | CLOUD_POLLING
+  → LAUNCHED(parent_link/isolation metadata)
+  → REPORTED(toast + optional Agent message)
+```
+
+非法参数在 `validateLaunchParams` 产生 corrective guidance；claim 重放返回之前结果；local worktree 失败只允许一次 shared fallback；cloud polling 到达上限后不得把 provisioning 当 READY。任何 report 失败都只告警，调用方必须通过 UI/日志发现父 Agent 未收到结果。
+
+## 16. 资源生命周期与泄漏风险
+
+| 资源 | 创建点 | 持有者 | 正常释放 | 失败/取消 | 崩溃后现场 |
+|---|---|---|---|---|---|
+| WebSocket | `connectWebSocket` | hook instance | cleanup/disconnect close | remove WeakSet before close | browser closes socket; remote run unknown |
+| reconnect timer | onclose | hook ref | clear on reconnect/cleanup | maxAttempts stops | page crash drops timer |
+| event subscription | provider effect | conversation context | unsubscribe on unmount | parse errors skip frame | server cursor/history recovery external |
+| localStorage tool claim | `claimToolCall` | browser profile | result overwrite/consumer | storage error may duplicate | stale key may block future tool |
+| REST task poll | cloud launch | child launch service | success/error/timeout | timeout returns diagnostic | remote task may continue |
+| local worktree | Agent Server create call | external server/workspace | server cleanup | fallback shared on create failure | orphan worktree external |
+| cloud sandbox | Cloud task | external backend | backend GC | proxy/client timeout | lease/GC unknown |
+| session API key | cloud response | service/client request | memory/request scope | auth error | not persisted by Canvas |
+| terminal/browser client tool | event handler | external Agent Server | remote runtime | socket reject only | process/tab orphan unknown |
+| React event store | provider/store | browser memory | unmount/reload | event dropped | no durable copy |
+
+### 16.1 资源正确性裁决
+
+1. Canvas 关闭 socket 不等价于停止 Agent；停止必须由 Agent Server 暴露可确认的 run cancellation contract。
+2. Cloud task timeout 只结束前端 polling，不代表 Cloud worker、workspace、container 或 provider request 已终止。
+3. localStorage claim 没有 TTL、owner token 或 compare-and-set 证明；应在平台侧以 durable idempotency record 替代。
+4. event store 去重依赖 event id；清空内存后必须通过 history + cursor/resend 重建，否则 UI 只能展示部分事实。
+5. worktree/shared fallback 是明确的资源隔离降级，必须在用户可见结果中保留 isolation metadata，不能静默宣称隔离。
+
+## 17. 并发、顺序与权限边界
+
+### 17.1 并发
+
+- WebSocket reconnect timer 与 manual reconnect 可能交错；实现通过清 timer、撤销旧实例资格降低重复连接，但未由当前记录运行验证竞态。
+- REST history、WS replay 和 live frame 存在 overlap；事件 id 去重只覆盖带 id 事件，不能确保跨通道全序。
+- Child launch claim 是浏览器本地作用域；多个 tab/设备可能各自 claim 同一 tool call。
+- Local/cloud child launch 的异步 task 与父会话生命周期脱钩；父页面关闭后 task 是否 cancel 由外部服务决定。
+- 多个 UI 组件可同时发送 `run:true`；客户端没有统一 per-conversation send lease 或 monotonic turn id。
+
+### 17.2 顺序
+
+| 顺序关系 | 当前机制 | 保证强度 |
+|---|---|---|
+| history → WS | after timestamp/since/all | 部分；服务端边界未验证 |
+| WS frame → UI effect | event id dedupe | 仅带 id，非全局序 |
+| tool call → child launch | claimToolCall | 浏览器局部幂等 |
+| child launch → parent report | active goal 检查 | report 可能被跳过 |
+| Cloud task → conversation id | poll interval/timeout | provisioning 可持续 |
+| close → remote cancel | 无调用 | 不保证 |
+
+### 17.3 权限
+
+权限分为四层：Canvas route/session access、WebSocket session authentication、Cloud API bearer/runtime session key、Agent Server tool/workspace policy。任何一层通过都不能替代下一层授权。`settings.tools` 是请求建议集合，不能作为服务端 allowlist 的唯一事实；`enable_sub_agents` 只控制是否暴露任务工具，最终 child launch 仍需 parent/session/workspace 权限。
+
+## 18. 失败恢复设计与缺口
+
+### 18.1 正常/失败/超时/取消/崩溃矩阵（扩展）
+
+| 执行单元 | 正常 | 业务失败 | 超时 | 主动取消 | 进程崩溃 |
+|---|---|---|---|---|---|
+| Canvas connect | open+auth | error/close | browser/network timeout | disconnect | browser reload |
+| history fetch | events loaded | HTTP error | request timeout | abort/unmount | no local durable history |
+| live event | parse/project | malformed frame warning | heartbeat absent (server unknown) | unsubscribe | reconnect+resend attempt |
+| send user message | queued/run accepted | typed error | client timeout ambiguous | no local cancel ack | remote may continue |
+| local child | READY id | create failure/fallback | external request timeout | no explicit stop | server-owned cleanup unknown |
+| cloud child | task→id | task ERROR | 180s poll timeout | no explicit stop | Cloud lease/GC unknown |
+| client tool | result event | observation error | socket/promise reject | local reject only | remote process unknown |
+
+### 18.2 平台侧必须补充
+
+- `execution_id`, `attempt`, `event_seq`, `idempotency_key` 统一贯穿 message/run/tool/child；
+- cancel request、owner acknowledgement、terminal event 三段式取消；
+- Cloud/local workspace 与 sandbox lease 的 owner/fencing/expiry/reaper；
+- history/resend 的严格 cursor、gap detection、replay window 和 event retention；
+- unknown-after-send reconciliation 与第三方 message id 查询；
+- 浏览器 UI 重连后的 session authorization refresh 和权限撤销；
+- child launch 的跨设备 dedupe、结果投递 receipt 和孤儿 task 扫描。
+
+## 19. 验证命令与现场状态
+
+```text
+git rev-parse HEAD
+  -> b1f0accae1657e46a200214e3559af856ba7ae44 (exit 0)
+codegraph status
+  -> 1,893 files / 20,015 nodes / 54,415 edges, index up to date (exit 0)
+codegraph sync
+  -> Already up to date (exit 0)
+codegraph explore "session conversation WebSocket agent loop tool sandbox child launch event queue cancel"
+  -> 46 symbols, exit 0
+python static structure assertion
+  -> document >=500 lines, current HEAD, required anchors (exit 0)
+git diff --check
+  -> exit 0
+git status --short
+  -> ?? .codegraph/ and ?? ARCHITECTURE.md only
+```
+
+当前记录不执行依赖安装、前端构建、Agent Server 启动、Cloud 登录、真实 WebSocket、mock/live E2E 或任何凭据读取；这些属于下一验证级别，不能由静态文档检查替代。
+
+## 20. 事件与 API 契约核对
+
+### 20.1 事件 union
+
+`src/types/agent-server/core/openhands-event.ts` 及 `type-guards.ts` 将 Agent Server 事件按 discriminated union 暴露给前端。代表类别包括：
+
+- conversation state/status：开始、运行、暂停、完成、错误、恢复；
+- message/assistant：文本增量、最终消息、reasoning、usage；
+- tool/action/observation：工具调用、参数、执行开始/结束、观察结果和错误；
+- terminal/browser：命令输出、退出码、浏览器动作与截图引用；
+- ACP：`ACPToolCallEvent` 等编辑器协议事件；
+- client tool：需要浏览器回调的请求与结果；
+- plan/task/child：子会话、计划节点和异步任务状态。
+
+type guards 只保证 JSON 形状和 discriminant；不保证事件来自受信会话、顺序连续、唯一或已持久化。连接上下文必须先完成 conversation/session authorization，再接受事件副作用。
+
+### 20.2 API/transport 入口
+
+| 入口 | 请求承载 | 返回/事件 | 权限 owner | 失败边界 |
+|---|---|---|---|---|
+| Local conversation API | typed JSON + encrypted settings | task/status/conversation id | Agent Server local auth | backend unavailable/workspace invalid |
+| Cloud App API | bearer + start request | provisioning task/poll result | Cloud app | task error/timeout/secret unavailable |
+| Conversation WS | auth frame + message/event | event union/live stream | session API key | close/error/reconnect |
+| REST event fallback | typed send event | accepted/error | Agent Server | HTTP timeout/duplicate ambiguity |
+| Bash events socket | command/event frames | terminal output | sandbox/session | reject on disconnect |
+| Client tool bridge | event + toolCall id | browser/client result | browser session policy | stale claim/unknown tool |
+
+### 20.3 API 契约不能过度推断
+
+Canvas service 对请求字段做 normalize/clone、workspace path 检查和工具 gating，但不会验证 Agent Server 内部的模型 token budget、tool subprocess policy、container network policy、Cloud quota 或 provider retry。前端收到 `status=READY` 只代表 API/任务层声明，不代表第一个模型请求成功。
+
+## 21. 复核结论
+
+1. OpenHands Canvas 的唯一稳定价值是把多种前端入口归一到 Conversation service + event projection + child launch adapter；Agent loop 和执行事实位于外部 Agent Server。
+2. WebSocket reconnect、history/resend 和 event-id dedupe 形成有限的客户端恢复策略，但没有全局 event ledger、gap proof 或终态确认。
+3. Child local/cloud launch 已有参数校验、workspace 隔离提示、poll 有界和 tool-call claim；没有跨设备 idempotency、lease fencing、cancel ack 或 orphan GC 证据。
+4. tool visibility、session API key、Cloud bearer、workspace path 和 parent link 体现了多层权限；最终执行权限必须由服务端重新验证。
+5. Canvas 不应把 UI store、queued 返回值、toast、socket close 或 localStorage claim 映射为平台成功/取消/恢复事实；这些只能作为边缘投影或幂等提示。
+6. 平台吸收时应先定义统一 `ExecutionContext`、`EventEnvelope`、`ArtifactRef`、`CancelRequest/CancelAck`、`Lease/Fencing` 和 `ProjectionCursor`，再接入 OpenHands adapter。
+
+### 21.1 维护规则
+
+每次修改 conversation creation、WebSocket reconnect、event dedupe、child launch、workspace isolation 或 tool settings 时，必须同步更新：
+
+- 顶部流程图与真实函数行号；
+- 状态/资源/失败矩阵；
+- 测试路径和实际退出码；
+- 外部 Agent Server 未读范围；
+- 平台映射中的 owner 与禁止过度推断项。
+
+本档案不创建平行“研究材料”文件；所有新增证据应去重后回写本文件，并以对应 Git HEAD 绑定。
+
+静态证据与运行证据必须分栏记录，不能用组件测试替代外部服务验证。
+任何新 adapter 都必须声明其状态 owner、取消入口、超时、资源释放和崩溃恢复策略。
+客户端投影丢失时只能通过服务端 history/resend 恢复，不能凭 UI 内存状态补写事实。
+本项目映射结论默认 L1/L2，除非有可重放的真实 Agent Server 运行证据。
+文档验证退出码 0 只代表本文格式和锚点检查通过。
+
+## 22. 整项目目录导航与入口责任
+
+本节把源码目录名和实际责任对齐，便于后续按入口继续下钻，而不是只依赖文件名猜测：
+
+| 目录/入口 | 当前源码责任 | 不应误判为 |
+|---|---|---|
+| `src/routes/`、`src/root.tsx` | React Router 页面装载、认证和全局 provider 组合 | Agent 执行循环 |
+| `src/contexts/` | 会话 WebSocket、事件副作用、登录/配置上下文 | 权威事件账本 |
+| `src/api/` | Cloud/Local HTTP、typed client、重试、path 和 payload 适配 | 后端业务状态机 |
+| `src/hooks/` | React query、连接重试、命令/上传 mutation 和 UI 生命周期 | 独立后台 worker |
+| `src/services/` | child conversation、client tool、自动化、通知等跨 API 编排 | 通用模块库能力注册表 |
+| `src/stores/` | 会话列表、事件、设置、toast 等浏览器投影 | 可恢复的服务端事实源 |
+| `src/types/agent-server/` | Agent Server 事件 union、鉴别器和展示所需类型 | 事件真实性/顺序校验器 |
+| `src/components/` | Canvas、会话、工具、设置、Git/MCP/Skills 面板 | 领域服务实现 |
+| `scripts/` | dev/build/static/ingress/automation/desktop 辅助入口 | 运行核心的统一调度器 |
+| `docker/`、`helm/`、`electron/` | 容器、Kubernetes、桌面发行包装 | 统一资源租约实现 |
+| `tools/`、`examples/` | Agent Canvas 工具和示例 | 生产能力注册表 |
+
+当前有三种可运行形态：
+
+1. `npm run dev` 通过 `scripts/dev-with-automation.mjs` 组合前端、额外后端和自动化服务；实际 Agent loop 仍由外部 Agent Server 提供。
+2. `npm run dev:static`/`npm run start` 只提供构建后的静态 Canvas，API/WS 仍需配置到 Local 或 Cloud backend。
+3. Electron 和 Docker/Helm 是分发/宿主包装，改变启动与网络边界，不改变 `ConversationService → EventProjection` 的核心前端调用契约。
+
+## 23. 当前版本新增的可导航证据
+
+远程更新后新增或改动的入口必须纳入后续审计：
+
+- `src/utils/websocket-handshake.ts`：将 WebSocket handshake/auth 的构造边界抽成可测试工具；它只准备连接协议，不确认会话授权已被服务端接受。
+- `src/utils/vscode-origin.ts` 与 `src/hooks/query/use-unified-vscode-url.ts`：根据后端 runtime 信息拼接 VS Code/Agent Canvas URL；URL 可达性和反向代理路由仍由 `scripts/ingress.mjs`、Docker/Helm 和宿主配置决定。
+- `src/contexts/conversation-websocket-context.tsx`、`src/hooks/use-websocket.ts`：重连、history/resend、事件去重和 cleanup 的代码路径有新增测试；仍不能证明外部 Agent Server 的 replay 完整性。
+- `scripts/dev-safe.mjs`、`scripts/dev-with-automation.mjs`、`scripts/static-server.mjs`、`docker/entrypoint.sh`：启动/停止脚本现在包含更多进程组和路由处理；这些脚本的清理证据只覆盖本地 launcher 进程，不能外推到 sandbox、容器卷、远端 task 或 provider 进程。
+- `__tests__/scripts/docker-vscode-route-sync.test.ts`、`__tests__/scripts/vscode-base-path-opt-in.test.ts`、`__tests__/utils/vscode-origin.test.ts`：新增测试证明配置/路由拼接契约，不证明真实 Docker、Ingress 或 VS Code 连接。
+
+## 24. 平台分层选择：模块库、支持库与项目适配层
+
+把 OpenHands 能力吸收进系统工程平台时，选择依据应是“是否需要替换第三方/系统边界”，而不是目录名：
+
+| OpenHands 事实 | 平台归属建议 | 原因与边界 |
+|---|---|---|
+| `ConversationService` 的创建/恢复/消息发送协议 | 模块库公开能力 | 它组合会话、事件和权限语义；模块只持有能力 id/契约版本，不直接导入 SDK |
+| WebSocket/REST/Cloud proxy/typed SDK | 支持库适配层 | 这些是外部协议和第三方边界，需要统一错误、超时、重试、响应关闭 |
+| workspace path 校验、命令执行、事件解析 | 支持库原子能力 + 模块门面 | 路径/进程/事件转换是可复用原子能力；模块负责把它们组合成会话流程 |
+| Cloud/Local、provider、容器、桌面、端口和密钥引用 | 项目适配层 | 只绑定环境、版本、权限、路径、密钥引用和中文别名，不下沉到正式代码 |
+| 事件账本、租约、取消确认、资源终态 | 运行核心/平台控制面 | Canvas 的 store、socket close 和 `queued` 返回都不足以承担这些权威事实 |
+
+决策规则：能被两个以上项目复用且只涉及一个外部边界的，优先做支持库原子能力；需要组合多个能力形成完整用户流程的，做模块库；只因部署环境、版本、路径、权限或密钥不同的，留在项目适配层；任何需要写权威账本、分配租约、回收资源或裁决并发的，不放在前端适配器中。
+
+## 25. 本次源码同步后的验证状态
+
+```text
+git fetch origin main && git merge --ff-only origin/main
+  -> origin/main = bad1687dec93c5b3edbef837ab2dc12638964031 (exit 0)
+codegraph sync
+  -> 39 changed files; 1,898 files / 20,142 nodes / 54,750 edges (exit 0)
+codegraph status
+  -> index is up to date (exit 0)
+git diff --check -- ARCHITECTURE.md
+  -> 待平台文档目录回写后执行
+```
+
+本次同步仍未执行 `npm install`、`npm run lint`、`npm run test`、真实 Agent Server、Docker、Helm、Cloud、WebSocket 或 provider 验证。远程版本更新带来的新测试和启动脚本已记录为源码证据，但只有对应命令实际退出码为 0 后，才能提升到运行验证等级。
