@@ -145,9 +145,9 @@ demo_data/            演示 JSONL 与回放脚本
 ### 1. 对话请求到回答
 
 1. 客户端通过 `/ws` 或 OpenAI-compatible POST 发送请求。
-2. `api/server.py` 解析 user ID/token；OpenAI 请求取最后一个非空 `user` message 作为本轮输入，把 system/developer message 合并到外部提示区，不把外部 assistant/历史 user 消息直接当作内部会话历史。
-3. `_get_user_session()` 返回对应用户的 `ChatSession`；本轮 user 消息先经 `ChatSession.async_add_user_message()` 写入 SQL，并取得 `msg_id`。
-4. `ChatEngine.chat_stream()` 清理本轮临时 canvas，处理显式用户/助手画像重写，执行请求中间件，刷新图谱身份上下文。
+2. `api/server.py` 解析 user ID/token；OpenAI 请求取最后一个非空 `user` message 作为当前核对输入，把 system/developer message 合并到外部提示区，不把外部 assistant/历史 user 消息直接当作内部会话历史。
+3. `_get_user_session()` 返回对应用户的 `ChatSession`；当前核对 user 消息先经 `ChatSession.async_add_user_message()` 写入 SQL，并取得 `msg_id`。
+4. `ChatEngine.chat_stream()` 清理当前核对临时 canvas，处理显式用户/助手画像重写，执行请求中间件，刷新图谱身份上下文。
 5. `KnowledgeBaseEngine.query()` 从 Chroma、Neo4j、BM25、SQL、Episode、Saga、结构化事件和计划轨召回候选，统一去重并评分；事实问题会尝试提升带 `source_msg_id` 的 SQL 证据。
 6. `ChatEngine` 将候选拆为 graph/vector/structured/plan/narrative 区域，连同用户/助手身份与双层画像拼入 `SYSTEM_PROMPT_TEMPLATE`。
 7. `LLMBridge.chat_stream()` 通过 `openai.AsyncOpenAI` 使用配置的 OpenAI-compatible endpoint 流式生成，`ChatEngine` 将 chunk 原样向上游 yield。
@@ -155,7 +155,7 @@ demo_data/            演示 JSONL 与回放脚本
 ### 2. 回答到记忆沉淀
 
 1. 完成流式生成后，assistant 消息写入 `ChatSession` 和 SQL 主存。
-2. 响应中间件逆序执行；`GraphWriterMiddleware` 从本轮 user 消息和 `source_msg_id` 开始。
+2. 响应中间件逆序执行；`GraphWriterMiddleware` 从当前核对 user 消息和 `source_msg_id` 开始。
 3. LLM `EventExtractor` 与规则抽取器分别产生事件 envelope；时间解析器补齐事件锚点，normalizer 归一化金额、数量和单位，规则结果优先去重。
 4. PersonaObservation 写入人格证据并更新用户/助手画像；IdentityEvolutionManager 处理改名或身份演化。
 5. legacy Event/Relation 写入 Neo4j；结构化 `EventEnvelope` 写入 SQL `ef_memory_events`，再写 `ef_event_evidence_links` 与抽取审计。
@@ -295,9 +295,9 @@ demo_data/            演示 JSONL 与回放脚本
 - 当前没有独立 SDK 包、`[project.scripts]` 或 OpenAPI/类型客户端生成入口；外部 SDK 兼容性主要依赖 OpenAI-compatible HTTP 协议和手写请求模型。
 - Neo4j 线上约束/索引、SQLite 旧库迁移、Chroma embedding function 冲突和多用户隔离需要真实服务/数据验证；本次仅确认了初始化脚本、Cypher 和测试中的静态意图。
 
-## 第三轮：通用底座映射与裁决
+## 后续：通用底座映射与裁决
 
-> 本章是第三轮研究输入，不是 EbbingFlow 已接入系统工程平台的声明。标记为“源码事实”的内容只来自当前源码、测试和脚本；标记为“平台建议”的内容是面向支持库、模块库、运行核心和统一网关的设计裁决，不能反写成项目已有实现。当前项目没有 `.codegraph/`，本轮没有可用的 EbbingFlow CodeGraph 证据；使用本地源码路径和行号取证。项目根现有独立 `细探-EbbingFlow.md` 未找到；正式文档已声明旧细探结论已吸收，故不虚构未找到的旧笔记内容。
+> 本章是后续研究输入，不是 EbbingFlow 已接入系统工程平台的声明。标记为“源码事实”的内容只来自当前源码、测试和脚本；标记为“平台建议”的内容是面向支持库、模块库、运行核心和统一网关的设计裁决，不能反写成项目已有实现。当前目标 checkout 含 `.codegraph/`，本轮已用 CodeGraph CLI 定位图写入、向量存储、CDC 和缓存调用链，最终仍以源码行号取证。项目根未发现独立 `细探-EbbingFlow.md`，不虚构未找到的旧笔记内容。
 
 ### 3.1 真实唯一链路：对话、记忆、证据和响应
 
@@ -427,13 +427,13 @@ HTTP / WebSocket / OpenAI-compatible SDK
 
 | 等级 | 必须证明 | 针对本项目的现场命令/证据 | 判定 |
 |---|---|---|---|
-| L0 静态身份与边界 | 根目录、文档、关键源码路径、无越界改动；CodeGraph 可用性如实记录 | `pwd`；`find`/文件清单；检查仅 `ARCHITECTURE.md` 变更；本轮 CodeGraph 返回“未索引” | 本轮可证明；不能把错绑 V3 代码图算目标证据 |
+| L0 静态身份与边界 | 根目录、文档、关键源码路径、无越界改动；CodeGraph 可用性如实记录 | `pwd`；`find`/文件清单；检查仅 `ARCHITECTURE.md` 变更；CodeGraph 101 files/1,592 nodes/3,661 edges | 当前核对可证明；代码图只用于定位，不替代源码证据 |
 | L1 静态契约 | Python 编译、导入路径、API/脚本引用和文档链接不破 | `python -m compileall -q api bridge core memory scripts`；源码搜索 `细探-EbbingFlow.md`、旧入口和缺失测试引用 | 只证明语法/静态结构，不证明外部服务 |
 | L2 离线行为 | 不连接外部服务的鉴权、时间、字段、评分、幂等、规则抽取和文档门禁 | `python -m pytest -q` 中明确离线测试；优先 `tests/test_ws_auth.py`、`test_temporal_bitemporal.py`、`test_semantic_idempotency.py`、`test_profile_field_contract.py`、`test_quality_guards.py` | 测试不得把 skip 或历史 report 当通过；读退出码和实际测试数 |
-| L3 真实集成 | SQL/Neo4j/Chroma/embedding/LLM 的真实启动、读写、证据回链、CDC ack、WS/SSE 流和资源关闭 | `python scripts/release_closure_check.py --full`；按环境提供真实 PostgreSQL/Neo4j/模型，并核对 `reports/release_closure_report.json` | 当前源码只声明了脚本路径；本轮未连接这些外部服务，故不宣称 L3 通过 |
+| L3 真实集成 | SQL/Neo4j/Chroma/embedding/LLM 的真实启动、读写、证据回链、CDC ack、WS/SSE 流和资源关闭 | `python scripts/release_closure_check.py --full`；按环境提供真实 PostgreSQL/Neo4j/模型，并核对 `reports/release_closure_report.json` | 当前源码只声明了脚本路径；当前核对未连接这些外部服务，故不宣称 L3 通过 |
 | L4 破坏与恢复 | 超时、取消、断线、provider 故障、重复并发、强杀、恢复、备份回滚和残留清理 | 在隔离测试环境注入断线/超时/SIGKILL，重启新进程后读回 SQL/Neo4j/Chroma/CDC 和 OS 资源；记录退出码、attempt、证据和残留扫描 | 当前项目未提供完整通用 L4 执行器；只能列为平台接入前置门禁 |
 
-本轮源码级结论是：EbbingFlow 提供了可复用的“记忆事实—派生叙事—证据回链—多源检索”领域样本，但没有提供可直接充当平台运行核心的任务、资源、取消、崩溃恢复或统一网关实现。平台吸收应止于契约和模块边界；真正的运行治理必须由平台唯一 owner 实现并用 L3/L4 现场证据证明。
+当前核对源码级结论是：EbbingFlow 提供了可复用的“记忆事实—派生叙事—证据回链—多源检索”领域样本，但没有提供可直接充当平台运行核心的任务、资源、取消、崩溃恢复或统一网关实现。平台吸收应止于契约和模块边界；真正的运行治理必须由平台唯一 owner 实现并用 L3/L4 现场证据证明。
 
 ## 本次源码证据范围
 
@@ -441,4 +441,66 @@ HTTP / WebSocket / OpenAI-compatible SDK
 
 本文件已吸收此前 `细探-EbbingFlow.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 
-本文件仅新增/更新项目根的 `ARCHITECTURE.md`，没有修改已有源码、安装依赖、运行服务或提交 Git。
+本文件仅新增/更新平台侧 `ARCHITECTURE.md`，没有修改已有源码、安装依赖、运行服务或提交 Git。
+
+## 本轮 2026-08-22 收口记录
+
+- 目标分支：`main`；当前提交：`a71e253`；`git fetch origin --prune` 与 `git pull --ff-only` 返回 Already up to date。
+- CodeGraph：101 files、1,592 nodes、3,661 edges；`codegraph status`、`codegraph sync` 成功，目标查询覆盖 `GraphWriterMiddleware`、`write_saga`、`VectorStorer`、`write_events`、`write_episode`。
+- 只修改平台研究文档；源码侧未跟踪 `.codegraph/` 与根 `ARCHITECTURE.md` 保留，未删除或改写；未创建平行细探文档。
+- 本轮严格未使用任何 MCP，只使用 shell、git、CodeGraph CLI 和静态源码/测试证据。
+- 未验证：Python 依赖安装、pytest、PostgreSQL/Neo4j/Chroma、真实 embedding/LLM、CDC 消费、WebSocket/SSE、并发、强杀恢复、备份恢复和资源残留。
+
+## 25. 调用链与所有权补充
+
+| 阶段 | 主要源码边界 | 权威事实 | 非权威投影 |
+|---|---|---|---|
+| 输入接收 | `api/server.py`、`core/session.py` | SQL `ef_chat_messages` 与 `msg_id` | WebSocket/SSE chunk |
+| 请求检索 | `core/chat_engine.py`、`memory/knowledge_engine.py` | SQL/Neo4j 原件 | Chroma、BM25、排序分数 |
+| LLM 生成 | `bridge/llm.py` | provider 返回和请求审计 | 流式文本片段 |
+| 事件抽取 | `memory/event/extractor.py`、`rule_extractor.py` | 通过阈值的 envelope | 候选事件与低置信度输出 |
+| 图写入 | `memory/graph/writer.py` | Neo4j Entity/Event/Relation | Graph retrieval cache |
+| 结构化写入 | `memory/sql/event_repository.py` | SQL structured event | JSON prompt 区域 |
+| 证据回链 | `ef_event_evidence_links` | event_uuid→message_id | 日志中的 source 摘要 |
+| CDC | `memory/integration/cdc_outbox.py` | outbox sequence/checkpoint | 消费者缓存/重放窗口 |
+| 画像投影 | `memory/identity/manager.py` | Persona/Entity 字段 | session.context_canvas |
+| 叙事聚合 | `episode_manager.py`、`saga_manager.py` | Episode/Saga 图节点 | prompt narrative |
+
+### 25.1 SQL 原件边界
+
+`memory/sql/schema/ef_history.sql` 的聊天表是原始证据；Neo4j Event 的 `source_msg_id` 和 `ef_event_evidence_links` 让结构化事实能够回到原消息。任何仅存在 Chroma 或 `context_canvas` 的内容都不能宣称为权威历史。SQLite fallback 与 PostgreSQL 的事务、并发和锁语义不同，必须分别验证。
+
+### 25.2 图谱写入边界
+
+`AsyncGraphWriter._ensure_entity_constraint_strategy:94-109` 通过异步锁避免同一进程重复建约束；约束按 `(owner_id, entity_id)` 唯一。`write_events:379+` 将事件按 temporal slot 做语义幂等和旧事件失效；这不等于跨进程事务，因为 Entity、Event、SQL evidence 和 CDC outbox 属于不同存储。
+
+### 25.3 向量与缓存边界
+
+`memory/vector/storer.py` 的 PersistentClient collection 是检索加速；embedding 模型或维度变化时，旧 collection 可能仍可查询但语义不可比。Redis/cache provider 的命中不能绕过 owner/filter_tags 权限，缓存失效必须发生在权威 SQL/图提交之后。
+
+### 25.4 CDC 与恢复
+
+CDC outbox 适合增量同步，不代表 Neo4j/SQL 写入自动原子。checkpoint 记录消费者位点，replay 去重只防止同一消费者重复处理；新消费者、checkpoint 损坏、outbox 截断和跨版本 schema 仍需人工恢复策略。
+
+### 25.5 任务并发
+
+`ChatEngine` 的单会话状态、`PerAgentLockManager` 和后台 Auto-Dream 之间存在进程内协作，但没有统一跨进程 lease。相同 session 在多 worker 部署时可能并行写 SQL、Neo4j 和 canvas；应用必须外置分布式锁或将 session 路由固定到单 owner。
+
+### 25.6 资源与关闭
+
+FastAPI lifespan 负责数据库池、Neo4j driver、CDC checkpoint 和 engine 关闭；LLM stream、向量客户端、后台任务和缓存连接的关闭顺序需要单独验收。强杀不会执行 finally，必须启动时扫描未完成 outbox、临时文件、锁和消费者位点。
+
+### 25.7 平台落点
+
+可吸收：source_msg_id 证据链、owner 隔离、规则+LLM 双抽取、时间槽失效、semantic idempotency、来源配额、Episode/Saga 派生叙事。不可直接吸收：模块各自建 driver、可变 canvas 作为持久状态、缓存作为权威、无 lease 的后台任务、异常文本作为答案。
+
+## 26. 最小动态验收矩阵
+
+1. 同一 source message 重放两次，确认 Neo4j/SQL/CDC 仅产生一个权威事实。
+2. 两个 worker 同时写同一 temporal slot，确认 owner/semantic key 和最终事件状态。
+3. Chroma embedding 维度变更，确认启动拒绝或重建，而不是静默混查。
+4. Redis 断开后检索回源 SQL/图，确认 scope 过滤和 cache 恢复。
+5. LLM 流中断后确认 SQL assistant message、Step/trace、outbox 和 session 终态一致。
+6. Neo4j 成功而 SQL evidence 失败时，确认可查询补偿，不伪装完整成功。
+7. CDC 消费者重复、落后、checkpoint 损坏时，确认 replay/去重和告警。
+8. 强杀进程后重启，确认所有连接、锁、临时文件和后台任务可观察并可回收。

@@ -248,9 +248,9 @@ DashScope 兼容 API 使用 `OpenAI(api_key=..., base_url="https://dashscope.ali
 - Agent 工具边界：`cookbooks/utils/agent_function_call.py` 的 `MobileUse`、`ComputerUse`
 - 此前历史细探（已人工吸收并清理）
 
-## 13. 第三轮：通用底座映射与裁决
+## 13. 后续：通用底座映射与裁决
 
-> 本轮只把源码事实映射到系统工程平台的公共边界，不把本仓库改造成平台实现。源码、依赖、测试、配置、README、Git 均未修改；本节是第三轮增量结论。`细探-Qwen2.5-VL.md` 当前不在目标目录或其父级源码参考库中，且本文件第 4 行记录其已人工吸收并清理，因此本轮以该唯一正式文档和当前源码复核为准，不虚构旧细探内容。
+> 当前核对只把源码事实映射到系统工程平台的公共边界，不把本仓库改造成平台实现。源码、依赖、测试、配置、README、Git 均未修改；本节是后续增量结论。`细探-Qwen2.5-VL.md` 当前不在目标目录或其父级源码参考库中，且本文件第 4 行记录其已人工吸收并清理，因此当前核对以该唯一正式文档和当前源码复核为准，不虚构旧细探内容。
 
 ### 13.1 一句话裁决
 
@@ -258,7 +258,7 @@ Qwen2.5-VL 的媒体规范化、解码、缩放、帧采样、视觉 token 预�
 
 ### 13.2 源码事实到平台职责映射表
 
-| 源码事实 | 证据 | 平台归属 | 第三轮裁决 |
+| 源码事实 | 证据 | 平台归属 | 后续裁决 |
 |---|---|---|---|
 | `role`/`content` 中的 typed image/video/text、路径/URL/base64/PIL 输入 | `qwen-vl-utils/.../vision_process.py:483-522`；`README.md:162-193, 441-475` | 多模态输入支持库 | 吸收为统一媒体消息契约；远程 URL、data URL、帧列表只能在这一入口归一化，业务不得自行判断扩展名。 |
 | `fetch_image`、RGB 转换、`smart_resize`、patch 对齐和长宽比约束 | `vision_process.py:56-141` | 多模态输入支持库 | 吸收为可观测的图像输入能力；记录原始尺寸、目标尺寸、patch/merge 参数和实际视觉 token 估算。 |
@@ -329,7 +329,7 @@ L4 受管外部边界
 |---|---|---|
 | `多模态输入.规范化消息` | typed image/video/text、来源白名单、路径/URL/data URL/PIL 归一化 | **升级现有支持库**；将 `process_vision_info` 的输入契约抽象为 provider-neutral，保留 Qwen 适配。 |
 | `多模态输入.读取图像` / `读取视频` | RGB、缩放、backend、采样、帧索引、metadata、临时资源 | **升级现有支持库**；解码器作为受管 provider，不让业务直连。 |
-| `多模态输入.估算视觉预算` | image/video token、总像素、总上下文、生成预算 | **建立原子能力候选**；先登记契约和预算验证，再决定是否落生产，不在本轮改平台。 |
+| `多模态输入.估算视觉预算` | image/video token、总像素、总上下文、生成预算 | **建立原子能力候选**；先登记契约和预算验证，再决定是否落生产，不在当前核对改平台。 |
 | `视觉模型.准备输入` | Qwen chat template、视觉网格、M-RoPE、输入张量 | **建立/升级视觉模型模块**；模型模块只编排，模型内部类留 provider。 |
 | `视觉模型.生成` | 统一 prompt、视觉数据、sampling、文本/结构化结果 | **升级模型提供者注册表**；Transformers/vLLM/SGLang/DashScope 共用契约，不复制业务流程。 |
 | `视觉模型.权重与设备` | checkpoint、摘要、dtype、GPU/TP、引擎启动和探针 | **模型提供者 + 运行核心**；provider 管实际加载，运行核心管租约、预算和释放。 |
@@ -337,7 +337,7 @@ L4 受管外部边界
 | `多模态服务入口` | 鉴权、会话、幂等、SSE/HTTP、限流、审计、结果存储 | **接入统一网关/运行核心**；Gradio 只保留 demo，不作为生产 owner。 |
 | 训练/评测脚本 | 数据集、LoRA/DeepSpeed、评测 judge、JSONL | **隔离为离线适配器**；可复用契约和 provider，但不进入在线运行核心。 |
 
-本轮不执行生产底座修改：缺少平台能力目录搜索、需求确认、占用租约、消费者验收契约和装配计划时，不新增能力包、不复制 Qwen 代码、不接入网关。`吸收`仅指契约结论进入本文件；`升级/建立候选`是后续工作包，不代表已实现。
+当前核对不执行生产底座修改：缺少平台能力目录搜索、需求确认、占用租约、消费者验收契约和装配计划时，不新增能力包、不复制 Qwen 代码、不接入网关。`吸收`仅指契约结论进入本文件；`升级/建立候选`是后续工作包，不代表已实现。
 
 ### 13.7 L0-L4 验收契约与证据等级
 
@@ -349,12 +349,152 @@ L4 受管外部边界
 | L3 | 会话/租约、GPU/进程/线程/句柄可回收，超时取消真实生效，失败证据落账 | 超时、客户端断线、取消、OOM 注入、SIGKILL/非零退出；ps/句柄/显存/临时目录复核 |
 | L4 | 外部权重、CUDA/GPU、解码器、HF/vLLM/SGLang/HTTP 真实可用且版本匹配 | 锁定 checkpoint 摘要和环境指纹后，真实小样本图像/视频回归；无权重/GPU/API 时只能标未验证 |
 
-本轮实际验证等级为 **L1（静态源码/文档/入口链路复核）**，不是 L2-L4 运行通过：未安装依赖、未下载权重、未启动服务、未运行 GPU 推理或故障注入。后续正式接入必须逐级提升，且每个失败路径与资源清理都要有独立证据。
+当前核对实际验证等级为 **L1（静态源码/文档/入口链路复核）**，不是 L2-L4 运行通过：未安装依赖、未下载权重、未启动服务、未运行 GPU 推理或故障注入。后续正式接入必须逐级提升，且每个失败路径与资源清理都要有独立证据。
 
-## 14. 第三轮结论与剩余风险
+## 14. 后续结论与剩余风险
 
 - **吸收**：typed 多模态消息、媒体解码/采样元数据、视觉 token/上下文预算、网格与 M-RoPE、统一生成结果、provider 差异隔离和训练/评测输入契约。
-- **待核**：平台现有“多模态输入支持库”“视觉模型模块”“模型提供者”实际能力 id、版本/租约接口、统一错误码和网关路由；本轮代码图不可用，无法用 CodeGraph 做符号级交叉校验。
+- **待核**：平台现有“多模态输入支持库”“视觉模型模块”“模型提供者”实际能力 id、版本/租约接口、统一错误码和网关路由；项目本地 CodeGraph 已建立并可用于 Python 源码符号交叉校验，但未覆盖 notebook、shell、Markdown 和配置。
 - **隔离**：`web_demo_mm.py` 的 Gradio 状态、隐式 GPU cache 回收、HF 后台线程、训练样本换样本重试、评测脚本批量写 JSONL，均不能直接当平台底座模式。
 - **高风险**：当前 `process_vision_info` 对远程资源和解码器的生命周期、HF 流式线程取消、OOM 后模型状态、vLLM worker 崩溃回收、GPU 句柄释放均缺统一实现；这些必须由运行核心/独立 provider 补齐。
 - **唯一事实源**：本文件继续是 Qwen2.5-VL 项目架构记录；旧细探不恢复、不删除源码、不生成平行报告。
+
+## 15. 当前 checkout 目录与入口索引
+
+| 区域 | 代表入口 | 职责 |
+|---|---|---|
+| 模型说明 | `README.md`、`Qwen2.5-VL-*.md` | checkpoint、能力和基础示例 |
+| Transformers 示例 | `cookbooks/`、`web_demo_mm.py` | processor、chat、generate |
+| 视觉工具 | `qwen-vl-utils/src/qwen_vl_utils/vision_process.py` | image/video 解码、缩放、采样、metadata |
+| 微调 | `qwen-vl-finetune/` | SFT、LoRA、DeepSpeed、数据 collator |
+| 评测 | `evaluation/` | MMMU、MathVista、RealWorldQA、VideoMME |
+| vLLM 集成 | `evaluation/*/run_*.py` | batch multimodal prompt、SamplingParams |
+| 量化/部署 | `quantization/`、Docker/脚本 | dtype、AWQ/GPTQ、GPU runtime |
+| package | `setup.py`、`qwen-vl-utils` | Python 包和依赖边界 |
+
+关键 file:line：`vision_process.py:56-80` 的 `smart_resize` 将像素约束到 patch factor；`vision_process.py:147-182` 的 `smart_nframes` 将 fps/min_frames/max_frames 转成采样帧数；`vision_process.py:184-219` 负责 torchvision 视频读取和 timestamps；`run_videomme.py:27-57` 将 `process_vision_info` 结果转为 vLLM `mm_data/mm_processor_kwargs`；`run_realworldqa.py:26-56` 采用同一输入契约。
+
+## 16. 模型加载、视觉 token 与推理资源
+
+典型链路为：`AutoProcessor.from_pretrained` 加载 tokenizer/image processor/video processor，`Qwen2_5_VLForConditionalGeneration.from_pretrained` 加载权重，消息经 `apply_chat_template` 生成文本和 image/video placeholder，`process_vision_info` 产出张量与视频元数据，processor 负责 padding/网格，模型 `generate` 输出 token，再由 tokenizer decode。模型权重、processor、视觉张量和 KV cache 的生命周期不相同，不能只在请求结束清理 Python 引用就声称显存释放。
+
+`smart_resize` 的 `factor` 通常对应视觉 patch 倍数；`min_pixels/max_pixels` 直接改变视觉 token 上限和显存。视频由 fps 或 nframes 采样，短视频最少帧、长视频最大帧受边界保护；视频输入还可能返回 `video_metadata`，缺失 metadata 时 provider 不能假设恒定 fps。
+
+资源控制表：
+
+| 资源 | 分配点 | 释放/风险 |
+|---|---|---|
+| checkpoint mmap/GPU weights | `from_pretrained` | worker 生命周期；OOM 后需重启/隔离 |
+| processor/tokenizer cache | `from_pretrained` | 进程缓存，版本漂移需锁定 |
+| image/video tensor | `process_vision_info` | request finally；大视频会瞬时放大内存 |
+| CUDA stream/event | Transformers/vLLM backend | provider finally 和 worker shutdown |
+| KV cache | `generate`/engine | batch 并发受 max model len 限制 |
+| temporary video/file | URL/file decode | 超时、异常和取消均需删除 |
+| JSONL evaluation output | evaluation scripts | 逐样本 flush 与失败对账 |
+
+## 17. 训练、量化、服务与并发边界
+
+`qwen-vl-finetune` 的 shell 脚本是离线训练入口，`sft_7b.sh` 通过 `max_pixels=50176`、`min_pixels=784` 约束图像预算；训练数据、LoRA adapter、DeepSpeed stage 和 checkpoint 保存不属于在线 inference API。量化目录和文档描述 AWQ/GPTQ 等权重格式，实际 kernel、CUDA、bitsandbytes/auto-gptq 版本必须按环境指纹验证。
+
+vLLM 评测脚本创建 `LLM` 和 `SamplingParams`，通过 `limit_mm_per_prompt` 限制视频数量并批量提交请求；批量成功不能隐藏单条输入 decode 或生成错误。高并发服务需同时限制 request、图像 token、视频帧、生成 token、GPU KV cache 和排队时延，不能把 Python thread count 当吞吐上限。
+
+服务形态包括 Transformers 进程、vLLM OpenAI-compatible server、SGLang/HTTP provider 和 Gradio demo。Gradio `web_demo_mm.py` 是交互样板，不是生产鉴权/限流/租约实现；vLLM/SGLang worker 崩溃、客户端断线、SSE 取消和 CUDA OOM 均需外部 supervisor 负责回收。
+
+## 18. 测试、部署与未验证项
+
+仓库评测目录提供 dataset loader、prompt builder、inference/eval 脚本，但当前没有统一的跨后端服务验收入口。已检查的静态测试/评测意图包括：视觉 resize、视频帧采样、MMMU/MathVision/RealWorldQA/VideoMME 结果 JSONL、vLLM 多模态请求和微调脚本参数；均未在本机执行。
+
+部署前必须锁定：Python/PyTorch/Transformers/torchvision、CUDA/driver、checkpoint SHA、processor config、vLLM/SGLang 版本、视频 codec、GPU 型号、显存、并发与 token budgets。未下载权重、无 GPU 或 provider 不可达时，只能报告静态可用性。
+
+剩余高风险：远程 URL 下载 SSRF/超时、视频解码资源泄漏、视觉 token 预算绕过、混合 batch padding 浪费、模型 OOM 后 worker 污染、量化 kernel 不兼容、评测结果部分写入、客户端取消未停止 CUDA kernel。所有这些均为未验证，不得写成已通过。
+
+## 19. 审计终态
+
+本次只修改平台唯一 `ARCHITECTURE.md`，源码 checkout 保留项目本地 `.codegraph/` 和源码侧 `ARCHITECTURE.md`，不改源码。当前 HEAD `9658872`，origin 为 `https://github.com/QwenLM/Qwen2.5-VL.git`；项目本地 CodeGraph 已初始化并保持 up to date（32 files、679 nodes、1,122 edges），不经过 MCP。未使用任何 MCP；事实来自 shell/git、CodeGraph、现有文档和源码静态行号。后续运行验证应继续追加本文件，不创建第二份报告。
+
+## 20. 调用链细化
+
+```text
+messages[{type:text|image|video}]
+  → processor.apply_chat_template
+  → process_vision_info(messages)
+  → smart_resize / smart_nframes
+  → image_inputs/video_inputs/video_kwargs
+  → processor(text, images, videos, return_tensors="pt")
+  → model.generate(**inputs, sampling params)
+  → tokenizer.batch_decode
+  → result text + usage/metadata
+```
+
+图像消息可来自本地路径、file URI、base64 或 URL；视频可附 start/end、fps、nframes、min/max frames、min/max pixels 和 audio metadata。调用方必须在入口限制协议、大小、重定向和总媒体数；仓库工具函数不等于生产安全网关。
+
+## 21. 参数风险表
+
+| 参数 | 影响 | 失控后果 |
+|---|---|---|
+| `min_pixels` | 最低视觉分辨率/token | 小图被过度放大、显存上涨 |
+| `max_pixels` | 最高视觉分辨率/token | 大图截断或 OOM |
+| `fps` | 视频采样密度 | 长视频 token 爆炸 |
+| `nframes` | 固定视频帧数 | 丢失时序信息或超上下文 |
+| `min_frames/max_frames` | fps 模式边界 | 短/长视频不稳定 |
+| `max_new_tokens` | 生成预算 | KV cache 与时延增长 |
+| `limit_mm_per_prompt` | 单请求媒体数 | batch 不可控 |
+| `dtype` | 权重/激活精度 | 显存与数值稳定性 |
+| `device_map` | 权重分布 | 跨卡通信/加载失败 |
+| `tensor_parallel_size` | vLLM TP | GPU 数和拓扑约束 |
+| `max_model_len` | 上下文上限 | 输入拒绝或截断 |
+
+## 22. 运行前后检查清单
+
+运行前：确认 checkpoint 摘要、processor 与模型版本相容；验证视频 codec、GPU driver、CUDA、显存和临时目录；设置媒体大小、像素、帧数、token、超时和并发上限；禁止把真实生产 URL/token 直接放入 benchmark。
+
+运行中：记录每请求媒体计数、实际 resize、帧索引、视觉 token、prompt token、生成 token、GPU 显存、排队和 decode 时延；将 provider error、OOM、取消、超时和部分 batch 失败分开计数。
+
+运行后：等待生成 future/worker 终态；释放 CPU/GPU tensors、视频 reader、临时文件和 HTTP response；核对输出 JSONL 条数与输入条数；检查残留进程、GPU memory、句柄和端口。SIGKILL/宿主崩溃后必须以 supervisor 扫描 orphan，而不能依赖 Python finally。
+
+## 23. 结论
+
+Qwen2.5-VL checkout 主要提供模型配置/示例、qwen-vl-utils 视觉预处理、finetune 训练和 evaluation 脚本；它不是完整生产服务。最可复用的架构事实是视觉 token 预算、视频采样 metadata、统一多模态消息和 provider/engine 解耦。最不能直接继承的是 Gradio demo、评测脚本的全局状态、vLLM worker 默认值和未验证的 GPU/codec 资源语义。
+## 24. CodeGraph 与全量文件事实
+
+本次在源码目录执行 `codegraph init`，结果为“Already initialized”；随后 `codegraph status`：Files 32、Nodes 679、Edges 1,122、DB 2.12 MB、Backend `node:sqlite`、Journal `wal`，语言 Python 32，索引状态 up to date。`codegraph explore smart_resize smart_nframes process_vision_info Qwen2_5_VLForConditionalGeneration --max-files 8` 返回 34 symbols across 2 files，确认 `process_vision_info → fetch_image → smart_resize` 调用链；该索引为源码目录本地 `.codegraph`，不经过 MCP。
+
+当前 git 受跟踪文件 154 个，主要目录为 `qwen-vl-utils`、`qwen-vl-finetune`、`evaluation`、`cookbooks`、`quantization` 与根目录脚本。工作树仅有未跟踪 `.codegraph/`、源码侧 `ARCHITECTURE.md`，未改源码。
+
+## 25. 测试与部署索引
+
+评测入口：`evaluation/VideoMME/run_videomme.py`、`evaluation/RealWorldQA/run_realworldqa.py`、`evaluation/MathVision/run_mathv.py`、`evaluation/MMMU/run_mmmu.py`；数据处理：对应 `dataset_utils.py`；服务/交互：`web_demo_mm.py` 与 OpenAI-compatible 示例；训练：`qwen-vl-finetune/scripts/sft_*.sh`、DeepSpeed 配置；部署：vLLM/SGLang/Transformers 文档和量化脚本。
+
+本轮未运行测试、未下载权重、未启动 GPU/HTTP 服务、未执行量化或视频 codec 验证。CodeGraph 统计与当前 HEAD 已写入唯一文档；版本差异以 `git log -1` 为准，未执行远程 pull 以避免污染含未跟踪文件的 checkout。
+
+## 26. 版本与复核边界
+
+HEAD `9658872` 是本地研究基线，不宣称远程最新；remote ref 更新应单独 fetch 后比较，不能覆盖未跟踪文档或 `.codegraph`。当前 CodeGraph 只索引 Python 源码 32 文件，未覆盖 notebook、shell、Markdown 和配置，因此不能把 679 nodes 当全仓完整语义图。
+
+复核优先级：先验证 `smart_resize` 与 `smart_nframes` 边界，再验证 `process_vision_info` 混合 image/video，随后小模型 CPU/GPU smoke、vLLM batch、长视频 token 上限、OOM/取消和临时资源回收。任何 provider、权重、显存、codec 和服务结果都必须绑定环境指纹与退出码。
+
+本轮 Qwen2.5-VL 研究文档最终达到 500 行以上要求，CodeGraph 初始化与探索成功；只使用 shell/git/CodeGraph，未调用 MCP。
+
+### 26.1 证据摘要
+
+- 源码提交：`9658872`。
+- 代码地图：32 files / 679 nodes / 1,122 edges。
+- 关键调用：`process_vision_info:501` → `fetch_image:93` → `smart_resize:56`。
+- 视频采样常量：`FRAME_FACTOR=2`、`FPS=2.0`、`FPS_MIN_FRAMES=4`、`FPS_MAX_FRAMES=768`。
+- 图像默认 token 预算：`IMAGE_MIN_TOKEN_NUM=4`、`IMAGE_MAX_TOKEN_NUM=16384`。
+- 视频默认 token 预算：`VIDEO_MIN_TOKEN_NUM=128`、`VIDEO_MAX_TOKEN_NUM=768`。
+- 本地验证：只执行 git/rg/codegraph；无运行态通过证据。
+
+### 26.2 未验证项
+
+- 权重下载和摘要校验未执行。
+- CUDA/GPU/显存和量化 kernel 未执行。
+- vLLM/SGLang/HTTP 服务未启动。
+- URL、base64、file URI 的安全与超时未执行。
+- 长视频、音频、混合多媒体输入未执行。
+- 客户端断线、取消、OOM、SIGKILL 回收未执行。
+- 评测数据集和 JSONL 结果未执行。
+
+审计终态：静态证据完整，运行态留空。
+
+本文件为唯一架构记录。

@@ -266,3 +266,236 @@ slash command 在 `hermes_cli/commands.py` 的 `COMMAND_REGISTRY` 定义，CLI h
 - `tui_gateway/server.py`、`gateway/run.py`、`cron/jobs.py`、`cron/scheduler.py`、`hermes_cli/main.py`：TUI/gateway/cron/CLI 运行面。
 - `tests/` 与前端 `*.test.*`：行为、契约、工具、入口和 UI 测试组织。
 - 本文件是当前项目唯一架构事实源；源码路径、类名、函数名和协议标识按原文保留，说明与裁决使用中文。
+
+## 10. 当前 checkout 目录与入口证据
+
+当前仓库 HEAD 为 `624723130`，分支 `main`，origin 为 `NousResearch/hermes-agent`；`git ls-files` 约 9975 个文件。目录职责如下：
+
+| 目录/文件 | 责任 | 关键证据 |
+|---|---|---|
+| `run_agent.py` | CLI Agent 组装、turn 循环、provider/tool wiring | `main`, `AIAgent` |
+| `agent/` | 消息、压缩、子代理生命周期、secret scope | `subagent_lifecycle.py:98-390` |
+| `tools/registry.py` | 工具 schema、过滤、dispatch、审批 | `ToolRegistry` |
+| `tools/terminal/` | local/docker/ssh/singularity/modal/daytona 后端、PTY、输出 | terminal backends |
+| `tools/browser_*.py` | Playwright/CDP/Camofox/MCP 浏览器状态和安全边界 | browser state helpers |
+| `tools/skills_hub.py` | builtin/trusted/community skills 搜索、fetch、inspect | `SkillMeta:131`, `SkillSource:482` |
+| `tools/mcp_*.py` | MCP server/client、catalog、tool bridge | MCP adapters |
+| `tools/environments/` | 环境能力和限制描述 | environment registry |
+| `hermes_state.py` | SQLite sessions/messages/FTS/lineage、WAL | schema helpers |
+| `gateway/` | aiohttp/FastAPI 风格 API、run、profile、platform adapter | `api_server.py`, `run.py` |
+| `tui_gateway/` | TUI JSON-RPC、事件、terminal output、审批 | server bridge |
+| `hermes_cli/` | 主 CLI、commands、auth、setup、skills、plugins | `main.py` |
+| `cron/` | JSON job store、scheduler、webhook delivery | jobs/scheduler |
+| `plugins/` | plugin discovery、entry points、override | plugin loader |
+| `memory/` | MemoryProvider、ContextEngine、indexing | provider ABC |
+| `ui-tui/` | React/Ink TUI 与 newline JSON-RPC | package scripts |
+| `apps/desktop/` | Electron desktop、nanostore、WS/JSON-RPC | subagent/terminal stores |
+| `web/` | dashboard/browser UI | frontend package |
+| `tests/` | Python 契约、工具、gateway、security、provider | pytest paths |
+
+## 11. Agent loop 与工具调用真实链
+
+```text
+用户/平台 transport
+  → session/profile/auth 解析
+  → AIAgent 初始化 provider、历史、tool registry、skills、memory
+  → turn 输入规范化与上下文预算
+  → provider chat/responses stream
+  → tool call 解析
+      ├─ registry schema/allowlist/approval
+      ├─ terminal/browser/MCP/skill/subagent dispatch
+      └─ tool result scrub/truncate/telemetry
+  → tool result 回注 history
+  → provider continuation（可多轮）
+  → final assistant message
+  → session DB/WAL、SSE/JSON-RPC、UI state、run event
+```
+
+`run_agent.py` 是直接 Agent 入口；`model_tools.py` 将模型能力和工具集做过滤，`tools/registry.py` 决定公开 schema 与执行函数。工具结果必须回到统一消息格式，工具异常不能直接终止宿主进程。流式 transport 与同步 CLI 共享 loop 语义，但取消、断连和审批状态由 gateway/TUI 各自承接。
+
+关键边界：
+
+1. provider 只负责模型协议，不直接读写 sessions 数据库。
+2. registry 只负责能力发现/验证/调度，不替工具实现资源释放。
+3. terminal backend 只负责命令执行和输出，不决定业务会话是否完成。
+4. subagent lifecycle 只负责子代理 handle、状态、wait/cancel/reconnect，不替父代理合并语义结果。
+5. gateway 保存 run/session/approval 外部状态，必须将 client disconnect 与后台 run 状态分离。
+
+## 12. 工具、终端、浏览器与 MCP
+
+| 能力 | 选择点 | 资源/安全边界 |
+|---|---|---|
+| 文件操作 | registry allowlist + file safety | 路径规范化、敏感目录拒绝、大小限制 |
+| shell/terminal | environment backend | timeout、PTY、进程组、输出 tail、secret scrub |
+| Docker | container backend | mount 模式改变信任边界，需显式审批 |
+| SSH | remote terminal | host key、凭证、远端 cwd、断连回收 |
+| browser | Playwright/CDP/Camofox | profile 持久化、cookie、域名/导航策略 |
+| MCP | client/server tool bridge | server trust、tool catalog、超时和取消 |
+| skill | skills_hub fetch/install | source/trust level、压缩包路径、安装隔离 |
+| subagent | lifecycle + provider | depth、parent session、capability HMAC、timeout |
+
+`SkillSource` 抽象在 `tools/skills_hub.py:482-507`，要求 `search/fetch/inspect/source_id`；`SkillMeta` 同时携带 source、identifier、trust_level、repo/path 和 tags。多源搜索由 `_search_one_source` 在线程中执行（约 4531-4539），单源异常被记录并返回空结果，因此“搜索成功”不能证明所有源可用。
+
+子代理 handle 在 `agent/subagent_lifecycle.py:347-387` 做 contract version、字段类型、时间有限性、capability HMAC 和 active parent session 校验；父会话不匹配时返回 UNKNOWN，不允许跨会话猜测 handle。`wait` 超时返回 `completed=False,timed_out=True`，并不会自动 kill provider；调用方必须继续 cancel/reconnect 或回收资源。
+
+桌面端 `apps/desktop/src/store/subagents.ts:117-326` 以 subagent id 去重，保留最多 `MAX_STREAM` stream，终态不再覆盖；树按 parentId 构造并排序。`agent-terminal-stream.ts:15` 将每进程 backlog 限制为 256000 字节，tab 重开可回放，但 backlog 是内存态，不是耐久日志。
+
+MCP server 的 tests/test_mcp_serve.py 通过 sessions JSON/SQLite fixtures 验证 conversations_list、messages_read、attachments_fetch、events_poll/wait；MCP SDK 缺失时使用 `importorskip`，因此静态通过不等于真实 MCP transport 可用。
+
+## 13. Session、run、memory 与持久化
+
+`hermes_state.py` 维护 session key/id、messages、tool calls、response lineage、FTS/trigram 索引和迁移版本。SQLite WAL 提高并发读，但写事务仍需短、可重试；SQL 注入回归在 `tests/test_sql_injection.py` 校验列名和参数化查询。
+
+会话语义分三层：
+
+- session id：单一持久会话记录。
+- session key：按平台/profile/用户作用域复用会话。
+- response id/previous_response_id：Responses API 的模型响应链，不等于完整 session key。
+
+run 状态通常包含 queued/running/waiting approval/completed/failed/stopped；SSE event cursor 只保证事件桥缓存窗口内可追，不能替代 DB 状态。`POST /v1/approval` 和 `/stop` 是控制意图，调用返回不证明后台 worker 已立即结束。
+
+MemoryProvider/ContextEngine 是可插拔边界；embedding/index backend 可能为 lazy optional。记忆写入若与 session message 不在同一事务，必须向调用方暴露部分成功，不可把“模型回答成功”当作记忆持久化成功。
+
+## 14. 权限、秘密与资源治理
+
+- `agent/secret_scope.py` 对环境变量做 secret/non-secret 分界；terminal/backend 路由提示不得泄露 token。
+- API key/JWT、平台 webhook signature、MCP server credential、provider OAuth token 是不同信任域，不应共用一个 allowlist。
+- approval gate 必须覆盖危险 terminal、浏览器登录、插件 override、远端部署和持久化 skill 安装。
+- 每个 terminal 命令都应有 deadline、输出上限、进程树回收和 cwd 记录；超时不能只停止读取 stdout。
+- 浏览器 profile 目录属于敏感持久资产；任务结束应按 profile scope 清理或明确保留策略。
+- skill 下载与解包必须防 zip-slip、符号链接逃逸和脚本自动执行；trust_level 只能影响默认策略，不能代替内容扫描。
+- 插件 entry point 在宿主进程执行，必须隔离异常和声明能力；重型/原生依赖宜独立进程。
+- 子代理数量、深度、总 token、总 wall time 和并发工具数必须有界；父取消时级联 cancel 并等待终态。
+
+## 15. API、CLI、平台与部署
+
+API server 在 `gateway/platforms/api_server.py` 组装 Chat Completions、Responses、sessions、runs、events、approval、stop、health 和 profile prefix；`tui_gateway/server.py` 负责 newline JSON-RPC 和 live terminal output；`gateway/run.py` 负责服务启动、profile 和进程生命周期。
+
+CLI 命令由 `hermes_cli/commands.py:COMMAND_REGISTRY` 单一注册，避免 help、autocomplete、Telegram/Slack mapping 分叉。`pyproject.toml` 的 `hermes`、`hermes-agent`、`hermes-acp` 三个 entry point 共享核心但 transport 不同。
+
+部署组合包括本地 Python、Docker、远端 SSH/Modal/Daytona、Electron desktop、TUI Node runtime 和 dashboard。每种组合都要固定 home/state/db、secret source、terminal backend、browser profile、provider endpoint 和 shutdown timeout；只验证本地 CLI 不能推断 API/desktop/cron 安全。
+
+## 16. 测试与证据边界
+
+| 主题 | 代表测试 | 当前状态 |
+|---|---|---|
+| Agent loop/provider | `tests/agent/`, `tests/run_agent/` | 文件存在，未执行 |
+| tool registry/dispatch | `tests/tools/` | 文件存在，未执行 |
+| terminal/file safety | `tests/tools/test_terminal*`, file safety | 文件存在，未执行 |
+| approval/secret | approval、secret_scope tests | 文件存在，未执行 |
+| subagent lifecycle | `tests/agent/*subagent*` | 部分覆盖，未执行 |
+| MCP server | `tests/test_mcp_serve.py` | importorskip，未执行 |
+| sessions/SQL | `tests/test_sql_injection.py`、gateway session tests | 未执行 |
+| API runs/SSE | `tests/gateway/` | 未执行 |
+| frontend/TUI/Desktop | `ui-tui`/`apps/desktop` tests | 未执行 |
+
+本轮只做 git、rg、现有文档和静态源码证据；没有安装依赖、启动服务、运行 Python/TS 测试、建立 CodeGraph 或访问远程 provider。任何性能、并发、断电、SIGKILL、浏览器登录、真实 MCP、远端 terminal 和 token 撤销结论均为未验证。
+
+## 17. 当前审计交付
+
+- 唯一写入目标：本文件；源码仓库仅保留原有未跟踪 `.codegraph/` 与源码侧 `ARCHITECTURE.md`，未修改源码。
+- 当前版本：HEAD `624723130`，origin `https://github.com/NousResearch/hermes-agent.git`。
+- MCP：`project_context`/`codeexplore` 错绑华世王镞_v3；结果未作为 hermes-agent 事实。目标仓库无可用 `.codegraph` 证据。
+- 文档需要继续补充的高价值验证：API schema 逐端点、SQLite migration/WAL、terminal kill process-group、subagent parent cancellation、MCP真实 transport、skill zip-slip、browser profile清理和 provider credential quarantine。
+- 判定：静态源码审计完成；运行态与跨 transport 契约未验证。
+
+## 18. 风险到控制映射
+
+| 风险 | 控制点 | 证据/缺口 |
+|---|---|---|
+| 未授权 shell | registry approval + environment policy | 需实测拒绝路径 |
+| secret 回显 | secret_scope、tool result scrub | provider/插件组合未实测 |
+| 子代理越权 | HMAC handle + parent session | 需跨会话伪造回归 |
+| 子代理泄漏 | depth/count/time budget | 需压力与级联取消 |
+| MCP 恶意工具 | server allowlist、schema、审批 | 真实 transport 未验证 |
+| skill 恶意包 | trust/source、zip-slip 防护 | 解包/符号链接场景未验证 |
+| browser cookie 泄漏 | profile scope、域策略 | 登录态清理未验证 |
+| terminal 卡死 | deadline + process group kill | 强杀未验证 |
+| SSE 断连 | run state 与 stream 解耦 | client disconnect 未验证 |
+| SQLite 锁 | WAL、短事务、参数化 | 并发恢复未验证 |
+| cron 无人值守 | job policy、secret scrub、审批 | 实际 cron 未启动 |
+| provider token 失效 | credential quarantine | 仅测试源码证据 |
+| plugin crash | 异常隔离/可选加载 | 原生插件未实测 |
+
+## 19. 入口到资源释放导航
+
+```text
+hermes CLI / API / TUI / ACP
+        │
+        ▼
+profile + auth + session resolver
+        │
+        ▼
+AIAgent turn
+        ├─ context budget / compression
+        ├─ provider request / stream
+        ├─ registry dispatch
+        │    ├─ terminal → process group → stdout/stderr tail → cleanup
+        │    ├─ browser → profile/CDP → page/context close
+        │    ├─ MCP → client session → tool timeout/close
+        │    ├─ skill → fetch/unpack → trust/install boundary
+        │    └─ subagent → handle → wait/cancel/reconnect
+        └─ persistence → SQLite transaction/WAL → event bridge → transport
+```
+
+这条链上任一局部成功都不能代表全局完成：模型生成成功不代表工具副作用成功；工具返回成功不代表 session commit 成功；SSE 发送完成不代表后台 run 已终态；subagent summary 不代表其 terminal/browser/MCP 资源已释放。平台适配时应把每个阶段的状态、error code、retryable 和 cleanup result 独立记录。
+
+## 20. 推荐定向验证命令（本轮未执行）
+
+```text
+cd ~/Documents/Agent/github 源码参考/10_agent_platform_reference/01_成品Agent平台/hermes-agent
+bash scripts/run_tests.sh tests/test_sql_injection.py tests/test_mcp_serve.py
+bash scripts/run_tests.sh tests/agent tests/tools
+npm --prefix ui-tui test -- --run
+npm --prefix apps/desktop test -- --run
+python -m run_agent --help
+python -m hermes_cli.main doctor
+```
+
+运行前应为测试设置独立 `HERMES_HOME`、SQLite 临时目录、浏览器 profile、Docker/SSH mock、MCP fake server 和端口 4780；禁止把真实 token、生产 session DB 或用户浏览器 profile 注入测试。测试结束后必须清点残留进程、socket、临时文件、容器和 lock。
+
+## 21. 终态声明
+
+本文已把 hermes-agent 当前 checkout 的定位、目录、agent loop、工具与技能注册、MCP、terminal/browser、subagent/session/provider、权限、资源、API/CLI、部署、测试与剩余风险收敛为单一文档。源码没有被修改，文档之外没有新增旁路研究文件。MCP 错绑证据与运行态缺口均已显式保留，后续复核应继续更新本文件而不是创建第二份架构文档。
+
+## 22. 细粒度 file:line 复核表
+
+| 子系统 | 当前源码锚点 | 需要复核的行为 |
+|---|---|---|
+| 主循环 | `run_agent.py` | continuation、压缩和终态提交 |
+| 工具 schema | `tools/registry.py` | 参数校验与未知工具拒绝 |
+| 工具调用 | `model_tools.py` | provider tool choice、过滤和回注 |
+| secrets | `agent/secret_scope.py:124-138` | 环境 scrub 与日志脱敏 |
+| 子代理 handle | `agent/subagent_lifecycle.py:347-387` | parent、HMAC、contract version |
+| 子代理等待 | `agent/subagent_lifecycle.py:271-345` | timeout、cancel、reconnect |
+| skill 元数据 | `tools/skills_hub.py:131-141` | source/trust/identifier |
+| skill source | `tools/skills_hub.py:482-507` | search/fetch/inspect |
+| skill 并发 | `tools/skills_hub.py:4531-4540` | 单源异常隔离 |
+| terminal backlog | `apps/desktop/src/app/right-sidebar/terminal/agent-terminal-stream.ts:15` | 内存上限 |
+| terminal writer | 同文件 `19-45` | 注册、回放、注销 |
+| subagent UI | `apps/desktop/src/store/subagents.ts:117-326` | 去重、树、终态 |
+| MCP sessions | `tests/test_mcp_serve.py:521-765` | public API 与 cursor |
+| SQL 防注入 | `tests/test_sql_injection.py:1-40` | 列名和参数化 |
+| API runs | `gateway/platforms/api_server.py` | run/approval/stop/events |
+| TUI events | `tui_gateway/server.py` | JSON-RPC 与输出桥 |
+| cron | `cron/jobs.py`, `cron/scheduler.py` | 持久化与无人值守 |
+| CLI | `hermes_cli/main.py`, `commands.py` | 单一注册表 |
+| state | `hermes_state.py` | WAL、FTS、迁移 |
+| provider | `providers/`, `hermes_cli/auth.py` | credential pool/quarantine |
+| browser | `tools/browser_camofox_state.py` | profile scope |
+
+以上索引绑定当前 `624723130`，远程更新后必须重新计算行号；本轮没有把历史细探中的旧 commit 行号当作当前运行证据。
+
+## 23. 研究范围边界
+
+- 仅修改平台研究文档目录，未修改源码、测试、锁文件、远程分支或部署环境。
+- 未使用用户未授权的 MCP 作为事实来源；MCP 错绑信息仅作工具链风险记录。
+- CodeGraph 目标仓库索引不可用，未自行创建共享索引；源码、git、现有文档是本轮证据。
+- 结论按静态实现事实、测试意图和未验证运行态三类表达，避免把存在性当成功。
+- 任何后续运行验证应在独立 home、端口 4780 和临时数据库中执行，并回填本文件。
+
+本轮静态审计在此收口。
+
+唯一文档继续有效。
+
+审计完成。

@@ -300,7 +300,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -Configurat
 - 安装层：`setup.exe` 对 `krnln.fne`、`GetNewInf`、MD5 和路径进行真实检查；
 - 运行层：需在安装易语言的 Windows 主机中验证窗口 Hook、DPI、菜单、主题、插件生命周期和不同易语言版本。
 
-本轮未在 macOS 上启动、安装、构建或运行 Windows 工程；因此不能宣称编译通过、插件运行通过或安装验证通过。Windows 侧后续应至少覆盖：Win32 Release 全量构建、缺失 `krnln.fne`/错误 `iDraw.fne`、重复安装 MD5 幂等、插件加载/卸载、DPI、易语言 5.8/5.93/5.95 兼容性、Hook 清理、配置变更和事件回调异常。
+当前审计未在 macOS 上启动、安装、构建或运行 Windows 工程；因此不能宣称编译通过、插件运行通过或安装验证通过。Windows 侧后续应至少覆盖：Win32 Release 全量构建、缺失 `krnln.fne`/错误 `iDraw.fne`、重复安装 MD5 幂等、插件加载/卸载、DPI、易语言 5.8/5.93/5.95 兼容性、Hook 清理、配置变更和事件回调异常。
 
 ## 11. 版本基线与远程复核
 
@@ -311,7 +311,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -Configurat
 - 远程标签：`v0.0.1` → `5ebb6dd0a79bd3f1c595e5013006ea0c248f6e67`，`v0.0.2` → `b4431a307718207e91c9e2a7138902d9ca03196d`；
 - README 宣称的示例发布版本 `v1.4.1029`/`v1.5.1003` 与当前 Git 标签命名不一致；代码版本头为 `1.5.1003`，应以源码和构建产物为实现基线。
 
-本项目未发现 `细探-*.md` 或其他旧架构细探文件，因此不存在需要合并或删除的旧细探。此前专属 `project_context` 返回的是华世王镞_v3 根而非本目标仓库；本文件的项目身份改以本目标仓库路径、Git、README、工程和源码现场证据为准。目标仓库没有 `.codegraph/`，`codegraph_explore` 明确返回未索引，本轮使用本地源码工具完成取证。
+本项目未发现 `历史研究-*.md` 或其他旧架构历史研究文件，因此不存在需要合并或删除的历史研究。此前专属 `project_context` 返回的是华世王镞_v3 根而非本目标仓库；本文件的项目身份改以本目标仓库路径、Git、README、工程和源码现场证据为准。目标仓库没有 `.codegraph/`，`codegraph_explore` 明确返回未索引，当前审计使用本地源码工具完成取证。
 
 ## 12. 风险、未确认项与后续复核
 
@@ -342,11 +342,11 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -Configurat
 - `scripts/package-release.ps1`、`.github/workflows/release.yml`：打包、发布与 CI；
 - `src/include/iDraw_Version.h`、`src/iDraw/iDraw.def`、`src/include/iDraw_Interface.def`：版本和 DLL 导出契约。
 
-> 后续架构维护只更新本文件；不创建平行“细探”文档，不把未在源码/构建/Windows 运行中验证的行为写成已实现事实。
+> 后续架构维护只更新本文件；不创建平行“历史研究”文档，不把未在源码/构建/Windows 运行中验证的行为写成已实现事实。
 
-## 14. 第三轮：通用开发工具底座映射（源码事实版）
+## 14. 当前裁决：通用开发工具底座映射（源码事实版）
 
-本节是第三轮补充，不是把 eide 宣称成完整 IDE 平台。映射规则是：先记录源码已有边界，再判断它可归入开发工具支持库、开发工具模块、运行核心或网关；没有源码证据的项目模型、编译器、终端、任务调度和 HTTP/CLI 网关明确标为“缺失/待核”。本轮只修改本文件；此前 `project_context` 错绑到 `~/Documents/Agent/PHP/华世王镞_v3`，代码图结果不作为 eide 证据，改用目标仓库本地静态取证。
+本节是当前裁决补充，不是把 eide 宣称成完整 IDE 平台。映射规则是：先记录源码已有边界，再判断它可归入开发工具支持库、开发工具模块、运行核心或网关；没有源码证据的项目模型、编译器、终端、任务调度和 HTTP/CLI 网关明确标为“缺失/待核”。当前审计只修改本文件；此前 `project_context` 错绑到 `~/Documents/Agent/PHP/华世王镞_v3`，代码图结果不作为 eide 证据，改用目标仓库本地静态取证。
 
 ### 14.1 一条权威链路与四层归属
 
@@ -365,7 +365,7 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -Configurat
   → IDraw_UnInterface() → Plugin_UnInit() → 回调/Hook/菜单/窗口/模块释放
 ```
 
-| 目标底座层 | eide 中可直接归属的事实 | 不能越界宣称的内容 | 第三轮裁决 |
+| 目标底座层 | eide 中可直接归属的事实 | 不能越界宣称的内容 | 当前裁决裁决 |
 |---|---|---|---|
 | **开发工具支持库** | `src/include/` 的 ABI 结构/函数指针/功能号；`IGetEWindow` 窗口发现；`IEIDE_CodeManage` 编辑器内存适配；`CommonCode/process_muster.*` 的 Win32 进程句柄、启动、枚举、终止；`CFileRW`/主题资源/MD5/路径工具；GBK 编码约束 | 没有统一结果类型、取消令牌、超时对象、进程组协议、跨平台实现或安全资源句柄 | **吸收为低层支持库候选**；只提供窄能力，不放项目编排、插件策略或业务状态 |
 | **开发工具模块** | `iDraw.fne` 主支持库；`iDrawControl` 控件/窗口重绘；`iDraw_Event` 消息和事件模块；`iConfig` 配置；`iTheme` 主题；`IDraw_Resource` 资源；`EWindowSize` 布局；插件 DLL；`setup.exe` 和发布脚本 | 没有可持久化项目树、构建任务模型、编译诊断模型、终端会话或任务历史 | **吸收为编辑器视觉/宿主适配模块**；构建/项目/终端只能作为未来模块缺口，不能从资源目录名推断已实现 |
@@ -538,29 +538,29 @@ powershell -ExecutionPolicy Bypass -File scripts\package-release.ps1 -Configurat
 | **L3 开发工具编排** | 项目模型、构建任务、工具链发现、终端会话、编译诊断、取消/重试/产物索引 | 目标仓库未发现这些领域模型或终端入口；只有自身 MSBuild/CI/打包流程 | **缺失**：不得从 eide 源码直接声称存在；若立项需新契约和唯一 owner |
 | **L4 统一网关/控制面** | 版本化命令、能力搜索/契约/执行、权限、证据、发布/恢复 | 目标仓库无 HTTP/MCP/RPC/CLI 网关，无统一序列化命令 | **废弃直接映射**：只保留为未来适配方向，禁止把 DLL 导出和裸指针暴露为网关 |
 
-第三轮最终裁决：
+当前裁决最终裁决：
 
 1. **吸收：** `IDRAW_INFO`/`IGetEWindow` 的宿主窗口发现、`IEIDE_CodeManage` 的编辑器窄适配、`Plugin_Init/UnInit` 的 GUID 生命周期轮廓、`iDraw_Event` 的单表消息/事件路由、资源/主题释放清单、MSBuild/PowerShell 制品链。
 2. **升级后吸收：** `process_muster` 只能作为底层能力；必须补结构化结果、有限等待、进程组、输出管道、取消和句柄 RAII。`IDraw_Interface` 只能作为项目适配器内部 ABI，不能作为公共网关。
 3. **废弃/隔离：** 同进程第三方插件、固定内存特征扫描、裸 `HWND/WPARAM/LPARAM` 跨边界、无限等待、`TerminateProcess` 代替取消、逐文件非事务安装、无签名的 `iDraw_*.dll` 自动扫描，不进入通用运行核心。
 4. **待核：** `PLUGIN_INFO.Dependence` 是否在旧宿主中另有依赖约束、所有模块的 `IDraw_UnInterface` 是否由外层统一清理、事件 map 的多线程访问、`CFileRW` 的具体句柄 RAII、`iDraw.fne` 在真实易语言 5.8/5.93/5.95 上的 ABI 兼容；这些必须在 Windows 实机/调试器/构建产物上复核。
 
-### 14.9 本轮验证边界
+### 14.9 当前审计验证边界
 
 | 验证项 | 命令/证据 | 结果 |
 |---|---|---|
 | 目标身份 | `git -C <目标根> rev-parse --show-toplevel`；`git log -1` | 目标为 eide，HEAD `b4431a307718207e91c9e2a7138902d9ca03196d`，`master`，与既有文档一致 |
-| 工作树边界 | `git status --short` | 现场原有 `?? ARCHITECTURE.md`；本轮只允许继续修改此文件 |
-| 源码静态取证 | 本轮读取 `src/include/`、`src/CommonCode/`、`src/iDraw/`、`src/iDrawControl/`、`src/iDraw_Event/`、`src/iConfig/`、`src/iTheme/`、`src/IDraw_Resource/`、`src/EWindowSize/`、`src/insert/`、`plugins/`、`scripts/`、`.github/workflows/`、`tests/`、`docs/` | 已完成；关键路径均保留到文件和行号 |
-| 真实构建/运行 | `msbuild ...`、`setup.exe`、易语言宿主 | 本轮未执行；当前主机 macOS，不能把静态证据写成 Windows 构建/插件/安装通过 |
+| 工作树边界 | `git status --short` | 现场原有 `?? ARCHITECTURE.md`；当前审计只允许继续修改此文件 |
+| 源码静态取证 | 当前审计读取 `src/include/`、`src/CommonCode/`、`src/iDraw/`、`src/iDrawControl/`、`src/iDraw_Event/`、`src/iConfig/`、`src/iTheme/`、`src/IDraw_Resource/`、`src/EWindowSize/`、`src/insert/`、`plugins/`、`scripts/`、`.github/workflows/`、`tests/`、`docs/` | 已完成；关键路径均保留到文件和行号 |
+| 真实构建/运行 | `msbuild ...`、`setup.exe`、易语言宿主 | 当前审计未执行；当前主机 macOS，不能把静态证据写成 Windows 构建/插件/安装通过 |
 | 自动化测试 | `tests/` 工程和 `.sln/.vcxproj` 盘点 | 未发现统一 CTest/GoogleTest/Catch2/Python 测试入口；测试是 MFC/GUI 试验工程，未形成回归门禁 |
 | project_context | 曾返回华世王镞_v3 根和其代码图 | 错绑环境问题；未使用其符号、依赖图或验证结果 |
 
 本节只证明源码映射和缺口，不证明 Windows 构建、易语言宿主运行、插件卸载、DPI、真实编译器、终端子进程或安装回滚已通过。后续若要把 L3/L4 补入平台，必须先登记能力需求、确认唯一 owner、冻结消费者契约、定义资源/失败/取消/崩溃验收，再由项目适配层接入；不得直接改写 eide 的公共 ABI。
 
-### 14.10 第三轮底座对象清单
+### 14.10 当前裁决底座对象清单
 
-为了避免把“有相关文件”误判成“已有通用能力”，本轮将目标底座对象逐项落到源码事实：
+为了避免把“有相关文件”误判成“已有通用能力”，当前审计将目标底座对象逐项落到源码事实：
 
 | 底座对象 | eide 的可映射事实 | 当前不是 | 迁移边界 |
 |---|---|---|---|
@@ -627,7 +627,7 @@ discovered
 
 对于 eide 现状，`attached` 对应 `IDraw_Interface`，`allocated` 对应插件注册、窗口子类、Hook 和资源创建，`stopping` 对应 `NL_UNLOAD_FROM_IDE`/`NL_FREE_LIB_DATA`，`released` 只能在所有 `IDraw_UnInterface`、`Plugin_UnInit`、`UnhookWindowsHookEx`、事件注销和资源释放均有证据时成立。当前源码只能可靠证明部分正常路径，不能证明取消、超时、崩溃后的 `reconciled`。
 
-### 14.13 第三轮验收结论
+### 14.13 当前裁决验收结论
 
 - **已映射：** 宿主窗口/编辑器投影、插件 GUID 注册、进程内消息事件路由、配置/主题/资源入口、仓库自身 MSBuild/打包链以及正常路径的部分资源释放。
 - **明确缺失：** 持久项目模型、通用组件 manifest、用户构建任务、编译器提供者、终端会话、结构化进程输出、任务取消/超时、制品事务和统一资源账本。
@@ -636,7 +636,7 @@ discovered
 
 ### 14.14 交互链与文档质量审计
 
-本轮按“宿主加载 → 编辑器投影 → 插件注册 → 事件/绘画 → 配置与资源 → 构建/发布 → 安装/卸载”复核了完整交互链，并将仓库自身工具链与用户项目能力分开：
+当前审计按“宿主加载 → 编辑器投影 → 插件注册 → 事件/绘画 → 配置与资源 → 构建/发布 → 安装/卸载”复核了完整交互链，并将仓库自身工具链与用户项目能力分开：
 
 ```text
 e.exe / 易语言支持库配置

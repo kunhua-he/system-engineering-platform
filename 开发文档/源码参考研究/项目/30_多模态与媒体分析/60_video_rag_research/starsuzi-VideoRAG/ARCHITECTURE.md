@@ -70,13 +70,13 @@ retrieval/extract_features.py ──► InternVideo2 ──► query_features.pk
 | 远程默认分支 | `origin/main` |
 | 远程最新提交（经 `127.0.0.1:4780` 查询） | `cd4faac2b6f7fa6a0e42acaf51448d57ede1c8c4` |
 | 本地/远程关系 | 当前提交一致，未发现需要独立临时工作区核对的远程落后 |
-| 初始工作树状态 | 建档前存在未跟踪细探材料；本轮已吸收后清理，未修改源码、依赖、测试或配置 |
+| 初始工作树状态 | 建档前存在未跟踪细探材料；当前核对已吸收后清理，未修改源码、依赖、测试或配置 |
 
 ### 2.2 CodeGraph 与 MCP 证据
 
 - 目标仓库从目标路径向上查找**没有 `.codegraph/`**，因此 `codegraph_explore` 明确返回“未建立代码地图”；本档案未采用其他仓库的地图，也没有把其他项目的代码图结果冒充本仓库证据。
 - 首条 `project_context` 按要求调用，但 MCP 返回的项目名称为 `华世王镞_v3`、根目录为 `~/Documents/Agent/PHP/华世王镞_v3`，与目标仓库不一致；其返回的代码地图/最近验证属于错误绑定项目，故不采纳为本仓库证据。
-- 本档案的源码证据来自目标工作树实际读取的 `README.md`、入口脚本、核心模型/工具、配置、依赖和数据文件；证据等级按“源码/数据实读 > README/历史施工材料说明 > 未执行推断”处理。
+- 本档案的源码证据来自目标工作树实际读取的 `README.md`、入口脚本、核心模型/工具、配置、依赖和数据文件；证据等级按“源码/数据实读 > README/历史研究材料说明 > 未执行推断”处理。
 
 ## 3. 目录分层与职责
 
@@ -211,7 +211,7 @@ starsuzi-VideoRAG/
 
 ### 7.1 依赖事实
 
-根目录没有 `requirements.txt` 或 `pyproject.toml`。`retrieval/models/InternVideo2/requirements.txt` 固定了一套较旧的 CUDA/PyTorch 组合（如 `torch==1.13.1+cu117`、`torchvision==0.14.1+cu117`、`transformers==4.28.1`）；同目录 `pyproject.toml` 则声明 Python `>=3.10`、更新的 `torch>=2.4.1` 等范围，并包含可选 Git/CUDA 扩展依赖。两份声明存在版本口径差异，应由运行者按目标 GPU/环境裁决，不能视为本轮已安装或已验证。
+根目录没有 `requirements.txt` 或 `pyproject.toml`。`retrieval/models/InternVideo2/requirements.txt` 固定了一套较旧的 CUDA/PyTorch 组合（如 `torch==1.13.1+cu117`、`torchvision==0.14.1+cu117`、`transformers==4.28.1`）；同目录 `pyproject.toml` 则声明 Python `>=3.10`、更新的 `torch>=2.4.1` 等范围，并包含可选 Git/CUDA 扩展依赖。两份声明存在版本口径差异，应由运行者按目标 GPU/环境裁决，不能视为当前核对已安装或已验证。
 
 运行时从源码可确认的主要依赖包括：PyTorch、NumPy、Pillow、OpenCV、`decord`、`tqdm`、Transformers、`torchvision`、`qwen_vl_utils`、LLaVA-NeXT、`rouge_score`、NLTK、`bert_score`、InternVideo2 所需的 BERT/DeepSpeed/Flash Attention 等。
 
@@ -234,9 +234,9 @@ starsuzi-VideoRAG/
 - `test_cfg.py` 只覆盖 InternVideo2 配置相关行为，不能证明 VideoRAG 端到端检索或生成正确。
 - 未发现统一测试入口、CI 配置或服务健康检查。
 
-### 8.2 本轮验证边界
+### 8.2 当前核对验证边界
 
-本轮按任务要求不安装依赖、不启动服务、不运行模型、不构建、不修改源码/依赖/测试/配置、不提交 Git。仅对新增 `ARCHITECTURE.md` 做回读、章节关键字检查和 `git diff --check`；因此“文档验证通过”不等于“项目运行通过”。
+当前核对按任务要求不安装依赖、不启动服务、不运行模型、不构建、不修改源码/依赖/测试/配置、不提交 Git。仅对新增 `ARCHITECTURE.md` 做回读、章节关键字检查和 `git diff --check`；因此“文档验证通过”不等于“项目运行通过”。
 
 ## 9. 风险与未验证项
 
@@ -247,9 +247,9 @@ starsuzi-VideoRAG/
 5. **GPU/显存风险**：多个适配器直接调用 `.cuda()` 或把 processor 输出移到 CUDA，未提供 CPU 回退；`max_frames=32` 与多视频输入会显著放大显存和推理成本。
 6. **检索规模风险**：检索不是索引化 ANN，而是将全部 query/video 特征堆叠进内存并做全量矩阵乘法，规模增大时内存和排序成本线性/超线性上升。
 7. **评估口径风险**：`evaluate_rankings()` 只取每个 query gold 视频列表的第一个视频；这与多正例 Recall 的定义可能不同。`generation/evaluation.py` 在空结果、语言和 tokenizer 环境未准备时也没有显式降级策略。
-8. **代码健壮性风险**：`retrieval/models/InternVideo2/demo/utils.py::get_text_feat_dict()` 使用可变默认参数 `text_feat_d={}`；配置解析使用动态 `import_module` 和 `eval()`；这些是后续安全与可复现性复核点，本轮不修改。
+8. **代码健壮性风险**：`retrieval/models/InternVideo2/demo/utils.py::get_text_feat_dict()` 使用可变默认参数 `text_feat_d={}`；配置解析使用动态 `import_module` 和 `eval()`；这些是后续安全与可复现性复核点，当前核对不修改。
 9. **结果一致性风险**：检索阶段的 query ID、生成阶段的 `str(sample['qid'])`、`howto100m_query_text` 与 `wikihow_query_text` 分别承担不同键角色；数据集替换或字段清洗时容易出现空匹配。
-10. **测试覆盖风险**：根主链没有对应测试，且本轮未执行模型/数据端到端验证；当前任何 Recall 或生成指标都不能从本档案推断。
+10. **测试覆盖风险**：根主链没有对应测试，且当前核对未执行模型/数据端到端验证；当前任何 Recall 或生成指标都不能从本档案推断。
 11. **远程与工作树风险**：本地 `main` 与经 `127.0.0.1:4780` 查询的 `origin/main` 当前一致；后续若远程变化，需在不覆盖本档案的独立临时工作区复核。
 
 ## 10. 结论与后续复核顺序
@@ -258,7 +258,7 @@ starsuzi-VideoRAG/
 
 starsuzi-VideoRAG 是围绕论文 VideoRAG 的离线研究原型：`InternVideo2` 将 QA query 与视频编码并进行全量点积排序，检索结果以 JSON/特征 pickle 落盘；生成侧从检索结果、视频脚本和 query 组装多模态 prompt，支持 InternVL2.5、Qwen2.5-VL、LLaVA-Video 三类模型；最终以 Recall@1、ROUGE-L、BLEU-4、BERTScore 做实验评估。仓库没有 Web/API 服务层、持久化数据库或生产部署控制面，核心契约是本地数据文件和 Python 函数/CLI。
 
-### 10.2 建议的后续深挖顺序（不代表本轮已执行）
+### 10.2 建议的后续深挖顺序（不代表当前核对已执行）
 
 1. 固定一套 CUDA/PyTorch 依赖并做最小模型加载验证，先确认 `InternVideo2` checkpoint 与配置可用。
 2. 补齐/确认 `datasets/videos` 与特征 pickle 的来源，核对 query/video ID 对齐和脚本覆盖率。
@@ -295,9 +295,9 @@ starsuzi-VideoRAG 是围绕论文 VideoRAG 的离线研究原型：`InternVideo2
 - `datasets/retrieval/synthetic/query2videos.json`、`datasets/retrieval/wikihow/query2videos.json`
 - 当前 Git 状态、提交、远程默认分支及经 `127.0.0.1:4780` 的远程 HEAD 查询
 
-## 12. 第三轮：媒体摄取、时序知识与底座映射
+## 12. 后续：媒体摄取、时序知识与底座映射
 
-本轮只做目标仓库静态源码取证，并把“当前项目事实”和“归入系统工程平台的候选落点”分开。后者是架构裁决输入，不表示本仓库已经具备生产能力，也不表示已经修改平台底座。
+当前核对只做目标仓库静态源码取证，并把“当前项目事实”和“归入系统工程平台的候选落点”分开。后者是架构裁决输入，不表示本仓库已经具备生产能力，也不表示已经修改平台底座。
 
 ### 12.1 视频摄取与解码：实际是批处理扫描，不是摄取服务
 
@@ -323,7 +323,7 @@ starsuzi-VideoRAG 是围绕论文 VideoRAG 的离线研究原型：`InternVideo2
 
 - `generation/utils/data_io.py::get_scripts_for_videos()`（约 27-43 行）按 `original/{video}.txt`、`asr/{video}.txt` 顺序查找，找到第一个就逐行 `strip` 后用空格拼接；不存在时返回空字符串。
 - 因而当前仓库**消费 ASR 文本，不执行 ASR**：没有音频解码、语音模型、词级/句级时间戳、语言识别、置信度、说话人或 ASR 任务状态。`datasets/scripts/asr/` 是已落盘的数据目录，不是运行时 provider。
-- 本轮对目标树按文件名和源码关键字核对，未发现 OCR provider、OCR 入口、帧文字检测/识别、文字框坐标或 OCR 结果 schema；README 中的“Textual Information Extraction”只能作为项目声明/研究方向，不能当作 OCR 已实现。
+- 当前核对对目标树按文件名和源码关键字核对，未发现 OCR provider、OCR 入口、帧文字检测/识别、文字框坐标或 OCR 结果 schema；README 中的“Textual Information Extraction”只能作为项目声明/研究方向，不能当作 OCR 已实现。
 - 原始脚本优先于 ASR 脚本，且两者都被压成无定位的字符串；没有保留 `start/end`、帧号、词边界、来源模态或置信度。因此不能从当前结果反向定位回答依据到视频时间片段。
 
 归底座时，ASR/OCR 应是两个可替换的**支持库 provider**（分别承担音频/帧输入、模型调用、结构化输出和外部依赖隔离），知识模块负责选择文本来源、去重、对齐、冲突策略和版本化融合；不得让网关或运行核心直接 import Whisper、PaddleOCR 等第三方实现。
@@ -480,9 +480,9 @@ datasets/retrieval/.../query2videos.json（静态输入，非上一步自动输�
 6. **W5 运行核心接线**：统一作业、租约、deadline、取消、OOM 策略、子进程组、心跳、checkpoint、恢复和残留审计；禁止模块自建线程/重试中心。
 7. **W6 网关与验收**：为提交/查询/取消/结果/流式事件编译消费者契约；做正常、部分失败、超时、取消、OOM、SIGKILL、重复提交和恢复后的真实端到端验收。
 
-## 17. 第三轮真假验证表与剩余风险
+## 17. 后续真假验证表与剩余风险
 
-| 项目 | 源码事实 | 测试/运行证据 | 本轮结论 |
+| 项目 | 源码事实 | 测试/运行证据 | 当前核对结论 |
 |---|---|---|---|
 | 视频摄取/解码 | `interface.py` 有目录扫描、decord 打开、四帧采样 | 未安装依赖、未运行视频解码 | 部分实现；研究批处理，不是生产摄取 |
 | ASR | `datasets/scripts/asr/*.txt` 被读取 | 未执行 ASR | 静态输入消费；无 ASR provider |
@@ -493,13 +493,13 @@ datasets/retrieval/.../query2videos.json（静态输入，非上一步自动输�
 | 检索→QA | 两个脚本均存在，但 QA 读静态 `query2videos.json` | 未做跨脚本真实重跑 | 结果边未直接接通 |
 | 模型/GPU | 多处 `cuda`、`device_map='auto'`、bfloat16/Flash Attention | 未加载权重/未测显存 | 强 GPU 假设，资源治理缺失 |
 | 超时/取消/OOM/崩溃 | 未发现统一治理或子进程边界 | 未做故障注入 | 生产能力全部待建 |
-| 平台归属 | 可按 L0-L4 映射 | 未修改平台底座 | 只形成第三轮架构输入 |
+| 平台归属 | 可按 L0-L4 映射 | 未修改平台底座 | 只形成后续架构输入 |
 
-本轮没有安装依赖、下载权重、启动服务、运行模型或修改源码/依赖/配置/测试；只更新本项目根 `ARCHITECTURE.md`。因此上述“生产链候选、底座归属、装配工作包”均是基于源码缺口的裁决，不是已经通过的实现。
+当前核对没有安装依赖、下载权重、启动服务、运行模型或修改源码/依赖/配置/测试；只更新本项目根 `ARCHITECTURE.md`。因此上述“生产链候选、底座归属、装配工作包”均是基于源码缺口的裁决，不是已经通过的实现。
 
-## 18. 第三轮真实源码研究补充：摄取、采样、生命周期与验证等级
+## 18. 后续真实源码研究补充：摄取、采样、生命周期与验证等级
 
-本节是对前述第三轮结论的源码级补强。它只记录目标树中实际读到的实现，不把 `retrieval/models/InternVideo2/` 上游子树中未被根流程调用的能力，误记为 VideoRAG 主链能力。
+本节是对前述后续结论的源码级补强。它只记录目标树中实际读到的实现，不把 `retrieval/models/InternVideo2/` 上游子树中未被根流程调用的能力，误记为 VideoRAG 主链能力。
 
 ### 18.1 摄取与采样的两套实现必须分开看
 
@@ -551,7 +551,7 @@ datasets/retrieval/.../query2videos.json（静态输入，非上一步自动输�
 
 为避免把静态研究结论、轻量导入和真实 GPU 复现混为一谈，本档案采用以下证据等级：
 
-| 等级 | 证据要求 | 本仓库第三轮状态 |
+| 等级 | 证据要求 | 本仓库后续状态 |
 |---|---|---|
 | V0 静态存在性 | 读取源码/配置/数据目录，确认入口、字段、依赖和控制流 | 已完成；支持上述源码事实和缺口判断 |
 | V1 纯函数/文件夹具 | 不加载大模型，验证采样边界、ID 对齐、prompt、JSON/pickle schema、原子写入语义 | 未建立根级测试；不能宣称通过 |
@@ -559,8 +559,8 @@ datasets/retrieval/.../query2videos.json（静态输入，非上一步自动输�
 | V3 GPU 集成 | 加载真实 checkpoint，完成 query/video embedding、排序、至少一个 LVLM 生成和指标计算 | 未下载权重、未加载模型、未执行 |
 | V4 故障与恢复 | 注入缺失文件、坏媒体、短视频、维度错、OOM、超时、取消、SIGKILL，核验终态、重试、checkpoint 和资源清理 | 当前实现没有治理面；未执行，且生产能力待建 |
 
-本轮最终判定为 **V0 已完成，V1-V4 未完成**。因此 `Recall@1`、ROUGE-L、BLEU-4、BERTScore 的源码计算路径可以描述，但不能被解释为本机真实复现结果；“模型支持”也只能表示适配器代码存在，不能表示权重、CUDA、显存和外部包已验证。
+当前核对最终判定为 **V0 已完成，V1-V4 未完成**。因此 `Recall@1`、ROUGE-L、BLEU-4、BERTScore 的源码计算路径可以描述，但不能被解释为本机真实复现结果；“模型支持”也只能表示适配器代码存在，不能表示权重、CUDA、显存和外部包已验证。
 
-### 18.6 第三轮收束结论
+### 18.6 后续收束结论
 
 真实源码显示，VideoRAG 当前最有价值的可复用边界是“归一化视频/文本 embedding + 多模型视频输入适配器 + 研究级静态脚本消费”，而不是完整的媒体知识摄取平台。后续若生产化，优先级应为：先冻结资产/片段/span/evidence 与错误码 schema；再把媒体解码、采样、ASR、OCR、embedding、LVLM 放入可隔离 provider；随后由知识模块接管增量索引、检索快照和证据包；最后由运行核心补齐模型生命周期、GPU 预算、超时取消、崩溃恢复和原子制品提交。任何只把当前脚本挂到网关、而不解决静态 `query2videos.json` 接线、全量内存排序和最终写盘丢失的问题，都不构成真实 VideoRAG 生产闭环。

@@ -9,7 +9,7 @@
 - `shell.vcxproj`：动态库（`DynamicLibrary`），目标扩展名在 Win32 配置中为 `.fne`，通过 `GetNewInf` 返回 `LIB_INFO`。
 - `shell_static/shell_static.vcxproj`：静态库（`StaticLibrary`），复用同一批实现源文件，并以 `__E_STATIC_LIB` 改变支持库信息代码和命名方式。
 
-本档案只描述当前仓库源码、工程和 Git 现场证据；README、远程说明或未来设计不作为实现证据。仓库没有 README、AGENTS.md、测试目录或旧 `细探-*.md` 文件。
+本档案只描述当前仓库源码、工程和 Git 现场证据；README、远程说明或未来设计不作为实现证据。仓库没有 README、AGENTS.md、测试目录或旧 `既有专项文档` 文件。
 
 ## 2. 总体流程图
 
@@ -313,9 +313,9 @@ Windows 临时 char/wchar 数据
 - “工程可在所有四种配置构建”是未验证；
 - “文件复制/删除/移动、COM 快捷方式和电源操作行为正确”是未验证。
 
-### 本轮实际验证
+### 当前取证实际验证
 
-本轮只读读取并核对了源码、头文件、两个工程、解决方案、模块定义文件和 Git 基线；没有安装依赖、没有启动 Windows 程序、没有生成构建产物、没有调用会修改文件/回收站/系统电源的 API。当前执行环境为 macOS，无法直接运行 Windows SDK/MSVC 构建。
+当前取证只读读取并核对了源码、头文件、两个工程、解决方案、模块定义文件和 Git 基线；没有安装依赖、没有启动 Windows 程序、没有生成构建产物、没有调用会修改文件/回收站/系统电源的 API。当前执行环境为 macOS，无法直接运行 Windows SDK/MSVC 构建。
 
 建议后续在隔离 Windows 测试机补充：
 
@@ -378,8 +378,8 @@ Windows 临时 char/wchar 数据
 - 远程 `HEAD` / `refs/heads/master`：`cc6b49a971953841ac10d4654ffe760c85b478b3`，本地与远程同提交
 - 提交时间：`2023-01-06T08:46:41Z`
 - 提交主题：`!1 shell Merge pull request !1 from AlongsCode/master`
-- 本轮开始时工作树：干净；本轮只新增/更新本文件
-- 旧细探：未发现 `细探-*.md`
+- 当前取证开始时工作树：干净；当前取证只新增/更新本文件
+- 既有细探材料：未发现 `既有专项文档`
 
 关键证据索引：
 
@@ -400,4 +400,10 @@ Windows 临时 char/wchar 数据
 | 通知函数指针状态 | `include/elib/fnshare.cpp:7-64` |
 | Windows 具体能力 | `src/BrowseForFolder.cpp`、`src/CreateLink.cpp`、`src/DeleteIntoRecycleBin.cpp`、`src/GetShortCutTarget.cpp`、`src/GetSpecialFolderPath.cpp`、`src/MyExitWindows.cpp`、`src/ShellCopyFile.cpp`、`src/ShellExecute.cpp`、`src/ShellMoveFile.cpp`
 
-本文件是该项目的首轮架构事实源；后续细探应增量更新本文件，不创建平行架构结论文档。
+本文件是该项目的当前架构事实源；后续核查应直接更新本文件，不创建平行架构结论文档。
+
+## 12. 规模与证据边界
+
+仓库包含 32 个跟踪文件，除支持库元数据外还包含 9 个 Windows Shell 实现文件：`BrowseForFolder.cpp`、`CreateLink.cpp`、`DeleteIntoRecycleBin.cpp`、`GetShortCutTarget.cpp`、`GetSpecialFolderPath.cpp`、`MyExitWindows.cpp`、`ShellCopyFile.cpp`、`ShellExecute.cpp`、`ShellMoveFile.cpp`。命令表从 `src/shell_cmdDef.cpp` 进入，参数与类型由 `src/shell_cmdInfo.cpp`、`include/shell_cmd_typedef.h` 提供，随后调用具体实现并通过 `shell_dllMain.cpp` 导出。
+
+构建边界由 `shell.vcxproj` 与 `shell_static/shell_static.vcxproj` 决定；`include/elib/*` 负责宿主内存、通知和 ABI。风险集中在回收站/文件移动的部分成功、ShellExecute 外部进程句柄、系统关机权限、路径编码和 COM 初始化。仓库没有自动化测试或 Windows 运行证据，当前 macOS 只能完成静态检查，不能宣称这些副作用接口已通过验证。

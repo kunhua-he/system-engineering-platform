@@ -4,7 +4,7 @@
 >
 > 目标仓库：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/65_rag_frameworks/haystack`
 >
-> 研究基线：本地 `main`，提交 `d79e3277a4ab32123a62104e927f32a312258d78`；`VERSION.txt` 为 `3.1.0-rc0`。
+> 研究基线：本地 `main`，提交 `c7cb46c0f28ad1984f60e5d3e9404b124a221437`（已与 `origin/main` 同步）；`VERSION.txt` 为 `3.2.0-rc0`。
 >
 > 事实优先级：当前源码与测试 > `pyproject.toml`/`AGENTS.md` > `README.md` > 已有 `细探-haystack.md` > 远程仓库元数据。
 >
@@ -53,7 +53,7 @@ README 的产品定位为：
 | 数值/检索基础 | `numpy`、`networkx`、`more-itertools`；具体 DocumentStore/集成可带额外依赖 |
 | 测试 | pytest、pytest-bdd、pytest-cov、pytest-asyncio、pytest-rerunfailures；按 `unit`、`integration`、`slow` 标记 |
 | 类型/质量 | Mypy；Ruff lint/format；pre-commit；release note 使用 reno |
-| 发布版本 | 本地 `VERSION.txt`：`3.1.0-rc0`；README 顶部宣传语仍写 `Haystack 3.0 is out`，二者应按版本文件与源码基线分别理解 |
+| 发布版本 | 本地 `VERSION.txt`：`3.2.0-rc0`；README 顶部宣传语仍写 `Haystack 3.0 is out`，二者应按版本文件与源码基线分别理解 |
 | 许可证 | Apache-2.0；README 还展示 license-compliance、OpenSSF Best Practices、HVTrust 等徽章 |
 
 ### 2.1 工程规则（来自 `AGENTS.md`）
@@ -118,7 +118,7 @@ haystack/
 ├── releasenotes/notes/               # reno release notes
 ├── images/                           # README/文档图片
 ├── pyproject.toml                    # 项目、依赖、Hatch、pytest、mypy、Ruff 配置
-├── VERSION.txt                       # 当前版本：3.1.0-rc0
+├── VERSION.txt                       # 当前版本：3.2.0-rc0
 ├── README.md                         # 产品定位、安装、功能、贡献入口
 ├── AGENTS.md                         # AI/开发代理规则
 ├── CLAUDE.md                         # 代理辅助规则
@@ -232,7 +232,7 @@ Pipeline 的可持久化中间表示包括：
 
 ```text
 {
-  "metadata": ..., 
+  "metadata": ...,
   "max_runs_per_component": 100,
   "components": {name: serialized_component},
   "connections": [{"sender": "...", "receiver": "..."}],
@@ -503,11 +503,11 @@ result = pipeline.run({"retriever": {"query": "..."}, "prompt_builder": {"questi
 ## 13. 版本与远程新鲜度核对
 
 - 本地 remote：`https://github.com/deepset-ai/haystack.git`。
-- 本地当前分支：`main`，HEAD：`d79e3277a4ab32123a62104e927f32a312258d78`。
+- 本地当前分支：`main`，HEAD：`c7cb46c0f28ad1984f60e5d3e9404b124a221437`，且已与 `origin/main` 同步。
 - 远程 `origin/main` 查询结果：`46169b5027a2e01a90d2b2fdb7042a0a042852f9`。
 - 远程提交与本地提交不同，且远程 main 指针不是落后于本地的情形；因此没有创建“远程落后”专用 4780 独立快照，也没有 fetch、合并或改写本地仓库。
 - 直连和通过 `http://127.0.0.1:4780` 的独立 `git ls-remote` 均返回同一远程指针；该结果只用于远程新鲜度核对，不作为当前源码内容证据。
-- README 顶部 `Haystack 3.0 is out` 是宣传/文档文本；源码版本文件已是 `3.1.0-rc0`，后续引用 API 时必须绑定具体提交/版本，不应只引用 README 标题。
+- README 顶部 `Haystack 3.0 is out` 是宣传/文档文本；源码版本文件已是 `3.2.0-rc0`，后续引用 API 时必须绑定具体提交/版本，不应只引用 README 标题。
 
 ## 14. 可借鉴边界（不等于直接移植）
 
@@ -522,7 +522,7 @@ result = pipeline.run({"retriever": {"query": "..."}, "prompt_builder": {"questi
 
 ## 15. 风险、限制与未决项
 
-- **版本漂移风险**：本地是 `3.1.0-rc0`，README 仍有 3.0 宣传语；任何后续实现必须以提交和源码为准。
+- **版本漂移风险**：README 仍有 3.0 宣传语，但本地已是 `3.2.0-rc0`；任何后续实现必须以提交和源码为准。
 - **外部集成风险**：`haystack_integrations` 与具体模型/数据库 connector 的版本兼容、凭据、网络和服务生命周期不在本仓库核心契约内。
 - **反序列化风险**：自定义组件若未正确声明 allowlist，会在安全模式下拒绝加载；粗暴使用 `unsafe=True` 会重新打开任意 import/实例化风险。
 - **同步/异步语义差异**：同步 variadic 输入有 sender 名称排序；异步分支不保证完成顺序。同步组件被转移到线程时，取消不等于终止真实副作用。
@@ -569,7 +569,7 @@ Haystack 的核心价值是一个稳定的“组件契约 + 类型 socket + 图�
 3. README、迁移文档和 release notes；
 4. 旧 `细探-haystack.md` 仅作为已吸收线索。
 
-本次工作树为 `main`、HEAD `d79e3277a4ab32123a62104e927f32a312258d78`，存在两个未跟踪研究文档：本文件和旧细探；没有修改源码、配置、测试、依赖或 Git 内容。
+本次工作树为 `main`、HEAD `c7cb46c0f28ad1984f60e5d3e9404b124a221437`，存在两个未跟踪研究文件：本文件和旧细探；没有修改源码、配置、测试或依赖；源码 checkout 仅执行了 `git pull --ff-only origin main` 以同步远程。
 
 ## 18. 契约总表（源码级）
 
@@ -720,13 +720,13 @@ DocumentStore、具体 Retriever/Generator、数据库、HTTP 和模型 SDK 通�
 
 ## 23. 防假绿验证分层（L0-L4）
 
-| 等级 | 允许宣称 | 本轮证据 | 结论 |
+| 等级 | 允许宣称 | 当前核对证据 | 结论 |
 |---|---|---|---|
 | L0 源码存在 | 文件、类、函数、配置项真实存在且路径可回读 | 已读取 `component.py`、`pipeline.py`、`base.py`、`component_checks.py`、`breakpoint.py`、`serialization_security.py`、`document.py`、`chat_message.py`、`agent.py`、DocumentStore protocol、`pyproject.toml` | 通过；本文所有核心链路至少有源码路径 |
-| L1 测试源码存在 | 测试文件/测试名覆盖某行为 | 已核对 `test/core/pipeline/`、`test/core/test_serialization_security.py`、`test/dataclasses/`、`test/components/agents/`、`test/document_stores/` 等目录及关键匹配项 | 部分通过；存在测试不等于本轮通过 |
+| L1 测试源码存在 | 测试文件/测试名覆盖某行为 | 已核对 `test/core/pipeline/`、`test/core/test_serialization_security.py`、`test/dataclasses/`、`test/components/agents/`、`test/document_stores/` 等目录及关键匹配项 | 部分通过；存在测试不等于当前核对通过 |
 | L2 静态/规则检查 | 按仓库规则执行 Hatch/Ruff/Mypy 并记录退出码 | `hatch --version` 退出码 127：当前环境无 `hatch`；依 AGENTS.md 未改用直接 `python`/`pip` 绕过 | 未通过/未执行；不能宣称 lint/type 通过 |
 | L3 本地真实测试 | 在目标仓库环境运行定向单测并记录测试数、跳过数、退出码 | 因 `hatch` 缺失未运行项目测试；没有伪造测试输出 | 未验证；不能宣称 unit/integration/e2e 通过 |
-| L4 外部依赖实测 | 真实模型、HTTP、DocumentStore 后端、MCP/Hayhooks 或生产资源联调 | 本轮未安装依赖、未启动服务、未使用凭据、未调用外部 provider | 未验证；README/历史日志不能替代联调证据 |
+| L4 外部依赖实测 | 真实模型、HTTP、DocumentStore 后端、MCP/Hayhooks 或生产资源联调 | 当前核对未安装依赖、未启动服务、未使用凭据、未调用外部 provider | 未验证；README/历史日志不能替代联调证据 |
 
 因此，“源码可证明”与“可运行/可生产”严格分开；任何后续回写必须同时补命令、退出码、测试统计、外部依赖和资源清理读回。
 
@@ -752,13 +752,13 @@ DocumentStore、具体 Retriever/Generator、数据库、HTTP 和模型 SDK 通�
 | 反序列化 allowlist + 真实模块检查 + 显式 unsafe | 吸收 | 安全边界实现证据充分；禁止把 unsafe 当默认兼容方案 |
 | DocumentStore Protocol 直接当统一事务存储 | 不吸收 | 只定义接口，不保证事务、超时、原子性、幂等和崩溃恢复 |
 | 直接复制 Haystack integrations、模型 SDK、Hayhooks/MCP 服务层 | 不吸收 | 依赖、凭据、网络和服务生命周期不属于当前核心源码事实 |
-| “外部集成可生产”“测试通过”“版本兼容” | 待核 | 需要 Hatch 环境、定向测试和真实 provider/后端证据；本轮不能假绿 |
+| “外部集成可生产”“测试通过”“版本兼容” | 待核 | 需要 Hatch 环境、定向测试和真实 provider/后端证据；当前核对不能假绿 |
 
 ### 24.3 MCP/代码图证据边界
 
-本轮按任务要求先调用专属上下文，再调用代码图探索，但实际返回需如实记录：`project_context` 返回的 MCP 实例为 `project_toolkit`，绑定项目为 `~/Documents/Agent/PHP/华世王镞_v3`，并非本 Haystack 根目录；随后 `codegraph_explore` 明确返回目标目录向上没有 `.codegraph/`，因此 Haystack 无代码图可查询。该错绑/无索引结果没有被冒充为 Haystack 证据；本文使用目标工作树的 Read/Search/Git 输出完成取证。
+本轮严格按用户授权未使用 MCP。源码证据来自目标工作树的 Read/Search/Git 与项目本地 CodeGraph；当前索引已同步且状态为 up to date（1,929 files、13,370 nodes、42,154 edges）。其他项目的 MCP、代码图或验证记录均不属于 Haystack 证据。
 
-## 25. 本轮修改与验证边界
+## 25. 当前核对修改与验证边界
 
 - 唯一修改文件：`ARCHITECTURE.md`。
 - 保留文件：`细探-haystack.md`，未删除、未改写。
@@ -766,9 +766,9 @@ DocumentStore、具体 Retriever/Generator、数据库、HTTP 和模型 SDK 通�
 - 已完成的现场验证：源码路径与关键函数可读、旧细探完整读取、当前架构文档完整回读、Git 工作树记录、`hatch --version` 失败原因记录。
 - 未完成且不能假称完成：项目测试、质量检查、真实 provider 联调、崩溃恢复和资源残留现场验收。
 
-## 26. 第三轮：通用底座映射与裁决（Haystack → 系统工程平台）
+## 26. 后续：通用底座映射与裁决（Haystack → 系统工程平台）
 
-本节是第三轮“基于底座的映射与裁决”，不是把 Haystack 代码直接搬进平台。映射对象是源码已经证明的边界：组件契约、显式 Pipeline 图、Document/ChatMessage 数据结构、DocumentStore Protocol、Generator/Agent 编排、序列化安全和异步调度。外部数据库、模型 SDK、HTTP 服务和具体集成仍然属于 provider 边界，不能因 Haystack 有一个 Python 类就宣称平台已经具备对应生产能力。
+本节是后续“基于底座的映射与裁决”，不是把 Haystack 代码直接搬进平台。映射对象是源码已经证明的边界：组件契约、显式 Pipeline 图、Document/ChatMessage 数据结构、DocumentStore Protocol、Generator/Agent 编排、序列化安全和异步调度。外部数据库、模型 SDK、HTTP 服务和具体集成仍然属于 provider 边界，不能因 Haystack 有一个 Python 类就宣称平台已经具备对应生产能力。
 
 ### 26.1 三层归属总表
 
@@ -906,7 +906,7 @@ Provider 创建 client/DB session/模型句柄
 - Toolset 的每次 `spawn` 隔离模式可吸收；动态工具发现缓存必须有租约和失效，不得跨运行共享可变列表。
 - Agent 崩溃/强杀时，运行核心至少保留任务意图、已调用工具、幂等键、provider 请求 id 和最后状态；恢复采取查询事实、补偿或人工介入，不假设模型能回滚外部副作用。
 
-### 26.7 失败、超时、取消、崩溃与资源矩阵（第三轮补充）
+### 26.7 失败、超时、取消、崩溃与资源矩阵（后续补充）
 
 | 场景 | 组件支持库 | 文档检索/问答模块 | 运行核心与证据 |
 |---|---|---|---|
@@ -924,7 +924,7 @@ Provider 创建 client/DB session/模型句柄
 
 ### 26.8 L0-L4 映射验收门
 
-第三轮把原项目研究等级转换为平台候选能力的晋级门槛；“源码存在”不能直接升级为“平台可用”。
+后续把原项目研究等级转换为平台候选能力的晋级门槛；“源码存在”不能直接升级为“平台可用”。
 
 | 等级 | 对 Haystack 的证据 | 平台映射后的最低验收 |
 |---|---|---|
@@ -934,9 +934,9 @@ Provider 创建 client/DB session/模型句柄
 | **L3 provider/运行核心联调** | 真实 HTTP/模型/存储 provider、连接池 limits、超时取消、并发和崩溃注入 | 通过唯一能力调用器和运行核心；验证路由、权限、租约、重试、deadline、取消排空、事务/幂等、快照恢复；逐项记录外部服务与退出码 |
 | **L4 生产/跨版本证据** | 目标版本提交、依赖锁、序列化迁移、真实后端和故障恢复均有可复现实验 | 仅在 L0-L3 全部有证据后晋级；需签名制品、环境指纹、回滚/重启/资源残留清零和真实业务数据脱敏验证。当前 Haystack 研究没有 L4 证据 |
 
-本仓库当前仍是 L0 已充分、L1 研究证据较充分、L2-L4 未完成的候选输入。`hatch` 不可用导致本轮没有项目测试执行；该事实不能通过 README、测试文件存在或历史输出补齐。
+本仓库当前仍是 L0 已充分、L1 研究证据较充分、L2-L4 未完成的候选输入。`hatch` 不可用导致当前核对没有项目测试执行；该事实不能通过 README、测试文件存在或历史输出补齐。
 
-### 26.9 第三轮能力命中、缺口与装配计划
+### 26.9 后续能力命中、缺口与装配计划
 
 | 能力/模式 | 现有底座命中 | 缺口 | 裁决/下一步 |
 |---|---|---|---|
@@ -963,9 +963,9 @@ Provider 创建 client/DB session/模型句柄
   → L1 静态 → L2 本地链 → L3 provider 联调 → L4 生产门禁
 ```
 
-本轮不创建上述平台文件、不登记能力、不改系统工程平台；这是 Haystack 第三轮输入，正式实现必须由需求确认和装配计划启动。
+当前核对不创建上述平台文件、不登记能力、不改系统工程平台；这是 Haystack 后续输入，正式实现必须由需求确认和装配计划启动。
 
-### 26.10 第三轮裁决摘要
+### 26.10 后续裁决摘要
 
 - **吸收**：三段式 Component 生命周期、连接前 socket 类型检查、显式 Pipeline 图、Document/ChatMessage 统一载体、序列化 allowlist/真实模块检查、Agent 运行元数据和 Toolset 运行态隔离、async cancel+drain 语义。
 - **升级现有底座**：组件契约编译、文档基础类型、唯一能力调用器、运行核心任务/资源/快照/授权/证据、外部 provider 注册与健康状态；不得新增平级注册表、任务系统或网关。
@@ -973,17 +973,17 @@ Provider 创建 client/DB session/模型句柄
 - **不吸收**：把 Haystack `DocumentStore` Protocol 当作统一事务数据库，把具体 integration/SDK/连接池当作平台核心，把 `unsafe=True` 当默认兼容，把 Agent 当作可绕过权限和资源治理的新内核。
 - **待核**：真实 provider 的连接池复用、事务/部分写入、超时可取消程度、进程崩溃恢复、版本迁移和生产负载；这些必须有 L2/L3/L4 现场证据。
 
-## 27. 第三轮唯一事实源与验证记录
+## 27. 后续唯一事实源与验证记录
 
-本节与前文不一致时，以当前源码/测试和本节明确的三层 owner、唯一检索链路及 L0-L4 门槛为准；旧 `细探-haystack.md` 继续保留，不再扩展为第二份事实源。第三轮唯一修改仍为 `ARCHITECTURE.md`，没有修改源码、配置、依赖、测试、README 或 Git。
+本节与前文不一致时，以当前源码/测试和本节明确的三层 owner、唯一检索链路及 L0-L4 门槛为准；旧 `细探-haystack.md` 继续保留，不再扩展为第二份事实源。后续唯一修改仍为 `ARCHITECTURE.md`，没有修改源码、配置、依赖、测试、README 或 Git。
 
-- 开工 MCP：`project_context` 已调用，但返回的绑定项目为 `~/Documents/Agent/PHP/华世王镞_v3`、MCP 实例 `project_toolkit`，开工 id 为空；这与任务指定的 Haystack 根目录不一致，不能作为 Haystack 项目身份或代码图证据。
-- 代码图：已按要求调用 `codegraph_explore`，目标根没有 `.codegraph/` 索引，返回“isn't indexed”；因此本轮没有把错绑项目的代码图结果冒充 Haystack 证据，源码证据来自目标根的 `AGENTS.md`、`ARCHITECTURE.md`、源码/测试路径和只读搜索。
+- 开工/工具边界：本轮按用户授权**未使用任何 MCP**；证据来自目标工作树的只读源码、测试路径、Git 与项目本地 CodeGraph。不得把其他项目（包括 V3）的 MCP/代码图/验证记录当作 Haystack 证据。
+- 项目本地 CodeGraph：索引位于目标根 `.codegraph/`，已在远程快进后执行 `codegraph sync`；当前 `status` 为 1,929 files、13,370 nodes、42,154 edges，SQLite WAL 39.55 MB，状态为 `Index is up to date`。该索引仅用于源码研究，不是 MCP 服务。
 - 现场验证边界：修改后应只做文档差异检查；Hatch、项目测试和真实 provider 联调仍按 L0-L4 如实标记，不能因文档写入成功宣称 L2-L4 通过。
 
-## 28. 第三轮检索底座映射：组件、管线与 RAG 运行边界
+## 28. 后续检索底座映射：组件、管线与 RAG 运行边界
 
-本节把第三轮范围收敛为一张可装配的检索底座地图：组件、管线、文档、存储、embedding、检索、生成、序列化、资源、失败与取消。这里的“映射”只说明职责和边界，不表示目标平台已经实现这些能力。Haystack 的事实依据是本仓库 `haystack/` 与 `test/` 当前工作树；平台侧只给出候选 owner、契约和验收要求。
+本节把后续范围收敛为一张可装配的检索底座地图：组件、管线、文档、存储、embedding、检索、生成、序列化、资源、失败与取消。这里的“映射”只说明职责和边界，不表示目标平台已经实现这些能力。Haystack 的事实依据是本仓库 `haystack/` 与 `test/` 当前工作树；平台侧只给出候选 owner、契约和验收要求。
 
 ### 28.1 端到端对象图
 
@@ -1051,11 +1051,11 @@ Provider 创建 client/DB session/模型句柄
 | 主动取消/stream abandon | native async task 可 cancel；stream handle `aclose` 有限等待；同步线程继续运行风险存在 | 传播取消原因和 deadline，排空 task，归还租约；不可取消副作用进入未完成/待核状态 | 清理等待上限不是远端请求 timeout，也不是事务回滚 |
 | 崩溃/SIGKILL | 未进入 finally/snapshot 的执行没有核心级恢复保证 | 持久化意图、幂等键、request id 和最后状态；重启后查询事实、补偿或人工介入 | 不能自动重放整条链，不能用日志推断已提交或已回滚 |
 
-### 28.6 第三轮最终裁决
+### 28.6 后续最终裁决
 
 - **组件与管线**：吸收生命周期、socket 校验、显式图、确定性合并和 snapshot 思路；落点是现有能力契约/运行核心，不新建平级注册表或第二套任务系统。
 - **文档与存储**：吸收统一 Document、内容寻址、过滤 DSL 和 DuplicatePolicy 的接口思想；存储事务、索引一致性、权限和崩溃恢复必须由受管 provider 与运行核心补足。
 - **embedding、检索、生成**：建立文档摄取与问答候选模块，但三者都必须经唯一能力调用器；模型、向量库、全文库和 HTTP SDK 不进入领域模块。
 - **序列化**：吸收 allowlist、真实模块检查、版本化迁移和原子发布；不吸收默认 `unsafe`，不保存运行资源和密钥。
 - **资源、失败与取消**：吸收 cancel+drain、流式 sentinel、局部并发上限和快照证据；补齐 wall-clock deadline、provider 取消、租约回收、事务读回和崩溃恢复。
-- **晋级条件**：本第三轮映射仍是 L0/L1 候选输入。只有完成需求/能力登记、schema 与 owner 冻结、摄取→写入→检索→生成真实链、provider 超时/取消/部分写/重启演练及资源残留核对，才可进入 L2/L3；没有这些证据不得宣称“检索底座已完成”。
+- **晋级条件**：本后续映射仍是 L0/L1 候选输入。只有完成需求/能力登记、schema 与 owner 冻结、摄取→写入→检索→生成真实链、provider 超时/取消/部分写/重启演练及资源残留核对，才可进入 L2/L3；没有这些证据不得宣称“检索底座已完成”。

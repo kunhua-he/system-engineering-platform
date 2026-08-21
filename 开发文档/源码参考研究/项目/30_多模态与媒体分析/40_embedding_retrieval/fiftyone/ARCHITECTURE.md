@@ -1,7 +1,7 @@
 # FiftyOne 架构建档
 
 > 项目：FiftyOne（Voxel51）
-> 
+>
 > 本文是本地源码参考库的架构事实档案，不是生产接入方案。结论以当前工作树源码、README、依赖声明、测试与远程版本探针为准；源码标识保留原文。
 
 ## 1. 项目定位
@@ -267,7 +267,7 @@ fiftyone/
 
 FiftyOne 的核心不是单一 embedding 数据库，而是以 MongoDB 为持久化底座、以 Dataset/Sample/Label/View 为数据模型、以 Brain 为相似度/分析运行层、以 Starlette + GraphQL + React App 为交互层的视觉数据质量平台。对本地媒体/embedding retrieval 平台最值得抽取的是：数据集与视图边界、可扩展字段/标签模型、模型推理到 VectorField 的落库契约、Brain run 元数据、以及 v2 二进制可视化协议；不应直接照搬 MongoDB 绑定、完整 App 或其所有第三方模型适配。
 
-本轮允许的改动仅为本项目根 `ARCHITECTURE.md`；未修改源码、README、依赖、测试、配置或 `细探-fiftyone.md`，未安装、启动、构建、提交或生成数据/权重/数据库。
+当前核对允许的改动仅为本项目根 `ARCHITECTURE.md`；未修改源码、README、依赖、测试、配置或 `细探-fiftyone.md`，未安装、启动、构建、提交或生成数据/权重/数据库。
 
 ## 13. 证据边界
 
@@ -284,7 +284,7 @@ FiftyOne 的核心不是单一 embedding 数据库，而是以 MongoDB 为持久
 | 定位为高质量数据集与视觉模型工具 | `setup.py:32-41` 的包描述；`__public__.py:40-51,158-172` 的 Dataset、模型、embedding 公共入口 | 吸收；补充为数据集、模型推理、检索可视化与评估闭环 |
 | Dataset 管理大规模视觉数据 | `core/dataset.py:274-295,309-351`：Dataset 是有序媒体样本集合，原始媒体在磁盘，标签/字段在数据库 | 吸收；补充持久化、单例、视频 frames 与动态 schema |
 | App 可视化探索 | `core/session/session.py:136-233,347-451`；`server/app.py:168-235` | 吸收；补充 Session→Client→Starlette/GraphQL/静态资源链 |
-| Evaluation/基准 | `__public__.py` 暴露 evaluation；`core/dataset.py` 有 evaluation cache/run 关联 | 吸收为能力边界；本轮未单独深挖各 evaluator 的执行契约，保留待核 |
+| Evaluation/基准 | `__public__.py` 暴露 evaluation；`core/dataset.py` 有 evaluation cache/run 关联 | 吸收为能力边界；当前核对未单独深挖各 evaluator 的执行契约，保留待核 |
 | Model integration | `core/models.py:1019-1216`：模型转换、媒体类型校验、分支执行、VectorField、SaveContext | 吸收；补充错误策略与资源边界 |
 | MongoDB 依赖 | `setup.py:68-75,99-101`；`core/odm/database.py:485-535` | 吸收；明确 Mongo 是运行前提，不是可直接替换的抽象 |
 | 数据质量闭环可借鉴 | Dataset/View、embedding、Brain run、evaluation/run 元数据和 App 交互的源码证据 | 吸收为架构启示，不裁决为生产接入方案 |
@@ -292,15 +292,15 @@ FiftyOne 的核心不是单一 embedding 数据库，而是以 MongoDB 为持久
 
 ## 15. 公开契约表（源码事实）
 
-“未声明”表示在本轮读取的实现和 docstring 中没有看到该契约，不表示运行时绝对不存在。除明确写出的返回/异常外，不臆测 HTTP 错误码、幂等语义或事务语义。
+“未声明”表示在当前核对读取的实现和 docstring 中没有看到该契约，不表示运行时绝对不存在。除明确写出的返回/异常外，不臆测 HTTP 错误码、幂等语义或事务语义。
 
 | 入口/能力 | 输入与所有权 | 输出/状态变化 | 错误、可重试、超时、取消、幂等 | 证据 |
 |---|---|---|---|---|
 | `fiftyone.Dataset(...)` / `load_dataset` | 名称、`persistent`、`overwrite` 等；Dataset 对象持有 ODM 文档和 collection 引用，原始媒体仍由调用方路径指向的文件持有 | 新建或加载 Dataset；初始化 sample/frame document class、四类 LRU cache、媒体类型；`persistent=False` 的清理由数据库退出治理参与 | 同名 `overwrite` 会先删除；已删除 Dataset 访问会抛 `ValueError`；无显式超时/取消/幂等键，名称是主要寻址键 | `fiftyone/core/dataset.py:274-351,397-425`；`fiftyone/core/odm/database.py:307-330` |
 | `SampleCollection.compute_embeddings` → `core.models.compute_embeddings` | `samples`、可转换为 `Model` 的模型、`embeddings_field`、batch/worker/`skip_failures`；写入字段由 Dataset 的 SaveContext 持有 | 无字段时返回 ndarray/list/dict；有字段时在 sample/frame schema 创建 `VectorField` 并逐条/批量保存，返回 `None` | 不支持模型/embedding/media type 抛 `ValueError` 或媒体异常；`skip_failures=True` 记录 warning 并保留 `None`；无业务超时/取消/幂等键/事务回滚声明 | `fiftyone/core/models.py:1019-1124,1133-1216`；`1219-1260` |
-| `Dataset.sort_by_similarity` / Brain visualization | 需要既有 Brain similarity/visualization run；查询可为 ID、向量或 prompt（prompt 能力依赖 Brain/provider） | 返回 `DatasetView`；run 结果和配置保存到 Dataset 关联的 Brain/run 元数据 | 前置索引缺失属于调用前提失败；本轮未执行 Brain/provider；未见统一超时/取消/幂等键 | `fiftyone/core/collections.py:8043`（已有文档复核）；`fiftyone-brain` 依赖 `setup.py:99` |
+| `Dataset.sort_by_similarity` / Brain visualization | 需要既有 Brain similarity/visualization run；查询可为 ID、向量或 prompt（prompt 能力依赖 Brain/provider） | 返回 `DatasetView`；run 结果和配置保存到 Dataset 关联的 Brain/run 元数据 | 前置索引缺失属于调用前提失败；当前核对未执行 Brain/provider；未见统一超时/取消/幂等键 | `fiftyone/core/collections.py:8043`（已有文档复核）；`fiftyone-brain` 依赖 `setup.py:99` |
 | `fo.launch_app` / `Session` | Dataset/View、sample/group、port/address、remote、browser、config；Session 建立并持有 Client、state 与事件监听器 | 生成全局 `_session`，`Client.open(state)`，非 notebook 打开 App；状态更新通过事件回写 | 仅允许一个 App；remote notebook 抛 `ValueError`；`close()` 断开 plots 并关闭 client；等待期间 `KeyboardInterrupt` 可中断；无请求幂等键 | `fiftyone/core/session/session.py:136-233,347-451,1279-1308` |
-| `/embeddings/v2/*` POST 路由 | JSON `datasetName`、`brainKey`，各路由再接 view/filter/slices/field/offset/limit 等；`run_sync_task` 把同步计算置于 async endpoint | runs/info 为 JSON；geometry/ids/color/masks 为 16 字节 header + 二进制列；lasso 返回可序列化 view stage；color 有小 LRU cache | ready 只代表 results pointer 存在；缺字段/不存在 run 的异常转换未在本轮形成统一错误码；未见服务端重试、超时、取消或幂等契约 | `fiftyone/server/routes/embeddings_v2.py:1-19,78-143,146-232,235-259` |
+| `/embeddings/v2/*` POST 路由 | JSON `datasetName`、`brainKey`，各路由再接 view/filter/slices/field/offset/limit 等；`run_sync_task` 把同步计算置于 async endpoint | runs/info 为 JSON；geometry/ids/color/masks 为 16 字节 header + 二进制列；lasso 返回可序列化 view stage；color 有小 LRU cache | ready 只代表 results pointer 存在；缺字段/不存在 run 的异常转换未在当前核对形成统一错误码；未见服务端重试、超时、取消或幂等契约 | `fiftyone/server/routes/embeddings_v2.py:1-19,78-143,146-232,235-259` |
 | `fiftyone` CLI | setuptools 注册 `fiftyone=fiftyone.core.cli:main`；子命令由 `FiftyOneCommand.setup` 注册 | 复用 Dataset/App/Brain/Plugin 等公共能力，不另建数据访问层 | argparse 参数校验；各子命令失败语义分散；quickstart 的 `--wait` 控制连接丢失后的等待，非全局任务超时 | `setup.py:123-124`；`fiftyone/core/cli.py:85-181` |
 
 ## 16. 真实对接调用链
@@ -375,22 +375,22 @@ fo.launch_app
 | `Session.__init__` | 初始化 context、验证 Dataset/View/配置、构造 StateDescription | 读 config，持有 state/Client/plots；可能启动服务/浏览器 | 一个全局 session，Client 事件监听器接收 App 事件 | remote notebook 被拒绝；非 notebook 自动 `open`; 析构兜底关闭 client，但析构异常被吞掉 | `core/session/session.py:365-451,504-517` |
 | `server.lifespan` | notification service 未禁用时创建 lifecycle manager 并启动专用线程 | Mongo change stream、app.state lifecycle manager | async lifespan + dedicated thread | stop 最多 5 秒；超时只 warning，异常只 log，不保证线程已清空 | `server/app.py:168-203` |
 | `EmbeddingsV2Runs` | datasetName 可加载 Dataset；run config 必须是 visualization 类 | 读 brain methods/run result pointer | async endpoint 经 `run_sync_task` 调同步 `_post_sync` | 中途计算/死亡无 results pointer 时 ready=false；运行终态需旁路 status sidecar | `server/routes/embeddings_v2.py:78-116` |
-| `EmbeddingsV2Color` | dataset/run/field 可解析；按 run timestamp + field 组成 cache key | 读 Dataset values/results；写进程内小 LRU body cache | async endpoint；cache 竞争由模块锁/缓存实现承担（锁细节本轮未完全展开） | 字段/结果异常未统一转协议错误；cache 不是持久化正确性来源 | `server/routes/embeddings_v2.py:195-232,465-479` |
+| `EmbeddingsV2Color` | dataset/run/field 可解析；按 run timestamp + field 组成 cache key | 读 Dataset values/results；写进程内小 LRU body cache | async endpoint；cache 竞争由模块锁/缓存实现承担（锁细节当前核对未完全展开） | 字段/结果异常未统一转协议错误；cache 不是持久化正确性来源 | `server/routes/embeddings_v2.py:195-232,465-479` |
 | `EmbeddingsV2LassoStage` | polygon 或 wire-order indices 合法；selection 不超过显式 stage 阈值时可转 Select | 读 points/IDs/view；返回 view stage 描述，不直接写 Dataset | async endpoint→sync task | 大选择集可改用表达式/索引路径；具体非法 polygon 错误契约待核 | `server/routes/embeddings_v2.py:304-390` |
 
 ## 18. 资源生命周期表
 
 | 资源 | 创建/取得 | 正常释放 | 业务失败 | 超时/主动取消 | 宿主崩溃/残留验证 |
 |---|---|---|---|---|---|
-| 原始媒体文件 | `Sample.filepath` 被读取；FiftyOne 不拥有文件内容 | Python 文件读取函数返回后由底层关闭 | 读取异常按 `skip_failures` 分支；不会删除原文件 | 无显式取消接口；中断由宿主/Python 控制 | 崩溃不应改变原文件，但本轮未做文件句柄实测 |
-| Mongo `pymongo.MongoClient` / `Motor` | `core.odm.database._connect/_async_connect` 建立/复用全局 client | `_disconnect()` 显式 close 两类 client、清空引用并 `mongoengine.disconnect_all()` | 连接/版本/类型不符会断开并抛 `ConnectionError`；连接重建由 `_connect` 完成 | 无全局 DB 请求超时/取消契约在本轮证据中确认；配置 timeout 未纳入本表 | `atexit` 与数据库清理逻辑存在；未启动 Mongo 做现场残留检查 |
-| Dataset ODM 文档/collections | create/load 时取得；schema 增加时写字段 | Dataset 删除或进程退出清理非持久数据（需连接条件） | 单样本 SaveContext 可能在失败前已有部分写入；未发现跨样本事务/回滚 | 无批处理取消/回滚协议；KeyboardInterrupt 可让 Python 路径中断 | 重启恢复依赖 Mongo 文档/运行元数据，本轮未实测 |
-| `SaveContext` | `embeddings_field` 路径进入 `ExitStack` | 上下文退出；每个 sample 的 `ctx.save` 写入 | 模型失败时仍写入 `None`（skip 模式）；非 skip 异常提前退出 | 无显式 cancel hook；中断时由上下文退出，已写数据不自动回滚的事实待专项验证 | 需用 Mongo 读回确认部分写入与锁；本轮未执行 |
-| Torch DataLoader/workers | 支持模型且非 video-frame 单样本时创建；`persistent_workers=False` | iterator/上下文结束后 workers 可退出 | collate/读取失败由 `ErrorHandlingCollate` 与 skip 策略处理 | 无 API 级取消；宿主中断可能留下短暂 worker，需进程组检查 | 本轮未加载 Torch/未验收 worker 进程残留 |
-| App `Session`/Client/端口 | `Session.__init__`→`Client.open`；全局 `_session` | `Session.close`→plots.disconnect→`Client.close`；`__del__` 兜底 | Client 启动/连接异常路径未在本轮运行验证；析构异常被吞 | notebook `freeze`；等待可 `KeyboardInterrupt`；无统一 graceful timeout | 进程崩溃后的端口/子进程未检查；需 OS 级实测 |
+| 原始媒体文件 | `Sample.filepath` 被读取；FiftyOne 不拥有文件内容 | Python 文件读取函数返回后由底层关闭 | 读取异常按 `skip_failures` 分支；不会删除原文件 | 无显式取消接口；中断由宿主/Python 控制 | 崩溃不应改变原文件，但当前核对未做文件句柄实测 |
+| Mongo `pymongo.MongoClient` / `Motor` | `core.odm.database._connect/_async_connect` 建立/复用全局 client | `_disconnect()` 显式 close 两类 client、清空引用并 `mongoengine.disconnect_all()` | 连接/版本/类型不符会断开并抛 `ConnectionError`；连接重建由 `_connect` 完成 | 无全局 DB 请求超时/取消契约在当前核对证据中确认；配置 timeout 未纳入本表 | `atexit` 与数据库清理逻辑存在；未启动 Mongo 做现场残留检查 |
+| Dataset ODM 文档/collections | create/load 时取得；schema 增加时写字段 | Dataset 删除或进程退出清理非持久数据（需连接条件） | 单样本 SaveContext 可能在失败前已有部分写入；未发现跨样本事务/回滚 | 无批处理取消/回滚协议；KeyboardInterrupt 可让 Python 路径中断 | 重启恢复依赖 Mongo 文档/运行元数据，当前核对未实测 |
+| `SaveContext` | `embeddings_field` 路径进入 `ExitStack` | 上下文退出；每个 sample 的 `ctx.save` 写入 | 模型失败时仍写入 `None`（skip 模式）；非 skip 异常提前退出 | 无显式 cancel hook；中断时由上下文退出，已写数据不自动回滚的事实待专项验证 | 需用 Mongo 读回确认部分写入与锁；当前核对未执行 |
+| Torch DataLoader/workers | 支持模型且非 video-frame 单样本时创建；`persistent_workers=False` | iterator/上下文结束后 workers 可退出 | collate/读取失败由 `ErrorHandlingCollate` 与 skip 策略处理 | 无 API 级取消；宿主中断可能留下短暂 worker，需进程组检查 | 当前核对未加载 Torch/未验收 worker 进程残留 |
+| App `Session`/Client/端口 | `Session.__init__`→`Client.open`；全局 `_session` | `Session.close`→plots.disconnect→`Client.close`；`__del__` 兜底 | Client 启动/连接异常路径未在当前核对运行验证；析构异常被吞 | notebook `freeze`；等待可 `KeyboardInterrupt`；无统一 graceful timeout | 进程崩溃后的端口/子进程未检查；需 OS 级实测 |
 | notification service 专用线程 | Starlette lifespan start 时创建 lifecycle manager/thread | shutdown `stop()`，最多等待 5 秒 | stop 异常仅 log；超时仅 warning | 明确有 5 秒 shutdown wait，但不是服务任务取消保证 | 需读取线程/连接状态确认无残留；源码未提供强制 kill 证据 |
 | embeddings-v2 color LRU cache | 首次 `(dataset,brain,run timestamp,field)` 请求生成 body | LRU 淘汰/进程退出自然释放 | 生成失败不应将错误 body 当成功缓存（实现细节待核） | 无 TTL/取消契约 | 非持久内存缓存，崩溃丢失可重建；未做压力/并发验证 |
-| Brain results/GridFS pointer | Brain 计算保存 run config/results 后 routes 读取 | 由 Dataset/Brain run 管理 | 仅有 pointer 不代表计算成功，死亡中途可无 pointer | 无运行 cancel/status 统一契约在本轮证据中确认 | 结果完整性/孤儿 blob 清理未实测 |
+| Brain results/GridFS pointer | Brain 计算保存 run config/results 后 routes 读取 | 由 Dataset/Brain run 管理 | 仅有 pointer 不代表计算成功，死亡中途可无 pointer | 无运行 cancel/status 统一契约在当前核对证据中确认 | 结果完整性/孤儿 blob 清理未实测 |
 
 ## 19. 失败、超时、取消与崩溃矩阵
 
@@ -401,7 +401,7 @@ fo.launch_app
 | 空输入 | 单分支无 embedding 时返回 shape `(0,0)`；字段路径仍可能建 schema | 验收区分“空任务完成”与“没有样本” | 源码已证；未运行 |
 | 单样本/批次失败 | `skip_failures=True` warning + `None`；false 原样抛出；字段路径可能保存 `None` | 结果必须带失败明细/输入 ID；不能只看函数返回 `None` | 实现是部分成功语义，无独立任务状态 |
 | 重复调用/重复事件 | Dataset 名称单例化、run/cache 有复用点；未见统一幂等键或去重状态机 | 需专项验证同名 Dataset、重复 embedding、重复 event 的最终状态 | 未确认，不能宣称幂等 |
-| HTTP 请求超时/客户端取消 | v2 endpoint 使用 `run_sync_task`；本轮未见每请求 timeout/cancel handler | 应压测断开客户端后同步任务、线程、DB cursor 是否终止 | 未实现证据不足/未验证 |
+| HTTP 请求超时/客户端取消 | v2 endpoint 使用 `run_sync_task`；当前核对未见每请求 timeout/cancel handler | 应压测断开客户端后同步任务、线程、DB cursor 是否终止 | 未实现证据不足/未验证 |
 | App 断线/关闭 | Client 事件有 `close_session` listener；`Session.close` 关闭 client；CLI wait 可被 KeyboardInterrupt 中断 | 需查端口、Client 子进程、Mongo connection 是否收口 | 部分实现；现场未测 |
 | Mongo/第三方异常 | `_disconnect` 尝试 close 并清空全局 client；数据库类型不符抛 ConnectionError | 重建连接后读回 Dataset/run；避免把重连当写入成功 | 源码有连接治理，恢复链未实测 |
 | 部分写入/回滚 | SaveContext 每个 sample 调 `ctx.save`；未见跨样本事务 | 故障注入后读回已写 sample、schema、run pointer，明确补偿策略 | 不能宣称原子批处理 |
@@ -410,15 +410,15 @@ fo.launch_app
 
 ## 20. 防假绿验证等级（L0-L4）
 
-| 等级 | 只能证明什么 | 本轮证据 | 不能冒充什么 |
+| 等级 | 只能证明什么 | 当前核对证据 | 不能冒充什么 |
 |---|---|---|---|
 | L0 源码存在 | 路径、符号、实现片段真实存在 | `read_file`/`search_files` 复核 `setup.py`、`__public__.py`、Dataset、models、session、ODM、server、tests | 不能证明可安装、可运行 |
 | L1 测试源码存在 | 测试文件和断言覆盖某些协议 | `tests/unittests/server_embeddings_v2_tests.py:24-120` 等；`tests/README.md:1-37` | 不能证明测试已通过 |
-| L2 静态结构/版本检查 | 文档、路径、Git 状态和关键文本可复核 | 本轮只读文件核对、目录/旧文档存在性和 Git 只读检查 | 不能证明 Mongo、Brain、Torch、Node 可用 |
-| L3 本轮真实执行 | 仅限本轮明确执行且有退出码的命令 | 本轮未安装依赖、未启动服务、未运行 Python/App/Playwright 测试；后续回信列出实际静态验证命令和退出码 | 不得把历史 CI、测试源码、日志或“应该能跑”写成通过 |
-| L4 外部依赖/生产链路 | MongoDB、`fiftyone-brain`、模型 provider、Node/Yarn、浏览器和真实媒体协同工作 | 本轮没有外部服务实测 | 明确未验证；不得宣称端到端成功 |
+| L2 静态结构/版本检查 | 文档、路径、Git 状态和关键文本可复核 | 当前核对只读文件核对、目录/旧文档存在性和 Git 只读检查 | 不能证明 Mongo、Brain、Torch、Node 可用 |
+| L3 当前核对真实执行 | 仅限当前核对明确执行且有退出码的命令 | 当前核对未安装依赖、未启动服务、未运行 Python/App/Playwright 测试；后续回信列出实际静态验证命令和退出码 | 不得把历史 CI、测试源码、日志或“应该能跑”写成通过 |
+| L4 外部依赖/生产链路 | MongoDB、`fiftyone-brain`、模型 provider、Node/Yarn、浏览器和真实媒体协同工作 | 当前核对没有外部服务实测 | 明确未验证；不得宣称端到端成功 |
 
-## 21. 本轮验证、未验证项与剩余风险
+## 21. 当前核对验证、未验证项与剩余风险
 
 ### 已核对
 
@@ -432,7 +432,7 @@ fo.launch_app
 2. `project_context` 返回的 MCP 项目是 `~/Documents/Agent/PHP/华世王镞_v3`，不是目标 FiftyOne 根；随后 `codeexplore` 明确返回目标目录无 `.codegraph/`。这是工具错绑/目标无代码图，不能伪造为代码图成功；本文件的代码关系证据完全改用本地源码读取。
 3. Brain run 写入、GridFS blob 完整性、run status sidecar、重复任务、事务回滚、断线取消、线程/worker/端口残留尚未被故障注入或 OS 读回验证。
 4. 远程 `develop` 已领先本地快照；本文件的实现结论绑定本地 `HEAD 893842038c7663af5bd4c0ba647a68a1386bb62f` 与 `VERSION 1.21.0`，不得套用远程 `1.22.0`。
-5. `fiftyone-db` 构建可能下载 MongoDB；本轮遵守只读边界，未执行构建/安装。
+5. `fiftyone-db` 构建可能下载 MongoDB；当前核对遵守只读边界，未执行构建/安装。
 
 ## 22. 吸收/不吸收裁决
 
@@ -441,17 +441,17 @@ fo.launch_app
 - **待核**：evaluation 各 evaluator 的细粒度调用链、Brain provider 的索引构建/删除/取消、跨样本事务、HTTP 取消、崩溃清理、真实外部依赖协同。
 - **唯一源声明**：本 `ARCHITECTURE.md` 是 FiftyOne 项目架构事实的唯一维护文件；`细探-fiftyone.md` 保留但不再扩写、不作为并行权威文档。只允许修改本文件，未改源码、配置、测试、依赖、Git 或旧细探。
 
-## 23. 第三轮：通用底座映射与单链路裁决
+## 23. 后续：通用底座映射与单链路裁决
 
-### 23.1 本轮范围与裁决口径
+### 23.1 当前核对范围与裁决口径
 
-本轮不把 FiftyOne 直接迁入系统工程平台，而是把当前源码中已经分开的对象、资源和生命周期映射到四个平台职责边界：**数据集支持库、数据质量模块、检索/视觉模块、运行核心**。以下“吸收/升级/新建/废弃/待核”是第三轮架构输入，不是生产底座已经存在的能力，也不授权修改平台代码。
+当前核对不把 FiftyOne 直接迁入系统工程平台，而是把当前源码中已经分开的对象、资源和生命周期映射到四个平台职责边界：**数据集支持库、数据质量模块、检索/视觉模块、运行核心**。以下“吸收/升级/新建/废弃/待核”是后续架构输入，不是生产底座已经存在的能力，也不授权修改平台代码。
 
 证据以本地工作树 `HEAD 893842038c` 为准。关键事实包括：sample 文档以 `filepath`、`metadata`、`_dataset_id` 保存媒体引用和关系（`fiftyone/core/odm/sample.py:73-93`）；Dataset 初始化四个容量为 5 的进程内 LRU cache（`core/dataset.py:309-351`）；embedding 计算按媒体类型和模型能力分派到单样本、批处理、视频帧或 Torch `DataLoader`（`core/models.py:1019-1216`）；run 结果使用 MongoEngine `FileField`/GridFS（`core/odm/runs.py:21-33`、`core/runs.py:623-665`）；App notification service 在线程中运行并在 shutdown 最多等待 5 秒（`server/app.py:168-203`）；同步 HTTP 工作在全局 `ThreadPoolExecutor` 中执行（`core/utils.py:3206-3230`）。
 
 ### 23.2 对象到平台职责的映射表
 
-| FiftyOne对象/能力 | 数据集支持库（权威数据边界） | 数据质量模块（质量事实） | 检索/视觉模块（领域流程） | 运行核心（资源与状态） | 第三轮裁决 |
+| FiftyOne对象/能力 | 数据集支持库（权威数据边界） | 数据质量模块（质量事实） | 检索/视觉模块（领域流程） | 运行核心（资源与状态） | 后续裁决 |
 |---|---|---|---|---|---|
 | `Dataset`、`DatasetDocument`、sample/frame collection | 持有 `dataset_ref`、schema、sample/frame 集合访问器、view 构造入口；只经公开支持库读写 | 检查名称/媒体类型/schema、样本计数、孤儿集合和字段完整性；输出质量观察，不接管 Dataset 写入 | 接收已解析的 `DatasetView`/样本集合，不自己建第二套样本库 | 为每次访问绑定数据库句柄、超时、租约和失败证据 | **吸收**数据集/视图边界；**废弃**模块直连 ODM/集合 |
 | `Sample`/`Frame`、标签和字段 | 保存 `sample_ref`、`frame_ref`、字段描述、`media_ref`；`filepath` 是引用而非媒体所有权 | 做路径可达性、媒体类型/扩展、标签 schema、帧范围、缺失 embedding 等检查 | 读取样本/帧作为模型和检索输入；patch/clip/trajectory 仍是 view 变换 | 管理打开的文件、视频解码器、批次和错误回收 | **吸收**引用式媒体模型；**升级**质量检查契约 |
@@ -505,7 +505,7 @@ fo.launch_app
 
 以上资源必须有四种终态记录：`completed`、`failed`、`cancelled/timeout`、`crashed/recovered`。当前 FiftyOne 已有的 `skip_failures`、warning、`ready`、线程 stop 或 `set_failed` 只能证明局部行为；平台验收必须补齐 task/run 状态、失败 sample IDs、artifact pointer、资源释放证据和恢复后的读回结果。
 
-## 25. 失败、取消、崩溃的第三轮缺口
+## 25. 失败、取消、崩溃的后续缺口
 
 | 反向场景 | 当前源码事实 | 底座要求 | 裁决 |
 |---|---|---|---|
@@ -520,14 +520,14 @@ fo.launch_app
 | delegated worker 异常/强杀 | 子进程捕获异常写 failed；finally 清 descendant 并 `_exit(0)`（`delegated.py:131-184`） | 父进程必须回收、读回状态 CAS、校验进程组消失；外部 orchestrator 不得覆盖新状态 | **吸收**进程组治理，**升级**恢复对账 |
 | GridFS orphan/run orphan | 提供 `drop_orphan_runs`，按 Dataset 引用集合与 `fs.files` 差集清理（`database.py:732-776`） | 只读审计先行，删除需 dry-run/授权/证据；禁止质量模块直接删 blob | **吸收**审计模式，**升级**删除门禁 |
 
-## 26. L0-L4 防假绿分层（第三轮）
+## 26. L0-L4 防假绿分层（后续）
 
-| 等级 | 本轮允许的结论 | 证据/验收动作 | 明确不能宣称 |
+| 等级 | 当前核对允许的结论 | 证据/验收动作 | 明确不能宣称 |
 |---|---|---|---|
 | **L0 源码存在** | 可以确认对象、符号、路径和局部分支真实存在 | `Dataset` cache、sample `filepath`、embedding 分派、GridFS run、Session、DataLoader、线程池、delegated worker 的源码行已核对 | 不能证明平台已有对应支持库/模块，也不能证明可运行 |
 | **L1 测试存在** | 可以确认测试树覆盖 Dataset/ODM/server/embedding/worker 等主题 | `tests/unittests/*`、`tests/isolated/*`、`e2e-pw/*` 和相关 README 的覆盖说明 | 不能把测试文件、历史 CI 或测试名称当作通过 |
-| **L2 静态映射通过** | 本文映射表、所有权、单链路、资源四终态和不复制规则可审阅；未新增生产接口 | 回读本文件第三轮章节，检查路径/符号引用与本地 `HEAD` 一致；`git status` 只允许目标 `ARCHITECTURE.md` 与既有旧细探未纳入本轮修改 | 不能证明 Mongo/GridFS/Torch/Brain/Node/浏览器可用 |
-| **L3 本轮真实执行** | 仅能报告本轮实际执行并有退出码的命令 | 本轮只执行了目标仓库 `git status --short`、`git rev-parse --short HEAD` 和文档结构核对；未安装依赖、未启动服务、未运行 FiftyOne/App/测试 | 不能把静态读取或本轮文档写入说成端到端通过 |
+| **L2 静态映射通过** | 本文映射表、所有权、单链路、资源四终态和不复制规则可审阅；未新增生产接口 | 回读本文件后续章节，检查路径/符号引用与本地 `HEAD` 一致；`git status` 只允许目标 `ARCHITECTURE.md` 与既有旧细探未纳入当前核对修改 | 不能证明 Mongo/GridFS/Torch/Brain/Node/浏览器可用 |
+| **L3 当前核对真实执行** | 仅能报告当前核对实际执行并有退出码的命令 | 当前核对只执行了目标仓库 `git status --short`、`git rev-parse --short HEAD` 和文档结构核对；未安装依赖、未启动服务、未运行 FiftyOne/App/测试 | 不能把静态读取或当前核对文档写入说成端到端通过 |
 | **L4 外部依赖/生产链路** | 需要真实 Mongo、GridFS、媒体、Brain provider、Torch worker、App client 和 delegated worker 联动 | 应在隔离环境执行 dataset→media→embedding→Brain artifact→App projection→cancel/crash/recovery，并读回 DB、blob、进程、端口和任务终态 | 当前**未验证**；不得宣称生产可用或崩溃安全 |
 
 ## 27. 复用、升级、新建、废弃与待核裁决
@@ -554,7 +554,7 @@ fo.launch_app
 3. `运行制品清单`：把 run config、输入 view、模型/provider 版本、向量字段、artifact pointer、摘要和状态绑定为可审计 manifest。
 4. `任务资源回收`：统一线程、DataLoader worker、子进程组、数据库游标、GridFS stream、端口和 cache 的四终态回收。
 
-这些只是候选能力，不是本轮生产底座实现；没有能力需求登记、契约 owner、占用租约、验收契约和装配计划，不得落代码。
+这些只是候选能力，不是当前核对生产底座实现；没有能力需求登记、契约 owner、占用租约、验收契约和装配计划，不得落代码。
 
 ### 废弃/隔离（不作为平台公共接口）
 
@@ -586,13 +586,13 @@ embedding/Brain 结果还必须携带：模型/provider/version、media type、f
 3. **S2 领域接线**：检索/视觉模块经数据集支持库读取 media refs、写 vector/run/artifact 命令；数据质量模块只读/观察/对账；App session 只走运行核心句柄和公开投影；所有异步任务走唯一任务注册表/监督器。
 4. **F 验收与反向破坏**：在独立 Mongo/GridFS、媒体目录、Brain/provider、Torch、浏览器和任务 worker 环境，逐项执行成功/失败/取消/超时/断线/强杀/重启；读回 Dataset/Sample/Vector/Run/GridFS/Task/Session/进程/端口/cache；任何残留、重复写、伪成功或旁路直连都阻断发布。
 
-### 28.3 本项目本轮验收边界
+### 28.3 本项目当前核对验收边界
 
-本轮已把第三轮映射、单链路、不复制规则、资源契约、失败矩阵、L0-L4 和候选装配计划增量写入唯一 `ARCHITECTURE.md`。未修改源码、配置、依赖、测试、README、旧细探或 Git；未安装依赖、启动 Mongo/App、执行 Brain/Torch/Node/浏览器/任务 worker，也未复制任何媒体、数据库或结果 blob。
+当前核对已把后续映射、单链路、不复制规则、资源契约、失败矩阵、L0-L4 和候选装配计划增量写入唯一 `ARCHITECTURE.md`。未修改源码、配置、依赖、测试、README、旧细探或 Git；未安装依赖、启动 Mongo/App、执行 Brain/Torch/Node/浏览器/任务 worker，也未复制任何媒体、数据库或结果 blob。
 
-## 29. 第二轮深挖收口：数据集、媒体、索引、存储、可视化与 worker
+## 29. 后续深挖收口：数据集、媒体、索引、存储、可视化与 worker
 
-本节是对前述摘要的第二轮源码收口，专门补齐“对象到底写到哪里、谁持有资源、请求怎样进入、队列怎样推进、失败怎样落态”的实现事实。证据基线仍为本地 `HEAD 893842038c7663af5bd4c0ba647a68a1386bb62f`；本节不把测试源码或远程版本当作实现证据。
+本节是对前述摘要的后续源码收口，专门补齐“对象到底写到哪里、谁持有资源、请求怎样进入、队列怎样推进、失败怎样落态”的实现事实。证据基线仍为本地 `HEAD 893842038c7663af5bd4c0ba647a68a1386bb62f`；本节不把测试源码或远程版本当作实现证据。
 
 ### 29.1 Dataset/Sample/Frame 的真实数据边界
 
@@ -662,11 +662,11 @@ GraphQL / HTTP request
 | 状态 | `scheduled → queued → running → completed/failed`，另有 `processing` 常量；没有 `cancelled`/`timeout`/`crashed` 终态（`operators/executor.py:48-58`） | 不能把异常、进程消失或客户端断开自动称为取消 |
 | 领取 | `execute_operation` 先用 `required_state=QUEUED` 的 `find_one_and_update` CAS 改 `RUNNING`；更新失败表示已被其他执行者领取/状态已改变，直接跳过（`delegated.py:669-728`；`factory/repos/delegated_operation.py:389-403`） | 具备基本重复领取保护，但 `execute_queued_operations` 先 list 后逐个 claim，列表本身不是租约 |
 | 同进程执行 | `monitor=False` 时 `asyncio.run(self._execute_operator(operation))`；完成/失败用 `required_state=RUNNING` 再写回，外部已改状态时不覆盖并返回状态变化错误（`delegated.py:744-789`） | 同步执行无独立可中断句柄 |
-| 子进程执行 | `monitor=True` 使用 multiprocessing `spawn`、Queue/QueueListener；child `setsid`，加载 operation 后执行，写 `COMPLETED/FAILED`，finally drain log queue、杀 descendants、`os._exit(0)`（`delegated.py:66-184,791-878`） | 正常终态资源回收路径明确；硬崩溃若未写终态由父进程识别 exit code，但本轮源码未见随后统一写 `FAILED` 的补偿 |
+| 子进程执行 | `monitor=True` 使用 multiprocessing `spawn`、Queue/QueueListener；child `setsid`，加载 operation 后执行，写 `COMPLETED/FAILED`，finally drain log queue、杀 descendants、`os._exit(0)`（`delegated.py:66-184,791-878`） | 正常终态资源回收路径明确；硬崩溃若未写终态由父进程识别 exit code，但当前核对源码未见随后统一写 `FAILED` 的补偿 |
 | 监控/外部失败 | 父进程按间隔 join；仍存活时读取 operation，外部变 `FAILED` 则终止进程树，否则 `ping` 更新时间（`delegated.py:880-935`）。终止树先 terminate、最多等待 10 秒，再 kill，父进程再 terminate/kill（`delegated.py:937-981`） | 监控失败会返回错误，但取消/超时和资源残留需要上层另记状态 |
 | 重跑/清理 | `rerun_operation` 仅允许 `rerunnable` 且不允许 pipeline child；数据库提供按 Dataset 删除 delegated ops 与 orphan 清理（`delegated.py:482-502`；`core/odm/database.py:779-806`） | 重跑是重新插入文档，不是同一 operation 的幂等重置 |
 
-**第二轮收口判断：** FiftyOne 已有“Mongo 持久 operation + 状态 CAS + 可选 spawn worker + 进程树回收”的局部队列能力，但它不是完整任务监督器。缺少取消/超时/崩溃恢复状态、明确 lease/owner、统一补偿写回、持久日志完成标志和重启扫描协议；`ExecutionStore` 的 TTL/通知也不能替代这些语义。
+**后续收口判断：** FiftyOne 已有“Mongo 持久 operation + 状态 CAS + 可选 spawn worker + 进程树回收”的局部队列能力，但它不是完整任务监督器。缺少取消/超时/崩溃恢复状态、明确 lease/owner、统一补偿写回、持久日志完成标志和重启扫描协议；`ExecutionStore` 的 TTL/通知也不能替代这些语义。
 
 ### 29.7 资源生命周期与反向场景收口表
 
@@ -680,23 +680,23 @@ GraphQL / HTTP request
 | ExecutionStore/SSE queue | subscriber generator `finally` 注销；notification thread stop | 队列异常注销，QueueFull 丢消息 | 未见 per-subscriber cancel/TTL；Queue 默认无界 | daemon thread/内存队列丢失；重启应从 store 当前状态重建，不能补发历史全部事件 |
 | delegated child/descendants | terminal state 写回后 drain queue、kill descendants、`os._exit(0)` | child 捕获 traceback 写 FAILED；父 CAS 防止覆盖外部状态 | 外部 FAILED 可触发杀树；无一等 CANCELLED/TIMEOUT | 无终态的 exit code 被识别为错误，但状态补偿/重启恢复未闭合 |
 
-### 29.8 第二轮真假验证表与剩余待核
+### 29.8 后续真假验证表与剩余待核
 
-| 级别 | 本轮能够确认 | 不能宣称 |
+| 级别 | 当前核对能够确认 | 不能宣称 |
 |---|---|---|
 | L0 源码事实 | Dataset/Sample/Frame 写入、filepath/metadata、Mongo/GridFS、索引创建/删除、Starlette/GraphQL/HTTP/SSE、ExecutionStore、delegated CAS/worker 路径真实存在 | 不能证明外部依赖可用或行为覆盖所有 provider |
 | L1 测试存在 | `tests/unittests/index_tests.py`、`execution_store_unit_tests.py`、`tests/unittests/server_*`、`tests/intensive/import_export_tests.py` 等覆盖相关主题 | 不能把测试源码/历史 CI 当通过 |
 | L2 静态收口 | 本节所有调用链、资源 owner、失败分支和未闭合状态已绑定本地路径/行号；旧 `细探-fiftyone.md` 仍未改 | 不能宣称 Mongo/GridFS/Brain/Torch/FFmpeg/Node/浏览器端到端成功 |
-| L3 本轮真实执行 | 只读执行了目标仓库 `git status --short`、`git rev-parse HEAD`、源码/文档检索；未安装依赖、未启动服务、未改源码 | 不能把文档写入或静态读取说成运行通过 |
+| L3 当前核对真实执行 | 只读执行了目标仓库 `git status --short`、`git rev-parse HEAD`、源码/文档检索；未安装依赖、未启动服务、未改源码 | 不能把文档写入或静态读取说成运行通过 |
 | L4 外部链路 | 尚无真实数据库、媒体、Brain、worker、SSE 客户端和崩溃注入联合证据 | 不能宣称取消安全、崩溃可恢复、无句柄/进程/端口残留 |
 
-本轮明确保留以下待核：`fiftyone-brain` provider 的索引创建/增量/删除/取消与外部向量库；Mongo/GridFS 写入中断和跨 collection 事务；`ffprobe`/DataLoader/视频解码在断开与强杀时的资源收口；delegated operation 的 lease、重启恢复、取消/超时状态补偿；`/media` 路径安全边界和对象存储适配；GraphQL 数字分页在并发写入下的一致性；SSE 队列的慢客户端背压与消息丢失语义。
+当前核对明确保留以下待核：`fiftyone-brain` provider 的索引创建/增量/删除/取消与外部向量库；Mongo/GridFS 写入中断和跨 collection 事务；`ffprobe`/DataLoader/视频解码在断开与强杀时的资源收口；delegated operation 的 lease、重启恢复、取消/超时状态补偿；`/media` 路径安全边界和对象存储适配；GraphQL 数字分页在并发写入下的一致性；SSE 队列的慢客户端背压与消息丢失语义。
 
-## 30. 第二轮唯一事实源声明
+## 30. 后续唯一事实源声明
 
-第二轮有效结论已吸收到本 `ARCHITECTURE.md`。`细探-fiftyone.md` 仅保留为历史细探线索，不再扩写；本轮未修改源码、依赖、配置、测试、README、旧细探或 Git，未安装依赖、启动服务、生成数据库/媒体/权重/构建物。后续若继续深挖，只增量维护本文件并重新绑定源码版本。
+后续有效结论已吸收到本 `ARCHITECTURE.md`。`细探-fiftyone.md` 仅保留为历史细探线索，不再扩写；当前核对未修改源码、依赖、配置、测试、README、旧细探或 Git，未安装依赖、启动服务、生成数据库/媒体/权重/构建物。后续若继续深挖，只增量维护本文件并重新绑定源码版本。
 
-## 31. 第三轮：通用底座映射最终稿
+## 31. 后续：通用底座映射最终稿
 
 ### 31.1 一句话结论
 
@@ -766,15 +766,15 @@ Python/Notebook/CLI/App
 - Execution Store 适合作为持久键值/通知层；SSE 适合作为实时投影。需要可靠投递、重放、背压和顺序时，必须另有明确事件日志或 broker 契约。
 - `ready=bool(results pointer)`、`skip_failures=True`、HTTP 200、future 完成和 Session 存活都不能单独判定任务成功。
 
-| 等级 | 可确认内容 | 本轮结论 |
+| 等级 | 可确认内容 | 当前核对结论 |
 |---|---|---|
 | L0 源码事实 | 对象、函数、路由、存储和局部分支存在 | 已由本文件引用的本地源码路径支持；不代表可运行 |
 | L1 测试存在 | 测试树覆盖某主题、存在断言 | 只能证明测试意图，不能证明通过 |
-| L2 静态映射 | 对象/所有权/生命周期/失败/验证层级能够闭合审阅 | 本轮新增映射属于 L2；未产生平台代码或外部运行证据 |
-| L3 真实执行 | 指定命令本轮真实运行且退出码为 0 | 本轮未安装依赖、未启动 Mongo/App、未运行 FiftyOne 测试；不得宣称 L3 |
+| L2 静态映射 | 对象/所有权/生命周期/失败/验证层级能够闭合审阅 | 当前核对新增映射属于 L2；未产生平台代码或外部运行证据 |
+| L3 真实执行 | 指定命令当前核对真实运行且退出码为 0 | 当前核对未安装依赖、未启动 Mongo/App、未运行 FiftyOne 测试；不得宣称 L3 |
 | L4 联合链路 | 真实媒体、Mongo/GridFS、Brain、worker、API、客户端和故障注入协同 | 未验证；发布前必须在隔离环境覆盖成功、部分失败、取消、超时、强杀、重启和残留对账 |
 
-### 31.6 第三轮最终裁决
+### 31.6 后续最终裁决
 
 **吸收**：引用式 Dataset/Sample/Frame 模型、View stage、媒体句柄、字段/向量与索引分层、artifact manifest、Session 投影、CAS 领取和进程组回收。
 

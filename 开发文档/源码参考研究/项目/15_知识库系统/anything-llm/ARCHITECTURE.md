@@ -360,9 +360,9 @@ AnythingLLM 的主架构是“React UI + Express 主服务 + 独立文档 collec
 | 许可证需核对 MIT、`TERMS_SELF_HOSTED.md` 与 Open Computer 许可；平台只应借鉴架构 | 吸收 | 第 1、9、13 节；未将不同目录许可合并为单一许可证，也未把参考架构当作可直接复制的生产组件 |
 || 旧细探列出的旁路线索和注意事项 | 已覆盖，无需重复建文档 | 已映射到第 3、4、9、10、13 节；没有新增平行摘要或修改旧细探 |
 
-## 16. 第三轮底座映射：收集器扩展、完整性、暂存资源与部署边界
+## 16. 后续底座映射：收集器扩展、完整性、暂存资源与部署边界
 
-本轮不是把 AnythingLLM 的目录直接复制成平台目录，而是把可复用的原子能力、领域编排、运行时治理和项目部署适配分开。以下判断只基于本地源码基线 `28fbff47f8d3dd57f7228f81355406e78065cbd5`；本节中的“吸收”表示作为平台设计输入，不表示已迁移或已接入平台。
+当前核对不是把 AnythingLLM 的目录直接复制成平台目录，而是把可复用的原子能力、领域编排、运行时治理和项目部署适配分开。以下判断只基于本地源码基线 `28fbff47f8d3dd57f7228f81355406e78065cbd5`；本节中的“吸收”表示作为平台设计输入，不表示已迁移或已接入平台。
 
 ### 16.1 单一权威链路与归属裁决
 
@@ -391,7 +391,7 @@ AnythingLLM 的主架构是“React UI + Express 主服务 + 独立文档 collec
 
 **路由映射。** repository 的 server 路由 `/ext/:repo_platform/repo`、`/ext/:repo_platform/branches` 对应 collector `/ext/:repo_platform-repo`、`/ext/:repo_platform-repo/branches`；其余 server 路由 `/ext/youtube/transcript`、`/ext/confluence`、`/ext/website-depth`、`/ext/drupalwiki`、`/ext/obsidian/vault`、`/ext/paperless-ngx` 分别映射 collector 的同名扩展端点。该映射必须集中在一个模块/适配层，不能让 frontend、server endpoint 和 collector 各自维护别名表。
 
-| 能力边界 | 输入契约（源码事实） | 输出/错误契约（源码事实） | 平台第三轮落点 |
+| 能力边界 | 输入契约（源码事实） | 输出/错误契约（源码事实） | 平台后续落点 |
 |---|---|---|---|
 | repository loader | `repo_platform` 路由参数 + loader 所需 `request.body`；branches 复用同一 body | 成功 `{success:true, reason:null, data:{branches:[]/…}}`；loader 异常通常由 collector 以 HTTP 200 返回 `{success:false, reason, data:{}}`；branches 异常为 HTTP 400 且 branches 空数组 | 模块只编排“选择 provider→调用→结果归一”；provider 声明参数和可用平台 |
 | resync | body `{type, options}`；`type` 必须是 `RESYNC_METHODS` 的键 | 未知 type 变成失败 `{success:false, content:null, reason}`；成功/失败均可能通过 HTTP 200 | 支持库/模块契约固定稳定错误码，保留项目适配层对旧 reason 的转换 |
@@ -412,7 +412,7 @@ AnythingLLM 的主架构是“React UI + Express 主服务 + 独立文档 collec
 4. **机密载荷**：数据加密/解密是另一能力，输入为密文与密钥句柄，输出为明文或明确失败；密钥不落日志、不进入普通模块参数、不由 provider 对象穿透。
 5. **重放与幂等**：签名本身不能阻止重放；应由运行核心检查时间窗、nonce/request id 和能力级幂等键。重复请求返回既有结果或 `DUPLICATE_REQUEST`，不得重复写文档/索引。
 
-**证据等级：** 当前源码证明“server→collector 的请求完整性校验存在”，但没有证明 canonicalization、nonce/时间窗、签名版本轮换、重放防护或跨存储写入后的数据摘要链。因此“完整性签名能力”可**吸收为设计输入，待运行/契约验证**；不能把当前 `X-Integrity` 直接宣布为平台级数据完整性账本。
+**证据等级：** 当前源码证明“server→collector 的请求完整性校验存在”，但没有证明 canonicalization、nonce/时间窗、签名版当前核对换、重放防护或跨存储写入后的数据摘要链。因此“完整性签名能力”可**吸收为设计输入，待运行/契约验证**；不能把当前 `X-Integrity` 直接宣布为平台级数据完整性账本。
 
 ### 16.4 hotdir 暂存、音频转换与失败清理
 
@@ -437,7 +437,7 @@ AnythingLLM 的主架构是“React UI + Express 主服务 + 独立文档 collec
 - **运行核心**：通过受管 provider 启动 ffmpeg，使用结构化参数列表、独立进程组、超时、输出上限、SIGTERM→SIGKILL 和 wait/reap；对临时文件执行 finally 清理和残留审计。
 - **项目适配层**：把 AnythingLLM 的 hotdir 文件名、collector endpoint、Whisper 配置和旧 `{success,reason,wavFilename}` 结果映射到平台契约。
 
-现有 `FFMPEGWrapper` 使用 `execSync("which ffmpeg")`、`execSync("<path> -version")` 和 `spawnSync(ffmpeg, args)`；这能证明外部转换边界，但不能直接吸收为平台运行核心实现，因为命令字符串拼接、同步等待、无显式超时/进程组回收和失败输出清理均未形成底座契约。验证测试存在于 `collector/__tests__/utils/WhisperProviders/ffmpeg/index.test.js`，但本轮未执行。
+现有 `FFMPEGWrapper` 使用 `execSync("which ffmpeg")`、`execSync("<path> -version")` 和 `spawnSync(ffmpeg, args)`；这能证明外部转换边界，但不能直接吸收为平台运行核心实现，因为命令字符串拼接、同步等待、无显式超时/进程组回收和失败输出清理均未形成底座契约。验证测试存在于 `collector/__tests__/utils/WhisperProviders/ffmpeg/index.test.js`，但当前核对未执行。
 
 ### 16.6 部署边界与运行时归属
 
@@ -449,30 +449,30 @@ Dockerfile 安装 Node、FFMPEG、Chromium 依赖和 uvx，构建 frontend 静�
 - `open-computer` 是 QEMU + overlay 的独立 Agent 电脑环境，仍应保持独立运行边界；其镜像、overlay、CDP、网络和密钥不能被默认并入 server/collector 的同一权限域。
 - 部署健康检查只能证明进程/端口可达；不能代替 collector 真实解析、签名验证、hotdir 清理、FFMPEG 转换、文件/向量/Prisma 一致性验证。
 
-### 16.7 第三轮验收契约、验证等级与剩余风险
+### 16.7 后续验收契约、验证等级与剩余风险
 
 | 验证等级 | 必须证明的事实 | 本地证据/建议命令 | 当前判定 |
 |---|---|---|---|
 | L0 静态 | 路由映射、签名 middleware、hotdir 清理、FFMPEG 参数、部署挂载存在且路径对应 | `grep -R "X-Integrity\|X-Payload-Signer\|wipeCollectorStorage\|convert-audio-to-wav" collector server`；审阅 `collector/index.js`、`collector/extensions/index.js`、`server/utils/collectorApi/index.js`、`docker/*` | **已完成源码取证**；未使用目标专属 codegraph（服务器绑定其他仓库） |
-| L1 契约 | 缺签名/篡改正文/越界路径/空输入/未知扩展类型的结果形状和稳定错误码；路由 alias 只在唯一入口转换 | collector/server Jest 定向测试；当前已有 `collector/__tests__`，但本轮未执行 | **待核**；源码存在行为，统一错误码与 canonical JSON 尚未证明 |
+| L1 契约 | 缺签名/篡改正文/越界路径/空输入/未知扩展类型的结果形状和稳定错误码；路由 alias 只在唯一入口转换 | collector/server Jest 定向测试；当前已有 `collector/__tests__`，但当前核对未执行 | **待核**；源码存在行为，统一错误码与 canonical JSON 尚未证明 |
 | L2 真实 provider | 真实 FFMPEG 16kHz/mono/`pcm_f32le` 输出；缺 binary、非音频、超时、失败输出清理 | `yarn test collector/__tests__/utils/WhisperProviders/ffmpeg/index.test.js`（以项目实际脚本为准）+ 独立检查输出文件/残留 | **待核**；不能以测试文件存在代替执行 |
-| L3 进程协作 | server→collector 签名请求、扩展长请求 15 分钟超时、collector 重启后临时资源清理、并发任务不互删 | 启动 server/collector 的隔离环境，执行签名/扩展/音频链路，读回 HTTP、文件、进程和临时目录 | **未验证**；本轮遵守只改文档边界未启动服务 |
+| L3 进程协作 | server→collector 签名请求、扩展长请求 15 分钟超时、collector 重启后临时资源清理、并发任务不互删 | 启动 server/collector 的隔离环境，执行签名/扩展/音频链路，读回 HTTP、文件、进程和临时目录 | **未验证**；当前核对遵守只改文档边界未启动服务 |
 | L4 部署 | Docker build/entrypoint/healthcheck、volume 持久化、FFMPEG/Chromium/provider 可用性、多架构行为 | 在隔离 Docker 项目运行 compose healthcheck，并检查挂载目录及退出后残留 | **未验证**；未构建/启动镜像 |
 
 **单一链路验收标准。** 未来平台化实现必须能够从一次 `operationId` 追踪：请求签名 → 路由/能力 id → 模块调用 → provider 进程 → 临时资源创建 → 输出摘要 → 正式制品/文档写入 → 向量/元数据投影 → 清理证据。任何直接写 hotdir、直接调用 ffmpeg、绕过唯一签名验证或扩展自行维护第二套路由/错误码的路径，都判为侧链。
 
-**剩余风险。** (1) collector 的 HTTP 200 + `success:false` 与 HTTP 400/500 混用；(2) 当前签名没有从源码中确认 canonicalization、时间窗、nonce、轮换和重放保护；(3) `isWithin` 不防 symlink；(4) FFMPEG 同步执行且缺少显式超时/进程组治理，失败 output 清理不完整；(5) hotdir 启动 wipe 没有租约，存在并发互删/崩溃后误删边界；(6) 文件、Prisma、向量库和 collector 暂存区不是单事务；(7) 本地基线落后远程 master，远程差异未完整获取；(8) 本轮没有运行测试、服务或容器，所有 L1-L4 均不能宣称通过。
+**剩余风险。** (1) collector 的 HTTP 200 + `success:false` 与 HTTP 400/500 混用；(2) 当前签名没有从源码中确认 canonicalization、时间窗、nonce、轮换和重放保护；(3) `isWithin` 不防 symlink；(4) FFMPEG 同步执行且缺少显式超时/进程组治理，失败 output 清理不完整；(5) hotdir 启动 wipe 没有租约，存在并发互删/崩溃后误删边界；(6) 文件、Prisma、向量库和 collector 暂存区不是单事务；(7) 本地基线落后远程 master，远程差异未完整获取；(8) 当前核对没有运行测试、服务或容器，所有 L1-L4 均不能宣称通过。
 
-### 16.8 第三轮修改与证据边界
+### 16.8 后续修改与证据边界
 
-- 本轮唯一修改文件：项目根 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git 或旧细探文件。
+- 当前核对唯一修改文件：项目根 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git 或旧细探文件。
 - 目标项目本地源码证据：`collector/index.js`、`collector/extensions/index.js`、`collector/middleware/verifyIntegrity.js`、`collector/middleware/setDataSigner.js`、`collector/convertAudioToWav/index.js`、`collector/utils/files/index.js`、`collector/utils/WhisperProviders/ffmpeg/index.js`、`server/utils/collectorApi/index.js`、`server/endpoints/extensions/index.js`、`docker/Dockerfile`、`docker/docker-compose.yml`。
 - 专属 `system_engineering_toolkit` 已真实连接；其 `project_context`/`codegraph_explore` 当前绑定的是系统工程平台根目录，不能当作 AnythingLLM 的代码图或目标仓库验证证据；因此本节明确将目标专属 codegraph 标为不可用，不伪造代码图结果。
-- 本轮未执行测试、安装、启动、构建、容器或部署命令；后续执行必须在目标根目录、隔离资源和明确验证等级下进行，并将退出码、测试数、跳过数、provider 状态及临时资源清理结果入账。
+- 当前核对未执行测试、安装、启动、构建、容器或部署命令；后续执行必须在目标根目录、隔离资源和明确验证等级下进行，并将退出码、测试数、跳过数、provider 状态及临时资源清理结果入账。
 
-## 17. 第二轮深挖收口：workspace、文档摄取、向量库、Provider、插件、任务与 API
+## 17. 后续深挖收口：workspace、文档摄取、向量库、Provider、插件、任务与 API
 
-本节是第二轮内部事实审计，仍以本地源码基线 `28fbff47f8d3dd57f7228f81355406e78065cbd5` 为准；只补充 AnythingLLM 已有实现，不把第三轮平台设想写成当前实现。旧细探 `细探-anything-llm.md` 已逐条对照：其“hotdir 热目录监听”仍裁决为错误线索，其他概览内容已在前文吸收；旧文件按用户要求保留，不是新的权威事实源。
+本节是后续内部事实审计，仍以本地源码基线 `28fbff47f8d3dd57f7228f81355406e78065cbd5` 为准；只补充 AnythingLLM 已有实现，不把后续平台设想写成当前实现。旧细探 `细探-anything-llm.md` 已逐条对照：其“hotdir 热目录监听”仍裁决为错误线索，其他概览内容已在前文吸收；旧文件按用户要求保留，不是新的权威事实源。
 
 ### 17.1 Workspace 聚合对象与配置契约
 
@@ -630,9 +630,9 @@ SSE/WS 的资源边界必须区分：普通聊天把 `close:true` 写入协议�
 | generated output files | Agent tool 写 storage，chat/run 保存引用 | 被引用时保留 | 工具失败可能留文件 | kill/timeout 不保证删除 | `cleanup-generated-files` 以 workspace chat/run 引用集合清理；需文件与引用反查 |
 | Prisma client/DB | module singleton `PrismaClient` | server 生命周期持有 | 事务失败回滚其范围内写入 | 无请求级关闭；进程退出释放 | 不要把 `$transaction` 误认跨 provider 事务；检查 SQLite locks/连接错误 |
 
-### 17.9 第二轮真假验证表与裁决
+### 17.9 后续真假验证表与裁决
 
-| 事实项 | 源码存在 | 测试源码 | 本轮真实执行 | 外部依赖实测 | 判定 |
+| 事实项 | 源码存在 | 测试源码 | 当前核对真实执行 | 外部依赖实测 | 判定 |
 |---|---|---|---|---|---|
 | workspace 白名单/值归一 | `workspace.js:35-141` | 相关 model/endpoint 测试存在 | 未执行 | 无 | **静态已证，运行待核** |
 | collector→制品→workspace upsert | `collectorApi`、`documents.js`、document API | collector/server 单测存在 | 未执行 | collector/Prisma/vector 未启动 | **实现链存在，跨存储一致性未证** |
@@ -643,11 +643,11 @@ SSE/WS 的资源边界必须区分：普通聊天把 `close:true` 写入协议�
 | scheduled job 终态 | `BackgroundService`、`ScheduledJobRun`、worker/API | scheduled job 测试需定向确认 | 未执行 | 未启动 Bree/SQLite worker | **静态已证，真实 kill/timeout/重启未证** |
 | OpenAI-compatible API/SSE | `api/openai/index.js`、`openaiCompatible.js` | compatibility script/单测存在 | 未执行 | API key/服务未启动 | **契约静态已证，客户端兼容性未证** |
 
-本轮第二轮收口的唯一事实结论是：**AnythingLLM 的模块契约已具备，但资源和一致性契约仍是“分段 best effort”而不是全局事务。** 可吸收的是 workspace 白名单、collector converter 分派、provider base contract、native worker 隔离、scheduled run 的数据库去重和 Agent plugin 装载分层；应隔离/待核的是文件-向量-Prisma 三方原子性、cache 指纹、未知 provider fallback、SSE/WS 取消、MCP close、社区插件安装回滚、任务 timeout 的结构化取消以及 workspace 删除后的外部残留。
+当前核对后续收口的唯一事实结论是：**AnythingLLM 的模块契约已具备，但资源和一致性契约仍是“分段 best effort”而不是全局事务。** 可吸收的是 workspace 白名单、collector converter 分派、provider base contract、native worker 隔离、scheduled run 的数据库去重和 Agent plugin 装载分层；应隔离/待核的是文件-向量-Prisma 三方原子性、cache 指纹、未知 provider fallback、SSE/WS 取消、MCP close、社区插件安装回滚、任务 timeout 的结构化取消以及 workspace 删除后的外部残留。
 
-### 17.10 本轮修改与证据边界
+### 17.10 当前核对修改与证据边界
 
-- 本轮仅追加修改目标根 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README、旧细探、submodule 或 Git。
+- 当前核对仅追加修改目标根 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README、旧细探、submodule 或 Git。
 - 旧细探逐条核对结果已在第 15 节和本节体现；“hotdir 热目录监听”明确废弃为未证实/错误表述，未删除旧文件以保留溯源。
-- 本轮静态读取的关键证据包括：`server/models/workspace.js`、`server/models/documents.js`、`server/utils/files/index.js`、`server/utils/files/purgeDocument.js`、`server/utils/EmbeddingWorkerManager.js`、`server/jobs/embedding-worker.js`、`server/utils/vectorDbProviders/base.js`、`server/utils/vectorDbProviders/lance/index.js`、`server/utils/helpers/index.js`、`server/utils/chats/stream.js`、`server/utils/agents/{defaults.js,ephemeral.js,imported.js,index.js}`、`server/utils/BackgroundWorkers/index.js`、`server/jobs/run-scheduled-job.js`、`server/models/{scheduledJob,scheduledJobRun,workspaceAgentInvocation,vectors}.js`、`server/endpoints/{workspaces,scheduledJobs,agentWebsocket}.js`、`server/endpoints/api/{document,openai}/index.js`、`server/prisma/schema.prisma`。
+- 当前核对静态读取的关键证据包括：`server/models/workspace.js`、`server/models/documents.js`、`server/utils/files/index.js`、`server/utils/files/purgeDocument.js`、`server/utils/EmbeddingWorkerManager.js`、`server/jobs/embedding-worker.js`、`server/utils/vectorDbProviders/base.js`、`server/utils/vectorDbProviders/lance/index.js`、`server/utils/helpers/index.js`、`server/utils/chats/stream.js`、`server/utils/agents/{defaults.js,ephemeral.js,imported.js,index.js}`、`server/utils/BackgroundWorkers/index.js`、`server/jobs/run-scheduled-job.js`、`server/models/{scheduledJob,scheduledJobRun,workspaceAgentInvocation,vectors}.js`、`server/endpoints/{workspaces,scheduledJobs,agentWebsocket}.js`、`server/endpoints/api/{document,openai}/index.js`、`server/prisma/schema.prisma`。
 - 未执行安装、测试、启动、构建、容器、真实 provider、MCP、Community Hub 或清理验证；所有 L1-L4 和本节“未证”项必须保持未验证，不能用源码存在或历史日志替代运行证据。

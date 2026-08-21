@@ -1,6 +1,6 @@
 # FastGPT 架构建档
 
-> 文档性质：首轮全量架构建档，基于本地工作树静态源码、仓库规则、设计文档、测试布局、现有 `细探-FastGPT.md` 与远程独立快照整理。
+> 文档性质：唯一权威架构文档；基于当前本地源码、仓库规则、设计文档、测试布局与 CodeGraph 复核。旧细探只作为历史线索，不作为当前版本证据。
 >
 > 本文只描述已观察到的结构与行为；设计文档中的方案不等同于运行时代码已经完全实现。
 
@@ -11,18 +11,18 @@ FastGPT 是一个以可视化 Flow 工作流为核心的 AI Agent 构建平台�
 本次分析目标：
 
 - 项目根目录：`~/Documents/Agent/github 源码参考/15_知识库系统/FastGPT`
-- 本地 Git 提交：`84e92fc944b992b0bdfaff0e788644b052e546f3`，提交时间 `2026-07-24T18:14:16+08:00`，提交主题为 `build(deps): bump next from 15.5.18 to 15.5.21 (#7372)`。
-- 本地工作树：除既有未跟踪文件 `细探-FastGPT.md` 外无已观测源码改动；本次仅新增/更新根目录 `ARCHITECTURE.md`，未处理该既有未跟踪文件。
-- 远程独立快照：通过 `http://127.0.0.1:4780` 代理取得 `origin/main` 快照，提交为 `2f072bd1000c384e2ad9cb5dcd014ea11951fe33`，提交时间 `2026-08-20T16:27:36+08:00`，提交主题为 `docs(upgrade): complete 4.16.1 release notes (#7554)`。快照位于工作树外的 `/tmp/fastgpt-remote-snapshot`，未覆盖本地工作树。
-- 新鲜度判定：本地提交时间早于远程快照，且本地 `origin/main` tracking ref 仍停在本地提交；因此本地工作树明确落后远程 main，不能把远程新增能力视为本地已实现。
-- 证据优先级：本地实现源码与配置 > 本地仓库规则/设计文档 > 现有细探摘要 > 远程快照对比。远程快照仅用于判断版本漂移，不作为本地已实现能力的证明。
+- 本地 Git 提交：`9a28b3d4f10754abacd8ff9da9f7ac1ebf07a4fe`，提交时间 `2026-08-21T18:15:09+08:00`，提交主题为 `fix: restore template marketplace avatars (#7571)`；`origin/main` 同值，`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`。
+- 当前项目版本：根包仍为 `4.0`（仓库历史兼容字段），主应用 `projects/app` 为 `4.16.1`；Node 要求 `>=22.23.2`，pnpm `10.33.4`。
+- 当前工作树：仅保留未跟踪 `.codegraph/` 与源码侧 `ARCHITECTURE.md`；本轮不改源码，不删除或覆盖这两个本地文件。
+- 本轮先执行 `git fetch` 与 `git pull --ff-only origin main`，结果 `Already up to date`；没有发生源码覆盖。
+- 证据优先级：当前源码/配置与当前 Git > 当前 CodeGraph > 仓库规则/设计文档 > 旧细探；远程新增能力只有在本地已同步后才可写入当前架构事实。
 
 ### 1.1 工具与证据可信度说明
 
-- 首次 `project_context` 返回的是另一项目 `华世王镞_v3` 的上下文，项目名称和根目录与本任务不一致，因此其代码地图/定位结果不纳入 FastGPT 证据。
-- 随后对目标路径调用 `codegraph_explore`，返回目标仓库没有 `.codegraph/` 索引，无法提供目标项目代码图证据；本次没有再次调用代码图，也没有使用其他仓库的代码地图或验证证据。
-- 因此本建档以目标目录的只读文件读取、文件发现、Git 元数据和远程独立快照为主。没有安装依赖、启动服务、构建源码或运行业务测试。
-- 现有 `细探-FastGPT.md` 是有价值的上一轮源码摘要，但其声明版本基线为根 `package.json` 的 `4.0`，并且部分计数/路径随当前树变化，本文对关键结论回到实际源码核对。
+- 本轮 `project_context` 正确绑定系统工程平台；平台自身 CodeGraph 不覆盖外部 FastGPT，随后使用目标仓库自带 `.codegraph/` 的 `codegraph status/explore`，不混用其他项目地图或证据。
+- 目标 CodeGraph 当前为 3,957 files / 55,506 nodes / 185,276 edges，索引状态 `up to date`，覆盖 TypeScript、TSX、JavaScript、Rust、Go、YAML 等。
+- 本轮仍为源码静态审计：没有安装依赖、启动 MongoDB/Redis/BullMQ/VectorDB、构建 Next、启动 4780 之外的本地服务或运行业务 E2E。
+- 旧 `细探-FastGPT.md`（若存在）只作为历史导航；本文关键结论已回到当前源码行号，且不再维护第二份细探文档。
 
 ## 2. 总体架构
 
@@ -75,7 +75,7 @@ FastGPT 是一个以可视化 Flow 工作流为核心的 AI Agent 构建平台�
 | `packages/service/` | `@fastgpt/service` | Mongo/Mongoose 业务模型、Redis/BullMQ、聊天、工作流、知识库、AI/Agent、插件、权限、计费、文件和第三方适配（`packages/service/package.json:16-78`）。 |
 | `packages/web/` | `@fastgpt/web` | Chakra UI、React 组件、Lexical 编辑器、React Query、Zustand、i18n 与前端共享能力（`packages/web/package.json:8-52`）。 |
 | `packages/next/` | `@fastgpt/next` | Next API 相关中间件、CORS 与请求/响应类型。 |
-| `projects/app/` | `@fastgpt/app` | 主 Next.js 应用；页面、React UI、`projects/app/src/pages/api/` API 路由、应用侧 service、主聊天入口。当前本地声明 `4.15.2`（`projects/app/package.json:1-29`）。 |
+| `projects/app/` | `@fastgpt/app` | 主 Next.js 应用；页面、React UI、`projects/app/src/pages/api/` API 路由、应用侧 service、主聊天入口。当前本地声明 `4.16.1`（`projects/app/package.json:1-24`）。 |
 | `projects/code-sandbox/` | `@fastgpt/code-sandbox` | Hono HTTP 沙箱，JS 进程池、Python 隔离 runner、队列并发限制与安全边界；脚本为 `tsx watch src/index.ts`/`node dist/index.js`（`projects/code-sandbox/package.json:1-46`）。 |
 | `projects/mcp_server/` | `@fastgpt/mcp_server` | 独立 MCP Server，将 FastGPT 应用/工作流暴露给 MCP 客户端；采用 Bun 启动/构建（`projects/mcp_server/package.json:1-33`）。 |
 | `projects/marketplace/` | `@fastgpt/marketplace` | 插件/工具市场 Next 应用，独立 API、Mongo/S3 服务和上传下载逻辑（`projects/marketplace/package.json:1-52`）。 |
@@ -294,9 +294,9 @@ HTTP 节点、MCP、文件、外链、团队权限、API Key、对象存储访�
 
 本次没有运行测试，原因是用户明确禁止启动、构建和测试相关运行；验证仅限 Git 元数据与文档写入后的静态检查门禁。
 
-## 11. 版本漂移与远程对比
+## 11. 历史版本漂移记录（已由第 29 节当前事实取代）
 
-本地 `origin/main` tracking ref 显示仍指向 `84e92fc`，但通过代理查询的远程 `main` 已为 `2f072bd`；因此本地工作树不能视为远程最新版本。独立快照的事实差异包括：
+本节保留早期审计时的版本差异，仅作为历史记录；它不能覆盖第 29 节已重新执行的 `git fetch`、`git pull --ff-only` 和当前 `origin/main` 证据。
 
 - 远程根 `package.json` 仍为根版本 `4.0`，但 Node 要求已提升到 `>=22.23.2`；本地为 `>=20.19.0`。
 - 远程 `projects/app/package.json` 为 `4.16.0`，本地为 `4.15.2`；远程增加 `@fastgpt/dal` workspace 依赖。
@@ -304,7 +304,7 @@ HTTP 节点、MCP、文件、外链、团队权限、API Key、对象存储访�
 - 远程工作区包数量和源码规模增加；远程 `pnpm-workspace.yaml` 增加/调整 `ajv`、Hono、Next、Turbo、TypeScript 等目录级依赖版本，并增加 `postcss`、`marked`、`mermaid` 等 catalog 项。
 - 远程新增/增强 `projects/fastgpt-ide-agent`、code-sandbox 测试/隔离能力和大量 4.16 设计/发布文档。
 
-结论：本地分析必须以本地 4.15.x 工作树为准；远程 4.16.x 的 `@fastgpt/dal`、Node 22、Redis 迁移设计等属于升级方向，不应回写为本地已经存在的架构。后续若研究远程架构，应重新以远程 commit 建立独立证据集。
+历史结论“本地 4.15.x、远程 4.16.x”已失效；当前本地已同步 4.16.1，`packages/dal`、Node 22、Next 16 和 Redis/BullMQ runtime 均已由第 29 节源码证据确认。
 
 ## 12. 关键运行流程
 
@@ -377,7 +377,7 @@ agent/toolCall node
 
 ## 14. 未确认项
 
-以下内容本轮没有宣称已实现，需后续以目标版本源码、运行时或针对性测试继续确认：
+以下内容当前核对没有宣称已实现，需后续以目标版本源码、运行时或针对性测试继续确认：
 
 - `pro/` submodule 未展开，商业版 admin、sso、browser-sandbox 的完整依赖关系、路由和数据模型未确认。
 - `projects/agent-sandbox/`、`projects/agent-sandbox-proxy/`、`projects/fastgpt-ide-agent/` 未完成逐文件运行时审计；本文只记录其目录角色，不把内部协议、部署状态或安全性质写成已验证事实。
@@ -428,12 +428,12 @@ FastGPT 当前本地形态是一个较大型的 pnpm/Turbo TypeScript monorepo�
 | 旧细探中完整复制的主 Agent、知识库、结构化提取和沙箱 system prompt 文本 | prompt 是源码中的可变版本化输入，不把长文本复制成第二事实源；只吸收 prompt 生成边界、版本键和引用协议，详见第 6.1 节。 |
 | “Ubuntu 22.04、bash/python3/node/bun/git/curl 预装”等沙箱提示词中的运行环境承诺 | 这是 `SANDBOX_SYSTEM_PROMPT` 对模型的能力说明，不等于每个 provider/image 的部署验证；保留为提示词线索，不升级为部署事实。 |
 | 旧测试数量（如 service 281 个测试文件）、未执行测试的历史运行说明、旧默认值快照 | 当前文档第 10 节已按本地现状记录静态统计和“未运行”边界；旧数字不再引用。 |
-| `projects/agent-sandbox`、`fastgpt-ide-agent` 的内部协议、安全和部署结论，以及 pro 商业实现细节 | 本轮未完成逐文件或运行时审计；继续保留第 3、14 节的未确认状态，不从旧摘要推断实现。 |
+| `projects/agent-sandbox`、`fastgpt-ide-agent` 的内部协议、安全和部署结论，以及 pro 商业实现细节 | 当前核对未完成逐文件或运行时审计；继续保留第 3、14 节的未确认状态，不从旧摘要推断实现。 |
 | 旧细探“可直接映射到底座”的建议表 | 只保留其中已能由源码证明的机制性观察，且作为研究启发而非 FastGPT 已有底座接口；不把建议当实现或依赖契约。 |
 
 本次收口没有修改源码、配置、依赖、锁文件、测试或 `细探-FastGPT.md`；唯一修改目标是本文件。
 
-## 18. 第三轮：底座映射与复用裁决（增量）
+## 18. 后续：底座映射与复用裁决（增量）
 
 本节不是 FastGPT 的新实现说明，而是把本地源码中已经存在的运行机制映射成“可复用的通用模块/运行核心能力”。裁决只针对机制边界，不把 FastGPT 的工作流节点、插件目录、聊天业务、计费规则或沙箱业务链复制到平台。
 
@@ -452,7 +452,7 @@ Store nodes/edges
   └─ response sink：Redis stream resume + Mongo node-response rows + usage summary
 ```
 
-本轮证据的主要路径是：
+当前核对证据的主要路径是：
 
 - 调度：`packages/service/core/workflow/dispatch/index.ts`、`.../parallelRun/runParallelRun.ts`、`.../loopRun/runLoopRun.ts`、`.../dispatch/utils/containerRunState.ts`。
 - 交互/流恢复：`packages/global/core/workflow/template/system/interactive/type.ts`、`packages/service/core/workflow/dispatch/index.ts`、`packages/service/core/chat/resume.ts`、`.../utils/streamResponseContext.ts`。
@@ -483,7 +483,7 @@ Store nodes/edges
 
 ### 18.3 单链路落点与装配计划
 
-第三轮不新建平行业务链路，建议按以下唯一落点装配：
+后续不新建平行业务链路，建议按以下唯一落点装配：
 
 ```text
 项目适配层
@@ -535,13 +535,13 @@ Store nodes/edges
 ### 19.3 验收契约（不制造假绿）
 
 1. **源码存在**：本节列出的文件、符号和状态字段均来自当前本地工作树；远程 4.16.x 快照不作为本地实现证据。
-2. **测试存在**：可针对性回读的测试包括 `packages/service/test/core/workflow/workflowStatus.test.ts`、`.../utils/streamResponseContext.test.ts`、`.../core/ai/sandbox/application/archive.test.ts`、`projects/code-sandbox/test/unit/process-pool.test.ts` 和 `resource-limits.test.ts`。测试源码存在不等于本轮已通过。
+2. **测试存在**：可针对性回读的测试包括 `packages/service/test/core/workflow/workflowStatus.test.ts`、`.../utils/streamResponseContext.test.ts`、`.../core/ai/sandbox/application/archive.test.ts`、`projects/code-sandbox/test/unit/process-pool.test.ts` 和 `resource-limits.test.ts`。测试源码存在不等于当前核对已通过。
 3. **推荐定向执行**：在具备目标 Node/pnpm、Mongo、Redis 和沙箱依赖后，按包执行 `pnpm exec vitest run packages/service/test/core/workflow/workflowStatus.test.ts packages/service/test/core/workflow/utils/streamResponseContext.test.ts packages/service/test/core/ai/sandbox/application/archive.test.ts`，以及 `pnpm exec vitest run projects/code-sandbox/test/unit/process-pool.test.ts projects/code-sandbox/test/unit/resource-limits.test.ts`；记录退出码、测试数、跳过数和外部服务。
 4. **真实资源验证**：Redis 要验证 TTL/lease token/XREAD blocking connection；Mongo 要验证 response writer 故障降级与无 pending rows；S3/provider 要验证归档→删除→恢复→失败回滚；worker 要验证 PID、IPC、临时目录和 shutdown 后无残留。
 5. **反向验证**：注入错误 provider、非法数组、无 break、重复交互提交、Redis memory pressure、lease renew 失败、archive CAS 失配、S3 上传失败、unzip 路径逃逸、worker crash/timeout；成功路径通过而失败路径无证据只能标为“待核”。
-6. **本轮实际边界**：未安装依赖、未启动服务、未运行 Vitest；仅完成静态源码/测试取证和文档静态门禁。目标仓库无 `.codegraph/`，专属 MCP 当前实例又错绑到华世王镞_v3，`development_start` 返回 `MCP_TARGET_PROJECT_MISMATCH`，故没有伪造开工 id、MCP 代码图或验证入账。
+6. **当前核对实际边界**：未安装依赖、未启动服务、未运行 Vitest；仅完成静态源码/测试取证和文档静态门禁。目标仓库无 `.codegraph/`，专属 MCP 当前实例又错绑到华世王镞_v3，`development_start` 返回 `MCP_TARGET_PROJECT_MISMATCH`，故没有伪造开工 id、MCP 代码图或验证入账。
 
-## 20. 第三轮裁决：吸收、废弃、待核
+## 20. 后续裁决：吸收、废弃、待核
 
 ### 20.1 吸收
 
@@ -569,16 +569,16 @@ Store nodes/edges
 - worker/process supervisor 在主进程退出、SIGTERM、子进程树逃逸、IPC 半关闭和临时目录残留下的全量清理。
 - 插件/MCP 的跨租户、跨版本、重定向和 secret 生命周期是否能被统一能力授权契约完整表达；本地代码有边界检查，但尚未做跨模块安全模型证明。
 
-## 21. 第三轮交付记录
+## 21. 后续交付记录
 
 - **修改文件**：仅 `~/Documents/Agent/github 源码参考/15_知识库系统/FastGPT/ARCHITECTURE.md`，追加第 18—21 节；未修改源码、配置、依赖、测试、README、Git 或旧 `细探-FastGPT.md`。
 - **开工/MCP**：未生成有效开工 id；MCP 实例返回的当前根为 `~/Documents/Agent/PHP/华世王镞_v3`，与目标 FastGPT 不一致；`codegraph_explore` 明确返回 FastGPT 无 `.codegraph/`，代码图不可用。错绑结果不纳入证据。
-- **验证命令**：本轮只应执行文档静态检查 `git diff --check` 与目标文件/修改范围审计；Vitest、构建、服务探针和真实 Redis/Mongo/S3/provider/worker 验证未执行，不能报告为通过。
+- **验证命令**：当前核对只应执行文档静态检查 `git diff --check` 与目标文件/修改范围审计；Vitest、构建、服务探针和真实 Redis/Mongo/S3/provider/worker 验证未执行，不能报告为通过。
 - **剩余风险**：见第 19.2、20.3；尤其是取消传播、跨存储崩溃一致性、并发状态写入、租约高并发和 worker/进程残留尚未得到真实运行证据。
 
-## 22. 第二轮内部深挖：知识库摄取、解析、切分与制品生命周期
+## 22. 后续内部深挖：知识库摄取、解析、切分与制品生命周期
 
-本节是对首轮和旧 `细探-FastGPT.md` 的第二轮收口。证据回到当前本地工作树；只记录源码能证明的调用链，并把静态发现但未运行验证的缺口单独标出。
+本节是对首轮和旧 `细探-FastGPT.md` 的后续收口。证据回到当前本地工作树；只记录源码能证明的调用链，并把静态发现但未运行验证的缺口单独标出。
 
 ### 22.1 摄取入口与来源分流
 
@@ -613,7 +613,7 @@ Store nodes/edges
 - `maxChunks` 是硬拒绝而不是静默截断：自定义分隔符、正则命中、递归输出和最终结果均检查上限；非法 chunkSize、overlapRatio、空自定义分隔符会直接抛错。切分后 `simpleText` 归一文本，`chunkIndex` 在入训练队列时按数组序号固定下来。
 - 解析链把每个 chunk 转为 `dataset_trainings` 记录；`pushDataListToTrainingQueue` 会过滤纯空 q、过滤超过当前训练模式模型上限的 `q+a`，按 500 条批量 insert，单事务最多 20 批；超过 10,000 条时分段事务并用 `retryFn` 重试（`packages/service/core/dataset/training/controller.ts:73-261`）。
 
-## 23. 第二轮内部深挖：训练队列、模型与工作流检索
+## 23. 后续内部深挖：训练队列、模型与工作流检索
 
 ### 23.1 `dataset_trainings` 是 Mongo 领取队列，不是 BullMQ
 
@@ -621,7 +621,7 @@ Store nodes/edges
 - `projects/app/src/service/core/dataset/training/utils.ts:8-36` 对 `MongoDatasetTraining.watch()` 的 insert 事件按 `parse/qa/chunk` 启动对应处理器；`startTrainingQueue(true)` 在启动时预热多个循环，每分钟 cron 再补一次，`unlockTask` API 可人工补偿。这里是“Mongo change stream 触发 + 进程内并发槽 + cron 扫描”的混合队列，不是持久化 job scheduler。
 - 三个处理器通过 `findOneAndUpdate` 领取任务并把 `lockTime` 设为 now、`retryCount` 减一：parse/QA 只重新领取超过 10 分钟的任务，vector 超过 3 分钟（`datasetParse.ts:123-132`、`generateQA.ts:55-64`、`generateVector.ts:98-107`）。进程内 `datasetParseQueueLen/qaQueueLen/vectorQueueLen` 只限制当前 Node 实例；跨实例一致性依赖 Mongo 原子更新和锁时间，而非全局并发计数。
 - parse 阶段成功产生 chunk/QA/image 后删除当前阶段记录；QA 先 LLM 生成 `Qn/An`，正则解析失败则退回 `text2Chunks`，再写 `mode=chunk`；vector 阶段成功后在 Mongo session 中删除训练记录。点数不足时 `lockTrainingDataByTeamId` 把团队剩余任务写成 `BLOCKED_LOCK_TIME=2050-01-01` 和错误文本，避免继续消费（`training/controller.ts:19-71`、`queues/utils.ts:9-29`）。
-- **静态缺口（待运行/版本复核）**：`getDatasetImageTrainingMode` 能返回 `imageParse` 或 `image`（`packages/service/core/dataset/utils.ts:194-208`），`insertImages.ts:97-110` 和 `rebuildEmbedding.ts:149-184` 也会写这两种 mode；但当前本地 `createDatasetTrainingMongoWatch`、`startTrainingQueue` 和 `generateVector` 的领取条件只显式处理 `parse/qa/chunk`。本轮未运行 Mongo change stream，不能把它直接定性为线上缺陷；应把 image/imageParse 是否由未展开的商业/外部启动路径消费列为 P0 复核项，不能宣称图片训练链已闭环。
+- **静态缺口（待运行/版本复核）**：`getDatasetImageTrainingMode` 能返回 `imageParse` 或 `image`（`packages/service/core/dataset/utils.ts:194-208`），`insertImages.ts:97-110` 和 `rebuildEmbedding.ts:149-184` 也会写这两种 mode；但当前本地 `createDatasetTrainingMongoWatch`、`startTrainingQueue` 和 `generateVector` 的领取条件只显式处理 `parse/qa/chunk`。当前核对未运行 Mongo change stream，不能把它直接定性为线上缺陷；应把 image/imageParse 是否由未展开的商业/外部启动路径消费列为 P0 复核项，不能宣称图片训练链已闭环。
 
 ### 23.2 训练模式、模型选择与计费边界
 
@@ -645,7 +645,7 @@ Store nodes/edges
 - full-text 只查 `dataset_data_texts` 的 Mongo `$text` 索引；query 先 `jiebaSplit`，按 textScore 排序，再批量回查主 data/collection。该表只保存 `teamId/datasetId/collectionId/dataId/fullTextToken`，展示内容不复制到全文表（`.../fullTextRecall.ts:62-155`、`packages/service/core/dataset/data/dataTextSchema.ts:9-50`）。
 - rerank 只作用于文本召回；失败降级原文本结果。最终顺序仍是文本/图片加权融合 → 同内容去重 → 相似度阈值 → token 裁剪 → 批量签发图片预览 URL，且只有最终保留的对象 key 才签发 90 天预览链接（`defaultRecall/index.ts:120-183`、`packages/service/core/dataset/data/controller.ts:73-111`）。
 
-## 24. 第二轮内部深挖：数据库、向量与制品一致性
+## 24. 后续内部深挖：数据库、向量与制品一致性
 
 ### 24.1 写入顺序与所有权
 
@@ -672,7 +672,7 @@ Store nodes/edges
 - `projects/app/src/service/common/system/cronTask.ts:18-151` 每小时在 Redis timer lock 下检查过去 6 至 2 小时的异常 dataset data：若 collection 不存在，删 training/data_text/vector/data；另一路扫描 VectorDB 时间范围，对 Mongo `dataset_datas.indexes.dataId` 不再引用的向量做删除。这是补偿性清理，不是事务回滚。
 - `packages/service/common/bullmq/index.ts:25-151` 的 BullMQ 只负责显式的 dataset/app/team/S3/collection 等异步运维队列；全局 Map 复用 Queue/Worker，worker 默认 10 分钟 lock、30 秒 stalled 检查，closed 后无限重建。知识库训练仍由 app 进程内 Mongo 领取循环处理，二者不能混为同一队列语义。
 
-## 25. 第二轮契约、失败矩阵与验证等级
+## 25. 后续契约、失败矩阵与验证等级
 
 ### 25.1 关键契约表
 
@@ -688,7 +688,7 @@ Store nodes/edges
 
 ### 25.2 反向场景与当前证据
 
-| 场景 | 源码已有机制 | 本轮等级/缺口 |
+| 场景 | 源码已有机制 | 当前核对等级/缺口 |
 |---|---|---|
 | 空/超大输入 | API schema、流式大小检查、切分参数/maxChunks、embedding trim+截断 | **源码存在**；未运行超大 PDF、token 极端值和 Unicode 边界 |
 | provider 不可用 | embedding/向量库 retry；PDF/图片路径局部失败；rerank/caption 降级 | **部分实现**；统一错误码、退避预算、成本上限未证明 |
@@ -698,16 +698,16 @@ Store nodes/edges
 | 图片训练 | 能力判断、image/imageParse 记录生成、图片向量与 VLM 分支代码存在 | **静态链路未闭合**；本地 mode 消费者只显式处理 parse/qa/chunk，需优先复核 |
 | 删除/重建 | BullMQ 删除、Mongo session、旧向量延后删除、小时级孤儿扫描 | **源码存在**；真实 S3/VectorDB/Mongo 对账未执行 |
 
-### 25.3 第二轮验收结论
+### 25.3 后续验收结论
 
 - **已吸收**：真实摄取来源分流、S3 key 授权与 TTL、worker 解析边界、token/字符切分算法、Mongo 训练队列的领取/重试/阻塞语义、模型 map/fallback、embedding 批量与维度归一化、full-text 派生表、向量/Mongo 写入顺序、删除与孤儿补偿链路。
 - **降级为待核**：`imageParse/image` 任务是否存在当前本地树外的消费者；S3 move 与 Mongo transaction 的跨系统回滚；解析图片长期 TTL 及删除联动；多实例 change stream 与锁竞争；VectorDB 写成功后 Mongo 失败的实际孤儿规模；取消对外部 PDF/LLM/embedding 请求的传播。
-- **本轮没有运行**：未安装依赖、未启动 Mongo/Redis/VectorDB/S3/模型服务、未运行 Vitest、未构建 worker；因此文中的“源码存在/测试存在”不等于“生产链路通过”。
-- **后续唯一维护入口**：本轮事实已写入根 `ARCHITECTURE.md`；`细探-FastGPT.md` 保留为历史细探，不再新增平行细探文件。
+- **当前核对没有运行**：未安装依赖、未启动 Mongo/Redis/VectorDB/S3/模型服务、未运行 Vitest、未构建 worker；因此文中的“源码存在/测试存在”不等于“生产链路通过”。
+- **后续唯一维护入口**：当前核对事实已写入根 `ARCHITECTURE.md`；`细探-FastGPT.md` 保留为历史细探，不再新增平行细探文件。
 
-## 26. 第二轮真实源码收口：端到端边界、失败与资源释放
+## 26. 后续真实源码收口：端到端边界、失败与资源释放
 
-本节把第二轮取证从“知识库内部链路”收口到可执行的端到端边界。以下结论均回到当前本地源码；前端页面、Next API、app service、共享 service、worker、Mongo/VectorDB/S3 和模型 provider 分开描述。源码存在不等于真实依赖可用，也不把局部 `try/catch` 误判为跨系统事务。
+本节把后续取证从“知识库内部链路”收口到可执行的端到端边界。以下结论均回到当前本地源码；前端页面、Next API、app service、共享 service、worker、Mongo/VectorDB/S3 和模型 provider 分开描述。源码存在不等于真实依赖可用，也不把局部 `try/catch` 误判为跨系统事务。
 
 ### 26.1 从浏览器到制品的完整路径
 
@@ -786,12 +786,12 @@ embedding 入口先校验并 trim 文本，按模型最大 token 截断单条输
 | 客户端断开 | 不应等同于训练取消；工作流另有 stop/resume 机制 | provider 请求取消传播、usage、写入和临时资源需分别定义 |
 | 删除/重建中止 | BullMQ 重试和 cron 补偿 | Mongo 主状态、VectorDB、S3、全文表必须最终可对账 |
 
-### 26.7 第二轮真实源码裁决
+### 26.7 后续真实源码裁决
 
 - **已收口**：知识库入口的 API/权限/配额边界；local/fileId/text/link/API/external/image 来源分流；S3 key 授权与 TTL；worker 解析及超时回收；parse→qa→chunk 的 Mongo 领取语义；模型 map/fallback、embedding 批处理；工作流统一检索入口；VectorDB→Mongo→全文表→S3 TTL 的写入顺序；删除、重建和孤儿扫描；前端仅经 Next API 访问后端领域服务。
 - **不能宣称已闭环**：`image/imageParse` 的本地消费者；change stream 中断和多实例竞争下的最终吞吐；S3/Mongo/VectorDB 跨系统回滚；外部 PDF/LLM/embedding 请求的取消传播；provider 下线后历史 dataset 模型的稳定性；worker/子进程在宿主强杀下的全量残留清理。
-- **本轮验证等级**：真实源码静态收口；未安装依赖、未启动 Mongo/Redis/VectorDB/S3/模型服务、未运行前端或后端测试。不得把本文的源码链路描述写成生产可用性、性能或故障恢复证明。
-- **唯一修改范围**：本次第二轮收口仍只修改根 `ARCHITECTURE.md`；未改源码、配置、依赖、锁文件、测试、前端组件、旧细探或 Git 历史。
+- **当前核对验证等级**：真实源码静态收口；未安装依赖、未启动 Mongo/Redis/VectorDB/S3/模型服务、未运行前端或后端测试。不得把本文的源码链路描述写成生产可用性、性能或故障恢复证明。
+- **唯一修改范围**：本次后续收口仍只修改根 `ARCHITECTURE.md`；未改源码、配置、依赖、锁文件、测试、前端组件、旧细探或 Git 历史。
 
 ## 27. 知识库系统深度研究补充：从 API 到检索制品
 
@@ -932,9 +932,9 @@ API 的 `searchTest`、数据引用/预览、training detail/error、collection 
 - 外部 PDF、段落 LLM、QA LLM、embedding/VLM 请求的 Abort/取消传播和 usage 幂等仍未形成统一取消协议。
 - 当前根 package 仍要求 Node `>=20.19.0`、pnpm `10.x`；远程 4.16.x 的 Node/DAL 变化不能回写为本地架构事实。
 
-## 28. 第三轮分段审计：知识库摄取、状态、资源与文档冲突
+## 28. 后续分段审计：知识库摄取、状态、资源与文档冲突
 
-本节是本轮按“摄取 → worker → parse/QA/chunk → Mongo/VectorDB/full-text/S3 → workflow/API → tests/config/docs”顺序重读后的收口。目标工作树没有 `.codegraph/`，CodeGraph 明确返回不可用；以下证据来自当前源码、测试、配置和文档静态读取，未启动服务、安装依赖或运行测试。
+本节是当前核对按“摄取 → worker → parse/QA/chunk → Mongo/VectorDB/full-text/S3 → workflow/API → tests/config/docs”顺序重读后的收口。目标工作树没有 `.codegraph/`，CodeGraph 明确返回不可用；以下证据来自当前源码、测试、配置和文档静态读取，未启动服务、安装依赖或运行测试。
 
 ### 28.1 分段源码导航
 
@@ -1009,9 +1009,142 @@ API/上传对象
 
 - 当前静态存在针对 `read`、text splitter、worker、VectorDB controller、S3、dataset search、workflow dataset adapter 和 API 的单元测试；Mongo 使用 `mongodb-memory-server` 或共享测试 Mongo 数据库隔离，测试 worker 默认 4，可由 `FASTGPT_TEST_MAX_WORKERS` 覆盖。
 - VectorDB integration suite 按 PG/OceanBase/Milvus/SeekDB/OpenGauss 分组，依赖外部服务配置；默认 service 测试排除 integrations。测试文件存在、mock 返回成功和 compose 有服务声明，都不能证明生产链路、跨系统回滚或资源无残留。
-- 本轮只完成静态分段取证和文档更新；未执行 `pnpm test`、Vitest、构建、Mongo/Redis/VectorDB/S3/模型连接或压力/故障注入。因此所有“已证实”均限定为源码结构和静态配置事实。
+- 当前核对只完成静态分段取证和文档更新；未执行 `pnpm test`、Vitest、构建、Mongo/Redis/VectorDB/S3/模型连接或压力/故障注入。因此所有“已证实”均限定为源码结构和静态配置事实。
 
-### 28.6 本轮裁决
+### 28.6 当前核对裁决
+
+## 29. 2026-08-22 当前最新版源码整项目复核
+
+### 29.1 版本、目录规模与代码地图
+
+本轮在源码根目录完成 `git fetch origin main`、`git pull --ff-only origin main`，结果为 `Already up to date`。当前证据如下：
+
+| 项目 | 当前事实 |
+|---|---|
+| Git | `HEAD=main=origin/main=9a28b3d4f10754abacd8ff9da9f7ac1ebf07a4fe`；领先/落后 `0/0` |
+| 主应用版本 | `projects/app/package.json:1-24` 为 `4.16.1` |
+| 运行时 | 根 `package.json:41-45` 要求 Node `>=22.23.2`、pnpm `10.33.4`；Next catalog 为 `16.3.0` |
+| 受版本控制文件 | 5,973（`git ls-files`；主要目录计数：`packages` 2,494、`projects` 1,925、`document` 1,185、`sdk` 131） |
+| 主要代码文件 | TypeScript 2,856；TSX 855；JavaScript 129；Rust 20；Go 7；MDX 496 |
+| CodeGraph | 3,957 files / 55,506 nodes / 185,276 edges；索引 `up to date` |
+| 源码工作树 | 未跟踪 `.codegraph/` 与源码侧 `ARCHITECTURE.md`；本轮保留，不修改源码 |
+
+CodeGraph 查询 `dispatchWorkFlow chat completions datasetSearchNode Agent toolCall training queue MongoDB Redis BullMQ` 定位到当前 `packages/service`、`packages/dal`、`projects/app` 和 sandbox/MCP 边界；后续结论以这些源码的当前行号为准。注意：文件总数按 `git ls-files` 重新统计时应以命令原始输出为准，不能把目录计数相加后当成去重总数。
+
+### 29.2 当前真实端到端调用链
+
+```text
+浏览器 / SDK / OpenAI 兼容客户端 / MCP 客户端
+                 │ HTTP、SSE、文件上传、MCP SSE
+                 ▼
+projects/app（Next.js 16.3.0）
+  pages/_app.tsx + pages/api/*
+  NextAPI → createApiEntry → withNextCors
+                 │
+                 ├─ v1/v2 chat/completions
+                 │    → parseApiInput(CompletionsPropsSchema)
+                 │    → authChatCompletionHeaderRequest / share auth
+                 │    → teamFrequencyLimit
+                 │    → AppVersion + Store nodes/edges
+                 │    → dispatchWorkFlow
+                 │
+                 ├─ core/dataset/*
+                 │    → dataset/controller + training controller
+                 │    → Mongo dataset_trainings / source files
+                 │    → parser/chunk/QA/embedding/vector/full-text
+                 │
+                 └─ core/plugin/* / support/mcp/* / invoke/*
+                      → plugin/MCP/API adapters
+                 │
+                 ▼
+packages/service（领域服务与 Workflow Runtime）
+  Store graph → Runtime graph
+  dispatchWorkFlow → runWorkflow → node callback map
+  LLM / Agent / Tool / Dataset Search / Loop / Parallel / Human Input
+                 │
+                 ├─ packages/dal（RedisRuntime + Cache + BullMQ）
+                 ├─ MongoDB/Mongoose（业务状态、训练状态、聊天、运行记录）
+                 ├─ VectorDB / full-text / S3 storage
+                 └─ 外部模型、插件、MCP、sandbox
+                 │
+                 ├─ projects/code-sandbox（Hono + JS pool + isolated Python）
+                 ├─ projects/mcp_server（MCP SSE sessions → FastGPT API）
+                 └─ projects/volume-manager（Hono volume/PVC 控制面）
+```
+
+`projects/app/src/service/middleware/entry.ts:1-15` 是所有 Next API 的统一入口包装；`projects/app/src/pages/api/v2/chat/completions.ts:90-172` 先解析 Zod 合约，再分流外链或 API/token 鉴权。`packages/service/core/workflow/dispatch/index.ts:184-231` 在执行前检查 AI 点数、登记文件与大小限制；`packages/service/core/workflow/dispatch/index.ts:1577-1605` 暴露 `runWorkflow`，工作流内部再按 callback map 分发节点。该路径证明 FastGPT 的“API、工作流、知识库、Agent”不是四套独立服务，而是 Next API 进入同一个 service runtime 的不同入口。
+
+### 29.3 DAL 与队列的当前实现（已从旧 4.15 结论升级）
+
+`packages/dal` 已是当前源码中的正式 workspace，而非远程设计草案：
+
+- `packages/dal/redis/runtime/index.ts:1-50` 导出 Redis runtime、配置、健康指标、错误类型、逻辑 keyspace 和 shutdown hook；业务层不应自行创建裸 Redis client。
+- `packages/dal/redis/bullmq/context.ts:9-37` 以 `globalThis` symbol 保存进程级 runtime，热重载时复用 Queue/Worker；若绑定到不同 Redis runtime 则主动抛错，避免跨实例串接。
+- `packages/dal/redis/bullmq/binding.ts:25-61` 是服务层唯一 BullMQ binding，统一默认 Worker 配置：完成/失败任务立即清理、lock 10 分钟、stalled 检查 30 秒、最大 stalled 3 次；业务只声明 queue name/processor。
+- `packages/dal/redis/bullmq/queue-manager.ts:21-50,64-84` 为 Queue 复用、错误 listener、超时关闭和 force disconnect；创建失败会释放连接。
+- `packages/dal/redis/bullmq/worker-manager.ts:34-55,82-169` 为 Worker 复用、暂停恢复、关闭后自动重启、业务 listener 快照迁移和有界关闭；重启循环在 runtime 仍为 running 时按延迟重试。
+- `packages/dal/redis/bullmq/services/*.ts` 将 dataset sync/delete、collection update、evaluation、S3 delete、team/skill delete 等队列业务绑定到同一 DAL；这不是新的业务状态 owner，Mongo 训练/文档状态仍由 service 模型持有。
+
+当前与旧文档的关键差异是：Redis/BullMQ 的连接和生命周期已经有独立 DAL 边界，但 BullMQ 仍是任务投递/执行协调器，不自动成为工作流、训练或制品的唯一事实账本；重复投递、业务幂等和跨 Mongo/S3/vector 的补偿仍由各 service 负责。
+
+### 29.4 知识库摄取与检索的当前源码链
+
+```text
+上传/外部来源/手工数据
+  → dataset API/controller
+  → MongoDatasetTraining(dataset_trainings)
+  → 团队 timer lock（training/controller.ts:19-70）
+  → parse / chunk / QA / image / embedding
+  → Mongo collection + VectorDB + full-text + S3/file refs
+  → training 状态/错误/重试计数
+  → defaultSearchDatasetData
+       → query extension（可选 LLM）
+       → default recall（向量/全文/权重/RRF/rerank）
+       → tenant/dataset/collection filter
+       → quote list / workflow node response / Agent tool observation
+```
+
+`packages/service/core/dataset/training/controller.ts:19-70` 以团队 timer lock 防止多 worker 同时锁训练记录，并在 finally 释放锁；`73-148` 按 chunk/QA/auto/image/imageParse 选择 embedding、LLM 或 VLM 模型与 token 上限；模型缺失直接返回错误，不伪造训练成功。`packages/service/core/dataset/search/index.ts:18-69` 是统一检索入口，先规范化 query，可选生成扩展检索词与 rerank query，再调用 default recall；`74-75` 的 deep RAG 通过全局 handler 作为扩展边界，避免具体 recall 实现反向持有全局适配。
+
+该链的核心数据边界是：Mongo `dataset_trainings` 保存训练任务与错误/重试状态；文件/S3 保存原始与中间制品；VectorDB 保存向量；全文存储与 rerank 负责召回排序；最终引用通过 workflow response/quote list 返回。任何一处成功都不能单独证明整条摄取事务已经完成。
+
+### 29.5 Agent、工具与工作流节点
+
+- `packages/service/core/workflow/dispatch/ai/agent` 将 Agent 节点装配为 workflow runtime；`toolProvider/createWorkflowAgentToolProvider.ts` 生成 readFile、datasetSearch、sandbox 等系统工具；`toolcall/toolProvider/createToolCallToolProvider.ts:59-120` 将 dataset search node ids 包装成可调用工具，并以 `runWorkflow` 作为工作流工具执行器。
+- `packages/service/core/workflow/dispatch/index.ts` 的 callback map 将 `datasetSearchNode`、agent、toolCall、pluginModule、appModule、parallelRun、loopRun、MCP 和交互节点绑定到统一调度器；子工作流由 `runWorkflow` 递归进入，但每个子运行复制 runtime nodes/edges 与变量上下文，避免父运行状态直接污染。
+- Agent/Tool 的模型层仍由 `packages/service/core/ai/model` provider registry 按模型配置产生 LLM/embedding/VLM 实例；调用后的 usage、引用、节点响应由 workflow response 与 chat usage 记录持久化。
+- 交互节点（`userSelect`、`formInput`、`ask_user`）通过历史 response/interactive state 暂停；恢复是既有 workflow execution 的 checkpoint 续跑，不是任意 worker 崩溃接管。
+
+### 29.6 沙箱、MCP 与外部进程边界
+
+- `projects/code-sandbox/src/index.ts:90-126` 创建 Hono app、JS `ProcessPool`、Python `PythonIsolatedRunner` 与 `QueueIdLimiter`；初始化失败退出进程，`/health` 在池未就绪时返回 `503`。`81-88` 限制代码体积为 5 MB；`175-180` 显示 token 配置缺失时 API 可能无认证，生产必须设置 `SANDBOX_TOKEN`。
+- `projects/mcp_server/src/index.ts:20-103` 为每个 `/:key/sse` 建立独立 MCP `Server` 与 `SSEServerTransport`，用 `transportMap` 按 session id 保存连接；`onclose/onerror` 删除连接或记录错误，工具调用最终转到 FastGPT API 的 `callTool`。这是 session 级 transport registry，不是持久化任务队列。
+- `projects/volume-manager/src/index.ts:1-35` 是独立 Hono 卷管理服务，提供 Docker/Kubernetes 存储驱动适配；其状态不能与 Mongo 业务状态混为一谈。
+- `projects/fastgpt-ide-agent` 与 `projects/agent-sandbox*` 是独立运行时/商业边界；本轮只确认目录存在，不把其内部行为写成当前已验证事实。
+
+### 29.7 并发、失败与资源释放矩阵
+
+| 资源/故障 | 当前源码行为 | 仍未证明 |
+|---|---|---|
+| Next API 断流 | v1 创建 client abort tracker；V2 通过停止标记/stream context 协同 workflow | 断流后所有外部调用、Mongo 写入和向量写入均已终止 |
+| Workflow 并发/循环 | parallelRun 深拷贝 runtime 状态、限制并发；loopRun 有最大迭代/停止条件 | 跨进程执行接管、重复提交幂等 |
+| BullMQ Worker 关闭 | Worker manager 监听 closed/paused，恢复或重启并迁移业务 listener | 进程崩溃中 job 的业务去重与 Mongo/vector/S3 补偿 |
+| Redis 关闭 | DAL runtime 有角色连接、健康指标、shutdown hook、force disconnect | Redis 恢复期间任务状态是否最终一致 |
+| 训练并发 | team timer lock + Mongo `retryCount/lockTime` | 多地域时钟漂移、锁抢占者崩溃后的 reaper |
+| Sandbox 进程 | JS pool + Python isolated runner；队列按 queueId 限流 | 真实 OS 级隔离、强杀后的制品清理 |
+| MCP SSE | session map，close/error 清理 | 多实例共享 session、重连回放、连接泄漏长期运行表现 |
+| Mongo/S3/vector 多写 | 各 service 按阶段更新状态并记录错误 | 跨系统事务、孤儿制品扫描、向量与全文对账 |
+
+### 29.8 当前版本裁决与后续验证边界
+
+本轮已把旧第 11 节“本地落后 4.16 远程”的结论降级为历史记录；当前 `main` 已同步到 4.16.1，`packages/dal`、Node 22、Next 16 和 BullMQ runtime 均属于本地源码事实。后续架构映射应选择：
+
+1. **支持库**：Redis runtime、BullMQ Queue/Worker 生命周期、S3/storage、模型 provider、向量检索适配器、sandbox 进程适配器；只提供原子能力和资源释放。
+2. **模块库**：知识库摄取、默认检索、Agent 工具 provider、工作流节点组合、训练任务编排；不得直接持有裸 Redis/第三方 SDK。
+3. **运行核心**：Workflow `runWorkflow`/调度状态、执行上下文、事件/响应投影、停止/恢复与 usage 归集；必须补统一 execution/attempt/idempotency 契约。
+4. **项目适配层**：FastGPT 的 tenant/team/app/version、模型配置、API 路由和外部部署环境；不能被误吸收为通用支持库。
+
+已验证：Git 版本同步、CodeGraph 索引状态、目录/文件统计、关键源码行号、文档结构静态检查。未验证：pnpm 安装、Next build、Mongo/Redis/BullMQ/VectorDB/S3、模型 provider、sandbox、MCP server、真实训练/检索、故障注入和 E2E。任何运行成功、性能数字或崩溃恢复声明都必须等后续在端口 4780 及隔离资源上实测后再升级证据等级。
 
 - **吸收为当前事实**：S3 私有对象 + dataset key 授权、服务端 worker 解析、Mongo 训练状态机、parse/QA/chunk 分阶段、Mongo 主数据与全文派生表、VectorDB 可替换 controller、检索多路融合、BullMQ 运维队列与测试隔离边界。
 - **标记为文档过期/冲突**：Mongo GridFS、浏览器解析、PG 为唯一数据存储、训练线程直接插 PG 的旧 self-host dataset 设计；不得继续作为当前架构依据。

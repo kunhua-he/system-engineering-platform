@@ -313,7 +313,7 @@ pytest backend/tests                      后端测试（由 pytest.ini 指定�
 - 迁移 runner 按文件名排序发现 `001_...` 至 `014_...`，在 `schema_migrations` 记录已执行文件名；SQLite 待迁移前复制 `.bak`，PostgreSQL 优先 `pg_dump`，缺失时降级为 JSON 数据导出并警告结构无法自动恢复。
 - 迁移重点包括 `migrated_to`、图字段、SQLite/Postgres FTS、namespace、Glossary namespace、access logs、Path node UUID、Preset 表。现有迁移文件是运行时 schema 事实的一部分，不能只看 ORM。
 - `snapshots/changeset.json` 是审核工作状态，不是数据库历史事件表；内容正文通过 Memory ID 在 review 时回查数据库。
-- 根目录 `config.json`、`.env`、前端 `dist/` 在当前归档中未找到；它们由首次启动/Docker setup/前端构建生成或由运行环境提供，未在本轮生成。
+- 根目录 `config.json`、`.env`、前端 `dist/` 在当前归档中未找到；它们由首次启动/Docker setup/前端构建生成或由运行环境提供，未在当前核对生成。
 
 ## 10. 测试与验证面
 
@@ -334,22 +334,22 @@ pytest backend/tests                      后端测试（由 pytest.ini 指定�
 - `frontend/src/features/settings/MaintenanceSection.test.jsx`：bloat 阈值显示、校验、preset 选择与保存。
 - `frontend/vite.config.js` 使用 jsdom、globals、`src/test/setup.js`；package scripts 提供 `vitest` 与 `vitest run`。
 
-本轮按用户约束**没有安装依赖、没有启动服务、没有运行测试或构建**，因此本文只记录源码声明与已有测试结构，不声称当前环境测试通过。
+当前核对按用户约束**没有安装依赖、没有启动服务、没有运行测试或构建**，因此本文只记录源码声明与已有测试结构，不声称当前环境测试通过。
 
 ## 11. 未确认项与风险边界
 
 1. **仓库规则文件缺失**：在项目根及项目内扫描未发现 `AGENTS.md`、`CLAUDE.md` 或 `GEMINI.md`；本建档依据 README、源码、依赖清单、测试与已有 `细探-Nocturne-Memory.md`。
 2. **运行配置未落盘**：当前仓库没有 `config.json`、`.env`、`frontend/dist`；真实数据库 URL、token、Boot preset、构建产物和生产端口需在运行时确认。
-3. **未做运行验证**：未安装 Python/Node 依赖，未连接 SQLite/PostgreSQL，未启动 uvicorn/MCP/Docker，未执行 pytest/Vitest；依赖可安装性、当前版本兼容性和迁移可执行性未被本轮证明。
+3. **未做运行验证**：未安装 Python/Node 依赖，未连接 SQLite/PostgreSQL，未启动 uvicorn/MCP/Docker，未执行 pytest/Vitest；依赖可安装性、当前版本兼容性和迁移可执行性未被当前核对证明。
 4. **声明与代码的集成边界需回归验证**：README 宣称 stdio/SSE/Streamable HTTP、SQLite/PostgreSQL 和前端自动构建，入口源码均存在，但不同 `mcp` 版本通过 `IS_MCP_V2` 分支选择 FastMCP API，真实环境仍需对应版本实测。
-5. **审核池是文件状态**：`ChangesetStore` 使用共享的 `snapshots/changeset.json`，源码注释说明各 namespace 共享一个池；并发多进程、跨实例部署、文件卷权限和进程异常中断恢复未在本轮实测。
+5. **审核池是文件状态**：`ChangesetStore` 使用共享的 `snapshots/changeset.json`，源码注释说明各 namespace 共享一个池；并发多进程、跨实例部署、文件卷权限和进程异常中断恢复未在当前核对实测。
 6. **REST 直接编辑与 AI 审核语义不同**：`browse.py` 多处明确绕过 changeset/review，不能把所有 Dashboard 修改都理解为可在 Review 页面回滚的 AI 变更。
-7. **迁移文件与 ORM 的最终一致性未实测**：源码同时存在 14 个历史迁移、SQLite/PostgreSQL 分支和当前 ORM；本轮未执行迁移 round-trip，也未对空库/旧库/跨数据库结果做 schema 对账。
+7. **迁移文件与 ORM 的最终一致性未实测**：源码同时存在 14 个历史迁移、SQLite/PostgreSQL 分支和当前 ORM；当前核对未执行迁移 round-trip，也未对空库/旧库/跨数据库结果做 schema 对账。
 8. **旧 Neo4j 兼容链是旁路能力**：`backend/db/neo4j_client.py` 与 `backend/scripts/migrate_neo4j_to_sqlite.py` 仍存在，但 Neo4j 驱动不在正式 requirements，是否仍需维护取决于升级场景。
-9. **桌面宠物不是核心服务依赖**：`desktop_pet/` 有独立环境和外部邮件/TTS/桌面截图依赖；本轮只确认了共享 heartbeat 逻辑，未把它视为 Nocturne Memory 核心运行时的一部分。
-10. **README 的“高可用/云同步”属于定位描述**：源码确认 SQLite/PostgreSQL 双后端和连接池，但没有在本轮证明 HA、跨设备冲突处理、备份恢复演练或公网生产安全性。
+9. **桌面宠物不是核心服务依赖**：`desktop_pet/` 有独立环境和外部邮件/TTS/桌面截图依赖；当前核对只确认了共享 heartbeat 逻辑，未把它视为 Nocturne Memory 核心运行时的一部分。
+10. **README 的“高可用/云同步”属于定位描述**：源码确认 SQLite/PostgreSQL 双后端和连接池，但没有在当前核对证明 HA、跨设备冲突处理、备份恢复演练或公网生产安全性。
 
-## 12. 本轮读取与修改边界
+## 12. 当前核对读取与修改边界
 
 ### 实际读取的代表性文件
 
@@ -366,7 +366,7 @@ pytest backend/tests                      后端测试（由 pytest.ini 指定�
 - `docs/testing.md`、`docs/TOOLS.md`、`docker-compose.yml`、`.github/workflows/backend-tests.yml`
 - `desktop_pet/requirements.txt`、`desktop_pet/heartbeat_engine.py`、`scripts/setup_docker.py`、旧 Neo4j 迁移脚本
 
-### 本轮修改文件
+### 当前核对修改文件
 
 - 新增：`ARCHITECTURE.md`
 
@@ -374,16 +374,16 @@ pytest backend/tests                      后端测试（由 pytest.ini 指定�
 
 ---
 
-## 13. 第三轮：通用底座映射与治理裁决
+## 13. 后续：通用底座映射与治理裁决
 
-### 13.1 证据边界与本轮结论性质
+### 13.1 证据边界与当前核对结论性质
 
-本节是基于当前源码的第三轮映射，不是对 Nocturne-Memory 的改造方案，也不表示本项目已经接入任何外部支持库、记忆模块、运行核心或制品治理平台。源码参考库的固定边界仍然是：项目源码只读，跨项目结论只能作为底座升级输入，不能直接改生产底座。
+本节是基于当前源码的后续映射，不是对 Nocturne-Memory 的改造方案，也不表示本项目已经接入任何外部支持库、记忆模块、运行核心或制品治理平台。源码参考库的固定边界仍然是：项目源码只读，跨项目结论只能作为底座升级输入，不能直接改生产底座。
 
 - 项目身份现场核对：目标源码根为 `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Nocturne-Memory`。
 - `project_context` 首次返回的是错误项目 `华世王镞_v3`，根目录为 `~/Documents/Agent/PHP/华世王镞_v3`，开工 id 为空；该 MCP 结果不作为 Nocturne-Memory 的项目证据。
-- 随后对目标根调用代码图，返回“无 `.codegraph/` 目录，不能查询”；本轮没有把代码图摘要冒充为源码证据，以下路径和行为均来自目标项目现场文件。
-- 项目内未找到旧 `细探-*.md` 文件；现有本文第 4 行声明此前 `细探-Nocturne-Memory.md` 已吸收，但该旧文件当前不在目标目录，因而本轮只能复核正式文档和当前源码，不能声称重新读取不存在的旧细探。
+- 随后对目标根调用代码图，返回“无 `.codegraph/` 目录，不能查询”；当前核对没有把代码图摘要冒充为源码证据，以下路径和行为均来自目标项目现场文件。
+- 项目内未找到旧 `细探-*.md` 文件；现有本文第 4 行声明此前 `细探-Nocturne-Memory.md` 已吸收，但该旧文件当前不在目标目录，因而当前核对只能复核正式文档和当前源码，不能声称重新读取不存在的旧细探。
 - 本节结论分为：**吸收**（可直接抽象为底座边界）、**升级候选**（有价值但需先登记需求/契约/租约/验收）、**待核**（当前缺运行或反向故障证据）、**隔离**（不能进入通用底座）。除“吸收”外均不构成生产改造授权。
 
 ### 13.2 唯一链路：内容、路径、版本、索引和审核各有唯一 owner
@@ -416,7 +416,7 @@ MCP/REST/系统视图调用方
 
 唯一 owner 裁决：
 
-| 事实/资源 | 当前源码 owner | 通用底座归属 | 第三轮裁决 |
+| 事实/资源 | 当前源码 owner | 通用底座归属 | 后续裁决 |
 |---|---|---|---|
 | 记忆正文和版本 | `GraphService` + `Memory`；同一 `node_uuid` 下以新 `Memory` 行版本化，旧行 `deprecated` 并用 `migrated_to` 指向后继 | 记忆模块的领域模型，底层存储由支持库承载 | **吸收**；只抽象版本契约，不把 `Memory` ORM 直接外泄给消费者 |
 | 父子结构 | `Edge` 是真实结构，`Path` 是 URI 物化路由；`add_path()` 复用 Node 并级联子路径 | 记忆模块；路径物化可由支持库提供原子能力 | **吸收**；Edge 是权威写 owner，Path/SearchDocument 不能反向成为主事实 |
@@ -454,7 +454,7 @@ MCP/REST/系统视图调用方
 - **制品治理**持有不可变 `before`、当前 `after`、来源入口、namespace、操作/请求标识、schema 版本和状态（pending/approved/rolled_back/failed）。
 - **运行核心**负责变更集写入与数据库提交之间的资源/事务编排，不能让工具函数自己决定“写库后是否记账”。
 
-当前实现的关键边界必须保留：`snapshots/changeset.json` 是单池文件，源码注释明确所有 namespace 共享一个池；`_record_rows()` 的 docstring 虽称 namespace-specific store，但实际 `ChangesetStore` 没有 namespace 分池参数，且行键只把 namespace 纳入 Path/Glossary 复合主键。该不一致是第三轮需要登记的契约漂移，不能照搬为“审核隔离已完成”。
+当前实现的关键边界必须保留：`snapshots/changeset.json` 是单池文件，源码注释明确所有 namespace 共享一个池；`_record_rows()` 的 docstring 虽称 namespace-specific store，但实际 `ChangesetStore` 没有 namespace 分池参数，且行键只把 namespace 纳入 Path/Glossary 复合主键。该不一致是后续需要登记的契约漂移，不能照搬为“审核隔离已完成”。
 
 #### 13.3.3 审核/回滚：因果分组不是事件溯源
 
@@ -525,7 +525,7 @@ Memory.content + Node + Edge + Path + GlossaryKeyword
 
 ### 13.5 L0–L4 分层映射
 
-源码 `backend/db/graph.py` 已用注释给出 Layer 0（Row-Level Primitives）、Layer 1（Table-Scoped Operations）、Layer 2（Cross-Table Cascades）、Layer 3（GC / Conditional Logic），再往后是 Public Write API。第三轮将其明确映射为 L0–L4；这不是新增代码层，而是把既有调用边界用于底座治理。
+源码 `backend/db/graph.py` 已用注释给出 Layer 0（Row-Level Primitives）、Layer 1（Table-Scoped Operations）、Layer 2（Cross-Table Cascades）、Layer 3（GC / Conditional Logic），再往后是 Public Write API。后续将其明确映射为 L0–L4；这不是新增代码层，而是把既有调用边界用于底座治理。
 
 | 层级 | 当前真实职责与证据 | 建议底座归属 | 允许的输入/输出与边界 | 裁决 |
 |---|---|---|---|---|
@@ -541,7 +541,7 @@ L0–L4 不等于“越高层越能直接访问数据库”：L4 只能编排 L3
 
 | 场景 | 当前可确认行为 | 当前不能确认/缺口 | 底座验收要求 |
 |---|---|---|---|
-| 正常完成 | Graph/Glossary/Search 在 `DatabaseManager.session()` 中完成并 commit；MCP 返回后才记录 changeset；FileLock 离开上下文释放；lifespan 退出等待 `web_task` 并关闭 DB | 没有真实运行本轮证据 | 读回 DB、派生索引、变更集和资源现场；确认句柄/连接/task 数归零或有明确 owner |
+| 正常完成 | Graph/Glossary/Search 在 `DatabaseManager.session()` 中完成并 commit；MCP 返回后才记录 changeset；FileLock 离开上下文释放；lifespan 退出等待 `web_task` 并关闭 DB | 没有真实运行当前核对证据 | 读回 DB、派生索引、变更集和资源现场；确认句柄/连接/task 数归零或有明确 owner |
 | 业务失败/非法参数 | MCP 捕获 `ValueError/Exception` 返回 `Error:`；REST 多数转 422；session context 对 `Exception` rollback；删除会在子节点不可达时预检拒绝 | MCP 写入后 `_record_rows()` 失败的补偿未实现；REST 直接编辑失败/成功都不进入 AI changeset | 失败码稳定、拒绝写证据、数据库与审核制品不出现半状态；测试 record 失败、索引刷新失败、唯一键冲突 |
 | 存储锁/慢操作 | SQLite 配置 busy timeout 5000ms；迁移前 SQLite 备份，PostgreSQL 缺 `pg_dump` 时等待 10 秒再 JSON 数据导出 | 没有统一 `TIMEOUT` 结果、重试预算、取消 token；PostgreSQL JSON 备份明确不含 schema 且没有自动 restore | 每个 provider 声明软超时/硬截止/可重试；超时后 rollback/interrupt/关闭连接并验证无锁残留 |
 | 主动取消 | 源码没有 memory/changeset/API 取消接口，也没有取消令牌或 Future 状态 | 未定义取消时 session、FileLock、后台 task、SSE namespace 文件、子进程如何收口；`asyncio.create_task` 的取消不受统一监督 | 取消必须是可观测终态：停止后不提交新事实、释放句柄/租约、保留取消证据、重复取消幂等 |
@@ -571,7 +571,7 @@ L0–L4 不等于“越高层越能直接访问数据库”：L4 只能编排 L3
 | namespace context 与 SSE session mapping | **升级运行核心上下文** | 统一 request context、owner、租约、TTL、取消和跨进程安全存储 | 当前映射缺失静默回退空 namespace；临时文件残留/错绑风险未解决 |
 | AsyncSession、engine.dispose、web_task、后台 create_task | **升级运行核心资源监督** | 登记 task/connection/lock/child-process 句柄；正常/失败/取消/超时/崩溃四态收口 | 不把 untracked task 当完成；不把 wrapper wait 当强杀回收；不在记忆模块另建任务中心 |
 | 人类 REST direct edit 旁路 | **隔离并显式标记来源** | 作为 human mutation 入口，通过统一能力网关选择“直写”或“纳入审核”策略 | 不能与 AI changeset 混为一谈；不能让消费者绕过唯一 owner 直接 DB 写入 |
-| `desktop_pet/`、Neo4j 迁移脚本 | **隔离/待核** | 仅在另有需求和外部依赖契约时单独登记 | 不纳入记忆核心、上下文任务资源或通用底座主链；本轮没有运行证据 |
+| `desktop_pet/`、Neo4j 迁移脚本 | **隔离/待核** | 仅在另有需求和外部依赖契约时单独登记 | 不纳入记忆核心、上下文任务资源或通用底座主链；当前核对没有运行证据 |
 
 装配前必须补齐的契约/工作包：
 
@@ -583,4 +583,4 @@ L0–L4 不等于“越高层越能直接访问数据库”：L4 只能编排 L3
 6. **装配计划**：顺序应为支持库存储/检索 provider → 运行核心 session/handle/lease → 记忆模块 Graph/View/Mutation → 制品治理 Changeset/Review/Rollback → 项目适配层 → MCP/REST 消费者；禁止先接 UI 再补底座。
 7. **证据留存**：源码存在、测试存在、真实执行、故障注入、外部 PostgreSQL、跨进程/强杀、资源残留扫描必须分栏，不能用测试文件存在或历史 CI 声明替代。
 
-本轮最终裁决：Nocturne-Memory 最有价值的可吸收底座不是“一个 MCP 服务器”，而是**Node/Memory/Edge/Path 的内容-路径分离 + 版本化 Memory + 可重建检索派生物 + 行级 before/after 变更集 + 因果分组回滚**。但其审核池、后台 task、SSE 临时 session、直接 JSON 覆盖写和入口分叉仍缺统一句柄/租约、CAS、超时/取消、崩溃恢复与证据账本；在这些缺口补齐前只能作为“升级现有能力的源码证据”，不能直接升级生产底座。
+当前核对最终裁决：Nocturne-Memory 最有价值的可吸收底座不是“一个 MCP 服务器”，而是**Node/Memory/Edge/Path 的内容-路径分离 + 版本化 Memory + 可重建检索派生物 + 行级 before/after 变更集 + 因果分组回滚**。但其审核池、后台 task、SSE 临时 session、直接 JSON 覆盖写和入口分叉仍缺统一句柄/租约、CAS、超时/取消、崩溃恢复与证据账本；在这些缺口补齐前只能作为“升级现有能力的源码证据”，不能直接升级生产底座。

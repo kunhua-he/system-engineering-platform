@@ -405,17 +405,17 @@ Web 创建 `/api/terminal/sessions` → `TerminalSessionManager.create()` 根据
 
 ---
 
-## 11. 第三轮：通用底座映射与裁决（源码事实 → 支持库/模块库/运行核心/网关）
+## 11. 后续：通用底座映射与裁决（源码事实 → 支持库/模块库/运行核心/网关）
 
-### 11.1 本轮边界、证据等级与旧细探收口
+### 11.1 当前核对边界、证据等级与旧细探收口
 
-本轮只把当前源码中已经存在的能力映射为通用底座候选，不把 Inno 的产品策略改写成平台事实，也不声称 Inno 已经接入系统工程平台。源码证据主要来自 `apps/inno-agent/src/agent/pi-runner.ts`、`agent/inno-extension.ts`、`server.ts`、`chat/stream-registry.ts`、`scheduler/*`、`workspace/*`、`terminal/*`、`storage/file-store.ts`、`channels/*`、`config.ts`、`runtime.ts` 和 `electron/main.js`。
+当前核对只把当前源码中已经存在的能力映射为通用底座候选，不把 Inno 的产品策略改写成平台事实，也不声称 Inno 已经接入系统工程平台。源码证据主要来自 `apps/inno-agent/src/agent/pi-runner.ts`、`agent/inno-extension.ts`、`server.ts`、`chat/stream-registry.ts`、`scheduler/*`、`workspace/*`、`terminal/*`、`storage/file-store.ts`、`channels/*`、`config.ts`、`runtime.ts` 和 `electron/main.js`。
 
-目标项目第一次 `project_context` 返回的项目是 `~/Documents/Agent/PHP/华世王镞_v3`，不是本项目；随后 `development_start` 以本项目路径开工被 MCP 以 `MCP_TARGET_PROJECT_MISMATCH` 拒绝。`codegraph_explore` 已按本项目绝对路径调用，但明确返回“未建立 `.codegraph/`，不可查询”；因此本轮没有把错误项目代码图或不存在的代码图当证据，以下定位均来自目标目录现场源码读取。目标目录及其已搜索的父级范围内没有找到独立的 `细探-*.md` 文件；现有文档末尾关于 `细探-Inno-Agent.md` 的吸收声明保留，但独立旧笔记不能再次核验。
+目标项目第一次 `project_context` 返回的项目是 `~/Documents/Agent/PHP/华世王镞_v3`，不是本项目；随后 `development_start` 以本项目路径开工被 MCP 以 `MCP_TARGET_PROJECT_MISMATCH` 拒绝。`codegraph_explore` 已按本项目绝对路径调用，但明确返回“未建立 `.codegraph/`，不可查询”；因此当前核对没有把错误项目代码图或不存在的代码图当证据，以下定位均来自目标目录现场源码读取。目标目录及其已搜索的父级范围内没有找到独立的 `细探-*.md` 文件；现有文档末尾关于 `细探-Inno-Agent.md` 的吸收声明保留，但独立旧笔记不能再次核验。
 
 ### 11.2 四层归属原则
 
-| 底座层 | 应承载的通用能力 | Inno 当前实现/候选落点 | 本轮裁决 |
+| 底座层 | 应承载的通用能力 | Inno 当前实现/候选落点 | 当前核对裁决 |
 |---|---|---|---|
 | **支持库** | 文件/JSON/JSONL 原子写入、尾读与轮转；路径安全；HTTP 请求超时；SQLite/FTS 索引；PTY/子进程封装；模型/工具/渠道的稳定数据类型 | `storage/file-store.ts`、`utils/path-safety.ts`、`memory/l2/l2-index-store.ts`、`memory/l3/sqlite-store.ts`、`terminal/local-pty-backend.ts` | **吸收为原子能力候选**。这些能力不应知道 learner、Wiki、scheduler 或 Inno prompt 策略；当前代码仍是项目内支持代码，未迁移。 |
 | **模块库** | 领域流程编排和结果转换：会话流、L1/L2/L3 记忆、定时作业、渠道消息、Practice Lab、内容 hub | `agent/inno-extension.ts`、`memory/*`、`scheduler/job-runner.ts`、`channels/personal-dispatcher.ts`、`terminal/terminal-session-manager.ts` | **吸收为模块候选**。模块可组合支持库，但不应各自直连第三方或复制队列、任务、存储、重试内核。 |
@@ -558,17 +558,17 @@ HTTP/WS terminal route
 
 ### 11.8 L0-L4 验证分层与本项目验收契约
 
-| 等级 | 目标 | Inno 应验证的内容 | 本轮证据/命令 | 判定 |
+| 等级 | 目标 | Inno 应验证的内容 | 当前核对证据/命令 | 判定 |
 |---|---|---|---|---|
-| **L0 静态契约** | 证明目录、公开符号、注册点和依赖边界存在 | `createInnoExtension` 注册工具；`modelRegistry` 注册/注销；`pi-runner` 唯一 queue；四类链路和文件 owner；无第二份任务/队列/网关内核 | 本轮源码读取；代码图明确不可用；目标 `ARCHITECTURE.md` 追加本章 | **已完成静态整理**，不等于运行通过 |
-| **L1 纯单元/性质** | 不启动外部服务，验证状态机和纯逻辑 | queue 取消不执行、StreamRegistry 终态/事件序号/replay/TTL、路径 containment、JSONL 坏行/轮转、cron due、JobStore mutate、sentinel 退出码 | 现有 Vitest 文件存在，但本轮未运行 | **未验证** |
-| **L2 本地组件集成** | 临时目录 + 本地 SQLite/PTY/mock provider | lazy bootstrap、配置热更新、session/workspace 绑定、L1/L2/L3 读写、后台索引、JobStore→runner、terminal run record | 应运行 `npm test -- --run` 或项目等价的 Vitest 入口（本轮按任务边界不执行） | **未验证** |
-| **L3 真实进程/HTTP/WS** | 跨进程与协议边界真实执行 | `npm run build`；server `/health`、chat/SSE abort/replay、session switch、terminal WS/PTY、Electron spawn→health→非零退出清理；隔离 sidecar mock | 应运行 `npm run build`、`server.smoke.test.ts` 及独立 WS/PTY smoke（本轮未执行） | **未验证** |
-| **L4 外部与灾难** | 外部依赖、长耗时和崩溃/超时/取消真实闭环 | 隔离 provider/OCR/Tavily/Feishu/WeChat/bridge；断线/非 2xx/凭证失效；kill server/PTY/索引 backfill；重启恢复、无 orphan process、无临时/锁/订阅残留 | 需要显式外部凭证或隔离服务；本轮未启动服务、未安装依赖、未调用外部服务 | **未验证；不能假绿** |
+| **L0 静态契约** | 证明目录、公开符号、注册点和依赖边界存在 | `createInnoExtension` 注册工具；`modelRegistry` 注册/注销；`pi-runner` 唯一 queue；四类链路和文件 owner；无第二份任务/队列/网关内核 | 当前核对源码读取；代码图明确不可用；目标 `ARCHITECTURE.md` 追加本章 | **已完成静态整理**，不等于运行通过 |
+| **L1 纯单元/性质** | 不启动外部服务，验证状态机和纯逻辑 | queue 取消不执行、StreamRegistry 终态/事件序号/replay/TTL、路径 containment、JSONL 坏行/轮转、cron due、JobStore mutate、sentinel 退出码 | 现有 Vitest 文件存在，但当前核对未运行 | **未验证** |
+| **L2 本地组件集成** | 临时目录 + 本地 SQLite/PTY/mock provider | lazy bootstrap、配置热更新、session/workspace 绑定、L1/L2/L3 读写、后台索引、JobStore→runner、terminal run record | 应运行 `npm test -- --run` 或项目等价的 Vitest 入口（当前核对按任务边界不执行） | **未验证** |
+| **L3 真实进程/HTTP/WS** | 跨进程与协议边界真实执行 | `npm run build`；server `/health`、chat/SSE abort/replay、session switch、terminal WS/PTY、Electron spawn→health→非零退出清理；隔离 sidecar mock | 应运行 `npm run build`、`server.smoke.test.ts` 及独立 WS/PTY smoke（当前核对未执行） | **未验证** |
+| **L4 外部与灾难** | 外部依赖、长耗时和崩溃/超时/取消真实闭环 | 隔离 provider/OCR/Tavily/Feishu/WeChat/bridge；断线/非 2xx/凭证失效；kill server/PTY/索引 backfill；重启恢复、无 orphan process、无临时/锁/订阅残留 | 需要显式外部凭证或隔离服务；当前核对未启动服务、未安装依赖、未调用外部服务 | **未验证；不能假绿** |
 
 验收门槛：L0 只能证明“有代码和唯一链路描述”；L1-L3 至少要有真实命令及退出码；L4 需要外部依赖/强杀证据。任何“源码存在”“测试文件存在”“历史测试统计”“子代理回信”都不能替代真实执行。缺少某层证据时，只能写“待验证/部分实现”。
 
-### 11.9 第三轮复用/升级/新建/隔离裁决
+### 11.9 后续复用/升级/新建/隔离裁决
 
 | 能力族 | 裁决 | 原因与落点 |
 |---|---|---|
@@ -581,7 +581,7 @@ HTTP/WS terminal route
 | PI SDK `AgentSession`、`SessionManager`、`ExtensionAPI` | **隔离并适配** | 第三方内核是外部运行时 owner；Inno 只做版本/配置/策略适配，不修改或把 PI 内部对象穿透到底座契约。 |
 | 真实崩溃恢复、跨进程任务租约、统一出站治理 | **待核/新建前先登记需求** | 当前源码只给局部 best-effort 和重启重建线索，尚无 L3/L4 证据，禁止据此直接改生产底座。 |
 
-### 11.10 第三轮工作包与后续验证顺序
+### 11.10 后续工作包与后续验证顺序
 
 1. **契约冻结**：为能力注册、工具调用、模型选择、任务、会话/turn、外部调用分别写请求/返回/错误/超时/取消/幂等/资源 owner；先登记需求并搜索现有能力，不直接创建第二套中心。
 2. **单链路试点**：选择 `Web → chat stream → AgentSession → provider → tool → session JSONL/SSE` 一条链，定义唯一能力 id、模块公开入口和网关入口；其余渠道先只做适配，不并行重构。
@@ -590,4 +590,4 @@ HTTP/WS terminal route
 5. **外部服务 L4**：只使用隔离账号/服务和明确凭证，验证 Feishu/WeChat/bridge/OCR/Tavily 的断线、认证失效、超时、重试、死信与脱敏；不得触碰真实业务库或无关账号。
 6. **收口规则**：每个复用/升级结论必须回填能力 owner、调用链、资源责任、失败证据和 L0-L4 结果；没有真实退出码的项目事实只能停留在“静态存在/待验证”。
 
-本轮的底座输入结论为：**吸收**（支持库/模块库边界和四条现状唯一链路）、**升级候选**（能力/模型注册、会话/任务监督、资源生命周期和统一网关适配）、**待核**（跨进程幂等、强杀恢复、统一外部治理）；未将任何未验证设计写成已实现功能。
+当前核对的底座输入结论为：**吸收**（支持库/模块库边界和四条现状唯一链路）、**升级候选**（能力/模型注册、会话/任务监督、资源生命周期和统一网关适配）、**待核**（跨进程幂等、强杀恢复、统一外部治理）；未将任何未验证设计写成已实现功能。

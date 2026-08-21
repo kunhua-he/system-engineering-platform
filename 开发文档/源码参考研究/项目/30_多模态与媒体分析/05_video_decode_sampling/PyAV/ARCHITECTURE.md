@@ -9,7 +9,7 @@
 - **许可证**：项目 `BSD-3-Clause`；运行时绑定的 FFmpeg 组件及其编译配置仍需单独核对 LGPL/GPL 边界。
 - **当前本地提交**：`32e9f7de15c3ecdddd78cc17b5ed4cdafdd15149`，提交信息 `Refresh installation documentation`，时间 `2026-07-22T22:05:21-04:00`。
 - **当前本地版本**：`av.about.__version__ = "18.0.0"`，证据：`av/about.py:1`。
-- **工作树事实**：源码工作树未见已跟踪改动；存在未跟踪 `细探-PyAV.md`。本轮只新增/修改本文件，不删除细探，不修改源码、依赖、测试、配置，不安装、不启动、不构建、不提交。
+- **工作树事实**：源码工作树未见已跟踪改动；存在未跟踪 `细探-PyAV.md`。当前核对只新增/修改本文件，不删除细探，不修改源码、依赖、测试、配置，不安装、不启动、不构建、不提交。
 - **远程核对**：`origin/main` 的远程头为 `040da79f2ef323988c56e5e72072b768570c470b`（2026-08-18），本地落后 **48** 个提交。远程快照通过 `127.0.0.1:4780` 独立克隆至 `/tmp/PyAV-remote-4780`，未覆盖本地工作树。
 - **远程版本事实**：独立快照 `av/about.py:1` 为 `19.0.0pre1`；远程 `pyproject.toml:13` 要求 Python `>=3.12`，本地为 `>=3.11`。远程快照仅用于版本差异核对，不是本地实现证据。
 - **细探吸收**：已有 `细探-PyAV.md` 已完整读取，并在第 13 节逐条记录吸收、部分吸收和未吸收裁决；按任务约束保留原文件。后续架构事实只维护本文件，旧细探不作为第二事实源。
@@ -91,7 +91,7 @@ PyAV/
 ├── pyproject.toml              # 包元数据、构建依赖和入口
 ├── Makefile                    # build/test/lint/fate-suite
 ├── AGENTS.md                   # 开发规则
-└── 细探-PyAV.md                # 既有研究笔记（本轮保留）
+└── 细探-PyAV.md                # 既有研究笔记（当前核对保留）
 ```
 
 按当前工作树可复现的文件清单统计，`av/` 有 60 个 `.py`、56 个 `.pxd`、51 个 `.pyi`，`tests/` 有 34 个 `test_*.py` 模块，`docs/` 有 35 个文件，`include/` 有 6 个 `.pxd`。这里不再把不同扩展名相加后称为“源码文件数”，也不把测试模块数称为测试目录总文件数。核心实现大量采用同名 `.py` + `.pxd` + `.pyi` 三件组合：`.py` 描述 Cython mode 源码，`.pxd` 提供跨模块 cimport/类型声明，`.pyi` 提供静态类型和公开接口提示。
@@ -130,7 +130,7 @@ PyAV/
 - `make lint` 会升级 ruff/isort/Pillow/NumPy/mypy 并运行格式、导入排序和类型检查；
 - `make fate-suite` 下载完整 FFmpeg FATE 样本。
 
-本轮没有执行上述命令，避免改变依赖或生成构建产物。
+当前核对没有执行上述命令，避免改变依赖或生成构建产物。
 
 ## 5. 核心对象模型与所有权
 
@@ -256,7 +256,7 @@ FFmpeg 头文件声明位于 `include/avcodec.pxd`、`avformat.pxd`、`avfilter.
 
 ### 9.1 测试组织
 
-本地 `tests/` 有 34 个 `test_*.py` 测试模块和 `tests/common.py`/`tests/__init__.py`，按 AST 静态统计共有 **428 个 `test*` 函数/方法**（不是本轮运行结果）。主要分布：
+本地 `tests/` 有 34 个 `test_*.py` 测试模块和 `tests/common.py`/`tests/__init__.py`，按 AST 静态统计共有 **428 个 `test*` 函数/方法**（不是当前核对运行结果）。主要分布：
 
 - `test_videoframe.py`：110，像素格式、平面、重格式化、NumPy/Pillow、DLPack/硬件帧相关；
 - `test_dlpack.py`：37，跨框架 buffer/capsule；
@@ -287,7 +287,7 @@ python -m pytest -k "substring"
 make lint
 ```
 
-并特别提醒 Cython 可能产生未定义行为（UB）。本轮遵守只读研究约束，没有执行 `make`、`make test`、pytest、lint、FATE 下载、依赖安装或服务启动，因此本文不宣称当前环境测试通过。
+并特别提醒 Cython 可能产生未定义行为（UB）。当前核对遵守只读研究约束，没有执行 `make`、`make test`、pytest、lint、FATE 下载、依赖安装或服务启动，因此本文不宣称当前环境测试通过。
 
 ## 10. 当前本地与远程差异
 
@@ -335,15 +335,15 @@ make lint
 
 ## 12. 结论与后续建议
 
-1. **当前结论**：本地 PyAV 18.0.0 是结构完整、测试覆盖广的 FFmpeg Cython 绑定，核心事实已完成首轮全量建档；本轮没有对源码行为做运行验证。
+1. **当前结论**：本地 PyAV 18.0.0 是结构完整、测试覆盖广的 FFmpeg Cython 绑定，核心事实已完成首轮全量建档；当前核对没有对源码行为做运行验证。
 2. **版本结论**：本地落后 `origin/main` 48 个提交；远程为 `19.0.0pre1` 开发线。独立快照已保留在 `/tmp/PyAV-remote-4780`，本地工作树没有被覆盖。
 3. **后续阅读顺序**：若继续研究，先按远程提交顺序阅读 `setup.py`、`av/container/*`、`av/codec/*`、`av/filter/*`、`av/video/*` 及对应 `.pxd/.pyi`，再运行最小输入/输出、编码/解码、滤镜和硬件探针；不要先做全量构建。
 4. **接入裁决**：平台若吸收该项目，应优先提炼“媒体对象模型 + 独立 FFmpeg 提供者 + 明确帧/包/时间基契约”，而不是复制整个 `av` 包；原生扩展隔离、许可证、FFmpeg 版本矩阵和宿主能力报告必须先冻结。
-5. **待核事项**：远程 `19.0.0pre1` 对本地公开 API 的完整变更表、FFmpeg 9 ABI 兼容性、CUDA/DLPack 在 macOS/不同 GPU 上的真实行为、所有测试样本的可获得性，均未在本轮运行或完全展开，不能写成已完成结论。
+5. **待核事项**：远程 `19.0.0pre1` 对本地公开 API 的完整变更表、FFmpeg 9 ABI 兼容性、CUDA/DLPack 在 macOS/不同 GPU 上的真实行为、所有测试样本的可获得性，均未在当前核对运行或完全展开，不能写成已完成结论。
 
 ## 13. 旧细探逐条吸收裁决
 
-`细探-PyAV.md` 是本项目的旧研究笔记，本轮不删除它；以下裁决把其中有证据的架构事实收口到本文件。后续若旧笔记与源码或本文冲突，以当前源码和本文的证据路径为准。
+`细探-PyAV.md` 是本项目的旧研究笔记，当前核对不删除它；以下裁决把其中有证据的架构事实收口到本文件。后续若旧笔记与源码或本文冲突，以当前源码和本文的证据路径为准。
 
 | 旧细探内容 | 裁决 | 本文收口位置与证据 |
 |---|---|---|
@@ -361,15 +361,15 @@ make lint
 
 因此，旧细探中有源码支持的定位、对象模型、媒体处理能力、互操作、依赖和目录线索均已并入本文；没有运行或对比证据的 `decord` 性能判断、平台级发行版管理推断和 LLM 提示词备注不作为架构事实。旧文件继续保留，供历史追溯，不再单独维护。
 
-## 14. 本轮操作收口
+## 14. 当前核对操作收口
 
 - **允许修改范围**：仅项目根 `ARCHITECTURE.md`。
 - **实际修改**：仅新增/写入本文件。
 - **明确未做**：未删除 `细探-PyAV.md`；未修改 `av/`、`include/`、`tests/`、`docs/`、`examples/`、`scripts/`、`setup.py`、`pyproject.toml`、`Makefile` 或配置；未安装、启动、构建、运行测试、提交或推送。
 
-## 15. 第三轮：通用底座映射与唯一归属裁决
+## 15. 后续：通用底座映射与唯一归属裁决
 
-本节是本项目的第三轮研究结果。第一轮回答“PyAV 本身是什么”，第二轮已经把对象、调用链、资源和风险展开；本轮只回答“哪些事实可以进入系统工程平台、应由哪一层唯一持有、哪些事实必须隔离”。以下是平台接入裁决，不把候选落点写成当前平台已经存在的实现；没有需求登记、能力搜索、复用裁决、验收契约和装配计划，不据此直接修改平台生产代码。
+本节是本项目的后续研究结果。初始回答“PyAV 本身是什么”，后续已经把对象、调用链、资源和风险展开；当前核对只回答“哪些事实可以进入系统工程平台、应由哪一层唯一持有、哪些事实必须隔离”。以下是平台接入裁决，不把候选落点写成当前平台已经存在的实现；没有需求登记、能力搜索、复用裁决、验收契约和装配计划，不据此直接修改平台生产代码。
 
 ### 15.1 总裁决：媒体模块负责语义，支持库负责原子能力，独立提供者负责原生执行
 
@@ -514,7 +514,7 @@ PyAV 的 Cython/FFmpeg/NumPy/Pillow/硬件组合属于“宿主崩溃半径不�
 
 这些状态一旦按业务复制，就会出现“同一个 mp4 在不同业务得到不同 time base/颜色/尾帧”“某业务忘记 flush 导致尾帧丢失”“某业务重复 trailer 导致崩溃”“一个业务升级 FFmpeg 使另一个业务 ABI 失效”“主进程被某个 codec 拖死”等无法由普通接口测试发现的问题。唯一支持库 owner 可以集中完成错误映射、资源预算、版本矩阵、隔离、回收和验证；媒体模块只组合业务需要的“抽帧/转码/封装/图像导出”等流程。业务若需要新 codec/filter，只提交能力缺口和 provider 版本变更，不复制内核。
 
-### 15.8 第三轮的复用、升级、新建、隔离裁决
+### 15.8 后续的复用、升级、新建、隔离裁决
 
 | 裁决 | 本项目证据 | 平台落点 | 条件/边界 |
 |---|---|---|---|
@@ -528,7 +528,7 @@ PyAV 的 Cython/FFmpeg/NumPy/Pillow/硬件组合属于“宿主崩溃半径不�
 
 ### 15.9 L0-L4 验证阶梯与验收契约
 
-第三轮不把源码存在、历史测试数量或 provider 自报当作完成。媒体能力进入底座必须按以下等级逐级通过；任一级失败都保留证据并停止向上宣称。
+后续不把源码存在、历史测试数量或 provider 自报当作完成。媒体能力进入底座必须按以下等级逐级通过；任一级失败都保留证据并停止向上宣称。
 
 | 等级 | 目标 | 必须验证的真实内容 | 通过证据 |
 |---|---|---|---|
@@ -538,7 +538,7 @@ PyAV 的 Cython/FFmpeg/NumPy/Pillow/硬件组合属于“宿主崩溃半径不�
 | **L3 故障与资源治理** | 证明不把原生故障带入主进程 | provider 缺失、FFmpeg 错误、读取/编码超时、主动取消、阻塞 flush、非零退出、SIGKILL、无效 JSON、重复关闭、硬件不可用/回退、超大输出 | 父进程仍存活；killpg 后子进程组消失；`wait` 完成；管道/锁/临时目录/端口清零；重启次数有界且有诊断 |
 | **L4 宿主矩阵与发布门禁** | 证明可在目标宿主持续受管 | Python/FFmpeg/Cython/NumPy/Pillow 版本矩阵、CPU 与硬件路径、真实 codec/filter、并发和长时运行、许可证/依赖清单、回滚 provider 版本 | 每宿主能力报告、环境指纹、可复现命令、退出码、资源现场、性能基线和回滚证据；缺宿主能力明确标 unavailable |
 
-本地当前只能把 L0 的源码档案视为已完成输入；L1-L4 均未在本轮运行，尤其没有把 `make`、`make test`、FATE、硬件探针或独立 provider 回收测试写成已通过。第三轮接入任务的验收契约至少应固定：
+本地当前只能把 L0 的源码档案视为已完成输入；L1-L4 均未在当前核对运行，尤其没有把 `make`、`make test`、FATE、硬件探针或独立 provider 回收测试写成已通过。后续接入任务的验收契约至少应固定：
 
 - **输入**：路径/URL/file-like 只在 provider 边界读取；大小、格式、协议、超时和取消令牌显式；
 - **输出**：`MediaFrame`/`MediaPacket` 或制品引用必须携带 stream id、time base、PTS/DTS、格式、大小、摘要和所有权状态；
@@ -548,29 +548,29 @@ PyAV 的 Cython/FFmpeg/NumPy/Pillow/硬件组合属于“宿主崩溃半径不�
 - **版本**：FFmpeg/PyAV/Cython/NumPy/Pillow/驱动版本进入环境指纹，变更需要重新跑至少 L2-L4 相关等级；
 - **装配**：先登记需求→搜索现有能力→唯一归属裁决→申请占用租约→冻结契约→生成装配计划→执行分级验证；没有这条记录不得新增第二个媒体入口。
 
-### 15.10 第三轮结论与剩余风险
+### 15.10 后续结论与剩余风险
 
 1. **唯一归属已裁决**：媒体语义和流程归媒体模块；解码、编码、封装、时间基、帧包转换等原子能力归支持库；PyAV/Cython/FFmpeg/NumPy/Pillow/硬件归独立 provider；主进程只保留契约数据和受控会话状态。
 2. **主进程隔离是硬门槛**：PyAV 当前实现虽有 `close`、`__dealloc__`、interrupt callback、flush 和 trailer 防护，但这些是库内生命周期治理，不是跨第三方原生边界的崩溃隔离。
 3. **不能复制 FFmpeg 链**：复制会复制 ABI、时间基、flush/trailer、buffer、GPU、超时和回收状态，最终形成无法审计的多套媒体内核；后续业务只能调用唯一媒体模块/支持库入口。
-4. **真实验证尚缺**：本轮没有构建或运行 PyAV，未验证本机 FFmpeg 动态库、NumPy/Pillow、硬件、DLPack 和 Cython 退出清理；L1-L4 属于后续接入工作包，不得提前宣称通过。
-5. **MCP 证据缺口**：本轮 `project_context` 调用因 `project_toolkit` 服务连续不可达失败；随后 `codegraph_explore` 明确返回目标项目不存在 `.codegraph/`，代码图不可用。因此本轮以目标文件和源码静态读取为事实来源，未把 MCP 缺失伪装成成功；反馈/验证结果见第 16 节。
+4. **真实验证尚缺**：当前核对没有构建或运行 PyAV，未验证本机 FFmpeg 动态库、NumPy/Pillow、硬件、DLPack 和 Cython 退出清理；L1-L4 属于后续接入工作包，不得提前宣称通过。
+5. **MCP 证据缺口**：当前核对 `project_context` 调用因 `project_toolkit` 服务连续不可达失败；随后 `codegraph_explore` 明确返回目标项目不存在 `.codegraph/`，代码图不可用。因此当前核对以目标文件和源码静态读取为事实来源，未把 MCP 缺失伪装成成功；反馈/验证结果见第 16 节。
 
-## 16. 第三轮操作收口与验证记录
+## 16. 后续操作收口与验证记录
 
-- **开工 id**：`PyAV 第三轮通用底座映射与唯一归属裁决`（MCP `project_context` 未返回实例 id）。
+- **开工 id**：`PyAV 后续通用底座映射与唯一归属裁决`（MCP `project_context` 未返回实例 id）。
 - **MCP 实例**：`system_engineering_toolkit` 请求链路不可达；实际工具端报告为 `project_toolkit`，存在专属 MCP 名称与运行时工具名不一致/不可达风险。
 - **项目根**：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/05_video_decode_sampling/PyAV`。
 - **代码图**：不可用；`codegraph_explore` 返回未发现 `.codegraph/`，按工具要求不重复调用。
-- **反馈**：本轮待调用五字段 `mcp_feedback`；反馈内容必须如实包含“project_context 不可达、代码图缺失、静态取证完成、L1-L4 未执行、未修改源码”。
+- **反馈**：当前核对待调用五字段 `mcp_feedback`；反馈内容必须如实包含“project_context 不可达、代码图缺失、静态取证完成、L1-L4 未执行、未修改源码”。
 - **修改文件**：仅 `ARCHITECTURE.md`；未删除 `细探-PyAV.md`，未修改源码、配置、依赖、测试、README 或 Git。
-- **文档验证命令**：`python3 - <<'PY'` 读取本文，检查第三轮标题、`L0`-`L4`、`Container`、`CodecContext`、`flush`、`trailer`、`NumPy`、`Pillow`、`Cython`、`killpg` 和“不能复制”裁决均存在，并输出文件大小/行数；退出码 0 才算文档结构验证通过。
+- **文档验证命令**：`python3 - <<'PY'` 读取本文，检查后续标题、`L0`-`L4`、`Container`、`CodecContext`、`flush`、`trailer`、`NumPy`、`Pillow`、`Cython`、`killpg` 和“不能复制”裁决均存在，并输出文件大小/行数；退出码 0 才算文档结构验证通过。
 - **源码/项目测试**：未执行 `make`、`make test`、pytest、lint、FATE、构建或硬件探针；因此不存在可报告的项目测试通过退出码。
 - **剩余风险**：MCP 服务/项目上下文未绑定、代码图未建立；L1-L4 未执行；本地 FFmpeg/硬件/可选依赖/许可证矩阵和 Cython 退出清理仍待真实验证。
 
-## 17. 第二轮深挖：FFmpeg binding、对象状态、解码、线程、缓冲与释放
+## 17. 后续深挖：FFmpeg binding、对象状态、解码、线程、缓冲与释放
 
-本节是第二轮的源码级收口，专门补足第一轮/第三轮中被压缩成概览的 FFmpeg binding、`Container`/`Stream`/`Packet`/`Frame` 对象关系、send/receive 解码状态机、线程边界、缓冲转移、Cython 释放和异常路径。以下结论以本地提交 `32e9f7de15c3ecdddd78cc17b5ed4cdafdd15149` 的当前源码为准；远程 19.x 的修复提交只能作为风险线索，不倒灌成本地事实。
+本节是后续的源码级收口，专门补足初始/后续中被压缩成概览的 FFmpeg binding、`Container`/`Stream`/`Packet`/`Frame` 对象关系、send/receive 解码状态机、线程边界、缓冲转移、Cython 释放和异常路径。以下结论以本地提交 `32e9f7de15c3ecdddd78cc17b5ed4cdafdd15149` 的当前源码为准；远程 19.x 的修复提交只能作为风险线索，不倒灌成本地事实。
 
 ### 17.1 FFmpeg binding 的真实边界：Cython 编译面，不是 Python fallback
 
@@ -632,7 +632,7 @@ CodecContext.decode(packet | None)
        └─ 其他负值：err_check；若此前已有帧且是 InvalidDataError，则保留已产出帧
 ```
 
-源码证据：`CodecContext._decode`（`av/codec/context.py:708-753`）发送一次 packet/NULL 后循环 `_recv_frame`；`_recv_frame`（`context.py:613-632`）将 EAGAIN/EOF 视为本轮停止而非异常；`_decode` 只对“已有输出 + 后续 `InvalidDataError`”做保留输出处理（`context.py:741-750`）。这解释了 `tests/test_codec_context.py:237-308` 的断言：同一个 packet 里“有效 FLAC frame + 坏字节”仍返回有效 frame；只有全坏输入才抛 `InvalidDataError`。
+源码证据：`CodecContext._decode`（`av/codec/context.py:708-753`）发送一次 packet/NULL 后循环 `_recv_frame`；`_recv_frame`（`context.py:613-632`）将 EAGAIN/EOF 视为当前核对停止而非异常；`_decode` 只对“已有输出 + 后续 `InvalidDataError`”做保留输出处理（`context.py:741-750`）。这解释了 `tests/test_codec_context.py:237-308` 的断言：同一个 packet 里“有效 FLAC frame + 坏字节”仍返回有效 frame；只有全坏输入才抛 `InvalidDataError`。
 
 | 操作 | 状态变化 | 不应误读为 |
 |---|---|---|
@@ -656,7 +656,7 @@ CodecContext.decode(packet | None)
 | Python IO 回调 | `pyio_read/write/seek` 在 `nogil` C callback 中重新取得 GIL 调 Python file-like（`av/container/pyio.py:90-179`） | 自定义 IO 仍受 Python 对象线程安全、阻塞和回调异常影响；FFmpeg 计算释放 GIL 不代表 file-like 可并发访问 |
 | FFmpeg 日志 | `logging` 文档警告 Python 日志在多线程流程中可能不理想（`av/logging.py:19-34`）；实现用 `skip_lock` 保护全局重复日志/错误状态，`Capture(local=True)` 按线程 id 收集，`local=False` 收集所有线程（`logging.py:172-205,266-315`） | 日志捕获有线程范围语义；错误 `log` 是“最后一条”竞争下的诊断线索，不应当作严格请求级事件序列 |
 
-源码没有为 `CodecContext.encode/decode`、`Container.demux/seek` 或 `Graph.push/pull` 建立通用 Python 锁。第二轮的可执行边界因此是：**同一个 `CodecContext`、`Container` 或 `Graph` 的操作由一个拥有者串行驱动；需要多线程时复制会话/上下文，而不是共享 C 指针**。测试源码仅覆盖 filter 内部线程参数和日志 capture 线程范围，没有覆盖“同一个 context 并发 decode”的负向压力或 sanitizer 证据。
+源码没有为 `CodecContext.encode/decode`、`Container.demux/seek` 或 `Graph.push/pull` 建立通用 Python 锁。后续的可执行边界因此是：**同一个 `CodecContext`、`Container` 或 `Graph` 的操作由一个拥有者串行驱动；需要多线程时复制会话/上下文，而不是共享 C 指针**。测试源码仅覆盖 filter 内部线程参数和日志 capture 线程范围，没有覆盖“同一个 context 并发 decode”的负向压力或 sanitizer 证据。
 
 ### 17.5 缓冲、借用、复制与跨框架 view
 
@@ -681,7 +681,7 @@ PyAV API 本身没有对 decoded frame list、packet list、filter queue 或单�
 | Python IO/自定义 `io_open` | `pyio_close_custom_gil` flush AVIO buffer 并调用原 file.close；`open_files` 删除 entry（`core.py:117-151`；`pyio.py:190-204`） | callback 异常经 `stash_exception` 返回，下一层 `err_check` 恢复；关闭期异常只记录并返回 FFmpeg unknown | 中断回调不会自动让任意 Python `read()` 停止；阻塞 Python callback 仍是宿主线程风险 | 原始文件/外部 socket 的一致性不由 PyAV 保证 |
 | GC/cycle | context manager/显式 `close` 是确定路径 | 文档承认 Container/Stream cycle 可能使自动 close 延迟到数千个容器（`docs/overview/caveats.rst:25-35`） | 不应把 `gc.collect()` 当 deadline 清理协议 | 进程退出时析构顺序不确定；输出 close 会检测 underlying file 已 closed 并跳过 trailer（`output.py:49-54`） |
 
-第二轮还发现以下**源码级待复核窗口**，不能写成已修复或已泄漏的运行结论：
+后续还发现以下**源码级待复核窗口**，不能写成已修复或已泄漏的运行结论：
 
 - `InputContainer.__cinit__` 在 `av/container/input.py:45-72` 先为 stream options `malloc`/复制字典，随后调用 `avformat_find_stream_info`；`self.err_check(ret)` 位于释放 `c_options` 之前。若该 C 调用返回错误，静态路径显示释放段可能被跳过，需用失败注入/ASAN 或泄漏检查确认。
 - `OutputContainer.add_stream`（`av/container/output.py:114-187`）先 `avformat_new_stream`、`avcodec_alloc_context3`，然后才包装成 Python 对象；本地代码没有在两次分配后立即检查所有 NULL，也没有为 `avcodec_parameters_from_context` 异常显式回滚已创建的 stream/context。远程提交 `040da79 Free the codec ctx when building a stream fails`、`1674029 Check add_stream's args before creating the stream` 正好把该区域列为后续版本修复线索，不能反推本地已具备修复。
@@ -693,11 +693,11 @@ PyAV API 本身没有对 decoded frame list、packet list、filter queue 或单�
 
 ### 17.7 异常分类与边界矩阵
 
-| 场景 | 本地实现 | 稳定可观察字段/结果 | 第二轮判断 |
+| 场景 | 本地实现 | 稳定可观察字段/结果 | 后续判断 |
 |---|---|---|---|
 | 未知 codec/demuxer/muxer | `Codec.__cinit__` 抛 `UnknownCodecError`；FFmpeg 错误表把 decoder/encoder/demuxer/muxer not found 映射为 LookupError 系列（`codec.py:101-131`；`error.py:140-168`） | 异常类、`errno`、消息；stream 无 context 时 `DecoderNotFoundError`/`EncoderNotFoundError` | 属于参数/能力缺失，默认不可通过重试同一请求解决 |
 | 非法参数/状态 | `av.open` mode/timeout tuple、`seek` 非 int、零 time base、重复 open、已打开后改 thread 参数分别抛 `ValueError`/`TypeError`/`RuntimeError`（`core.py:555-575`、`input.py:280-285`、`packet.py:294-311`、`context.py:396-423,916-948`） | Python 异常类和稳定文本仅作人读；契约应使用场景码 | 不应让调用方通过字符串判断状态 |
-| 解码 EAGAIN/EOF | `_recv_frame` 把二者作为“本轮无更多 frame”；滤镜 pull 也让 EAGAIN 作为暂时阻塞（`context.py:621-627`；`filter/context.py:158-168`） | codec decode 返回当前 list；filter 通过 `BlockingIOError`/OSError errno EAGAIN 暴露；flush 后 EOF 可为 `EOFError` | EAGAIN 不是业务失败；需要继续驱动或等待输入 |
+| 解码 EAGAIN/EOF | `_recv_frame` 把二者作为“当前核对无更多 frame”；滤镜 pull 也让 EAGAIN 作为暂时阻塞（`context.py:621-627`；`filter/context.py:158-168`） | codec decode 返回当前 list；filter 通过 `BlockingIOError`/OSError errno EAGAIN 暴露；flush 后 EOF 可为 `EOFError` | EAGAIN 不是业务失败；需要继续驱动或等待输入 |
 | 坏数据 | `err_check` 把 `AVERROR_INVALIDDATA` 映射 `InvalidDataError`/`ValueError`；decode 在已有输出时保留已产出 frame | `errno` + 已返回的 frame；全坏 packet 抛异常 | 部分结果与失败可同时出现，不能事务式假设“抛异常即无输出” |
 | Python callback 异常 | callback `stash_exception` → `err_check` 恢复原异常；同一线程已有 stash 时会向 stderr 打印并丢弃旧异常（`error.py:287-325`） | 原始异常 traceback 尽量保留；多次嵌套 callback 不是无限错误队列 | 外层需避免在 callback 中继续调用会触发另一 callback 的 PyAV 操作 |
 | 打开/读取超时 | `interrupt_cb` 按 monotonic deadline 返回 1（`core.py:30-54`）；open/find-stream-info 使用 open timeout，demux 的每次 `av_read_frame` 使用 read timeout；测试期待 `ExitError`（`tests/test_timeout.py:55-80`） | `ExitError`/`AVERROR_EXIT`，可带 filename/log | 未覆盖 encode、decode、filter、flush、trailer 和 Python 自定义 read 的统一 deadline |
@@ -705,12 +705,12 @@ PyAV API 本身没有对 decoded frame list、packet list、filter queue 或单�
 | 线程错误/原生崩溃 | 同一 CodecContext 并发 decode 明确未定义/可能 segfault；Cython/PyAV 文档也拒绝 own-GIL sub-interpreter | Python 无法可靠捕获 segfault；只能进程退出、信号和外层回收证据 | 这是必须隔离的宿主级故障，不是普通 retryable exception |
 | 硬件/跨框架边界 | hardware plane buffer protocol 拒绝；DLPack 仅支持声明的格式，CUDA stream 非 None 拒绝；`CudaContext` 缓存 device/frames refs | `TypeError`/`NotImplementedError`/`ValueError`/FFmpegError；设备 ref 由 `CudaContext.__dealloc__` unref | 能力缺失必须显式 unavailable，不能以空数组或软件成功伪装 |
 
-### 17.8 第二轮事实表：已实现、仅有测试源码、尚未验证
+### 17.8 后续事实表：已实现、仅有测试源码、尚未验证
 
-| 主题 | 源码存在 | 测试源码存在 | 本轮真实执行 | 结论等级 |
+| 主题 | 源码存在 | 测试源码存在 | 当前核对真实执行 | 结论等级 |
 |---|---|---|---|---|
 | FFmpeg/Cython binding 与错误映射 | `av/__init__.py`、`include/*.pxd`、`av/error.py`、`av/codec/context.py` | `tests/test_errors.py:9-78`、`tests/test_codec_context.py` | 未运行 build/pytest | L0 已证，行为待执行 |
-| Container/Stream/Packet/Frame 关系 | `av/container/core.py`、`container/input.py`、`stream.py`、`packet.py`、`frame.py` | `tests/test_decode.py:56-94,222-263`、`tests/test_packet.py:67-104` | 未运行 | L0 已证，部分行为有历史测试但本轮不计通过 |
+| Container/Stream/Packet/Frame 关系 | `av/container/core.py`、`container/input.py`、`stream.py`、`packet.py`、`frame.py` | `tests/test_decode.py:56-94,222-263`、`tests/test_packet.py:67-104` | 未运行 | L0 已证，部分行为有历史测试但当前核对不计通过 |
 | send/receive、flush、部分坏包输出 | `context.py:538-753` | `tests/test_codec_context.py:237-308`、`tests/test_decode.py:235-263` | 未运行 | L0/L1 结构与预期已核，L2 未执行 |
 | codec/filter 线程设置 | `context.py:286-289,916-948`、`filter/graph.py:33-48` | `tests/test_filters.py:262-265` | 未运行；无同 context 并发负测 | 参数路径有源码/测试，线程安全结论来自文档，L3 缺口 |
 | Python IO、timeout、callback exception | `container/pyio.py`、`container/core.py:30-54`、`error.py:287-356` | `tests/test_timeout.py:55-80`、`tests/test_open.py:42-55` | 未运行；未注入 callback 失败/阻塞 read | timeout 正常设计已证，取消/泄漏待核 |
@@ -718,7 +718,7 @@ PyAV API 本身没有对 decoded frame list、packet list、filter queue 或单�
 | GC cycle、output trailer、失败清理 | `output.py:40-81`、`docs/overview/caveats.rst:25-35` | `tests/test_open.py:42-55` 仅覆盖未显式 close 的 GC smoke | 未运行；未做故障注入 | 正常/GC 设计可追溯，异常释放窗口明确保留 |
 | 硬件路径 | `codec/hwaccel.py`、`video/frame.py`、`video/plane.py` | `tests/test_decode.py:275-399`，依环境 skip | 未运行；macOS 当前硬件矩阵未探测 | 仅源码/条件测试存在，不宣称宿主支持 |
 
-### 17.9 第二轮收口结论
+### 17.9 后续收口结论
 
 1. **FFmpeg binding 的真正 owner 是 Cython 扩展对象**：`Container`、`Stream`、`Packet`、`CodecContext`、`Frame` 都围绕 `AV*` 指针和 FFmpeg buffer 建立，不存在可替代的纯 Python 语义层；`.pxd` 变更必须视作 ABI 变更。
 2. **解码是可排空状态机**：`send_packet → receive_frame*`，EAGAIN/EOF 是驱动信号，`None` 是 flush，seek 后必须 flush；一包不等于一帧，坏包可能“先返回部分帧、再报错”。
@@ -728,16 +728,16 @@ PyAV API 本身没有对 decoded frame list、packet list、filter queue 或单�
 6. **异常边界必须区分可恢复信号与宿主级故障**：EAGAIN/EOF、InvalidData、缺 codec、timeout、callback exception 可以在协议层分类；同 context 并发导致的 segfault、Cython UB、GPU driver abort 无法由 Python `try/except` 兜底，应隔离进程。
 7. **本地源码仍有失败路径待核**：`find_stream_info` 选项数组异常释放、`add_stream` 分配/回滚、`close_output` 缓冲 mux 异常、`avio_alloc_context` NULL 和长时间自定义 IO 都需要故障注入/ASAN/进程回收验证；不得因远程修复提交或正常 pytest 路径而宣布已解决。
 
-## 18. 第二轮操作收口与验证记录
+## 18. 后续操作收口与验证记录
 
-- **本轮目标**：深挖 FFmpeg binding、`Container`/`Stream`/`Packet`/`Frame`、send/receive 解码、线程、缓冲、释放和异常边界；未改源码实现。
+- **当前核对目标**：深挖 FFmpeg binding、`Container`/`Stream`/`Packet`/`Frame`、send/receive 解码、线程、缓冲、释放和异常边界；未改源码实现。
 - **静态取证**：已现场读取 `av/container/{core,input,output,pyio}.py`、`av/codec/{codec,context}.py`、`av/{stream,packet,frame,buffer,error}.py`、`av/filter/{graph,context}.py`、`av/video/{frame,plane,stream}.py`、`av/audio/{frame,stream}.py`、相关 `.pxd` 与边界测试源码。
-- **本轮新增/修改**：仅项目根 `ARCHITECTURE.md`，新增第 17、18 节；未修改 `av/`、`include/`、`tests/`、`docs/`、`examples/`、`scripts/`、`setup.py`、`pyproject.toml`、`Makefile`、`README` 或配置；未删除 `细探-PyAV.md`。
+- **当前核对新增/修改**：仅项目根 `ARCHITECTURE.md`，新增第 17、18 节；未修改 `av/`、`include/`、`tests/`、`docs/`、`examples/`、`scripts/`、`setup.py`、`pyproject.toml`、`Makefile`、`README` 或配置；未删除 `细探-PyAV.md`。
 - **项目执行**：未执行 `make`、`make test`、pytest、lint、构建、依赖安装、FATE 下载、硬件探针或 sanitizer；因此本文只把源码和测试源码记为 L0/待执行，不宣称项目测试通过。
 - **文档验证待执行命令**：对本文做纯文本结构检查，至少检查第 17/18 节、`avcodec_send_packet`、`avcodec_receive_frame`、`thread_count`、`EAGAIN`、`DLPack`、`stash_exception`、`close_output`、`find_stream_info`、`ASAN`、`未运行` 和“只能进程隔离”等关键词；不触碰项目构建或运行依赖。
-- **剩余风险**：本地 FFmpeg/Cython 运行 ABI、失败注入、释放泄漏、同 context 并发、长阻塞 Python IO、DLPack/CUDA stream、硬件矩阵、sub-interpreter 和 sanitizer 证据均未在本轮执行验证。
+- **剩余风险**：本地 FFmpeg/Cython 运行 ABI、失败注入、释放泄漏、同 context 并发、长阻塞 Python IO、DLPack/CUDA stream、硬件矩阵、sub-interpreter 和 sanitizer 证据均未在当前核对执行验证。
 
-## 19. 第三轮底座映射：FFmpeg/PyAV 封装、资源治理与 L0-L4
+## 19. 后续底座映射：FFmpeg/PyAV 封装、资源治理与 L0-L4
 
 本节将前两轮的源码事实收敛成可供底座设计使用的映射表。这里的“底座”是接入系统时的受管媒体执行底座，不是把 PyAV 直接变成平台公共 API；所有结论仍以本地 `32e9f7d` 源码静态证据为准，未运行构建、解码、故障注入或 sanitizer。
 
@@ -860,7 +860,7 @@ PyAV 的 timeout 只在 `av.open`/`find_stream_info` 和 `demux` 的 `av_read_fr
 
 ### 19.6 L0-L4 底座验收矩阵
 
-| 等级 | 本轮能证明的内容 | 必须执行的底座验证 | 不可宣称 |
+| 等级 | 当前核对能证明的内容 | 必须执行的底座验证 | 不可宣称 |
 |---|---|---|---|
 | **L0 结构/来源** | 目录、源码路径、Cython/FFmpeg 七库、对象图、线程/句柄/异常边界、版本与许可证事实 | 静态路径核对、契约字段表、provider 制品与环境指纹清单 | 不等于能打开或解码媒体 |
 | **L1 契约/纯边界** | 唯一 owner、session 状态、packet/frame/time base、错误码、超时/取消字段设计 | 纯契约测试：非法参数、缺能力、重复 flush/close/trailer、结果大小和状态不可逆 | 不等于 FFmpeg 真执行 |
@@ -870,7 +870,7 @@ PyAV 的 timeout 只在 `av.open`/`find_stream_info` 和 `demux` 的 `av_read_fr
 
 当前档案的静态对象/调用链/所有权映射可作为 **L0 输入**；L1-L4 仍是未执行状态。尤其不能把源码中已有 `tests/test_timeout.py`、`tests/test_decode.py` 或远程生命周期修复提交当作本地 provider 已通过 L2/L3 的证据。
 
-### 19.7 第三轮底座裁决
+### 19.7 后续底座裁决
 
 1. **唯一归属**：媒体模块拥有 Container/Stream/Packet/Frame 的规范化语义和流程；支持库拥有解码、编码、封装、时间基转换、重格式化和治理契约；PyAV/FFmpeg/Cython/NumPy/Pillow/硬件句柄只归独立 provider。
 2. **唯一执行链**：所有业务统一调用 `open → probe → demux → decode/encode → flush → mux/trailer → close`，不得按业务复制 send/receive、time base、flush 或 trailer 实现。
@@ -878,14 +878,14 @@ PyAV 的 timeout 只在 `av.open`/`find_stream_info` 和 `demux` 的 `av_read_fr
 4. **失败可观察**：异常、超时、取消和崩溃都必须有稳定错误码、不可逆状态、可重试性、退出现场和清理结果；部分帧与坏包错误可同时返回。
 5. **隔离优先**：正常 close 只能证明库内生命周期路径，不证明原生安全；在 L3 进程组回收和 L4 宿主矩阵通过前，禁止进入平台主进程或宣称生产可用。
 
-## 20. 第三轮新增内容与验证边界
+## 20. 后续新增内容与验证边界
 
-- **本轮新增**：第 19 节，补充 FFmpeg/PyAV Cython 封装边界、Container/Stream/Packet/CodecContext/Frame 映射、音视频帧与时间基、线程和句柄所有权、异常/timeout/cancel/crash isolation，以及 L0-L4 验收矩阵和底座裁决。
+- **当前核对新增**：第 19 节，补充 FFmpeg/PyAV Cython 封装边界、Container/Stream/Packet/CodecContext/Frame 映射、音视频帧与时间基、线程和句柄所有权、异常/timeout/cancel/crash isolation，以及 L0-L4 验收矩阵和底座裁决。
 - **实际修改**：仅项目根 `ARCHITECTURE.md`；未修改 `av/`、`include/`、`tests/`、`docs/`、`examples/`、`scripts/`、`setup.py`、`pyproject.toml`、`README` 或配置。
-- **验证边界**：本轮只做源码和已有架构文档静态研究；未安装依赖、构建 PyAV、运行 pytest、启动 FFmpeg、执行硬件探针、故障注入、ASAN/UBSAN 或进程回收测试。因此新增内容最高属于 L0 设计/来源映射，L1-L4 不计通过。
+- **验证边界**：当前核对只做源码和已有架构文档静态研究；未安装依赖、构建 PyAV、运行 pytest、启动 FFmpeg、执行硬件探针、故障注入、ASAN/UBSAN 或进程回收测试。因此新增内容最高属于 L0 设计/来源映射，L1-L4 不计通过。
 - **剩余风险**：真实 FFmpeg ABI、分配失败清理、阻塞 Python IO、同 context 并发、输出 trailer 异常、DLPack/CUDA 生命周期、跨宿主能力矩阵和崩溃回收仍需后续独立验证工作包。
 
-## 21. 本轮深度研究：准确项目定位与 PyAV 原生执行边界
+## 21. 当前核对深度研究：准确项目定位与 PyAV 原生执行边界
 
 ### 21.1 路径裁决和研究范围
 
@@ -895,7 +895,7 @@ PyAV 的 timeout 只在 `av.open`/`find_stream_info` 和 `demux` 的 `av_read_fr
 ~/Documents/Agent/github 源码参考/30_多模态与媒体分析/05_video_decode_sampling/PyAV
 ```
 
-本轮实际读取并交叉核对：
+当前核对实际读取并交叉核对：
 
 - `README.md`、`AGENTS.md`、`ARCHITECTURE.md`、`细探-PyAV.md`；
 - `pyproject.toml`、`setup.py`、`Makefile`、`MANIFEST.in`；
@@ -962,7 +962,7 @@ av.open
 
 `CodecContext.decode(packet)` 一次 send 后循环 receive，可能返回零个、一个或多个 frame：
 
-- `EAGAIN` 表示本轮没有更多可立即接收的帧，`AVERROR_EOF` 表示 flush 后已经排空；二者不是同一类业务失败；
+- `EAGAIN` 表示当前核对没有更多可立即接收的帧，`AVERROR_EOF` 表示 flush 后已经排空；二者不是同一类业务失败；
 - `decode(None)` 向 FFmpeg 发送 NULL，排出 B-frame 或 codec 延迟帧；它不是释放 context；
 - `flush_buffers()` 直接丢弃内部缓冲，主要用于 seek 后切换解码位置，不等同于排出尾帧；
 - 如果已经产出 frame 后遇到 `InvalidDataError`，当前实现保留已产出部分；因此“异常”与“部分结果”可以同时存在；
@@ -1031,7 +1031,7 @@ README 和 `AGENTS.md` 给出的项目流程是 `source ./scripts/activate.sh`�
 
 测试源码覆盖 `test_open`、Python IO、timeout、demux/decode、encode/mux、codec context、packet、streams、filters、errors、remux、DLPack、硬件和音视频格式。它们能证明项目作者定义了行为预期，但在没有执行前不能证明当前机器的 FFmpeg ABI、动态库、样本、硬件或可选依赖可用。尤其 `test_timeout.py` 使用慢 HTTP server 验证 open timeout，不能外推为 encode/flush/trailer 超时；硬件测试按环境变量可能 skip，不能把 skip 当作硬件通过。
 
-**本轮明确未运行验证**：
+**当前核对明确未运行验证**：
 
 - 未执行 `make`、`setup.py build_ext`、wheel 构建或安装；
 - 未执行 `make test`、任何 pytest、定向 encode/decode/remux/timeout 测试或 doctest；
@@ -1041,20 +1041,20 @@ README 和 `AGENTS.md` 给出的项目流程是 `source ./scripts/activate.sh`�
 - 未执行阻塞 callback、并发同一 context、超时取消、SIGTERM/SIGKILL、进程组残留、临时文件清理或崩溃重启验证；
 - 未调用 MCP 或 Hermes。
 
-因此本文本轮新增结论最高是**源码静态研究/L0**。任何“可构建”“测试通过”“超时可取消”“SIGKILL 后无残留”“硬件可用”或“生产安全隔离”的说法均未被本轮验证。
+因此本文当前核对新增结论最高是**源码静态研究/L0**。任何“可构建”“测试通过”“超时可取消”“SIGKILL 后无残留”“硬件可用”或“生产安全隔离”的说法均未被当前核对验证。
 
-### 21.9 本轮收口
+### 21.9 当前核对收口
 
 - **准确项目根**：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/05_video_decode_sampling/PyAV`。
 - **唯一修改文件**：项目根 `ARCHITECTURE.md`。
 - **未修改文件**：`av/`、`include/`、`tests/`、`docs/`、`examples/`、`scripts/`、`setup.py`、`pyproject.toml`、`Makefile`、`README.md`、`AGENTS.md`、`细探-PyAV.md` 及其他路径。
 - **研究裁决**：PyAV 是 Cython 编译的 FFmpeg 绑定；Container/Stream/Packet/CodecContext/Frame 的 owner 和 time base 必须显式建模；demux/decode 与 encode/mux 的 flush/trailer 不能混同；Python IO callback、GIL、线程和 GC 都不是进程级隔离；SIGTERM/SIGKILL、取消和 provider 回收必须由上层独立进程治理补齐。
 
-## 22. 本轮资源与文档质量审计
+## 22. 当前核对资源与文档质量审计
 
 ### 22.1 审计口径
 
-本轮按用户指定的 Python/Cython/ABI、Container、Stream、Packet、Codec、Frame、decode、encode、mux、timebase、callback、tests、build 和 docs 分段读取；先尝试 CodeGraph 的 `codegraph explore "Cython FFmpeg avformat avcodec ..."`，目标仓库没有 `.codegraph/`，工具明确返回不可用，因此调用链证据来自源码全文检索和逐文件静态阅读。没有运行构建、导入扩展或媒体样本，以下结论最高为 L0 静态证据。
+当前核对按用户指定的 Python/Cython/ABI、Container、Stream、Packet、Codec、Frame、decode、encode、mux、timebase、callback、tests、build 和 docs 分段读取；先尝试 CodeGraph 的 `codegraph explore "Cython FFmpeg avformat avcodec ..."`，目标仓库没有 `.codegraph/`，工具明确返回不可用，因此调用链证据来自源码全文检索和逐文件静态阅读。没有运行构建、导入扩展或媒体样本，以下结论最高为 L0 静态证据。
 
 ### 22.2 资源生命周期结论
 
@@ -1081,18 +1081,18 @@ README 和 `AGENTS.md` 给出的项目流程是 `source ./scripts/activate.sh`�
 
 **优点**：README、`docs/index.rst`、API 文档和 `docs/overview/caveats.rst` 对项目定位、FFmpeg 组件、显式关闭和 sub-interpreter 限制的主线一致；`ARCHITECTURE.md` 已覆盖对象图、send/receive、time base、flush/trailer、C callback、线程、可选依赖和进程隔离边界。
 
-**本轮校正**：原文第 3 节的“约 170 个 av 文件”和“tests 有 36 个文件”混合了扩展名/目录计数口径，已改为可复现的 `60 .py + 56 .pxd + 51 .pyi`、`34 test_*.py`、`35 docs`、`6 include/*.pxd`；同时把 `VideoFrame.__dealloc__` 的 `av_frame_unref` 与基类 `av_frame_free` 语义分开描述。
+**当前核对校正**：原文第 3 节的“约 170 个 av 文件”和“tests 有 36 个文件”混合了扩展名/目录计数口径，已改为可复现的 `60 .py + 56 .pxd + 51 .pyi`、`34 test_*.py`、`35 docs`、`6 include/*.pxd`；同时把 `VideoFrame.__dealloc__` 的 `av_frame_unref` 与基类 `av_frame_free` 语义分开描述。
 
 **仍需维护的缺口**：
 
 - 文档是研究档案，不是 Sphinx toctree 的正式用户手册；源码/API 改动后，路径和行号引用会漂移，应在版本更新时重跑静态链接检查。
 - `Makefile` 会安装或升级依赖，`fate-suite` 会下载大量样本；文档应继续明确这些命令会改变环境或工作树，不能把它们当作无副作用审计命令。
-- `tests` 使用 pytest，而项目说明同时包含可选依赖和环境 skip；质量报告必须区分“测试源码覆盖”“本轮执行通过”“环境不可用/跳过”。
+- `tests` 使用 pytest，而项目说明同时包含可选依赖和环境 skip；质量报告必须区分“测试源码覆盖”“当前核对执行通过”“环境不可用/跳过”。
 - 本文已经有多轮研究节，后续维护应优先更新本节和对应事实表，避免继续复制相同架构结论。
 
-### 22.5 本轮审计收口
+### 22.5 当前核对审计收口
 
 - **实际修改**：仅 `ARCHITECTURE.md`；未修改 `av/`、`include/`、`tests/`、`docs/`、`setup.py`、`pyproject.toml`、`Makefile`、README、`AGENTS.md` 或 `细探-PyAV.md`。
 - **代码图**：未建立；目标仓库不存在 `.codegraph/`，已按工具返回停止重复尝试。
-- **执行验证**：未安装、构建、导入、运行 pytest、下载 FATE、启动 FFmpeg、探测硬件或执行 ASAN/UBSAN；本轮不能宣称 L1-L4 通过。
+- **执行验证**：未安装、构建、导入、运行 pytest、下载 FATE、启动 FFmpeg、探测硬件或执行 ASAN/UBSAN；当前核对不能宣称 L1-L4 通过。
 - **剩余风险**：分配失败清理、关闭期异常、阻塞 callback、同 context 并发、DLPack/CUDA refcount、测试样本完整性和宿主 ABI 矩阵仍待真实验证。

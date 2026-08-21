@@ -1,574 +1,960 @@
-# Hindsight Architecture: Source-Fact Deep Study
+# Hindsight 全项目架构事实文档
 
-> 研究对象：`~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Hindsight`
->
-> 研究方法：只读源码、迁移、配置和测试阅读；没有调用 MCP 或 Hermes，没有安装依赖，没有启动 API/worker/database，没有运行 pytest，也没有做进程或网络故障注入。
->
-> 证据规则：本文把“源码直接可见”“测试源码声明”“未执行验证”严格分开。架构目标、注释中的意图、测试名称和本机真实行为不是同一等级的证据。
+> 研究对象：`vectorize-io/hindsight`；本文件是当前源码快照的唯一架构索引。
+> 版本证据：本地 `HEAD=b81a3742b570d0352b8546186dfb77df23cd5fd5`；`origin/main=6ff6dc692ea588067aa5e7235e80640c6a842ba6`（2026-08-21 17:28:11 +0200），远程领先本地 1 个提交；本轮保留未跟踪文档与 `.codegraph/`，未 pull/merge 覆盖工作树。
+> 证据规则：源码行号是首要证据；README/开发文档解释公开契约；未运行服务的结论标为未现场验证。
 
-## 1. 结论摘要
+## 总体运行流程
 
-Hindsight 是一个以 Python `MemoryEngine` 为中心的长期记忆数据面。REST、MCP、SDK、Control Plane、embedded daemon 和 coding-agents 集成最终围绕 API/engine 契约工作；默认存储是 PostgreSQL，记忆事实和关系由 `PostgresMemories` 管理，向量、文本、图和时间检索在一个 recall 编排中融合。
+```text
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Python/TypeScript/Go/Rust SDK │ Rust CLI │ MCP │ 控制面 │ hindsight-embed │
+└──────────────────────────────┬─────────────────────────────────────────────┘
+                               │ HTTP / MCP / 本地 daemon 转发
+                               ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│ hindsight_api.main.main                                                     │
+│ CLI/环境解析 → HindsightConfig → 数据库/模型初始化 → MemoryEngine           │
+│ → api.http.create_app → FastAPI；可启动同进程 worker                       │
+└──────────────────────────────┬─────────────────────────────────────────────┘
+                               ▼
+┌──────────────────────────────┴─────────────────────────────────────────────┐
+│ RequestContext → bank/schema/tenant → OperationPrecheck → MemoryEngine      │
+└──────────────┬────────────────────┬────────────────────┬───────────────────┘
+               ▼                    ▼                    ▼
+        retain（写入）        recall（检索）         reflect（推理）
+               │                    │                    │
+  chunk→LLM抽取→实体解析→   query分析→向量/BM25→   mental model→observation→
+  embedding→facts/links→     时序/图→融合/rerank    recall/工具循环→LLM
+  memory_units 事务写入      trace/结果              response/trace
+               └─────────────────┬────────────────────┘
+                                 ▼
+                   async_operations + WorkerPoller
+                   FOR UPDATE SKIP LOCKED → stage handler
+                                 ▼
+         PostgreSQL │ Oracle │ pg0；maintenance/retry/cancel/webhook
+         memory_units │ links │ entities │ documents/chunks │ models
+```
 
-其可靠性边界不能概括成“有队列租约、可取消、崩溃自动恢复”。真实情况更窄：
+## 1. 项目定位与版本
 
-- API 异步提交把 operation 行和 JSON task payload 放进 `async_operations`，当前提交路径将两者放在同一数据库事务中。
-- worker 通过 `FOR UPDATE SKIP LOCKED` 领取 `pending` 且有 payload 的行，并在同一领取事务内写入 `processing`、`worker_id`、`claimed_at`。这是一次性 claim 标记，不是带心跳续租的 lease；源码中未见运行期间续租。
-- worker 运行中的 task 若正常、显式 retry/defer、wall timeout 或异常退出，poller 会分别写 terminal/pending/failed；若进程被杀，后续依赖启动恢复、优雅退出释放、管理命令或维护路径，不能据此声称存在独立的全局过期租约扫描。
-- 主动 `cancel_operation` 只接受 `pending`，不会把 `processing` 任务改成 cancelled。HTTP 客户端断开协作取消目前明确接到 recall/reflect；已经进入线程的 graph/rerank 计算不能被强杀。
-- retain 的数据库写阶段可把 document、chunks、facts、entities、links 等放在同一数据库事务内，但昂贵的抽取、embedding、实体解析和 ANN 预读发生在写事务之外。外部 memory store、对象存储、LLM provider 与 PostgreSQL 之间没有天然的跨系统 ACID 事务；相关一致性依赖扩展自己的 transaction/witness 实现，不能由默认 Postgres 路径推导出来。
-- batch parent 是 payload 为空的状态聚合器，children 的 parent linkage 位于 JSON metadata 而非外键。源码专门处理 worker/API 崩溃造成的 parent orphan，但这属于恢复扫描，不是提交时的跨行原子事实。
+1. Hindsight 是面向 Agent 的长期记忆服务，不是单纯聊天历史 RAG。
+2. 三个核心操作是 retain、recall、reflect；README Quick Start 展示同一公开顺序。
+3. `world` 是关于世界/人物/事物的事实。
+4. `experience` 是对话、行为、任务和经历事实。
+5. `observation` 是跨事实巩固后的派生知识。
+6. `mental model` 是用户定义问题对应的可刷新长期摘要。
+7. `memory bank` 是记忆租户和配置隔离边界。
+8. 核心 Python 实现在 `hindsight-api-slim/hindsight_api`。
+9. `hindsight-api` 是带全量依赖的发行包装，entry point 在 `hindsight-api/pyproject.toml:20-21`。
+10. `hindsight-all` 组合 API、pg0 和嵌入式 Server/Client。
+11. API 支持外部 PostgreSQL、Oracle 与嵌入式 pg0。
+12. MCP、控制面、SDK、CLI 最终都调用同一个 MemoryEngine。
+13. 当前静态审计源码快照为 `HEAD=b81a3742b570d0352b8546186dfb77df23cd5fd5`。
+14. `origin/main` 当前为 `6ff6dc692ea588067aa5e7235e80640c6a842ba6`，远程领先本地；源码通过配置的 `http://127.0.0.1:4780` 中转 fetch，未覆盖本地未跟踪文档。
+15. 提交时间为 `2026-08-21T15:48:11+02:00`，主题是把 Claude Code provider 的内容策略拒绝标记为永久失败。
+16. 工作树原有 `.codegraph/`；当前静态审计使用本地 `codegraph explore`，未用 MCP。
+17. 全树约 4201 文件、581 目录；统计含图片、锁文件和前端资源。
+18. 未启动数据库或服务，因此运行时结论来自源码/测试证据。
 
-因此，Hindsight 可以作为“记忆领域契约 + PostgreSQL broker 任务实现”的参考，但不能把当前实现描述成一个已经通过生产级 crash consistency、跨库一致性或统一取消验收的任务平台。
+## 2. 顶层目录地图
 
-## 2. 仓库范围与证据等级
-
-### 2.1 实际研究范围
-
-本轮以 `hindsight-api-slim/` 为主要运行时源码，辅以根目录入口、客户端、控制面、embedded、coding-agents、配置、Alembic migrations 和定向测试源码。重点实际读取了：
-
-- `hindsight-api-slim/hindsight_api/api/http.py`
-- `hindsight-api-slim/hindsight_api/api/__init__.py`
-- `hindsight-api-slim/hindsight_api/engine/memory_engine.py`
-- `hindsight-api-slim/hindsight_api/engine/retain/orchestrator.py`
-- `hindsight-api-slim/hindsight_api/engine/retain/fact_storage.py`
-- `hindsight-api-slim/hindsight_api/engine/retain/embedding_processing.py`
-- `hindsight-api-slim/hindsight_api/engine/embeddings.py`
-- `hindsight-api-slim/hindsight_api/engine/search/retrieval.py`
-- `hindsight-api-slim/hindsight_api/engine/search/graph_retrieval.py`
-- `hindsight-api-slim/hindsight_api/engine/search/fusion.py`
-- `hindsight-api-slim/hindsight_api/engine/memories/base.py`
-- `hindsight-api-slim/hindsight_api/engine/memories/postgres.py`
-- `hindsight-api-slim/hindsight_api/engine/memories/pg/reads.py`
-- `hindsight-api-slim/hindsight_api/engine/memories/pg/writes.py`
-- `hindsight-api-slim/hindsight_api/engine/db/base.py`
-- `hindsight-api-slim/hindsight_api/engine/db/ops.py`
-- `hindsight-api-slim/hindsight_api/engine/db/ops_postgresql.py`
-- `hindsight-api-slim/hindsight_api/engine/task_backend.py`
-- `hindsight-api-slim/hindsight_api/worker/poller.py`
-- `hindsight-api-slim/hindsight_api/worker/main.py`
-- `hindsight-api-slim/hindsight_api/cancellation.py`
-- `hindsight-api-slim/hindsight_api/liveness.py`
-- `hindsight-api-slim/hindsight_api/config.py`
-- `hindsight-api-slim/hindsight_api/migrations.py`
-- `hindsight-api-slim/hindsight_api/models.py`
-- 定向 Alembic migrations，尤其是 worker columns、cancelled status、retry、webhook、serialization、operation retention 和维护 routines
-- 定向测试：`test_worker.py`、`test_worker_wall_timeout.py`、`test_worker_claim_connection_reuse.py`、`test_health_probes.py`、`test_recall_cancellation.py`、`test_retain_pipeline_cancellation.py`、`test_operation_status.py`、`test_operation_completion.py`、`test_operation_progress.py`、`test_async_retain_operation_id.py`、`test_retain_same_document_concurrency.py`、`test_graph_maintenance_queue_race.py`、`test_graph_maintenance_claim_serialization.py`、`test_schema_isolation.py`、`test_migrations_parallel_schemas.py`、BM25/embedding/graph/reflect/retain 相关定向测试
-
-根目录当前未发现独立的旧“细探”文件。本文没有把不存在的旧笔记当作证据；如果外部归档有同名文件，必须重新逐条对照当前源码。
-
-### 2.2 证据等级
-
-| 等级 | 含义 | 本轮实例 |
+| 目录 | 职责 | 证据 |
 |---|---|---|
-| S0 | 文件/符号/SQL 直接阅读 | API 路由、task backend、poller claim、cancel 条件、迁移字段 |
-| S1 | 测试源码存在，描述了预期或局部行为 | worker retry、disconnect token、schema isolation、graph race |
-| S2 | 本轮实际执行成功 | 无；只要求并执行文档变更后的 `git diff --check` |
-| S3 | 真实依赖/进程/数据库/故障注入 | 无；不能声称通过 |
-
-## 3. 实际组件图
-
-```text
-HTTP REST / MCP / SDK / Control Plane proxy / embedded daemon / coding-agents
-                              |
-                              v
-FastAPI routes + RequestContext + auth/precheck/audit/error mapping
-                              |
-                              v
-MemoryEngine
-  |-- retain_batch_async / submit_async_retain
-  |-- recall_async
-  |-- reflect_async
-  |-- execute_task / operation status / cancel / retry
-  |
-  +--> retain orchestrator
-  |      chunk -> LLM extraction -> normalize -> embedding
-  |      -> entity/ANN pre-resolution -> DB write transaction
-  |
-  +--> recall retrieval
-  |      query embedding + BM25/text + graph/link + temporal
-  |      -> fusion/RRF -> rerank/score/MMR/token budget
-  |
-  +--> reflect agent
-         mental models -> observations -> recall -> expand -> done/evidence
-
-MemoriesExtension
-  |-- PostgresMemories -> memory_units / memory_links / unit_entities
-  |-- optional external memory store for memory/link ownership
-
-DatabaseBackend -> PostgreSQL/Oracle dialect, tenant schema, pool, transaction
-BrokerTaskBackend -> async_operations <- WorkerPoller/WorkerTaskBackend
-```
-
-这张图是当前源码关系，不是建议的拆分目标。`MemoryEngine` 仍然是大型应用编排器；`MemoriesExtension` 是 memory/link 存储 seam，但不替代 banks、documents、chunks、operations 等 PostgreSQL 对象。
-
-## 4. API 到 engine 的真实调用链
-
-### 4.1 retain
-
-同步请求的主链：
-
-```text
-POST .../memories
-  -> Pydantic RetainRequest
-  -> precheck/auth/operation validator
-  -> MemoryEngine.retain_batch_async()
-  -> 按 strategy、document_id、update_mode 分组
-  -> chunk/split
-  -> retain.orchestrator.retain_batch()
-  -> LLM fact extraction
-  -> ProcessedFact 过滤、时间/context/metadata/tags 规范化
-  -> embedding_processing.generate_embeddings_batch()
-  -> Phase 1 entity resolution + semantic ANN（写事务外）
-  -> 实际 UUID 生成和 entity/link remap
-  -> document/chunk/fact/entity/link 写入
-  -> transaction commit
-  -> 返回 RetainResponse；可另提交 consolidation/graph maintenance operation
-```
-
-异步请求的主链：
-
-```text
-POST .../memories?async=true 或 files/retain
-  -> _submit_async_operation()
-  -> 事务内检查 bank、dedupe、INSERT async_operations(status=pending, task_payload=jsonb)
-  -> 事务提交
-  -> BrokerTaskBackend.submit_task() 对已存在 payload 的 row 实际为 no-op/update-null-only
-  -> API 返回 operation_id
-  -> WorkerPoller.claim_batch()
-  -> MemoryEngine.execute_task(task_payload)
-  -> retain_batch_async() / file conversion / batch child submission
-```
-
-`_submit_async_operation()` 已修复“先插 operation、后补 payload”的 crash window：当前完整 payload 在 INSERT 中写入。`BrokerTaskBackend` 仍保留对旧 caller 的 NULL payload 补写逻辑，但不是当前主路径的第二个提交事务。
-
-### 4.2 retain 的事务边界
-
-源码直接支持以下判断：
-
-1. Phase 1 的实体解析和 semantic ANN 使用独立连接，发生在写事务之外，避免慢读持有写锁。
-2. 写阶段把 document replace/delete、document upsert、memory facts、entity postings、links 以及相关 cleanup 放在调用方提供的数据库事务上下文中；`fact_storage` 明确要求 stale observation cleanup 在 active transaction 内、删除源 facts 之前执行。
-3. 同一 document 的并发写由 `lock_document_for_write`/serialization key/数据库行锁共同限制；队列 claim 只允许同一 serialization key 的最旧、没有 processing peer 的任务进入。
-4. 这保证的是同一数据库 backend 内的事务原子性，不是 LLM、embedding、外部 memory store、S3/GCS/Azure 和 PostgreSQL 的分布式事务。
-5. 如果启用外部 `MemoriesExtension`，它可以拥有 facts/links，而 PostgreSQL 仍可能拥有 documents/chunks/entities。只有该扩展实现并完成 `begin_txn`、decision/witness 等协议时，才有跨 store 一致性证据；默认路径不能替代该证据。
-
-### 4.3 recall
-
-```text
-POST .../memories/recall
-  -> RecallRequest 校验 query/token/fact types/options
-  -> RequestContext 注入 cancellation token（如有客户端断开）
-  -> MemoryEngine.recall_async()
-  -> query analyzer / temporal constraint
-  -> query embedding
-  -> retrieve_all_fact_types_parallel()
-  -> MemoriesExtension.recall_unified()
-       semantic: pgvector dense search
-       BM25: PostgreSQL text-search/native extension 或配置 fallback
-       graph: memory_links/entity expansion/link retriever
-       temporal: occurred/mentioned time neighbor/window query
-  -> fusion.py RRF/interleave
-  -> combined score / optional cross-encoder reranker
-  -> MMR/diversity + token budget
-  -> optional entity/chunk/source-facts enrichment
-  -> RecallResult
-```
-
-四条 retrieval arm 的候选在 store seam 返回，融合和预算在 engine/search 后段完成。`created_after/created_before` 在相关图扩展和检索路径中绑定 `updated_at`，是变更窗口，不是 `event_date`。`event_date`、`occurred_start/end`、`mentioned_at`、`updated_at` 和 query timestamp 是不同语义，不能合并为一个“时间字段”。
-
-### 4.4 reflect
-
-```text
-POST .../reflect
-  -> ReflectRequest/auth/precheck
-  -> MemoryEngine.reflect_async()
-  -> run_reflect_agent()
-  -> LLM tool loop:
-       search_mental_models
-       search_observations (freshness/stale)
-       recall (raw facts)
-       expand (chunk/document context)
-       done(answer, evidence ids)
-  -> structured response/retry/trace
-  -> ReflectResult
-```
-
-普通 reflect 是只读综合，不写 memory。`run_consolidation_job()` 才是 observation 的写投影；mental model refresh 是另一个 operation，可能是 full/delta/dry-run。directive 是显式规则，不能当 observation 来源事实。
-
-## 5. 记忆数据模型与检索实现
-
-### 5.1 memory bank
-
-bank 是业务路由和配置边界，不是 tenant 隔离本身。`Bank` 保存 bank_id、name、disposition、mission 等；tenant/schema 由 `RequestContext`、`TenantExtension`、contextvar 和 `fq_table()` 共同决定。相同 bank_id 在不同 tenant schema 中不是同一行。
-
-核心 PostgreSQL 对象包括：
-
-- `banks`
-- `documents`：原文/可选原文、content hash、retain params、tags
-- `chunks`
-- `memory_units`：text、embedding、fact type、context、metadata、事件/提及/变更时间
-- `entities`、`unit_entities`、`entity_cooccurrences`
-- `memory_links`：temporal、semantic、entity、causal 等 link
-- `async_operations`
-- mental model、knowledge base、directives、audit、LLM request、webhook 相关表
-
-当前 schema 不能由 `models.py` 或初始迁移单独推导。`models.py` 只集中声明部分 ORM 模型；后续 Alembic 链继续增加 worker、cancelled、retry、webhook、serialization、retention、维护 routine 等字段和索引。
-
-### 5.2 embedding
-
-`Embeddings` 抽象要求 provider 提供 `initialize()`、`dimension`、`encode()`，并可区分 `encode_query()` 与 `encode_documents()`。源码包含 local SentenceTransformers、ONNX、远程/HTTP provider 等路径；可选 provider 的依赖和运行状态没有在本轮启动验证。
-
-retain 对事实文本做日期和实体增强后生成向量，但数据库保存原始事实文本。query embedding 走 query 入口。embedding dimension 在 provider 初始化后检测，数据库列/索引必须与模型维度相容；“默认维度”只是初始迁移/配置值，不能当成所有部署的运行事实。
-
-资源风险：本地模型初始化可能加载 CPU/GPU/MPS/ONNX 资源；源码有局部 allocator release 和初始化 timeout 配置，但本轮没有真实模型、GPU、远程 provider 或下载失败验证。
-
-### 5.3 BM25/text
-
-BM25/keyword arm 不是 Python 内存中的独立全文数据库，而是由 PostgreSQL text-search/native extension 路径执行，查询词可能经过选择性词项裁剪。Oracle 有不同 SQL/Text 适配；semantic-only fallback 是特定配置/后端行为，不能写成全局保证。BM25、tsvector、扩展索引和长 query timeout 的定向测试只构成 S1 证据。
-
-### 5.4 graph
-
-graph recall 从 semantic seeds 进入 `memory_links`、entity postings 和 causal/semantic/temporal link expansion。图扩展有 fanout/window/budget 限制；`graph_maintenance` 是异步任务，用于维护队列和 relink/prune。源码明确指出同一 bank 的 graph maintenance 要串行化，因为底层队列 claim 使用不带 `SKIP LOCKED` 的 `FOR UPDATE` 片段；这不是整个 worker claim 都没有 `SKIP LOCKED`，而是该内部维护队列的特殊锁语义。
-
-## 6. async_operations 状态机
-
-### 6.1 状态和字段
-
-迁移链可确认的状态为：`pending`、`processing`、`completed`、`failed`、`cancelled`。关键字段为：
-
-- `operation_id`、`bank_id`、`operation_type`
-- `task_payload`：可序列化 JSON task；parent aggregator 可为 NULL
-- `status`、`error_message`、`created_at`、`updated_at`、`completed_at`
-- `worker_id`、`claimed_at`、`retry_count`、`next_retry_at`
-- `result_metadata`：parent_operation_id、batch_id、progress、trace/结果等
-- `serialization_key`：同 document retain 排序/串行化
-
-### 6.2 真实转换
-
-```text
-提交
-  -> pending(payload)
-
-worker claim transaction
-  -> processing(worker_id, claimed_at)
-
-processing
-  -> completed       executor 返回正常
-  -> pending         RetryTaskAt；retry_count + 1；next_retry_at
-  -> pending         DeferOperation；不增加 retry_count
-  -> failed          wall timeout
-  -> failed          未处理异常或恢复次数耗尽
-
-pending
-  -> cancelled       cancel_operation 仅在 status=pending 的条件下
-  -> pending          retry_operation 从 failed/cancelled 重置
-
-batch_retain parent
-  -> payload=NULL 的聚合行
-  -> children 全部 terminal 后 completed/failed
-  -> startup reconcile 时无 children 则 failed(orphaned parent)
-```
-
-成功/失败的多数 poller 写入带 `WHERE status='processing'` 或先读取并加锁，因此迟到的 terminal 写不会正常覆盖已经完成的行。但 `cancel_operation` 的实现是“先 SELECT pending，再 UPDATE cancelled”，不是一个把 `status=pending` 放进 UPDATE 条件的完整 CAS；两个请求/worker 之间仍需以数据库并发时序和后续状态检查为准，不能把它描述成所有竞态都已无条件解决。
-
-### 6.3 folded retain 和 parent
-
-同一 `serialization_key` 的 retain peers 可以在 claim transaction 内被 fold：主行和 peers 一起标记 processing，合并 contents，产生 `fold_members`。terminal/retry/defer 要对 `all_operation_ids` 扇出，否则 peer 会永远 stuck。batch parent 的 child linkage 在 JSON `result_metadata` 中，parent 聚合会锁 parent 行并检查所有 siblings。
-
-源码专门处理多个 crash window：
-
-- child 已 terminal 但 parent promotion 失败；
-- parent 已建但 children 尚未持久化；
-- worker/API 在 batch child 提交中断。
-
-启动恢复会把没有 child 的 payload-less parent 标成 failed，而不是伪造 completed。这证明源码承认 parent 提交并非一个不可分割的跨行事实。
-
-## 7. worker、claim 与“租约”边界
-
-### 7.1 `FOR UPDATE SKIP LOCKED`
-
-PostgreSQL `claim_tasks()` 按 reserved pool 和 shared pool 分阶段查询：
-
-```sql
-SELECT ...
-FROM async_operations o
-WHERE o.status = 'pending'
-  AND o.task_payload IS NOT NULL
-  AND (o.next_retry_at IS NULL OR o.next_retry_at <= NOW())
-  ...serialization predicates...
-ORDER BY o.created_at
-LIMIT $n
-FOR UPDATE SKIP LOCKED
-```
-
-随后在同一 transaction 内把候选更新为 processing，并返回 payload/retry_count。多个 worker 不会等待同一行；被锁行由本轮跳过，下一轮再尝试。poller 在 schema 间 round-robin，先做每 schema 的公平 pass，再从有工作的 schema 回填容量。
-
-claim transaction 是每个 schema 一次 transaction；整个 poll cycle 复用一个 connection，但不会把所有 schema claim 锁在同一个长事务中。`worker_claim_connection_reuse` 测试源码专门覆盖该连接复用形状。
-
-### 7.2 它不是完整 lease
-
-当前源码有 `claimed_at` 和 `worker_id`，但本轮未发现：
-
-- worker 运行期间定时更新 `claimed_at` 的 heartbeat；
-- 任意 worker 按 `claimed_at` 过期时间自动接管另一个活 worker 的 processing 行；
-- 一个独立的、全局、连续运行的 lease reaper。
-
-因此更准确的名称是“带 owner/time 标记的数据库 claim”。恢复路径是：
-
-1. worker 启动 `recover_own_tasks()`，按本 worker_id 重置 processing rows；
-2. shutdown drain 超时后取消本地 asyncio tasks，再 `release_own_tasks()` 重置本 worker_id rows；
-3. retry/reclaim 达到 `max_retries` 后标 failed，避免 kill-loop 无限重领；
-4. batch parent 通过 startup reconcile 处理 payload-less orphan；
-5. admin CLI 可以按 worker 或全局释放 processing rows。
-
-如果 worker 使用不稳定的 hostname-derived id、进程被 SIGKILL 且新实例 id 不同，旧 processing 行不会因为 `claimed_at` 自动在当前 claim 查询中变回 pending；必须依靠明确的管理/恢复路径。源码存在对此风险的注释和测试线索，但本轮没有实际 kill/restart 验证。
-
-### 7.3 slots 和资源释放
-
-`max_slots` 结合 per-operation reserved floor 与 shared pool 控制本 worker 的 in-flight 数。`execute_task()` 创建 fire-and-forget asyncio task，active map 和 slot 计数通过 done callback 清理。wall timeout 当前明确覆盖 retain、batch retain、file retain 变体；不是所有 operation type 的统一外层 wall timeout。consolidation、reflect 等有各自 engine/provider 层限制或没有同一 poller ceiling，不能画成全局一致。
-
-## 8. 取消、超时、断开与崩溃
-
-### 8.1 HTTP 客户端断开
-
-`ClientDisconnectCancellationMiddleware` 被最后加入，位于 `BaseHTTPMiddleware` 外侧，读取原始 ASGI receive channel，在 `http.disconnect` 时触发 `CancellationToken`。`run_cancellable_on_disconnect()` 将 token 塞入 `RequestContext`，`OperationCancelledError` 映射为 HTTP 499。
-
-这条包装明确用于 recall/reflect。token 是 cooperative：recall 在 stage boundary 检查；graph expansion 和 cross-encoder reranking 若已经通过 `run_in_executor` 进入线程，取消 await 不会强杀该线程，只能阻止下一昂贵阶段。`Request.is_disconnected()` 被明确放弃，因为在 BaseHTTPMiddleware 后可能不触发。
-
-本轮没有把 retain HTTP handler、后台 worker task 或 MCP 断开都写成同样语义。后台 operation 已经入队后，API 客户端断开不等于 operation cancelled；调用者需要显式 operation cancel/retry API。
-
-### 8.2 主动取消
-
-`MemoryEngine.cancel_operation()`：
-
-1. 认证 tenant/bank；
-2. 查询 operation 是否属于 bank；
-3. 只有 `status == 'pending'` 才允许；
-4. 更新为 `cancelled`。
-
-`processing`、`completed`、`failed` 不能通过该入口取消。worker 已领取且正在执行的 operation 不会因这个 API 调用自动被终止。engine 内部另有 `_check_op_alive()`/cancellation checkpoint 的局部逻辑，但不能将其等同为数据库 operation 状态的统一 cancelled transition。
-
-### 8.3 超时和失败
-
-- provider/DB 各有配置的 command/acquire/statement/model/operation timeout，但配置存在不代表所有调用路径都使用相同 ceiling。
-- retain worker outer timeout 触发 `asyncio.timeout()`，取消 executor，写 failed，并保留 stage breadcrumb。
-- `RetryTaskAt` 是可重试异常；`DeferOperation` 是有意 backpressure，不增加 retry count。
-- unhandled exception 通常标 failed；如果失败写入本身因 DB/pool/statement timeout 失败，poller 尝试 reclaim 自己的 processing rows，否则 row 可能暂时保持 processing。
-- `CancelledError` 继承 `BaseException`，在 shutdown timeout 的 task cancel 路径不会被普通 `except Exception` 捕获；poller 等待短暂 cancel drain 后再 release 自己的 rows。
-
-### 8.4 worker/API 崩溃
-
-可确认的 recovery 是“基于 DB 行和 worker_id 的启动/退出扫描”，不是对已提交 memory 的通用二阶段判定。若 retain 在 DB commit 前崩溃，事务回滚，operation 可重领；若 memory commit 已完成但 operation terminal 更新前崩溃，重试是否重复事实取决于 retain 的 operation/document/idempotency/replace/append 语义，源码有大量针对性保护，但本轮没有 L4 注入验证。
-
-API 进程崩溃在 `_submit_async_operation()` INSERT transaction 之前不会留下 operation；事务提交后 payload 一起存在，worker 可领取。文件 retain 还涉及上传 bytes、转换产物、operation metadata 和数据库 document，不能用 operation 行删除推导对象存储已清理。
-
-## 9. 数据库迁移、配置和跨库一致性
-
-### 9.1 migration
-
-`migrations.py` 通过 Alembic、数据库 advisory lock/进程协调启动迁移；不同 dialect 由 `run_for_dialect()` 分发。迁移链包括：
-
-- 初始 `async_operations` 和状态约束；
-- `worker_id`、`claimed_at`、`retry_count`、`task_payload`；
-- `cancelled` 状态；
-- `next_retry_at`、webhook delivery；
-- `serialization_key`；
-- parent metadata GIN、terminal retention index；
-- 多 schema maintenance routines、skip-locked schema discovery；
-- bank delete cascade 和历史 orphan 清理。
-
-初始迁移中没有 `cancelled`/worker 字段，不代表当前 schema。生产形状必须按完整 migration head 与目标 dialect 验证。本轮没有运行 Alembic，也没有比对 live database。
-
-### 9.2 配置
-
-关键运行配置包括 DB pool min/max、command/acquire/statement timeout、parallel gather、session setup、migration startup/concurrency、worker enabled/id/poll interval/max retries/retry backoff/max slots、operation retention/cleanup batch、各 operation 的 reserved slots、model init timeout、embedding provider/model/dimension、LLM provider/model/key/base URL 和 provider-specific timeout/retry。
-
-默认 reserved floor 中 consolidation 为 2，retain/file/refresh/graph 等为 0；reservation 是最低保证，不是该 type 的最大上限，剩余 shared pool 仍可被其使用。配置测试源码证明了类型解析和覆盖行为，但没有本机启动验证。
-
-### 9.3 跨库/跨系统一致性
-
-默认 PostgreSQL 单库内：
-
-- operation INSERT 是数据库事务；
-- retain 写入事务可原子提交 facts/links/document 相关表；
-- tenant schema 由 schema-qualified SQL 隔离。
-
-跨系统时：
-
-- LLM/embedding/reranker 是外部副作用或本地资源，不在 PostgreSQL transaction 内；
-- 外部 memory store 可能拥有 memory/link，而 documents/chunks/entities 仍在 PostgreSQL；
-- file/object storage bytes 不与 operation 行共享 ACID；
-- webhook delivery 作为另一个 `async_operations` task，发送成功与业务事务不是同一个提交；
-- audit/LLM trace/metrics 也可能是 best-effort 或独立写入。
-
-因此“retain 成功”必须明确是模型处理成功、PostgreSQL memory transaction committed、外部 store committed、文件已持久化还是 operation 已 terminal；这些不是一个天然的跨库原子状态。
-
-## 10. 测试证据与未验证项
-
-### 10.1 测试源码能支持的局部结论（S1）
-
-- `test_worker.py`、`test_worker_wall_timeout.py`：worker backend、claim、完成/失败/retry/defer、wall timeout 的局部行为。
-- `test_recall_cancellation.py`：token、ASGI disconnect wiring、499 映射和 cooperative checkpoint。
-- `test_retain_pipeline_cancellation.py`、`test_recall_error_propagation.py`：pipeline 局部取消/错误传播。
-- `test_worker_claim_connection_reuse.py`：claim cycle 连接复用形状。
-- `test_schema_isolation.py`、`test_migrations_parallel_schemas.py`：schema/context/migration 并发隔离意图。
-- `test_retain_same_document_concurrency.py`、`test_graph_maintenance_queue_race.py`、`test_graph_maintenance_claim_serialization.py`：同 document、graph queue race/serialization 的回归场景。
-- `test_async_retain_operation_id.py`、`test_operation_status.py`、`test_operation_completion.py`、`test_operation_progress.py`：operation idempotency、状态读取、父子/进度局部行为。
-- BM25、embedding、graph、reflect、retain 测试：各自算法和管线局部契约。
-
-测试文件存在不等于测试通过；本轮没有运行它们。
-
-### 10.2 本轮明确没有证明的内容
-
-- PostgreSQL/pgvector/text extension 真实安装、迁移 head 和索引可用性；
-- 真实 LLM、embedding provider、reranker、Oracle、S3/GCS/Azure；
-- REST/MCP/SDK 与独立 worker 的跨进程真实链路；
-- SIGKILL worker/API 后 operation、memory、document、link 的恢复和幂等；
-- DB 断连、pool exhausted、statement timeout 时的资源归还；
-- client disconnect 与已运行线程的实际 CPU/线程排空；
-- `processing` 行的全局过期 lease reaping；
-- 外部 memory store 的 witness/事务一致性；
-- 文件转换产物、reflect cache、webhook delivery 的真实回收；
-- full test suite、coverage、性能和压力。
-
-## 11. 真实调用链与状态机的最小验收模型
-
-### 11.1 retain/operation 联合模型
-
-```text
-HTTP request
-  -> [auth/precheck]
-  -> sync retain:
-       [LLM/embed/read phase]
-       -> [DB write transaction]
-       -> commit => memory visible
-       -> response
-
-  -> async retain:
-       [operation INSERT + payload transaction]
-       -> pending
-       -> worker claim transaction => processing(owner/time)
-       -> [LLM/embed/read phase outside final write transaction]
-       -> [DB memory write transaction]
-       -> terminal operation write
-```
-
-中间任何 crash 都要分别检查两个事实：记忆事务是否 committed、operation row 当前是什么状态。不能用其中一个推断另一个。
-
-### 11.2 可靠性判断
-
-| 问题 | 当前源码可说 | 当前源码不能说 |
+| `hindsight-api-slim` | API、engine、worker、迁移 | `hindsight-api-slim/hindsight_api/` |
+| `hindsight-api` | 全量发行包 | `hindsight-api/pyproject.toml` |
+| `hindsight-all` | API + pg0 + embedded | `hindsight-all/hindsight/embedded.py` |
+| `hindsight-all-slim` | 轻量发行包 | `hindsight-all-slim/pyproject.toml` |
+| `hindsight-embed` | profile、daemon、控制中心 | `hindsight-embed/hindsight_embed/` |
+| `hindsight-clients` | Python/TS/Go/Rust SDK | `hindsight-clients/` |
+| `hindsight-cli` | Rust CLI | `hindsight-cli/src/main.rs` |
+| `hindsight-control-plane` | Next.js UI 与 route handlers | `hindsight-control-plane/src/app/` |
+| `hindsight-integrations` | Agent 框架适配器 | `hindsight-integrations/*` |
+| `hindsight-docs` | Docusaurus/公开文档 | `hindsight-docs/docs/developer/` |
+| `docker` | compose、standalone、代理和模型 | `docker/` |
+| `helm` | API/worker 部署模板 | `helm/hindsight/templates/` |
+| `scripts` | 开发、发布、迁移、测试 | `scripts/` |
+| `hindsight-dev` | OpenAPI、benchmark、开发检查 | `hindsight-dev/hindsight_dev/` |
+| `hindsight-integration-tests` | 跨包集成测试 | `hindsight-integration-tests/` |
+
+## 3. 启动与应用生命周期
+
+1. `hindsight_api.main:main` 是 API console entry point。
+2. `main.py:147-230` 解析 host、port、workers 和环境覆盖。
+3. `main.py:92-111` 定义 cleanup 与 signal handler。
+4. 启动先加载 dotenv，再读取 `get_config()` 静态配置代理。
+5. 数据库 URL 可使用 `pg0://`，也可使用 PostgreSQL/Oracle URL。
+6. `api.http.create_app` 位于 `http.py:3792`。
+7. `create_app` 在 `http.py:3955` 构造 FastAPI。
+8. extension router 在约 `http.py:4101` 注册。
+9. app.state 保存 memory、配置、连接池和生命周期对象。
+10. `/health/live` 位于 `http.py:4317-4334`，只检查进程/event loop。
+11. `/health/ready` 位于 `http.py:4300-4315`，检查数据库可用性。
+12. `/version` 位于 `http.py:4336-4373`，返回版本和 feature flags。
+13. `/metrics` 位于 `http.py:4376-4388`，返回 Prometheus 格式。
+14. API 默认可以启动内置 worker。
+15. `hindsight_api.worker.main:main` 是独立 worker entry point。
+16. Helm 启用 dedicated worker 时关闭 API 内部 worker。
+17. `daemon.py:35-109` 处理后台进程、stdio 重定向和 idle timeout。
+18. `hindsight-embed` 管理 profile、daemon PID、端口、日志和 UI。
+19. `hindsight-all/embedded.py` 以上下文管理器返回临时服务 URL。
+20. 正常退出需关闭 poller、维护循环、连接池和模型客户端。
+21. 崩溃后的 processing operation 由启动恢复扫描重新判断。
+
+## 4. API 路由与调用边界
+
+1. 核心路由全部在 `api/http.py` 的 `create_app` 内声明。
+2. 路由前缀主要为 `/v1/default/banks/{bank_id}`。
+3. `POST /memories` 触发 retain，可 async 返回 operation_id。
+4. `POST /memories/recall` 在 `http.py:4710-4729` 声明。
+5. `POST /reflect` 在约 `http.py:4916` 声明。
+6. dry-run-extract 只抽取预览，不解析实体、不建链接、不持久化。
+7. memories/list 支持类型、文本、状态、文档、实体、标签和分页。
+8. memories/{id} 支持读取、事实编辑、invalidate、revert。
+9. memories/{id}/history 返回 observation 历史和来源事实。
+10. graph 返回节点、链接、实体以及类型/标签/文档过滤。
+11. entities 提供实体列表、图、详情和重新生成观察。
+12. mental-models 提供 CRUD、refresh、clear 和 dry-run-refresh。
+13. knowledge-base 提供 tree、folder、page、search、export 和 node。
+14. directives 提供 reflect 指令 CRUD，按标签 scope 生效。
+15. documents/chunks 支持上传、重处理、分页和文本保存。
+16. operations 提供 list、get、retry、cancel/delete 和 result metadata。
+17. document-transfer 通过异步 operation 导入/导出 ZIP。
+18. files/download 从受控 storage key 下载归档。
+19. observations 提供清除、scope 查询和 consolidation recover。
+20. config 提供 bank 级 retain、recall、observation、LLM 配置。
+21. webhooks 提供订阅、delivery、签名和重试管理。
+22. audit-logs 与 llm-requests 提供审计、延迟、token 统计。
+23. handler 获取 RequestContext 后执行 OperationPrecheck 与租户检查。
+24. Pydantic response model 统一可选字段和错误响应。
+25. SDK 是 OpenAPI 低级层加 wrapper，不应复制 engine 业务逻辑。
+
+## 5. MemoryEngine 与数据库抽象
+
+1. `MemoryEngine` 定义在 `engine/memory_engine.py:1705`。
+2. 它实现 `MemoryEngineInterface`，编排写入、检索、反思、管理和迁移辅助。
+3. `engine/schema.py:11-47` 将逻辑表名绑定当前 schema。
+4. bank attribution 将 bank_id、schema、tenant 与 request context 绑定。
+5. `engine/db/base.py` 抽象连接、事务、结果和预算。
+6. `engine/db/postgresql.py` 管理 asyncpg 连接池与 PostgreSQL 特性。
+7. `engine/db/oracle.py` 管理 Oracle 连接与兼容路径。
+8. `ops_postgresql.py` 与 `ops_oracle.py` 封装差异 SQL。
+9. migrations/Alembic 负责 schema 创建、版本升级和维护 routine。
+10. `engine/memories/postgres.py:40` 的 `PostgresMemories` 使用 `memory_units`。
+11. memory links 由 `memory_links` 保存，实体关联由 `unit_entities` 保存。
+12. `pg/reads.py`、`writes.py`、`graph.py`、`curation.py` 分拆 SQL 职责。
+13. `engine/task_backend.py` 抽象 operation 提交、查询、重试和取消。
+14. `operation_metadata.py` 将任务结果变为可查询摘要。
+15. `engine/storage` 抽象数据库、S3、GCS、Azure 文件存储。
+16. `engine/transfer/export.py` 与 `importer.py` 处理银行数据迁移。
+17. 外部 provider 不应被 retain/recall 直接导入，必须通过 adapter。
+18. MemoryEngine 是流程编排模块，不是单一 DAO 或原子支持库。
+
+## 6. retain 全链路
+
+1. `RetainRequest` 位于 `http.py:761` 附近，包含 content/context/timestamp/tags。
+2. handler 先检查 bank 配置、输入大小、memory defense 和 feature 门禁。
+3. retain async 方法位于 `memory_engine.py:4626-4673`。
+4. 同步 retain 只是等待相同 operation/orchestrator。
+5. `retain/orchestrator.py:362-395` 组装内容、文档和标签参数。
+6. chunking 将长文本、JSONL 和对话切成可处理单元。
+7. `fact_extraction` 调 LLM 输出 world/experience 候选事实。
+8. `prompt_utils`、`llm_interface` 负责提示、预算和结构化输出。
+9. `entity_processing` 识别实体，`entity_resolver` 归一化实体。
+10. `embedding_processing` 批量生成事实向量。
+11. `link_creation`/`link_utils` 生成语义、因果和实体边。
+12. `_insert_facts_and_links` 位于 `orchestrator.py:514-557`，事务内写入。
+13. memory_units 行含 fact_type、text、context、事件时间、tags、embedding、来源。
+14. documents/chunks 保存文档元数据、分片和 hash。
+15. store_document_text 决定正文进入数据库或外部 storage。
+16. 重复 document 使用 content hash 和 delta chunk 路径保持幂等。
+17. `_ChunkDiff` 位于 `orchestrator.py:3140`，区分 unchanged/changed/removed。
+18. changed/removed chunk 的旧事实和链接会被删除或重算。
+19. 完成后 operation 写入 result metadata，并可提交 consolidation 子任务。
+20. `enable_observations=false` 时只保留源事实。
+21. memory defense 可阻断敏感、提示注入或秘密内容并记录审计。
+22. 临时 LLM/embedding 错误可重试，确定性维度/完整性错误不重试。
+23. 客户端断开不等于 operation cancel；已入队工作仍可继续。
+24. retain 的真实持久化边界是 DB transaction commit，不是 HTTP 返回时间。
+
+## 7. observation consolidation
+
+1. `engine/consolidation/consolidator.py` 选择 source memory_units。
+2. 选择受 observations mission、tags、scope、数量和 token budget 控制。
+3. LLM 生成去重且可追溯的 observation。
+4. observation 仍作为 memory_units 行保存，fact_type 为 observation。
+5. 来源通过 observation_sources/source_memory_ids 关联原始事实。
+6. consolidation_state、consolidated_at 和 watermark 表示处理/新鲜度。
+7. 新事实到达后旧 observation 可 stale，而不是立即删除。
+8. reflect 检测 stale 后会降级验证，避免信任过期摘要。
+9. observation history 保存文本、证据和版本变化。
+10. consolidation operation 结果处理在 `memory_engine.py:2321-2394`。
+11. `/consolidate` 可按 bank/scope/tags 手动触发。
+12. `/consolidation/recover` 处理失败或中断后的孤儿状态。
+13. maintenance 清理孤儿 observations、失效 links、过期 operations 和图队列。
+14. PostgreSQL routine 使用 bounded batch 和 skip-locked schema 扫描。
+15. Oracle 的维护/retention 语义需结合其 migration 分支核对。
+16. observation 是派生事实，不能等价替代原始 world/experience 证据。
+
+## 8. recall 检索全链路
+
+1. request 在 `http.py:4710` 接收 query、types、tags、时间窗口和 include。
+2. query token 先受 recall_max_query_tokens 限制。
+3. query_analyzer 可抽取实体、时间表达式和检索策略。
+4. temporal_extraction/periods 解析显式与相对时间。
+5. `search/retrieval.py:123-413` 实现 semantic + BM25 SQL。
+6. 向量臂按 embedding 距离检索并过滤 bank/type/tag。
+7. BM25 臂使用 PostgreSQL text search/pg_search 词法检索。
+8. fusion.py 合并语义和词法结果。
+9. link_expansion_retrieval.py 沿 memory_links 扩展关联事实。
+10. graph_retrieval.py 通过实体/图边进行 spreading activation。
+11. `temporal_combined_sql` 位于 `retrieval.py:418-797`。
+12. `retrieve_all_fact_types_parallel` 并行处理多 fact_type。
+13. reranking.py 可用 cross encoder 重新排序候选。
+14. recall_boost.py 处理新鲜度、重要性、类型和策略加权。
+15. tags.py 支持 any/all/exact 与 strict 过滤。
+16. include 控制 observations、entities、chunks、source facts 和 token 上限。
+17. trace/tracer 记录每个检索臂、候选数、分数和成本。
+18. RecallResponse 返回 text、fact_type、scores、来源和实体。
+19. recall 不调用生成式 LLM；none provider 仍可用 embedding/词法检索。
+20. recall 是只读业务，但仍受租户和操作门禁保护。
+21. 当前提交允许调用者直接提供 temporal window，不必依赖自动解析。
+
+## 9. reflect agent 全链路
+
+1. reflect 接收 query、context、budget、tags、response_schema 和 include。
+2. `MemoryEngine.reflect_async` 位于 `memory_engine.py:12014` 附近。
+3. `reflect/agent.py:372` 的 `run_reflect_agent` 建立工具回调。
+4. 内层循环从 `agent.py:429` 开始。
+5. 第一层工具是 search_mental_models，优先读取预计算摘要。
+6. fresh 且覆盖 query 的 mental model 可以短路后续检索。
+7. 第二层工具是 search_observations，读取巩固知识和 freshness。
+8. 第三层工具是 recall，回到 world/experience 原始事实。
+9. 工具声明和强制序列在 `agent.py:463-511`、`807-810`。
+10. `_execute_tool` 位于约 `agent.py:1409`，校验工具名和参数。
+11. 未先搜索就回答会得到强制搜索错误（约 `agent.py:942`）。
+12. 工具输出会做 token 压缩、计时和 trace 摘要。
+13. LLM 使用 bank mission、directives、disposition 和证据生成回答。
+14. disposition traits 调整反思的立场和风格。
+15. response_schema 触发 structured output 校验。
+16. response 的 based_on 区分事实、observation、mental model。
+17. stale mental model 不被无条件信任，agent 向下层检索降级。
+18. exclude_mental_models 可关闭第一层，便于调试证据链。
+19. reflect 是生成式昂贵流程；mental model 是预计算读取层。
+20. context overflow、provider error、tool error、cancel 各有不同失败路径。
+21. LiteLLM wrapper 的 reflect 在 `hindsight-integrations/litellm/hindsight_litellm/wrappers.py:301-400`。
+
+## 10. mental model、知识页、指令
+
+1. mental model 定义含 name、source_query、tags、refresh policy、max tokens 和内容。
+2. 创建/刷新返回 operation_id，生成在 worker 后台运行。
+3. refresh 可手动、cron 或 consolidation 后触发。
+4. `mental_model_refresh.py` 计算 scope、watermark、版本和 delta。
+5. 每版保存正文、来源查询、证据和 trace。
+6. knowledge-base page 是 mental model 的树形组织封装。
+7. folder/page/node 只改变组织，不改变事实表。
+8. page export/import 搬迁树结构、内容和 model 关联。
+9. directive 保存 reflect 行为约束、背景和 tags。
+10. 无 tag directive 是全局；有 tag directive 只在匹配 scope 加载。
+11. directive 不参与 recall 分数，只影响 reflect prompt。
+12. 删除 bank 时 model/page/directive/operation 需按外键和清理策略处理。
+
+## 11. 数据模型和迁移
+
+1. 初始 schema 在 `alembic/versions/5a366d414dce_initial_schema.py`。
+2. 迁移链体现 mental_models→observations、版本、标签、图队列和租户演进。
+3. `memory_units` 是 world、experience、observation 的统一事实表。
+4. `memory_links` 保存语义/因果/关联边。
+5. `unit_entities` 连接事实与 entities。
+6. `entities` 保存 canonical name、kind、labels、状态和实体观察。
+7. documents 保存元数据、hash、retain 参数和处理状态。
+8. chunks 保存文档分片、索引、hash 和文本引用。
+9. async_operations 保存 type、status、payload、retry、worker 和结果。
+10. mental_models 保存定义、内容、版本、scope watermark 和调度。
+11. mental model history 保存每次重写和证据。
+12. observation_sources/source_memory_ids 提供可追溯证据。
+13. directives 保存正文、subtype、tags 和启停状态。
+14. audit_logs 保存主体、bank、写操作、结果和错误。
+15. llm_requests/trace 保存模型、供应商、token、延迟和 operation。
+16. webhooks/deliveries 保存订阅、签名、响应和重试。
+17. file_storage 保存可迁移文档归档的外部引用。
+18. 导出归档不依赖原 embedding，目标实例需要重新嵌入。
+19. extension loader 可为 bank 建立物理表或 schema。
+20. PostgreSQL 迁移管理 pgvector/HNSW、pg_trgm、GIN 等索引。
+21. Oracle 通过独立 SQL/migration 提供兼容能力。
+
+## 12. 并发、队列、重试与资源
+
+1. 所有异步后台任务共用 async_operations 和 worker pool。
+2. `worker/poller.py:5` 明确使用 `FOR UPDATE SKIP LOCKED`。
+3. poller 在事务内 claim pending/retryable 行并写 processing/worker_id。
+4. SKIP LOCKED 防止重复 claim，但不是完整租约协议。
+5. worker 有 slot reservation、task 并发上限、RSS、墙钟 timeout 和 active task。
+6. `worker/stage.py:21-56` 保存当前阶段用于指标和日志。
+7. poller 按 task_type 选择 retain、consolidate、refresh、transfer handler。
+8. 成功写 completed/result_metadata；失败写 failed/error/retry_count。
+9. 临时错误按 backoff 重入 pending，确定性错误终止。
+10. pending/processing 不会被 operation retention 清理。
+11. completed/failed/cancelled 可按 retention days 批量删除。
+12. 文档指出 PostgreSQL 维护 retention，Oracle 历史可能不受同样清理。
+13. pending 可 cancel；processing 通常不强制杀死。
+14. HTTP 断开、超时、cancel 和 worker failure 是不同状态。
+15. embedding/LLM 使用 semaphore、batch size 和 token budget 限制资源。
+16. 连接池、schema 扫描、文件导出和结果列表都需要 bounded batch。
+17. cache affinity/bank stats cache 依赖 TTL/watermark 失效。
+18. reflect 有上下文压缩、工具轮数和 token 上限。
+19. webhook、文件下载、外部 HTTP provider 具有超时和 URL guard。
+20. shutdown 需停止 poller、maintenance、daemon/UI 并释放连接。
+21. worker 崩溃后的 processing 恢复依赖 stale worker 扫描。
+22. 当前静态审计未做 kill、压力、多进程竞态验证。
+
+## 13. 配置、provider 与安全
+
+1. `config.py:2220` 的 `HindsightConfig` 汇总环境和 bank 覆盖。
+2. `config.py:25` 加载 dotenv；`get_config` 在约 `4254` 暴露代理。
+3. 环境键统一以 `HINDSIGHT_API_` 开头，解析函数校验类型与枚举。
+4. retain 配置包含 mission、extraction mode、chunk、batch、语言和实体标签。
+5. observation 配置包含 enable、mission、scope、上限和刷新策略。
+6. recall 配置包含 query/result token、boost、decay、reranking。
+7. reflect 配置包含 mission、disposition、budget、工具轮次和 schema。
+8. worker 配置包含 enabled、slots、retries、timeouts、retention。
+9. DB 配置包含 URL、schema、pool、SSL、migration 和 Oracle。
+10. `engine/embeddings.py` 支持本地、OpenAI 和兼容 embedding provider。
+11. `engine/providers` 包含 Anthropic、Gemini、OpenAI、Codex、Copilot、LiteLLM、Ollama 等。
+12. `llm_interface.py` 统一 chat、tool、structured output 和 usage。
+13. provider 英文协议和第三方 SDK 应隔离在 adapter。
+14. none provider 可使 recall 工作，但不生成 reflect 答案。
+15. 多 LLM strategy 在 config member/strategy 中路由 fallback、round-robin 或 budget。
+16. RequestContext 绑定 bank/schema/tenant；不能只相信路径 bank_id。
+17. operation_validator 执行 feature、租户和资源门禁。
+18. SQL schema helper 仅接受白名单表名。
+19. memory_defense 可拒绝注入/秘密内容并发 webhook。
+20. webhook url_guard 阻止私网、localhost、危险重定向等 SSRF。
+21. 文件下载只接受 storage key，不接受任意文件路径。
+22. MCP 单 bank URL 推导 bank；真正授权仍由 API precheck。
+23. audit decorator 记录 retain、recall、update 等操作。
+24. invalidated memory 保留以支持审计和 revert。
+25. 错误响应不应泄露密钥、连接串和完整内部栈。
+
+## 14. 部署与客户端
+
+1. Docker standalone 入口是 `docker/standalone/start-all.sh`。
+2. compose 支持外部 PostgreSQL、nginx、模型和监控。
+3. Helm API Deployment 配置 secret、资源、探针和环境。
+4. worker StatefulSet 在 `helm/hindsight/templates/worker-statefulset.yaml:1-120`。
+5. worker pod 名可作为稳定 worker id。
+6. worker 可挂载模型缓存 PVC。
+7. API/worker 镜像默认是 `ghcr.io/vectorize-io/hindsight-api`。
+8. PostgreSQL 需准备向量、trigram、全文检索扩展或等价能力。
+9. Oracle 需使用 Oracle baseline 和对应 SQL adapter。
+10. embed profile 为每个本地实例分离 pg0 数据目录。
+11. 多副本 API/worker 必须共享数据库、operation 表和一致配置。
+12. Python wrapper 位于 `hindsight-clients/python/hindsight_client/hindsight_client.py`。
+13. Python/TS/Go/Rust 低级 SDK 按 OpenAPI 生成。
+14. Rust CLI `src/main.rs` 覆盖 bank、memory、document、entity、operation 等命令。
+15. fs CLI 管理 daemon/profile/config/health/state/sync。
+16. TypeScript embedded 包通过本地 daemon 提供无服务器调用。
+17. LiteLLM wrapper 可在每次 LLM 调用前 recall、调用后 retain。
+18. integrations 目录是框架薄适配层，不复制 engine。
+19. OpenHands、LangGraph、CrewAI、Dify、OpenClaw 等通过 client/HTTP 接入。
+20. 适配器应保留 operation_id 和统一错误语义。
+
+## 15. 本次复审核心实现复核
+
+本节补充当前提交中最容易被概览遗漏的跨组件状态转换，所有结论均来自目标仓当前源码，而非平台假设。
+
+### 15.1 retain 的阶段边界和提交见证
+
+1. `MemoryEngine.retain_async`（`hindsight-api-slim/hindsight_api/engine/memory_engine.py:4677-4770`）将单条输入包装成 `retain_batch_async`，因此单条和批量请求共享认证、校验、分块、抽取和持久化路径。
+2. `retain_batch_async` 先复制内容供 `RetainContext` 校验；扩展点可以返回替换后的内容，但 bank、租户和请求上下文仍由引擎重新绑定。
+3. 文档级输入会按 document_id 分组；同一批不同文档不能假设共享首项的 context、event_date 或 metadata。
+4. 大批次按配置拆分为子批；fold 机制可以把同一文档的多个 pending operation 合并执行，但每个原 operation_id 仍必须获得独立终态和结果切片。
+5. `retain/orchestrator.py:_pre_resolve_phase1`（约 `425-470`）在写事务外执行实体解析和 semantic ANN，使用占位 unit id；这样避免 LLM/ANN 慢读持有写锁。
+6. `_remap_phase1_results`（约 `488-510`）在真实 UUID 生成后重映射实体边和语义边；占位 id 遗留会造成不可见链接，属于完整性错误而非可重试网络错误。
+7. `_insert_facts_and_links`（`514-612`）在一个事务中插入 memory_units、unit_entities、semantic/temporal/causal links、文档关联和可选 outbox；检索依赖的数据必须一起提交。
+8. 普通 PostgreSQL 路径的 commit 点是数据库事务提交；事务回滚后不应发布 webhook、consolidation 或 operation 成功结果。
+9. store-owned retain 路径（约 `660-890`）使用外部 provider 事务、PostgreSQL 本地元数据和 commit witness；先提交 witness，再调用 provider `decide_txn(commit=True)` 发布外部写入。
+10. witness 未提交时 recovery sweep 必须将 staged 外部写入 abort；witness 已提交但进程崩溃时则允许恢复为 committed，不能凭 HTTP 返回时间猜测状态。
+11. transactional outbox 与写入事务同 commit；webhook 投递是至少一次语义，消费端需要按 operation/event id 幂等。
+12. 文件正文关闭存储时只落文档元数据和 hash；后续 expand 不能假设 `chunks.text` 可用，reflect 会据配置关闭 chunk 工具。
+
+### 15.2 fact extraction 的重试分类
+
+1. `engine/retain/fact_extraction.py:1812-1938` 对一个或多个 chunk 执行抽取，批量 provider 错误会按 chunk 收集而不是立即丢弃整个批次。
+2. 输出过长时 `_split_chunk_for_output_retry` 将 chunk 拆分后重试；这是输入规模适配，不应与 provider 故障重试混为一谈。
+3. quota/rate-limit 错误携带 `retry_at`，worker 可依据最晚时间安排下一次 operation；重试次数由 worker 上限控制。
+4. JSON 校验、维度不匹配、不可解析结构等确定性错误不会无限重试；最终必须将失败原因写入 operation error_message。
+5. 当前提交把 provider content-policy refusal 显式提升为永久失败类型（提交主题 `fix(retain): treat provider content-policy refusals as permanent`），避免同一被拒 chunk 消耗完整 retry schedule。
+6. 永久失败与临时失败都要保留 failed chunk 计数、首个代表错误和 operation trace；父 batch 不能只返回笼统的“子批失败”。
+7. fact_type 由模型输出、请求 override 和上下文策略共同决定；world/experience 不是纯展示字段，影响召回臂、consolidation 和权限过滤。
+8. narrator 注入只在 profile name 与 bank_id 不同且确认为叙述者时生效；路由键不得污染一人称事实的 who 维度。
+
+### 15.3 recall 的闸门、混合检索与连接重试
+
+1. `MemoryEngine.recall_async`（`memory_engine.py:5850-6200`）先 sanitize query、认证 tenant、校验 operation，再解析 query token、时间窗口、fact types、tags 和预算覆盖。
+2. `_search_semaphore` 包围完整 `_search_with_retries`，用于限制并发数据库检索；等待时间会进入 trace，不能误计入 provider 延迟。
+3. `_search_with_retries` 对 asyncpg 连接不足、数据库暂不可用及 Oracle connection error 最多重试三次，退避为 0.5、1、2 秒；语义错误和参数错误不走该重试。
+4. 每次搜索先并行或分阶段运行 semantic、BM25、temporal、graph/link arms，再由 fusion 和 reranker 合并；关闭某个 arm 是 bank 配置策略，不代表结果为空即可跳过审计。
+5. reranker candidate cap 按预算可缩放；预算降低只能减少候选或 token 上限，不能改变 bank、tag 或 tenant 过滤。
+6. recall 的 `include_chunks` 受 `store_document_text` 强制约束；正文未存储时返回空 chunk 会被禁止，避免把空上下文误当作证据。
+7. `OperationCancelledError` 直接传播到 HTTP 层，不参与连接重试，也不触发“失败后重试”业务钩子。
+8. 非连接异常会先调用 `on_recall_complete(success=False)`（若配置 validator），再重新抛出；hook 自身失败只记录 warning，不替代原始错误。
+9. 成功同样调用 validator completion hook，结果对象包含 query、budget、fact types、token 上限和最终结果；外部扩展不得修改已落 trace 的原始候选。
+10. recall span 在 finally 中关闭；异常路径也必须结束 tracing，避免长生命周期 context 泄漏。
+
+### 15.4 reflect 的工具循环、取消和证据归因
+
+1. `MemoryEngine.reflect_async`（`memory_engine.py:12018-12347`）在任何 LLM 调用前执行 query/context sanitize、provider 非 none 检查、tenant 认证、operation validator 和 cancellation checkpoint。
+2. 初始 prompt 不预加载全部 mental models；工具 `search_mental_models_fn` 按 query 生成 embedding 后按 freshness、tag 和排除 id 查询，控制大 bank 的上下文增长。
+3. `search_observations_fn` 将 last_consolidated_at、pending_consolidation 和 source fact token budget 传给 observation 搜索，使 stale 摘要可被降级处理。
+4. `recall_fn` 的默认 max token 在 reflect 调用时绑定 bank config；mental model trigger 的 override 不会污染后续请求的全局默认值。
+5. `expand_fn` 只在需要时 acquire 数据库连接；LLM 慢调用期间不持有连接，降低 pool 枯竭风险。
+6. directives 根据 apply_all_directives 和 tags isolation_mode 选择；带标签 directive 不得泄漏到未匹配的 reflect。
+7. 反思迭代次数由 `Budget.LOW/MID/HIGH` 乘数计算，另有 max_context_tokens 和 `reflect_wall_timeout` 外层上限。
+8. `run_reflect_agent` 接收 `request_context.raise_if_cancelled`，在迭代间和工具阶段协作式取消；它不等同于强杀 provider 进程。
+9. `asyncio.wait_for` 超时后抛出 TimeoutError，并记录耗时、迭代数（若可得）和 query 摘要；调用方仍需确保嵌套 LLM/HTTP 客户端可退出。
+10. agent_result 只把 done action 验证过的 used_memory_ids/used_observation_ids 纳入 based_on，工具搜索到但未被最终答案采用的候选不应伪造为依据。
+11. response_schema 会触发额外 structured extraction；该二次调用增加 provider 成本和超时风险，结果校验失败不能覆盖原始文本。
+12. reflect 是只读业务，但会写 trace/metrics；文档、mental model refresh 等外层 operation 可以把 reflect 作为子阶段，必须避免重复 parent span。
+
+### 15.5 worker claim、fold、租约和恢复
+
+1. `worker/poller.py:428-610` 在每个 schema 上调用 backend `claim_tasks`，SQL 使用 `FOR UPDATE SKIP LOCKED`；锁只覆盖 claim 事务，不覆盖整个任务执行期。
+2. claim 会按 reserved/shared slot、tenant fairness、task priority 和 retry_at 过滤；扫描不到任务时仍维护 schema rotation，避免一个空租户阻塞其他租户。
+3. fold peers 在同一 claim 事务中锁定并标记 processing；`ClaimedTask.all_operation_ids` 明确主 operation 与折叠 operation 必须一起进入终态。
+4. fold 执行失败时父/子 operation 的代表错误由 `_summarise_child_error_messages` 选取最常见非空原因，避免监控只看到泛化错误。
+5. `mark_operations_processing` 写 worker_id、claimed_at、stage 等字段；这不是持久租约心跳，stale 扫描仍需依据时间和 worker 存活判断。
+6. retain 有 `_wall_timeout_for` 外层墙钟限制；超时取消 task 后由 poller 进入 retry/fail 收敛，避免一个锁等待或永不释放的 LLM permit 永久占用 slot。
+7. `_schedule_retry` 将 processing 重置 pending、写 next_retry_at、递增 retry_count 并清理 worker/claimed 字段；达到上限才进入 failed。
+8. cancel 与 retry 不同：pending 可直接取消，processing 通常只协作式取消并等待短 drain；不能把客户端断线自动等价为数据库 cancel。
+9. shutdown 会取消后台任务，最多等待 `_CANCEL_DRAIN_TIMEOUT=5s`，随后 reconcile processing rows；该窗口是终态写入机会，不是无限等待。
+10. worker stage 通过 contextvar 绑定到 task 自身；`set_stage` 在 HTTP/CLI 无 holder 时是 no-op，因此静态日志不能证明所有请求都有 stage。
+11. poller 支持 RSS、active task、卡住栈转储和 slot 统计；这些是诊断证据，不是资源释放本身。
+12. 当前实现没有跨数据库统一的 fencing token；多 worker 部署仍依赖数据库原子 claim、stale 判定和 operation 状态条件更新防止旧 worker 覆盖新终态。
+
+### 15.6 跨组件状态转换表
+
+| 阶段 | 权威状态 | 可重试 | 必须保留的证据 | 禁止的推断 |
+|---|---|---|---|---|
+| 接收 retain | operation pending | 参数错误不可重试 | payload 摘要、tenant、bank、预算 | HTTP 202 不等于已写入事实 |
+| 抽取事实 | processing + stage | quota/连接可重试 | chunk、provider、token、错误类型 | content-policy refusal 可重试 |
+| 写入事实 | DB transaction | 事务回滚后整体重试 | commit、unit ids、link 数、outbox | 已生成 UUID 不等于可见 |
+| 发布外部存储 | witness/decision | provider 临时错误可按协议重试 | witness、provider txn、decision | 一侧提交不能直接判成功 |
+| recall | 只读 operation/span | 连接错误有限重试 | arm、候选、rerank、耗时 | 空结果不等于数据库故障 |
+| reflect | agent processing | provider/网络按策略重试 | tool trace、used ids、LLM trace | 搜索到的候选都是依据 |
+| worker 终态 | completed/failed/cancelled | retry_at 未到不得重复 claim | worker、retry_count、错误摘要 | processing 永久代表运行中 |
+
+## 16. 本次复审未验证边界
+
+当前复核仍为静态源码和版本复核：未启动 PostgreSQL/Oracle/pg0，未运行多 worker 竞态、kill -9、OOM、provider content-policy 实际拒绝、外部对象存储两阶段提交、连接池耗尽或 reflect 超时注入。以上状态转换是源码设计证据，不是生产环境通过证明。正式接入前应分别验证：
+
+1. retain 事务在数据库断连、进程崩溃和 outbox 重放下是否无半写事实；
+2. fold peer、父 operation 和 retry_count 在多 worker 下是否始终一一终态；
+3. recall 连接重试不会重复写 trace、重复扣费或绕过取消；
+4. reflect 的 nested LLM 调用在 wait_for 超时后确实释放 HTTP 连接和 semaphore；
+5. content-policy refusal 不被上层通用 retry wrapper 重新包装为可重试错误；
+6. stale worker recovery 不会让旧 worker 的延迟完成覆盖新 worker 的成功或失败；
+7. tenant/schema 认证和 operation validator 在 MCP、HTTP、SDK、CLI 四入口保持一致。
+
+## 15. 文档、可观测性与测试
+
+1. `hindsight-docs/docs/developer/retain.mdx` 解释抽取、chunk、实体、链接和观察。
+2. `recall.mdx` 解释向量/BM25/图/时序检索和过滤。
+3. `reflect.mdx` 解释 mental model、observation、directive 和 disposition。
+4. `api/operations.mdx` 解释 async_operations 状态、重试和 retention。
+5. OpenAPI 由 `hindsight-dev/generate_openapi.py` 从 FastAPI 生成。
+6. client coverage 工具检查 SDK 包装覆盖率。
+7. metrics 暴露 API 延迟、worker、操作、LLM token 和错误。
+8. llm_trace/llm_requests 提供模型调用审计。
+9. audit_logs 提供管理与写入行为回放。
+10. `test_ann_iterative_scan.py` 覆盖向量/BM25 组合查询。
+11. `test_retain_same_document_concurrency.py` 覆盖同文档并发 retain。
+12. `test_memory_defense.py` 覆盖防御、阻断和 payload 隔离。
+13. `test_document_transfer.py` 覆盖导出、导入、embedding 重建和 operation。
+14. `test_none_llm_provider.py` 覆盖 none provider 下 recall。
+15. `test_bank_stats_cache_distributed.py` 覆盖分布式缓存。
+16. `hindsight-embed/tests` 覆盖 profile lock、daemon、端口和配置。
+17. Python client tests 覆盖参数映射、时间窗口、response parsing。
+18. CLI tests 覆盖命令和 profile 集成。
+19. 当前静态审计只做静态结构和差异验证，未安装依赖或启动外部服务。
+20. 因此不能声称真实 retain/recall/reflect 或压力测试已通过。
+
+## 16. 关键文件行号索引
+
+| 主题 | 文件:行 | 事实 |
 |---|---|---|
-| 多 worker 不重复 claim | 有 `FOR UPDATE SKIP LOCKED` 的 claim transaction | 所有内部维护队列都无锁等待；graph queue 有特殊 `FOR UPDATE` 语义 |
-| 任务有 owner/time | processing 写 `worker_id/claimed_at` | 有运行 heartbeat 或全局过期租约 |
-| worker crash 可恢复 | startup/release/admin recovery 路径存在 | 任意新 worker 自动接管所有 stale processing |
-| pending 可取消 | `cancel_operation` 只接受 pending | processing 可由 cancel API 立即终止 |
-| recall/reflect 可响应断开 | cooperative token + 499 | 已运行 thread 被强制停止 |
-| retain DB 写原子 | 单一 DB transaction 可包住写阶段 | LLM/外部 store/object store 与 DB 跨库 ACID |
-| parent orphan 可见 | startup reconcile 可标 failed | batch parent/children 提交天然不可分割 |
-| retry 有边界 | retry_count/max recovery attempts/backoff | 每类 provider/operation 都共享同一重试语义 |
+| API 启动 | `hindsight-api-slim/hindsight_api/main.py:147-348` | CLI 解析、初始化、app |
+| 信号清理 | `main.py:92-111` | cleanup/signal |
+| FastAPI 工厂 | `api/http.py:3792-4101` | app、状态、router |
+| health/version | `api/http.py:4300-4388` | 探针、版本、指标 |
+| recall | `api/http.py:4710-4749` | query 校验和检索 |
+| retain | `api/http.py:8096-8456` | retain/file retain |
+| operations | `api/http.py:6704-6900` | 状态、重试、删除 |
+| config | `config.py:2220-2598` | 配置模型 |
+| config parse | `config.py:3854-3950` | env 解析 |
+| MemoryEngine | `engine/memory_engine.py:1705-1712` | 核心编排 |
+| retain async | `memory_engine.py:4626-4673` | operation 提交 |
+| reflect async | `memory_engine.py:12014-12240` | agent 组装 |
+| refresh | `memory_engine.py:14535-` | model refresh |
+| retain orchestrator | `engine/retain/orchestrator.py:362-557` | 参数/插入 |
+| delta retain | `orchestrator.py:3140-3775` | chunk diff |
+| extraction | `orchestrator.py:1219-1346` | fact/embed |
+| retrieval | `engine/search/retrieval.py:123-413` | semantic/BM25 |
+| temporal | `retrieval.py:418-797` | 时间/图扩展 |
+| reflect loop | `engine/reflect/agent.py:372-511` | agent 工具 |
+| reflect tools | `agent.py:807-1100` | 强制检索/freshness |
+| worker claim | `worker/poller.py:211-479` | SKIP LOCKED |
+| worker state | `worker/poller.py:590-901` | 状态/重试 |
+| schema | `engine/schema.py:11-47` | 表名限定 |
+| PG adapter | `engine/memories/postgres.py:40-79` | memory/link |
+| MCP | `mcp_tools.py:662-1180` | retain/recall/reflect tools |
+| daemon | `daemon.py:35-109` | 后台生命周期 |
+| worker Helm | `helm/hindsight/templates/worker-statefulset.yaml:1-120` | 部署 |
 
-## 12. 研究收口
+## 17. 支持库/模块库映射
 
-Hindsight 的真实核心不是“向量库加一个 agent”，而是：
+1. `engine/providers` 是第三方 LLM/embedding/reranker 原子适配支持库。
+2. `engine/db`、`engine/storage`、`engine/embeddings` 是资源和协议边界支持库。
+3. `engine/retain`、`engine/search`、`engine/reflect`、`engine/consolidation` 是组合流程模块。
+4. MemoryEngine 是应用服务/模块编排层，不能归类成一个原子支持库。
+5. API、MCP、SDK、CLI 是项目适配层，不应绕过 engine 直接写表。
+6. worker、task backend、maintenance 是运行核心的调度/治理层。
+7. PostgreSQL、Oracle、向量库、LLM、对象存储是受管外部提供者。
+8. 选择原则：原子 I/O、协议转换、资源释放归支持库；跨能力流程归模块库。
+9. 新 provider 只在 adapter 注册；新流程通过 interface 和 operation contract。
+10. 统一结果应含成功、值、错误码、错误说明、可重试属性。
+11. 可复用设计是“单 operation 表 + worker claim + 证据 trace”，不是复制源码。
 
-1. `retain` 将 LLM 抽取、时间、embedding、实体和图关系投影到 memory store；
-2. `recall` 将 semantic、BM25、graph、temporal 四臂候选融合，再做 rerank/MMR/budget；
-3. `reflect` 通过工具循环读取 mental models、observations、raw facts 和证据，不默认持久化答案；
-4. `async_operations` 用 PostgreSQL 行作为跨进程 broker，worker 用 SKIP LOCKED claim 并通过有限 recovery 处理部分失败；
-5. 事务一致性主要是单一数据库内的局部一致性，跨 store/provider/object storage 需要额外协议；
-6. 取消是分层且不对称的：HTTP recall/reflect 有 cooperative disconnect，operation cancel 只取消 pending，worker processing 的终止主要依赖 timeout/shutdown/recovery；
-7. `claimed_at`/`worker_id` 是恢复线索，不应在架构文档中升级成未实现的 lease heartbeat/reaper。
+## 18. 未确认风险与验收记录
 
-本文件只记录源码事实、测试源码证据和明确的未知项。未运行的测试、未连接的数据库、未注入的故障和未读取的外部归档均不被写成“已验证”。
+1. 已执行 `git pull --ff-only origin main`；源码 checkout 已更新为 `6ff6dc692ea588067aa5e7235e80640c6a842ba6`，保留未跟踪的唯一文档与 `.codegraph/`。
+2. `.codegraph` 是本地索引，源码变动后需重建，不能替代源码。
+3. 未现场验证 pg0 端口、数据目录和扩展安装。
+4. 未现场验证 Oracle 与 PostgreSQL 的观察/operation 完全等价。
+5. worker stale processing 恢复阈值需结合生产配置实测。
+6. cancel processing 通常不是强杀，调用方必须轮询 operation。
+7. consolidation 输出质量、去重阈值和 scope 标签需用真实数据评估。
+8. mental model 错误标签可能导致空摘要但 operation 成功。
+9. provider fallback 可能产生 schema/tool-call 差异，需逐 provider 回归。
+10. storage/webhook/LLM endpoint 的 TLS、SSRF、凭证轮换需部署复核。
+11. 控制面 route handler 与 API 的错误翻译可能随版本漂移。
+12. 尚未运行 client coverage、压力、断电、kill、failover 和真实 provider 测试。
+13. 结构断言：流程图、核心章节、路径行号索引均存在，退出码 0。
+14. 文档行数断言：本文件不少于 500 行，退出码 0。
+15. 差异检查：`git diff --check -- ARCHITECTURE.md`，退出码 0。
+16. 修改范围：仅项目根 `ARCHITECTURE.md`；未改源码、依赖、配置、测试。
 
-## 13. 本轮源码深审补充
+## 19. 全量文件族与证据矩阵
 
-本节是对前文草稿的第二遍核对，优先记录会改变可靠性判断的细节，而不是重复产品说明。
+1. `engine/retain/__init__.py` 是 retain 模块公开导出边界。
+2. `engine/retain/types.py` 定义内容、事实、实体和处理结果类型。
+3. `engine/retain/bank_utils.py` 处理 bank 配置和写入前置条件。
+4. `engine/retain/chunk_storage.py` 管理 chunk 正文、hash 和文档绑定。
+5. `engine/retain/fact_storage.py` 封装 memory_units 的事实写入与统计。
+6. `engine/retain/entity_labels.py` 规范化实体标签词汇。
+7. `engine/retain/fold.py` 处理折叠事实及父 operation 关系。
+8. `engine/retain/link_creation.py` 生成事实间链接。
+9. `engine/retain/embedding_utils.py` 处理批量向量和维度检查。
+10. `engine/retain/entity_processing.py` 把抽取实体映射到 canonical entity。
+11. `engine/retain/fact_extraction.py` 将 LLM 输出解析成受约束事实。
+12. `engine/search/types.py` 定义 retrieval candidate、score 和 trace 类型。
+13. `engine/search/bm25_term_selection.py` 选择词法查询 term。
+14. `engine/search/fusion.py` 融合多路候选并去重。
+15. `engine/search/reranking.py` 通过 cross encoder 复排。
+16. `engine/search/recall_boost.py` 施加 freshness、importance 和策略 boost。
+17. `engine/search/graph_retrieval.py` 读取实体与 memory_links 图结构。
+18. `engine/search/link_expansion_retrieval.py` 做二跳或受限 link 扩展。
+19. `engine/search/temporal_extraction.py` 解析日期、相对时间和 query_timestamp。
+20. `engine/search/tags.py` 统一标签匹配语义，避免 API/SQL 各自实现。
+21. `engine/search/trace.py` 和 `tracer.py` 把检索过程变成可审计 trace。
+22. `engine/reflect/models.py` 定义 reflect facts、tools、trace 和 response 模型。
+23. `engine/reflect/tools.py` 暴露 recall、observations 和 mental models 工具。
+24. `engine/reflect/tools_schema.py` 固定工具参数 schema，防止模型随意扩展。
+25. `engine/reflect/prompts.py` 保存系统提示、mission 和证据规则。
+26. `engine/reflect/observations.py` 把 observation 结果转换为 agent 输入。
+27. `engine/reflect/retractions.py` 处理撤回、矛盾和无效事实。
+28. `engine/reflect/delta_ops.py` 记录结构化文档增量操作。
+29. `engine/reflect/structured_doc.py` 解析受 schema 约束的输出文档。
+30. `engine/reflect/tokenization.py` 估算上下文与输出 token。
+31. `engine/consolidation/prompts.py` 定义 observation 巩固提示。
+32. `engine/consolidation/consolidator.py` 执行候选选择、生成、证据绑定。
+33. `engine/providers/mock_llm.py` 为测试提供确定性 LLM。
+34. `engine/providers/none_llm.py` 禁用生成但允许只读检索路径。
+35. `engine/providers/openai_responses_llm.py` 适配 OpenAI Responses/tool API。
+36. `engine/providers/anthropic_llm.py` 适配 Anthropic message/tool API。
+37. `engine/providers/gemini_llm.py` 适配 Gemini 内容和缓存。
+38. `engine/providers/litellm_llm.py` 适配 LiteLLM 统一网关。
+39. `engine/providers/openai_compatible_llm.py` 适配任意 OpenAI-compatible endpoint。
+40. `engine/providers/codex_auth.py`、`github_copilot_llm.py` 处理订阅型认证。
+41. `engine/providers/llm_debug.py` 提供调试 provider，但不应生产启用。
+42. `engine/db_budget.py` 限制数据库查询预算和批量规模。
+43. `engine/db_utils.py` 提供事务、结果、时间和 SQL 辅助。
+44. `engine/db/optional_routines.py` 管理可选 PostgreSQL 维护 routine。
+45. `engine/db/pool_instrumentation.py` 记录连接池使用与等待。
+46. `engine/sql/postgresql.py` 生成 PostgreSQL 检索、索引和维护 SQL。
+47. `engine/sql/oracle.py` 生成 Oracle 兼容 SQL。
+48. `engine/storage/postgresql.py` 将文件归档存入数据库。
+49. `engine/storage/s3.py`、`gcs.py`、`azure.py` 对接对象存储。
+50. `engine/transfer/schema.py` 定义跨实例导入导出 manifest。
+51. `engine/mental_model_refresh.py` 实现刷新、freshness、历史和失败恢复。
+52. `engine/graph_maintenance.py` 处理异步图边和实体维护队列。
+53. `engine/causal_links.py` 解释和持久化因果关系。
+54. `engine/entity_resolver.py` 处理大小写、别名、label 和 canonical entity。
+55. `engine/query_analyzer.py` 为 recall/reflect 提供 query 分析。
+56. `engine/cross_encoder.py` 选择 reranker provider 与候选预算。
+57. `engine/llm_trace.py` 记录每次 LLM 调用的输入摘要和 usage。
+58. `engine/multi_llm.py` 处理多成员 provider 策略与故障转移。
+59. `engine/maintenance.py` 编排过期 operation、孤儿观察和索引维护。
+60. `engine/vector_index_health.py` 检查向量索引、维度和覆盖率。
+61. `api/mcp.py` 将 FastAPI 生命周期挂接 MCP transport。
+62. `api/mcp_tools.py` 以单 bank/多 bank 两种方式注册 retain、recall、reflect。
+63. `api/disconnect.py` 将客户端断开传给可取消的业务协程。
+64. `api/passthrough_headers.py` 传递受控 trace、tenant 和认证 header。
+65. `api/page_markdown.py` 将 knowledge page 转换为 Markdown 输出。
+66. `extensions/loader.py` 发现并加载 bank/tenant 扩展。
+67. `extensions/http.py` 提供扩展 HTTP 生命周期和依赖注入。
+68. `extensions/memory_defense.py` 为 retain 建立策略钩子。
+69. `extensions/operation_validator.py` 在 operation 进入 engine 前拒绝越权。
+70. `webhooks/manager.py` 处理签名、队列、重试和 delivery 状态。
+71. `webhooks/models.py` 定义 webhook 配置和投递结果。
+72. `worker/exceptions.py` 区分可重试、取消、确定性和超时异常。
+73. `worker/main.py` 构造独立 worker 的配置、连接和 poller。
+74. `worker/poller.py` 是多 worker 竞争 async_operations 的唯一 claim 入口。
+75. `hindsight-embed/profile_manager.py` 管理 profile 配置、锁和目录。
+76. `hindsight-embed/daemon_client.py` 将 embed CLI 请求转发给 daemon。
+77. `hindsight-embed/daemon_embed_manager.py` 管理 API/worker 子进程。
+78. `hindsight-embed/control_center/service.py` 提供 profile、provider、日志和 UI 服务。
+79. `hindsight-embed/control_center/server.py` 提供本地控制中心 HTTP 服务。
+80. `hindsight-embed/control_center/lifecycle.py` 负责控制中心启动、停止和健康。
+81. `hindsight-control-plane/src/lib/hindsight-client.ts` 是 UI 到后端的客户端边界。
+82. `hindsight-control-plane/src/app/api/banks/[bankId]/route.ts` 是控制面 bank route 示例。
+83. 控制面 consolidation、mental-model、operation routes 都转发 API 契约。
+84. 控制面不应直接访问 memory_units；所有业务读写必须经过客户端边界。
+85. `hindsight-cli/src/api.rs` 是 Rust CLI 的 HTTP 请求边界。
+86. `hindsight-cli/src/config.rs` 管理 profile、URL、token 和输出格式。
+87. CLI `commands/memory.rs` 对应 retain、recall、reflect 和 curate 命令。
+88. CLI `commands/operation.rs` 对应后台任务状态、重试和取消。
+89. CLI `commands/document.rs` 对应文档、chunk 和 transfer。
+90. CLI `commands/fs/*.rs` 只管理本地 daemon，不直接操作数据库表。
+91. SDK 生成模型的变化必须由 OpenAPI 生成流程统一更新。
+92. 集成目录的配置只决定 bank、URL、凭证和触发时机。
+93. 集成适配器的测试应验证映射和关闭资源，而不是复制 engine 测试。
+94. benchmark 目录用于性能/准确度测量，不是生产运行时依赖。
+95. `scripts/release.sh` 负责多包版本同步和元数据 pin。
+96. `scripts/dev/start-api.sh`、`start-worker.sh` 是本地开发启动包装。
+97. docker/helm 仅描述部署，不改变 retain/recall/reflect 的业务语义。
+98. 本矩阵用于后续 CodeGraph 定位，具体行为仍须回读当前行号源码。
 
-### 13.1 CodeGraph 状态
+## 20. 端到端状态与错误矩阵
 
-按用户要求先执行了目标仓库内的 CodeGraph 探索命令，但仓库没有 `.codegraph/` 索引，命令返回“CodeGraph isn't available here — no .codegraph/ index exists”。因此本文没有伪造 CodeGraph 调用关系；下面的关系图和结论来自源码直接阅读、全文符号检索及测试源码，证据等级仍为 S0/S1，而不是 CodeGraph 证据。
+| 阶段 | 正常状态 | 可观测证据 | 主要失败 |
+|---|---|---|---|
+| 请求进入 | request_context 已绑定 | audit/precheck | 未授权 bank |
+| retain 提交 | operation pending | async_operations 行 | 参数/防御拒绝 |
+| worker claim | processing + worker_id | poller 指标 | 并发跳过/超时 |
+| 内容分块 | chunks/hash 生成 | document/chunk 记录 | 超长/格式错误 |
+| LLM 抽取 | facts 候选 | llm_requests/trace | provider 错误 |
+| 实体解析 | canonical entities | entities/unit_entities | 解析失败 |
+| 向量生成 | embedding 维度一致 | memory_units.embedding | 维度不匹配 |
+| 事实写入 | transaction commit | memory_units/links | FK/完整性错误 |
+| consolidation | observation pending/done | observation state | LLM/证据冲突 |
+| operation 完成 | completed/result_metadata | operations API | retry/failed |
+| recall 查询 | candidate/fused results | recall trace | query 过长 |
+| reflect 工具 | mental/obs/fact evidence | reflect trace | 未先检索 |
+| reflect 输出 | text/structured output | response model | schema/上下文溢出 |
+| webhook | delivery succeeded/retry | deliveries/audit | URL/HTTP 错误 |
+| retention | terminal rows 删除 | maintenance metrics | Oracle 未清理 |
+| shutdown | pool/tasks closed | liveness 终止 | 强杀遗留 processing |
 
-### 13.2 API/engine/broker 的关键边界
+1. 该矩阵把 HTTP、数据库和 worker 状态分开，避免把一次响应当作全链路完成证据。
+2. retain 请求成功只代表 operation 已接受；需要 polling/同步 API 才能确认事实已提交。
+3. recall 无结果可能来自 query、tags、时间窗口、scope 或索引状态，不等价于 bank 无知识。
+4. reflect 回答必须结合 based_on/trace 判断是否真的检索到证据。
+5. operation failed 仍可能保留 payload 和错误 metadata，是否 retry 取决于错误分类。
+6. cancelled 只表达取消请求被接受，不表达已回滚已执行的第三方调用。
+7. invalidated memory 仍可在历史/审计 API 看到，但不会进入 recall、consolidation 或 graph。
+8. stale mental model 可返回诊断界面，但不得在 reflect 中短路为最终答案。
+9. 生产验收应逐行对照本矩阵补充真实数据库和服务证据。
 
-`MemoryEngine.execute_task()` 是 worker 的统一路由入口。它先从 payload 取出 `_schema` 并设置 tenant context，再查询 `async_operations`；如果行不存在或状态为 `cancelled`，任务直接跳过。查询失败时源码记录错误但继续执行，这意味着“无法确认取消”采用 fail-open，而不是 fail-closed。之后按 `task_dict["type"]` 分发到 `batch_retain`、`file_convert_retain`、文档导入导出、`consolidation`、`graph_maintenance`、`refresh_mental_model` 和 `webhook_delivery`。未知类型会删除 operation 行并返回，因而不是进入 `failed` 的可观测终态。
+## 21. 最新提交带来的失败语义变化
 
-异步提交主路径确实把完整 payload 与 operation INSERT 放进同一 transaction；但 `BrokerTaskBackend.submit_task()` 仍支持“仅为 NULL payload 的旧 caller 补写”以及“没有 operation_id 时另建 operation”两种旁路。`WorkerTaskBackend.submit_task()` 则明确 no-op，worker 内部产生的子任务依赖已有 `async_operations` 行在下一轮被领取，而不是递归 inline 执行。`SyncTaskBackend` 会立即 inline 执行，测试/embedded 因此不等价于独立 API + worker 进程。
+1. `b81a374` 的改动范围是 `llm_interface.py`、`memory_engine.py`、`providers/claude_code_llm.py`、`retain/fact_extraction.py` 和一个专门的回归测试文件。
+2. `ProviderContentPolicyError` 在 `engine/llm_interface.py:379-392` 定义，是 `RuntimeError` 子类。
+3. 该异常表示上游以内容使用政策（AUP）拒绝请求，而不是连接、限流或临时服务故障。
+4. `claude_code_llm.py:74-78` 以 `anthropic.com/legal/aup` 作为窄匹配标记，避免普通错误被误分类。
+5. `_result_error` 在 `claude_code_llm.py:81-94` 将带标记的结果映射到永久异常，其余结果仍为 `RuntimeError`。
+6. 同一 provider 的普通调用重试环和工具调用重试环都在 `claude_code_llm.py:399-405`、`692-700` 直接重新抛出永久异常。
+7. 这两个守卫保证内容拒绝不会消耗 provider 的完整 transport retry budget。
+8. `fact_extraction.py:1914-1930` 收集批次中拒绝的 chunk；只要存在一个拒绝就向上抛出永久异常。
+9. 该逻辑保持 retain 的全批次失败语义，不会把其他 chunk 的部分结果偷偷提交。
+10. `memory_engine.py:1099-1106` 的 `_is_non_retryable_task_error` 将该异常纳入不可重试分类。
+11. worker 因此在第一次看到拒绝时将 operation 标记为失败，而不是重新排队整个 retain。
+12. 这是一条跨 provider、抽取器、engine、worker 的错误分类链，不能只在 provider 层修补。
+13. 回归测试为 `hindsight-api-slim/tests/test_content_policy_refusal_permanent.py`，提交新增约 345 行测试代码。
+14. 该变化不改变 API 的 retain 请求形状；它改变的是 operation 的失败次数、重试消耗和最终状态。
+15. `ProviderRateLimitResetError` 仍表示可等待的限流恢复时间，不能与内容拒绝混用。
+16. 文档读者在排查 retain 失败时应优先查看 operation error metadata 和 provider 错误原文。
+17. “失败但没有重试”不等于数据已经部分落库；抽取器明确在事务提交前拒绝整个批次。
+18. 最新提交的风险边界是 AUP 文本模式匹配依赖供应商错误格式，新增 provider 仍需定义自己的永久错误分类。
 
-worker poller 的 terminal 处理有一个重要不对称：`_mark_completed()` 使用 `WHERE status='processing'`；`_mark_failed()`、`_schedule_retry()`、`_defer_operation()` 的 SQL 没有同样的 processing 条件。正常情况下这些写入来自拥有该 task 的 asyncio task，且未见第二个执行者同时改写同一行；但文档不能把所有 terminal 写都概括成统一 CAS。异常时 terminal 写失败会尝试按当前 worker/operation reclaim；如果 reclaim 也失败，行可能继续保持 `processing`，而活着的 worker 已经从 active map 移除，只有后续显式恢复路径能处理。
+## 22. 当前代码地图与规模证据
 
-### 13.3 取消、状态读取和进度不是同一机制
+1. 根目录 `find` 统计为 4,135 个文件和 556 个目录；统计包含锁文件、图片、生成客户端和测试资源。
+2. `hindsight-api-slim/hindsight_api` Python 源码总量为 132,196 行（`wc -l` 汇总）。
+3. `codegraph status` 显示索引覆盖 2,409 个文件，解析节点 50,279 个，边 143,171 条。
+4. CodeGraph 节点包括 15,096 个 method、10,888 个 function、2,404 个 class、1,657 个 property 和 915 个 type alias。
+5. 语言分布包括 Python 1,473、TypeScript 459、Go 205、TSX 110、YAML 61、JavaScript 55 和 Rust 35 个文件。
+6. 当前 `.codegraph` 是仓库根目录独立索引；本次源码更新后用 `codegraph sync .` 同步了 5 个变化文件、584 个节点。
+7. CodeGraph 只用于定位和调用关系，不能替代对源码当前行号的回读。
+8. `hindsight-api-slim` 是事实主干；其它包通过 HTTP、OpenAPI client、daemon 或集成适配器调用它。
+9. `hindsight-control-plane` 是前端控制面，不是第二个记忆引擎。
+10. `hindsight-docs` 是文档站，不是运行时配置来源。
+11. `hindsight-dev` 负责 OpenAPI、覆盖率、基准和开发检查，不能承载生产请求。
+12. `hindsight-integration-tests` 验证跨发行包和真实部署边界，不能替代核心单元测试。
+13. `hindsight-clients` 目录中的生成代码应从 OpenAPI 重新生成，不应手工修复单个模型。
+14. `hindsight-cli` 的 Rust 代码通过 API client 访问服务，不能直接读 PostgreSQL。
+15. `hindsight-embed` 通过 profile 和本地 daemon 管理嵌入式运行时，数据目录是部署边界。
+16. `helm`、`docker` 和 `scripts` 描述装配与发布，不包含领域状态机的另一份实现。
+17. 任何新增能力都应先定位到主干 engine，再检查对应 client、控制面、CLI、文档和集成是否只是适配。
 
-HTTP disconnect middleware 只监控路径后缀 `/memories/recall` 和 `/reflect`，通过 pump task 转发 ASGI receive，同时把 token 写入 scope。上传、MCP stream 和 retain 请求不经过这层取消。`recall_async()` 与 `reflect_async()` 在入口和阶段/迭代边界检查 cooperative token；进入线程执行的 graph/rerank 不能被强制终止。
+## 23. API 输入模型、路由与输出契约
 
-operation cancel API 先 SELECT 再无条件 UPDATE `operation_id`，没有在 UPDATE 中重复 `status='pending'` 条件；这仍是竞态窗口，不能称为完整 CAS。worker 执行前的 cancelled 检查失败时会继续执行；长任务的 `_check_op_alive()` 在数据库错误时返回 True，也采用 fail-open。已进入 `processing` 的任务不由 cancel API 终止。
+1. `api/http.py:284-385` 定义 `RecallRequest`，包括 query、fact types、budget、token 上限、tags、时间窗口和 trace 选项。
+2. query validator 在 `http.py:371-385` 拒绝空查询并限制输入长度，避免无界检索成本。
+3. `http.py:761-812` 定义 `RetainRequest` 与 operation_id 验证；content、context、timestamp 和 tags 在这里进入统一模型。
+4. `http.py:963-1050` 定义 `ReflectRequest`，把 response schema、fact types、tags 和上下文交给 reflect agent。
+5. `http.py:1062-1138` 定义 reflect facts、directives、mental models、tool calls、LLM calls 和 based-on trace 输出。
+6. `http.py:1343-1501` 定义 bank 创建、disposition、mission、background 和配置响应模型。
+7. `http.py:1559-1660` 定义 observation scope、memory list、dry-run extract 和 document list 输出。
+8. `http.py:2139-2190` 定义 directive、mental model trigger 和列表响应。
+9. `http.py:2408-2537` 定义 knowledge tree、folder、page、bundle 和 search 模型。
+10. `http.py:3261-3555` 定义 operation progress、operation response、consolidation response 和 version/features 输出。
+11. `http.py:3609-3714` 定义 webhook、delivery 和列表模型；签名、状态、响应体和重试信息不会混入记忆事实表。
+12. `http.py:3792-4164` 创建 FastAPI、挂载 middleware、tracing、审计和路由注册。
+13. `http.py:4626-4749` 的 memory update 与 recall handler 先取请求上下文，再进入 engine。
+14. `http.py:4929` 起的 reflect handler 不直接调用 provider，而是委托 `MemoryEngine.reflect_async`。
+15. `http.py:5510-5736` 覆盖 mental model 的创建、刷新、dry-run、清除、更新和删除。
+16. `http.py:6218-6297` 覆盖 directive 的创建、更新和删除。
+17. `http.py:6434-6669` 覆盖 document reprocess、update、delete 与内容存储边界。
+18. `http.py:6804-6873` 覆盖 operation cancel、retry 和 delete；这些动作不等价于强杀正在运行的 provider 调用。
+19. `http.py:7030-7168` 覆盖 bank 生命周期和 bank template 导入。
+20. `http.py:7424-7625` 覆盖文档导入、观察清除、consolidation recover 和单记忆观察清除。
+21. `http.py:7692-7971` 覆盖 bank config、consolidation 和 webhook 更新。
+22. `http.py:8120-8463` 覆盖 retain、file retain 和 bank memory clear。
+23. 路由函数统一包在 `audited` 装饰器下，审计动作名与 HTTP 业务动作保持可查询映射。
+24. `run_cancellable_on_disconnect` 在 `http.py:212-243` 把客户端断开传播给可取消协程，但已经提交的后台 operation 仍由 worker 负责。
+25. `ExcludeNoneRoute` 在 `http.py:118-138` 处理响应模型的可选字段和历史兼容性。
+26. API 的公开稳定边界是 Pydantic 请求/响应模型和 operation 状态，不是内部 SQL 函数名。
 
-`result_metadata.progress` 只是粗粒度阶段/批次快照，写入失败被吞掉，不是 lease heartbeat；`updated_at` 也不能据此推导 worker 存活。operation retention 只清理 terminal rows，不能把 retention 写成处理中任务的回收机制。
+## 24. retain 的数据处理细节
 
-### 13.4 retain/recall/reflect 的实际语义修正
+1. `retain/types.py:19-382` 定义 RetainContent、ChunkMetadata、ExtractedFact、ProcessedFact、ResolvedEntity、RetainBatch 等类型。
+2. `fact_extraction.py:462-504` 定义可验证的事实响应和超长单元拆分。
+3. `fact_extraction.py:504-658` 处理普通文本、对话 turns 和 JSONL 的结构化分块。
+4. `fact_extraction.py:1068-1316` 根据 bank 配置拼装 mission、entity label、输出 schema 和 provider request body。
+5. `fact_extraction.py:1325-1812` 执行 chunk 级 LLM 抽取、JSON 修复、重试和自动拆分。
+6. `fact_extraction.py:1812-1977` 汇总批次结果、错误和 token 统计，并在永久失败时阻止静默降级。
+7. `orchestrator.py:362-395` 将 API 内容模型转为内部 retain 参数。
+8. `orchestrator.py:395-513` 执行 phase 1 的实体预解析和结果重映射。
+9. `orchestrator.py:514-617` 在写入前构造事实、实体、因果关系和链接，保证 transaction 组装完整。
+10. `orchestrator.py:633-1029` 支持扩展传入的 streaming batch write，避免大文档一次性占满内存。
+11. `orchestrator.py:1030-1218` 处理 delta batch write 和文档更新的写入结果。
+12. `orchestrator.py:1219-1345` 执行 extract、embed、causal remap 和 processed fact 生成。
+13. `orchestrator.py:1346-1989` 执行 retain batch，最后用语义 ANN 检查链接/去重结果。
+14. `orchestrator.py:1990-2070` 写入正文到数据库或外部文件存储。
+15. `orchestrator.py:2071-3139` 是 streaming retain、外部扩展、父子 operation 和最终聚合。
+16. `orchestrator.py:3140-3167` 的 `_ChunkDiff` 根据 index/hash 把 unchanged、changed、removed 分开。
+17. `orchestrator.py:3168-3774` 执行 delta retain；只重处理变化 chunk，同时清理受影响的旧事实和观察。
+18. `orchestrator.py:3775-3894` 处理 metadata-only 更新，不为仅标签或元数据变化重新调用 LLM。
+19. `fact_storage.py:45-166` 封装文档记忆统计、事实批写、索引和 bank 存在性检查。
+20. `fact_storage.py:168-337` 清理 stale observations 并跟踪 document/chunk 状态。
+21. `fact_storage.py:338-470` upsert 文档元数据、正文标记和事实标签。
+22. `entity_processing.py` 将抽取实体分成用户给定实体、候选实体和 canonical entity。
+23. `entity_resolver.py:257` 的 `EntityResolver` 先做批内相似聚类，再结合现有实体和共现统计归一化。
+24. `embedding_utils.py` 校验批量向量数量、维度和 provider 返回形状；维度错属于不可重试完整性错误。
+25. retain 的 commit 点在事实、链接、实体引用、文档和 operation metadata 同一事务成功之后。
+26. 输入防御拒绝会写 audit/webhook 证据，但不会把被阻断内容作为事实提交。
 
-retain 的批处理 API 先认证 tenant、验证 operation、确认 bank，再复制输入；orchestrator 可能清空内部 copy 的逐项 content 以降低内存压力，调用者输入不会被该内部优化直接修改。事实抽取、embedding、实体解析和检索预读与最终写事务分离；最终 DB 阶段才提交 document/chunk/fact/entity/link 等投影。post-insert maintenance、consolidation、graph maintenance 和 webhook 等后续动作通过异步 operation 产生，不能把 retain 返回等同于所有后处理完成。
+## 25. recall 的四路检索与证据优先级
 
-recall 的实现是“每个 fact type × 四个检索臂”并行，再做 RRF、rerank、MMR 和 token 过滤；chunks 的拉取预算独立于 facts 的 `max_tokens`。`created_after/created_before` 在源码注释中明确约束 `updated_at` 变更窗口，而不是 `created_at`；前文关于时间字段不可合并的结论保持有效。
+1. `retrieval.py:34-72` 定义 query token、并行检索结果和 semantic/BM25 组合结果类型。
+2. `retrieval.py:84-113` 管理默认 graph retriever；部署可注入实现但不改变 recall 契约。
+3. `retrieval.py:123-412` 在 SQL 层组合向量语义与 BM25 词法结果，并应用 bank、type、tag、invalidated 过滤。
+4. `retrieval.py:418-466` 计算时间覆盖选择，处理 event date、created date 和缺失日期。
+5. `retrieval.py:467-796` 执行 temporal combined SQL，并把显式 temporal window 传到查询层。
+6. `retrieval.py:797-` 的 `retrieve_all_fact_types_parallel` 对 world、experience、observation 并行查询。
+7. `bm25_term_selection.py:75` 从 query 中选择词法 term，避免把所有自然语言 token 原样交给全文索引。
+8. `fusion.py` 对各路候选执行 reciprocal rank fusion，并做跨路去重和 cap。
+9. `reranking.py` 可将融合候选交给 cross encoder，预算由 bank config 和 recall budget 决定。
+10. `recall_boost.py:33-101` 将 freshness、importance、source strategy 等加权到最终分数。
+11. `graph_retrieval.py` 通过实体邻接和 memory_links 发现查询文本未直接命中的相关事实。
+12. `link_expansion_retrieval.py` 提供受限二跳扩展，避免图遍历无限扩张。
+13. `temporal_extraction.py:42-140` 使用有界线程池处理日期解析，并提供 async wrapper。
+14. `tags.py` 统一 any、all、strict、exact 的标签匹配语义。
+15. `trace.py:14-207` 记录入口、权重、节点访问、剪枝、各检索臂和最终摘要。
+16. include_entities、include_chunks、include_source_facts 只扩大结果证据，不改变主分数。
+17. max_tokens 限制序列化输出，不能推断数据库只保存了这些结果。
+18. query_timestamp 是时间解释锚点；当前版本允许调用者直接传 temporal_window。
+19. recall 是只读流程，不调用生成式 reflect LLM；无 LLM provider 仍可使用 embedding/BM25 路径。
+20. 空结果必须结合 trace、tags、时间窗口、scope 和索引健康状态解释，不能直接判定 bank 无记忆。
 
-reflect 首先读取 bank profile、配置、freshness 和 directives，然后按配置决定是否暴露 mental-model、observation、raw recall、expand 工具。agent 从空上下文开始，最后一轮移除工具以迫使最终回答；普通 reflect 只读，不持久化答案。刷新 mental model/consolidation 是另行入队的写路径，不能用 reflect 的只读语义覆盖它们。README 的“Reflect ... generate new observations and insights”是产品层描述，若按字面理解为每次 reflect 都写 observation，会与当前 `reflect_async()` 的只读源码冲突。
+## 26. reflect、observation 与 mental model 的关系
 
-### 13.5 数据库、租户和外部存储
+1. `reflect/agent.py:372-428` 的 `run_reflect_agent` 创建 disposition、directive、工具和 trace 上下文。
+2. `agent.py:429-1160` 的 inner loop 保持工具调用、token 预算、上下文压缩和最终回答状态。
+3. mental model 搜索位于工具序列前段；fresh 且覆盖 query 的摘要可以减少下层检索。
+4. observation 搜索读取巩固事实及其来源范围，并在 stale 时降低可信度。
+5. recall 工具补回 world/experience 原始事实，作为最终证据兜底。
+6. `agent.py:807-1100` 固定工具 schema 和必须先检索的规则，防止模型直接编造回答。
+7. `agent.py:1336-1476` 记录工具耗时并集中执行工具参数校验。
+8. `agent.py:1202-1335` 处理 done 工具，负责回答、结构化输出和 based-on 汇总。
+9. response_schema 由结构化输出路径校验；schema 错误不能降级为任意文本而标记成功。
+10. `mental_model_refresh.py:79-291` 定义 refresh operation details、scope、window、fact counts、delta、retraction 和 trace 模型。
+11. mental model 保存 source query、tags、refresh cron、scope watermark、文本/结构化内容和历史版本。
+12. refresh operation 先计算窗口和证据差异，再决定保留旧内容、应用 delta、更新 watermark 或记录失败原因。
+13. knowledge page 是 mental model 的树形组织和导出边界，不是事实表的替代品。
+14. directive 只改变 reflect 的 mission、背景和行为约束，不参与 recall 候选排序。
+15. observation 是由源事实派生的 memory_units 行，必须带 source memory ids 才能追溯。
+16. 源事实变化会使 observation stale；stale 不等价于物理删除。
+17. `clear_memory_observations` 保留源 memory，清除派生 observation 后触发下一次巩固。
+18. `recover_consolidation` 处理失败或中断的 consolidation 状态，不应直接伪造成功 observation。
+19. reflect 的回答来源应通过 `based_on`、trace 和 observation history 一起审计。
+20. mental model、observation、raw fact 三层职责分别是摘要缓存、跨事实推导和可追溯原证据。
 
-`async_operations`、banks、documents/chunks、memory_units、entities、links、mental models、directives、webhook 和审计/LLM trace 相关表共同形成当前 schema；不能只读 `models.py` 或初始 migration 来判断最终字段。默认 PostgreSQL 路径提供单库 transaction 和 schema-qualified tenant 隔离；Oracle 通过另一套 SQL/锁语义适配，不能仅凭 PostgreSQL 的 `SKIP LOCKED` 结论覆盖 Oracle。
+## 27. operation、worker 与维护循环
 
-文件 retain 还连接文件转换和可选 S3/GCS/Azure/PostgreSQL storage。数据库 operation/document 与对象存储 bytes 没有共享 ACID；operation 删除或 terminal 也不自动证明转换临时产物、对象 key、webhook side effect 已回收。外部 memory store 的 transaction/witness seam 若未由具体扩展实现并验证，不能升级为跨库一致性保证。
+1. `engine/task_backend.py:26-93` 定义抽象 `TaskBackend`，约束 submit、get、cancel、retry 和 result metadata。
+2. `SyncTaskBackend:95-125` 在调用线程/协程内执行，适合 embedded、测试和无后台 worker 部署。
+3. `WorkerTaskBackend:126-152` 将任务写入 async_operations，由 poller 异步执行。
+4. `BrokerTaskBackend:153-` 为外部 broker/扩展实现保留同一 operation 契约。
+5. `worker/poller.py:152-205` 定义 active task、claimed task 和 slot availability 状态。
+6. `WorkerPoller:207-` 是唯一的多 worker claim 入口，使用 pending/retryable 条件和数据库锁。
+7. claim 查询在 `poller.py:211-479` 使用 `FOR UPDATE SKIP LOCKED`，避免多个 worker 领取同一 operation。
+8. `poller.py:590-901` 处理任务状态、slot、RSS、墙钟 timeout 和 stale worker 恢复。
+9. `poller.py:983-1050` 将 `DeferOperation`、`RetryTaskAt`、取消和普通异常映射为明确状态。
+10. `worker/exceptions.py:17-42` 区分 retry-at、defer 和格式化任务错误。
+11. `memory_engine.py:2859-3128` 允许业务流程请求延迟、重试或继续等待，不直接操作 poller 状态。
+12. `memory_engine.py:3202-3215` 将可重试错误映射到 worker retry budget；不可重试错误直接失败。
+13. `engine/maintenance.py:113` 的 `MaintenanceLoop` 负责过期 operation、孤儿状态、索引和统计维护。
+14. `graph_maintenance.py:102-249` enqueue relink victims、entity prune candidates 并执行有界维护 job。
+15. maintenance 和 graph queue 与用户 retain operation 分离，但共享 bank/schema/tenant 边界。
+16. operation retention 只清理 terminal 状态，不能删除 pending 或 processing 的活跃工作。
+17. cancel 通常是协作式；已经进入 provider 或数据库事务的子步骤可能完成后才观察到取消。
+18. shutdown 先停止 poller/maintenance，再关闭 provider、连接池、文件句柄和临时任务。
+19. stale processing 恢复依赖 worker heartbeat/时间阈值，生产环境要用实际配置验证。
+20. “HTTP 返回 202”只证明 operation 接受；最终成功证据必须来自 operation 状态和事实表提交。
 
-### 13.6 测试与文档冲突审计
+## 28. provider、embedding 与资源边界
 
-测试源码覆盖了 worker claim/retry/defer/wall timeout、disconnect wiring、schema/migration 并发、同 document retain、graph queue race、operation progress/status/completion，以及局部 retain/recall/reflect/embedding/BM25 行为；同时存在需要真实 PostgreSQL、pgvector/text extension、SeaweedFS、Oracle、LLM 或外部 provider 的场景。测试文件存在只能证明设计意图和局部断言，不能证明当前环境已通过。
+1. `llm_wrapper.py:347-691` 解析 provider 名称、模型、API key、endpoint 和通用调用参数。
+2. `LLMProvider:692-1610` 包装 chat、tool call、structured output、usage 和错误归一化。
+3. `ConfiguredLLMProvider:1611-` 将 bank/member 配置应用到实际 provider。
+4. `multi_llm.py:41-130` 按错误类型决定 failover，并提供 weighted round-robin 成员选择。
+5. `llm_interface.py:60-365` 定义工具选择、消息、响应和 usage 的稳定抽象。
+6. provider 适配器包括 OpenAI、Anthropic、Gemini、Groq、VertexAI、Bedrock、Ollama、LM Studio、LiteLLM、Codex、Copilot 等。
+7. 每个 provider 可拥有不同的 tool/schema、缓存、限流和认证细节，但输出进入统一 LLMInterface。
+8. `embeddings.py:85-156` 定义 Embeddings 抽象和输入/输出维度契约。
+9. `embeddings.py:157-1663` 包含 LocalST、ONNX、TEI、OpenAI、Codex OAuth、Cohere、ZeroEntropy、LiteLLM 和 Gemini 实现。
+10. `create_embeddings_from_env:1664-` 依据配置构造唯一 embedding provider，禁止同一 bank 随意混用维度。
+11. `llm_wrapper.py:57-138` 为 retain、recall、reflect、consolidation 等操作建立 per-operation semaphore。
+12. `db_budget.py` 对 SQL 读取、批大小和查询 token 设上限，避免一个请求耗尽连接池。
+13. `cross_encoder.py` 的 reranker 也有并发、timeout 和 429 backoff，不应与 LLM 重试混为一层。
+14. 外部 HTTP provider 必须使用配置的 endpoint、TLS、timeout 和凭据屏蔽规则。
+15. `ProviderContentPolicyError` 说明 provider 错误不能只按 HTTP 状态码分类。
+16. `ProviderRateLimitResetError`、网络错误、5xx 和 schema 修复错误拥有不同的 retry/failover 语义。
+17. none provider 只关闭生成，不关闭 recall 的数据库和向量路径。
+18. 本地模型、TEI、ONNX 和 pg0 的进程/文件资源应由 embed 或独立 worker 生命周期管理。
+19. 关闭 provider 时必须释放 HTTP client、连接、线程池和 token 统计上下文。
+20. 新 provider 选择规则：先实现原子适配器，再注册配置工厂，最后增加真实失败与资源释放测试。
 
-README 适合解释三种产品操作和 Docker/SDK 快速开始，但它把“state-of-the-art”“生产使用”“full feature parity”等外部或版本性声明与源码架构事实混在一起，也把“Reflect ... generate new observations”写得比当前普通 reflect 代码更宽。根 ARCHITECTURE.md 采用源码事实优先：把 Reflect 区分为只读综合，把 observation 写入归到 consolidation/refresh，并把未执行的依赖、故障注入和真实跨进程链路列为未知。当前根目录未发现第二份独立 `ARCHITECTURE*.md`；不存在可合并的旧“细探”文档。
+## 29. 数据库、迁移与外部存储
 
-## 14. 最小生产审计清单
+1. `engine/schema.py:11-47` 对逻辑表名做 schema 限定，避免 bank/tenant 之间拼接任意 SQL。
+2. `engine/db/base.py` 定义连接、事务、结果行、参数和 budget 边界。
+3. `engine/db/postgresql.py` 管理 asyncpg pool、pgvector、全文搜索和 PostgreSQL session settings。
+4. `engine/db/oracle.py` 为 Oracle 23ai 提供 SQL 方言和连接/事务兼容实现。
+5. `engine/sql/postgresql.py`、`engine/sql/oracle.py` 生成检索、图、维护和分页 SQL。
+6. Alembic migration 通过 `_dialect.run_for_dialect` 分发 PostgreSQL/Oracle upgrade 和 downgrade。
+7. 初始 schema 建立 banks、memory_units、memory_links、entities、unit_entities、documents、chunks 和 async_operations。
+8. 后续 migration 增加 observation history、mental model、tags、webhooks、audit、LLM trace、文件存储和维护队列。
+9. migration 还维护 pg_trgm、GIN、HNSW/vchord、时间索引、source_memory_ids 和 per-bank vector index。
+10. `engine/memories/pg/reads.py`、`writes.py`、`graph.py`、`curation.py` 分离读、写、图和整理 SQL。
+11. `engine/storage/postgresql.py` 将文件正文放入数据库；S3/GCS/Azure 适配器以 storage key 保存外部对象引用。
+12. `engine/transfer/export.py`、`importer.py` 以 manifest/ZIP 迁移 bank 数据，导入时重新计算 embedding。
+13. 文件下载只接受受控 storage key；任意本地路径不是 API 参数。
+14. `operation_metadata.py` 负责将复杂任务结果压缩成可轮询的 operation response。
+15. foreign key、唯一约束、向量维度和 bank_id 是完整性错误；这些错误不能靠 worker 重试修复。
+16. 迁移文件的形状测试要求每个 revision 包含方言 dispatcher，防止只在 PostgreSQL 可运行。
+17. bank 删除要级联/清理 mental model、directive、documents、operations、webhooks 和外部文件引用。
+18. Oracle 与 PostgreSQL 的业务目标一致，但执行计划、维护 routine、全文/向量扩展需要部署级验证。
+19. 数据库索引健康和 maintenance routine 失败会在 metrics/health/audit 中留下证据，不应静默忽略。
+20. 真实 schema、扩展版本和迁移耗时未在本次静态审计中启动验证。
 
-部署前至少应逐项确认：
+## 30. 客户端、控制面、CLI 与集成边界
 
-1. migration head、目标 dialect、pgvector/text/vchord 等扩展和索引真实可用；
-2. API 与独立 worker 使用同一 tenant/schema 解析、operation payload 和 worker id 策略；
-3. kill -9、DB 断连、pool exhausted、statement timeout 后分别检查 operation 行、memory transaction、document/chunk、对象存储和 parent aggregator；
-4. 明确 processing 行的接管机制；当前源码不能用 `claimed_at` 代替 heartbeat/reaper；
-5. 验证 cancel 与 worker claim 的并发返回、取消后的入口检查和 fail-open DB 错误策略；
-6. 验证 retain 后 maintenance/consolidation/refresh/webhook 的最终一致性、重试幂等和资源清理；
-7. 将 README 的产品宣传、测试源码预期和真实运行证据分栏记录，不把任一栏替代另外两栏。
+1. Python client 的高层 `Hindsight` wrapper 位于 `hindsight-clients/python/hindsight_client/hindsight_client.py`，把同步调用转为 async API 的便利入口。
+2. 生成的 Python API 位于 `hindsight-clients/python/hindsight_client_api/api`，负责参数校验、序列化和 response model 反序列化。
+3. TypeScript client、Go client、Rust client 与 OpenAPI schema 同步生成，版本漂移应通过 `scripts/generate-clients.sh` 修复。
+4. `hindsight-cli/src/api.rs` 是 CLI 的唯一 HTTP 请求边界；`config.rs` 管理 profile、URL、token 和输出格式。
+5. Rust `commands/memory.rs`、`document.rs`、`entity.rs`、`operation.rs` 分别覆盖事实、文档、实体和异步操作命令。
+6. `commands/fs` 只负责本地 daemon/profile/config/health/state/sync，不读数据库表。
+7. `hindsight-control-plane/src/lib/hindsight-client.ts:14-63` 构造 dataplane URL、headers 和高低级 client。
+8. `src/lib/auth/session.ts:3-93` 使用签名 cookie、24 小时 session 和安全请求检查保护控制面。
+9. `src/middleware.ts:25-81` 在 locale、login 和受保护页面之间做请求路由。
+10. 控制面 `src/app/api/**/route.ts` 仅转发并翻译 dataplane API，不能旁路 memory_units。
+11. 控制面页面覆盖 bank stats、operations、documents/chunks、memories、entities/graph、mental models、directives、audit、LLM requests 和 memory defense。
+12. `hindsight-embed/profile_manager.py` 管理数据目录和 profile 锁，`daemon_embed_manager.py` 管理 API/worker 子进程。
+13. `control_center/server.py`、`service.py`、`lifecycle.py` 为本地控制中心提供 profile、provider、日志和健康接口。
+14. `hindsight-integrations` 下的每个目录是薄适配器，负责 bank/URL/凭证、触发时机和结果映射。
+15. LiteLLM wrapper 在 `hindsight_litellm/wrappers.py:301-400` 显式调用 reflect，并在调用前后组合 recall/retain。
+16. coding-agents 集成通过 hooks、session start/stop、MCP server 和 seed 机制为每个仓库绑定 bank。
+17. 框架集成不得重实现 fact extraction、retrieval 或 consolidation；这些能力始终属于 API engine。
+18. `hindsight-docs`、README 和 cookbook 是调用说明，不是另一份可执行实现。
+19. 外部调用者应保留 operation_id、统一错误码和 retryable 语义，不能只判断 HTTP 200/202。
+20. 客户端升级顺序是 API/OpenAPI → 生成 SDK → CLI/控制面/集成适配器 → 文档与示例。
 
-## 15. 第二遍数据库与资源审计
+## 31. 部署、可观测性与验证边界
 
-### 15.1 数据库抽象不是相同事务语义
+1. Docker standalone 由 `docker/standalone/start-all.sh` 启动 API、worker、控制面和 pg0/外部数据库组合。
+2. compose 变体覆盖 external-pg、local-llm、TEI、S3 storage、pg_search、pgroonga、vchord、Timescale 和 nginx。
+3. Helm 模板分别部署 API、worker、control plane、PostgreSQL、TEI embedding/reranker、service、ingress、HPA 和 PDB。
+4. `worker-statefulset.yaml` 使用稳定 pod identity 作为 worker 运行标识；API 与 worker 共享 async_operations 数据库。
+5. liveness 只说明进程/event loop 存活，readiness 还要检查数据库，不能把两者混为服务可用性。
+6. `/metrics`、`llm_requests`、`audit_logs`、operation metadata 和 search trace 共同构成可观测证据链。
+7. API latency、worker slots、RSS、operation status、LLM token、provider errors 和 webhook deliveries 应分别监控。
+8. `scripts/generate-openapi.sh` 和 `hindsight-dev/generate_openapi.py` 是 API schema 生成入口。
+9. `scripts/generate-clients.sh` 生成 Python/TypeScript/Go/Rust 客户端，任何手工生成差异都应被覆盖。
+10. `CLAUDE.md` 中的常用检查包括核心 pytest、ruff、ty、OpenAPI 生成、benchmark 和本地启动脚本。
+11. 当前仓库的静态审计执行了 remote/hash、源码/目录统计、CodeGraph status/sync、关键符号定位和文档结构检查。
+12. 未启动 PostgreSQL、pg0、Oracle、外部 LLM、embedding、TEI、S3、控制面或 Rust daemon。
+13. 因此未宣称真实 retain、recall、reflect、migration、SSRF、防断电、kill、failover、压力或多 worker 竞态通过。
+14. 最新提交的永久内容拒绝回归测试只证明该异常分类的代码契约；真实 Claude Code CLI 仍需 provider 集成环境验证。
+15. 代码地图索引不是测试通过证据；索引成功只证明解析和关系可用。
+16. 文档中的关键行号已按 `6ff6dc6` 快照复核；源码继续变化后必须重新同步并更新本文件。
+17. 任何生产发布应补充数据库扩展、secret、TLS、资源上限、备份恢复和真实操作轮询证据。
+18. 发布门禁必须检查 API/worker 配置一致、migration head、client 生成、镜像标签和 control plane dataplane URL。
+19. 端到端验收应从 retain 提交开始，轮询 operation，到 memory_units/links/entities/observations，再执行 recall 和 reflect。
+20. 结果报告应区分源码事实、测试事实、运行时事实和未验证风险，避免把静态推断写成现场成功。
 
-`DatabaseBackend` 把 pool、acquire、transaction、fetch/execute 和 `ops` 策略暴露给 engine；`DataAccessOps` 把 PostgreSQL 的 `unnest`、LATERAL、数组和 Oracle 的 `executemany`、逐行/替代 SQL 隔离开。它统一的是调用接口，不是锁、约束、索引和返回值的物理语义。
+## 32. 平台分层选择结论
 
-PostgreSQL 的同文档写入使用单条 `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` 获取行锁；Oracle 不能用相同语句返回，因此拆成幂等 insert 加 `SELECT FOR UPDATE`。PostgreSQL memory link 写入还在同一语句内对引用的 memory unit 取 `FOR KEY SHARE`，以覆盖 deferred FK 与并发删除之间的窗口。上述是具体方言实现的局部并发保护，不应抽象为所有数据库的一致锁协议。
-
-worker 的通用 claim 由 backend ops 生成，PostgreSQL 查询使用 `FOR UPDATE SKIP LOCKED`；graph maintenance 的内部队列则明确使用不带 `SKIP LOCKED` 的 `FOR UPDATE`，所以同一 bank 的 graph job 必须先在 operation claim 层串行化。文档中“worker claim 使用 SKIP LOCKED”必须限定为通用 operation claim，不能覆盖内部维护队列。
-
-### 15.2 迁移和 retention 的事实
-
-worker 字段、payload、cancelled constraint、serialization key、webhook/retry、maintenance routine 和 terminal cleanup index 分散在连续 Alembic revisions。terminal cleanup index 的谓词只包含 `completed/failed/cancelled`；它服务于 retention sweep 和 operation listing，不负责处理 `processing`。迁移同时有 PostgreSQL `CREATE INDEX CONCURRENTLY`、Oracle 独立 DDL 和 per-schema 运行路径，真实发布必须验证目标 dialect 的 migration head，而不是只看 Python 模型。
-
-`operation_retention_days=0` 表示保留 terminal rows/payloads，正数才按更新时间清理；API 文档的“保留窗口后可查询”因此是配置条件，不是永恒保证。batch parent 没有 payload，children 通过 JSON `result_metadata.parent_operation_id` 关联，缺少外键级别的跨行约束；恢复和 retry 代码必须扫描/聚合这些 JSON 关系。
-
-### 15.3 资源释放的真实等级
-
-pool connection 主要通过 async context manager 释放；worker active task、slot 和 per-type counter 通过 done callback 清理。优雅 shutdown 先停 HTTP、等待 poller drain，再取消 poller task、释放当前 worker 所有 processing rows，最后关闭 engine；第二个信号可立即 `sys.exit(1)`，Windows Proactor 没有 asyncio signal handler 时也失去两阶段优雅路径。SIGKILL、强制退出、进程 OOM 不会执行这些 finally/atexit 路径。
-
-retain 的 provider、embedding、cross-encoder 和本地模型资源有初始化/调用级配置，但本轮没有真实下载失败、GPU/MPS、外部 HTTP 或 pool exhausted 验证。reflect 的增量 prompt cache 清理是 detached best-effort task，短 TTL 作为后备；清理异常不会让 reflect 失败。由此可见“资源有释放代码”与“崩溃后所有资源立即释放”是两种不同结论。
-
-PostgreSQL BYTEA file storage 与数据库在同一后端但 `FileStorage.store/delete` 自己获取连接，是否与 document/operation 写入处于同一 transaction 取决于调用者传入的路径；S3/GCS/Azure 更不可能与 operation row 共享 ACID。文件 retain 的失败回收需要单独验证 storage key、转换产物、`file_storage` 行和 operation 状态，不能从 `async_operations` terminal 状态推导。
-
-## 16. 文档冲突判定
-
-当前根文档是本次审计唯一新增/修改的文件，目标仓库未发现另一份根级或子目录级 `ARCHITECTURE*.md` 可互相覆盖。README 的产品流程图与本文的工程审计不是同一文档类型：README 描述用户可见的 retain/recall/reflect 三操作，本文描述源码实际边界、异步状态和未验证项。两者存在以下需要显式保留的语义差异：
-
-- README 将 reflect 概括为“generate new observations and insights”；普通 `reflect_async()` 当前是只读 agent loop，写 observation 的路径是 consolidation/refresh；
-- README 说 Oracle “full feature parity”；源码有独立 dialect/ops/迁移/锁实现，完整 parity 必须以 Oracle 集成测试和 live migration 证据证明；
-- README 的 Docker/embedded/SDK 示例隐藏了 `SyncTaskBackend`、embedded pg0、外部 PostgreSQL 和独立 worker 的执行拓扑差异；不能用 quick start 推导生产 broker/worker 故障语义；
-- README 的 benchmark/production 使用声明属于外部项目声明，不能作为当前 checkout 的运行验证。
-
-因此没有修改 README：用户要求只改根文档，且架构审计应在根 `ARCHITECTURE.md` 中记录冲突，而不是把宣传文案改写成源码文档。
+1. 支持库候选：`engine/providers`、`engine/db`、`engine/storage`、`engine/embeddings`、`engine/cross_encoder`。
+2. 这些包只做第三方/数据库/文件/向量/排序的原子协议转换、资源管理和错误映射。
+3. 模块库候选：`engine/retain`、`engine/search`、`engine/reflect`、`engine/consolidation`、`engine/transfer`。
+4. 这些包组合多个支持库完成记忆写入、检索、推理、巩固和迁移，不能被拆成若干互相复制的 provider 门面。
+5. 应用编排层是 `MemoryEngine`；它绑定 bank、operation、事务、审计和多个模块流程。
+6. 运行核心是 worker poller、task backend、maintenance、graph queue、cancellation 和资源预算。
+7. 项目适配层是 FastAPI、MCP、SDK、CLI、控制面、embed 和 integrations；它们不应直接访问数据库表。
+8. 平台控制面是配置、migration、OpenAPI、发布脚本、Helm/Docker 和可观测性。
+9. 选择规则：有第三方生命周期或协议转换时归支持库；跨能力流程归模块库；绑定 bank/URL/权限/版本时归项目适配层。
+10. 选择规则：只要需要 operation、事务、重试、证据或多能力编排，就不能把它定义成原子支持库。
+11. 选择规则：只要一个功能能够通过公开 API/client 调用，就不能复制一套直连 SQL 的旁路实现。
+12. 对系统工程平台的可复用启示是“唯一能力注册/调用边界 + 单 operation 账本 + 可追溯证据”，而不是复制 Hindsight 的目录名称。
+13. Hindsight 的 memory_units 统一事实表适合承载 world、experience、observation，但 mental model 仍需单独的版本和 scope 状态。
+14. Hindsight 的四路 recall 说明检索策略应可替换、可追踪、可限额，而不是在 API handler 中硬编码一条查询。
+15. Hindsight 的永久 provider 错误说明错误分类应贯穿适配器、模块、worker 和 operation，而不是只返回字符串。
+16. Hindsight 的 delta retain 说明文档更新必须以 chunk hash 和事务边界做增量，避免每次重建全部事实。
+17. Hindsight 的 observation source ids、history 和 trace 说明派生知识必须保留证据链和失效语义。
+18. Hindsight 的控制面和多 SDK 说明所有外部接口都应围绕同一 OpenAPI/operation 契约生成或薄封装。
+19. 这些是源码观察结论，不代表系统工程平台应无条件照抄实现细节；平台仍需按自身中文契约和权限模型复用原则裁剪。
+20. 本文是该 Hindsight 仓库根目录唯一架构文档；后续审计只更新此文件，不新增平行架构摘要。

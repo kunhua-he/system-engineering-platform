@@ -1,8 +1,8 @@
 # iext2 架构建档
 
-> 首轮全量架构建档。本文是本项目根目录唯一的架构事实汇总；本轮未发现旧的 `细探-*.md`、README、`AGENTS.md` 或测试文档。说明中的“已实现”仅表示源码中存在可执行的实现路径；“仅声明/元数据”表示接口、描述表或函数骨架存在；“未验证”表示本轮没有在 Windows/易语言 IDE 中运行确认。
+> 首轮全量架构建档。本文是本项目根目录唯一的架构事实汇总；当前核对未发现旧的 `细探-*.md`、README、`AGENTS.md` 或测试文档。说明中的“已实现”仅表示源码中存在可执行的实现路径；“仅声明/元数据”表示接口、描述表或函数骨架存在；“未验证”表示当前核对没有在 Windows/易语言 IDE 中运行确认。
 >
-> 本轮约束：只新增/更新本文件；未修改源码、工程、依赖、测试、配置或 Git 历史。
+> 当前核对约束：只新增/更新本文件；未修改源码、工程、依赖、测试、配置或 Git 历史。
 
 ## 1. 项目定位
 
@@ -111,7 +111,7 @@ iext2/
 | `include_iext2_header.h` | 引入 ABI 头文件，声明全局表，使用 `IEXT2_DEF` 为每个命令生成 `extern` 函数声明。 | **已实现（声明层）**：第 1-24 行；不包含业务实现。 |
 | `iext2_cmd_typedef.h` | 用 `IEXT2_DEF(_MAKE)` 维护命令编号、中文名、英文名、说明、类别、返回类型、参数区间；提供 `IEXT2_NAME` 名称拼接。 | **已实现（元数据源）**：第 3-13 行及第 13-130 行；命令功能仍依赖其他文件。 |
 | `iext2_cmdInfo.cpp` | 建立 325-340 行的 `ARG_INFO` 与 `CMD_INFO` 数组；参数标志包含默认值、传引用、数组等 ABI 语义。 | **已实现（注册描述）**：第 5-340 行；不是参数运行时校验器。静态库下整个文件主要被 `#if !defined(__E_STATIC_LIB)` 排除。 |
-| `iext2_cmdDef.cpp` | 提供 118 个 `PFN_EXECUTE_CMD` 兼容函数入口。 | **仅声明/骨架**：118 个函数中 21 个空体、97 个仅有参数局部变量读取；本轮脚本未发现 `return`、`NotifySys`、`SendMessage` 或其他函数调用。 |
+| `iext2_cmdDef.cpp` | 提供 118 个 `PFN_EXECUTE_CMD` 兼容函数入口。 | **仅声明/骨架**：118 个函数中 21 个空体、97 个仅有参数局部变量读取；当前核对脚本未发现 `return`、`NotifySys`、`SendMessage` 或其他函数调用。 |
 | `iext2_dtType.cpp` | 定义 9 个自定义数据类型、7 组组件属性、5 组事件、2 组枚举成员、命令索引和组件交互回调。 | **元数据已实现；组件行为仅骨架**：`LIB_DATA_TYPE_INFO` 第 739-809 行；接口分派第 813-2078 行。 |
 | `iext2_const.cpp` | 注册“禁止更改”“段落居左”“段落居中”“段落居右”4 个数值常量。 | **已实现（常量注册）**：第 3-23 行；`__E_STATIC_LIB` 下不编译该表。 |
 | `iext2_dllMain.cpp` | DLL 入口；组装 `LIB_INFO`；导出 `GetNewInf`；为静态编译返回命令函数名、通知函数名和依赖列表。 | **已实现（ABI 外壳）**：第 6-100、101-178 行。生命周期通知除 `NL_SYS_NOTIFY_FUNCTION` 外基本空处理。 |
@@ -119,7 +119,7 @@ iext2/
 | `elib/fnshare.h` | 易内存 `ealloc/efree`、文本/字节集复制、数组数据解析、数据类型分类等 inline 辅助。 | **已实现（ABI 辅助）**：第 20-170 行等；实现依赖宿主的 `NotifySys` 和兼容运行环境。 |
 | `elib/lib2.h` | 定义 `ARG_INFO`、`CMD_INFO`、`UNIT_PROPERTY`、`EVENT_INFO2`、`LIB_DATA_TYPE_INFO`、`LIB_INFO` 和全部接口回调类型。 | **已实现（协议头）**：参数第 266-292 行，命令第 297-364 行，组件/属性第 692-729 行，库信息第 1246-1318 行。 |
 | `Source_iext2.def` | 将 DLL 的公开入口固定为 `GetNewInf`。 | **已实现（导出契约）**：第 1-4 行。 |
-| `iext2.vcxproj` / `iext2_static/iext2_static.vcxproj` | 分别构建动态库和静态库。 | **工程声明存在；本轮未验证编译**。动态 Win32 使用 `.fne` 和 `Source_iext2.def`；静态工程使用 `__E_STATIC_LIB`。 |
+| `iext2.vcxproj` / `iext2_static/iext2_static.vcxproj` | 分别构建动态库和静态库。 | **工程声明存在；当前核对未验证编译**。动态 Win32 使用 `.fne` 和 `Source_iext2.def`；静态工程使用 `__E_STATIC_LIB`。 |
 
 ## 5. 核心数据模型
 
@@ -227,7 +227,7 @@ IEXT2_DEF
 | `NL_FREE_LIB_DATA`、`NL_UNLOAD_FROM_IDE`、`NL_IDE_READY`、`NL_RIGHT_POPUP_MENU_SHOW`、`NL_ADD_NEW_ELEMENT` | 分支存在但没有业务动作，返回默认 `NR_OK`。 |
 | 未知通知 | `nRet = NR_ERR`。 |
 
-`elib/fnshare.cpp:11-71` 将系统通知函数保存到 `s_pfnNotifySys`，并通过 `NotifySys` 转发；`SetUserSysNotify` 可设置用户回调并返回 `ProcessNotifyLib`。真实宿主通知函数、分配器和消息生命周期本轮未验证。
+`elib/fnshare.cpp:11-71` 将系统通知函数保存到 `s_pfnNotifySys`，并通过 `NotifySys` 转发；`SetUserSysNotify` 可设置用户回调并返回 `ProcessNotifyLib`。真实宿主通知函数、分配器和消息生命周期当前核对未验证。
 
 ### 6.4 组件交互接口
 
@@ -275,7 +275,7 @@ IEXT2_DEF
   → 当前没有稳定的 pRetData 写入、宿主调用或组件状态保存
 ```
 
-`pArgInf` 的下标在部分代码中从 `0` 开始、部分函数使用 `pArgInf[1]`，实际偏移依赖易语言调用约定和生成器约定；本轮仅确认源码现状，没有在宿主中验证其正确性。
+`pArgInf` 的下标在部分代码中从 `0` 开始、部分函数使用 `pArgInf[1]`，实际偏移依赖易语言调用约定和生成器约定；当前核对仅确认源码现状，没有在宿主中验证其正确性。
 
 ### 7.3 宿主通知和内存流（辅助层已实现，运行未验证）
 
@@ -300,7 +300,7 @@ IEXT2_DEF
 - `Debug/Release × Win32/x64` 四种配置；解决方案对 `Debug|x86` 映射到工程 `Debug|Win32`，`Release|x86` 同理（`iext2.sln:17-32`）；
 - `PlatformToolset=v141`，Windows SDK `10.0.15063.0`；
 - Win32 Debug/Release 定义 `__E_FNENAME=iext2`，目标扩展名 `.fne`，并设置 `Source_iext2.def`；
-- x64 配置在工程文件中未看到 `__E_FNENAME=iext2`、`TargetExt=.fne` 或 `ModuleDefinitionFile` 设置；这构成需要在 Windows 工具链中复核的工程风险，不在本轮直接判定为必然编译失败；
+- x64 配置在工程文件中未看到 `__E_FNENAME=iext2`、`TargetExt=.fne` 或 `ModuleDefinitionFile` 设置；这构成需要在 Windows 工具链中复核的工程风险，不在当前核对直接判定为必然编译失败；
 - 使用多线程 CRT（Debug `MultiThreadedDebug`，Release `MultiThreaded`）。
 
 证据：`iext2.vcxproj:43-76`、`:95-153`、`:159-198`。
@@ -337,9 +337,9 @@ IEXT2_DEF
 - 工程文件没有测试目标，也没有 PostBuild 测试命令；
 - 因此“测试不存在”与“测试通过”必须严格区分，本项目当前没有可报告的自动化测试结果。
 
-### 9.2 本轮已执行的静态核验
+### 9.2 当前核对已执行的静态核验
 
-以下是本轮针对源码和工程的实际核验，不代表目标程序运行成功：
+以下是当前核对针对源码和工程的实际核验，不代表目标程序运行成功：
 
 - `git status --short --untracked-files=all`：建档前工作树无输出；
 - `git ls-files`：确认 23 个受跟踪文件；
@@ -348,7 +348,7 @@ IEXT2_DEF
 - 人工读取所有 6 个 `.cpp`、9 个 `elib`/项目头文件、2 个 `.vcxproj`、2 个 `.filters`、`.sln`、`.def` 和 `.user` 文件；
 - 脚本核对 `iext2_cmdDef.cpp`：118 个命令函数，21 个空函数体，97 个仅参数读取函数体；
 - 脚本核对 `iext2_dtType.cpp`：9 个数据类型、146 个属性条目、23 个事件条目、10 个枚举成员；
-- 本轮未运行 `msbuild`、Visual Studio、易语言 IDE、DLL 加载、静态链接、组件创建、命令执行或事件触发。
+- 当前核对未运行 `msbuild`、Visual Studio、易语言 IDE、DLL 加载、静态链接、组件创建、命令执行或事件触发。
 
 ### 9.3 目标环境验证缺口
 
@@ -374,9 +374,9 @@ Windows + Visual Studio v141/Windows SDK
 | 提交时间 | `2022-12-19T16:11:37+08:00` |
 | 提交说明 | `初始化仓库` |
 | 远程 | `https://gitee.com/JYtechnology/iext2.git` |
-| 远程 `HEAD` / `master` | `388ac0b1c8083b7b67f6bc7f81c5ace2383e70ca`（本轮通过 `git ls-remote` 读取） |
-| 仓库状态 | 建档前工作树干净；本轮预期只产生根目录 `ARCHITECTURE.md` 未跟踪变更 |
-| 历史完整性 | 本地仓库为 shallow repository；仅以当前提交和远程 ref 作为本轮版本证据，未据此推断完整历史 |
+| 远程 `HEAD` / `master` | `388ac0b1c8083b7b67f6bc7f81c5ace2383e70ca`（当前核对通过 `git ls-remote` 读取） |
+| 仓库状态 | 建档前工作树干净；当前核对预期只产生根目录 `ARCHITECTURE.md` 未跟踪变更 |
+| 历史完整性 | 本地仓库为 shallow repository；仅以当前提交和远程 ref 作为当前核对版本证据，未据此推断完整历史 |
 
 ## 11. 风险、未确认项与后续复核重点
 
@@ -406,7 +406,7 @@ Windows + Visual Studio v141/Windows SDK
 
 ## 12. 证据路径索引
 
-以下路径均相对于项目根目录，行号以本轮读取版本为准：
+以下路径均相对于项目根目录，行号以当前核对读取版本为准：
 
 - `iext2_dllMain.cpp:6-24`：DLL 入口；`:26-29` 命令函数指针数组；`:31-87` `LIB_INFO`；`:89-92` `GetNewInf`；`:94-99` 静态命令名；`:101-178` 系统通知分派。
 - `iext2_cmd_typedef.h:3-9`：命令名拼接宏；`:12-130` 118 项 `IEXT2_DEF` 命令描述。

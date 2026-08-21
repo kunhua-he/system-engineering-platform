@@ -1,10 +1,12 @@
 # Dify 架构档案
 
 > 本文是基于本地源码的首轮全量架构建档，不是产品设计推测。
-> 基线：`main`，提交 `8ef002f6`（`fix: include CSRF token when fetching skill file content (#39527)`）。
+> 基线：`main`，提交 `a9b8c84e9be41376c04901e81ce690f35c1ffe86`（`refactor(dify-ui): simplify popover content API (#41069)`）。
+> 版本核对：2026-08-22 本地 `HEAD` 与 `origin/main` 均为上述提交（`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`）；未覆盖源码。
 > 目标目录：`~/Documents/Agent/github 源码参考/10_agent_platform_reference/01_成品Agent平台/dify`
 > 读取范围：根 README、根及主要子目录 `AGENTS.md`/`CLAUDE.md`、依赖清单、入口、控制器、服务、核心运行时、ORM 模型、迁移、SDK/CLI 和测试。
-> 本次只读源码与文档后新增本文件；未安装依赖、启动服务、构建、运行测试或提交 Git。
+> 本文只维护这一份权威架构文档；源码树另有未跟踪的本地 `.codegraph/` 和源码侧 `ARCHITECTURE.md`，本轮不改、不纳入正式源码证据。
+> 本轮继续只读源码与文档；未安装依赖、启动服务、构建、运行测试或提交 Git。
 
 ## 1. 项目定位
 
@@ -617,11 +619,11 @@ dify/
 3. **运行时未验证。** 没有安装依赖、导入应用、启动 Docker、执行迁移、调用 API、跑单测/E2E；文中“路径”是源码静态路径，不是本机运行成功证明。
 4. **数据库实际 schema 未连接核对。** ORM 与 migration 文件已读/计数，但没有对 PostgreSQL/MySQL catalog 做 drift 检查，也未证明所有约束/索引在运行库存在。
 5. **API 总数未去重。** 约 798 为 decorator 命中数，含兼容路径、多方法、多 Blueprint 和多行装饰器；权威 wire contract 应以生成的 OpenAPI/fastopenapi 文件为准。
-6. **Enterprise 代码边界不完整。** `api/enterprise`、`web` enterprise contract 和 license gate 可见，但企业服务/部署端的完整独立实现不在本轮目标范围内。
+6. **Enterprise 代码边界不完整。** `api/enterprise`、`web` enterprise contract 和 license gate 可见，但企业服务/部署端的完整独立实现不在当前核对目标范围内。
 7. **dify-agent 的文档/可选 extras 有分层。** 默认 package 依赖和 `server`/`grpc` optional dependencies 不同；`dify-agent` 根 import 被设计为 client-safe，不能用根包 import 证明 server runtime 可启动。
-8. **当前源码树未见独立 Rust 入口。** 已有细探文件将语言概括为“Python(api) + TypeScript(web) + Rust/Python(dify-agent)”，但本轮对 `dify-agent/src` 的实际扫描为 Python 包（约 127 个 `.py`）；Rust 相关来源/构建链未确认。
-9. **已有工作树变化。** 本轮现场 `git status` 只有未跟踪 `ARCHITECTURE.md`；在目标树及其研究库父目录按文件名扫描未发现可回读的 `细探-dify.md`。第 12 节中关于旧细探的历史性表述目前无法由现场文件复核，本轮不删除任何笔记，也不把不可回读内容当作证据。
-10. **迁移/CLI/契约生成属于有副作用操作。** 本轮只记录入口和命令，没有执行 `uv sync`、`pnpm install`、`generate`、`tree:gen`、migration、build 或任何服务命令。
+8. **当前源码树未见独立 Rust 入口。** 已有细探文件将语言概括为“Python(api) + TypeScript(web) + Rust/Python(dify-agent)”，但当前核对对 `dify-agent/src` 的实际扫描为 Python 包（约 127 个 `.py`）；Rust 相关来源/构建链未确认。
+9. **已有工作树变化。** 2026-08-22 现场 `git status --short` 为源码侧未跟踪 `.codegraph/` 与 `ARCHITECTURE.md`；两者均不属于 Git 版本源，本轮不修改、不删除。目标树及研究库父目录未发现可回读的 `细探-dify.md`，因此旧细探的历史性表述不作为当前证据。
+10. **迁移/CLI/契约生成属于有副作用操作。** 当前核对只记录入口和命令，没有执行 `uv sync`、`pnpm install`、`generate`、`tree:gen`、migration、build 或任何服务命令。
 
 ## 13. 主要证据索引
 
@@ -640,30 +642,30 @@ dify/
 - ORM：`api/models/base.py`、`account.py`、`model.py`、`workflow.py`、`dataset.py`、`agent.py`、`tools.py`；
 - `api/controllers/openapi/__init__.py`、`api/controllers/openapi/app_run.py`、`packages/contracts/package.json`、`packages/contracts/console.ts`、`web/service/client.ts`；
 - CLI/SDK：`cli/bin/dev.js`、`cli/src/framework/run.ts`、`cli/src/commands/tree.generated.ts`、`sdks/nodejs-client/src/index.ts`、`sdks/nodejs-client/src/client/base.ts`、`sdks/php-client/README.md`；
-- 既有文档声称本文曾吸收 `细探-dify.md`；本轮现场未找到该独立文件，因此只能把现有正文作为历史线索，并以当前源码、当前测试和本轮新增证据为准；后续只维护本文件。
+- 既有文档声称本文曾吸收 `细探-dify.md`；当前核对现场未找到该独立文件，因此只能把现有正文作为历史线索，并以当前源码、当前测试和当前核对新增证据为准；后续只维护本文件。
 
-## 14. 第三轮：通用底座映射（源码事实与裁决分开）
+## 14. 后续：通用底座映射（源码事实与裁决分开）
 
-### 14.1 本轮边界、误绑定记录与证据等级
+### 14.1 当前核对边界、误绑定记录与证据等级
 
-本轮的目标是把 Dify 的真实实现映射到“支持库—模块库—运行核心—统一网关”四个底座边界，不是把 Dify 的目录名直接改名，也不是声称 Dify 已经实现了目标平台的通用底座。
+当前核对的目标是把 Dify 的真实实现映射到“支持库—模块库—运行核心—统一网关”四个底座边界，不是把 Dify 的目录名直接改名，也不是声称 Dify 已经实现了目标平台的通用底座。
 
-开工时调用 `project_context` 错绑到了 `~/Documents/Agent/PHP/华世王镞_v3`，返回的代码图、提交和工作区指纹均属于另一项目；本轮明确废弃该返回值，不使用它作 Dify 证据，也没有切换或修改那个项目。随后只在用户指定的 Dify 绝对路径做本地源码静态取证。因此，下面的 Dify 结论是**目标目录源码/测试证据**，不是 MCP 成功绑定证据；没有运行依赖、服务、数据库或插件 daemon，运行态部分一律标为未验证。
+早期核对曾把 `project_context` 错绑到 `~/Documents/Agent/PHP/华世王镞_v3`，返回的代码图、提交和工作区指纹属于另一项目；该返回值已废弃，不使用它作 Dify 证据，也没有切换或修改那个项目。本轮已重新以系统工程平台根目录建立独立开工上下文（`work_id=86e3a3ec08354a91`），并在 Dify 根目录使用其自身 CodeGraph shell 取证。因此，下面的 Dify 结论是**目标目录源码/测试证据**；没有运行依赖、服务、数据库或插件 daemon，运行态部分一律标为未验证。
 
 证据分级：
 
-| 等级 | 本轮含义 | 可支持的结论 |
+| 等级 | 当前核对含义 | 可支持的结论 |
 |---|---|---|
 | S0 | 目标源码存在，且能读到实现分支/数据结构 | “源码实现了某路径/契约的一部分” |
-| S1 | 目标测试源码覆盖该边界，但本轮未执行 | “有测试意图/静态回归面”，不能写“通过” |
-| S2 | 本轮实际执行的静态检查（文件回读、Markdown 结构、`git diff --check`） | “本轮文档和工作树结构通过” |
-| S3 | 真实依赖、数据库、Redis、Celery、插件 daemon 或端到端执行 | 本轮未取得，不得宣称运行成功 |
+| S1 | 目标测试源码覆盖该边界，但当前核对未执行 | “有测试意图/静态回归面”，不能写“通过” |
+| S2 | 当前核对实际执行的静态检查（文件回读、Markdown 结构、`git diff --check`） | “当前核对文档和工作树结构通过” |
+| S3 | 真实依赖、数据库、Redis、Celery、插件 daemon 或端到端执行 | 当前核对未取得，不得宣称运行成功 |
 
-本轮读过的旧正式文档为本文件第 1–13 节；目标目录和研究库父目录未找到可回读的旧 `细探-*.md`。读过的代表性测试包括：`api/tests/unit_tests/core/workflow/test_node_mapping_bootstrap.py`、`api/tests/unit_tests/core/app/apps/test_workflow_app_runner_core.py`、`api/tests/unit_tests/tasks/test_async_workflow_tasks.py`、`api/tests/unit_tests/services/test_async_workflow_service.py`、`dify-agent/tests/local/dify_agent/runtime/test_run_scheduler.py` 和 `dify-agent/tests/local/dify_agent/storage/test_redis_run_store.py`。这些是测试源码证据，不是本轮执行结果。
+当前核对读过的旧正式文档为本文件第 1–13 节；目标目录和研究库父目录未找到可回读的旧 `细探-*.md`。读过的代表性测试包括：`api/tests/unit_tests/core/workflow/test_node_mapping_bootstrap.py`、`api/tests/unit_tests/core/app/apps/test_workflow_app_runner_core.py`、`api/tests/unit_tests/tasks/test_async_workflow_tasks.py`、`api/tests/unit_tests/services/test_async_workflow_service.py`、`dify-agent/tests/local/dify_agent/runtime/test_run_scheduler.py` 和 `dify-agent/tests/local/dify_agent/storage/test_redis_run_store.py`。这些是测试源码证据，不是当前核对执行结果。
 
 ### 14.2 四层底座的判定规则
 
-| 底座层 | 在通用平台中的唯一职责 | Dify 中的主要落点 | 第三轮裁决 |
+| 底座层 | 在通用平台中的唯一职责 | Dify 中的主要落点 | 后续裁决 |
 |---|---|---|---|
 | **支持库** | 稳定的协议、连接、序列化、加密、存储、锁、HTTP、数据库会话、通用观测；不拥有业务流程 | `api/extensions/`、`api/libs/`、`api/core/helper/`、`core/db/session_factory.py`、`extensions.ext_storage`、`BasePluginClient`、`dify-agent` storage/protocol 边界 | 吸收为可复用原子能力；禁止把 provider 选择和业务状态塞进支持库 |
 | **模块库** | 一个领域流程的公开编排；组合支持库和运行核心，拥有领域契约，不复制 provider 内核 | `api/services/`、`core/tools/`、`core/rag/`、`core/trigger/`、`core/app/task_pipeline/`、provider/plugin controller | 吸收其流程编排和契约；将 Dify 特有 DTO/数据库模型留作适配，不照搬旁路入口 |
@@ -681,7 +683,7 @@ dify/
 | 节点 | Code executor、HTTP client、file manager、limits、serializer | `core/workflow/nodes/*` 的节点实现和 `DifyNodeFactory` 的构造参数表 | `graphon Graph/GraphEngine` 驱动单节点；factory 对配置做 shared schema → concrete node schema 二次校验（`node_factory.py:376-480`） | workflow draft/publish/run routes | 吸收“注册表 + 版本解析 + 二次校验 + context 注入”；`graphon` 节点算法本体标外部依赖 |
 | 工作流 | DB session、pause snapshot、storage offload、timeout/limit layer | `WorkflowService`、`WorkflowAppGenerator`、async dispatcher、pause/resume service | `WorkflowEntry`/`WorkflowBasedAppRunner` 驱动 graph；`_handle_event` 将 Graph 事件转 Queue 事件（`workflow_app_runner.py:408-619`） | `/api/workflows/run`、`/v1`、`/openapi/v1/apps/{app_id}:run`、Console | 吸收“版本化图 + 运行上下文 + 节点事件 + 暂停恢复”；graph JSON 不是强关系节点注册库 |
 | 模型供应商 | graphon model protocol、HTTP client、加密/缓存、Redis cache | `ProviderManager` 读取 tenant-scoped provider/model/credential/settings；`PluginModelAssembly` 共享 request-scoped runtime | `ModelInstance` 绑定 provider/model/credentials，负责 LLM/embedding/rerank/TTS 等实际调用并可接 load balancing（`model_manager.py:35-116`） | provider/model credential/config routes | 吸收“配置 owner → provider factory → model instance”唯一链；不能把 provider credential 对象穿透到节点/前端 |
-| 队列/任务 | Redis、Celery broker/worker、TTL cache、锁 | `AsyncWorkflowService` 写 trigger log、按 tier 选队列、reserve/commit quota；Celery task 是任务模块（`async_workflow_service.py:39-194`） | `async_workflow_tasks._execute_workflow_common`、`resume_workflow_execution`；同步请求则由 `AppQueueManager` 进程内 queue 驱动 | trigger API、task stop API、workflow events/SSE | 吸收“提交—任务记录—执行—投影”；Celery 重投/worker 崩溃恢复未由本轮源码证明，不能把 `retry_count` 当 lease |
+| 队列/任务 | Redis、Celery broker/worker、TTL cache、锁 | `AsyncWorkflowService` 写 trigger log、按 tier 选队列、reserve/commit quota；Celery task 是任务模块（`async_workflow_service.py:39-194`） | `async_workflow_tasks._execute_workflow_common`、`resume_workflow_execution`；同步请求则由 `AppQueueManager` 进程内 queue 驱动 | trigger API、task stop API、workflow events/SSE | 吸收“提交—任务记录—执行—投影”；Celery 重投/worker 崩溃恢复未由当前核对源码证明，不能把 `retry_count` 当 lease |
 | 事件 | Pydantic event schema、Redis Streams、cursor/TTL、序列化 | queue event entity、event adapter、持久化 repository/trace queue | Graph `GraphRun*`/`NodeRun*` → `QueueWorkflow*`/`QueueNode*`；Agent sink → typed run event | SSE/HTTP event page、Agent `/runs/{id}/events` | 吸收“事件先统一类型再投影”；Dify AppQueue 是实时消费队列，Agent Redis Stream 才是可 cursor replay 的事件日志，两者不可混称 |
 | 数据库 | SQLAlchemy/Alembic、session factory、事务/row lock | `models/`、repositories、service transaction；`workflow_trigger_logs` 是异步触发事实表 | workflow run/node execution、message/thought、provider/tool/file 状态投影 | REST/OpenAPI DTO 和 query routes | 吸收“DB 作为事实/状态 owner”；当前模型新旧 Base 并存、部分状态写在服务层，append-only/event-sourcing 未被证明 |
 | 文件/制品 | `extensions.ext_storage.storage`、OpenDAL/S3 等、签名 URL、hash/size limit | `FileService`、`ToolFileManager`、`DatabaseFileAccessController`、offload/archive services | node/tool/LLM file saver 把字节变成 `UploadFile`/`ToolFile` 引用；大 node data 通过 `workflow_node_execution_offload` 转制品指针 | `/files`、upload/preview、Agent output adapter | 吸收“制品引用 + owner scope + storage abstraction”；数据库和对象存储双写的补偿/孤儿清理需继续验证 |
@@ -711,7 +713,7 @@ dify/
   → observation、node event、message/file/trace projection
 ```
 
-当前实现仍有 builtin YAML 扫描、plugin daemon、workflow-as-tool、API/MCP 等多策略；第三轮裁决为“统一 `ToolManager`/`ToolEngine` owner，provider 只提供声明和策略”，不把每个 provider 的实现复制进底座。
+当前实现仍有 builtin YAML 扫描、plugin daemon、workflow-as-tool、API/MCP 等多策略；后续裁决为“统一 `ToolManager`/`ToolEngine` owner，provider 只提供声明和策略”，不把每个 provider 的实现复制进底座。
 
 #### 模型供应商注册
 
@@ -731,7 +733,7 @@ dify/
 
 **状态投影裁决：** workflow trigger log、workflow run/node execution、message thought、AppQueue event、Agent Redis run record/stream 是不同投影。当前源码可以证明“事件/状态被写入多个投影”，不能证明它们共享全局 event id、严格顺序、幂等去重或可从事件完整重放；因此只吸收 projection adapter，不宣称 Dify 已实现事件溯源。
 
-### 14.6 第三轮唯一链路与契约冻结
+### 14.6 后续唯一链路与契约冻结
 
 #### 14.6.1 目标唯一链路
 
@@ -786,7 +788,7 @@ agent_v2 node
   → API adapter / SSE / UI
 ```
 
-第三轮裁决不是把这三条链都保留为三个底座，而是：共用 `ExecutionContext`、`ExecutionEvent`、`Lease`、`ArtifactRef`、`StatusProjection` 契约；Dify 的 Graph/Celery/Agent backend 分别作为 runtime adapter，逐步把状态写 owner 和取消/恢复策略收敛到同一执行服务。
+后续裁决不是把这三条链都保留为三个底座，而是：共用 `ExecutionContext`、`ExecutionEvent`、`Lease`、`ArtifactRef`、`StatusProjection` 契约；Dify 的 Graph/Celery/Agent backend 分别作为 runtime adapter，逐步把状态写 owner 和取消/恢复策略收敛到同一执行服务。
 
 #### 14.6.2 最小契约表
 
@@ -809,7 +811,7 @@ agent_v2 node
 | DB session/transaction | service/task 进入 `session_factory`/`Session`；查询/状态写入 | context manager/commit 后关闭；长 LLM I/O 前显式 `commit` 释放 transaction（`async_workflow_tasks.py:165-169`） | rollback 后写错误投影 | stop/timeout 应 rollback 并关闭；部分任务需补偿 | DB 会回收连接/锁，但业务状态可能停在 RUNNING/PARSING；需要 recovery scan |
 | Redis task ownership/stop key | `AppQueueManager.__init__` 写 task belong TTL；stop 写 stop TTL | `stop_listen` 删除 belong；TTL 自然到期 | error path 不保证所有外部 key 已删除 | listener finally abort、删除 belong；stop key 仍可能留至 TTL | 无 fencing；需要 owner token 和 orphan sweeper |
 | AppQueueManager in-memory queue | 每次 run 建 `queue.Queue`、threading/lifecycle events | `stop_listen` 放 sentinel，释放 graph runtime reference | `publish_error`/terminal stop，listener finally abort | listener max execution time/客户端断流触发 abort | 进程死 queue 丢失；DB/Redis 投影可能不完整，不能 replay |
-| Celery task | `.delay()` 创建 broker message，trigger log 保存 task id | task 完成，trigger log finished/failed | `_execute_workflow_common` 写 FAILED/error/elapsed | pause 改走 resume task；取消边界需任务/Graph stop 协同 | 本轮未证明 ack/requeue/worker crash 恢复；需要 broker/worker 运行验证 |
+| Celery task | `.delay()` 创建 broker message，trigger log 保存 task id | task 完成，trigger log finished/failed | `_execute_workflow_common` 写 FAILED/error/elapsed | pause 改走 resume task；取消边界需任务/Graph stop 协同 | 当前核对未证明 ack/requeue/worker crash 恢复；需要 broker/worker 运行验证 |
 | Agent asyncio Task | `RunScheduler.create_run` 注册 `active_tasks[run_id]` | done callback 删除 active entry | runner 发 `run_failed` + store status | `task.cancel`，先持久化 `run_cancelled/cancelled`，再最多二次注入 cancellation | 进程崩溃 active registry 丢失；Redis record 可能永久 running 直到 retention，需 recovery worker |
 | Redis run record/stream | create/status `SET`；event `XADD` | TTL 由 status/event 刷新，过期删除 | `run_failed` event + error status | `run_cancelled` event + cancelled status | stream/record 可 replay 但并非任务接管机制；清理/保留策略必须 owner 化 |
 | model/plugin HTTP stream | pooled HTTP client/stream；plugin client 统一 timeout | generator/response 完成后应关闭；具体 daemon 端生命周期仓库外 | typed provider/plugin error，工具可转 observation | deadline/HTTP timeout 应终止 stream；ToolEngine 只返回 error meta | 连接由进程/HTTP client 回收，第三方副作用未知；需 provider idempotency |
@@ -832,10 +834,10 @@ agent_v2 node
 | user cancel Agent run | scheduler 先写 `run_cancelled`，再 status cancelled，并最多二次 cancel task | Redis terminal event + status | cancel 幂等；已 finished/不在本进程则 conflict | `run_scheduler.py:122-154`，测试 `test_run_scheduler.py:189-251` |
 | Agent graceful shutdown | 等 grace；pending task cancel 后写 `run_failed(reason=shutdown)` | failed event + failed status | 可由外部重新提交；不是原 run 自动 resume | `run_scheduler.py:156-211`，测试 `:163-186` |
 | Agent process crash | `active_tasks` 丢失，Redis record/stream 保留到 TTL | 可能停在 running，无 terminal event | 当前没有跨进程 claim/recovery；需要外部 operator/recovery worker | `run_scheduler.py:1-13` 明文说明；这是 P0 可靠性缺口 |
-| Celery worker crash/requeue | 本轮只看到 `@shared_task`、task id、retry_count 和 failure write | 可能停在 QUEUED/RUNNING，取决于 broker/ack 运行态 | broker redelivery 及幂等未在源码/本轮运行证明 | `async_workflow_service.py:161-187`、`models/trigger.py:278-292`；S3 |
+| Celery worker crash/requeue | 当前核对只看到 `@shared_task`、task id、retry_count 和 failure write | 可能停在 QUEUED/RUNNING，取决于 broker/ack 运行态 | broker redelivery 及幂等未在源码/当前核对运行证明 | `async_workflow_service.py:161-187`、`models/trigger.py:278-292`；S3 |
 | DB exception/transaction rollback | tasks 使用 rollback/context；异步 workflow finally/except 写 failure | error/status 投影可能成功，也可能因第二次 DB 故障失败 | 需要安全重试和 duplicate guard | `sync_website_document_indexing_task.py:92-109`；未做真实 DB 注入 |
 | storage/DB 双写失败 | FileService storage.save 后独立 DB commit | 可能无 DB 引用的对象制品 | 需 orphan scan/hash reconciliation；不能简单重试导致重复对象 | `file_service.py:85-118`；当前无跨存储事务证据 |
-| Redis unavailable | queue stop/status/cursor/TTL 读写可能异常；部分路径记录日志 | 事件实时流/取消/归属投影不可靠 | 需要降级/重连/最终一致性策略 | 多处 `RedisError` best effort；本轮未启动 Redis |
+| Redis unavailable | queue stop/status/cursor/TTL 读写可能异常；部分路径记录日志 | 事件实时流/取消/归属投影不可靠 | 需要降级/重连/最终一致性策略 | 多处 `RedisError` best effort；当前核对未启动 Redis |
 
 ### 14.9 L0–L4 通用底座分级与当前落点
 
@@ -862,9 +864,9 @@ agent_v2 node
 | `DatabaseFileAccessController` + FileService/artifact offload | **吸收访问控制与制品引用** | storage/DB 双写补偿、retention、orphan scan 必须由制品 owner 负责 |
 | `packages/contracts` + `web/service/client.ts` | **吸收为网关/前端契约边界** | generated artifact 必须由源 OpenAPI 生成；marketplace/manual contract 单独标注，不混入 Dify API owner |
 
-### 14.11 测试映射与本轮验证边界
+### 14.11 测试映射与当前核对验证边界
 
-| 关注点 | 已读测试源码 | 证明什么 | 本轮状态 |
+| 关注点 | 已读测试源码 | 证明什么 | 当前核对状态 |
 |---|---|---|---|
 | 节点组件注册 | `api/tests/unit_tests/core/workflow/test_node_mapping_bootstrap.py:8-60` | 生产入口导入后 registry 能解析若干节点和 Agent v2 | S1，未执行 |
 | Graph→Queue 状态投影 | `api/tests/unit_tests/core/app/apps/test_workflow_app_runner_core.py:368-580` | started/succeeded/paused/aborted、node retry/fail/exception 等映射存在 | S1，未执行 |
@@ -874,11 +876,11 @@ agent_v2 node
 | Agent Redis record/stream retention | `dify-agent/tests/local/dify_agent/storage/test_redis_run_store.py:103-186` | record TTL、XADD+双 expire transaction、cursor round-trip | S1，未执行 |
 | 文件权限 | 目标测试树中未按 `*file_access*` 找到对应文件名；源码有 controller 使用点 | 只能证明源码边界，不能证明所有 tenant/end-user 组合 | S0，待补测试定位 |
 
-本轮实际验证只允许做文档/工作树静态检查：目标文件现场回读、Markdown fence/标题检查、`git diff --check`、`git status`。未执行 `uv run pytest`、`make test`、`pnpm test`、Docker、Celery、Redis、数据库迁移、插件 daemon、Agent backend 或 E2E，所以不能将上表 S1 升级为通过。
+当前核对实际验证只允许做文档/工作树静态检查：目标文件现场回读、Markdown fence/标题检查、`git diff --check`、`git status`。未执行 `uv run pytest`、`make test`、`pnpm test`、Docker、Celery、Redis、数据库迁移、插件 daemon、Agent backend 或 E2E，所以不能将上表 S1 升级为通过。
 
 ### 14.12 未决风险与下一轮装配前置条件
 
-1. **错误项目上下文**：必须重新以 Dify 根目录建立可用项目上下文后，才能把 MCP/code graph 结果纳入证据；本轮已明确排除错绑结果。
+1. **错误项目上下文**：必须重新以 Dify 根目录建立可用项目上下文后，才能把 MCP/code graph 结果纳入证据；当前核对已明确排除错绑结果。
 2. **统一执行租约缺失**：先冻结 `Lease`/fencing/reaper/recovery contract，再改 worker、Agent backend 或 Celery wiring；没有 lease 不能声称 crash-safe。
 3. **状态投影不统一**：先决定 `ExecutionEvent` 的唯一 append owner、sequence、idempotency 和 projection repair，再把 AppQueue、workflow DB、Agent Redis Stream 对齐；不能从多个现有表拼出“事件溯源已完成”。
 4. **插件 daemon/Graphon 外部边界**：需要读取 pinned package/daemon protocol 或做隔离运行测试，验证 timeout、断流、版本、权限、重试、文件 blob 和资源关闭。
@@ -886,11 +888,11 @@ agent_v2 node
 6. **Celery 运行事实**：需要明确 ack、visibility timeout、requeue、worker crash、重复投递和任务幂等；`celery_task_id` 与 `retry_count` 只能做观测字段。
 7. **旧细探缺失**：若后续找到历史 `细探-dify.md`，必须逐条对照当前源码并只吸收进本文件；不得恢复成第二事实源。
 
-第三轮结论：Dify 最值得进入通用底座的不是产品目录，而是四个可验证模式——**组件注册与版本解析、provider/工具统一装配、事件到状态投影、资源与失败边界显式化**。其中前两项已有较强 S0/S1 素材，后两项在单进程/单存储路径成立，但统一租约、跨进程崩溃恢复、跨投影幂等和制品补偿仍是 L3/L4 缺口；在这些缺口闭合前，裁决只能是“吸收模式、升级契约、隔离运行时”，不能宣称通用底座已落地。
+后续结论：Dify 最值得进入通用底座的不是产品目录，而是四个可验证模式——**组件注册与版本解析、provider/工具统一装配、事件到状态投影、资源与失败边界显式化**。其中前两项已有较强 S0/S1 素材，后两项在单进程/单存储路径成立，但统一租约、跨进程崩溃恢复、跨投影幂等和制品补偿仍是 L3/L4 缺口；在这些缺口闭合前，裁决只能是“吸收模式、升级契约、隔离运行时”，不能宣称通用底座已落地。
 
-## 15. 第二轮源码深挖：插件、工具、节点、工作流与运行治理
+## 15. 后续源码深挖：插件、工具、节点、工作流与运行治理
 
-> 本节是对前 1–14 节的第二轮定向深挖，专门补齐“声明如何进入运行时、运行结果如何落库/出流、失败后谁负责收口”的证据。只读目标目录源码；未安装依赖、启动 Redis/Celery/数据库/插件 daemon、运行测试或调用外部 provider。结论仍以 S0（源码）/S1（测试源码）为限，不能将静态路径写成运行成功。
+> 本节是对前 1–14 节的后续定向深挖，专门补齐“声明如何进入运行时、运行结果如何落库/出流、失败后谁负责收口”的证据。只读目标目录源码；未安装依赖、启动 Redis/Celery/数据库/插件 daemon、运行测试或调用外部 provider。结论仍以 S0（源码）/S1（测试源码）为限，不能将静态路径写成运行成功。
 
 ### 15.1 插件、工具、节点、工作流的真实装配链
 
@@ -1058,7 +1060,7 @@ create record(running)
 
 两者都存在暂停/失败/取消，但状态名称、存储 owner、重试语义和事件 cursor 不同；不能通过统一字符串字段强行拼成一套已实现状态机。
 
-### 15.6 第二轮失败矩阵
+### 15.6 后续失败矩阵
 
 | 失败面 | 源码处理 | 当前能否恢复 | 主要缺口/裁决 |
 |---|---|---|---|
@@ -1071,7 +1073,7 @@ create record(running)
 | 节点版本/配置非法 | registry resolve 失败或二次 schema validation 失败 | 不应重试原 graph | 版本兼容、卸载和 registry snapshot 的全局一致性待验证 |
 | workflow 业务失败 | Graph failed event → Queue failed event；TriggerPostLayer 写 FAILED/error | 新 trigger 可重新提交；pause 另走 resume | trigger log 不是事件账本，缺统一去重 |
 | workflow 超时/客户端断流 | AppQueue listener abort、Graph limits/stop event | 原 execution 不自动续跑 | 断流后的 DB 终态需运行验证 |
-| Celery worker 崩溃/重复投递 | 源码有 task id/status/retry_count；具体 broker ack 未在本轮证明 | 依赖 Celery 配置或人工恢复 | 缺 lease/heartbeat/fencing/idempotent task claim |
+| Celery worker 崩溃/重复投递 | 源码有 task id/status/retry_count；具体 broker ack 未在当前核对证明 | 依赖 Celery 配置或人工恢复 | 缺 lease/heartbeat/fencing/idempotent task claim |
 | Agent 进程优雅关闭 | scheduler cancel pending tasks，写 `run_failed(reason=shutdown)` | 外部重新提交，不自动续跑 | 这是明确终态，不是 resume |
 | Agent 进程突然崩溃 | asyncio task registry 丢失；Redis record 可能停在 running | 无跨进程接管 | P0：需要 recovery worker + lease/fencing |
 | Redis 不可用 | 状态、stream、cursor、stop/TTL 操作失败或 best-effort 记录 | 没有可靠实时流/取消保证 | 需要降级、重连和 repair 语义 |
@@ -1079,9 +1081,9 @@ create record(running)
 | storage 成功、DB 失败 | 当前顺序会留下无引用对象 | 无自动补偿证据 | P0：outbox/补偿删除/hash 对账 |
 | DB 成功、storage 读取失败 | DB 引用仍存在，读取阶段报错 | 需人工/后台修复 | 制品可用性探针和保留策略缺失 |
 
-### 15.7 第二轮结论与下一步优先级
+### 15.7 后续结论与下一步优先级
 
-第二轮源码事实进一步收敛为五条：
+后续源码事实进一步收敛为五条：
 
 1. **插件边界是 HTTP daemon，不是可热插拔的进程内模块。** API/Agent 只持有声明、client 和受控凭证；daemon 行为必须单独验收。
 2. **工具有唯一运行引擎，但有两种故障投影。** Agent observation 与 Workflow exception 都是设计语义，不能用一个“工具失败即终止”规则覆盖。
@@ -1089,7 +1091,7 @@ create record(running)
 4. **队列、事件、状态、制品是四种不同对象。** Celery task id、Redis cursor、DB status、storage key 不能互相冒充 lease、event id、terminal owner 或 artifact transaction。
 5. **最高风险仍在崩溃恢复和制品补偿。** 在引入新 worker、Agent backend 或文件管线前，应先冻结 `ExecutionEvent`、`Lease/Fencing`、`StatusProjection`、`ArtifactRef` 和 repair/reaper 契约，并用 broker/Redis/DB/storage/plugin crash 注入验证。
 
-本轮新增源码证据索引：`api/core/plugin/impl/base.py`、`api/core/tools/tool_manager.py`、`api/core/tools/tool_engine.py`、`api/core/model_manager.py`、`api/core/provider_manager.py`、`api/core/workflow/node_factory.py`、`api/tasks/async_workflow_tasks.py`、`api/models/trigger.py`、`api/models/enums.py`、`api/services/file_service.py`、`api/core/app/file_access/controller.py`、`api/events/__init__.py`、`dify-agent/src/dify_agent/storage/redis_run_store.py`、`dify-agent/src/dify_agent/runtime/run_scheduler.py`。
+当前核对新增源码证据索引：`api/core/plugin/impl/base.py`、`api/core/tools/tool_manager.py`、`api/core/tools/tool_engine.py`、`api/core/model_manager.py`、`api/core/provider_manager.py`、`api/core/workflow/node_factory.py`、`api/tasks/async_workflow_tasks.py`、`api/models/trigger.py`、`api/models/enums.py`、`api/services/file_service.py`、`api/core/app/file_access/controller.py`、`api/events/__init__.py`、`dify-agent/src/dify_agent/storage/redis_run_store.py`、`dify-agent/src/dify_agent/runtime/run_scheduler.py`。
 
 ## 16. 交互线、状态机与文档质量审计
 
@@ -1151,7 +1153,7 @@ HITL 恢复的真实顺序是：
 
 ### 16.4 队列、事件、状态、制品的分离检查
 
-本轮确认以下对象不能互相替代：
+当前核对确认以下对象不能互相替代：
 
 - Celery broker 是跨进程任务投递；不负责成为业务状态事实源。
 - `AppQueueManager` 是同步执行的实时消费通道；不是持久化事件日志。
@@ -1175,7 +1177,7 @@ HITL 恢复的真实顺序是：
 
 **文档维护建议：** 以后每次改变队列、状态、暂停/恢复、重试或 provider 装配时，必须同步更新本文件的交互线表、状态图、失败矩阵和证据索引；涉及外部服务时追加运行验证结果或明确保留为 S0/S1 未验证，不把配置字段、task id 或 TTL 猜测为可靠性保证。
 
-### 16.6 本轮最终裁决与优先级
+### 16.6 当前核对最终裁决与优先级
 
 1. **P0：** 为 workflow、Celery task 和 Agent run 冻结统一 execution/lease/fencing/recovery 契约；在此之前不宣称跨进程 crash-safe。
 2. **P0：** 为 storage + DB 双写增加 outbox/补偿删除/hash 对账和 orphan scan，并定义失败/取消后的制品 retention。
@@ -1184,3 +1186,113 @@ HITL 恢复的真实顺序是：
 5. **P2：** 把上述交互线和状态 owner 提炼为版本化架构文档，并在 API/worker/Agent/前端入口增加链接，降低仅靠源码考古的维护成本。
 
 本节仍是源码与文档静态审计。没有安装依赖、启动服务、连接 DB/Redis、运行 Celery、调用 plugin daemon、执行测试或做 E2E；因此所有运行态结论仍不得标记为通过。
+
+## 17. 2026-08-22 源码级整项目复核（当前最新版）
+
+### 17.1 版本、规模与代码地图证据
+
+本轮在 Dify 根目录直接复核，而不是只依赖既有 Markdown：
+
+| 项目 | 当前证据 |
+|---|---|
+| Git | `HEAD=main=a9b8c84e9be41376c04901e81ce690f35c1ffe86`；`origin/main` 同值；领先/落后 `0/0` |
+| 受版本控制文件 | 13,470 个（`git ls-files`） |
+| 主要代码规模 | `api` 3,771；`web` 7,631；`dify-agent` 269；`dify-agent-runtime` 72；`packages` 887；`cli` 362；其余目录 478 |
+| 主要语言/文件 | TSX 4,344；Python 3,817；TS 2,427；Go 65；JS 117；YAML/YML 122；JSON 1,350 |
+| CodeGraph | 10,905 files / 215,860 nodes / 671,426 edges；Python、TypeScript、TSX、Go、YAML 等均已索引；状态 `up to date` |
+| 工作树 | 源码侧仅有未跟踪 `.codegraph/` 与 `ARCHITECTURE.md`；本轮不修改源码、不把二者算作发布文件 |
+
+CodeGraph 查询 `create_app AppGenerateService WorkflowBasedAppRunner ToolEngine DifyNodeFactory RunScheduler RedisRunStore` 返回 12 个核心符号及调用者/测试覆盖：API `create_app` 位于 `api/app_factory.py:157`，Agent 服务 `create_app` 位于 `dify-agent/src/dify_agent/server/app.py:42`；`RunScheduler` 位于 `dify-agent/src/dify_agent/runtime/run_scheduler.py:94`；`RedisRunStore` 位于 `dify-agent/src/dify_agent/storage/redis_run_store.py:146`。该查询是本轮的代码地图证据，具体结论仍以当前文件行号复读为准。
+
+### 17.2 当前真实启动链（前端到后端）
+
+```text
+浏览器 / 嵌入 WebApp / difyctl / SDK
+        │
+        ├─ Console React/Next 页面与 TanStack Query
+        │    └─ web/service/client.ts
+        │         ├─ @orpc/openapi-client OpenAPILink
+        │         ├─ @dify/contracts 生成的 TypeScript 类型
+        │         └─ web/service/base.ts request / ssePost / sseGet / sseGeneratorPost
+        │
+        ├─ /console/api、/api、/v1、/openapi/v1、/files、/mcp、/trigger
+        │
+        ▼
+api/app.py:69-73 → app_factory.create_app()
+  → create_flask_app_with_configs()
+  → initialize_extensions()（数据库、Redis、storage、Celery、login、FastOpenAPI、OTel）
+  → ext_blueprints.init_app()（八组 Blueprint）
+  → Socket.IO WSGI wrapper / gevent WebSocket server
+        │
+        ▼
+Controller DTO/认证/租户/RBAC/CSRF/license
+  → AppGenerateService.generate()
+  → WorkflowBasedAppRunner / Agent runner / ModelManager / ToolEngine
+  → Graphon event / AppQueue / DB projection / SSE 或 Socket.IO
+        │
+        ├─ 异步 trigger → WorkflowTriggerLog → Celery broker → worker → DB 状态
+        ├─ 插件/模型/MCP → plugin daemon 或 provider HTTP 边界
+        └─ Agent v2 → dify-agent FastAPI → RedisRunStore + RunScheduler → Redis Stream/SSE
+```
+
+`api/app_factory.py:157-168` 明确先构造 Flask 应用、初始化扩展，再套 `socketio.WSGIApp`；`api/app_factory.py:171-245` 的扩展顺序说明数据库、Redis、storage、key provider、logstore 在 Celery 之前就绪，blueprint 在认证与基础设施之后注册。`api/extensions/ext_blueprints.py:27-120` 当前注册 `service_api`、可选 `openapi`、`web`、`console`、`files`、`inner_api`、`mcp` 和 `trigger`，并为公开/嵌入/控制台路径分别设置 CORS 与认证头，不能将所有 HTTP 面当成同一权限域。
+
+### 17.3 前端契约与流式传输的当前实现
+
+- `web/service/client.ts:19-30,75-95` 使用 `OpenAPILink` 把 `@dify/contracts/console` 路由映射到 `API_PREFIX`，请求统一经 `web/service/base.ts` 的 `request`；这意味着前端接口的类型 owner 是 `packages/contracts` 的生成文件，而不是任意页面内手写 fetch。
+- `packages/contracts/package.json` 的 `gen-api-contract` 先运行 `api/dev/generate_swagger_specs.py` 与 `generate_fastopenapi_specs.py`，再由 `openapi-ts` 生成 `packages/contracts/generated/api`；契约变更实际是“后端 schema → 生成 TypeScript → 前端 client”链路。
+- `web/service/base.ts:550-810` 的 `ssePost`/`sseGet` 处理 chat、workflow、human-input 等 SSE；`web/service/base.ts:900-941` 的 `sseGeneratorPost` 专门处理 `/workflow-generate/stream`，对跨 chunk JSON frame 进行重组。SSE 断开、错误通知、完成回调是前端消费语义，不能反推后端执行已取消或已提交终态。
+- `web/app/layout.tsx` 与 `web/app/(commonLayout)` 是页面宿主；大量 `web/features` 和 `web/app/components/workflow` 只是 UI/状态投影，运行事实仍由 API/DB/事件流提供。
+- `cli/package.json` 的 `difyctl` 版本为 `0.2.0-alpha`，兼容 Dify `1.16.0–1.16.1`；其依赖同一 `@dify/contracts`，并用 `eventsource-parser` 消费流式结果。CLI 不是第二套 API 契约。
+
+### 17.4 Agent App 新增事实（不能沿用旧 Agent 结论）
+
+当前 `api/services/app_service.py:503-655` 的 `create_app` 在 `AppMode.AGENT` 下创建独立 `AppModelConfig`，再调用 `AgentRosterService.create_backing_agent_for_app`，并在同一事务中写入 App 与 backing Agent；注释明确该新 Agent App 与旧 function-call/ReAct `agent_mode` 不同。控制台 agent roster 路由位于 `api/controllers/console/agent/roster.py:563-1184`，包含 publish、draft checkout/apply、版本、日志、API access 与 key 管理。
+
+```text
+AppMode.AGENT 创建
+  → App + 空壳 AppModelConfig
+  → backing Agent（同事务、app_id 1:1）
+  → Composer 配置 Agent Soul（model/prompt/tools）
+  → draft checkout / apply / publish
+  → Agent API access / logs / versions
+```
+
+这条链说明 Dify 当前同时存在 legacy Agent 与新 Agent App 两种模型；底座映射时必须保留 `AppMode.AGENT`、roster Agent、workflow Agent node 和 dify-agent backend 的不同 owner，不能把它们压平为一个“Agent 模块”。
+
+### 17.5 Agent backend 的当前生命周期与资源边界
+
+`dify-agent/src/dify_agent/server/app.py:42-151` 当前 FastAPI app 在 lifespan 中创建一个 Redis client、一个 `RedisRunStore`、一个 `RunScheduler`、一个 plugin daemon HTTP client 与一个 Dify inner API HTTP client；`finally` 块按 scheduler → HTTP clients → Redis 顺序关闭（同文件 `:119-125`）。`_create_shared_http_client` 在 `:175-185` 设置 outbound timeout、连接池上限、keepalive 和 `trust_env=False`。
+
+`dify-agent/src/dify_agent/server/routes/runs.py:44-109` 的控制面是：
+
+| HTTP | 实际动作 |
+|---|---|
+| `POST /runs` | 交给本地 `RunScheduler.create_run`，返回 `202` 与 run id/status |
+| `GET /runs/{id}` | 从 Redis 读取状态/时间/错误 |
+| `POST /runs/{id}/cancel` | scheduler 持久化取消，owner task 观察并停止 |
+| `GET /runs/{id}/events` | 按 Redis Stream cursor 分页 |
+| `GET /runs/{id}/events/sse` | `after` 或 `Last-Event-ID` 后 replay，再持续流式读取 |
+
+该服务仍然是“单进程调度器 + Redis 状态/事件日志”：HTTP client 的关闭边界已明确，但没有跨进程 scheduler 接管、lease/fencing 或 broker redelivery 证据。Redis Stream 的可回放性不等于执行任务的可恢复性。
+
+### 17.6 版本变化和证据更新裁决
+
+与本文早期基线 `8ef002f6` 相比，本轮确认仓库已前进到 `a9b8c84e`；旧文档中所有“当前提交”表述均以本节和顶部元数据为准。当前源码还显示：
+
+1. 前端已采用 `@orpc/openapi-client` + 生成 contracts 的明确契约链，不能继续只写“legacy helper + fetch”。
+2. `AppMode.AGENT` 的 backing roster/Composer/publish/version 体系已是正式路径，应与 legacy Agent、Workflow Agent node、dify-agent backend 分开记录。
+3. `dify-agent` lifespan 已显式管理共享 HTTP client、Redis、scheduler 的关闭顺序，文档可以确认资源 owner，但仍不能宣称崩溃恢复。
+4. Dify 根目录 CodeGraph 已覆盖全量多语言文件；后续探索应优先复用该索引，只有索引未覆盖或代码指纹变化时才直接逐文件读取。
+
+### 17.7 本轮验证边界
+
+已执行且可复核：
+
+- Dify 根目录 `git fetch origin main`、`git rev-list --left-right --count HEAD...origin/main`：`0 0`；
+- Dify 根目录 `codegraph status`：索引 `up to date`；
+- Dify 根目录 `codegraph explore 'create_app AppGenerateService WorkflowBasedAppRunner ToolEngine DifyNodeFactory RunScheduler RedisRunStore'`：退出码 `0`；
+- 文件统计、入口行号与当前源码回读；
+- 本文件 Markdown/结构修改后将执行 `git diff --check`（平台仓库）与章节/流程图检查。
+
+未执行：API/Agent 依赖安装、数据库迁移、Redis/Celery、plugin daemon、模型 provider、Docker、前端构建、单元测试、集成测试和 E2E。故本文所有运行态、性能、故障恢复与外部服务兼容性结论仍标为“源码已见、运行未证”。

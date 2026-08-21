@@ -16,7 +16,7 @@
 | 远程基线 | `292ad785dea715f8cd509b8177f6e48618e6b137`，`2026-08-14T14:16:02+08:00`，`Update README.md` |
 | 新鲜度 | 本地 `HEAD...origin/master` 为 `0/2`：远程领先 2 个提交；已通过 `127.0.0.1:4780` 在 `/tmp/FlagEmbedding-remote-snapshot` 建立独立快照核对 |
 | 远程差异 | `git diff HEAD..origin/master --stat` 显示仅 `README.md`、`README_zh.md` 发生文档变更；抽查 `setup.py`、两个 `model_mapping.py` 与独立快照一致。远程 `README.md` 新增资助说明，不改变运行时架构。 |
-| 归档留痕 | 已存在的 `细探-FlagEmbedding.md` 作为前置细探输入，本轮不删除、不改写；有效结论已吸收进本文件。 |
+| 归档留痕 | 已存在的 `细探-FlagEmbedding.md` 作为前置细探输入，当前核对不删除、不改写；有效结论已吸收进本文件。 |
 
 ## 2. 项目定位
 
@@ -144,7 +144,7 @@ FlagEmbedding/
 ├── README.md / README_zh.md               # 项目入口与模型列表
 ├── setup.py                               # 包元数据、依赖和 finetune extra
 ├── Manifest.in / LICENSE / .gitignore
-└── 细探-FlagEmbedding.md                  # 既有人工细探输入（本轮保留）
+└── 细探-FlagEmbedding.md                  # 既有人工细探输入（当前核对保留）
 ```
 
 ## 6. 数据模型与接口契约
@@ -223,7 +223,7 @@ python scripts/split_data_by_length.py ...
 - `tests/test_infer_reranker_basic.py`：下载 `BAAI/bge-reranker-base`，验证单条/批量分数类型、长度、范围和相关段落排序。
 - `tests/conftest.py`：根据 `torch.cuda.is_available()` 在 CUDA 或 CPU 选择设备，并提供 Transformers 版本 fixture。
 
-本轮未安装依赖、未下载模型、未启动推理/训练/评测，故没有把未执行的模型测试冒充为通过。可按仓库说明在隔离虚拟环境执行 `pytest tests/`；重型模型测试受网络、缓存、显存和上游模型可用性影响。
+当前核对未安装依赖、未下载模型、未启动推理/训练/评测，故没有把未执行的模型测试冒充为通过。可按仓库说明在隔离虚拟环境执行 `pytest tests/`；重型模型测试受网络、缓存、显存和上游模型可用性影响。
 
 ## 9. 风险、边界与备注
 
@@ -245,11 +245,11 @@ python scripts/split_data_by_length.py ...
 
 **首轮结论**：FlagEmbedding 的核心价值是“模型推理抽象 + 自动模型路由 + 多粒度表征 + 可复用训练/评测流水线”，不是完整检索产品。可把稳定 `FlagEmbedding/inference/` 的抽象和数据契约作为上层嵌入/重排适配器的参考；任何生产化接入都必须将模型进程、缓存、索引和安全边界独立治理。
 
-## 11. 旧细探吸收裁决与本轮深挖边界
+## 11. 旧细探吸收裁决与当前核对深挖边界
 
 ### 11.1 唯一事实源声明
 
-本轮已完整读取 `细探-FlagEmbedding.md`（68 行）并逐条对照当前源码；旧文件**保留、不删除、不改写**，只作为历史输入。自本节起，FlagEmbedding 的架构事实、契约、风险和验证状态只维护本 `ARCHITECTURE.md`；旧细探中的“BGE-M3 三合一、FlagAutoModel、bge-reranker、PyTorch/GPU、MIT 与权重许可分离”等结论均已吸收，未再把旧文件当作当前实现证据。
+当前核对已完整读取 `细探-FlagEmbedding.md`（68 行）并逐条对照当前源码；旧文件**保留、不删除、不改写**，只作为历史输入。自本节起，FlagEmbedding 的架构事实、契约、风险和验证状态只维护本 `ARCHITECTURE.md`；旧细探中的“BGE-M3 三合一、FlagAutoModel、bge-reranker、PyTorch/GPU、MIT 与权重许可分离”等结论均已吸收，未再把旧文件当作当前实现证据。
 
 旧细探内容的吸收映射如下：
 
@@ -266,7 +266,7 @@ python scripts/split_data_by_length.py ...
 
 - 代码事实以本地 `HEAD=7ed43d67ec03fbe5c31c0992dbfa941fb1860549` 为准；远程领先 2 个提交且已知仅 README 文档差异的结论沿用第 1 节，未把远程声明当作本地实现。
 - 细探中出现的 `flag_embedding/` 是非当前目录名的旁路线索；当前可安装包实际为 `FlagEmbedding/`，已以 `setup.py:14` 的 `find_packages()` 和真实目录为准。
-- 本轮只修改本文件；未修改源码、测试、配置、依赖、权重、缓存或 Git 记录。
+- 当前核对只修改本文件；未修改源码、测试、配置、依赖、权重、缓存或 Git 记录。
 
 ## 12. 深层契约表：输入、输出、所有权和失败语义
 
@@ -390,7 +390,7 @@ python -m FlagEmbedding.finetune.<family>.<mode>
 | HF cache/下载文件 | `datasets`/Transformers cache；评测 `wget` 写 save_dir | 成功后长期保留以复用 | 下载/解压失败可能留下零字节或部分目录；无回滚/清理 | 需检查零字节、临时压缩包和目录；缓存 key 不等于模型 revision 证明 |
 | corpus embedding / FAISS | `EvalDenseRetriever` 生成 `doc.npy`，FAISS 在内存建立 | 进程退出/引用释放；pool 单独 stop | 写 `doc.npy` 非原子；失败可能半文件；FAISS build 失败无事务 | 对 `.npy` 用 `np.load`、shape、dtype、行数和 corpus 数量读回；验证无半成品 |
 | 评测 JSON/报告 | `os.makedirs` + `open(...,"w")` 直接写 | 文件关闭由上下文/函数结束保证 | 中断可能产生部分 JSON；overwrite 可能覆盖旧结果 | 用 JSON parse、元数据、query 数量和模型名回读；外层应采用临时文件原子替换 |
-| 训练输出/checkpoint | `Path(output_dir).mkdir`、Trainer 写 checkpoint | `save_model()` 正常完成 | 训练中断可能留下不完整 checkpoint；resume 语义由 Trainer 决定 | 需检查 config/tokenizer/权重文件完整性和可重新加载；本轮未运行训练 |
+| 训练输出/checkpoint | `Path(output_dir).mkdir`、Trainer 写 checkpoint | `save_model()` 正常完成 | 训练中断可能留下不完整 checkpoint；resume 语义由 Trainer 决定 | 需检查 config/tokenizer/权重文件完整性和可重新加载；当前核对未运行训练 |
 | 远程代码/权重许可 | `trust_remote_code`、HF model/revision | 无库级撤销；由进程/缓存持有 | 代码执行、下载断线和权限错误向上抛 | 生产侧必须 allowlist revision、隔离执行、审计缓存和许可证；未在本地实测 |
 
 **四终态结论**：正常完成有显式 stop/close 的主要路径；业务失败可上抛但清理不全；主动取消/超时没有库内协议；宿主/worker 崩溃没有统一恢复。资源清理只能标记“代码存在/正常路径可见”，不能标记“所有异常终态已验证”。
@@ -413,21 +413,21 @@ python -m FlagEmbedding.finetune.<family>.<mode>
 
 ## 17. 防假绿验证等级（L0-L4）
 
-| 等级 | 能证明什么 | 本仓库证据 | 本轮状态与不能宣称 |
+| 等级 | 能证明什么 | 本仓库证据 | 当前核对状态与不能宣称 |
 |---|---|---|---|
 | L0 源码/结构存在 | 路径、符号、入口和文档存在 | `search_files` 盘点 154 个包 `.py`、4 个测试 `.py`；关键路径见第 3/12 节 | 已完成静态盘点；不证明可导入/可运行 |
-| L1 语法/静态一致 | Python AST 可解析，ARCHITECTURE 结构/旧细探保留 | 本轮验证命令见第 18 节 | 只证明语法和文档约束，不证明依赖、模型或设备 |
-| L2 依赖/导入/单元边界 | 在隔离环境能 import、mock 边界行为 | `tests/test_imports_v5.py` 存在，但本轮未把“文件存在”算通过 | 未验证；没有现成 mock 测试覆盖空输入、OOM、worker 崩溃、取消 |
-| L3 真实模型推理/训练 | 下载真实权重，完成 embedding/rerank 或训练最小步 | 现有 `test_infer_embedder_basic.py`、`test_infer_reranker_basic.py` 会联网加载 BGE | 未验证；本轮未安装依赖、下载权重、占 GPU、训练或启动评测 |
+| L1 语法/静态一致 | Python AST 可解析，ARCHITECTURE 结构/旧细探保留 | 当前核对验证命令见第 18 节 | 只证明语法和文档约束，不证明依赖、模型或设备 |
+| L2 依赖/导入/单元边界 | 在隔离环境能 import、mock 边界行为 | `tests/test_imports_v5.py` 存在，但当前核对未把“文件存在”算通过 | 未验证；没有现成 mock 测试覆盖空输入、OOM、worker 崩溃、取消 |
+| L3 真实模型推理/训练 | 下载真实权重，完成 embedding/rerank 或训练最小步 | 现有 `test_infer_embedder_basic.py`、`test_infer_reranker_basic.py` 会联网加载 BGE | 未验证；当前核对未安装依赖、下载权重、占 GPU、训练或启动评测 |
 | L4 外部闭环/生产条件 | revision/许可证、网络、GPU、多进程、FAISS、评测数据、重启恢复均实测 | 仓库没有服务/部署/生产闭环测试 | 未验证；不能把 README、pytest 名称、日志或历史快照当 L4 |
 
 验收规则：L0/L1 通过只能写“源码存在/可解析”；L2 通过也只能写“边界可导入/单测通过”；只有 L3/L4 的实际命令、退出码、测试数、外部依赖和资源清理证据齐全，才能写对应级别通过。
 
-## 18. 本轮验证记录与可复现命令
+## 18. 当前核对验证记录与可复现命令
 
 ### 18.1 已执行
 
-以下命令均为只读或不写源码的检查；退出码以本轮实际执行结果为准，模型推理未被假装执行：
+以下命令均为只读或不写源码的检查；退出码以当前核对实际执行结果为准，模型推理未被假装执行：
 
 | 命令 | 目的 | 退出码/结果 |
 |---|---|---|
@@ -441,7 +441,7 @@ python -m FlagEmbedding.finetune.<family>.<mode>
 | `pytest --collect-only -q -p no:cacheprovider tests/test_imports_v5.py` | 尝试测试收集 | 环境无 `pytest`，shell 报 `/bin/bash: pytest: command not found`；该项未通过、未计入成功 |
 | 旧细探 SHA-256 | 确认写入后未改旧细探 | 退出码 `0`；仍为 `17ce0e238c0a2b58e1afab870130256ffa494aef996f8f360b572e4c32d65a04` |
 
-### 18.2 复核命令（本轮结果已记录）
+### 18.2 复核命令（当前核对结果已记录）
 
 ```bash
 cd "~/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/FlagEmbedding"
@@ -452,7 +452,7 @@ shasum -a 256 "细探-FlagEmbedding.md"
 git diff --name-only -- ARCHITECTURE.md "细探-FlagEmbedding.md"
 ```
 
-模型测试命令（`pytest tests/test_infer_*.py`）未列为本轮通过：它们会联网下载 `BAAI/*` 权重，且当前任务禁止安装依赖/生成缓存/占用模型资源；需要独立隔离环境和资源清理证据后才能升级到 L3。
+模型测试命令（`pytest tests/test_infer_*.py`）未列为当前核对通过：它们会联网下载 `BAAI/*` 权重，且当前任务禁止安装依赖/生成缓存/占用模型资源；需要独立隔离环境和资源清理证据后才能升级到 L3。
 
 ## 19. 吸收/不吸收裁决
 
@@ -471,9 +471,9 @@ git diff --name-only -- ARCHITECTURE.md "细探-FlagEmbedding.md"
 5. 未验证 `trust_remote_code=True` 的远程代码审计、revision pin、模型/数据权重许可和缓存污染边界。
 6. 未验证训练 `resume_from_checkpoint` 在中断 checkpoint、LoRA merge fallback、DeepSpeed/flash-attn 下的一致性。
 7. 未验证评测下载工具在断线、超时、磁盘满、部分文件、重复运行下的原子性和清理。
-8. `evaluate_recall_cap()` 在相关文档数为 0 时存在除零风险（`abc/evaluation/utils.py:73-88`）；`search()` 对空 query 结果的 `np.concatenate` 也没有显式空集契约（`:214-228`）。这些是源码风险记录，不是本轮修改项。
+8. `evaluate_recall_cap()` 在相关文档数为 0 时存在除零风险（`abc/evaluation/utils.py:73-88`）；`search()` 对空 query 结果的 `np.concatenate` 也没有显式空集契约（`:214-228`）。这些是源码风险记录，不是当前核对修改项。
 9. `FlagAutoModel` 的 `model_name` 依赖 basename；同名本地目录或 checkpoint 可能路由到同一实现，外层必须记录完整 path/revision。
-10. 本轮专属 MCP `system_engineering_toolkit` 的 `project_context` 未成功返回，代码图明确报告无索引；因此本文件的代码事实证据来自直接读取当前源码，不能声称 MCP 绑定或代码图验证成功。
+10. 当前核对专属 MCP `system_engineering_toolkit` 的 `project_context` 未成功返回，代码图明确报告无索引；因此本文件的代码事实证据来自直接读取当前源码，不能声称 MCP 绑定或代码图验证成功。
 
 ## 21. 证据索引与维护规则
 
@@ -490,9 +490,9 @@ git diff --name-only -- ARCHITECTURE.md "细探-FlagEmbedding.md"
 
 后续维护只更新本文件：源码路径变更时重做第 12-18 节；旧细探只保留为历史输入，不再建立第二份架构事实源。任何未来“已通过”结论都必须给出命令、退出码、测试数、外部依赖、输入/输出校验和资源清理现场。
 
-## 22. 第三轮：通用底座映射总览
+## 22. 后续：通用底座映射总览
 
-本节不是把 FlagEmbedding 直接搬进平台，而是把当前源码已经稳定表达的能力拆成“文本支持库、向量支持库、检索模块、模型提供者、运行核心、统一网关”六个边界，逐项给出吸收、升级、隔离或待核裁决。事实基线仍为本地源码；前一轮 `project_context` 返回的是 `~/Documents/Agent/PHP/华世王镞_v3` 的错误绑定，本轮不采用其代码图、任务记忆或验证结论，以下仅使用目标目录的本地静态读取，验证等级按弱验证处理。
+本节不是把 FlagEmbedding 直接搬进平台，而是把当前源码已经稳定表达的能力拆成“文本支持库、向量支持库、检索模块、模型提供者、运行核心、统一网关”六个边界，逐项给出吸收、升级、隔离或待核裁决。事实基线仍为本地源码；前一轮 `project_context` 返回的是 `~/Documents/Agent/PHP/华世王镞_v3` 的错误绑定，当前核对不采用其代码图、任务记忆或验证结论，以下仅使用目标目录的本地静态读取，验证等级按弱验证处理。
 
 ### 22.1 目标单链路
 
@@ -542,7 +542,7 @@ FlagEmbedding 在这条链中实际覆盖的是“模型提供者的参考实现
 - 运行核心是唯一的资源监督 owner；不得由每个模型类再造线程池、超时器、重启器或 GPU 清理中心。
 - 统一网关是唯一对外入口；HTTP/MCP/CLI 都是入口适配，不得各自维护一份能力映射、错误码和参数默认值。
 
-## 23. 第三轮：文本编码、批 embedding 与 reranker 契约
+## 23. 后续：文本编码、批 embedding 与 reranker 契约
 
 ### 23.1 文本到向量契约
 
@@ -604,7 +604,7 @@ RetrievalResult {
 
 `stage` 至少区分 `dense_retrieval`、`sparse_retrieval`、`colbert_retrieval`、`rerank`；`complete=false` 或部分 chunk 不得被当成成功结果。`score` 的高低方向、是否归一化、是否融合、top-k 截断点必须在 `score_space` 和 `stage` 中固定。
 
-## 24. 第三轮：模型加载、设备、量化与缓存边界
+## 24. 后续：模型加载、设备、量化与缓存边界
 
 ### 24.1 模型提供者加载事实
 
@@ -649,7 +649,7 @@ RetrievalResult {
 
 `doc.npy` 只存在即复用是当前实现缺口：同目录更换模型、instruction、pooling、dtype 或 corpus 顺序可能静默错配。该模式**废弃**为平台缓存策略，仅可作为历史评测实现记录。
 
-## 25. 第三轮：资源生命周期与故障治理映射
+## 25. 后续：资源生命周期与故障治理映射
 
 ### 25.1 资源生命周期裁决表
 
@@ -680,19 +680,19 @@ RetrievalResult {
 | 宿主/子进程崩溃 | OS 回收进程资源；结果/cache 可能半写 | 无业务恢复/补偿 | 新进程重建 provider；只接受原子完整制品；校验进程组、GPU、临时目录和锁残留 |
 | 重复调用/重复作业 | embed/score 本身无幂等键；评测 `overwrite` 只是文件存在/元数据有限 | 不是服务幂等 | 网关生成 idempotency key；运行核心以请求参数摘要去重/续作，缓存提交 CAS |
 
-### 25.3 L0-L4 第三轮验证等级
+### 25.3 L0-L4 后续验证等级
 
-| 等级 | 第三轮要证明什么 | 当前目标源码证据 | 当前状态 |
+| 等级 | 后续要证明什么 | 当前目标源码证据 | 当前状态 |
 |---|---|---|---|
 | L0 结构/符号存在 | 六层映射的入口、实现、测试、CLI/评测路径真实存在 | `auto_embedder.py`、`auto_reranker.py`、`AbsEmbedder.py`、`AbsReranker.py`、`encoder_only/base.py`、`m3.py`、`searcher.py`、`utils.py`、`tests/`、`examples/`、`setup.py` | **已完成静态读取**；不证明可导入和运行 |
-| L1 语法/契约静态一致 | 源码 AST 可解析；输入输出形状、映射、失败分支、缓存与资源路径能对应源码 | 既有文档第 18 节记录 `AST_OK files=158`；本轮补充路径和行号静态对照 | **弱验证**；未运行目标依赖，未验证动态分支 |
-| L2 依赖/导入/边界 | Transformers/PyTorch/FAISS/pytest 环境可导入；mock provider 能验证设备、空输入、OOM、worker、缓存 schema | `tests/test_imports_v5.py`、`conftest.py` 存在；测试依赖 `pytest`/模型包 | **未通过/未验证**；既有记录显示当前 shell 无 `pytest`，且本轮禁止安装依赖 |
+| L1 语法/契约静态一致 | 源码 AST 可解析；输入输出形状、映射、失败分支、缓存与资源路径能对应源码 | 既有文档第 18 节记录 `AST_OK files=158`；当前核对补充路径和行号静态对照 | **弱验证**；未运行目标依赖，未验证动态分支 |
+| L2 依赖/导入/边界 | Transformers/PyTorch/FAISS/pytest 环境可导入；mock provider 能验证设备、空输入、OOM、worker、缓存 schema | `tests/test_imports_v5.py`、`conftest.py` 存在；测试依赖 `pytest`/模型包 | **未通过/未验证**；既有记录显示当前 shell 无 `pytest`，且当前核对禁止安装依赖 |
 | L3 真实模型链 | 固定 revision 的真实 embedding、M3 模态、reranker、GPU/CPU、量化方案、FAISS top-k 真实运行，结果/shape/score 可回读 | `test_infer_embedder_basic.py` 下载 `BAAI/bge-base-en-v1.5`；`test_infer_reranker_basic.py` 下载 `BAAI/bge-reranker-base`；examples 覆盖多设备 | **未验证**；未下载权重、未占设备、未加载量化模型 |
 | L4 外部闭环/生产条件 | 网关→任务→隔离 provider→索引/结果→重启恢复；deadline/cancel/OOM/crash、缓存原子性、许可证和资源无残留 | FlagEmbedding 没有 HTTP 服务、租约、watchdog、统一结果事务或生产部署测试 | **未验证且不是该仓库能力**；必须在平台侧另建真实验收，不能由本项目 README/pytest 名称替代 |
 
 L0/L1 仅支持“源码存在、静态映射成立”；L2 需要真实 import/边界测试；L3 需要真实模型和设备；L4 必须包括统一网关及资源/重启闭环。任何子代理回信、日志、测试文件存在、HF cache 目录存在、FAISS fallback 打印都不能单独升级等级。
 
-## 26. 第三轮裁决、缺口与装配计划（不启动实现）
+## 26. 后续裁决、缺口与装配计划（不启动实现）
 
 ### 26.1 吸收/升级/新建/废弃/待核
 
@@ -722,11 +722,11 @@ L0/L1 仅支持“源码存在、静态映射成立”；L2 需要真实 import/
 6. **缺缓存事务**：`doc.npy` 和 JSON 直接写，缓存没有完整参数键、CAS、原子提交或失败清理。
 7. **缺量化生产证据**：稳定推理 API 未提供统一量化入口，研究 QLoRA 不能算生产能力。
 8. **缺 M3 索引落点**：现有 `EvalDenseRetriever` 丢弃 sparse/ColBERT；需确认向量库对 token 权重和变长多向量的支持。
-9. **缺真实 L2-L4 证据**：当前环境无 pytest 命令且未下载模型，本轮不能升级验证等级。
+9. **缺真实 L2-L4 证据**：当前环境无 pytest 命令且未下载模型，当前核对不能升级验证等级。
 
 ### 26.3 装配计划与验收契约
 
-在平台正式开发前，建议按以下顺序登记需求、搜索现有能力并取得占用租约；本轮只形成装配输入，不修改平台生产底座：
+在平台正式开发前，建议按以下顺序登记需求、搜索现有能力并取得占用租约；当前核对只形成装配输入，不修改平台生产底座：
 
 1. **契约冻结**：登记 `文本编码.v1`、`批量Embedding.v1`、`Reranker.v1`、`向量校验与持久化.v1`、`检索与重排.v1` 五个能力族；明确请求/响应、错误码、deadline、cancel、幂等和资源释放责任。
 2. **provider 适配**：实现/复用一个 HF FlagEmbedding provider 适配层，能力内部再选择 encoder-only、M3、decoder-only、reranker；禁止每个模型复制一套网关路径。
@@ -736,19 +736,19 @@ L0/L1 仅支持“源码存在、静态映射成立”；L2 需要真实 import/
 6. **CLI 接线**：将 `finetune`、`evaluation`、`scripts` 标记为离线作业能力；由任务系统执行并持久化状态，不能让 CLI 自行监听端口。
 7. **逐级验收**：L0/L1 静态结构 → L2 mock/导入/故障边界 → L3 固定模型真实推理和索引 → L4 网关、取消、OOM、崩溃重启、缓存原子性和清理闭环。每一级均需记录命令、退出码、测试数、外部依赖、模型 revision、设备、输出校验和残留现场。
 
-### 26.4 本轮修改与验证边界
+### 26.4 当前核对修改与验证边界
 
-- 本轮只追加目标根 `ARCHITECTURE.md`；未修改 FlagEmbedding 源码、配置、依赖、测试、README、权重、缓存、Git 或平台生产底座。
+- 当前核对只追加目标根 `ARCHITECTURE.md`；未修改 FlagEmbedding 源码、配置、依赖、测试、README、权重、缓存、Git 或平台生产底座。
 - 已读取并以源码为证据覆盖：auto embedding/reranker 入口与 mapping、`AbsEmbedder`/`AbsReranker`、encoder-only base、M3、多种 decoder-only/reranker 构造器、评测 searcher/utils/evaluator、setup、推理测试、conftest、examples/CLI 入口和 quantization/cache 相关命中。
-- 未运行模型加载、训练、评测、FAISS、GPU/CPU、多设备、量化或服务闭环；因此第三轮结论是“吸收/升级裁决输入”，不是底座已实现或 L3/L4 已通过。
+- 未运行模型加载、训练、评测、FAISS、GPU/CPU、多设备、量化或服务闭环；因此后续结论是“吸收/升级裁决输入”，不是底座已实现或 L3/L4 已通过。
 
-## 27. 第二轮内部收口：模型、批处理、分数与资源逐项核对
+## 27. 后续内部收口：模型、批处理、分数与资源逐项核对
 
-本节是对前置 `细探-FlagEmbedding.md` 和本文件第一轮事实的第二轮收口，不改变源码结论的证据边界。已逐条回到当前本地源码核对：`FlagEmbedding/abc/inference/AbsEmbedder.py`、`AbsReranker.py`，`inference/auto_embedder.py`、`auto_reranker.py`、两份 `model_mapping.py`，encoder-only/M3/decoder-only 推理实现、评测 `searcher.py` 以及现有推理测试。旧细探继续保留，不删除、不改写。
+本节是对前置 `细探-FlagEmbedding.md` 和本文件初始事实的后续收口，不改变源码结论的证据边界。已逐条回到当前本地源码核对：`FlagEmbedding/abc/inference/AbsEmbedder.py`、`AbsReranker.py`，`inference/auto_embedder.py`、`auto_reranker.py`、两份 `model_mapping.py`，encoder-only/M3/decoder-only 推理实现、评测 `searcher.py` 以及现有推理测试。旧细探继续保留，不删除、不改写。
 
 ### 27.1 旧细探逐条裁决
 
-| 旧细探说法 | 当前源码核对 | 第二轮裁决 |
+| 旧细探说法 | 当前源码核对 | 后续裁决 |
 |---|---|---|
 | BGE-M3 是 dense + lexical + ColBERT 三合一 | `inference/embedder/encoder_only/m3.py:310-486` 的 `encode_single_device()` 按 `return_dense`、`return_sparse`、`return_colbert_vecs` 产出三类结果；`compute_score_single_device():645-732` 另算五类分数 | **吸收**；对外必须保留三键结果和模态开关，不能把 lexical/ColBERT 降成 dense 的别名 |
 | `FlagAutoModel` 工厂自动分发 | `auto_embedder.py:62-115` 先 basename，再查 `AUTO_EMBEDDER_MAPPING`；显式 `model_class` 时查 `EMBEDDER_CLASS_MAPPING` | **吸收但加限制**；basename 是路由线索，不是完整模型身份；未知 key 直接 `ValueError`，没有自动回退 |
@@ -835,7 +835,7 @@ L0/L1 仅支持“源码存在、静态映射成立”；L2 需要真实 import/
 | dataset/cache | 评测 data loader 和训练 dataset 将 `cache_dir` 传给 `datasets.load_dataset` 或下载/解压工具 | 失败时缺统一超时、临时目录回滚、hash/大小校验；部分目录不能被当成完整数据集 |
 | corpus embedding | `abc/evaluation/searcher.py:121-140` 只按 `corpus_embd_save_dir/doc.npy` 是否存在和 `overwrite` 决定读/重算；`np.save()` 直接写目标 | 没有模型、revision、instruction、pooling、dtype、truncate、模态、corpus digest 或 index config hash；`.npy` 非原子，当前实现不能作为生产缓存契约 |
 | 评测结果 | 评测 runner/evaluator 写 JSON 并以 metadata/overwrite 做部分复用 | 不等于统一事务；中断可能有半写 JSON，必须由外层临时文件、原子替换、读回 parse 和数量校验治理 |
-| decoder reranker DataLoader | `decoder_only/base.py:418-435` 与 `layerwise.py:288-305` 在 `use_dataloader=True` 时传 `cache_dir=self.cache_dir`，但各自构造器只接收 `cache_dir`，未见 `self.cache_dir = cache_dir` 赋值 | 这是源码级潜在 `AttributeError` 分支，不能宣称 DataLoader/cache 路径已验证；需在独立依赖环境复现后再决定是否修源码（本轮禁止修改） |
+| decoder reranker DataLoader | `decoder_only/base.py:418-435` 与 `layerwise.py:288-305` 在 `use_dataloader=True` 时传 `cache_dir=self.cache_dir`，但各自构造器只接收 `cache_dir`，未见 `self.cache_dir = cache_dir` 赋值 | 这是源码级潜在 `AttributeError` 分支，不能宣称 DataLoader/cache 路径已验证；需在独立依赖环境复现后再决定是否修源码（当前核对禁止修改） |
 
 ### 27.7 失败、超时、取消与释放矩阵
 
@@ -853,11 +853,11 @@ L0/L1 仅支持“源码存在、静态映射成立”；L2 需要真实 import/
 | 宿主/子进程崩溃 | OS 回收进程资源，但结果、`.npy`、JSON、HF 临时文件可能半成品 | **无业务恢复** | 检查 exitcode、parse、shape/count、GPU 进程、worker、Queue、临时目录和锁残留 |
 | 重复调用/缓存复用 | encode/score 无幂等键；评测 `overwrite=False` 主要依赖文件存在和有限 metadata | **非服务幂等** | 外层以请求参数摘要、模型身份、数据 digest 建 key，并采用原子提交/CAS |
 
-**第二轮最终判断**：FlagEmbedding 已经形成清晰的“模型工厂 → tokenizer/model → 单设备批处理 → embedding/reranker 输出”的源码级边界，BGE-M3 也确实把 dense、lexical、ColBERT 分开表达；但多设备队列、OOM 降批、缓存复用、score space、取消、异常清理和 DataLoader cache 分支都不是可直接交付的服务契约。可吸收的是接口语义、批处理算法和多粒度输出，不能吸收其无界重试、无 timeout 队列、文件存在即复用、broad fallback 或析构式清理。
+**后续最终判断**：FlagEmbedding 已经形成清晰的“模型工厂 → tokenizer/model → 单设备批处理 → embedding/reranker 输出”的源码级边界，BGE-M3 也确实把 dense、lexical、ColBERT 分开表达；但多设备队列、OOM 降批、缓存复用、score space、取消、异常清理和 DataLoader cache 分支都不是可直接交付的服务契约。可吸收的是接口语义、批处理算法和多粒度输出，不能吸收其无界重试、无 timeout 队列、文件存在即复用、broad fallback 或析构式清理。
 
-### 27.8 第二轮核对后的验证等级
+### 27.8 后续核对后的验证等级
 
-| 项目 | 本轮证据 | 等级/结论 |
+| 项目 | 当前核对证据 | 等级/结论 |
 |---|---|---|
 | 旧细探吸收 | `细探-FlagEmbedding.md` 68 行已读取；旧文件仍存在且未修改 | **L1 静态确认** |
 | 模型映射、加载参数、输出形状、失败分支 | 直接读取当前源码并记录路径/行段 | **L1 静态确认**，不等于可导入 |

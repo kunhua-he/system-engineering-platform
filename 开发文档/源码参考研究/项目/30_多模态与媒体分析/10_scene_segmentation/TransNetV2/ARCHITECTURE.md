@@ -4,7 +4,7 @@
 >
 > 证据顺序：README、仓库源码、配置、Dockerfile、LICENSE、Git 远程状态、已有 `细探-TransNetV2.md`。本文件只记录本仓事实；未安装依赖、未启动服务、未构建模型、未修改源码与依赖。
 >
-> 版本核对：本地 `master` 与 `origin/master` 均为 `85cef72af9a916bdfd7cc94a670c9cdfbf12d1ed`，提交时间 `2021-07-28 18:42:03 +0200`，提交说明 `minor fix`。经 `127.0.0.1:4780` 查询远程 `refs/heads/master`，远程同为该提交，本轮不需要建立独立远程快照，也没有覆盖工作树。
+> 版本核对：本地 `master` 与 `origin/master` 均为 `85cef72af9a916bdfd7cc94a670c9cdfbf12d1ed`，提交时间 `2021-07-28 18:42:03 +0200`，提交说明 `minor fix`。经 `127.0.0.1:4780` 查询远程 `refs/heads/master`，远程同为该提交，当前核对不需要建立独立远程快照，也没有覆盖工作树。
 
 ## 一、文本架构流程图
 
@@ -223,7 +223,7 @@ image = model.visualize_predictions(
 
 ### 权重与 Git LFS
 
-`.gitattributes` 把 `*.pb`、`*.index`、`*.data-*`、`*.h5` 标记为 Git LFS。当前工作树对应权重文件仅为约 129–133 字节的 LFS 指针文件，不是可直接加载的完整 SavedModel；README 也明确要求安装 git-lfs 后执行 `git lfs pull` 或手工下载权重。由于本轮禁止安装与下载，不能把推理可运行性表述为已验证。
+`.gitattributes` 把 `*.pb`、`*.index`、`*.data-*`、`*.h5` 标记为 Git LFS。当前工作树对应权重文件仅为约 129–133 字节的 LFS 指针文件，不是可直接加载的完整 SavedModel；README 也明确要求安装 git-lfs 后执行 `git lfs pull` 或手工下载权重。由于当前核对禁止安装与下载，不能把推理可运行性表述为已验证。
 
 ## 八、训练、评估与数据集流程
 
@@ -241,9 +241,9 @@ image = model.visualize_predictions(
 
 - 本仓没有独立 `tests/` 或 `test*.py` 文件；不能声称存在自动化单元测试/集成测试覆盖。
 - `inference-pytorch/convert_weights.py --test` 是权重转换后的跨框架前向数值对齐检查，不是常规测试套件；且需要实际 TensorFlow 权重、PyTorch、TensorFlow 环境。
-- README 的训练/评估命令是操作说明，不等于本轮已执行；本轮按约束没有安装、启动、构建或下载。
+- README 的训练/评估命令是操作说明，不等于当前核对已执行；当前核对按约束没有安装、启动、构建或下载。
 - 目标仓没有 `.codegraph/` 索引，专属平台代码地图不能提供该仓的源码符号覆盖；因此本文件的源码事实来自本地逐文件读取，而不是把其他仓库代码地图当作本仓证据。
-- 已有 `细探-TransNetV2.md` 已读取并吸收，本轮不删除；其“平台引入须独立进程”等建议属于跨项目裁决参考，不是本仓已有实现。
+- 已有 `细探-TransNetV2.md` 已读取并吸收，当前核对不删除；其“平台引入须独立进程”等建议属于跨项目裁决参考，不是本仓已有实现。
 
 ## 十、风险、备注与后续核验
 
@@ -263,7 +263,7 @@ image = model.visualize_predictions(
 
 - `TransNetV2` 的默认公开推理路径是 TensorFlow SavedModel；PyTorch 分支是独立的 inference-only reimplementation，不应与训练路径混写。
 - `single_frame_predictions` 适合转为场景边界；`many_hot` 主要用于渐变转场覆盖与训练辅助，二者同时保存在预测文件中。
-- README 的 F1 数值是论文/项目说明中的结果声明，不是本轮复测结果。
+- README 的 F1 数值是论文/项目说明中的结果声明，不是当前核对复测结果。
 - MIT License 允许使用、修改、分发，但须保留版权与许可声明。
 
 ## 十一、结论与可借鉴边界
@@ -284,15 +284,15 @@ image = model.visualize_predictions(
 4. **待核**：任何生产接入前需在独立进程或独立 provider 环境隔离 TensorFlow/PyTorch/GPU/ffmpeg，先做真实环境指纹、资源上限、进程回收和模型加载失败验证。
 5. **不直接照搬**：不把仓库的训练脚本、顶层副作用数据整理脚本、硬编码数据集路径和未锁定的旧深度学习依赖直接放入平台核心；不把论文 F1 宣传值当作本地验收证据。
 
-**最终判断：** TransNetV2 是一个以 TensorFlow SavedModel 推理为主、训练闭环完整、PyTorch 推理复现为辅的镜头边界检测参考实现。当前本地仓库与远程 `master` 同步，但真实 LFS 权重未展开、无独立测试套件、依赖年代较旧，因此本轮完成的是源码级架构建档，不是可运行性验收或生产接入裁决。
+**最终判断：** TransNetV2 是一个以 TensorFlow SavedModel 推理为主、训练闭环完整、PyTorch 推理复现为辅的镜头边界检测参考实现。当前本地仓库与远程 `master` 同步，但真实 LFS 权重未展开、无独立测试套件、依赖年代较旧，因此当前核对完成的是源码级架构建档，不是可运行性验收或生产接入裁决。
 
 本文件已吸收此前 `细探-TransNetV2.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 
-## 十二、第三轮：通用底座映射与运行治理
+## 十二、后续：通用底座映射与运行治理
 
 本节不是把 TransNetV2 直接改造成平台组件，而是依据本仓已经读取的真实源码，裁决其视频读取、帧采样、模型推理、批处理、设备、权重和接口分别应该落在哪一层。以下“底座归属”是平台装配规划，不代表本仓已经存在这些平台能力；本任务只修改本架构文档，没有修改源码、依赖、配置或生产底座。
 
-### 12.1 第三轮证据边界
+### 12.1 后续证据边界
 
 - `inference/transnetv2.py:8-22` 是 TensorFlow SavedModel 的加载入口；`predict_video:74-88` 通过 `ffmpeg-python` 调系统 `ffmpeg`，将整个 stdout 解码为 `[N,27,48,3]` 的 RGB `uint8` 数组；`predict_frames:35-72` 实现首尾复制填充、100 帧窗口、50 帧步长和中间 50 帧裁剪。
 - `inference/transnetv2.py:24-33` 的 `predict_raw` 调模型并输出 `single_frame_pred` 与 `many_hot`；`predictions_to_scenes:90-109` 把阈值后的帧序列转成闭区间场景；`main:153-189` 写相邻的 `.predictions.txt`、`.scenes.txt` 和可选 `.vis.png`。
@@ -302,7 +302,7 @@ image = model.visualize_predictions(
 - `training/input_processing.py:5-56,560-596` 使用 GZIP TFRecord、`batch_size=16`、`prefetch(2)`；`training/training.py:316-376` 由 gin 配置选择模型、恢复 `.h5` 权重、训练每 epoch 保存权重并评估。训练链与直接视频推理链必须分开治理。
 - `setup.py:4-22` 只注册 `transnetv2_predict` console script；`inference/README.md:22-49` 只定义 Docker/CLI/文件输出，没有 REST、gRPC、GraphQL 或消息协议。当前仓库不存在服务接口实现。
 - `inference/transnetv2-weights/*` 三个权重文件均为 Git LFS 指针，指向约 5.6 MB、5.5 KB、30.5 MB 的真实对象；本地未展开，故不能把模型加载或端到端推理写成已验证。
-- 本轮 `project_context` 错误绑定 `~/Documents/Agent/PHP/华世王镞_v3`，其代码地图/历史证据全部丢弃，不作为 TransNetV2 证据；本轮改用目标仓库逐文件静态读取。目标仓库没有 `细探-*.md` 文件可供再次核对。
+- 当前核对 `project_context` 错误绑定 `~/Documents/Agent/PHP/华世王镞_v3`，其代码地图/历史证据全部丢弃，不作为 TransNetV2 证据；当前核对改用目标仓库逐文件静态读取。目标仓库没有 `细探-*.md` 文件可供再次核对。
 
 ### 12.2 现有能力命中表与唯一归属
 
@@ -424,7 +424,7 @@ device + resource_usage + release_status + evidence_ref
 
 ### 12.9 装配计划与验收契约
 
-本轮只形成文档级装配计划，未启动任何生产实现：
+当前核对只形成文档级装配计划，未启动任何生产实现：
 
 1. **契约冻结**：冻结 `视频解码.读取RGB帧`、`视觉模型.批量推理`、`镜头边界检测` 的输入/输出/错误/资源字段；明确 `request_id`、模型/权重摘要、设备、帧索引闭区间和阈值。
 2. **能力搜索与租约**：在现有能力目录中先搜索解码、图像缩放、进程组、GPU/资源监督和制品写入能力；命中则复用并升级，不命中才登记上述新能力。任何实现前都要有 provider 占用租约，避免并行建立第二套能力。
@@ -446,15 +446,15 @@ device + resource_usage + release_status + evidence_ref
 | 服务 | 网关真实 HTTP 请求/响应、deadline/cancel、统一错误码和制品引用；没有第三方库穿透网关 |
 | 证据等级 | 代码存在、测试存在、静态检查、真实运行、外部依赖实测分栏记录；本仓当前仅有源码/配置/文档/LFS 指针和 AST 静态证据，无端到端运行证据 |
 
-### 12.10 第三轮最终判断
+### 12.10 后续最终判断
 
 **吸收**的是 TransNetV2 的模型输入/窗口/双输出/场景闭区间等可验证领域契约；**升级**的是唯一视频解码能力与运行核心资源治理；**隔离**的是 TensorFlow、PyTorch、ffmpeg、GPU 和 LFS 权重；**新增**的是必要的模型 Provider/媒体模块/网关适配边界；**不吸收**的是项目脚本的重复解码、全量 stdout、旁路文件写入、无界缓存、在线复用训练脚本和“已有文件即跳过”语义。
 
 当前结论等级为 **L1/L2 候选边界已能从源码确认，L3/L4 仅完成架构映射，未完成运行验证**。真实生产接入必须在权重展开、依赖与设备环境可用后，按上述验收契约执行；在此之前不得声称 TransNetV2 已经作为平台视频能力上线。
 
-### 12.11 第三轮通用底座映射卡片
+### 12.11 后续通用底座映射卡片
 
-为避免把“视频模型接入”误解为只搬运 `predict_video`，本轮将每个横切面收敛为一个可替换的底座边界。下表是面向后续实现的最小责任矩阵；“已证实”表示能从本仓源码直接确认，“规划”表示平台接入时必须补齐，均不表示本仓已经实现。
+为避免把“视频模型接入”误解为只搬运 `predict_video`，当前核对将每个横切面收敛为一个可替换的底座边界。下表是面向后续实现的最小责任矩阵；“已证实”表示能从本仓源码直接确认，“规划”表示平台接入时必须补齐，均不表示本仓已经实现。
 
 | 横切面 | L0 | L1 | L2 | L3 | L4 | 本仓状态 |
 |---|---|---|---|---|---|---|
@@ -558,7 +558,7 @@ VALIDATED/DECODING/BATCHING/INFERENCING/COMMITTING
 
 - 仓库没有 `tests/`、`test*.py` 或常规单元/集成测试；不能声称输入边界、解码失败、OOM、取消、崩溃、原子制品或资源释放已有覆盖。
 - `convert_weights.py --test` 依赖真实 TensorFlow/PyTorch 权重和运行环境，仅验证十组随机 `[2,100,27,48,3]` 前向数值接近；它不验证视频解码、窗口边界、场景闭区间、CLI 幂等或异常清理。
-- README、Dockerfile 和 CLI 命令是运行说明，不是本轮执行证据。本轮未安装依赖、未拉取 LFS、未启动 ffmpeg/GPU、未运行权重转换或端到端推理。
+- README、Dockerfile 和 CLI 命令是运行说明，不是当前核对执行证据。当前核对未安装依赖、未拉取 LFS、未启动 ffmpeg/GPU、未运行权重转换或端到端推理。
 - 最低新增验证面应包括空/短/99/100/101 帧、错误尺寸/颜色、截断视频、缺 ffmpeg、LFS 指针/损坏权重、CPU/GPU 不可用与 OOM、解码中/批间/写出前取消、超时、SIGTERM/SIGKILL、磁盘写失败、重复请求和旧制品保护。
 
 ### 13.7 文档重复与冲突裁决
@@ -578,4 +578,4 @@ VALIDATED/DECODING/BATCHING/INFERENCING/COMMITTING
 - **必须升级的底座能力**：流式解码、受限批处理、CPU/GPU 资源租约、deadline/cancel、进程组回收、权重摘要、原子制品提交、幂等和崩溃恢复。现有 `capture_stdout`、同步 `.run()` 和输入旁直接写文件均不足以承担这些职责。
 - **必须隔离的运行单元**：TensorFlow、PyTorch、ffmpeg、GPU 上下文和权重转换。它们可以作为 L0 Provider 被 L1 调用，但不得进入 L2 媒体模块、L3 运行核心或 L4 网关的直接依赖面。
 
-本卡片完成的是第三轮架构映射和责任冻结；由于真实 LFS 权重、TensorFlow/PyTorch/ffmpeg、GPU 和服务宿主均未在本轮启动，L0 运行事实、L3 资源回收事实和 L4 服务事实仍为待验收项。
+本卡片完成的是后续架构映射和责任冻结；由于真实 LFS 权重、TensorFlow/PyTorch/ffmpeg、GPU 和服务宿主均未在当前核对启动，L0 运行事实、L3 资源回收事实和 L4 服务事实仍为待验收项。

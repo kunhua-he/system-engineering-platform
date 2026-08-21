@@ -26,7 +26,7 @@ REST API / Python SDK / CLI / React UI / Webhooks / Analytics
 
 系统不是单体 HTTP 进程：Web API、前端、RQ worker、PostgreSQL、Redis（内存队列/缓存）、Kvrocks（持久缓存）、OPA、ClickHouse、Vector、Grafana 通过 Docker Compose 组成默认部署；Nuclio/serverless、外部对象存储、Helm/Kubernetes 属于可选扩展面。
 
-**本轮可复用的架构认识：**
+**当前核对可复用的架构认识：**
 
 1. `Project → Task → Job` 是协作和分工的主骨架；`Data`、`Segment`、标注对象和文件系统目录负责承载媒体与标注状态。
 2. REST API 是后端唯一稳定边界；`cvat-core` 是前端/浏览器侧领域对象与 API 适配层，`cvat-sdk` 是 Python 客户端，`cvat-cli` 复用 SDK 做命令行操作。
@@ -43,7 +43,7 @@ REST API / Python SDK / CLI / React UI / Webhooks / Analytics
 - 本地最新提交：`Prevent source files from being modified by the Django user (#10575)`，时间 `2026-07-23T13:22:24+03:00`。
 - `cvat/__init__.py:7-9`：`VERSION = (2, 71, 1, "alpha", 0)`，通过 `get_version` 生成 `__version__`。
 - 本地源码盘点（排除 `.git`、`node_modules`、前端 `dist`）：约 2927 个文件，其中 Python 583、TypeScript 272、TSX 376、JavaScript 284、YAML 86、Markdown 195；`cvat/apps/` 有 14 个业务 app，Django migration Python 文件约 94 个。
-- 建档开始时工作树除既有未跟踪的 `细探-cvat.md` 外无已知修改；该文件是调研留痕，不在本轮修改范围。
+- 建档开始时工作树除既有未跟踪的 `细探-cvat.md` 外无已知修改；该文件是调研留痕，不在当前核对修改范围。
 
 ### 2.2 远程独立快照
 
@@ -51,7 +51,7 @@ REST API / Python SDK / CLI / React UI / Webhooks / Analytics
 
 - `git ls-remote origin develop`：远程 `develop` 为 `c6a827cb3cc2a47d36c2c75197f2266ea5202d79`。
 - 远程最新提交：`As/add new user model (#11023)`，时间 `2026-08-20T14:15:58+04:00`。
-- 本地 `HEAD` 与远程快照之间为 452 个文件变更，统计约 `58970 insertions(+), 11227 deletions(-)`；该数字用于说明版本漂移，不表示本轮修改。
+- 本地 `HEAD` 与远程快照之间为 452 个文件变更，统计约 `58970 insertions(+), 11227 deletions(-)`；该数字用于说明版本漂移，不表示当前核对修改。
 - 已通过独立代理 `http(s)_proxy=http://127.0.0.1:4780` 创建远程快照：`/tmp/cvat-remote-snapshot`。
 - 远程快照 `cvat/__init__.py:5-9` 为 `VERSION = (2, 73, 1, "alpha", 0)`。
 - 远程快照源码盘点约 3021 个文件，其中 Python 620、TypeScript 292、TSX 383、JavaScript 292、YAML 87、Markdown 205；`cvat/apps/` 增至 15 个 app，migration Python 文件约 100 个。
@@ -342,7 +342,7 @@ yarn build:cvat-data
 - JavaScript/TypeScript：ESLint、Stylelint、Prettier、TypeScript `tsc`。
 - Markdown/site：remark 配置及 `site/` 构建。
 - GitHub workflows：`main.yml`、`full.yml`、`linters.yml`、`docs.yml` 等；CI 依赖 Docker、浏览器/Node/Python、外部服务或服务容器。
-- 未经需求授权不应在本类源码参考库启动完整 Docker stack、安装第三方依赖、生成数据库/模型产物或修改测试资产；架构建档本轮不做运行时验收。
+- 未经需求授权不应在本类源码参考库启动完整 Docker stack、安装第三方依赖、生成数据库/模型产物或修改测试资产；架构建档当前核对不做运行时验收。
 
 ## 10. 关键风险、漂移与后续裁决点
 
@@ -390,12 +390,12 @@ yarn build:cvat-data
 | 测试环境与资产恢复 | `tests/python/README.md`、`tests/python/conftest.py`、`tests/docker-compose*.yml` |
 | 版本/发布变化 | `cvat/__init__.py`、`CHANGELOG.md`、`changelog.d/`、远程 commit |
 
-## 12. 本轮执行记录
+## 12. 当前核对执行记录
 
 - 已读取：根 README、既有 `细探-cvat.md`、规则文件检索结果、根目录布局、Django settings、根 URL、Dockerfile、Compose、入口脚本、engine/quality/consensus 模型、dataset manager、SDK/CLI/UI/core/data/canvas 包配置、Python/Cypress 测试说明与配置、依赖锁定文件、OpenAPI schema 统计。
 - 已核对：本地 Git 基线、远程 `origin/develop`、远程提交差异；远程领先时使用 4780 代理建立了独立快照 `/tmp/cvat-remote-snapshot`。
 - 未做：未安装依赖，未启动 Docker/服务，未构建前端/镜像，未执行数据库迁移，未改源码/依赖/测试/配置，未提交 Git。
-- 本轮唯一目标文件：`ARCHITECTURE.md`。
+- 当前核对唯一目标文件：`ARCHITECTURE.md`。
 - MCP 状态：`project_context` 当前绑定的是另一个工程 `华世王镞_v3`；对目标路径调用 `codegraph_explore` 返回“目标项目没有 `.codegraph/` 索引”；`development_start` 因当前 MCP 仓库根与目标仓库不一致被拒。故本文事实来自目标目录本地只读工具与 4780 独立快照，不引用其他仓库的地图或证据。
 
 ## 13. 版本化维护规则
@@ -418,7 +418,7 @@ yarn build:cvat-data
 | `iam` + `organizations` 权限/组织 | §4.3、§6、§15.1 | 吸收 | `cvat/settings/base.py:173-220`、`cvat/urls.py:25-57`；策略细节仍需运行环境验证 |
 | `events` + `webhooks` 集成 | §5.3、§8、§15.4、§16 | 吸收并加深 | `cvat/apps/webhooks/dispatch.py:14-24`、`tasks.py:14-38`、`utils.py:68-102` |
 | `lambda`/serverless ML 预标注 | §8、§15.5 | 吸收为可选边界 | `cvat/settings/base.py:408-420`；未启动 Nuclio，端到端未验证 |
-| “高质量标注数据”目标 | §1、§5.2 | 吸收为产品定位，不当作运行结果 | 质量报告需 Ground Truth 与异步计算条件；不存在本轮实测指标 |
+| “高质量标注数据”目标 | §1、§5.2 | 吸收为产品定位，不当作运行结果 | 质量报告需 Ground Truth 与异步计算条件；不存在当前核对实测指标 |
 | 仅列目录、旁路线索、平台借鉴点 | §3、§10、§17 | 吸收为路径索引/裁决 | 未把 README 或宣传性描述当实现证据 |
 | “社区 MIT / Enterprise 商业”概括 | §2、§17 | 部分吸收 | 许可证以根 `LICENSE` 和各第三方资产逐项复核为准，不能由旧细探概括推出全部资产许可 |
 
@@ -430,7 +430,7 @@ yarn build:cvat-data
 
 | 入口/能力 | 输入与前置 | 输出/状态 | 错误、重试、取消、幂等 | 真实 owner |
 |---|---|---|---|---|
-| REST 资源 API | HTTP JSON；默认需认证、Token/PAT/Session/Basic 之一；Accept API version `2.0` | DRF serializer JSON、分页；默认 page size 10 | serializer/permission/组织过滤/限流/统一异常共同决定失败；本轮未运行服务，HTTP 码未实测 | `cvat/settings/base.py:173-220`、`cvat/urls.py:25-57`、`cvat/apps/engine/urls.py` |
+| REST 资源 API | HTTP JSON；默认需认证、Token/PAT/Session/Basic 之一；Accept API version `2.0` | DRF serializer JSON、分页；默认 page size 10 | serializer/permission/组织过滤/限流/统一异常共同决定失败；当前核对未运行服务，HTTP 码未实测 | `cvat/settings/base.py:173-220`、`cvat/urls.py:25-57`、`cvat/apps/engine/urls.py` |
 | `POST` 质量报告创建 | `task_id` 或 `project_id`；Task 必须 2D 且有 acceptance/completed GT；Project 无此前置 | `202` + `rq_id`；查询完成后 `201` + report；非法输入 `400` | 同一 request id 的现有 queued/started/deferred 返回 `409`；RQ failed 转 `500` 并删除 job；取消走 `/api/requests/{id}/cancel`，已启动作业通常不可取消 | `quality_control/views.py:323-413`、`quality_reports.py:2586-2653` |
 | `/api/requests/{rq_id}` | 合法新格式或兼容 legacy request id；需通过 owner 权限 | `200` request 状态/消息/进度；取消/停止态读回为 `404` | Redis 不可用 `503`；缺失 id `404`；状态机由 RQ 实际状态驱动 | `redis_handler/views.py:200-271` |
 | `POST /api/requests/{id}/cancel` | 作业存在且调用者有权限 | queued/deferred 直接取消并 `200`；生产 worker 中可停止的 export 可发 stop command | started 仅允许非变更 export 且 worker 标记可停；其他 started、finished、failed、scheduled 返回 `400`；代码标注 queued 取消存在竞态 | `redis_handler/views.py:289-349` |
@@ -519,7 +519,7 @@ docker compose
 
 ### 16.1 资源生命周期表
 
-| 资源 | 创建/持有 | 成功释放 | 失败/超时/取消/崩溃风险 | 本轮状态 |
+| 资源 | 创建/持有 | 成功释放 | 失败/超时/取消/崩溃风险 | 当前核对状态 |
 |---|---|---|---|---|
 | PostgreSQL 行/事务 | Django ORM、`transaction.atomic`；Task/Job/QualityReport/Delivery 写入 | commit 后持久化；rollback 由事务边界处理 | 进程崩溃可回滚 DB 未提交部分，但已提交文件/外部请求不随 DB 回滚；未做真实 DB 探针 | 源码存在，运行未验证 |
 | Task/Job/Data 文件目录 | `TASKS_ROOT`、Data upload dir、Job/Project dir | post-delete `on_commit` `shutil.rmtree`；云存储搬迁在 commit 后清理本地 | `ignore_errors=True` 隐藏清理失败；commit 前崩溃与孤儿文件对账未验证 | 源码存在，失败清理未验证 |
@@ -547,17 +547,17 @@ docker compose
 
 ## 17. 防假绿验证分级（L0-L4）
 
-本档不把“源码存在”、测试文件、历史日志或子代理自报当作运行通过。CVAT 本轮没有安装依赖、启动 Docker 或连接外部服务，所有高等级均明确为未执行。
+本档不把“源码存在”、测试文件、历史日志或子代理自报当作运行通过。CVAT 当前核对没有安装依赖、启动 Docker 或连接外部服务，所有高等级均明确为未执行。
 
-| 等级 | 允许声称 | 本地证据 | 本轮结论 |
+| 等级 | 允许声称 | 本地证据 | 当前核对结论 |
 |---|---|---|---|
 | L0 | 源码/配置/文档存在 | 目标路径文件读取、函数/类/路由和 Compose/settings 静态证据 | 已达到：本档引用了源码路径与行号 |
-| L1 | 静态结构/语法可解析 | `git diff --check`、`python3 -m py_compile` 等本轮命令 | ARCHITECTURE.md 本轮待执行针对性验证；未声称 Python 全库通过 |
+| L1 | 静态结构/语法可解析 | `git diff --check`、`python3 -m py_compile` 等当前核对命令 | ARCHITECTURE.md 当前核对待执行针对性验证；未声称 Python 全库通过 |
 | L2 | 单元/契约测试通过 | 实际测试命令、退出码、测试数/跳过数 | 未执行；`tests/python/pytest.ini` 仅声明 15s timeout 和插件要求 |
-| L3 | 多服务集成通过 | `pytest ./tests/python` 自动启动 CVAT/OPA/Redis/DB/Nuclio 等真实容器 | 未执行；README 的运行说明不是本轮证据 |
+| L3 | 多服务集成通过 | `pytest ./tests/python` 自动启动 CVAT/OPA/Redis/DB/Nuclio 等真实容器 | 未执行；README 的运行说明不是当前核对证据 |
 | L4 | 生产类故障/恢复通过 | 注入 Redis/worker/外部 HTTP/数据库/进程故障并读回资源现场 | 未执行；不能据此声称取消、重试、回滚、崩溃清理已闭环 |
 
-**建议的最小真实验证（不在本轮执行）：**在隔离测试环境执行 `pytest ./tests/python` 的窄目标；增加质量/共识/Webhook/RQ cancel 的失败注入，记录 PostgreSQL 行、RQ job、任务目录、云对象、临时文件和容器进程前后对账；再分别测试 SDK 对 `FAILED/CANCELED/STOPPED` 的终态行为。测试环境必须使用 `tests/python/README.md` 规定的独立容器与资产恢复流程，避免触碰正式数据。
+**建议的最小真实验证（不在当前核对执行）：**在隔离测试环境执行 `pytest ./tests/python` 的窄目标；增加质量/共识/Webhook/RQ cancel 的失败注入，记录 PostgreSQL 行、RQ job、任务目录、云对象、临时文件和容器进程前后对账；再分别测试 SDK 对 `FAILED/CANCELED/STOPPED` 的终态行为。测试环境必须使用 `tests/python/README.md` 规定的独立容器与资产恢复流程，避免触碰正式数据。
 
 ## 18. 未验证项、证据可信度与吸收裁决
 
@@ -576,10 +576,10 @@ docker compose
 - **不吸收为本地基线：**远程 `c6a827c` 新增的质量需求、Growth、新用户模型及其 API/UI/测试资产；没有复制远程文件，也没有改本地源码。
 - **保留旧细探：**`细探-cvat.md` 不删除，作为历史原始证据；唯一长期架构维护入口是本 `ARCHITECTURE.md`。
 
-## 19. 本轮收口证据
+## 19. 当前核对收口证据
 
 - 目标项目根：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/50_dataset_annotation_quality/cvat`。
-- 本轮唯一修改文件：目标根 `ARCHITECTURE.md`；未改源码、配置、测试、依赖、Git；未删除 `细探-cvat.md`。
+- 当前核对唯一修改文件：目标根 `ARCHITECTURE.md`；未改源码、配置、测试、依赖、Git；未删除 `细探-cvat.md`。
 - MCP 开工上下文实际返回的实例为 `project_toolkit`，但 `project_context` 绑定根目录为 `~/Documents/Agent/PHP/华世王镞_v3`，不是目标 CVAT；已如实保留该错绑事实。
 - 对目标路径调用 `codegraph_explore` 的结果：未找到 `.codegraph/`，代码图不可用；没有冒充代码图成功。
 - 源码事实基线：本地 `develop` / `4aa0be3df5e888180d0d70004e9471423e540eae` / CVAT `2.71.1`；远程 `develop` 的 `c6a827cb3cc2a47d36c2c75197f2266ea5202d79` 仅作为独立快照和漂移线索。
@@ -661,11 +661,11 @@ DATA_ROOT
 | 媒体/模型资源 | cache 事件、周期清理、session/context manager、模型 `close()` 示例 | 大媒体内存峰值、显存、临时目录、孤儿 chunk/preview 的上限与回收未现场验证 |
 
 **对接结论：**任何新媒体或长任务能力都必须同时定义 `(1)` ORM 领域对象及权限 owner，`(2)` 本地/共享/云存储位置和清理责任，`(3)` Request action/target/idempotency key，`(4)` 队列、超时、重试与取消边界，`(5)` worker 崩溃后的状态修复和孤儿资源对账，`(6)` session/Token 与对象权限的分离。缺少其中任一项，只能算“能入队或能写文件”，不能算完成的业务闭环。
-- 验证边界：本轮只做只读源码取证和文档编辑；验证命令及退出码见最终回信，未把未执行的服务/测试写成通过。
+- 验证边界：当前核对只做只读源码取证和文档编辑；验证命令及退出码见最终回信，未把未执行的服务/测试写成通过。
 
-## 20. 第三轮：通用底座映射总裁决
+## 20. 后续：通用底座映射总裁决
 
-本节是第三轮增量，不是把 CVAT 代码直接搬进系统工程平台。映射对象是“能力契约、领域模块、支持库、运行核心”的职责边界；CVAT 当前实现仍以本档前文的本地 `2.71.1` 工作树为事实源，远程 `develop` 只作漂移提示。
+本节是后续增量，不是把 CVAT 代码直接搬进系统工程平台。映射对象是“能力契约、领域模块、支持库、运行核心”的职责边界；CVAT 当前实现仍以本档前文的本地 `2.71.1` 工作树为事实源，远程 `develop` 只作漂移提示。
 
 ### 20.1 映射总表
 
@@ -699,7 +699,7 @@ DATA_ROOT
 | RQ/Redis | **隔离 CVAT 实现，复用运行核心语义** | RQ 可作为 provider，但队列/状态/租约/取消语义必须由运行核心统一，不能复制 CVAT `AbstractRequestManager` |
 | Webhook | **新建运行核心事件投递能力** | 统一签名、幂等键、delivery 状态、退避、死信和对账；业务 app 只提交事件 |
 | 前端 API | **升级前端核心** | 保留 facade + server-proxy + request observer 形态；映射后只新增领域适配，不复制请求轮询器 |
-| CVAT Django/IAM/OPA/Nuclio/ClickHouse/Grafana | **隔离/待核** | 是 CVAT 部署或产品边界，不是本轮通用底座；需单独能力需求和外部依赖审查 |
+| CVAT Django/IAM/OPA/Nuclio/ClickHouse/Grafana | **隔离/待核** | 是 CVAT 部署或产品边界，不是当前核对通用底座；需单独能力需求和外部依赖审查 |
 
 ## 21. 唯一标注链路与调用契约
 
@@ -816,9 +816,9 @@ idempotency_key = event_id + webhook_id + aggregate_version
 
 CVAT `Data.move_to_backing_cloud_storage` / `move_from_backing_cs` 通过 `transaction.on_commit` 做原文件/云对象清理（`cvat/apps/engine/models.py:601-679`），删除 handler 也存在“数据库提交后清文件、`ignore_errors=True`”语义。该模式可吸收为提交后副作用，但必须加对象清单、失败重试和孤儿对账；`on_commit` 不是跨数据库/对象存储事务。
 
-## 24. L0-L4 验证契约与第三轮验收
+## 24. L0-L4 验证契约与后续验收
 
-本轮把 L0-L4 从“项目验证等级”细化成底座映射的准入门槛。低等级只能证明结构，不得替代高等级资源/故障证据。
+当前核对把 L0-L4 从“项目验证等级”细化成底座映射的准入门槛。低等级只能证明结构，不得替代高等级资源/故障证据。
 
 | 等级 | 必须证明 | 针对 CVAT 映射的最小证据 | 允许结论 |
 |---|---|---|---|
@@ -828,7 +828,7 @@ CVAT `Data.move_to_backing_cloud_storage` / `move_from_backing_cs` 通过 `trans
 | **L3 多服务集成** | DB、Redis/RQ、对象存储、Web/API、前端/SDK 真实联通 | 隔离 Docker/测试环境：创建 Task→上传媒体→创建 Job→写标注→生成 GT→质量报告/共识→导出→查询 request→Webhook 接收；读回 PostgreSQL、队列、对象和 UI/API 终态 | “真实跨服务链路通过”；需列出外部依赖版本和残留对账 |
 | **L4 故障/恢复与审计** | 取消竞态、租约过期、worker 崩溃、DB/Redis/对象存储断开、Webhook 已收后本地崩溃、重试/重放均可恢复且无半成品 | 强杀 worker/进程组，注入 408/429/5xx、SIGKILL、连接断开、超时；重启后核对领域状态、attempt、lease、DB 行、文件/对象、delivery 幂等和证据链 | “生产级治理成立”；没有现场读回只能是 L0-L3 |
 
-### 24.1 第三轮最小验收矩阵
+### 24.1 后续最小验收矩阵
 
 | 场景 | 需要的断言 |
 |---|---|
@@ -843,7 +843,7 @@ CVAT `Data.move_to_backing_cloud_storage` / `move_from_backing_cs` 通过 `trans
 | 数据库提交成功、对象清理失败 | 领域状态仍可解释；清理任务进入待处理账，不静默丢失；重试幂等 |
 | SDK/UI 读到 404/停止态 | 终止轮询、展示取消/停止/失败，不把“找不到 request”误报为成功 |
 
-## 25. 第三轮吸收裁决、实施顺序与剩余风险
+## 25. 后续吸收裁决、实施顺序与剩余风险
 
 ### 25.1 吸收/升级/新建/隔离
 
@@ -864,22 +864,22 @@ CVAT `Data.move_to_backing_cloud_storage` / `move_from_backing_cs` 通过 `trans
 7. L2 → L3 → L4：先组件契约，再隔离多服务，最后故障注入与资源对账
 ```
 
-### 25.3 第三轮剩余风险
+### 25.3 后续剩余风险
 
-1. 本地 CVAT 未安装依赖、未启动 PostgreSQL/Redis/RQ/对象存储/前端，因此 L2-L4 仍是验收计划，不是本轮通过结果。
+1. 本地 CVAT 未安装依赖、未启动 PostgreSQL/Redis/RQ/对象存储/前端，因此 L2-L4 仍是验收计划，不是当前核对通过结果。
 2. `QualityReport` 计算代码明确写出“不能保证绝对一致”（`quality_reports.py:2684-2690`）；平台若需要可复现质量报告，必须先落稳定标注快照和算法/参数版本。
 3. 共识实现当前在 `transaction.atomic` 内先 `clear_annotations_in_jobs` 再导入（`merging_manager.py:120-145`）；是否覆盖所有 Datumaro/文件副作用必须实测，不能只凭数据库事务宣称全回滚。
 4. RQ `Retry` 和失败 TTL 只能治理队列任务，不回滚外部 HTTP、对象上传或已提交标注；必须由幂等键、补偿/对账和 evidence owner 补足。
 5. Webhook `perform_webhook_request` 只限制响应读取 1 MiB、timeout `(3,10)`；DNS/SSL/其他 requests 异常分类、接收端幂等和长期 delivery 保留仍待 L2/L4。
 6. CVAT 的数据库、对象、缓存、队列、事件有多个事实面；迁移到平台前必须先冻结唯一写 owner 和 schema/version，不得仅按目录名搬运。
 
-## 26. 第三轮收口证据补记
+## 26. 后续收口证据补记
 
 - **修改文件：**仅目标项目根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/50_dataset_annotation_quality/cvat/ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git，未删除 `细探-cvat.md`。
-- **源码取证：**补读 `cvat/apps/engine/models.py`、`quality_control/quality_reports.py`、`quality_control/models.py`、`consensus/merging_manager.py`、`webhooks/utils.py`/`tasks.py`/`dispatch.py`、`redis_handler/background.py`/`views.py`、`settings/base.py`、`dataset_manager/task.py`、`engine/cloud_provider.py`、`cvat-core/src/requests-manager.ts`、`cvat-sdk/cvat_sdk/core/client.py`；本轮结论均标注为源码事实、映射裁决或未验证建议。
+- **源码取证：**补读 `cvat/apps/engine/models.py`、`quality_control/quality_reports.py`、`quality_control/models.py`、`consensus/merging_manager.py`、`webhooks/utils.py`/`tasks.py`/`dispatch.py`、`redis_handler/background.py`/`views.py`、`settings/base.py`、`dataset_manager/task.py`、`engine/cloud_provider.py`、`cvat-core/src/requests-manager.ts`、`cvat-sdk/cvat_sdk/core/client.py`；当前核对结论均标注为源码事实、映射裁决或未验证建议。
 - **MCP 开工 id：**`project_context` 实际返回 `开工id=""`；**MCP 实例：**`project_toolkit`；其上下文错绑 `~/Documents/Agent/PHP/华世王镞_v3`，没有将目标 CVAT 作为工作根。
 - **代码图：**按要求随后调用 `codeexplore`（目标路径限定 CVAT），返回退出码语义为失败：目标项目没有 `.codegraph/` 索引；未运行 `codegraph init`，未伪造代码图证据。
-- **验证边界：**本轮只进行了只读源码取证和 Markdown 定向编辑；未安装依赖、未启动服务、未运行 Django/pytest/Cypress/Yarn/Docker，因此 L2-L4 不宣称通过。后续复核应使用目标仓库隔离测试环境，并按 §24 记录退出码、测试数、skip 数和资源对账。
+- **验证边界：**当前核对只进行了只读源码取证和 Markdown 定向编辑；未安装依赖、未启动服务、未运行 Django/pytest/Cypress/Yarn/Docker，因此 L2-L4 不宣称通过。后续复核应使用目标仓库隔离测试环境，并按 §24 记录退出码、测试数、skip 数和资源对账。
 
 ---
 
@@ -925,18 +925,18 @@ CVAT `Data.move_to_backing_cloud_storage` / `move_from_backing_cs` 通过 `trans
 
 - 资源权限是多层组合：Django/DRF authentication、`IsAuthenticated`、`PolicyEnforcer`、IAM/organization filters、app permissions 和 `rules/*.rego`。Webhook 的公开 ping 等少数 endpoint 显式设置空 permission class，不能据此推断同 app 其他路由公开。
 - Django 事务只覆盖 ORM 行和数据库提交；`on_commit` 回调、RQ 入队、文件系统、CloudStorage、外部 webhook 是提交后的副作用，必须用清理任务、补偿/重试和资源账本对账。
-- `tests/python/README.md` 说明 REST 测试依赖真实 CVAT、OPA、Redis、PostgreSQL、Nuclio 容器，测试函数后恢复数据库；需要 Docker、依赖和测试资产，不能在本轮静态审计中宣称通过。
+- `tests/python/README.md` 说明 REST 测试依赖真实 CVAT、OPA、Redis、PostgreSQL、Nuclio 容器，测试函数后恢复数据库；需要 Docker、依赖和测试资产，不能在当前核对静态审计中宣称通过。
 - 已定位的重点测试包括 `test_requests.py`、`test_webhooks.py`、`test_webhooks_sender.py`、`test_quality_control.py`、`test_cloud_storages.py`、`test_jobs.py`，以及 `redis_handler/tests/test_views.py`。测试文件存在只证明测试意图存在，不能证明取消竞态、worker 崩溃、跨资源清理和 exactly-once 已通过。
 - site 文档与源码的职责描述大体一致：架构文档列出 PostgreSQL、Redis、Kvrocks、OPA、RQ worker 和质量/Webhook worker；Webhook 文档描述 project/organization、secret、SSL 和事件 payload；质量文档要求 Ground Truth job 进入 acceptance/completed 后计算指标。文档是使用说明，不替代源码状态机和故障证据。
 
-### 27.6 本轮质量裁决与必须补强项
+### 27.6 当前核对质量裁决与必须补强项
 
 1. **高风险：跨资源一致性不足。** DB、RQ、文件、缓存、对象存储和外部 HTTP 没有共同事务；`on_commit` + 静默清理失败会留下不可见孤儿。应增加删除/迁移/导出产物账本、失败重试和周期对账。
 2. **高风险：取消不是租约。** queued cancel 与领取存在竞态，started cancel 只覆盖 export；应引入 lease id、owner、attempt、expiry、heartbeat 和提交 CAS，拒绝过期 worker 的迟到写入。
 3. **高风险：Webhook 不是 exactly-once。** RQ Retry 只提供任务重试；应固定 event/idempotency key、delivery attempt、死信和安全重放契约，并要求接收端去重。
 4. **中风险：终态投影不完整。** Request 的 canceled/stopped 可能被删除为 404，SDK 主要识别 FINISHED/FAILED；客户端必须把 canceled/stopped/expired 作为终态停止轮询。
 5. **中风险：架构聚合度高。** `engine` 同时承载模型、REST、媒体、缓存、云存储和标注写回；改动需联检 migration、schema、SDK、UI、队列和测试，不能只看单个 ViewSet。
-6. **验证缺口：** 本轮未安装依赖、未启动 Docker、未运行 pytest/Cypress/Yarn/Django/RQ 或真实对象存储；上述问题是 L0 静态审计结论，L2-L4 仍需隔离环境故障注入和资源前后对账。
+6. **验证缺口：** 当前核对未安装依赖、未启动 Docker、未运行 pytest/Cypress/Yarn/Django/RQ 或真实对象存储；上述问题是 L0 静态审计结论，L2-L4 仍需隔离环境故障注入和资源前后对账。
 
 ### 27.7 分段读取与收口记录
 

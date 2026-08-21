@@ -31,7 +31,7 @@
 | 旧细探 | 目标根未发现 `细探-*.md` |
 | 原有架构文档 | 建档前不存在 `ARCHITECTURE.md` |
 
-本轮通过本地 `system_engineering_toolkit` HTTP MCP（`http://127.0.0.1:8766/mcp/`）先调用了 `project_context` 与 `codegraph_explore`。该 MCP 的项目上下文绑定的是系统工程平台，代码地图也只覆盖系统工程平台，不能作为本仓库源码证据；其 `codegraph_explore` 对 `evectoraframe` 返回无相关代码。目标仓库的事实以下列本地文件为准。
+当前核对通过本地 `system_engineering_toolkit` HTTP MCP（`http://127.0.0.1:8766/mcp/`）先调用了 `project_context` 与 `codegraph_explore`。该 MCP 的项目上下文绑定的是系统工程平台，代码地图也只覆盖系统工程平台，不能作为本仓库源码证据；其 `codegraph_explore` 对 `evectoraframe` 返回无相关代码。目标仓库的事实以下列本地文件为准。
 
 ## 3. 真实目录与工程组成
 
@@ -295,7 +295,7 @@ LIB_INFO（库身份、版本、平台、命令表、数据类型表、常量表
   → 支持库可被识别，但是否可运行取决于实际函数体与控件实现
 ```
 
-该链条的登记部分由 `evectoraframe_dllMain.cpp:31-94` 完成；本地没有 Windows 易语言宿主可供本轮验证。
+该链条的登记部分由 `evectoraframe_dllMain.cpp:31-94` 完成；本地没有 Windows 易语言宿主可供当前核对验证。
 
 ### 9.2 命令调用链
 
@@ -372,7 +372,7 @@ IDE 读写属性/通知
 
 ## 12. 后续复核建议
 
-后续若要把该仓库作为实现参考，建议按以下顺序另立深挖任务；本轮不启动实现：
+后续若要把该仓库作为实现参考，建议按以下顺序另立深挖任务；当前核对不启动实现：
 
 1. 在隔离 Windows 环境核对 `lib2.h` 结构布局、Visual Studio 配置和 `GetNewInf` 加载；
 2. 先补一个最小 `HUNIT`/控件生命周期闭环，再验证固定属性的读写和设计器保存恢复；

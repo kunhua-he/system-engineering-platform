@@ -148,7 +148,7 @@ EGrid 的 38 个属性由 8 个固定窗口属性加 30 个组件属性组成。
 - ABI：`elib/lib2.h`、`krnllib.h`、`fnshare.h/.cpp`、`lang.h`、`mtypes.h`、`untshare.h`、`PublicIDEFunctions.h`；
 - 构建：`egrid.sln`、`egrid.vcxproj`、`egrid_static/egrid_static.vcxproj` 及其 filters/user 文件。
 
-未发现：`tests/`、`build/`、`docs/`、README、脚本、资源文件、第三方控件源码、包管理清单、子模块或运行时数据。根文档本身是本轮新增的唯一说明文件。
+未发现：`tests/`、`build/`、`docs/`、README、脚本、资源文件、第三方控件源码、包管理清单、子模块或运行时数据。根文档本身是当前取证新增的唯一说明文件。
 
 ## 8. 验证状态
 
@@ -157,7 +157,7 @@ EGrid 的 38 个属性由 8 个固定窗口属性加 30 个组件属性组成。
 - 在目标 egrid 根目录完成 CodeGraph 尝试；目录没有 `.codegraph/` 索引，CodeGraph 未运行，未自行初始化。
 - 分段读取注册、命令表、控件/属性/事件、ABI、元数据、实现、测试目录、构建工程和文档目录。
 - 静态交叉核对 72 个命令、146 个参数项、2 个数据类型、38 个属性、10 个事件和 45 个枚举成员。
-- 确认没有 `tests/`、`build/`、`docs/` 目录，也没有 README 或其他架构/细探文档可合并。
+- 确认没有 `tests/`、`build/`、`docs/` 目录，也没有 README 或其他架构/研究材料文档可合并。
 
 ### 未完成
 
@@ -180,4 +180,71 @@ EGrid 的 38 个属性由 8 个固定窗口属性加 30 个组件属性组成。
 - 远程：`https://gitee.com/JYtechnology/egrid.git`
 - 分支/提交：`master` / `f034f889ee97276ea2a77f3fa75256e14041cb20`
 - 提交说明：`初始化仓库`
-- 本轮修改：仅根 `ARCHITECTURE.md`；未修改源码、工程文件或 ABI 头文件。
+- 当前取证修改：仅根 `ARCHITECTURE.md`；未修改源码、工程文件或 ABI 头文件。
+
+## 11. 小型仓规模说明与边界
+
+`egrid` 仅包含 23 个跟踪文件，全部为支持库生成模板：`egrid_cmdDef.cpp`、`egrid_cmdInfo.cpp`、`egrid_cmd_typedef.h`、`egrid_dtType.cpp`、`egrid_const.cpp`、`egrid_dllMain.cpp`、`include_egrid_header.h`、`Source_egrid.def`、动态/静态 `vcxproj` 及 `elib/*`。未发现网格控件实现、资源、示例、测试或第三方依赖。
+
+因此不能从命令元数据推导单元格模型、绘制、编辑、事件派发或线程安全已经实现；也没有 Windows/MSVC 构建和易语言宿主加载证据。文档保持小型仓应有的事实密度，并明确将 DLL 导出、ABI 宽度、空处理器和资源释放列为使用前验证项。
+## 14. 当前源码级深审收口
+
+### 14.1 真实文件树与入口
+
+- ./ARCHITECTURE.md
+- ./Source_egrid.def
+- ./egrid.sln
+- ./egrid.vcxproj
+- ./egrid.vcxproj.filters
+- ./egrid.vcxproj.user
+- ./egrid_cmdDef.cpp
+- ./egrid_cmdInfo.cpp
+- ./egrid_cmd_typedef.h
+- ./egrid_const.cpp
+- ./egrid_dllMain.cpp
+- ./egrid_dtType.cpp
+- ./egrid_static/egrid_static.vcxproj
+- ./egrid_static/egrid_static.vcxproj.filters
+- ./egrid_static/egrid_static.vcxproj.user
+- ./elib/PublicIDEFunctions.h
+- ./elib/fnshare.cpp
+- ./elib/fnshare.h
+- ./elib/krnllib.h
+- ./elib/lang.h
+- ./elib/lib2.h
+- ./elib/mtypes.h
+- ./elib/untshare.h
+- ./include_egrid_header.h
+
+- 版本 HEAD f034f889ee97276ea2a77f3fa75256e14041cb20；代码地图目录存在但 CLI 在该父仓返回未初始化/不可用，以下结论来自上述文件树和 rg 源码定位。
+
+### 14.2 核心符号与 ABI
+
+- egrid_dtType.cpp:4-389 的 EGrid/EGridConst 类型、属性表和 10 类事件。
+- egrid_dllMain.cpp、Source_egrid.def、include_egrid_header.h 和 egrid_cmd_typedef.h 共同定义 DllMain/GetNewInf、导出边界、命令参数和函数指针表。
+- elib/mtypes.h、fnshare.h、PublicIDEFunctions.h、krnllib.h 提供 PMDATA_INF、HUNIT、属性/事件结构和宿主内存约定。
+
+### 14.3 调用流程
+
+易语言装载器 -> GetNewInf -> 命令/数据类型表 -> 参数转换 -> 原生实现 -> 返回值或事件 -> 宿主释放
+
+### 14.4 构建与资源
+
+- egrid.sln/.vcxproj 提供 Visual Studio Win32/x64 配置，静态工程位于 egrid_static（若存在）；当前未执行 MSBuild。
+- 句柄、COM/Windows 控件、PMDATA_INF、HGLOBAL 和回调归宿主与 DLL 协同管理，仓库没有统一资源账本。
+- 未发现独立自动化测试；测试证据限于源码和工程配置。
+
+### 14.5 失败边界与平台复用
+
+- ABI 位数/调用约定、命令索引漂移、属性越界、宿主提前卸载、外部 Excel/COM/GUI 依赖和回调重入是主要失败边界。
+- 不宣称跨进程恢复、重试、取消或事务；平台复用时应将该 DLL 包装为受管提供者，显式转换错误、权限和资源释放。
+- 当前文档仅修改根 ARCHITECTURE.md；源码、工程、资源未改。
+### 14.6 完整审计裁决
+
+- 远端 `origin/HEAD` 与本地 HEAD 均为 `f034f889ee97276ea2a77f3fa75256e14041cb20`，未发现需要同步的提交；工作树只有根文档和代码地图缓存未跟踪。
+- `egrid_cmd_typedef.h` 的 72 个命令和 146 个参数只生成元数据/函数指针；`egrid_cmdDef.cpp` 当前函数体未形成控件状态实现，不能把命令名称当作可运行功能。
+- `egrid_dtType.cpp:210-222` 登记 EGrid 与 EGridConst；`egrid_GetInterface_EGrid:230-287` 只返回回调地址，`egrid_ControlCreate_EGrid:296` 返回空句柄，属性数据和通知回调没有可证明的状态存储。
+- `egrid_dllMain.cpp:7-20` 的 DllMain 分支为空；`GetNewInf` 返回静态 LIB_INFO；`Source_egrid.def` 仅导出 GetNewInf。宿主通知只覆盖系统通知函数和命令名查询。
+- 依赖边界是 Windows、易语言运行时、MSVC Win32/x64 和 elib ABI；没有测试工程、构建脚本、控件实现、消息泵或持久化文件。
+- 平台复用启示：只可吸收“能力注册表/命令元数据/宿主回调契约”模式；必须补齐受管控件实现、句柄租约、错误结果、构建验证和卸载清理后才能作为支持库。
+- 未验证项保持明确：Windows MSBuild、LoadLibrary/GetNewInf、EGrid 控件创建、属性变更、事件派发、命令返回、资源释放和多线程重入均未运行。

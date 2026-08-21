@@ -248,7 +248,7 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 ## 9. 风险、未确认项与后续复核点
 
 1. **核心功能缺失风险（已由源码确认）：** 25 个命令没有业务执行逻辑；优先补齐返回值、错误文本、连接句柄、附件容器和资源释放，再谈网络兼容性。
-2. **x64 工程宏风险（工程静态证据）：** 动态库和静态库的 x64 配置没有像 Win32 一样定义 `__E_FNENAME=internet`；`lib2.h` 对未定义 `__E_FNENAME` 有 `#error`，静态 x64 还缺少 `__E_STATIC_LIB`。需在 Windows/VS 中实际验证并由维护者决定是否修工程；本轮不修改工程文件。
+2. **x64 工程宏风险（工程静态证据）：** 动态库和静态库的 x64 配置没有像 Win32 一样定义 `__E_FNENAME=internet`；`lib2.h` 对未定义 `__E_FNENAME` 有 `#error`，静态 x64 还缺少 `__E_STATIC_LIB`。需在 Windows/VS 中实际验证并由维护者决定是否修工程；当前核对不修改工程文件。
 3. **x64 DLL 导出风险（工程静态证据）：** 动态库 x64 配置未设置 `TargetExt=.fne` 和 `ModuleDefinitionFile`，是否符合易语言支持库装载约定待验证。
 4. **平台声明不一致：** `LIB_INFO` 声明 `OS_ALL`，而源码直接依赖 Windows；应在后续版本裁决真实支持平台，不能以 `OS_ALL` 作为运行能力证据。
 5. **ABI/内存风险：** `MDATA_INF` 的文本、字节集、数组和变量地址有严格所有权规则；目前未实现写回，后续实现必须配套 `ealloc/efree`、`NRS_FREE_ARY` 和错误路径测试。
@@ -267,7 +267,7 @@ void (*)(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 提交时间：`2022-12-19 16:56:04 +08:00`
 - 现场远程核对：`git ls-remote origin HEAD refs/heads/master` 返回同一 SHA
 - 初始提交统计：23 个文件，4409 行新增（工作树在新增本架构文档前无改动）
-- 本轮边界：只新增/更新根目录 `ARCHITECTURE.md`，不修改源码、工程、依赖、测试、配置或 Git 历史。
+- 当前核对边界：只新增/更新根目录 `ARCHITECTURE.md`，不修改源码、工程、依赖、测试、配置或 Git 历史。
 
 ## 11. 证据路径索引
 

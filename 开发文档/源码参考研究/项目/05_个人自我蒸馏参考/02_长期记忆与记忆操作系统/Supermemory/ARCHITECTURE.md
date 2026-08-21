@@ -276,23 +276,23 @@ Supermemory 是一个围绕 AI 记忆、用户画像、语义检索和上下文�
 
 本文件已吸收此前 `细探-Supermemory.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 
-## 10. 第三轮：通用底座映射与边界裁决
+## 10. 后续：通用底座映射与边界裁决
 
-### 10.1 本轮范围、证据等级与现场限制
+### 10.1 当前核对范围、证据等级与现场限制
 
-本轮不是把 Supermemory 的产品宣传图复写成平台实现，而是把当前 checkout 中可见的内容入口、外部 API 客户端、MCP Worker、SDK middleware、任务/缓存/外部资源处理方式，映射到“支持库—记忆/检索模块—运行核心—统一网关”四层。必须先保留一个事实边界：本仓库没有 Supermemory 主 API 的路由、数据库、队列、提取器、embedding provider 或索引实现；以下“服务端处理链”只有契约或状态枚举证据时，不能升级为本地实现事实。
+当前核对不是把 Supermemory 的产品宣传图复写成平台实现，而是把当前 checkout 中可见的内容入口、外部 API 客户端、MCP Worker、SDK middleware、任务/缓存/外部资源处理方式，映射到“支持库—记忆/检索模块—运行核心—统一网关”四层。必须先保留一个事实边界：本仓库没有 Supermemory 主 API 的路由、数据库、队列、提取器、embedding provider 或索引实现；以下“服务端处理链”只有契约或状态枚举证据时，不能升级为本地实现事实。
 
-本轮采用以下证据等级：
+当前核对采用以下证据等级：
 
-| 等级 | 含义 | 本项目本轮证据 |
+| 等级 | 含义 | 本项目当前核对证据 |
 |---|---|---|
 | **L0** | 只有 README、`skills/supermemory/references/*`、注释或声明，没有可定位的本地实现 | `skills/supermemory/references/architecture.md` 中的 HNSW、吞吐、延迟、加密/合规和完整后端图；`CLAUDE.md` 中未在本 checkout 找到的 `IngestContentWorkflow`/绑定 |
 | **L1** | 本地源码存在明确调用/状态/资源路径，但未据此证明外部服务内部实现 | `packages/lib/api.ts` 的 `$fetch`、`apps/mcp/src/server/client/index.ts` 的 `SupermemoryClient`、`apps/mcp/src/server/index.ts` 的 Worker/MCP/上传转发、`packages/tools/src/shared/memory-client.ts` 的 profile/search/prompt 链 |
-| **L2** | 有测试源码、mock 或测试断言覆盖，尚未在本轮真实执行 | `packages/tools/src/*test.ts`、`apps/mcp/src/server/space.test.ts`、`auth/rbac.test.ts`、`apps/mcp/e2e/memory.test.ts`、Python middleware tests |
-| **L3** | 本轮对本地目标执行了命令并得到退出码 0；只能证明该命令覆盖的本地事实 | 本轮以 `git diff --check` 和目标文档检查为准；未把未安装依赖的项目测试包装成通过 |
-| **L4** | 真实外部 API/Provider/部署环境的端到端运行证据，且有退出码、测试/请求结果和资源收尾 | 本轮无 L4；`api.supermemory.ai` 未作为本轮可用外部依赖验证 |
+| **L2** | 有测试源码、mock 或测试断言覆盖，尚未在当前核对真实执行 | `packages/tools/src/*test.ts`、`apps/mcp/src/server/space.test.ts`、`auth/rbac.test.ts`、`apps/mcp/e2e/memory.test.ts`、Python middleware tests |
+| **L3** | 当前核对对本地目标执行了命令并得到退出码 0；只能证明该命令覆盖的本地事实 | 当前核对以 `git diff --check` 和目标文档检查为准；未把未安装依赖的项目测试包装成通过 |
+| **L4** | 真实外部 API/Provider/部署环境的端到端运行证据，且有退出码、测试/请求结果和资源收尾 | 当前核对无 L4；`api.supermemory.ai` 未作为当前核对可用外部依赖验证 |
 
-现场第一条 `project_context` 返回的项目是 `~/Documents/Agent/PHP/华世王镞_v3`，不是本目标；随后 `development_start` 以目标路径尝试重新绑定时被 MCP 以 `MCP_TARGET_PROJECT_MISMATCH` 拒绝。目标项目没有 `.codegraph/`，`codegraph_explore` 明确返回未建立代码图。因此本轮不把错误绑定项目的上下文、代码图或 MCP 回执冒充 Supermemory 证据；源码证据改由目标 checkout 的只读文件读取获得。项目根和修改边界仍以本文路径为准，且只修改本文。
+本轮按用户授权未使用任何 MCP。目标 checkout 自带 `.codegraph/`，现场 `codegraph status`/`sync` 均成功，代码图统计为 674 files、8,531 nodes、21,098 edges（TypeScript 308、TSX 307、Python 42、YAML 12、JavaScript 5）。因此不引用其他项目的上下文、验证或代码图；源码证据只来自目标 checkout 当前文件和 Git 提交。项目根和修改边界仍以本文路径为准，且只修改本文。
 
 ### 10.2 真实可见链路与建议的单链路
 
@@ -305,7 +305,7 @@ Web / TypeScript SDK tools / Python SDK / MCP client
   → 服务端文档/记忆/检索/连接器处理（本地未提供源码）
 ```
 
-第三轮要收敛成底座的目标单链路应是：
+后续要收敛成底座的目标单链路应是：
 
 ```text
 调用方 / Web / SDK / MCP
@@ -327,7 +327,7 @@ Web / TypeScript SDK tools / Python SDK / MCP client
 
 ### 10.3 能力命中表：现有实现如何归层
 
-| 能力/资源 | 当前 checkout 的事实入口 | 支持库落点 | 记忆/检索模块落点 | 运行核心落点 | 网关落点 | 本轮裁决 |
+| 能力/资源 | 当前 checkout 的事实入口 | 支持库落点 | 记忆/检索模块落点 | 运行核心落点 | 网关落点 | 当前核对裁决 |
 |---|---|---|---|---|---|---|
 | 内容摄取（文本/URL/文件） | `packages/lib/api.ts:213-220` 的 `@post/documents` 契约；`apps/mcp/src/server/index.ts:213-260` 将 multipart 流转到 `/v3/documents/file`；`SupermemoryClient.createMemory()` `:189-205` 调 SDK `add` | 内容类型识别、编码/流、大小限制、摘要/制品引用、HTTP 客户端 | 文档/来源/container 归属、摄取策略、处理阶段、文档→chunk→memory 的产品语义 | 入队、并发、deadline、取消、重试、状态事件、失败重放 | `POST /documents`、`POST /upload/:uploadId`、MCP tool 参数与结果 | **吸收边界；后端提取实现待核**。`queued → extracting → chunking → embedding → indexing → done/failed` 只由 `DocumentStatusEnum`/processing schema 证明（L1），不是本地 workflow（L0/L1） |
 | 索引与检索 | `SupermemoryClient.search()` `apps/mcp/src/server/client/index.ts:269-295` 使用 `searchMode: "hybrid"`；`supermemoryProfileSearch()` `packages/tools/src/shared/memory-client.ts:24-64` 调 `/v4/profile`；`SearchRequestSchema` `packages/validation/api.ts:339-389` 约束阈值/空间 | embedding/向量库/全文驱动、过滤 DSL、结果解码、分页、相似度数值 | profile static/dynamic、query/full mode、去重、版本/关系展开、排序和 prompt 投影 | 查询 deadline、并发/限流、重试、缓存一致性、降级 | `/v4/search`、`/v4/profile`、MCP `search_memory` | **模块语义吸收；索引 provider 待选型**。HNSW、p95 和关系扩展的后端实现不在本地（L0） |
@@ -377,7 +377,7 @@ Supermemory 产品模块才规定：
 | 文件上传流/外部 HTTP response | `/upload/:uploadId` consume 一次性 session，直接把 body 转发 `/v3/documents/file` | 返回外部 response body，`Cache-Control: no-store` | 外部非 2xx 原样透传；网络异常返回 502；不得在网关本地落盘 | `c.req.raw.signal` 中止转发；session 已在转发前消费，取消后不能复用，需模块重试/补偿 | DO session 的 alarm/transaction 可清短期状态；外部 multipart 是否已写入由远端状态查询确认，当前无本地证据 |
 | `SpaceState` Durable Object 状态 | `activeContainerTag`、upload session 写入 DO；upload token SHA-256 校验 | active tag 保留；upload session 消费后删除 | 无效/过期 token 删除并返回 401 | alarm 到期删除 upload session | DO 存储可持久化，但 bearerToken 随 session payload 保存；必须限制 TTL、权限和 crash 后清理 |
 | SDK/API client 与连接 | `SupermemoryClient` 构造 `supermemory` client；外部连接字段由 schema 描述 | 请求返回后对象可继续复用；无本地 close 协议 | `handleError` 将 400/401/402/403/404/429/5xx 和网络错误归类 | MCP 多数请求默认 `AbortSignal.timeout(30_000)`；profile helper 只接受调用方 signal，OpenAI middleware 的裸 profile fetch 无默认 signal | SDK/HTTP 连接池由第三方管理；本仓库无 Provider 进程/连接池残留核对，不能升为 L3/L4 |
-| turn `MemoryCache` | 工具进程创建 `LRUCache(max:100)`；键包含空间/线程/mode/消息 | 命中后复用本轮 prompt，显式 `clear()` 或淘汰 | 缓存错误不应成为记忆事实写入 | 无 per-entry cancel；请求失败不应把半成品写入 cache | 进程崩溃缓存丢失，无磁盘/跨进程残留；没有 TTL、版本和租户权限摘要，必须按易失优化处理 |
+| turn `MemoryCache` | 工具进程创建 `LRUCache(max:100)`；键包含空间/线程/mode/消息 | 命中后复用当前核对 prompt，显式 `clear()` 或淘汰 | 缓存错误不应成为记忆事实写入 | 无 per-entry cancel；请求失败不应把半成品写入 cache | 进程崩溃缓存丢失，无磁盘/跨进程残留；没有 TTL、版本和租户权限摘要，必须按易失优化处理 |
 | Python background memory task | async OpenAI wrapper `create_task`，集合追踪并注册 done callback | wait/context exit 等待（默认 10 秒；退出 5 秒） | 记录异常且不使主 chat 失败，形成“主请求成功、memory 写失败”的部分成功 | timeout 后 cancel 未完成 task；取消只在协作式 async 边界生效 | 进程崩溃任务直接丢失，无 durable outbox/重放证据；运行核心必须接管并对账 |
 | 连接器 OAuth/token、sync run | schema 暴露 token/expiry 和 `running/completed/failed`；执行器缺失 | 由 provider adapter 关闭 response、归还分页/连接资源，checkpoint 后结束 | item 级失败、总任务失败、错误证据与可重试性必须区分 | 取消后保存 checkpoint、撤销/归还 token lease、禁止重复导入 | provider 崩溃由运行核心隔离/重启；当前 checkout 没有进程监督或恢复源码 |
 | 文档/记忆/索引/embedding | 只有 schema/API 返回的远端资源 | 由记忆模块确认可检索、版本与来源已提交 | 处理阶段写 `failed` 和 processing error；不把 `queued` 当 done | 任务状态进入 timed_out/cancelled，并由模块决定是否重试或补偿 | DB/向量索引/模型上下文均不在本地；必须以远端状态、幂等查询和索引对账验收 |
@@ -411,7 +411,7 @@ Supermemory 产品模块才规定：
 
 ### 10.8 装配计划与验收契约
 
-本轮只产出映射，不修改生产底座。若进入实现阶段，应按以下顺序装配：
+当前核对只产出映射，不修改生产底座。若进入实现阶段，应按以下顺序装配：
 
 1. **先定能力契约**：为 ingest/search/profile/write/forget/sync/upload 分配唯一 `capability_id`、契约版本、输入输出、错误码、幂等、deadline、cancel、资源预算和证据字段；`/v3`、`/v4`、MCP tool 名称只做网关别名。
 2. **再定 owner 与状态**：记忆模块拥有文档/记忆/索引事实；运行核心拥有 task/lease/cache/resource 状态；网关拥有 request/auth 上下文；支持库拥有原子 provider adapter。禁止旁路写库。
@@ -431,14 +431,85 @@ success + value
 + resource_release（released / cached / cleanup_failed）
 ```
 
-本轮的最终判断是：**Supermemory 的可复用价值主要在记忆/检索产品契约、profile/search/memory middleware 适配和一次性 MCP 资源会话模式；它不是当前可直接吸收为支持库或运行核心的完整后端。** 生产底座应吸收契约与边界，升级 transport/cache/task/resource 原子能力，保留产品语义在记忆/检索模块，并把外部 API 内核、未证实性能指标和分散后台任务隔离为待核项。
+当前核对的最终判断是：**Supermemory 的可复用价值主要在记忆/检索产品契约、profile/search/memory middleware 适配和一次性 MCP 资源会话模式；它不是当前可直接吸收为支持库或运行核心的完整后端。** 生产底座应吸收契约与边界，升级 transport/cache/task/resource 原子能力，保留产品语义在记忆/检索模块，并把外部 API 内核、未证实性能指标和分散后台任务隔离为待核项。
 
-## 11. 第三轮后续风险与验证缺口
+## 11. 后续后续风险与验证缺口
 
-- 目标仓库未建立 `.codegraph/`；本轮没有代码图调用证据，也没有把错误绑定的 `华世王镞_v3` 代码图当作本项目证据。
-- MCP 专属实例当前实际绑定 `华世王镞_v3`，目标路径被 `development_start` 拒绝；正式 `work_id`、文件账本和验证入账需在正确的 `system_engineering_toolkit` 项目实例中重开。
-- 本轮未安装 Bun/Python 依赖、未启动 Worker、未访问 `api.supermemory.ai`、未执行 OAuth/MCP e2e；因此 L4、后端任务恢复、索引一致性、真实 token refresh、Provider 崩溃回收均未验证。
+- 目标仓库 `.codegraph/` 已存在；本轮 `codegraph status`/`sync` 成功，统计为 674 files、8,531 nodes、21,098 edges，仅用于定位源码，不替代源码证据。
+- 本轮严格未使用 MCP，因此没有 MCP work_id、反馈或验证入账；验证以 shell、git、CodeGraph 和源码静态检查为准。
+- 当前核对未安装 Bun/Python 依赖、未启动 Worker、未访问 `api.supermemory.ai`、未执行 OAuth/MCP e2e；因此 L4、后端任务恢复、索引一致性、真实 token refresh、Provider 崩溃回收均未验证。
 - `MemoryCache` 没有 TTL/版本/权限摘要；OpenAI middleware 的 profile `fetch` 路径没有统一 timeout/signal；后台写入失败不会影响主 chat，可能造成无提示的数据缺口。
 - upload session 在 DO 中 hash upload token，但 session payload 还包含 bearerToken；需要在生产底座改为短期 credential reference，并审计日志/权限/过期/崩溃路径。
-- 现有正式文档声称已吸收 `细探-Supermemory.md`；在目标项目根及其所属 `02_长期记忆与记忆操作系统` 目录现场未找到该旧细探文件，本轮未删除任何旧细探，也未把缺失文件包装成已复核证据。
+- 现有正式文档声称已吸收 `细探-Supermemory.md`；在目标项目根及其所属 `02_长期记忆与记忆操作系统` 目录现场未找到该旧细探文件，当前核对未删除任何旧细探，也未把缺失文件包装成已复核证据。
 - 远端 `/v3`/`/v4` 服务端的真实事务、队列、模型、索引、webhook/status callback 和删除语义仍需 L4 复核；不能因为返回 `queued` 或 schema 有 `done` 就声称已完成摄取。
+
+## 12. 本轮源码证据补充（2026-08-22）
+
+### 12.1 Git、目录与代码图身份
+
+| 项目 | 现场证据 | 结论 |
+|---|---|---|
+| 源码根 | `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Supermemory` | 目标 checkout 与平台研究文档分离 |
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | 返回 `Already up to date` |
+| 提交 | `git rev-parse HEAD` | `34876664810a43a55954a0a83571662a3bd333b8` |
+| 代码图 | `codegraph status`、`codegraph sync` | 674 files / 8,531 nodes / 21,098 edges，索引最新 |
+| 文档唯一性 | `find .../Supermemory -maxdepth 1 -type f` | 平台文档目录仅保留 `ARCHITECTURE.md` |
+| 修改边界 | 平台仓库定向 `git diff -- .../Supermemory/ARCHITECTURE.md` | 不修改源码 checkout |
+
+### 12.2 Web 控制台请求边界
+
+`packages/lib/api.ts:54-444` 的 `apiSchema` 是控制台请求契约，声明 connections、settings、documents、batch、search、profile、container-tags、projects、analytics、digests 与 MCP migration 等 endpoint。`packages/lib/api.ts:446-460` 的 `$fetch` 用 `NEXT_PUBLIC_BACKEND_URL` 或 `https://api.supermemory.ai` 作为 base，追加 `/v3`，携带 `X-App-Source: nova`、cookie credentials，并对请求做 3 次线性重试。它是浏览器客户端，不是后端路由或数据库写入器。
+
+`apps/web/app/(app)/page.tsx:1-5` 将根应用交给 `AppExperience`；页面目录包含 brain、connect、configure、integrations、onboarding 和 settings。对 `apps/web/app/api/` 的现场文件盘点只发现 account-status、extract-content、research、og 等局部 Next routes；因此 `/v3/documents`、`/v4/profile` 等仍应标记为外部 API，而不能写成 Web 内部实现。
+
+### 12.3 MCP Worker 请求生命周期
+
+`apps/mcp/src/server/index.ts:161-210` 先读取 Bearer token、调用 `validateOAuthToken`、构造 actor，再为每次请求创建 MCP handler；`legacy: "stateless"` 表明协议层不把 McpServer 当长期会话对象。`apps/mcp/src/server/server.ts:49-120` 每请求创建 `McpServer`、`SupermemoryClient` 和工具注册器，注册 tools、resources、prompts 与 widget。
+
+`apps/mcp/src/server/auth/index.ts:55-101` 从外部 `${API_URL}/api/auth/jwks` 验证 JWT 的 issuer、audience、`sub`、`organization_id`、scope 和过期时间；`auth/index.ts:30-52` 还从 `${API_URL}/v3/session` 查询会话。认证密钥与用户会话均由外部服务提供，本地 Worker 不拥有用户数据库。
+
+### 12.4 MCP 工具与外部 API 适配
+
+`apps/mcp/src/server/tools/index.ts:18-34` 注册 search_memory、list/get documents、list memories、list spaces、whoAmI、space switch、graph、add/save/upload 工具。`search-memory.ts:11-94` 先解析有效 container tag，再组合 profile 与 hybrid search，输出 text 和 structured content；`add-memory.ts:7-64` 将 save/forget 分派到 `createMemory`/`forgetMemory`，内容上限为 200000 字符。
+
+`apps/mcp/src/server/client/index.ts:165-205` 的 `createMemory` 通过外部 SDK add 并把响应映射为 queued；`:208-295` 的 forget/search 通过 SDK 与 `/v4` fetch 实现；`:297-455` 处理 documents、container tags 和 memories list。`:461-519` 将 400/401/403/404/429/5xx、网络异常和超时映射为统一 MCP 错误文本。这里没有本地 SQL、队列、embedding 或索引调用。
+
+### 12.5 空间状态与上传资源
+
+`apps/mcp/src/server/space.ts:3-14` 用 `organizationId,userId` 生成 Durable Object 名称，显式 containerTag 优先于 DO active tag，缺省回退 `sm_project_default`。这是请求路由状态，不是记忆事实存储。
+
+`apps/mcp/src/server/space-state.ts:22-73` 将 activeContainerTag 与 `upload:<uuid>` 会话存入 DO；upload token 仅以 SHA-256 保存，过期时间为 2 分钟，alarm 清除过期状态，`consumeUploadSession()` 在 transaction 内校验并删除，形成一次性消费。注意 payload 仍带 bearerToken，平台迁移时应改为短期 credential reference。
+
+`apps/mcp/src/server/index.ts:213-260` 将 multipart body 直接流式转发到外部 `/v3/documents/file`，透传 content type 与 retry-after，响应设置 `Cache-Control: no-store`。Worker 不落盘文件；外部是否已入库必须通过远端状态或幂等查询确认。
+
+### 12.6 TypeScript 工具调用链
+
+`packages/tools/src/ai-sdk.ts:14-120` 暴露 searchMemoriesTool、addMemoryTool、getProfileTool、documents list/delete/add 与 memory forget；`:122-372` 聚合为 `supermemoryTools()`。工具把 projectId 转换为 `sm_project_<id>`，或接受显式 containerTags，再调用外部 `supermemory` SDK。
+
+`packages/tools/src/shared/memory-client.ts:24-64` 的 `supermemoryProfileSearch` 请求 `/v4/profile`；`:88-174` 的 `buildMemoriesText` 合并 static/dynamic profile 与 query search、去重并按 mode 生成 prompt 文本；`:197-240` 从最后一条 user message 提取 query。`packages/tools/src/openai/middleware.ts:158-246` 把结果追加到既有 system message 或新建 system message，`:316-387` 在 addMemory=always 时保存消息。
+
+`packages/tools/src/shared/cache.ts:8-73` 使用进程内 `LRUCache(max:100)`，key 包含 container、thread、mode 与归一化消息。该缓存没有持久化、TTL、模型/权限摘要，进程结束即丢失，只能作为易失检索优化。
+
+### 12.7 Python 适配器与后台任务
+
+`packages/openai-sdk-python/src/supermemory_openai/tools.py:26-245` 将 search_memories/add_memory 映射为 OpenAI function tools；`middleware.py:109-213` 注入 profile/query/full context。`:352-394` 使用 `asyncio.create_task` 异步保存，`:529-567` 等待/取消，`:580-615` 退出时有限等待。进程崩溃会丢失未完成任务，当前没有 durable outbox 或恢复扫描。
+
+`packages/agent-framework-python/src/supermemory_agent_framework/` 提供 tools、chat middleware、context provider；`packages/pipecat-sdk-python/src/supermemory_pipecat/` 将检索接入 user context 与 LLM 之间；`packages/cartesia-sdk-python/src/supermemory_cartesia/` 包装 voice agent。四个适配器均调用外部 Supermemory SDK，不拥有记忆数据库。
+
+### 12.8 契约字段与后端缺口
+
+`packages/validation/schemas.ts:3-59` 的 Metadata/DocumentStatus 定义 queued、extracting、chunking、embedding、indexing、done、failed；`:61-124` 的 Document/Chunk 字段描述内容、token、chunk、embedding 与 processing metadata；`:239-294` 的 MemoryEntry 描述 version、isLatest、parent/root、updates/extends/derives、inference、forgotten、forgetAfter 与 embedding。它们是前后端共享 schema，不是本地 ORM schema。
+
+本 checkout 当前未发现主 API 的数据库迁移、ORM 表定义、embedding provider、全文/向量索引、内容抽取 worker、连接器执行器或 webhook 状态消费者。根依赖中的 Drizzle 不能单独证明数据库实现存在；`queued` 只能表示外部服务已接受或客户端映射，不等于处理完成。
+
+### 12.9 测试与部署证据
+
+仓库测试入口分布在 `packages/validation/api.test.ts`、`packages/tools/src/*test.ts`、`packages/ai-sdk/src/tools.test.ts`、`apps/mcp/src/server/space.test.ts`、`apps/mcp/src/server/auth/rbac.test.ts`、`apps/mcp/e2e/memory.test.ts` 与 `packages/memory-graph/src/__tests__/version-chain.test.ts`。测试源码覆盖 schema、工具参数、RBAC、空间状态、图谱版本链和 MCP e2e 定义；本轮未安装 Bun/Node 依赖，未执行测试命令，不能宣称通过。
+
+根 `package.json:4-11` 通过 Turbo/Bun 编排 build、dev、check-types、format-lint；`apps/mcp/package.json:9-20` 提供 widget build、Worker build、Cloudflare deploy、unit/e2e test。部署目标和 OpenNext/Cloudflare 配置属于边缘/控制台运行时，不能推断外部 API 后端的部署拓扑。
+
+### 12.10 本轮验证与剩余风险
+
+本轮执行：`git fetch origin --prune`、`git pull --ff-only`、`codegraph status`、`codegraph sync`、平台文档 `wc -l` 与 `git diff --check`。源码 checkout 未改动；平台唯一文档达到 500 行以上。未执行 Bun 安装、TypeScript 构建、Vitest、Python 测试、Cloudflare Worker、OAuth/JWKS、MCP 客户端、真实 API、上传中断、429/5xx 重试、缓存并发、连接器同步、崩溃恢复和远端删除对账。
+
+本轮严格未使用 MCP；CodeGraph 仅作为目标源码定位工具。所有关于 API 内部队列、数据库、embedding、索引、连接器 worker、服务端鉴权持久化和性能的结论均保留为外部边界或待验证项，不升级为本地实现事实。

@@ -1,7 +1,7 @@
 # PlugMem 架构建档
 
 > 本文是基于当前工作树源码、README、设计文档、依赖声明、入口、数据模型和测试文件的首轮静态架构建档。
-> 
+>
 > 证据基线：仓库当前提交 `3b2ce75`。项目根未发现 `AGENTS.md` 或 `CLAUDE.md`；`plugmem-coding-claude-code/` 自带 README/ONBOARDING，`design_docs/` 是设计与阶段记录，不等同于运行时实现证明。
 
 ## 1. 项目定位
@@ -344,10 +344,10 @@ uv run uvicorn plugmem.api.app:app --host 0.0.0.0 --port 8080
 6. **并发与 ID 分配**：节点 ID 使用进程内列表长度，recall ID 使用 collection count；服务级并发、多个进程/实例写同一个 graph 时的冲突策略尚未确认。
 7. **配置单例刷新**：依赖层有全局单例和 `lru_cache`；生产环境修改环境变量后是否需要显式进程重启，及多个 app/test client 的隔离方式需继续核查。
 8. **API schema 同步**：TypeScript core 的 `types.ts` 与 Python `schemas.py` 都声称镜像 API，但字段覆盖并非完全相同（例如 Python API 有 Inspector/trace/阈值等扩展）；尚未建立自动 schema diff 门禁。
-9. **可观测性文件写入**：请求日志和 token usage 是本地 JSONL append；日志轮转、敏感提示内容脱敏、并发追加可靠性没有在本轮确认。
+9. **可观测性文件写入**：请求日志和 token usage 是本地 JSONL append；日志轮转、敏感提示内容脱敏、并发追加可靠性没有在当前核对确认。
 10. **数据撤回/过期**：当前支持 semantic `is_active` 软停用和 credibility decay；跨图撤回、source 级删除、嵌入重算、旧事实失效传播策略仍需确认。
 11. **许可证**：README 未给出许可证结论；已有细探文件也标记为“见仓库 LICENSE，未确认徽章”，使用或抽取前应直接核对 `LICENSE`。
-12. **模型输出契约**：structuring 仍依赖标记文本正则，retrieval plan/semantic merge 依赖解析约定；异常输出有 fallback，但真实模型的边界、重试和成本尚未在本轮验证。
+12. **模型输出契约**：structuring 仍依赖标记文本正则，retrieval plan/semantic merge 依赖解析约定；异常输出有 fallback，但真实模型的边界、重试和成本尚未在当前核对验证。
 
 ## 11. 关键证据索引
 
@@ -364,14 +364,14 @@ uv run uvicorn plugmem.api.app:app --host 0.0.0.0 --port 8080
 - OpenClaw 入口：`openclaw-plugmem-plugin/src/index.ts`、`client.ts`、`config.ts`
 - 测试：`tests/`、`plugmem-coding-core/tests/`、`plugmem-coding-claude-code/tests/`、`openclaw-plugmem-plugin/tests/`
 
-## 12. 本轮操作边界
+## 12. 当前核对操作边界
 
 本文件已吸收此前 `细探-PlugMem.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
-本轮只读取了项目资料并在项目根新增本文件 `ARCHITECTURE.md`。未修改源码、依赖、测试或配置；未安装依赖、启动服务、构建、运行测试、提交 Git。
+当前核对只读取了项目资料并在项目根新增本文件 `ARCHITECTURE.md`。未修改源码、依赖、测试或配置；未安装依赖、启动服务、构建、运行测试、提交 Git。
 
-## 13. 第三轮：通用底座映射、唯一链路与状态治理
+## 13. 后续：通用底座映射、唯一链路与状态治理
 
-本节是基于当前 PlugMem 源码的第三轮裁决输入，不是把 PlugMem 目录复制进系统工程平台，也不是把 PlugMem 的策略参数写成平台事实。当前源码事实与平台目标落点分开记录：带“源码事实”的内容来自本仓库；“平台映射/裁决”是后续需求登记、能力搜索、复用决策、占用租约、消费者验收契约和装配计划的输入，**不表示平台已经实现或本项目已经通过 L1-L4 验证**。
+本节是基于当前 PlugMem 源码的后续裁决输入，不是把 PlugMem 目录复制进系统工程平台，也不是把 PlugMem 的策略参数写成平台事实。当前源码事实与平台目标落点分开记录：带“源码事实”的内容来自本仓库；“平台映射/裁决”是后续需求登记、能力搜索、复用决策、占用租约、消费者验收契约和装配计划的输入，**不表示平台已经实现或本项目已经通过 L1-L4 验证**。
 
 ### 13.1 三条代码面先归并为一条记忆能力链
 
@@ -392,7 +392,7 @@ PlugMem 当前有 Python FastAPI 记忆服务、TypeScript coding core/Claude Co
 
 ### 13.2 PlugMem 能力到支持库、记忆模块、运行核心和网关的裁决
 
-| PlugMem 能力/对象 | 当前源码证据 | L0/L1 支持库 | L2 记忆模块 | L3 运行核心 | L4 网关/适配 | 第三轮裁决 |
+| PlugMem 能力/对象 | 当前源码证据 | L0/L1 支持库 | L2 记忆模块 | L3 运行核心 | L4 网关/适配 | 后续裁决 |
 |---|---|---|---|---|---|---|
 | 轨迹/结构化记忆入口 | `plugmem/api/routes/memories.py:22-148`；`Memory.close()` 后进入 `MemoryGraph.insert()`；structured 入口构造 Memory-like 对象后同样汇合 | L0 冻结输入/输出/错误；L1 提供 embedding、持久化原子写 | 负责 trajectory→episodic/semantic/procedural 的领域编排和节点关联 | 负责准入、deadline、资源预算、失败/部分写入对账 | coding core/OpenClaw/Python 客户端只做参数和结果映射 | **吸收为唯一写入模块**；禁止各 adapter 自建写链 |
 | 编码 Agent promotion gate | `plugmem-coding-core/src/promotion.ts:73-189`；`plugmem/inference/promotion.py:63-146`；`POST /extract` 只抽取、不选 graph、不写图 | L0 定义 Candidate/ExtractedMemory/source/confidence/幂等与审计字段；L1 只提供模型调用和 JSON 校验原子能力 | 保留 correction/failure_delta 的领域判定、保守抽取和“抽取后写入”的流程 | 管理候选任务、超时、重试、取消、失败账本和执行资源 | 事件归一化、session state、graph_id、`/extract`/`/memories` 调用 | **吸收为模块策略**；`/extract` 不能成为第二写 owner |
@@ -524,20 +524,20 @@ succeeded/failed/cancelled/timed_out/crashed
   → L0 静态 → L1 provider → L2 固定记忆链 → L3 故障/并发/恢复 → L4 冷启动/发布门禁
 ```
 
-本轮**不创建平台文件、不登记能力、不安装依赖、不启动 Chroma/LLM、不修改 PlugMem 源码/配置/测试/README、不删除旧细探、不提交 Git**。当前目标仓库未找到名为 `细探-*.md` 的旧细探文件；现有 `ARCHITECTURE.md:93,369-370` 已记录此前 `细探-PlugMem.md` 的吸收声明，本文不把该缺失文件冒充为本轮新证据，也不删除任何旧细探。后续若从仓库外或 Git 历史找回旧稿，必须逐条与当前源码核对后再更新本文件。
+当前核对**不创建平台文件、不登记能力、不安装依赖、不启动 Chroma/LLM、不修改 PlugMem 源码/配置/测试/README、不删除旧细探、不提交 Git**。当前目标仓库未找到名为 `细探-*.md` 的旧细探文件；现有 `ARCHITECTURE.md:93,369-370` 已记录此前 `细探-PlugMem.md` 的吸收声明，本文不把该缺失文件冒充为当前核对新证据，也不删除任何旧细探。后续若从仓库外或 Git 历史找回旧稿，必须逐条与当前源码核对后再更新本文件。
 
-### 13.8 第三轮证据、MCP 状态与剩余风险
+### 13.8 后续证据、MCP 状态与剩余风险
 
-| 证据项 | 本轮事实 | 结论 |
+| 证据项 | 当前核对事实 | 结论 |
 |---|---|---|
 | 开工 id | 首次 `project_context` 返回 `开工id` 为空 | 开工记录不完整；不能编造 id |
 | MCP 实例 | 返回 `project_toolkit`，不是任务指定的 `system_engineering_toolkit` | 错绑事实保留；未将错绑上下文当 PlugMem 证据 |
 | project_context 项目 | 返回“华世王镞_v3”，根目录 `~/Documents/Agent/PHP/华世王镞_v3` | 与目标 PlugMem 不一致，按阻断处理 |
 | 代码图 | `codegraph_explore(projectPath=PlugMem)` 明确返回目标根向上没有 `.codegraph/`，不可查询 | 代码图不可用；未冒充代码图成功，源码事实来自目标路径只读核对 |
 | 目标根 | `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/PlugMem` | 已按绝对路径核对 |
-| 修改范围 | 仅追加本文件第三轮章节 | 未改源码、依赖、配置、测试、README、旧细探或 Git |
-| 运行验证 | 本轮未安装依赖、未启动服务、未执行 Python/TypeScript 测试或真实 provider | L1-L4 均未验证；文档写入成功不等于实现完成 |
+| 修改范围 | 仅追加本文件后续章节 | 未改源码、依赖、配置、测试、README、旧细探或 Git |
+| 运行验证 | 当前核对未安装依赖、未启动服务、未执行 Python/TypeScript 测试或真实 provider | L1-L4 均未验证；文档写入成功不等于实现完成 |
 
 剩余风险集中在：跨五 collection 原子提交/补偿、进程内 ID 并发冲突、LLM 硬超时和取消、embedding 维度/模型漂移、候选 drain 后失败恢复、Chroma/HTTP provider 崩溃回收、审计失败可见性、GraphManager singleton 隔离、跨适配器 schema 对称性，以及当前 `ValueBase` 忽略 Credibility 的实现语义。以上均保持 `待核/未验证`，不因平台映射章节存在而升级为“已接入”。
 
-第三轮完成定义：PlugMem 的插件化记忆、promotion、价值评估、存储、检索、模型和异步资源已经明确映射到 L0-L4 的唯一 owner；策略模型与平台事实已分离；状态、资源生命周期、失败/超时/取消/崩溃、唯一链路和 L0-L4 验收门已冻结为候选输入；这不等同于系统工程平台已完成 PlugMem 能力生产化。
+后续完成定义：PlugMem 的插件化记忆、promotion、价值评估、存储、检索、模型和异步资源已经明确映射到 L0-L4 的唯一 owner；策略模型与平台事实已分离；状态、资源生命周期、失败/超时/取消/崩溃、唯一链路和 L0-L4 验收门已冻结为候选输入；这不等同于系统工程平台已完成 PlugMem 能力生产化。

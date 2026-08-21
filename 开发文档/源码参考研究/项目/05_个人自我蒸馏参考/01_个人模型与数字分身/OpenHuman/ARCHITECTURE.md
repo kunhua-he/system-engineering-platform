@@ -335,19 +335,19 @@ Root Cargo 的 default contributor feature set 实际为 `media, skills, flows, 
 
 ---
 
-## 第三轮：通用底座映射（基于当前 checkout 的真实源码）
+## 后续：通用底座映射（基于当前 checkout 的真实源码）
 
 ### 1. 证据边界与裁决口径
 
-本轮不是把 OpenHuman 的目录名直接改写成平台目录，而是把已存在的通用契约、宿主适配、运行时治理和外部入口拆开。证据优先级为：当前源码/`Cargo.toml` → 当前 vendor 子模块源码 → `AGENTS.md`/开发文档 → 旧细探线索。当前 checkout 的正式文档已声明旧 `细探-OpenHuman.md` 已吸收；本轮在项目根及其研究父目录未发现仍可单独读取的 `*细探*` 文件，因此不把不存在的旧笔记当作证据。
+当前核对不是把 OpenHuman 的目录名直接改写成平台目录，而是把已存在的通用契约、宿主适配、运行时治理和外部入口拆开。证据优先级为：当前源码/`Cargo.toml` → 当前 vendor 子模块源码 → `AGENTS.md`/开发文档 → 旧细探线索。当前 checkout 的正式文档已声明旧 `细探-OpenHuman.md` 已吸收；当前核对在项目根及其研究父目录未发现仍可单独读取的 `*细探*` 文件，因此不把不存在的旧笔记当作证据。
 
-本轮增加的结论分为三类：
+当前核对增加的结论分为三类：
 
 - **吸收**：源码已经把通用边界做成独立 crate/trait/adapter，可作为平台底座模式。
 - **隔离**：能力有通用形状，但产品策略、身份、权限、持久化 owner 或外部 provider 仍必须留在 OpenHuman 宿主。
-- **待核**：存在源码或测试线索，但未在本轮运行真实构建、服务、第三方 provider 或跨进程恢复，不能写成“运行已证实”。
+- **待核**：存在源码或测试线索，但未在当前核对运行真实构建、服务、第三方 provider 或跨进程恢复，不能写成“运行已证实”。
 
-代码图证据不适用于本项目：OpenHuman 没有 `.codegraph/` 索引；因此本轮所有源码事实均来自目标仓库本地文件读取，不借用其他仓库的代码图、记忆或验证记录。
+代码图证据不适用于本项目：OpenHuman 没有 `.codegraph/` 索引；因此当前核对所有源码事实均来自目标仓库本地文件读取，不借用其他仓库的代码图、记忆或验证记录。
 
 ### 2. 四层映射总表
 
@@ -424,28 +424,28 @@ UI / CLI / channel webhook / MCP / embedded host
 
 ### 8. L0-L4 验证分层
 
-| 等级 | 验证对象 | 本轮证据/命令 | 通过含义与当前状态 |
+| 等级 | 验证对象 | 当前核对证据/命令 | 通过含义与当前状态 |
 |---|---|---|---|
 | **L0 证据身份** | 根目录、源码路径、vendor 版本、旧细探是否存在、修改范围 | 目标路径本地读取；`AGENTS.md`、`ARCHITECTURE.md`、各 `Cargo.toml`；`find` 类搜索等价由文件索引完成 | 已完成静态核对；OpenHuman 代码图不可用，不能把其他项目图当证据 |
-| **L1 文档/契约静态** | Markdown 结构、四层映射、唯一链路、矩阵、源码路径存在、只改正式文档 | `python3 -c` 断言 `ARCHITECTURE.md` 非空且含 `第三轮`、`TinyAgents`、`TinyFlows`、`TinyChannels`、`TinyMemory`、`L0-L4`、`失败`、`崩溃`；`git diff --check`；`git diff --name-only` | 本轮应执行并记录退出码 0；只证明文档与范围，不证明 Rust 行为 |
-| **L2 类型/编译契约** | root/app Cargo manifests、feature/path 依赖、adapter 类型边界 | 受控命令：`cargo metadata --no-deps --format-version 1 --offline`（不编译、不启动、不触碰外部服务） | 可证明 manifest 可解析；本轮不把 metadata 当 `cargo check`，实际 compile 仍待核 |
-| **L3 隔离运行** | TinyAgents/TinyFlows/TinyChannels/TinyMemory 单元与 hermetic mock：cancel/timeout/retry/checkpoint/queue/receipt/driver audit | 待执行：各 vendor workspace 的 `cargo test` 或 OpenHuman 定向 `cargo test`，必须固定 feature、报告 skip、禁止网络/真实账号 | 当前 ARCHITECTURE 旧轮已明确“未运行 build/test”；本轮不伪造通过 |
+| **L1 文档/契约静态** | Markdown 结构、四层映射、唯一链路、矩阵、源码路径存在、只改正式文档 | `python3 -c` 断言 `ARCHITECTURE.md` 非空且含 `后续`、`TinyAgents`、`TinyFlows`、`TinyChannels`、`TinyMemory`、`L0-L4`、`失败`、`崩溃`；`git diff --check`；`git diff --name-only` | 当前核对应执行并记录退出码 0；只证明文档与范围，不证明 Rust 行为 |
+| **L2 类型/编译契约** | root/app Cargo manifests、feature/path 依赖、adapter 类型边界 | 受控命令：`cargo metadata --no-deps --format-version 1 --offline`（不编译、不启动、不触碰外部服务） | 可证明 manifest 可解析；当前核对不把 metadata 当 `cargo check`，实际 compile 仍待核 |
+| **L3 隔离运行** | TinyAgents/TinyFlows/TinyChannels/TinyMemory 单元与 hermetic mock：cancel/timeout/retry/checkpoint/queue/receipt/driver audit | 待执行：各 vendor workspace 的 `cargo test` 或 OpenHuman 定向 `cargo test`，必须固定 feature、报告 skip、禁止网络/真实账号 | 当前 ARCHITECTURE 旧轮已明确“未运行 build/test”；当前核对不伪造通过 |
 | **L4 真实链路** | OpenHuman core + Tauri/HTTP/RPC/channel/provider/memory SQLite/WAL/跨进程 crash/restart | 待执行：产品 feature 集构建、`scripts/test-rust-with-mock.sh`、`pnpm test`/定向 E2E、真实 bus/driver/provider（按环境） | 只有 L4 才能把“声明边界”升级为“运行证据”；外部服务缺失必须标 HOST_UNAVAILABLE/未验证 |
 
-**本轮实际验证口径：**执行文档静态检查、范围检查和 `cargo metadata --no-deps --offline`；不运行依赖安装、服务、完整编译、第三方账号或真实 channel/memory provider。若任何命令失败，只记录失败与原因，不用历史平台项目的成功记录替代 OpenHuman 证据。
+**当前核对实际验证口径：**执行文档静态检查、范围检查和 `cargo metadata --no-deps --offline`；不运行依赖安装、服务、完整编译、第三方账号或真实 channel/memory provider。若任何命令失败，只记录失败与原因，不用历史平台项目的成功记录替代 OpenHuman 证据。
 
-### 9. 第三轮裁决与后续装配计划
+### 9. 后续裁决与后续装配计划
 
 - **吸收**：TinyAgents 的 provider-neutral harness/graph/registry、TinyFlows 的 graph+caps seam、TinyChannels 的 envelope/intent/delivery/host seam、TinyMemory 的 contract+driver admission/TinyCortex engine split、TinyBus 的 generic typed event/peer transport，均可作为“支持库契约 + 宿主适配 + 运行核心治理”的参考底座。
 - **隔离**：OpenHuman `AgentProfile`/prompt/security/approval、`DomainEvent` catalog、flow/channel/memory RPC、credential/namespace/connector policy 和 product stores 继续由模块库/运行核心/网关拥有；不能因 crate 独立就宣称已完成平台迁移。
 - **待核**：跨组件统一 correlation/idempotency 规范、TinyAgents session ledger 与 OpenHuman session DB 是否可合并、TinyFlows `checkpoints.db` 与 flow DB 的备份/恢复原子性、TinyChannels delivery store 的具体 OpenHuman 实现、TinyMemory driver rebind/真实外部 provider、TinyBus UDS crash/reconnect 均需 L3/L4 复核。
 - **装配顺序**：先冻结公共错误/资源/identity 字段 → 再冻结 support-library trait 与 capability registry → 再由模块库实现一次性 adapter → 运行核心接入生命周期/队列/ledger/checkpoint → 最后网关注册 schema/controller/event projection；任何一步缺测试不得新增第二入口。
 
-本节是 OpenHuman 的第三轮底座映射输入，不是对系统工程平台生产底座的直接修改；后续如要落平台，必须另有需求登记、能力复用裁决、占用租约、验收契约和独立工作包。
+本节是 OpenHuman 的后续底座映射输入，不是对系统工程平台生产底座的直接修改；后续如要落平台，必须另有需求登记、能力复用裁决、占用租约、验收契约和独立工作包。
 
 ---
 
-## 第二轮源码核对：真实入口、运行状态与恢复边界
+## 后续源码核对：真实入口、运行状态与恢复边界
 
 本节补充一次面向“能否从真实入口跑通并在失败后解释状态”的源码核对。它不删除或改写前面的细探结论；前文的底座映射回答“哪些能力适合抽象”，本节回答“当前 checkout 中请求从哪里进入、由谁持有状态、失败后落在哪里”。证据来自当前仓库的 `src/`、`app/src/`、`app/src-tauri/src/` 和 `vendor/` 直接依赖；没有把 README 或旧文档中的入口当成运行事实。
 
@@ -531,7 +531,7 @@ Agent 的产品会话由 `agent/harness/session/types.rs` 的 `Agent`/`AgentBuil
 - **渠道断线**：supervisor 以 `Ok(())` 和 `Err` 都进入重连/健康路径，指数 backoff + bounded jitter；发送中的 attempt 由 delivery receipt 决定是否可重试。
 - **进程崩溃/强杀**：启动扫描 durable run/checkpoint/delivery/memory job，把无 owner 的 running 状态改成 interrupted/recoverable 或 unknown；内存 RunQueue、progress event、AgentBox HashMap 直接丢失是已知语义。恢复必须使用稳定 id、lease/reconciliation 和幂等保护，不能凭“上次没有返回错误”重放外部副作用。
 
-### 14. 第二轮核对结论
+### 14. 后续核对结论
 
 1. **真实主入口是 `CoreRuntime`，不是某个前端页面。** UI、Tauri、CLI、MCP、HTTP、AgentBox 和 embed host 最终都汇入 core 的 composition/registry/dispatch；不同入口只改变 transport、HostKind 和服务集合。
 2. **Agent 是产品 session shell + TinyAgents loop。** profile、prompt、memory、workspace、transcript、tool visibility 和 approval 留在 OpenHuman；模型↔工具迭代、middleware、retry、limits 和 progress adapter 由 TinyAgents 接管。
@@ -540,7 +540,7 @@ Agent 的产品会话由 `agent/harness/session/types.rs` 的 `Agent`/`AgentBuil
 5. **当前最容易误读的地方是 AgentBox。** 它有真实 HTTP 入口和明确状态机，但 `JobStore` 仅内存；文档、客户端和未来平台映射都必须把它标为“可轮询但不可重启恢复”，除非后续源码引入 durable store。
 6. **失败恢复的最小审计闭环**是：记录稳定 identity → 记录 attempt/状态 → 释放或续租资源 → 重启扫描孤儿状态 → reconcile 未知外部副作用 → 只在幂等条件满足时 resume。事件、日志和 UI 状态不能替代这条闭环。
 
-本轮仍未执行构建、启动服务、真实 provider/channel、数据库崩溃注入或跨进程 kill/restart；以上“真实入口”指源码入口已核对，不等于运行时 L3/L4 证据。仅修改本文件，保留既有细探和第三轮内容。
+当前核对仍未执行构建、启动服务、真实 provider/channel、数据库崩溃注入或跨进程 kill/restart；以上“真实入口”指源码入口已核对，不等于运行时 L3/L4 证据。仅修改本文件，保留既有细探和后续内容。
 
 ---
 
@@ -548,7 +548,7 @@ Agent 的产品会话由 `agent/harness/session/types.rs` 的 `Agent`/`AgentBuil
 
 ### 15. 审计范围与证据边界
 
-本轮在目标 checkout 内分段读取了 React/Vite、Tauri、CLI/HTTP/MCP、TinyAgents、TinyChannels、AgentBox/JobStore、Rust integration tests 与开发文档。目标仓库没有 `.codegraph/` 索引，CodeGraph 首次探测明确不可用；因此本轮不借用其他仓库的代码图、MCP、Hermes、记忆或验证证据。只修改根 `ARCHITECTURE.md`，不修改源码和既有开发文档。
+当前核对在目标 checkout 内分段读取了 React/Vite、Tauri、CLI/HTTP/MCP、TinyAgents、TinyChannels、AgentBox/JobStore、Rust integration tests 与开发文档。目标仓库没有 `.codegraph/` 索引，CodeGraph 首次探测明确不可用；因此当前核对不借用其他仓库的代码图、MCP、Hermes、记忆或验证证据。只修改根 `ARCHITECTURE.md`，不修改源码和既有开发文档。
 
 以下判断按证据强度区分：源码中的状态机、路由、存储和调用关系是“当前实现”；测试注释、设计文档和架构矩阵中的要求是“设计/验收约束”，不能自动升级为已实现能力。未执行编译、服务、真实 provider/channel、数据库故障注入或跨进程重启，所以本节不声明运行通过。
 
@@ -609,14 +609,14 @@ TinyChannels 的 outbound 线必须是：intent 先进入宿主 `DeliveryQueueSt
 | 文档 | 冲突 | 裁决 |
 |---|---|---|
 | `gitbooks/developing/architecture/tauri-shell.md` | 仍写 CEF child webviews、CDP scanners、provider webviews 和 CEF cache；当前源码/`AGENTS.md` 以 Wry、移除 scanner、in-process core 为准 | 以源码和本文件为准；该文档是过期历史说明，不能作为当前运行拓扑 |
-| `CONTRIBUTING.md`、`CONTRIBUTING-BEGINNERS.md` | 仍把 Tauri/CEF、vendored CEF CLI 作为当前桌面构建前提 | 与当前 Wry 运行事实冲突；需单独维护文档清理任务，不能在本轮只改根文档后视为已解决 |
+| `CONTRIBUTING.md`、`CONTRIBUTING-BEGINNERS.md` | 仍把 Tauri/CEF、vendored CEF CLI 作为当前桌面构建前提 | 与当前 Wry 运行事实冲突；需单独维护文档清理任务，不能在当前核对只改根文档后视为已解决 |
 | `AGENTS.md` vs `gitbooks/developing/architecture/frontend.md` | AGENTS 已声明 Wry/in-process；frontend 文档 provider relationship 仍出现 CEF `WebviewHost` 与旧描述 | provider chain 以 `App.tsx` 的 generated source 为准；文档生成可刷新链条，但不会自动修复所有历史拓扑文字 |
-| `ARCHITECTURE.md` 前文 vs AgentBox 源码 | 前文恢复矩阵描述了 durable run/recoverable 设计要求，容易被读成 AgentBox 已支持恢复 | 本轮明确拆开：flow/session/delivery 有各自 durable 语义；AgentBox JobStore 当前非 durable、不可 resume |
-| TinyChannels 设计/实现 vs OpenHuman host | vendor 已提供完整 unknown-send/recovery contract，但本轮未找到 OpenHuman 具体 `DeliveryQueueStore` 实现的运行验证 | 只能确认 vendor contract；OpenHuman channel 的真实 durable store 接线仍是待核，不得写成已完成端到端保证 |
+| `ARCHITECTURE.md` 前文 vs AgentBox 源码 | 前文恢复矩阵描述了 durable run/recoverable 设计要求，容易被读成 AgentBox 已支持恢复 | 当前核对明确拆开：flow/session/delivery 有各自 durable 语义；AgentBox JobStore 当前非 durable、不可 resume |
+| TinyChannels 设计/实现 vs OpenHuman host | vendor 已提供完整 unknown-send/recovery contract，但当前核对未找到 OpenHuman 具体 `DeliveryQueueStore` 实现的运行验证 | 只能确认 vendor contract；OpenHuman channel 的真实 durable store 接线仍是待核，不得写成已完成端到端保证 |
 
 重复维护风险集中在三类目录：`App.tsx` generated provider chain 与 `frontend.md`、Tauri shell 历史拓扑与 `AGENTS.md`/源码、根 ARCHITECTURE 的设计矩阵与具体状态实现。后续应选择单一生成源或在文档中标注“设计约束/当前实现/待核”，避免同一状态机被复制后各自漂移。
 
-### 20. 本轮结论与优先修复项
+### 20. 当前核对结论与优先修复项
 
 1. **P0 文档正确性**：将 AgentBox 明确标为 ephemeral polling job；禁止承诺重启恢复、取消或幂等重放。
 2. **P1 运行可靠性**：若 AgentBox 需要生产级语义，应引入 durable job ledger、稳定状态/attempt 记录、每 job cancellation handle、启动 orphan reconciliation、查询幂等和明确 `cancelled/timeout/unknown` 状态；不能只把 HashMap 换成更长 retention。
@@ -624,4 +624,4 @@ TinyChannels 的 outbound 线必须是：intent 先进入宿主 `DeliveryQueueSt
 4. **P2 文档治理**：刷新或删除 CEF/CDP/旧 sidecar 叙述，保留历史迁移说明时加日期和“非当前运行事实”标记；generated provider chain 继续只从 `App.tsx` 生成。
 5. **P2 验证缺口**：补 AgentBox timeout 后 provider 副作用、cancel/restart、JobStore eviction、unknown-send 三分支、unknown-method feature/domain gating、Tauri startup recovery 的隔离测试；当前 `tests/agentbox_e2e.rs` 明确 `#[ignore]`，不能算端到端通过。
 
-本轮未运行测试或构建。已完成的是本地分段源码/测试/文档静态审计与根文档更新；CodeGraph 不可用，MCP/Hermes 未使用。
+当前核对未运行测试或构建。已完成的是本地分段源码/测试/文档静态审计与根文档更新；CodeGraph 不可用，MCP/Hermes 未使用。

@@ -1,10 +1,10 @@
 # Ella 架构建档
 
-> 第一轮全量静态建档，并在本节末追加第二轮源码收口。依据仓库当前工作树中的 README、依赖声明、核心入口、记忆实现、ViCo 子模块、评估脚本、测试与既有细探文件整理。
+> 初始全量静态建档，并在本节末追加后续源码收口。依据仓库当前工作树中的 README、依赖声明、核心入口、记忆实现、ViCo 子模块、评估脚本、测试与既有细探文件整理。
 >
 > 目标仓库：`~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/03_记忆研究与算法/Ella`
 >
-> 结论边界：本文是源码事实地图，不把论文描述、README 安装步骤或脚本命名当作已运行证明。本轮未安装依赖、未构建 C++/Python 包、未启动模拟器或模型服务、未运行测试、未提交 Git。
+> 结论边界：本文是源码事实地图，不把论文描述、README 安装步骤或脚本命名当作已运行证明。当前核对未安装依赖、未构建 C++/Python 包、未启动模拟器或模型服务、未运行测试、未提交 Git。
 
 ## 1. 项目定位
 
@@ -287,7 +287,7 @@ python odm.py --head_less --backend cpu --multi_process \
   --agent_type ella --max_seconds 32400 --lm_id gpt-4o
 ```
 
-上面仅记录源码 README/脚本声明的调用形态，本轮没有执行。
+上面仅记录源码 README/脚本声明的调用形态，当前核对没有执行。
 
 ### 6.3 内部 HTTP/RPC API
 
@@ -324,9 +324,9 @@ python odm.py --head_less --backend cpu --multi_process \
 | 存储 | JSON、JSONL、pickle、PNG/图像、日志；不存在 ORM/SQL/消息队列/对象存储层。 |
 | 编译扩展 | `agents/sg/setup.sh` 执行 `agents/sg/builder/builtin/Makefile`，生成 `libbuilder.so` 和 `libregion.so`；需要 `CUDA_HOME`（`agents/sg/README.md:5-14`）。 |
 | 资产 | ViCo 的 `asset_utils.py` 支持 `VICO_ASSET_PATHS` 本地覆盖，并在缺失时从 HuggingFace dataset `Virtual-Community-AI/assets` 增量下载。 |
-| 操作系统假设 | `uv` 环境声明包含 Darwin 与 Linux x86_64；ViCo README 实际推荐 Ubuntu 24.04 + CUDA 11.7。macOS/MPS 全量 Genesis、C++ CUDA 扩展和模型权重兼容性未由本轮执行确认。 |
+| 操作系统假设 | `uv` 环境声明包含 Darwin 与 Linux x86_64；ViCo README 实际推荐 Ubuntu 24.04 + CUDA 11.7。macOS/MPS 全量 Genesis、C++ CUDA 扩展和模型权重兼容性未由当前核对执行确认。 |
 
-依赖规模上，根项目只声明四个本地视觉包和 `setuptools`，而 `vico/pyproject.toml` 固定了大批仿真/渲染/科学计算依赖，并从 Git 拉取 Genesis。`uv.lock` 是锁文件；本轮只读取声明，未解析或安装环境。
+依赖规模上，根项目只声明四个本地视觉包和 `setuptools`，而 `vico/pyproject.toml` 固定了大批仿真/渲染/科学计算依赖，并从 Git 拉取 Genesis。`uv.lock` 是锁文件；当前核对只读取声明，未解析或安装环境。
 
 ## 8. 测试与验证现状
 
@@ -341,17 +341,17 @@ python odm.py --head_less --backend cpu --multi_process \
 - 第三方：`agents/sg/third_party/open_clip/tests/` 有 open_clip 自己的推理、下载、训练、WDS 等测试；GroundingDINO 还有 demo 测试文件。它们不等同于 Ella 的端到端回归测试。
 - 未发现覆盖 `EllaAgent` 行为决策、SemanticMemory/非参数记忆持久化、EpisodicMemory 检索排序、VicoEnv 动作语义、Controlled Finals 指标的根级单元测试。
 
-### 本轮验证边界
+### 当前核对验证边界
 
-本轮只进行了静态读取和目录/Git 状态盘点，**没有运行 pytest**。原因是用户明确禁止安装依赖、启动服务、构建；集成测试还会触发真实模型权重/模型进程。文档不声明测试通过。
+当前核对只进行了静态读取和目录/Git 状态盘点，**没有运行 pytest**。原因是用户明确禁止安装依赖、启动服务、构建；集成测试还会触发真实模型权重/模型进程。文档不声明测试通过。
 
 ## 9. 未确认项、风险与后续核查清单
 
-以下项目是源码阅读后仍需专门运行或人工裁决的事项，不代表本轮已验证失败：
+以下项目是源码阅读后仍需专门运行或人工裁决的事项，不代表当前核对已验证失败：
 
 1. **环境可运行性**：根 workspace、ViCo 子模块、Genesis pinned commit、PyTorch/CUDA 11.7、macOS/MPS 组合是否可安装和启动未验证。
 2. **子模块状态**：`vico/` 是 Git submodule；当前仓库 HEAD 为一个浅 graft commit，子模块内部源码是否与锁文件/上游 commit 完全一致，需要单独核对。
-3. **C++ 扩展**：`libbuilder.so`/`libregion.so` 是否已存在、ABI 是否匹配、`CUDA_HOME` 和 Makefile 是否可构建未验证；本轮禁止构建。
+3. **C++ 扩展**：`libbuilder.so`/`libregion.so` 是否已存在、ABI 是否匹配、`CUDA_HOME` 和 Makefile 是否可构建未验证；当前核对禁止构建。
 4. **资产完整性**：部分资产会从 HuggingFace 懒下载，室内 GRUTopia 资产需另行准备；本地快照、网络、磁盘和权重完整性未验证。
 5. **凭据与安全**：OpenAI/Azure 依赖 `.api_keys.json`，其格式、轮换和是否被 `.gitignore` 正确排除未做运行核查；HTTP pickle 模型服务无鉴权，不适合暴露到非 localhost 网络。
 6. **记忆一致性**：SemanticMemory 和 EpisodicMemory 采用 JSON/pickle 全量/异步保存；并发写、进程退出时后台保存、索引与文件的一致性、版本恢复未有端到端测试证明。
@@ -386,7 +386,7 @@ python odm.py --head_less --backend cpu --multi_process \
 
 ## 11. 工作树边界
 
-建档前 Git 状态显示：当前分支为 `master`，HEAD 为 `f29694a (update vico)`，已有未跟踪文件 `细探-Ella.md`。本轮只维护根目录 `ARCHITECTURE.md`；未修改源码、依赖、测试、配置、子模块、既有细探文件或 Git 历史。
+建档前 Git 状态显示：当前分支为 `master`，HEAD 为 `f29694a (update vico)`，已有未跟踪文件 `细探-Ella.md`。当前核对只维护根目录 `ARCHITECTURE.md`；未修改源码、依赖、测试、配置、子模块、既有细探文件或 Git 历史。
 
 ## 12. 旧细探吸收与未吸收裁决
 
@@ -411,12 +411,12 @@ python odm.py --head_less --backend cpu --multi_process \
 1. **“`odm` 对象数据库”**：与源码职责不符，裁决为实验编排入口；不得再作为架构层名称使用。
 2. **“全量不覆盖/严格终身追加”**：源码同时存在删除、清空、失败动作原地更新和语义知识更新；只能保留为论文/设计方向，不能作为已验证工程不变量。
 3. **根项目许可证已知**：没有根 `LICENSE`，第三方许可证不能替代项目级许可证判断；再使用前仍需逐项核对上游声明、子模块、模型和资产许可。
-4. **仅凭脚本名推断评估已完成**：Controlled Finals 和诊断脚本的调用链已确认，但本轮没有启动模拟器、模型服务或测试，因此没有评估数值、诊断结果或运行成功结论。
+4. **仅凭脚本名推断评估已完成**：Controlled Finals 和诊断脚本的调用链已确认，但当前核对没有启动模拟器、模型服务或测试，因此没有评估数值、诊断结果或运行成功结论。
 5. **“对象数据库”作为平台可直接复用组件**：未发现独立 ODM、ORM、SQL 或事务数据库层；当前可复用边界是 Python 类/函数与文件格式，详见第 6 节和第 7 节。
 
-## 13. 第三轮底座映射：通用底层与必须隔离的边界
+## 13. 后续底座映射：通用底层与必须隔离的边界
 
-本节是第三轮裁决，不把“已有类”直接等同于“平台能力”。依据当前源码中的 `odm.py`、`vico/vico/agents/agent.py`、`tools/model_manager/`、`agents/memory.py`、`agents/ella.py` 与 `ControlledFinals/` 调用链，只抽取跨领域的资源治理与协议形状；仿真世界、Agent 行为、记忆语义和挑战指标仍归 Ella/ViCo 项目适配层。
+本节是后续裁决，不把“已有类”直接等同于“平台能力”。依据当前源码中的 `odm.py`、`vico/vico/agents/agent.py`、`tools/model_manager/`、`agents/memory.py`、`agents/ella.py` 与 `ControlledFinals/` 调用链，只抽取跨领域的资源治理与协议形状；仿真世界、Agent 行为、记忆语义和挑战指标仍归 Ella/ViCo 项目适配层。
 
 ### 13.1 推荐的唯一底座链与归属
 
@@ -497,7 +497,7 @@ python odm.py --head_less --backend cpu --multi_process \
 
 当前 `tests/test_model_manager.py` 的大部分用例验证 `ProcessChannel`、`ModelProcess` 和 `ModelManager` 的逻辑，很多请求由线程/MagicMock 模拟；标记 `integration` 的真实 CLIP/RAM 等测试需要模型权重和运行中的模型进程（`tests/test_model_manager.py:407-520`），因此“测试文件存在”或“默认 pytest 通过”都不能证明 Ella 端到端可运行。当前没有看到 Agent 行为、记忆持久化、仿真动作或 Controlled Finals 指标的根级回归矩阵。
 
-第三轮验收必须分栏记录：
+后续验收必须分栏记录：
 
 | 等级 | 必须证明的事实 | 不能替代它的证据 |
 |---|---|---|
@@ -515,7 +515,7 @@ python odm.py --head_less --backend cpu --multi_process \
 4. 反向测试至少包含：Agent SIGKILL、模型 worker 非零退出、队列请求超时/重复/late reply、模型输出错误 shape/维度、磁盘写入中断、索引删除后重建、重复评估和错误配置 hash。
 5. 真实替身也必须经过相同进程/队列/文件/内存生命周期；禁止在单元测试里把 `ModelProcess` 换成函数后宣称模型链路通过。
 
-### 13.7 第三轮底座落点结论
+### 13.7 后续底座落点结论
 
 - **吸收**：运行清单与唯一身份、进程/进程组监督、队列信封/批处理/死信、模型能力网关、provider 隔离、原子文件/manifest/checkpoint、事实与派生索引分离、通用评估 runner、分级验证与故障证据。
 - **升级现有能力**：把现有通用进程/资源/异步任务底座补上进程组回收、请求 deadline/幂等/取消、退出码、队列排空、文件 manifest、索引 rebuild 和防假绿门禁；不要为 Ella 单独新建第二套模型队列或任务系统。
@@ -523,13 +523,13 @@ python odm.py --head_less --backend cpu --multi_process \
 - **暂不抽取**：`retrieve_knowledge()` 空实现、`save_memory_incremental()` 中与当前事件 JSON 字段不一致的实验性路径、论文“严格不覆盖旧记忆”的强不变量；这些应先完成源码/测试/运行证据闭环，不能包装为通用底座。
 - **唯一调用链约束**：未来接入平台时只能是“Ella 项目适配层 → 通用 Agent/模型/文件/评估底座 → 受管 provider”，禁止入口脚本直连第三方、Agent 旁路写评估结果、评估器改写仿真事实、索引反向写事实文件。
 
-## 14. 第三轮证据边界与后续复核
+## 14. 后续证据边界与后续复核
 
-本轮仍为源码取证与架构映射，未安装依赖、未启动 Genesis/ViCo、未启动真实模型进程、未执行长时仿真、未强杀/恢复进程、未做磁盘损坏注入，也未把任何上述“要求”写成已实现平台能力。后续若进入底座实施，必须先冻结 run/queue/model/file/memory/evaluation 契约，再按独立资源 owner 分工作包，最后用真实子进程和故障注入验证；不得以本节的设计裁决替代运行证据。
+当前核对仍为源码取证与架构映射，未安装依赖、未启动 Genesis/ViCo、未启动真实模型进程、未执行长时仿真、未强杀/恢复进程、未做磁盘损坏注入，也未把任何上述“要求”写成已实现平台能力。后续若进入底座实施，必须先冻结 run/queue/model/file/memory/evaluation 契约，再按独立资源 owner 分工作包，最后用真实子进程和故障注入验证；不得以本节的设计裁决替代运行证据。
 
-## 15. 第二轮收口：记忆抽取、画像/状态、模型、调用链与验证
+## 15. 后续收口：记忆抽取、画像/状态、模型、调用链与验证
 
-本节只记录对当前源码逐条回读后的第二轮结论；它不把提示词要求、fallback 日志、测试文件或第三轮底座建议升级为运行事实。旧 `细探-Ella.md` 继续保留，后续架构事实只维护本文件。
+本节只记录对当前源码逐条回读后的后续结论；它不把提示词要求、fallback 日志、测试文件或后续底座建议升级为运行事实。旧 `细探-Ella.md` 继续保留，后续架构事实只维护本文件。
 
 ### 15.1 两套记忆实现必须分开看
 
@@ -637,9 +637,9 @@ odm.py
 
 模型通道实际由 `odm.py:149-153` 注入 `global_model_manager._channel`，`EllaAgent.__init__()` 又在每个 Agent 中调用 `set_channel()`（`agents/ella.py:35-41`）。这说明 channel 是进程级共享实现细节，不是显式的 Agent 请求契约；多个 Agent 依赖同一个 `ProcessChannel`，但没有 run_id/agent_id/request deadline 可用于对账。模型、记忆、Agent、环境和评估的 owner 也没有统一生命周期协调器。
 
-### 15.6 失败恢复矩阵（源码已实现 vs 本轮未证）
+### 15.6 失败恢复矩阵（源码已实现 vs 当前核对未证）
 
-| 故障 | 当前源码行为 | 第二轮判定 |
+| 故障 | 当前源码行为 | 后续判定 |
 |---|---|---|
 | LLM 网络/Provider 异常 | OpenAI/Azure 重试后返回 `""`；Gemini 重新抛出；其他 provider 多数不统一捕获 | **部分 fallback，未形成失败契约**；空字符串可能继续进入 parser 或领域默认值。 |
 | JSON 围栏缺失/JSON 非法 | `parse_json()` 追加一次“只输出围栏 JSON”请求，再失败返回 `None` | **有界重试已存在**，但无 schema/字段错误码、无请求关联、未证明所有调用方都安全处理 `None`。 |
@@ -663,28 +663,28 @@ odm.py
 | ModelProcess、模型权重、GPU/MPS 上下文 | `ModelManager.init(local=True)` 启动 worker；worker 懒加载模型 | manager terminate/join；channel shutdown | worker 异常、vLLM/CUDA 初始化失败、非零退出没有父侧诊断；需验证 PID、退出码、显存/模型上下文、队列/Manager 进程均回收。 |
 | HTTP pickle server、凭据与 cwd cache | `Generator`/`ModelClient` 持有 client；server 反序列化不可信 body | 依赖进程结束；无统一 close/timeout | 不能进入公共服务；需限制 localhost、尺寸/版本、请求超时、异常 envelope，并禁止日志写 API key。 |
 
-### 15.8 第二轮验证等级与实际证据
+### 15.8 后续验证等级与实际证据
 
-| 等级 | 本轮能证明的事实 | 本轮不能声称的事实 |
+| 等级 | 当前核对能证明的事实 | 当前核对不能声称的事实 |
 |---|---|---|
 | A 源码存在 | 已读取 `agents/memory.py`、`agents/ella.py`、`gen_agent_memory.py`、`generator.py`、`tools/model_manager/*`、`vico/vico/agents/agent.py`、`odm.py`、提示词与样例 `scratch/seed_knowledge`；路径和行号已写入本节 | 论文/README 的“终身”“不覆盖”不能替代实现证据。 |
 | B 测试源码存在 | `tests/test_model_manager.py` 覆盖 `auto_batched`、`ProcessChannel`、设备选择、client 注册/关闭及标记为 integration 的真实视觉测试 | 测试文件存在、mock worker round-trip、`skip` 或 marker 不等于端到端通过；没有 Ella 记忆/画像/恢复回归矩阵。 |
-| C 静态检查 | 本轮可执行无写入的 Python AST/Markdown 结构检查；结果在第 16 节回写 | 不把 AST 通过升级为依赖可导入、真实模型可加载或语义正确。 |
+| C 静态检查 | 当前核对可执行无写入的 Python AST/Markdown 结构检查；结果在第 16 节回写 | 不把 AST 通过升级为依赖可导入、真实模型可加载或语义正确。 |
 | D 真实链路 | **未验证**：没有安装依赖、启动 Genesis/ViCo、模型进程、Provider、长时仿真或真实记忆恢复 | 不声称实验已跑通、指标已产生、FAISS/模型形状已在现场成立。 |
 | E 故障恢复 | **未验证**：没有强杀 Agent/ModelProcess、注入网络/磁盘/索引故障、检查孤儿资源 | 代码里的 `try/except`、`terminate()`、fallback 日志不能算恢复通过。 |
 
-本轮收口的最小硬门禁为：先证明 `experience.json`/`knowledge.json` 是事实源，再证明索引可由同一版本事实重建；每个模型调用有有限等待和终态；每个 Agent checkpoint 带 step/run 身份；正常、业务失败、取消/超时、宿主崩溃四种终态都能读回资源现场。当前源码尚未满足这些门禁，故结论只能是“研究实现的源码链路已厘清，生产级恢复未闭环”。
+当前核对收口的最小硬门禁为：先证明 `experience.json`/`knowledge.json` 是事实源，再证明索引可由同一版本事实重建；每个模型调用有有限等待和终态；每个 Agent checkpoint 带 step/run 身份；正常、业务失败、取消/超时、宿主崩溃四种终态都能读回资源现场。当前源码尚未满足这些门禁，故结论只能是“研究实现的源码链路已厘清，生产级恢复未闭环”。
 
-### 15.9 第二轮裁决
+### 15.9 后续裁决
 
 - **吸收**：Ella 将语义事实、情景事件、视觉/文本派生索引分域；对话摘要与知识抽取是两类不同产物；LLM 输出必须经过领域 parser/validator/fallback；模型调用应由能力注册表和受管进程承载；`atomic_save()` 可作为单文件替换的局部模式。
 - **降级**：论文/旧细探中的“非参数记忆不覆盖旧记忆”降级为研究目标，不是当前工程不变量；当前代码存在 `remove_memory()`、`clear_memory()`、失败事件原地修改和语义字段覆盖。
-- **待核**：真实模型/Provider 形状、FAISS 重建、跨日恢复、空库/乱序/删除检索、强杀/超时/取消、CPU/MPS local 路径、评估重复运行，均需隔离环境实测；本轮不生成运行结果。
+- **待核**：真实模型/Provider 形状、FAISS 重建、跨日恢复、空库/乱序/删除检索、强杀/超时/取消、CPU/MPS local 路径、评估重复运行，均需隔离环境实测；当前核对不生成运行结果。
 - **必须隔离**：`agents/memory.py` 与 `gen_agent_memory.py` 两条记忆实现、Ella 与 GenAgent 两套画像/状态 schema、ViCo 环境状态与 Agent scratch、模型 provider/cwd cache/凭据、HTTP pickle 兼容层，不得通过“同名 Memory/Generator”合并。
 
-## 16. 第二轮现场验证记录
+## 16. 后续现场验证记录
 
-本轮在项目根执行了不导入第三方依赖、不启动服务、不写入 Python 字节码的静态检查：
+当前核对在项目根执行了不导入第三方依赖、不启动服务、不写入 Python 字节码的静态检查：
 
 ```text
 PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
@@ -701,6 +701,20 @@ for rel in files:
 PY
 ```
 
-现场结果：`AST_OK 10`；`ARCHITECTURE.md` 非空；存在文本流程图；存在“第二轮收口”章节；旧 `细探-Ella.md` 仍存在。该结果只证明 10 个源码文件可被 Python AST 解析及文档基本结构存在，不证明依赖导入、模型加载、真实队列、ViCo 仿真、记忆检索或故障恢复。
+现场结果：`AST_OK 10`；`ARCHITECTURE.md` 非空；存在文本流程图；存在“后续收口”章节；旧 `细探-Ella.md` 仍存在。该结果只证明 10 个源码文件可被 Python AST 解析及文档基本结构存在，不证明依赖导入、模型加载、真实队列、ViCo 仿真、记忆检索或故障恢复。
 
-本轮没有执行 `pytest`：本轮未安装依赖、未准备模型权重、未启动服务，且任务边界是源码核对与文档收口；测试文件存在仍按 B 级记录。Git 状态在修改前后都为 `master...origin/master`，未跟踪项均为既有的 `ARCHITECTURE.md` 与 `细探-Ella.md`；未删除旧细探、未修改源码/依赖/配置/测试/README、未提交 Git。
+当前核对没有执行 `pytest`：当前核对未安装依赖、未准备模型权重、未启动服务，且任务边界是源码核对与文档收口；测试文件存在仍按 B 级记录。Git 状态在修改前后都为 `master...origin/master`，未跟踪项均为既有的 `ARCHITECTURE.md` 与 `细探-Ella.md`；未删除旧细探、未修改源码/依赖/配置/测试/README、未提交 Git。
+
+## 17. 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `f29694ad44ce7976ccb34c82a599803e7d325f35` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 416 files / 8,058 nodes / 16,910 edges；Python 382、C++ 17、YAML 15、C 2 |
+| 文档行数 | `wc -l ARCHITECTURE.md` | 当前超过 500 行 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮严格未使用 MCP，只使用 shell、git、CodeGraph CLI 和源码静态证据。文档已覆盖事件/时间图、语义与情景记忆、混合检索、模型通道、Agent/ViCo API、进程队列、文件/FAISS/视觉资源、失败/取消/恢复矩阵、测试与部署边界；源码 checkout 未改，仅更新平台研究文档。
+
+未验证项：依赖安装、pytest、Genesis/ViCo 启动、真实 LLM/视觉模型、FAISS 重建、HTTP pickle 服务、并发/超时/客户端断连、强杀 ModelProcess/Agent、GPU/MPS 资源回收、跨日恢复和评估 benchmark。静态 AST 或测试文件存在不等于运行通过。

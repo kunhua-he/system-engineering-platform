@@ -2,7 +2,7 @@
 
 > 本文是仓库根唯一的长期架构事实源。说明、结论、风险和表格解释使用中文；源码路径、类名、函数名、字段名、命令、协议和第三方名称保留原文。
 >
-> 研究范围：只读检查当前源码、README、依赖、测试、CI 与 Git 元数据；本轮只允许修改本文，未删除 `细探-whisperX.md`，未修改源码、测试、配置、依赖或 Git，也未安装依赖、启动服务、下载模型或生成构建物。
+> 研究范围：只读检查当前源码、README、依赖、测试、CI 与 Git 元数据；当前核对只允许修改本文，未删除 `细探-whisperX.md`，未修改源码、测试、配置、依赖或 Git，也未安装依赖、启动服务、下载模型或生成构建物。
 >
 > **旧细探收口声明：** `细探-whisperX.md` 的四能力定位、VAD→ASR→forced alignment→diarization 管线、单词级时间戳、说话人分轨、PyTorch/多模型权重边界和可复用方向已逐条核对并吸收至本文；旧文件按要求保留作历史线索，不再与本文并行维护事实。后续只维护本文。
 
@@ -25,7 +25,7 @@
 | 本地标签 | `3.8.7rc1` 指向 `8dcdec18039f6f6b10b967c45273f54dd2a1f699` |
 | 工作树 | Git 跟踪源码未改；本地有未跟踪 `ARCHITECTURE.md` 与 `细探-whisperX.md` |
 | 服务边界 | 仓库没有 HTTP/RPC 服务、数据库、任务队列、鉴权、持久任务状态或部署编排 |
-| 证据强度 | 本文实现结论以当前源码为主；README/论文/旧细探只作线索；模型下载、GPU 推理、ffmpeg 与 gated Hugging Face 模型本轮未实测 |
+| 证据强度 | 本文实现结论以当前源码为主；README/论文/旧细探只作线索；模型下载、GPU 推理、ffmpeg 与 gated Hugging Face 模型当前核对未实测 |
 
 **版本裁决：** 本地 `main` 与 `origin/main` 一致，没有执行 fetch/pull。当前文档以 `2cfd7b7c5c7bba144954364db747319b50e8232b` 源码为准，不能把历史标签等同于当前主分支。
 
@@ -307,11 +307,11 @@ whisperX/
 |---|---|---|
 | L0 源码/声明 | “源码存在/README 声明能力” | 四能力、入口、分层和失败分支已由源码核对；不能叫运行通过 |
 | L1 测试存在 | “有测试源码覆盖某分支” | `test_word_timestamp_interpolation.py` 的 12 个测试方法；不能推导端到端可用 |
-| L2 本地真实执行 | “在当前环境命令退出 0，测试数/跳过数可读回” | 需以本轮实际命令结果为准；未执行部分不能写通过 |
-| L3 外部边界实测 | “ffmpeg/缓存/模型/token/设备等真实对接通过” | 本轮未下载模型、未启动 GPU/外部服务；全部未验证 |
+| L2 本地真实执行 | “在当前环境命令退出 0，测试数/跳过数可读回” | 需以当前核对实际命令结果为准；未执行部分不能写通过 |
+| L3 外部边界实测 | “ffmpeg/缓存/模型/token/设备等真实对接通过” | 当前核对未下载模型、未启动 GPU/外部服务；全部未验证 |
 | L4 端到端与终态 | “真实音频完成 VAD→ASR→align→diarize→writer，且失败/取消/崩溃清理已验收” | 仓库没有端到端夹具、取消协议或资源验收；未达成 |
 
-**防假绿规则：** CI 配置、历史提交、打印日志、测试文件存在、子代理回报和“模型能加载”的声明均不能替代对应等级的真实命令、退出码、测试数、外部依赖和资源读回。当前最多可把窄 alignment 单测记为 L2（前提是本轮命令实际退出 0），完整产品链必须标为 L0/L1 或未验证。
+**防假绿规则：** CI 配置、历史提交、打印日志、测试文件存在、子代理回报和“模型能加载”的声明均不能替代对应等级的真实命令、退出码、测试数、外部依赖和资源读回。当前最多可把窄 alignment 单测记为 L2（前提是当前核对命令实际退出 0），完整产品链必须标为 L0/L1 或未验证。
 
 ### 9.3 CI 事实
 
@@ -336,7 +336,7 @@ CI 覆盖的是安装、窄测试、import、锁文件和构建发布，不等�
 
 ## 10. 未验证项与剩余风险
 
-1. 未在本轮实测 `ffmpeg` 路径、坏文件、超长文件、采样率和子进程超时行为。
+1. 未在当前核对实测 `ffmpeg` 路径、坏文件、超长文件、采样率和子进程超时行为。
 2. 未下载或运行 `faster-whisper`、Silero、Pyannote、alignment、diarization 权重；没有 L3/L4 结果。
 3. 未验证 macOS CPU wheel 与 Linux CUDA 12.8 wheel 的实际安装兼容性。
 4. 未验证 Hugging Face gated token/协议、`local_files_only` 全链路和缓存中断恢复。
@@ -401,13 +401,13 @@ WhisperX 的真实核心是一个**阶段化、以本地模型为主但可触发
 
 因此，底座吸收裁决为：**吸收**阶段边界、结果逐层增强、VAD 抽象、对齐/说话人能力和资源分阶段释放模式；**不吸收**当前的隐式生命周期、无运行时 schema、无取消/超时/恢复、非原子输出和双字幕路径；**待核**所有真实模型/ffmpeg/HF/设备对接及失败终态。本文和源码路径是后续复核入口，`细探-whisperX.md` 保留但不再作为第二事实源。
 
-## 15. 第三轮：通用底座映射与单链路裁决
+## 15. 后续：通用底座映射与单链路裁决
 
-### 15.1 本轮范围、事实与边界
+### 15.1 当前核对范围、事实与边界
 
-本轮不是把 WhisperX 当作已经接入平台的实现，而是把当前源码中可复用的音频能力，映射到“音频支持库 → ASR 模块 → 运行核心 → 统一网关”的既有底座分工。凡标为“目标落点/应升级/待建”的内容都是接入裁决，不是当前仓库已有代码。当前仓库仍只有 Python API、CLI 和同进程模型管线，没有平台任务句柄、统一错误码、HTTP 能力网关、持久任务状态或资源租约。
+当前核对不是把 WhisperX 当作已经接入平台的实现，而是把当前源码中可复用的音频能力，映射到“音频支持库 → ASR 模块 → 运行核心 → 统一网关”的既有底座分工。凡标为“目标落点/应升级/待建”的内容都是接入裁决，不是当前仓库已有代码。当前仓库仍只有 Python API、CLI 和同进程模型管线，没有平台任务句柄、统一错误码、HTTP 能力网关、持久任务状态或资源租约。
 
-本轮 `project_context` 返回的项目根错误绑定为 `~/Documents/Agent/PHP/华世王镞_v3`，不是本项目；该结果作为环境问题记录，不采用其代码图、记忆、验证或项目结论。本节全部事实来自目标目录本地静态源码与测试；本轮没有下载模型、调用 GPU、访问 Hugging Face、运行 ffmpeg 音频解码、启动外部服务或执行真实端到端转写。
+当前核对 `project_context` 返回的项目根错误绑定为 `~/Documents/Agent/PHP/华世王镞_v3`，不是本项目；该结果作为环境问题记录，不采用其代码图、记忆、验证或项目结论。本节全部事实来自目标目录本地静态源码与测试；当前核对没有下载模型、调用 GPU、访问 Hugging Face、运行 ffmpeg 音频解码、启动外部服务或执行真实端到端转写。
 
 ### 15.2 能力到四层底座映射
 
@@ -505,7 +505,7 @@ WhisperX 的真实核心是一个**阶段化、以本地模型为主但可触发
 
 矩阵结论：当前源码能证明若干异常会抛出或回退，但不能证明超时、主动取消、OOM、宿主崩溃、第三方断线后的资源终态。平台接入验收必须至少读回进程表、GPU/lease、临时目录、制品状态和错误证据，不能只看调用返回值。
 
-### 15.7 第三轮复用/升级/新建/隔离裁决
+### 15.7 后续复用/升级/新建/隔离裁决
 
 | 裁决 | 内容 | 原因 |
 |---|---|---|
@@ -516,36 +516,36 @@ WhisperX 的真实核心是一个**阶段化、以本地模型为主但可触发
 | 接入统一网关 | `search → contract → execute` 暴露 ASR 模块能力，统一授权、错误、进度、结果和制品引用 | 当前仓库没有 HTTP/RPC；网关必须成为唯一外部入口，不直连第三方 |
 | 新建原子能力 | 音频格式探测、受限 ffmpeg 解码、模型可用性预检、alignment 证据标注、speaker overlap 策略、结果 schema 校验 | 当前没有可复用的跨进程稳定契约，不能仅把函数名搬过去 |
 | 隔离/废弃 | 直接 `subprocess.run(ffmpeg)`、第三方 SDK 穿透模块、直接 HF/NLTK 下载、`del model` 作为唯一释放、双 writer、原地修改作为跨层契约 | 与单网关、单 owner、资源可审计原则冲突 |
-| 待核 | 实际 GPU/CUDA/CPU wheel、模型版本和显存、ffmpeg 支持格式、HF gated 协议、pyannote embedding 成本、长音频批处理吞吐 | 本轮没有真实外部依赖和端到端运行证据 |
+| 待核 | 实际 GPU/CUDA/CPU wheel、模型版本和显存、ffmpeg 支持格式、HF gated 协议、pyannote embedding 成本、长音频批处理吞吐 | 当前核对没有真实外部依赖和端到端运行证据 |
 
-### 15.8 第三轮 L0-L4 验证分层
+### 15.8 后续 L0-L4 验证分层
 
-| 等级 | 本轮可声称的内容 | 不能声称的内容 | 证据 |
+| 等级 | 当前核对可声称的内容 | 不能声称的内容 | 证据 |
 |---|---|---|---|
 | L0 源码静态事实 | 已定位入口、音频读取、VAD、ASR batch、alignment、diarization、writer、模型/缓存/外部边界和失败分支 | 不能称为运行通过或平台已接入 | 目标仓库源码路径及本文件 §2-§15 |
 | L1 测试源码存在 | 现有单测覆盖 mock emission、wildcard、数字/符号词、插值和相邻词不污染 | 不能推导 ffmpeg、模型、GPU、分离、CLI 端到端 | `tests/test_word_timestamp_interpolation.py:54-231` |
-| L2 本地真实执行 | 仅在实际执行命令退出 0、读回测试数/失败数后，才可把该命令对应的窄路径记为 L2 | 不把 CI 配置、文件存在、历史输出算 L2 | 本轮实际命令与退出码见 §15.9；pytest 缺失时保持未验证 |
-| L3 外部边界实测 | 只有真实 ffmpeg、模型缓存、GPU/CPU provider、HF/NLTK、token/网络等运行且读回资源结果才可记 L3 | 本轮未运行真实 ffmpeg 解码、模型下载、GPU、HF、gated Pyannote 或外部服务 | 明确未执行；因此这些边界均未达 L3 |
-| L4 端到端与终态 | 只有真实音频完成唯一链路，并验证成功/失败/超时/取消/OOM/崩溃和残留清理才可记 L4 | 当前仓库没有任务句柄、取消协议、恢复/制品验收；本轮未达成 | 当前最多 L0/L1；窄单测实跑后可局部 L2 |
+| L2 本地真实执行 | 仅在实际执行命令退出 0、读回测试数/失败数后，才可把该命令对应的窄路径记为 L2 | 不把 CI 配置、文件存在、历史输出算 L2 | 当前核对实际命令与退出码见 §15.9；pytest 缺失时保持未验证 |
+| L3 外部边界实测 | 只有真实 ffmpeg、模型缓存、GPU/CPU provider、HF/NLTK、token/网络等运行且读回资源结果才可记 L3 | 当前核对未运行真实 ffmpeg 解码、模型下载、GPU、HF、gated Pyannote 或外部服务 | 明确未执行；因此这些边界均未达 L3 |
+| L4 端到端与终态 | 只有真实音频完成唯一链路，并验证成功/失败/超时/取消/OOM/崩溃和残留清理才可记 L4 | 当前仓库没有任务句柄、取消协议、恢复/制品验收；当前核对未达成 | 当前最多 L0/L1；窄单测实跑后可局部 L2 |
 
-### 15.9 本轮验证记录与剩余风险
+### 15.9 当前核对验证记录与剩余风险
 
 - **静态验证：** 已现场读取 `ARCHITECTURE.md`、旧细探、`pyproject.toml`、`whisperx/__main__.py`、`__init__.py`、`transcribe.py`、`audio.py`、`vads/*`、`asr.py`、`alignment.py`、`diarize.py`、`schema.py`、`utils.py`、`SubtitlesProcessor.py` 和现有测试；路径与行号以当前工作树为准。
-- **真实外部依赖：** 本轮明确未运行 `ffmpeg` 解码，未下载/加载 faster-whisper、CTranslate2、Silero、Pyannote、torchaudio/Hugging Face alignment、NLTK `punkt_tab` 或 gated 模型，未使用 HF token，未启动 HTTP/RPC/数据库/队列服务，未验证 GPU/CUDA/显存/OOM，也未做真实多文件 CLI 转写。
+- **真实外部依赖：** 当前核对明确未运行 `ffmpeg` 解码，未下载/加载 faster-whisper、CTranslate2、Silero、Pyannote、torchaudio/Hugging Face alignment、NLTK `punkt_tab` 或 gated 模型，未使用 HF token，未启动 HTTP/RPC/数据库/队列服务，未验证 GPU/CUDA/显存/OOM，也未做真实多文件 CLI 转写。
 - **验证命令与退出码：** `python3 -m py_compile whisperx/__init__.py whisperx/__main__.py whisperx/alignment.py whisperx/asr.py whisperx/audio.py whisperx/diarize.py whisperx/schema.py whisperx/transcribe.py whisperx/utils.py whisperx/vads/vad.py whisperx/vads/silero.py whisperx/vads/pyannote.py whisperx/SubtitlesProcessor.py` 退出码 **0**，仅证明 Python 源码可编译；`python3 -m pytest tests/test_word_timestamp_interpolation.py -q` 退出码 **1**，原因是当前解释器 `No module named pytest`，未安装依赖、未重跑、未将其记为通过。
 - **工作区边界：** 只对目标根 `ARCHITECTURE.md` 执行了文档 patch；`细探-whisperX.md`、源码、测试、`pyproject.toml`、依赖和 Git 未修改，旧细探仍保留。
 - **验证边界：** 现有测试源码使用 `MagicMock` emission/model 和合成 `torch` waveform，属于窄对齐行为测试；当前未因 pytest 缺失而执行它，即使后续命令通过，也不等于外部模型、音频读取、GPU、说话人分离或输出链通过。
-- **剩余风险：** 仍需后续在隔离环境补齐真实音频夹具、ffmpeg 超时/坏输入、模型缓存/认证/断线、GPU OOM、取消、SIGKILL、进程残留、workspace 清理、原子制品和唯一网关回归；未有证据前不得把第三轮映射写成已落地能力。
+- **剩余风险：** 仍需后续在隔离环境补齐真实音频夹具、ffmpeg 超时/坏输入、模型缓存/认证/断线、GPU OOM、取消、SIGKILL、进程残留、workspace 清理、原子制品和唯一网关回归；未有证据前不得把后续映射写成已落地能力。
 
-## 16. 第三轮结论
+## 16. 后续结论
 
 WhisperX 对通用底座的核心贡献不是“再造一个 ASR 服务”，而是提供一组可收敛到单链路的音频原子能力：`音频读取/归一化 → VAD 切分 → batched Whisper → CTC 对齐 → 可选说话人分离 → 统一结果/制品`。其中，**音频支持库**拥有第三方音频/模型 provider 的薄适配和结果基础结构，**ASR 模块**拥有唯一领域编排与结果语义，**运行核心**拥有执行单元、句柄、GPU/模型/临时目录/进程生命周期及故障终态，**统一网关**拥有唯一外部入口、授权、契约、事件和制品引用。
 
-最终第三轮裁决：**吸收** VAD+批处理+对齐+speaker augmentation 的领域边界；**升级**音频支持库和 ASR 模块以补运行时 schema、错误、超时、取消和 provenance；**补齐**运行核心的资源/执行治理与统一网关接入；**隔离**当前直接 ffmpeg/HF/模型 SDK、隐式释放、双 writer 和非原子输出。当前仅完成源码研究与文档映射，未修改生产底座，也未运行真实外部依赖。
+最终后续裁决：**吸收** VAD+批处理+对齐+speaker augmentation 的领域边界；**升级**音频支持库和 ASR 模块以补运行时 schema、错误、超时、取消和 provenance；**补齐**运行核心的资源/执行治理与统一网关接入；**隔离**当前直接 ffmpeg/HF/模型 SDK、隐式释放、双 writer 和非原子输出。当前仅完成源码研究与文档映射，未修改生产底座，也未运行真实外部依赖。
 
-## 17. 第二轮收口：转写、对齐、分离、资源与故障终态补证
+## 17. 后续收口：转写、对齐、分离、资源与故障终态补证
 
-本节是对前述建档/第三轮映射的第二轮源码收口，专门补上容易被“管线概览”掩盖的参数失效、状态污染、设备不一致、批处理边界、外部下载和释放缺口。以下均是当前提交 `2cfd7b7c5c7bba144954364db747319b50e8232b` 的静态源码事实；不是对生产底座的实现承诺。
+本节是对前述建档/后续映射的后续源码收口，专门补上容易被“管线概览”掩盖的参数失效、状态污染、设备不一致、批处理边界、外部下载和释放缺口。以下均是当前提交 `2cfd7b7c5c7bba144954364db747319b50e8232b` 的静态源码事实；不是对生产底座的实现承诺。
 
 ### 17.1 CLI/编排的实际语义与隐藏状态
 
@@ -590,7 +590,7 @@ WhisperX 对通用底座的核心贡献不是“再造一个 ASR 服务”，而
 
 ### 17.5 音频、模型、GPU 与外部服务边界
 
-| 资源/边界 | 实际行为 | 第二轮裁决 |
+| 资源/边界 | 实际行为 | 后续裁决 |
 |---|---|---|
 | ffmpeg | `load_audio` 以 `ffmpeg -nostdin -threads 0 -i <file> -f s16le -ac 1 -ar 16000 -` 启动 `subprocess.run(capture_output=True, check=True)`；stdout 全部驻留后再转 NumPy。只捕获 `CalledProcessError`；命令不存在的 `FileNotFoundError`、OS 错误和超时均不统一。 | 受管 provider 必须有 deadline、进程组、stdout/音频时长上限、可读错误分类和残留读回；当前函数不是可取消解码器。 |
 | 模型/缓存 | faster-whisper/CTranslate2、Silero torch hub、torchaudio bundle、HF Wav2Vec2、NLTK punkt、gated pyannote 都由库内调用触发；没有统一下载锁、版本 pin、校验摘要、下载 timeout 或断点恢复。 | 不能把 `download_root`/`model_dir` 当成完整离线与缓存一致性协议；认证 token 只在 diarization CLI 路径显式存在，alignment HF 没有 token 参数。 |
@@ -608,15 +608,15 @@ WhisperX 对通用底座的核心贡献不是“再造一个 ASR 服务”，而
 | 主动取消/超时 | 源码没有 timeout、cancel token、signal handler；只能由宿主中止同步调用或进程。 | ffmpeg、DataLoader、CTranslate2、CTC、pyannote 是否停止；GPU/线程/缓存是否归还。 | kill 后进程组、worker、端口/句柄、GPU lease、workspace、半写文件。 |
 | 宿主/子进程崩溃 | OS 通常回收进程级资源。 | 输出原子性、缓存临时文件、任务恢复/幂等、模型和第三方状态的应用级清理。 | 重启扫描 orphan workspace/cache、制品校验/manifest、持久任务终态；当前仓库不存在这些对象。 |
 
-### 17.7 本轮收口结论与未验证项
+### 17.7 当前核对收口结论与未验证项
 
 **已吸收的真实模式：** VAD 区间 → 30 秒级批处理 → CTranslate2/faster-whisper 文本 → 语言特定 CTC alignment → pyannote speaker interval → 原地标签增强 → 多格式 writer；阶段边界、wildcard/插值回退和显式 progress hook 可作为领域参考。
 
 **必须隔离的实现缺口：** 参数失效/覆盖、默认语言覆盖真实检测语言、无界 `mel_filters` GPU cache、设备 index 不贯穿 alignment/diarization、直接 ffmpeg/torch hub/HF/NLTK 下载、无 timeout/cancel/signal/finally、无 OOM/worker 回收、pyannote 无 close、dominant speaker 单标签、原地结果与非原子 writer。
 
-**本轮没有声称的验证：** 未下载/加载任何模型或 HF gated pipeline，未调用 HF token，未执行真实 ffmpeg 解码、GPU/多 GPU、长音频/多文件批处理、OOM、DataLoader worker 异常、网络断线、timeout、主动取消、SIGTERM/SIGKILL、崩溃恢复或显存/进程/缓存残留读回。现有测试仍只覆盖 mock alignment/interpolation 窄路径；`pytest` 依赖在当前解释器缺失，不能记为运行通过。
+**当前核对没有声称的验证：** 未下载/加载任何模型或 HF gated pipeline，未调用 HF token，未执行真实 ffmpeg 解码、GPU/多 GPU、长音频/多文件批处理、OOM、DataLoader worker 异常、网络断线、timeout、主动取消、SIGTERM/SIGKILL、崩溃恢复或显存/进程/缓存残留读回。现有测试仍只覆盖 mock alignment/interpolation 窄路径；`pytest` 依赖在当前解释器缺失，不能记为运行通过。
 
-**第二轮裁决：** WhisperX 适合作为“本地模型推理算法与阶段结果语义”的源码参考，不适合作为可直接嵌入的任务执行器。平台若吸收，必须把 `audio.read`、VAD、ASR batch、alignment、diarization、serialization 各自包成受管 provider/能力，并由运行核心统一拥有 deadline、cancel、GPU/CPU lease、模型缓存、进程组、workspace、artifact 原子提交和四终态清理证据；不能以当前 CLI 的阶段末 `del`/`empty_cache` 代替这些契约。
+**后续裁决：** WhisperX 适合作为“本地模型推理算法与阶段结果语义”的源码参考，不适合作为可直接嵌入的任务执行器。平台若吸收，必须把 `audio.read`、VAD、ASR batch、alignment、diarization、serialization 各自包成受管 provider/能力，并由运行核心统一拥有 deadline、cancel、GPU/CPU lease、模型缓存、进程组、workspace、artifact 原子提交和四终态清理证据；不能以当前 CLI 的阶段末 `del`/`empty_cache` 代替这些契约。
 
 ## 18. 第四轮核对：从输入到资源终态的逐项事实清单
 
@@ -668,4 +668,4 @@ WhisperX 对通用底座的核心贡献不是“再造一个 ASR 服务”，而
 
 旧细探的核心判断“Whisper + VAD + forced alignment + diarization”成立，但应修正为：当前实现是同一 Python 进程内的阶段化本地模型管线，不是四个独立服务；Whisper 的批量文本、语言特定 CTC 对齐、pyannote speaker interval 和 writer 才是源码已证实的能力边界。旧细探中的许可证、独立服务化和“可直接并存多 provider”等泛化表述不应覆盖当前源码事实。
 
-本轮仍未执行 `ffmpeg` 解码、模型下载/加载、HF gated 认证、NLTK 下载、GPU/CUDA 推理、OOM/取消/崩溃场景或真实端到端音频；因此上述 GPU、外部服务、资源回收和失败终态均为源码核对与接入约束，证据等级最多为 L0，不能写成 L2/L3/L4 通过。后续若接入平台，唯一可吸收的是阶段结果语义和 provider 边界；模型、GPU、临时文件、外部服务、错误和生命周期必须由受管运行核心统一拥有。
+当前核对仍未执行 `ffmpeg` 解码、模型下载/加载、HF gated 认证、NLTK 下载、GPU/CUDA 推理、OOM/取消/崩溃场景或真实端到端音频；因此上述 GPU、外部服务、资源回收和失败终态均为源码核对与接入约束，证据等级最多为 L0，不能写成 L2/L3/L4 通过。后续若接入平台，唯一可吸收的是阶段结果语义和 provider 边界；模型、GPU、临时文件、外部服务、错误和生命周期必须由受管运行核心统一拥有。

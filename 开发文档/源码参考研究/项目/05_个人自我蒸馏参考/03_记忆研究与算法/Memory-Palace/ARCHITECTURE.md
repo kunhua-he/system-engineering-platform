@@ -366,7 +366,7 @@ python scripts/evaluate_memory_palace_skill.py
 cd backend && python ../scripts/evaluate_memory_palace_mcp_e2e.py
 ```
 
-这些命令本轮均未执行，不能据此宣称当前工作树测试通过。
+这些命令当前核对均未执行，不能据此宣称当前工作树测试通过。
 
 ## 9. 关键路径索引
 
@@ -397,10 +397,10 @@ cd backend && python ../scripts/evaluate_memory_palace_mcp_e2e.py
 
 ## 10. 未确认项与维护提示
 
-以下项目通过静态代码/文档无法在本轮确认，后续若要运行或改造应单独验证：
+以下项目通过静态代码/文档无法在当前核对确认，后续若要运行或改造应单独验证：
 
 1. **未做运行验证**：没有安装依赖、没有启动 FastAPI/SSE/Dashboard、没有执行 pytest/npm/build/e2e，因此依赖安装状态、实际 import、数据库初始化和端到端连通性均未确认。
-2. **当前数据库状态未确认**：仓库未提供本轮使用的 `DATABASE_URL`/运行数据库；无法确认实际 migration head、已写入表数据、索引能力或 embedding drift 状态。
+2. **当前数据库状态未确认**：仓库未提供当前核对使用的 `DATABASE_URL`/运行数据库；无法确认实际 migration head、已写入表数据、索引能力或 embedding drift 状态。
 3. **外部 provider 未确认**：C/D 的 embedding、reranker、可选 Write Guard/Gist/intent LLM endpoint、key、模型和维度都依赖部署环境；源码只实现配置读取、校验、降级和报告。
 4. **sqlite-vec 实效未确认**：代码有 native vec0 探测、extension path 和 legacy fallback，但当前环境没有进行 extension load/KNN 实测。
 5. **质量面板不是生产质量证明**：`/search/quality-metrics` 源码明确返回 `is_mock=true` / labelled samples 未持久化；README 中 benchmark 数字是发布摘要，不等于本地当前运行结果。
@@ -409,12 +409,12 @@ cd backend && python ../scripts/evaluate_memory_palace_mcp_e2e.py
 8. **迁移回滚数据风险**：0006/0007/0008 配对 rollback 文件存在，migration gate 规定对风险表先 backup/export；真实环境执行 rollback 前仍需确认 backup/export 产物和数据保全策略。
 9. **进程内状态边界**：session cache、write lane、index worker 主要是单进程 runtime state；多进程/多容器扩展时不能默认把它们当作共享协调服务，应实测 SQLite WAL、锁和 job 语义。
 
-## 11. 本轮变更边界
+## 11. 当前核对变更边界
 
 - 新增：项目根 `ARCHITECTURE.md`（本文件）。
 - 未修改：源码、依赖清单、测试、配置、迁移、Docker 文件、README、Skill、既有 `细探-Memory-Palace.md`。
 - 未执行：依赖安装、服务启动、构建、测试、数据库写入、Git 提交。
-- 现有工作树中原先的未跟踪 `细探-Memory-Palace.md` 保持原样；本轮不将其删除或改写。
+- 现有工作树中原先的未跟踪 `细探-Memory-Palace.md` 保持原样；当前核对不将其删除或改写。
 
 ## 12. 旧细探逐项吸收裁决
 
@@ -453,7 +453,7 @@ cd backend && python ../scripts/evaluate_memory_palace_mcp_e2e.py
 - 未吸收：无证据的宣传性措辞、跨项目借鉴建议、未形成契约的 prompt 概括，以及会误导公开 API 边界的 `_write_lane` 表述；均保留了不吸收原因。
 - `细探-Memory-Palace.md` 不删除、不修改；它只作为旧细探原文留存，本文件是唯一当前架构事实源。
 
-## 13. 第三轮：面向系统底座的映射与裁决
+## 13. 后续：面向系统底座的映射与裁决
 
 本节只回答“如何把已证实的 Memory-Palace 机制映射到支持库、模块库和运行核心”，不表示目标平台已经实现这些能力，也不修改目标平台。映射依据是当前源码：`backend/runtime_state.py`、`backend/db/sqlite_client.py`、`backend/db/snapshot.py`、`backend/db/migration_gate.py`、`backend/core/layering_engine.py`、`backend/core/forgetting_engine.py`、`backend/core/procedural_engine.py` 和对应测试；没有源码明确出现的 L3/L4 语义标为“待核”。
 
@@ -507,10 +507,10 @@ cd backend && python ../scripts/evaluate_memory_palace_mcp_e2e.py
 
 | 层 | 当前源码事实 | 唯一记忆链路中的位置 | 平台映射与边界 |
 |---|---|---|---|
-| L0 | `AccessLog`（`db/models.py:248-274`）与迁移 `0004_add_access_log.sql` 定义了 read/write/search_hit/compact 日志表和 FIFO 意图；但本轮静态搜索未发现 `session.add(AccessLog)` 或 `INSERT INTO access_log` 的运行时写入点 | 观测表的 schema/设计意图已存在，但“运行中持续产生日志”尚未被源码证实，不是可直接召回的记忆正文 | 支持库事件/审计记录；运行核心负责留痕与保留策略，模块只读取观测结果 |
+| L0 | `AccessLog`（`db/models.py:248-274`）与迁移 `0004_add_access_log.sql` 定义了 read/write/search_hit/compact 日志表和 FIFO 意图；但当前核对静态搜索未发现 `session.add(AccessLog)` 或 `INSERT INTO access_log` 的运行时写入点 | 观测表的 schema/设计意图已存在，但“运行中持续产生日志”尚未被源码证实，不是可直接召回的记忆正文 | 支持库事件/审计记录；运行核心负责留痕与保留策略，模块只读取观测结果 |
 | L1 | `memories` + `paths` + `memory_chunks` + version chain；正文更新生成 successor，旧版本 deprecated | 唯一权威记忆正文与 URI 地址 | 模块库记忆写入/读取 owner；支持库提供事务与索引；运行核心保证串行、恢复和资源边界 |
 | L2 | `memory_summaries`：scope/topic 摘要，来源 ids/hashes、method、confidence、review_state；`layering_engine` 默认 draft，显式 `persist_draft` 才写 | 可追溯派生摘要，不替代 L1 | 模块库分层/摘要编排；支持库存储派生行；运行核心提供审核、任务和证据 |
-| L3 | 当前没有名为 L3 的表/枚举/公开契约；`procedural_memories` 是“跨 L1 抽取的步骤式派生记忆”，但源码没有把它定义为 L3 | 只能作为候选的流程知识，默认 draft；human_reviewed 才可推荐，rejected 保留审计 | **待核/候选映射**：若平台确认 L3=流程/策略知识，由模块库承接，不能在本轮擅自提升层级 |
+| L3 | 当前没有名为 L3 的表/枚举/公开契约；`procedural_memories` 是“跨 L1 抽取的步骤式派生记忆”，但源码没有把它定义为 L3 | 只能作为候选的流程知识，默认 draft；human_reviewed 才可推荐，rejected 保留审计 | **待核/候选映射**：若平台确认 L3=流程/策略知识，由模块库承接，不能在当前核对擅自提升层级 |
 | L4 | 当前没有名为 L4 的表、索引或生命周期状态；archive 是生命周期状态/副本，不等于 L4 | `archived_memories` 是可恢复归档与 tombstone 来源，不是新层级 | **待核**：平台若需要 L4（长期稳定规则/跨项目知识），须先定义来源、审核、版本、撤销、范围和召回契约 |
 
 因此，当前唯一可落地的链路是：
@@ -540,26 +540,25 @@ L0 访问/操作事件
 | `INVALID_INPUT_OR_SCOPE` | `empty_query`、URI/过滤器非法、scope 不匹配 | 空结果/边界错误，保留请求原因 | 通过放宽 scope 偷渡越权结果 |
 | `DERIVATION_FALLBACK` | `compact_gist_llm_exception:*`、rule-based/sentence fallback | 返回确定性派生物，降低 method/quality 并携带原因 | 把 fallback 冒充 LLM 产物或权威 L1 |
 
-### 13.6 第三轮复用/升级/新建/废弃结论与验收契约
+### 13.6 后续复用/升级/新建/废弃结论与验收契约
 
 - **复用**：SQLite 事务/迁移、内容摘要、原子文件写入、文件锁、FTS/vector provider、统一结果中的降级字段、L0 审计 schema（runtime writer 待核）、L1 版本链和 L2 provenance。
 - **升级**：把当前进程内 Write Lane、Cleanup Review、Index Worker 的语义接到运行核心；把审核 token 从“内存短凭证”升级为可审计、可过期、可重启恢复的授权/证据契约；把 archive 与 snapshot/DB 提交做恢复对账。
 - **模块化**：建立唯一的记忆写入模块、检索模块、维护/归档模块、分层/流程派生模块；各模块只编排，不复制 provider 或直接写旁路表。
-- **新建前置**：L3/L4 若要落地，先登记能力需求、定义层级/来源/审核/撤销/召回契约，再生成装配计划；本轮不新建平台能力、不修改源码。
+- **新建前置**：L3/L4 若要落地，先登记能力需求、定义层级/来源/审核/撤销/召回契约，再生成装配计划；当前核对不新建平台能力、不修改源码。
 - **废弃/隔离**：废弃“进程内队列即可靠任务队列”“archive 即 L4”“LLM fallback 即同质量权威结果”“各模块自定义 review token/降级字典”等模式；保留为项目适配层历史兼容时必须显式标注。
 
 验收契约应至少覆盖：同 session 并发写只有一条串行提交；跨进程快照锁与 manifest 原子性；快照/manifest 失败恢复；SQLite lock/timeout/rollback；审核 token 缺失、错误、过期、重复消费和重启失效；归档幂等且不硬删；队列满/取消/worker 重启后的可观测状态；向量 backend/维度/model 漂移的 rebuild 建议；L0-L2 provenance 完整、L3/L4 未定义时不误报已实现；所有失败返回稳定原因并完成资源释放。
 
-### 13.7 第三轮验证边界
+### 13.7 后续验证边界
 
-- 本轮已完成目标项目源码、`ARCHITECTURE.md` 和旧细探的静态交叉核对；未修改旧细探、源码、配置、依赖或测试。
-- 目标项目未建立 `.codegraph/`，因此专属 `codegraph_explore` 返回“not indexed”，不能提供代码图证据；本轮以源码路径和行号静态证据替代。
-- `system_engineering_toolkit` 当前 MCP 实例实际绑定 `~/Documents/Agent/PHP/华世王镞_v3`；对目标项目的 `development_start` 被 `MCP_TARGET_PROJECT_MISMATCH` 阻断，未产生有效开工 id/账本，不能伪造为目标项目验证成功。
-- 依照任务硬边界，本轮没有运行依赖安装、服务启动、数据库写入、pytest、前端构建或 Git 操作；因此本节结论属于静态架构映射，不等价于运行验收。
+- 当前核对已完成目标项目源码、`ARCHITECTURE.md` 和旧细探的静态交叉核对；未修改旧细探、源码、配置、依赖或测试。
+- 本轮严格未使用 MCP。目标项目已有 `.codegraph`，已执行 `codegraph status` 与 `codegraph sync`，统计为 290 files、7,161 nodes、20,273 edges（Python 198、JSX 56、JavaScript 28、YAML 7、TypeScript 1），索引最新；CodeGraph 仅用于定位，结论仍以源码为准。
+- 依照任务硬边界，当前核对没有运行依赖安装、服务启动、数据库写入、pytest、前端构建或 Git 操作；因此本节结论属于静态架构映射，不等价于运行验收。
 
-## 14. 第二轮内部深挖收口：结构、检索、状态、模型、任务与终态
+## 14. 后续内部深挖收口：结构、检索、状态、模型、任务与终态
 
-本节是第二轮对当前源码的补充收口，优先级高于第一轮的概览式描述。证据范围为 `backend/db/models.py`、`backend/db/sqlite_client.py`、`backend/runtime_state.py`、`backend/core/*_engine.py`、`backend/main.py`、`backend/run_sse.py` 及迁移/测试源码；未把 README、旧细探或设计 RFC 中的“应当”当成已经运行的事实。
+本节是后续对当前源码的补充收口，优先级高于初始的概览式描述。证据范围为 `backend/db/models.py`、`backend/db/sqlite_client.py`、`backend/runtime_state.py`、`backend/core/*_engine.py`、`backend/main.py`、`backend/run_sse.py` 及迁移/测试源码；未把 README、旧细探或设计 RFC 中的“应当”当成已经运行的事实。
 
 ### 14.1 记忆对象的真实结构与状态机
 
@@ -644,17 +643,31 @@ URI(domain://path)
 | 层级 | 最终裁决 | 证据等级 |
 |---|---|---|
 | L0 | `access_log` 的表、索引、迁移和模型注释已实现；但当前工作树没有发现运行时写入调用点，因此是 **schema/intent 已实现，采集链路未证实** | 部分实现；需运行或补源码 writer 后才可称 live observability |
-| L1 | `memories`/`paths`/`memory_chunks`、successor 版本链、active/deprecated 过滤、read/search/rollback 真实存在 | 已实现（本轮仅静态核对，未运行） |
+| L1 | `memories`/`paths`/`memory_chunks`、successor 版本链、active/deprecated 过滤、read/search/rollback 真实存在 | 已实现（当前核对仅静态核对，未运行） |
 | L2 | `memory_summaries` + `LayeringEngine` provenance/draft/persist/drill-down；gist 是正交的单记忆派生表，不等同 L2 topic summary | 已实现但 LLM provider 是可选，rule fallback 是有效实现 |
 | L3 | 无 `L3` 枚举/表/公开工具；`procedural_memories` 是独立流程派生表，默认 draft，human-reviewed 才推荐 | 候选/待核，禁止写成项目已定义 L3 |
 | L4 | 无 L4 表、索引、状态或公开契约；`archived_memories` 是 L1 生命周期副本，`purged` 是来源 tombstone | 未实现/待定义，禁止把 archive 或 stable rule 想象成 L4 |
 
 最终不变式：**L1 是唯一权威正文；L2/gist/procedural 不能脱离 provenance 独立成为真相；L0 只能作为观测输入；archive/purge 横切生命周期而不是 L4。** 任何新接入都必须先读 `deprecated`、`review_state`、source hash、mode/degrade 字段和 job 状态，再决定是否写入或推荐。
 
-### 14.7 第二轮验收边界
+### 14.7 后续验收边界
 
 - 已逐条核对旧细探的核心主张：旧细探关于“压缩语义无损”“四引擎全套自动化”“依赖嵌入服务必选”“MIT 可自由借鉴”均不能作为当前实现事实；本文件保留了证据边界。
-- 本轮补足了旧文档没有展开的 memory/path/version/orphan 状态、缓存 TTL/淘汰、provider retry/timeout、LLM 调用与 fallback、worker job/cancel/event-loop reset、session/HTTP/SSE/lock 释放，以及 crash 后的非持久边界。
-- 特别更正 L0：迁移和模型定义了日志意图，但本轮源码搜索未找到 runtime writer；后续若要宣称 L0 live，必须补 `access_log` 写入的源码/运行证据，而不是只依据 `0004` 注释。
-- 本轮仍未安装依赖、启动服务、写入数据库、运行 pytest/npm/build/e2e；所有“已实现”均指源码存在，不是运行通过。
+- 当前核对补足了旧文档没有展开的 memory/path/version/orphan 状态、缓存 TTL/淘汰、provider retry/timeout、LLM 调用与 fallback、worker job/cancel/event-loop reset、session/HTTP/SSE/lock 释放，以及 crash 后的非持久边界。
+- 特别更正 L0：迁移和模型定义了日志意图，但当前核对源码搜索未找到 runtime writer；后续若要宣称 L0 live，必须补 `access_log` 写入的源码/运行证据，而不是只依据 `0004` 注释。
+- 当前核对仍未安装依赖、启动服务、写入数据库、运行 pytest/npm/build/e2e；所有“已实现”均指源码存在，不是运行通过。
 - 仅修改本文件；`细探-Memory-Palace.md` 保留且未改，源码、依赖、配置、测试、README、Git 均未改。
+
+## 15. 本轮现场收口记录（2026-08-22）
+
+| 项目 | 现场证据 | 结果 |
+|---|---|---|
+| 远程同步 | `git fetch origin --prune`、`git pull --ff-only` | `Already up to date` |
+| 当前提交 | `git rev-parse HEAD` | `56c9bed39957f615da0b66b5e1459281d8fd1fef` |
+| CodeGraph | `codegraph status`、`codegraph sync` | 290 files / 7,161 nodes / 20,273 edges；索引最新 |
+| 文档行数 | `wc -l ARCHITECTURE.md` | 当前超过 500 行 |
+| 差异检查 | `git diff --check -- ARCHITECTURE.md` | 本轮执行退出码 0 |
+
+本轮严格未使用 MCP，只使用 shell、git、CodeGraph CLI 和源码静态证据。审计覆盖记忆图/事件和版本链、四引擎检索、SQLite/向量/快照、模型 provider、FastAPI/CLI/MCP/控制台、写审查与回滚、队列/并发、SSE/锁/缓存资源及测试部署边界；只修改平台研究文档，源码 checkout 未改。
+
+未验证：依赖安装、pytest/contract/e2e、真实 SQLite/向量 backend、LLM/embedding/reranker、API/MCP handshake、SSE 断连、重复并发写、超时取消、快照恢复、进程强杀、缓存/锁/临时文件残留和性能 benchmark。静态源码与 CodeGraph 结果不等于运行通过。

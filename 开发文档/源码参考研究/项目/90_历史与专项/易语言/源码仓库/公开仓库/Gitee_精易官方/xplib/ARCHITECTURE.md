@@ -318,7 +318,7 @@ xplib/
 
 未发现 `test/`、`tests/`、单元测试、集成测试、CI 工作流、测试数据或测试命令。`xplib.vcxproj` 仅设置 Visual Studio 编译属性，没有测试目标。
 
-### 本轮实际检查
+### 当前核对实际检查
 
 - 人工读取并交叉核对 23 个 Git 跟踪文件的目录/工程/源码声明。
 - 读取 `xplib.sln`、两个 `.vcxproj`、`.def`、全部根目录实现文件及 `elib` 中 ABI/通知头文件关键声明。
@@ -339,7 +339,7 @@ xplib/
 |---|---|---|
 | 支持库 `LIB_INFO` 静态登记 | 已实现（源码层） | `xplib_dllMain.cpp:31-87` 初始化完整结构 |
 | 固定入口 `GetNewInf` | 已实现（源码层） | `xplib_dllMain.cpp:89-92`；Win32 `.def` 声明导出 |
-| Win32 动态库工程 | 仅工程声明，未验证 | `xplib.vcxproj:51-153` 配置了 DLL、`.fne` 和 `.def`，本轮未用 MSVC 构建 |
+| Win32 动态库工程 | 仅工程声明，未验证 | `xplib.vcxproj:51-153` 配置了 DLL、`.fne` 和 `.def`，当前核对未用 MSVC 构建 |
 | 全局命令元数据 | 已实现（元数据层） | `xplib_cmdInfo.cpp:5-37`，命令数为 1 |
 | 命令执行入口 | 已实现（空壳） | `xplib_cmdDef.cpp:5-9` 可读参数，但无业务效果 |
 | XP 风格切换 | 未实现 | 源码没有 Windows 风格 API/宿主通知调用 |
@@ -373,9 +373,9 @@ xplib/
 - 分支：`master`
 - 本地 `HEAD`：`cd238b09a05e80013b4a1a642b512e4a627f9092`
 - 本地提交：`2022-12-19 16:57:56 +0800`，作者/提交者 `精易科技`，提交信息 `初始化仓库`
-- 远程 `HEAD` 和 `refs/heads/master`：同为 `cd238b09a05e80013b4a1a642b512e4a627f9092`（本轮 `git ls-remote` 实测）
-- 本轮建档前工作树：干净，只有 `master...origin/master`；没有旧 `ARCHITECTURE.md` 或细探文档可吸收。
-- 本轮允许的变更：仅新增项目根 `ARCHITECTURE.md`；未修改源码、工程、依赖、测试、配置、Git，也未删除文件。
+- 远程 `HEAD` 和 `refs/heads/master`：同为 `cd238b09a05e80013b4a1a642b512e4a627f9092`（当前核对 `git ls-remote` 实测）
+- 当前核对建档前工作树：干净，只有 `master...origin/master`；没有旧 `ARCHITECTURE.md` 或细探文档可吸收。
+- 当前核对允许的变更：仅新增项目根 `ARCHITECTURE.md`；未修改源码、工程、依赖、测试、配置、Git，也未删除文件。
 
 ### 关键证据路径
 

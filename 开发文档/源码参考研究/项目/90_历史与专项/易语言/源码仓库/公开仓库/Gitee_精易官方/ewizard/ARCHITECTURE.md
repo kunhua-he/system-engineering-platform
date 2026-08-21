@@ -83,7 +83,7 @@ ewizard/
     └── PublicIDEFunctions.h             # IDE 功能通知协议与功能编号，当前仅作为工程头文件
 ```
 
-源码文件以 Windows 工具链习惯的 CRLF 保存，中文源码按 GB18030/CP936 兼容方式读取；项目没有 README、AGENTS.md、测试目录、外部依赖清单或旧 `细探-*.md` 文件。目标目录及其易语言归档父目录内本轮未发现 `细探-*.md`，因此没有可吸收的旧细探结论。
+源码文件以 Windows 工具链习惯的 CRLF 保存，中文源码按 GB18030/CP936 兼容方式读取；项目没有 README、AGENTS.md、测试目录、外部依赖清单或旧 `细探-*.md` 文件。目标目录及其易语言归档父目录内当前核对未发现 `细探-*.md`，因此没有可吸收的旧细探结论。
 
 ## 4. 工程与构建拓扑
 
@@ -108,7 +108,7 @@ ewizard/
 
 ### 4.3 构建前置条件与当前验证边界
 
-源码直接依赖 Windows/MSVC 头和 ABI（`windows.h`、`windef.h`、`tchar.h`、`winnt.h` 等），并使用 `WINAPI`、`HMODULE`、`DLL_PROCESS_ATTACH`、`__stdcall` 等 Windows 语义。本机为 macOS，且本轮明确禁止构建/安装依赖，因此没有执行 Visual Studio/MSBuild 构建，也没有产出 `.fne`、`.lib` 或 `.dll`。构建能否在 Windows 上通过仍需在匹配的 VS v141 + Windows SDK 环境验证。
+源码直接依赖 Windows/MSVC 头和 ABI（`windows.h`、`windef.h`、`tchar.h`、`winnt.h` 等），并使用 `WINAPI`、`HMODULE`、`DLL_PROCESS_ATTACH`、`__stdcall` 等 Windows 语义。本机为 macOS，且当前核对明确禁止构建/安装依赖，因此没有执行 Visual Studio/MSBuild 构建，也没有产出 `.fne`、`.lib` 或 `.dll`。构建能否在 Windows 上通过仍需在匹配的 VS v141 + Windows SDK 环境验证。
 
 ## 5. 核心模块与调用链
 
@@ -316,7 +316,7 @@ void 命令函数(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 提交信息：`初始化仓库`
 - 提交时间：`2022-12-19 16:55:35 +0800`
 - 本地 `master` 与 `origin/master`：同为 `61c899273aec9eb7e5f66db4afa584c42762b845`。
-- 工作树建档前状态：干净；本轮新增的唯一文件为本项目根 `ARCHITECTURE.md`。
+- 工作树建档前状态：干净；当前核对新增的唯一文件为本项目根 `ARCHITECTURE.md`。
 - 关键证据：`ewizard_dllMain.cpp`（库入口/登记/通知）、`ewizard_cmd_typedef.h`（命令总表）、`ewizard_cmdInfo.cpp`（参数与命令元数据）、`ewizard_cmdDef.cpp`（命令实现现状）、`ewizard_dtType.cpp`（枚举类型）、`elib/lib2.h`（ABI 结构）、`elib/fnshare.cpp`（共享通知）、`ewizard.vcxproj` 与 `ewizard_static/ewizard_static.vcxproj`（构建拓扑）、`Source_ewizard.def`（导出边界）。
 
 本档案后续应在同一 `ARCHITECTURE.md` 内增量维护；不得再以平行“细探”文件作为事实源。

@@ -4,7 +4,7 @@
 
 `unstructured` 是 Unstructured-IO 的 Apache-2.0 开源 Python 库，定位是非结构化文档的摄取与预处理：把 PDF、Office、HTML、Markdown、邮件、图片、音频及表格等输入解析为统一的 `Element` 流，再按需做清洗、元数据增强、chunking、embedding 或序列化。它是处理内核，不是本地 API 服务、连接器平台或数据库；批量连接器主要在独立的 `unstructured-ingest` 项目中，托管能力通过 `partition_via_api()` 接入。
 
-本文件描述本地归档源码的架构事实。源码参考库规则是只读研究：本轮没有安装依赖、启动服务、构建制品或运行测试；仅新增本文件。既有 `细探-unstructured.md` 保留为施工材料，本文件是本仓唯一架构事实源。
+本文件描述本地归档源码的架构事实。源码参考库规则是只读研究：当前核对没有安装依赖、启动服务、构建制品或运行测试；仅新增本文件。既有 `细探-unstructured.md` 保留为研究材料，本文件是本仓唯一架构事实源。
 
 ### 审计版本
 
@@ -290,7 +290,7 @@ CLI 不是文档解析 HTTP 服务；HTTP 服务由外部部署或 `partition_vi
 
 ## 12. 测试、质量门禁与可观察范围
 
-本轮未执行测试（遵守只读归档与禁止启动/构建约束），以下是从源码和测试文件读取到的验证面：
+当前核对未执行测试（遵守只读归档与禁止启动/构建约束），以下是从源码和测试文件读取到的验证面：
 
 - `pyproject.toml` 的 `pytest` testpaths 是 `test_unstructured` 与 `test_unstructured_ingest`；测试函数前缀包含 `test_`、`it_`、`they_`、`but_`、`and_`。
 - `Makefile:test` 使用 `uv run --no-sync pytest -n auto test_unstructured --cov=unstructured`；覆盖率门槛 `fail_under = 90`。
@@ -321,8 +321,8 @@ CLI 不是文档解析 HTTP 服务；HTTP 服务由外部部署或 `partition_vi
 
 ## 14. 旧细探吸收/未吸收裁决
 
-本轮已完整读取 `细探-unstructured.md`，并以本地 Git 基线源码、测试和现有架构文档逐项对照。
-`细探-unstructured.md` **保留不删除**，仅作为历史施工材料；后续维护只更新本文件，避免形成
+当前核对已完整读取 `细探-unstructured.md`，并以本地 Git 基线源码、测试和现有架构文档逐项对照。
+`细探-unstructured.md` **保留不删除**，仅作为历史研究材料；后续维护只更新本文件，避免形成
 第二个架构事实源。
 
 ### 已吸收
@@ -350,9 +350,9 @@ CLI 不是文档解析 HTTP 服务；HTTP 服务由外部部署或 `partition_vi
 | 历史提交标题、目录命名寓意及未在当前源码/测试中闭合的推测 | 仅保留能解释版本/风险边界的部分；其余不进入权威架构。 |
 | 旧细探中关于后续底座直接套用、复制完整 extras 或模型能力的建议 | 不吸收为实施承诺；第 9、13、19 节明确“只借鉴边界，不照搬实现”。 |
 
-## 15. 第二轮：真实调用链与失败契约
+## 15. 后续：真实调用链与失败契约
 
-本节只记录本轮沿源码继续下钻后确认的实现事实；`S0`/`S1`/`S2`/`S3` 验证等级定义见第 18 节。没有把“有测试”或“能导入”写成“运行通过”。
+本节只记录当前核对沿源码继续下钻后确认的实现事实；`S0`/`S1`/`S2`/`S3` 验证等级定义见第 18 节。没有把“有测试”或“能导入”写成“运行通过”。
 
 ### 15.1 解析调用链：同步、一次性结果，没有任务句柄
 
@@ -437,14 +437,14 @@ partition.auto.partition()
 
 ## 18. 验证等级、已证与未证
 
-| 等级 | 含义 | 本轮证据/当前状态 |
+| 等级 | 含义 | 当前核对证据/当前状态 |
 |---|---|---|
-| `S0 源码事实` | 直接由本地基线源码、配置或 Git 得到，未运行 | 本轮解析链、元素/分块、provider、temp/session、无 task/cancel、失败矩阵均属此级 |
-| `S1 测试存在` | 测试源码明确断言行为，但本轮没有执行 | `test_safe_http.py` 的默认 timeout/显式 timeout、`test_auto.py` 的 request_timeout 透传、`test_api.py` 的 retry config、`test_common.py` 的 soffice readiness timeout；测试存在不等于通过 |
-| `S2 本轮真实执行` | 在本地基线执行命令并记录退出码、测试数、资源清理结果 | 本轮遵守归档只读约束，未安装依赖、未启动服务、未运行测试；无 S2 结论 |
+| `S0 源码事实` | 直接由本地基线源码、配置或 Git 得到，未运行 | 当前核对解析链、元素/分块、provider、temp/session、无 task/cancel、失败矩阵均属此级 |
+| `S1 测试存在` | 测试源码明确断言行为，但当前核对没有执行 | `test_safe_http.py` 的默认 timeout/显式 timeout、`test_auto.py` 的 request_timeout 透传、`test_api.py` 的 retry config、`test_common.py` 的 soffice readiness timeout；测试存在不等于通过 |
+| `S2 当前核对真实执行` | 在本地基线执行命令并记录退出码、测试数、资源清理结果 | 当前核对遵守归档只读约束，未安装依赖、未启动服务、未运行测试；无 S2 结论 |
 | `S3 外部依赖/服务实测` | 真实调用 OCR、布局模型、STT、embedding provider、远程 API，并核验外部效果 | 全部未验证；API CI 测试有 `skipif`（非 CI/main 跳过），不能算 S3 |
 
-本轮可确认的“实现级”结论：`safe_get()` 有明确 session finally；音频 file-like 临时文件有 finally 删除；Office/PDF 临时目录依赖上下文；`partition_multiple_via_api()` 缺少 deadline/retry/空输入门禁；核心没有任务状态与取消模型；provider 的超时/重试和资源释放不统一；`HuggingFaceEmbeddingEncoder` 与 `BedrockEmbeddingEncoder` 的抽象 `initialize()` 缺口需要一次隔离环境运行确认。以上没有被包装成已通过的运行结果。
+当前核对可确认的“实现级”结论：`safe_get()` 有明确 session finally；音频 file-like 临时文件有 finally 删除；Office/PDF 临时目录依赖上下文；`partition_multiple_via_api()` 缺少 deadline/retry/空输入门禁；核心没有任务状态与取消模型；provider 的超时/重试和资源释放不统一；`HuggingFaceEmbeddingEncoder` 与 `BedrockEmbeddingEncoder` 的抽象 `initialize()` 缺口需要一次隔离环境运行确认。以上没有被包装成已通过的运行结果。
 
 后续若要提升到 S2/S3，验收命令必须至少记录：实际 Python/依赖版本、命令退出码、输入/输出元素数、采用的 strategy/provider、失败异常类型、HTTP 重试耗时、临时目录与子进程清单、输出制品清单及取消/强杀后的残留扫描；不能用日志中的“success”、skip、历史 CI 或子代理回信替代。
 
@@ -456,4 +456,46 @@ partition.auto.partition()
 2. **统一 IR 边界**：各格式最终进入 `Element + ElementMetadata`；JSON/NDJSON 既能 rehydrate 已有元素，也能把任意结构安全地降级成确定性 `Text`，chunking 和 staging 围绕同一 IR 工作。
 3. **安全与资源边界**：`safe_http`、HTML 输出净化、严格 JSON、解压/页数/像素上限和窄异常白名单把不可信输入限制在明确范围内，并保留可预期错误的可观测性。
 
-对文档解析与 IR 方向可吸收的是“格式识别 → 能力注册 → 可选提供者 → 统一元素契约 → 可重建分块 → 有界序列化”的边界设计；不应直接照搬其完整 extras、外部 API 或模型能力。后续若继续研究，优先沿 `partition()` → `detect_filetype()` → `FileType`/`_PartitionerLoader` → `ElementMetadata` → `chunking` 追第二轮调用链，并在独立远程快照中复核 0.26.x 的新增安全与流式行为。
+对文档解析与 IR 方向可吸收的是“格式识别 → 能力注册 → 可选提供者 → 统一元素契约 → 可重建分块 → 有界序列化”的边界设计；不应直接照搬其完整 extras、外部 API 或模型能力。后续若继续研究，优先沿 `partition()` → `detect_filetype()` → `FileType`/`_PartitionerLoader` → `ElementMetadata` → `chunking` 追后续调用链，并在独立远程快照中复核 0.26.x 的新增安全与流式行为。
+
+## 20. 当前 checkout 快速证据索引
+
+| 事实 | file:line |
+|---|---|
+| 自动分区入口、参数归一化 | `unstructured/partition/auto.py:26-321` |
+| 动态 partitioner loader | `unstructured/partition/auto.py:321-` |
+| 文件类型检测四级策略 | `unstructured/file_utils/filetype.py:231-275` |
+| PDF/Image 策略判定 | `unstructured/partition/strategies.py` |
+| DOCX options、页码、表格 | `unstructured/partition/docx.py:186-370` |
+| PPTX options、slide notes、图片 | `unstructured/partition/pptx.py:329-500` |
+| 图片 OCR/布局策略 | `unstructured/partition/image.py:16-111` |
+| OCR provider interface | `unstructured/partition/utils/ocr_models/ocr_interface.py:24-` |
+| 元素元数据字段/合并策略 | `unstructured/documents/elements.py:150-560` |
+| Table ontology HTML 清洗 | `unstructured/documents/ontology.py:331-339` |
+| Table/TableChunk IR 类型 | `unstructured/documents/elements.py:1001-1010` |
+| chunking decorator dispatch | `unstructured/chunking/__init__.py`、`dispatch.py` |
+| 基础 chunk consolidation | `unstructured/chunking/base.py:840-970` |
+| by_title section boundaries | `unstructured/chunking/title.py:144-260` |
+| CLI argparse 入口 | `unstructured/cli.py:1-90` |
+| REST API 适配 | `unstructured/partition/api.py` |
+| URL 安全请求 | `unstructured/file_utils/safe_http.py` |
+| 元素 JSON/NDJSON 序列化 | `unstructured/staging/` |
+| 依赖/格式诊断 | `unstructured/doctor.py:224-` |
+| strategy 回归 | `test_unstructured/partition/test_strategies.py` |
+| safe HTTP 回归 | `test_unstructured/file_utils/test_safe_http.py` |
+| metadata 回归 | `test_unstructured/partition/common/test_metadata.py` |
+| chunk dispatch 回归 | `test_unstructured/chunking/test_dispatch.py` |
+| API retry/config 回归 | `test_unstructured/partition/test_api.py` |
+
+## 21. 交付与未验证声明
+
+- 本轮 MCP `project_context` 返回项目根 `~/Documents/Agent/PHP/华世王镞_v3`，不是 unstructured；`codeexplore` 同样使用错误代码地图并返回错绑错误。因此 MCP 结果没有被写入本项目事实。
+- 当前 checkout HEAD `104b585d`，分支 `main`，受跟踪文件约 1319；工作树保留未跟踪 `.codegraph/` 和源码侧 `ARCHITECTURE.md`，没有删除或改写它们。
+- 平台唯一写入目标是本文件；本次不修改 unstructured 源码、测试、依赖、锁文件或远程仓库。
+- 运行态仍未验证：本地依赖安装、所有格式真实样本、OCR/layout/STT 模型、API endpoint、并发吞吐、强杀清理、远程 provider、Windows Office/Pandoc/ffmpeg 和安全扫描。
+- 文档可作为静态架构基线，不代表 `partition()`、CLI 或远程 API 当前可直接运行；任何“通过”结论都必须追加实际命令、退出码、环境指纹和输入/输出对账。
+- 建议下一步只跑定向测试 `test_safe_http.py`、`test_strategies.py`、`test_dispatch.py` 和一个无外部模型的 DOCX/HTML fixture；模型、网络和 Office 测试必须单独隔离并使用端口 4780。
+
+本文件至此为 unstructured 的唯一架构文档，后续只增量修订本文件并保留版本、证据等级和未验证边界。
+
+审计结束。

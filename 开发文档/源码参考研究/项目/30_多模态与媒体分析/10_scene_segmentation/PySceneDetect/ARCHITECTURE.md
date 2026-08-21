@@ -1,6 +1,6 @@
 # PySceneDetect 架构建档（唯一权威文档）
 
-> 本文件是项目根唯一长期架构文档。旧细探 `细探-PySceneDetect.md` 已完整读取并吸收，本轮**保留旧文件，不删除、不再把它当第二事实源**；后续架构事实只维护本文件。
+> 本文件是项目根唯一长期架构文档。旧细探 `细探-PySceneDetect.md` 已完整读取并吸收，当前核对**保留旧文件，不删除、不再把它当第二事实源**；后续架构事实只维护本文件。
 >
 > 说明、风险、裁决和验证结论使用中文；源码路径、类名、函数名、字段名、命令和第三方名称保留原文。
 
@@ -164,7 +164,7 @@ PySceneDetect/
 
 - **幂等键**：源码没有作业 ID、幂等键或输出制品登记；重复调用会重新读取、覆盖同名 CSV/图片，`ffmpeg` 默认带 `-y` 会覆盖目标。不能宣称幂等。
 - **超时**：没有统一 timeout 参数或 watchdog。可用 `duration/end_time` 限制处理范围，不等价于墙钟超时。
-- **取消**：`SceneManager.stop()` 只设置线程安全 `Event`；输出图片/外部 ffmpeg 路径没有统一取消接口。CLI Ctrl-C 的完整外部子进程行为依赖 `platform.invoke_command`，本轮未运行验证。
+- **取消**：`SceneManager.stop()` 只设置线程安全 `Event`；输出图片/外部 ffmpeg 路径没有统一取消接口。CLI Ctrl-C 的完整外部子进程行为依赖 `platform.invoke_command`，当前核对未运行验证。
 - **版本兼容**：`SceneDetector` 文档声明 v1.0 前可能改变；`frame_timecode`、`scene_detector`、`video_splitter`、`get_cut_list()`、`framerate` 等兼容入口正在退场。当前本地是 0.7.1，不应以未来远程 API 替换当前契约。
 
 ## 7. 关键节点明细与真实对接链
@@ -215,7 +215,7 @@ PySceneDetect/
 |---|---|---|---|---|
 | OpenCV `cv2.VideoCapture` | `VideoStreamCv2._open_capture` 创建并由对象持有；`VideoCaptureAdapter` 借用调用方已有 capture | `reset()` release 后重开；本地源码未见统一 `close()` 公共协议，调用方/GC 负责 | SceneManager 只保证 decode thread join，不等于 capture release；设备不可 seek；崩溃由 OS 回收但 Python 进程可能延迟释放 | `backends/opencv.py:70-137,241-306,312-363,365-538` |
 | PyAV `InputContainer`/文件句柄/decoder generator | `VideoStreamAv.__init__` 打开 `_io` 与 `av.open`；`read` 长持有 generator；可 seek/reset 重开 | `__del__` 先 close generator 再 close container；`reset()` close/reopen | 构造中途异常有部分初始化；`__del__` 吞异常；解释器退出期间原生句柄风险 | `backends/pyav.py:87-171,267-357` |
-| MoviePy/第三方 decoder | 可选 backend 创建 | 依实现和 GC；本轮未完整读取该文件，不能承诺显式 close | CLI 对 MoviePy EOF warning 做过滤；实际清理未在本轮运行 | `backends/__init__.py:100-127`、controller.py:43-47 |
+| MoviePy/第三方 decoder | 可选 backend 创建 | 依实现和 GC；当前核对未完整读取该文件，不能承诺显式 close | CLI 对 MoviePy EOF warning 做过滤；实际清理未在当前核对运行 | `backends/__init__.py:100-127`、controller.py:43-47 |
 | Concat 子流 | 构造阶段预探测全部输入，但只保持当前 `_cap` 解码；seam 切换重开下一 child | EOF 时 `_finish_current_source` 后打开下一源；reset 重开第一个 | 中途源打开失败、分辨率不一致抛 `VideoOpenFailure`；declared duration 不准时 offset 动态修正；非原子 | `backends/concat.py:137-172,178-239,241-265` |
 | 解码线程/队列 | `SceneManager.detect_scenes` 创建 daemon thread 和有界 Queue(4) | `finally` 设置 stop、清空队列、循环 join；decode thread finally 放入 `(None,None)` | detector/callback 异常、decode exception 也进入收口；队列 put/异常边界仍需真实媒体验证；无强制墙钟 timeout | `scene_manager.py:565-616,618-703` |
 | detector 内存状态/帧 buffer | `add_detector` 注入 stats；每帧在 `_process_frame` 和 detector 内部缓存 | `clear` 清 cuts/位置并清 detector list；StatsManager 可继续持有指标 | 重复检测不自动 reset detector；重用同一 manager 前应显式 `clear`/重新构造；异常后对象状态不承诺可继续 | `scene_manager.py:358-375` |
@@ -290,19 +290,19 @@ PySceneDetect/
 
 ### 12.2 真假验证等级
 
-| 等级 | 可以证明什么 | 本轮状态 | 不能冒充什么 |
+| 等级 | 可以证明什么 | 当前核对状态 | 不能冒充什么 |
 |---|---|---|---|
 | L0 声明 | README/旧细探/文档宣称有某能力 | 已读取 README、旧细探、API/CLI 文档 | 不能证明源码路径、运行成功或版本一致 |
 | L1 静态实现 | 源码有入口、调用链、异常/资源处理；测试文件存在 | **已达到**：读取当前关键源码、配置、测试与工作树 | 不能证明依赖可导入、媒体可解码、外部工具可用 |
 | L2 无外部资源验证 | 可运行的纯内存/合同/时间码/算法单元测试 | **未正式执行本项目 pytest**；缺 `tests/resources`，不能用 skip 当通过 | 不能证明真实视频、VFR、坏帧、线程、编码输出 |
-| L3 真实链路 | 真实视频 + 指定 backend + detector + 输出，记录退出码/产物 | **未验证**：无资源、无本轮安装/工具探测 | 不能证明发布矩阵、强杀清理、跨平台行为 |
+| L3 真实链路 | 真实视频 + 指定 backend + detector + 输出，记录退出码/产物 | **未验证**：无资源、无当前核对安装/工具探测 | 不能证明发布矩阵、强杀清理、跨平台行为 |
 | L4 发布/灾难闭环 | release/golden、backend 矩阵、外部工具失败、取消/崩溃后无残留、结果内容校验 | **未验证**：release 测试默认排除且资源缺失 | 不能宣称“生产可用”“无泄漏”“可恢复” |
 
 规则：`pytest` 收集通过、打印“完成”、历史二进制、子代理回信、缓存复用、`skip` 都不是 L3/L4 证据；必须记录命令、退出码、测试数/跳过数、输入资源、backend、外部程序、输出产物与清理结果。
 
-## 13. 本轮验证记录
+## 13. 当前核对验证记录
 
-本轮真实执行过的静态盘点命令及结果：
+当前核对真实执行过的静态盘点命令及结果：
 
 | 命令 | 退出码 | 结果 |
 |---|---:|---|
@@ -312,7 +312,7 @@ PySceneDetect/
 | `system_engineering_toolkit.project_context` | 成功 | 正确识别的平台 MCP 实例为 `system_engineering_toolkit`，开工 id `546fa0f49d6c4a65`；其代码图是系统工程平台而非本项目，可信度 50、匹配成功记录 0 |
 | `system_engineering_toolkit.codegraph_explore` | 0 | 查询范围为平台代码图，`No relevant code found`；不是 PySceneDetect 证据 |
 
-本轮没有安装依赖、下载视频/模型资源、启动服务、运行 CLI、运行 pytest、调用 ffmpeg/mkvmerge、生成测试输出，也没有修改源码/配置/测试/依赖/Git。验证登记必须以后续 `mcp_feedback` 通过后再调用 `system_engineering_toolkit.verify_and_record`；若验证命令退出码非 0，不得宣称成功。
+当前核对没有安装依赖、下载视频/模型资源、启动服务、运行 CLI、运行 pytest、调用 ffmpeg/mkvmerge、生成测试输出，也没有修改源码/配置/测试/依赖/Git。验证登记必须以后续 `mcp_feedback` 通过后再调用 `system_engineering_toolkit.verify_and_record`；若验证命令退出码非 0，不得宣称成功。
 
 ## 14. 失败/取消/崩溃验收清单（后续 L3/L4）
 
@@ -386,9 +386,9 @@ PySceneDetect/
 2. 远程升级先建立独立快照并记录提交，再逐文件对照本地基线；不在未裁决版本时混写 API。
 3. 真实验证必须分别记录 L1/L2/L3/L4，不得以资源缺失时的 skip、缓存或历史证据替代真实媒体执行。
 4. 若平台要复用能力，先区分“源码模式可借鉴”与“已满足平台契约”；先建适配契约和资源清理验收，再做实现。
-5. 本轮仅允许修改本文件；`细探-PySceneDetect.md`、源码、配置、测试、依赖和 Git 均不得删除或改动。
+5. 当前核对仅允许修改本文件；`细探-PySceneDetect.md`、源码、配置、测试、依赖和 Git 均不得删除或改动。
 
-## 19. 本轮收口证据
+## 19. 当前核对收口证据
 
 - 目标项目专属 MCP 实例：`system_engineering_toolkit`（HTTP `127.0.0.1:8766/mcp/`）。
 - 正确 `project_context`：项目根被 MCP 绑定为 `~/Documents/Agent/PHP/系统工程平台`，任务开工 id `546fa0f49d6c4a65`；这是系统工程平台控制面的身份，不是 PySceneDetect 根，故已如实标记错绑/跨仓库边界。
@@ -397,15 +397,15 @@ PySceneDetect/
 - 旧细探：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/10_scene_segmentation/PySceneDetect/细探-PySceneDetect.md` 已读取且保留。
 - 本文修改范围：仅吸收旧细探、当前源码和测试事实，补充契约表、真实调用链、节点表、生命周期、失败矩阵、L0-L4 防假绿、未验证项和吸收/不吸收裁决；未改源码、配置、测试、依赖、Git。
 
-## 20. 第三轮通用底座映射与单链路裁决
+## 20. 后续通用底座映射与单链路裁决
 
 ### 20.1 映射前提与边界
 
-本节是基于当前本地 `bba97f59ff082875cf1c41b8ce2cb52a34ed2020` 的第三轮映射输入，不是对平台生产代码的改造承诺。PySceneDetect 当前只提供项目内的 `VideoStream`、`SceneManager`、`SceneDetector`、`StatsManager`、CLI handler 和输出函数；平台尚未在本项目工作树内登记“媒体.场景检测”能力，也没有目标仓库自己的 `.codegraph/`。因此以下“吸收/升级/待核”均是边界裁决，不能写成“已接入平台”。
+本节是基于当前本地 `bba97f59ff082875cf1c41b8ce2cb52a34ed2020` 的后续映射输入，不是对平台生产代码的改造承诺。PySceneDetect 当前只提供项目内的 `VideoStream`、`SceneManager`、`SceneDetector`、`StatsManager`、CLI handler 和输出函数；平台尚未在本项目工作树内登记“媒体.场景检测”能力，也没有目标仓库自己的 `.codegraph/`。因此以下“吸收/升级/待核”均是边界裁决，不能写成“已接入平台”。
 
 平台侧的 `system_engineering_toolkit` 只能作为平台公共契约、运行核心和提供者治理的参考证据；其 `project_context` 绑定的是 `~/Documents/Agent/PHP/系统工程平台`，不是本项目根，代码图查询也没有返回目标仓库符号。本节不把平台代码图结果冒充 PySceneDetect 源码证据；PySceneDetect 的事实仍以本文件前述源码路径为准。
 
-第三轮唯一目标是把同类责任收敛为一个能力 owner 和一条可审计调用链：
+后续唯一目标是把同类责任收敛为一个能力 owner 和一条可审计调用链：
 
 ```text
 CLI/API 或项目适配层
@@ -421,7 +421,7 @@ CLI/API 或项目适配层
 
 ### 20.2 能力归属映射表
 
-| 当前能力/责任 | 当前源码事实 | 第三轮归属与唯一 owner | 中文契约边界 | 不允许的落点 |
+| 当前能力/责任 | 当前源码事实 | 后续归属与唯一 owner | 中文契约边界 | 不允许的落点 |
 |---|---|---|---|---|
 | 场景检测 | `SceneManager.detect_scenes` 顺序消费帧并调用一个或多个 `SceneDetector`，再由 `get_scene_list` 组装连续区间（`scene_manager.py:446-616`、`common.py`） | **媒体模块**：唯一编排 `媒体.场景检测`；负责输入范围、采样计划、detector 策略选择、切点去重、`SceneList` 组装和统一结果 | 输入为媒体引用、时间范围、采样策略、算法策略、输出选项；输出为 `[start,end)` 场景区间、切点、指标引用、诊断和证据 id；时间语义优先 PTS | 不为每个 detector、CLI command 或 provider 复制一套场景流程 |
 | 视频读取 | `VideoStream` 统一 `read/seek/reset/position/PTS`；实际后端为 OpenCV、PyAV、MoviePy、Concat（`video_stream.py`、`backends/`） | **提供者**：每种解码器一个受管实现；媒体模块只依赖统一 `媒体输入` 契约 | `打开(媒体引用,配置)`、`读取帧(解码/跳过)`、`定位(时间码)`、`重置`、`关闭`、`能力探测`；返回标准帧信封或明确错误码 | CLI/模块直接持有第三方 decoder 对象；多个模块各自 open/read |
@@ -474,19 +474,19 @@ CLI 的兼容别名、Click 参数和 API 字段只能在项目适配层归一�
 
 ### 20.5 L0-L4 验证契约
 
-| 等级 | 本轮可证明内容 | 必须执行的验证 | 通过门槛 | 当前状态 |
+| 等级 | 当前核对可证明内容 | 必须执行的验证 | 通过门槛 | 当前状态 |
 |---|---|---|---|---|
-| L0 声明/映射 | 当前源码已有 `VideoStream`、detector、SceneManager、CLI、输出和失败边界；第三轮归属表与单链路原则 | 逐条回读本文件 §§5-11、§20 与源码路径；检查旧细探只作线索 | 每一项映射均有源码证据、owner、禁止项和未验证边界 | **已完成静态归档**；不等于实现平台能力 |
-| L1 静态实现/契约 | 入口、调用链、异常、资源 owner、四终态契约是否可审计 | `git diff --check`；检查 Markdown 表格/标题；静态核对禁止直连、第三方对象穿透和第二链路文字 | 仅修改目标 `ARCHITECTURE.md`；无源码/配置/测试/Git 改动；无“已运行”措辞冒充 | **已完成**：本轮文档校验通过，未升级 L2-L4 |
+| L0 声明/映射 | 当前源码已有 `VideoStream`、detector、SceneManager、CLI、输出和失败边界；后续归属表与单链路原则 | 逐条回读本文件 §§5-11、§20 与源码路径；检查旧细探只作线索 | 每一项映射均有源码证据、owner、禁止项和未验证边界 | **已完成静态归档**；不等于实现平台能力 |
+| L1 静态实现/契约 | 入口、调用链、异常、资源 owner、四终态契约是否可审计 | `git diff --check`；检查 Markdown 表格/标题；静态核对禁止直连、第三方对象穿透和第二链路文字 | 仅修改目标 `ARCHITECTURE.md`；无源码/配置/测试/Git 改动；无“已运行”措辞冒充 | **已完成**：当前核对文档校验通过，未升级 L2-L4 |
 | L2 纯内存/无外部媒体 | FrameTimecode/PTS 采样计划、CFR/VFR 边界、切点去重、错误形状和取消幂等 | 使用内存帧/伪 provider 的合同测试；不得 `skip` 掩盖缺失；记录测试数、跳过数、退出码 | 合同测试真实执行且失败分支可观察；无 OpenCV/PyAV/ffmpeg 依赖假绿 | **未验证** |
-| L3 真实媒体链路 | 真实视频/图像序列 → 指定 provider → 采样 → 算法策略 → SceneList → manifest/输出 | 真实 CFR、VFR、Concat seam、坏帧、至少一个算法策略；记录 provider 版本、输入摘要、产物 hash、退出码 | 全链路真实运行；缺资源不能算通过；输出内容和时间轴均读回校验 | **未验证**：当前 `tests/resources` 缺失，本轮未下载/生成媒体 |
+| L3 真实媒体链路 | 真实视频/图像序列 → 指定 provider → 采样 → 算法策略 → SceneList → manifest/输出 | 真实 CFR、VFR、Concat seam、坏帧、至少一个算法策略；记录 provider 版本、输入摘要、产物 hash、退出码 | 全链路真实运行；缺资源不能算通过；输出内容和时间轴均读回校验 | **未验证**：当前 `tests/resources` 缺失，当前核对未下载/生成媒体 |
 | L4 发布/灾难闭环 | CLI/API、provider 缺失、外部命令失败、取消/墙钟超时、SIGTERM/SIGKILL、崩溃后回收与部分输出 | 独立进程组真实强杀；重启后扫描线程/进程/句柄/临时目录/租约/manifest；跑 backend 矩阵和 release/golden | 取消/超时/崩溃均有稳定错误和完整清理证据；无残留或残留被明确标记并阻断发布 | **未验证**：当前源码没有统一恢复协议，映射不能替代实现 |
 
-L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L4 的命令必须在对应环境真实运行。`pytest` 收集成功、历史验证、缓存命中、打印“完成”、`skip` 或子代理回信均不得升级为 L3/L4。
+L1 的文档校验只能证明当前核对写入没有破坏 Markdown 和边界；L2-L4 的命令必须在对应环境真实运行。`pytest` 收集成功、历史验证、缓存命中、打印“完成”、`skip` 或子代理回信均不得升级为 L3/L4。
 
-### 20.6 第二轮收口：读取、时间码、编排、检测器与输出的实现级结论
+### 20.6 后续收口：读取、时间码、编排、检测器与输出的实现级结论
 
-本节是对前述概览的第二轮收口，优先级高于前文同一主题的概括性描述。结论来自当前工作树逐文件读取；没有安装依赖、下载媒体或运行外部工具，因此“源码存在”和“真实链路已运行”仍严格分开。
+本节是对前述概览的后续收口，优先级高于前文同一主题的概括性描述。结论来自当前工作树逐文件读取；没有安装依赖、下载媒体或运行外部工具，因此“源码存在”和“真实链路已运行”仍严格分开。
 
 #### 20.6.1 视频读取后端：统一接口之下的真实差异
 
@@ -553,7 +553,7 @@ L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L
 
 #### 20.6.7 资源生命周期最终表（当前实现 vs 需要的外部治理）
 
-| 资源 | 当前创建/释放事实 | 第二轮裁决 |
+| 资源 | 当前创建/释放事实 | 后续裁决 |
 |---|---|---|
 | OpenCV capture | `_open_capture()` 创建；`reset()` release；无公共 close；adapter 借用外部对象 | 调用方必须持有 backend-specific close 责任；不能依赖 `SceneManager`/`detect` 自动释放 |
 | PyAV generator/container/file | generator/container 在 `__del__` 或 reset 中关闭；路径 `_io` 无类内显式 close | 测试已用直接属性关闭作为补偿；生产接入必须提供显式、幂等 close 或隔离进程 |
@@ -567,12 +567,12 @@ L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L
 
 四种终态的真实收口目前只能描述为：正常结束时部分对象/线程有关闭路径；业务失败时可能保留部分输出；主动取消只覆盖 `SceneManager.stop()`，不覆盖外部 ffmpeg；宿主强杀没有 Python finally、子进程组回收、临时文件扫描或恢复协议。故本项目在资源治理上是“静态边界已收口，运行闭环未实现/未验证”。
 
-#### 20.6.8 第二轮最终裁决
+#### 20.6.8 后续最终裁决
 
 1. **可吸收的项目模式**：`VideoStream` 的读/seek/reset/position 抽象、`Timecode(pts,time_base)` 的精确时间表示、`SceneManager` 的 detector 编排和 `SceneList` 连续区间模型；吸收时必须补充颜色空间、显式 close、VFR、取消和输出制品契约。
 2. **只能隔离为 provider**：OpenCV、PyAV、MoviePy、ONNX Runtime 以及 ffmpeg/mkvmerge。第三方对象、native 句柄和子进程不得穿透媒体模块；实际 backend、版本、退出信号和清理证据必须可观察。
 3. **明确不吸收的风险模式**：`open_video` 对 OSError 不 fallback、MoviePy reset 不先 close、Concat 覆盖 child 不显式 close、SceneManager 无 reset/deadline、导入时外部探测、外部命令缺失仍可能返回 0、输出无 manifest/原子提交。
-4. **第二轮状态**：契约、失败矩阵、时间轴和资源生命周期已用源码路径补齐，达到 L1 静态收口；未执行真实媒体、backend 矩阵、ffmpeg/mkvmerge、强杀、句柄扫描或输出 hash 校验，L2-L4 继续保持“未验证”，不因本节补文而升级。
+4. **后续状态**：契约、失败矩阵、时间轴和资源生命周期已用源码路径补齐，达到 L1 静态收口；未执行真实媒体、backend 矩阵、ffmpeg/mkvmerge、强杀、句柄扫描或输出 hash 校验，L2-L4 继续保持“未验证”，不因本节补文而升级。
 
 ### 20.7 不形成第二视频链路的最终裁决
 
@@ -582,7 +582,7 @@ L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L
 4. **归运行核心治理**：统一能力调用、授权、预算、任务状态、取消 token、单调 deadline、线程/进程组回收、租约和证据，直接复用运行核心已有治理；不建立 `VideoTaskManager`、`VideoTimeoutManager`、`VideoProviderRegistry` 或第二套崩溃恢复中心。
 5. **CLI/API 只做适配**：现有 Click 链和未来 HTTP/API 只能在项目适配层把用户参数转换成一次 `媒体.场景检测` 调用；不让每个 command 直接访问 provider，也不为旧英文别名复制另一条注册路径。
 6. **现有模式隔离**：当前 `StatsManager` CSV、`save_images` worker、`split_video_*` 及 `platform.invoke_command` 继续作为项目事实记录；它们不能直接升级为平台状态/制品事务。若未来复用，必须先补 manifest、hash、原子提交、部分失败、取消和崩溃清理契约。
-7. **新建条件**：只有在需求登记、能力搜索、复用裁决、占用租约、模块/提供者契约、L2-L4 验收和装配计划齐全后，才允许建立平台接入工作包；本轮不修改平台生产底座、不生成第二套视频实现。
+7. **新建条件**：只有在需求登记、能力搜索、复用裁决、占用租约、模块/提供者契约、L2-L4 验收和装配计划齐全后，才允许建立平台接入工作包；当前核对不修改平台生产底座、不生成第二套视频实现。
 8. **结论分类**：时间轴/场景区间/检测编排为“吸收候选”；第三方解码和算法运行时为“提供者隔离”；平台任务治理与回收为“复用运行核心”；TransNetV2 正式入口、帧跨进程传输、具体能力 id、provider 可用性和真实媒体回归为“待核”。
 
 最终权威链路只有一条：
@@ -599,15 +599,15 @@ L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L
 
 任何新增设计若无法落入这条链路，或需要第二个视频读取器、第二个帧采样器、第二个 detector 编排器、第二套取消/超时/回收器，裁决为**不吸收/阻断**。
 
-### 20.8 第三轮修改与验证边界
+### 20.8 后续修改与验证边界
 
-- 本轮实际修改文件：仅本 `ARCHITECTURE.md`；未改 `细探-PySceneDetect.md`、源码、配置、依赖、测试和 Git。
-- 本轮 `project_context` 开工 id：`49fd2716f50d4b93`；MCP 反馈登记工作 id：`19f617e7f2584c88`；MCP 实例：`system_engineering_toolkit`（HTTP `127.0.0.1:8766/mcp/`）。`project_context` 的平台根为 `~/Documents/Agent/PHP/系统工程平台`，与目标源码根不同；代码图查询只返回平台治理/能力调用相关边界，未返回 PySceneDetect 符号。该边界已如实保留，不能把平台图当目标仓库证据。
-- 本轮未安装依赖、下载媒体、启动服务或执行 PySceneDetect 的真实 CLI/pytest；L2-L4 仍为未验证。后续执行验证时必须逐级记录命令、退出码、测试/跳过数、输入媒体摘要、provider、产物和清理结果，并在平台 MCP 反馈后再登记成功证据。
+- 当前核对实际修改文件：仅本 `ARCHITECTURE.md`；未改 `细探-PySceneDetect.md`、源码、配置、依赖、测试和 Git。
+- 当前核对 `project_context` 开工 id：`49fd2716f50d4b93`；MCP 反馈登记工作 id：`19f617e7f2584c88`；MCP 实例：`system_engineering_toolkit`（HTTP `127.0.0.1:8766/mcp/`）。`project_context` 的平台根为 `~/Documents/Agent/PHP/系统工程平台`，与目标源码根不同；代码图查询只返回平台治理/能力调用相关边界，未返回 PySceneDetect 符号。该边界已如实保留，不能把平台图当目标仓库证据。
+- 当前核对未安装依赖、下载媒体、启动服务或执行 PySceneDetect 的真实 CLI/pytest；L2-L4 仍为未验证。后续执行验证时必须逐级记录命令、退出码、测试/跳过数、输入媒体摘要、provider、产物和清理结果，并在平台 MCP 反馈后再登记成功证据。
 
-## 21. 第三轮场景检测底座映射（收口版）
+## 21. 后续场景检测底座映射（收口版）
 
-本节把第三轮关注的八类事实收敛为一条从输入到制品的可审计链路。它是对当前仓库源码的底座映射，不是把 PySceneDetect 现有实现误写成平台能力；其中“底座建议”表示未来接入时应采用的责任边界。
+本节把后续关注的八类事实收敛为一条从输入到制品的可审计链路。它是对当前仓库源码的底座映射，不是把 PySceneDetect 现有实现误写成平台能力；其中“底座建议”表示未来接入时应采用的责任边界。
 
 ### 21.1 单一数据流与责任边界
 
@@ -675,9 +675,9 @@ L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L
 | 主动取消/超时 | 幂等 token、单调 deadline、停止读取、join/reap；外部进程需进程组治理 | `SceneManager.stop()` 不等于 ffmpeg 已停止，不等于墙钟超时 |
 | 宿主/提供者崩溃 | 重启后按租约/进程身份扫描线程、子进程、临时目录和半写输出 | SIGKILL 后没有 finally，不能宣称资源和制品已清理 |
 
-### 21.7 第三轮 L0-L4 证据门槛
+### 21.7 后续 L0-L4 证据门槛
 
-| 等级 | 本轮映射能证明的内容 | 升级所需真实证据 | 当前结论 |
+| 等级 | 当前核对映射能证明的内容 | 升级所需真实证据 | 当前结论 |
 |---|---|---|---|
 | L0 | 文档/README/源码声明存在输入、检测器、时间码、切分入口 | 不要求运行，但必须标注声明来源 | 已完成，不能证明实现正确 |
 | L1 | 当前源码的调用链、异常边界、坏帧策略、VFR 风险、资源 owner 和外部命令语义 | 源码逐文件核对、文档一致性、Markdown 差异检查 | 已完成静态映射；不等于媒体可运行 |
@@ -685,13 +685,13 @@ L1 的文档校验只能证明本轮写入没有破坏 Markdown 和边界；L2-L
 | L3 | 真实 CFR、VFR、Concat seam、坏帧输入经过指定 backend 和 detector，并读回 SceneList/输出 | 记录输入摘要、实际 backend、PTS、坏帧计数、产物 hash、退出码和清理结果 | 未验证；当前没有把静态文档当真实媒体证据 |
 | L4 | provider 缺失、命令失败、超时、取消、SIGTERM/SIGKILL、重启扫描和发布/golden 闭环 | 独立进程组强杀、backend 矩阵、外部工具故障注入、残留扫描和 release 验收 | 未验证；当前实现没有统一恢复/原子提交协议 |
 
-第三轮最终裁决：**吸收** `VideoStream` 的输入抽象、`Timecode/FrameTimecode` 的 PTS 模型、SceneManager 的单链路 detector 编排和 SceneList 区间模型；**隔离** OpenCV、PyAV、MoviePy、ONNX Runtime、ffmpeg、mkvmerge；**补强** 坏帧可观察性、VFR 时间轴、显式 close、超时/取消、manifest/hash/原子提交和崩溃回收。任何需要第二个读取器、第二套时间码、第二个 detector 编排器或第二套取消/回收中心的方案均阻断。
+后续最终裁决：**吸收** `VideoStream` 的输入抽象、`Timecode/FrameTimecode` 的 PTS 模型、SceneManager 的单链路 detector 编排和 SceneList 区间模型；**隔离** OpenCV、PyAV、MoviePy、ONNX Runtime、ffmpeg、mkvmerge；**补强** 坏帧可观察性、VFR 时间轴、显式 close、超时/取消、manifest/hash/原子提交和崩溃回收。任何需要第二个读取器、第二套时间码、第二个 detector 编排器或第二套取消/回收中心的方案均阻断。
 
 ## 22. 分段审计补充（2026-08-21）
 
 ### 22.1 范围、目录和定位证据
 
-本轮先核对实际目录：源码根为
+当前核对先核对实际目录：源码根为
 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/10_scene_segmentation/PySceneDetect`。
 源码没有独立的 `open_video/`、`decoder/`、`ffmpeg/` 或 `mkvmerge/` 目录：`open_video()` 在
 `scenedetect/__init__.py`，decoder 语义在 `video_stream.py` 与 `backends/`，外部切分在
@@ -733,7 +733,7 @@ deprecated 转发模块，不能作为第二套切分实现。
 ### 22.3 质量等级与平台裁决
 
 静态证据达到 L1：调用链、VFR 模型、坏帧策略、有界队列、外部进程边界和 owner 风险已逐项核对；
-本轮没有安装依赖、运行 pytest/CLI、调用 ffmpeg/mkvmerge 或执行强杀，因此没有 L2/L3/L4 运行证据。
+当前核对没有安装依赖、运行 pytest/CLI、调用 ffmpeg/mkvmerge 或执行强杀，因此没有 L2/L3/L4 运行证据。
 平台复用时必须把 decoder、detector、外部命令置于受管 provider，统一返回 PTS、实际 backend、
 decode failures、终态、stderr 摘要、输出清单和清理结果，并由宿主提供墙钟 deadline、进程组回收、
 幂等/manifest/hash/原子 rename。不能直接复用当前同步 `subprocess.call`、GC 析构、daemon thread

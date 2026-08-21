@@ -4,7 +4,7 @@
 >
 > 项目根：`~/Documents/Agent/github 源码参考/10_agent_platform_reference/02_核心Agent框架/langgraph`
 >
-> 当前基线提交：`644815f9e5bc52ad8f7a5227a456227e9c3e639b`
+> 当前基线提交：`f09cfe8ffc1eeffd68f4b628ed69c30f7cad229f`（目标仓库 `main...origin/main`，工作区仅有未跟踪的 `.codegraph/` 与根 `ARCHITECTURE.md`；本平台文档不属于目标源码仓库）。
 >
 > 许可证：MIT（根 `LICENSE`）。旧细探：`细探-langgraph.md`；该文件已完整读取并逐条与当前源码对照。可证实的事实已吸收到本文；旧文件保留为历史证据，不删除。后续架构事实只维护本文件。
 
@@ -69,7 +69,7 @@ langgraph/
 ├── README.md                         项目定位、能力和文档入口
 ├── AGENTS.md / CLAUDE.md             monorepo 规则与依赖关系图
 ├── LICENSE                           MIT
-├── Makefile                          根级开发命令入口（未在本轮执行）
+├── Makefile                          根级开发命令入口（未在当前核对执行）
 ├── docs/                             概念/指南/参考文档
 ├── examples/                         示例
 ├── libs/
@@ -335,12 +335,12 @@ make test
 ## 10. 未确认项与后续细探入口
 
 1. **代码地图不可用**：本项目从目标根目录向上没有 `.codegraph/` 索引，专属代码地图查询返回“isn't indexed”；因此本文件的结构结论来自当前磁盘的 README、AGENTS/CLAUDE、依赖清单、核心源码、API 类型、测试与既有细探，而非代码图调用链。
-2. **MCP 项目身份不一致**：本轮 `project_context` 返回的项目名称/根目录是另一个已绑定工程（`华世王镞_v3`），返回 MCP 实例为 `project_toolkit`，未能证明它就是用户指定的 `system_engineering_toolkit`；该身份偏差不能作为目标仓库证据。目标项目根目录以本文首部绝对路径为准。
+2. **MCP 项目身份不一致**：当前核对 `project_context` 返回的项目名称/根目录是另一个已绑定工程（`华世王镞_v3`），返回 MCP 实例为 `project_toolkit`，未能证明它就是用户指定的 `system_engineering_toolkit`；该身份偏差不能作为目标仓库证据。目标项目根目录以本文首部绝对路径为准。
 3. **完整 API server 未在本仓库闭合**：CLI 的 `dev/up` 所依赖的 `langgraph-api`、`langgraph-runtime-inmem` 等组件没有在当前 `libs/` 清单中完整呈现；需另行确认服务端路由、数据库表、认证和部署运行时。
 4. **Store 的全部后端覆盖面**：当前仓库确认了 `checkpoint` 的 Store 基础/内存、SQLite Store、Postgres Store及 SDK Store 资源；Redis 或其他 Store 后端未作为当前 `libs/` 独立库完整核实，不应在本档案中当作已交付组件。
-5. **`CompiledStateGraph` 的完整编译细节**：已确认 builder→Pregel 关系，但本轮没有逐段覆盖 `compile()` 后所有子图、缓存、远程图、durability 和 stream transformer 的实现路径；后续应以 `state.py` 的 compile 方法、`pregel/_loop.py`、`_checkpoint.py` 和 stream transformer 测试为细探入口。
+5. **`CompiledStateGraph` 的完整编译细节**：已确认 builder→Pregel 关系，但当前核对没有逐段覆盖 `compile()` 后所有子图、缓存、远程图、durability 和 stream transformer 的实现路径；后续应以 `state.py` 的 compile 方法、`pregel/_loop.py`、`_checkpoint.py` 和 stream transformer 测试为细探入口。
 6. **版本与工作区状态**：核心 `langgraph` pyproject 当前声明 `1.2.11`，checkpoint `4.2.0`，prebuilt `1.1.0`；其他动态版本以各包实际 metadata/release 流程为准。工作区原有未跟踪文件 `细探-langgraph.md` 被保留，未纳入本次新增文档以外的修改。
-7. **运行验证未执行**：本轮遵守“禁止安装依赖、启动服务、构建”的约束；没有对已安装环境的 import、CLI、SDK 端到端或数据库后端做运行时结论。
+7. **运行验证未执行**：当前核对遵守“禁止安装依赖、启动服务、构建”的约束；没有对已安装环境的 import、CLI、SDK 端到端或数据库后端做运行时结论。
 
 ## 11. 旧细探吸收与未吸收裁决
 
@@ -374,9 +374,9 @@ LangGraph 的真实核心不是“LLM 调用链”，而是：**图构建 API + 
 - CLI/SDK 面向外部 API server，不能据此推断 server/runtime 已包含在当前 monorepo；
 - `serde` allowlist、pending writes、父 checkpoint 链和 conformance tests 是持久化正确性与安全性的关键验证点。
 
-## 13. 第三轮：面向系统工程平台的底座映射
+## 13. 后续：面向系统工程平台的底座映射
 
-本节不是把 LangGraph 源码直接搬进平台，而是基于当前提交 `644815f9e5bc52ad8f7a5227a456227e9c3e639b` 的第三轮裁决输入：哪些能力可吸收为公共契约/支持库/模块库，哪些只能由运行核心治理，哪些仍属于外部交付面。`StateGraph`、`CompiledStateGraph`、Pregel/BSP、channels、checkpoint、store、CLI、SDK 的名称和语义保留原文；下文的 L0-L4 是平台映射边界，不是 LangGraph 自身的官方分层。
+本节不是把 LangGraph 源码直接搬进平台，而是基于当前提交 `644815f9e5bc52ad8f7a5227a456227e9c3e639b` 的后续裁决输入：哪些能力可吸收为公共契约/支持库/模块库，哪些只能由运行核心治理，哪些仍属于外部交付面。`StateGraph`、`CompiledStateGraph`、Pregel/BSP、channels、checkpoint、store、CLI、SDK 的名称和语义保留原文；下文的 L0-L4 是平台映射边界，不是 LangGraph 自身的官方分层。
 
 ### 13.1 单链路总图与三类职责
 
@@ -437,7 +437,7 @@ L4 项目适配层 / HTTP 网关 / CLI / Python SDK / 外部部署服务
 
 #### 13.2.3 `Pregel`/BSP：运行核心的可见性和调度契约
 
-`libs/langgraph/langgraph/pregel/main.py:450-477` 给出可直接吸收的三阶段语义：Plan 选择订阅上一轮更新的 actors；Execute 并行运行本轮 actors；Update 批量应用 writes 到 channels；本轮更新对本轮其他 actor 不可见，直到下一 superstep。平台映射为：
+`libs/langgraph/langgraph/pregel/main.py:450-477` 给出可直接吸收的三阶段语义：Plan 选择订阅上一轮更新的 actors；Execute 并行运行当前核对 actors；Update 批量应用 writes 到 channels；当前核对更新对当前核对其他 actor 不可见，直到下一 superstep。平台映射为：
 
 | BSP 阶段 | L3 运行核心职责 | L0/L1 依赖 | 必须留证 |
 |---|---|---|---|
@@ -648,20 +648,20 @@ L0-L4 不是按目录机械搬运：`libs/langgraph` 同时包含 L2 Graph API �
   → provider 缺失、非法 reducer、重复写、断线、取消、超时、进程崩溃、坏密文、坏 checkpoint、DeltaChannel 裁剪/复制
 ```
 
-当前结论是：**StateGraph/CompiledStateGraph 的声明与编译模式、Pregel/BSP 的可见性语义、channel/reducer、checkpoint/store 契约和 SDK/CLI 边界可作为第三轮底座输入；运行核心实现、平台级密钥治理、崩溃恢复、资源监督、完整 API server 与 Redis/JS 实现仍需平台能力登记和独立验证。** 本节没有修改平台生产代码，也没有把 LangGraph 外部服务声明成当前源码事实。
+当前结论是：**StateGraph/CompiledStateGraph 的声明与编译模式、Pregel/BSP 的可见性语义、channel/reducer、checkpoint/store 契约和 SDK/CLI 边界可作为后续底座输入；运行核心实现、平台级密钥治理、崩溃恢复、资源监督、完整 API server 与 Redis/JS 实现仍需平台能力登记和独立验证。** 本节没有修改平台生产代码，也没有把 LangGraph 外部服务声明成当前源码事实。
 
-## 14. 第三轮证据与剩余风险
+## 14. 后续证据与剩余风险
 
 - **源码证据**：`libs/langgraph/langgraph/graph/state.py:131,1177-1401`；`libs/langgraph/langgraph/pregel/main.py:450-477,487-512,708-828`；`libs/langgraph/langgraph/pregel/_retry.py:460-515,573-684`；`libs/langgraph/langgraph/pregel/_executor.py:40-217`；`libs/langgraph/langgraph/runtime.py:124-240`。
 - **持久化/安全证据**：`libs/checkpoint/langgraph/checkpoint/base/__init__.py:176-415,468-589`；`libs/checkpoint/langgraph/checkpoint/serde/jsonplus.py:82-254`；`libs/checkpoint/langgraph/checkpoint/serde/encrypted.py:8-80`；`libs/checkpoint/langgraph/store/base/__init__.py:708-944`；SQLite/Postgres 后端及其 tests。
 - **交付/远程证据**：`libs/cli/langgraph_cli/cli.py:276-465,758-922`；`libs/sdk-py/langgraph_sdk/_sync/runs.py:195-346,925-1037`；`libs/sdk-py/langgraph_sdk/schema.py:23-31,374-380,607-611`；`AGENTS.md` 依赖关系图。
-- **代码图与 MCP 绑定风险**：按任务要求先调用 `system_engineering_toolkit` 的 `project_context`，但该 MCP 返回的根目录是 `~/Documents/Agent/PHP/系统工程平台`，随后 `codegraph_explore` 也只查询该平台并明确未命中 LangGraph；它不是目标仓库的代码图证据，已按“错绑阻断”处理，不能写成 LangGraph 事实。此前通过 deferred `project_toolkit` 的查询同样显示目标 LangGraph 没有 `.codegraph/` 索引。本文第三轮结论因此只采用目标仓库现场源码/测试/AGENTS 证据。
-- **本轮未执行**：未安装依赖、未启动 API server、未运行 CLI/SDK/SQLite/Postgres 端到端，也未修改源码；故无法把外部服务认证、远程取消、数据库事务隔离、密钥轮换和崩溃恢复列为“真实执行通过”。
+- **代码图与 MCP 绑定风险**：按任务要求先调用 `system_engineering_toolkit` 的 `project_context`，但该 MCP 返回的根目录是 `~/Documents/Agent/PHP/系统工程平台`，随后 `codegraph_explore` 也只查询该平台并明确未命中 LangGraph；它不是目标仓库的代码图证据，已按“错绑阻断”处理，不能写成 LangGraph 事实。此前通过 deferred `project_toolkit` 的查询同样显示目标 LangGraph 没有 `.codegraph/` 索引。本文后续结论因此只采用目标仓库现场源码/测试/AGENTS 证据。
+- **当前核对未执行**：未安装依赖、未启动 API server、未运行 CLI/SDK/SQLite/Postgres 端到端，也未修改源码；故无法把外部服务认证、远程取消、数据库事务隔离、密钥轮换和崩溃恢复列为“真实执行通过”。
 - **剩余风险**：`CompiledStateGraph` 与 stream transformer/durability 的所有内部调用路径仍需后续按具体工作包取证；CLI 所依赖的 API server/runtime、完整远程权限模型、provider 连接池/锁语义和生产密钥管理不在当前仓库闭合；`DeltaChannel` 的复制/裁剪若实现者忽略祖先链会产生静默状态损坏。
 
-## 15. 第二轮深挖收口：StateGraph、节点执行、checkpoint、interrupt、stream 与恢复
+## 15. 后续深挖收口：StateGraph、节点执行、checkpoint、interrupt、stream 与恢复
 
-本节是第二轮源码收口，不是新的平台设计。它把旧细探中“每步怎么执行、何时写 checkpoint、如何中断/恢复、stream 到底暴露什么”逐条落到当前提交的实现；源码事实、测试证据和本轮未执行事项分开记录。旧 `细探-langgraph.md` 继续保留，不再作为后续维护入口。
+本节是后续源码收口，不是新的平台设计。它把旧细探中“每步怎么执行、何时写 checkpoint、如何中断/恢复、stream 到底暴露什么”逐条落到当前提交的实现；源码事实、测试证据和当前核对未执行事项分开记录。旧 `细探-langgraph.md` 继续保留，不再作为后续维护入口。
 
 ### 15.1 `StateGraph` 的真实声明面和编译产物
 
@@ -754,28 +754,28 @@ v1/v2 的关键差异不是“执行两次”：v1 在 `invoke(stream_mode="valu
 
 - **Memory saver**：源码位置和测试存在，适合测试/示例；不能作为跨进程可靠持久化证据。
 - **SQLite saver**：`SqliteSaver` 建立 `checkpoints` 与 `writes` 表，以 `(thread_id, checkpoint_ns, checkpoint_id)` 标识 checkpoint，以 task/index 保存 writes；默认是轻量同步场景，源码文档明确“不适合多线程扩展”，异步要用 `AsyncSqliteSaver`。`get_tuple()` 无 checkpoint id 时取线程/namespace 最新项，有 id 时取精确项，再读取该 checkpoint 的 pending writes。证据：`libs/checkpoint-sqlite/langgraph/checkpoint/sqlite/__init__.py:45-95,129-166,191-293`。
-- **Postgres saver**：当前库提供同步/异步 saver 与 Store；首次使用需要 setup，连接约束和事务语义仍需外部数据库实测，本轮没有连接真实 Postgres。
+- **Postgres saver**：当前库提供同步/异步 saver 与 Store；首次使用需要 setup，连接约束和事务语义仍需外部数据库实测，当前核对没有连接真实 Postgres。
 - **DeltaChannel**：非每个 checkpoint 都保存完整值，而是按 `snapshot_frequency` 或全局 superstep 上限生成 `_DeltaSnapshot`；恢复若当前 `channel_values` 缺失该键，saver 必须沿父链取 seed 并累积 `checkpoint_writes`。因此 `copy_thread` 必须复制足够完整的父链；朴素 `keep_latest` 删除中间 checkpoint/writes 可能静默把恢复值重建为空。证据：`pregel/_checkpoint.py:50-71,149-277`、`checkpoint/base/__init__.py:350-415`。
 - **时间旅行/replay**：指定历史 `checkpoint_id` 时读取精确 checkpoint；`_first()` 在真正 replay 且来源不是 `update/fork` 时先写 `source=fork` checkpoint，避免新分支继续覆盖旧 head；`update_state()` 以 `source=update` 生成状态更新 checkpoint，随后从该分支继续。测试覆盖“历史点之前节点不重跑、之后节点重跑、多个 fork 互不污染、interrupt replay 会再次触发”。证据：`_loop.py:874-971`、`main.py:1640-2047`、`tests/test_time_travel.py:69-219,226-380`。
 
-### 15.7 第二轮失败/恢复矩阵与验证等级
+### 15.7 后续失败/恢复矩阵与验证等级
 
 | 场景 | 源码行为 | 测试/外部验证状态 |
 |---|---|---|
-| 无 graph 入口、悬空边、非法 interrupt 节点 | `StateGraph.validate()` 编译前拒绝 | 测试文件存在；本轮未执行 |
-| 多节点同 step 写同一 key | 按 task path 排序后交给 reducer；无 reducer 或非法多写由 channel 抛更新错误 | `test_state.py`/`test_pregel.py` 存在；本轮未执行 |
-| 节点业务异常 | retry policy 匹配则重试；否则 runner panic；配置 error handler 时可转 handler | `test_retry.py` 等存在；本轮未执行 |
-| async node timeout / cancellation | watchdog 取消 async task，清空 writes，抛 `NodeTimeoutError`；同步节点 timeout 在运行时安全性上不支持 | `test_pregel_async.py`/timeout 相关测试存在；本轮未执行 |
-| `interrupt()` | 保存中断信息并暂停；必须有 checkpointer；resume 后从节点开头重跑 | `test_interruption.py`、`test_time_travel.py` 存在；本轮未执行 |
-| 断点恢复 | 读取 checkpoint + parent + pending writes + versions；成功 writes 可复用，未完成/控制 writes 按状态处理 | checkpoint/time-travel/subgraph persistence 测试存在；本轮未执行 |
-| 历史 replay/fork | 精确 checkpoint 重放，必要时先产生 fork；旧分支保持独立 | `test_time_travel.py` 明确覆盖；本轮未执行 |
-| saver 序列化坏数据/不受信类型 | JsonPlus 默认 permissive 并告警；strict msgpack/allowlist 可拒绝；加密 serializer 可选 AES-EAX | `test_serde_allowlist.py` 等存在；本轮未执行 |
+| 无 graph 入口、悬空边、非法 interrupt 节点 | `StateGraph.validate()` 编译前拒绝 | 测试文件存在；当前核对未执行 |
+| 多节点同 step 写同一 key | 按 task path 排序后交给 reducer；无 reducer 或非法多写由 channel 抛更新错误 | `test_state.py`/`test_pregel.py` 存在；当前核对未执行 |
+| 节点业务异常 | retry policy 匹配则重试；否则 runner panic；配置 error handler 时可转 handler | `test_retry.py` 等存在；当前核对未执行 |
+| async node timeout / cancellation | watchdog 取消 async task，清空 writes，抛 `NodeTimeoutError`；同步节点 timeout 在运行时安全性上不支持 | `test_pregel_async.py`/timeout 相关测试存在；当前核对未执行 |
+| `interrupt()` | 保存中断信息并暂停；必须有 checkpointer；resume 后从节点开头重跑 | `test_interruption.py`、`test_time_travel.py` 存在；当前核对未执行 |
+| 断点恢复 | 读取 checkpoint + parent + pending writes + versions；成功 writes 可复用，未完成/控制 writes 按状态处理 | checkpoint/time-travel/subgraph persistence 测试存在；当前核对未执行 |
+| 历史 replay/fork | 精确 checkpoint 重放，必要时先产生 fork；旧分支保持独立 | `test_time_travel.py` 明确覆盖；当前核对未执行 |
+| saver 序列化坏数据/不受信类型 | JsonPlus 默认 permissive 并告警；strict msgpack/allowlist 可拒绝；加密 serializer 可选 AES-EAX | `test_serde_allowlist.py` 等存在；当前核对未执行 |
 | stream 断线/客户端取消 | 本地 loop/SDK 可观察流和控制参数，但远程 server 的断线策略、run rollback 语义不在此仓库闭合 | SDK/stream 测试存在；真实 API server 未启动 |
-| SQLite/Postgres 故障、事务隔离、跨进程崩溃恢复 | saver 提供接口/部分实现；平台级锁清理、进程重启对账、exactly-once 副作用恢复未由当前 OSS core 提供 | conformance/后端测试存在；本轮未连接真实数据库 |
+| SQLite/Postgres 故障、事务隔离、跨进程崩溃恢复 | saver 提供接口/部分实现；平台级锁清理、进程重启对账、exactly-once 副作用恢复未由当前 OSS core 提供 | conformance/后端测试存在；当前核对未连接真实数据库 |
 
-**验证口径：**本轮只读当前源码、测试源码、README/AGENTS 和旧细探，未安装依赖、未启动服务、未执行 `make test`、未连接 SQLite/Postgres 做端到端或故障注入。因此上表“测试文件存在”不等于“本轮通过”，没有把静态证据冒充真实执行。
+**验证口径：**当前核对只读当前源码、测试源码、README/AGENTS 和旧细探，未安装依赖、未启动服务、未执行 `make test`、未连接 SQLite/Postgres 做端到端或故障注入。因此上表“测试文件存在”不等于“当前核对通过”，没有把静态证据冒充真实执行。
 
-### 15.8 旧细探逐条收口（第二轮补充）
+### 15.8 旧细探逐条收口（后续补充）
 
 | 旧细探说法 | 当前裁决 | 收口后的准确表述 |
 |---|---|---|
@@ -786,9 +786,9 @@ v1/v2 的关键差异不是“执行两次”：v1 在 `invoke(stream_mode="valu
 | “Store 有 Redis 后端” | 不吸收原词 | 当前工作区确认 Store base/memory 与 SQLite/Postgres 相关实现；`cache/redis` 不能推导出 `store/redis` 已交付。 |
 | “恢复就是从 checkpoint state 继续” | 校正 | 恢复还需要 versions_seen、父 checkpoint、pending writes、resume map 和 task 状态；节点外部副作用仍需幂等。 |
 | “stream 是状态结果” | 校正 | stream 是 values/updates/messages/custom/checkpoints/tasks/debug 的事件投影；客户端成功判据应结合最终输出/运行终态和 durable checkpoint，而不是单个事件。 |
-| “对平台的同构建议” | 不属于本轮项目事实 | 平台 L0-L4 映射只保留在现有第三轮章节；本节只维护 LangGraph 当前源码实现。 |
+| “对平台的同构建议” | 不属于当前核对项目事实 | 平台 L0-L4 映射只保留在现有后续章节；本节只维护 LangGraph 当前源码实现。 |
 
-本轮第二轮结论：LangGraph 的可恢复性来自 **版本化 channel 状态 + `versions_seen` 触发判定 + task pending writes + 父 checkpoint 链 + 可选 serializer/saver** 的组合，而不是一个“状态 dict 自动保存”开关；`interrupt` 是在 task scratchpad 上按调用顺序匹配的可恢复控制流；`stream` 是从 runner/loop 投影出的观测协议；节点执行、重试、超时、取消和外部副作用的 exactly-once 语义并未由 OSS core 自动保证。上述边界已吸收到本文件，旧细探保留但不再维护。
+当前核对后续结论：LangGraph 的可恢复性来自 **版本化 channel 状态 + `versions_seen` 触发判定 + task pending writes + 父 checkpoint 链 + 可选 serializer/saver** 的组合，而不是一个“状态 dict 自动保存”开关；`interrupt` 是在 task scratchpad 上按调用顺序匹配的可恢复控制流；`stream` 是从 runner/loop 投影出的观测协议；节点执行、重试、超时、取消和外部副作用的 exactly-once 语义并未由 OSS core 自动保证。上述边界已吸收到本文件，旧细探保留但不再维护。
 
 ## 16. 源码核对补录：从图声明到资源回收的完整运行链
 
@@ -831,7 +831,7 @@ tick()
   → 下一 tick 或 done / interrupt / draining / error
 ```
 
-- 一个 superstep 的节点读取 step 开始的 channel 快照；并行节点本轮产生的 writes 在 `after_tick()` 的 Update 阶段前对其他节点不可见。`versions_seen` 与 channel version 的比较决定下一轮是否重新触发。
+- 一个 superstep 的节点读取 step 开始的 channel 快照；并行节点当前核对产生的 writes 在 `after_tick()` 的 Update 阶段前对其他节点不可见。`versions_seen` 与 channel version 的比较决定下一轮是否重新触发。
 - `Send` 是写入 `TASKS` 的动态 fan-out，不是节点内部递归调用。下一轮会为每个分支建立独立 PUSH task，再由目标 channel/reducer 汇合；fan-out 数、并发数、单任务大小和总运行预算必须由外部运行治理限制。
 - `PregelRunner` 对 task 进行并发提交、逐个收集完成结果并提交 writes；未被节点/图级 error handler 接管的异常会触发 panic，其他任务被停止或不再作为成功路径。错误 handler 会标记原 task 的错误写入并调度 handler task，而不是无条件重跑原节点。
 - retry policy 作用于 runnable attempt：每次 attempt 前清理该 task 的 writes，匹配策略后重试；它不为外部副作用提供 exactly-once。节点应使用幂等键或将不可逆副作用放在可恢复边界之后。
@@ -914,9 +914,9 @@ configurable.thread_id
 5. 同步线程任务不能安全抢占；取消、timeout、interrupt、draining 和 rollback 的语义不同。
 6. Store 是跨线程共享记忆，不是 checkpoint 的别名；Redis、完整 API server、JS SDK 和平台级崩溃恢复不能由当前仓库源码推断为已实现。
 
-## 17. 本轮完整审计补录：调用关系、测试面与文档质量
+## 17. 当前核对完整审计补录：调用关系、测试面与文档质量
 
-本节记录本轮按用户指定范围进行的分段读取结果。目标仓库没有 `.codegraph/` 索引；已先尝试 `codegraph explore "StateGraph Pregel ..."`，工具明确返回索引不存在，因此没有自行初始化索引，也没有把代码图结果冒充为调用链证据。以下调用关系来自当前源码逐段核对，范围包括 `libs/langgraph/langgraph`、`libs/checkpoint*`、核心测试、包配置、根 README、`docs/` 和本文件。
+本节记录当前核对按用户指定范围进行的分段读取结果。目标仓库没有 `.codegraph/` 索引；已先尝试 `codegraph explore "StateGraph Pregel ..."`，工具明确返回索引不存在，因此没有自行初始化索引，也没有把代码图结果冒充为调用链证据。以下调用关系来自当前源码逐段核对，范围包括 `libs/langgraph/langgraph`、`libs/checkpoint*`、核心测试、包配置、根 README、`docs/` 和本文件。
 
 ### 17.1 StateGraph → Pregel 的实际调用关系
 
@@ -976,7 +976,7 @@ Store 与 checkpoint 分责：Store 的 `namespace + key + value` 面向跨 grap
 
 ### 17.4 测试、配置与 docs 覆盖审计
 
-测试源码覆盖面较完整但本轮未执行：
+测试源码覆盖面较完整但当前核对未执行：
 
 - `libs/langgraph/tests/test_state.py`、`test_pregel.py`、`test_pregel_async.py`、`test_algo.py`、`test_channels.py` 覆盖图校验、BSP 执行、async/sync、channel/reducer、版本和大量边界场景。
 - `test_retry.py` 覆盖异常匹配、backoff、同步/异步重试、timeout、CancelledError 转换、Send/Command 相关路径；`test_interruption.py`、`test_time_travel.py`、`test_interrupt_migration.py` 覆盖 interrupt、durability、resume、历史 replay/fork。
@@ -985,11 +985,62 @@ Store 与 checkpoint 分责：Store 的 `namespace + key + value` 面向跨 grap
 
 配置事实：核心包 `langgraph` 当前为 `1.2.11`、要求 Python `>=3.10`，依赖 `langchain-core`、`langgraph-checkpoint`、`langgraph-sdk`、`langgraph-prebuilt`、`xxhash` 和 Pydantic；checkpoint 包当前为 `4.2.0`，依赖 `langchain-core` 与 `ormsgpack`。pytest 使用 strict markers/config；测试依赖另含 SQLite/Postgres、PyCryptodome、Redis、uvloop 等可选环境。根 `Makefile` 只是逐库转发 install/lint/format/lock/test，不是 API server 或完整生产运行时。
 
-文档质量结论：根 README 的定位、能力入口和外部文档链接清晰，但对 `Send` 的 fan-out 预算、checkpoint durability、pending writes、同步取消限制、stream 非提交回执和 Store/checkpoint 分责没有实现级说明。`docs/` 当前仅有 `llms.txt`、`redirects.json`、redirect 生成器和 `.gitignore`，内容明确说明正式文档已迁移到 `docs.langchain.com`；因此本仓库没有本地完整的实现设计文档，核心细节实际分散在源码 docstring、测试和外部站点。`ARCHITECTURE.md` 现作为本地源码事实档案，明确区分“源码存在”“测试存在”“本轮真实执行通过”和“外部服务未闭合”。
+文档质量结论：根 README 的定位、能力入口和外部文档链接清晰，但对 `Send` 的 fan-out 预算、checkpoint durability、pending writes、同步取消限制、stream 非提交回执和 Store/checkpoint 分责没有实现级说明。`docs/` 当前仅有 `llms.txt`、`redirects.json`、redirect 生成器和 `.gitignore`，内容明确说明正式文档已迁移到 `docs.langchain.com`；因此本仓库没有本地完整的实现设计文档，核心细节实际分散在源码 docstring、测试和外部站点。`ARCHITECTURE.md` 现作为本地源码事实档案，明确区分“源码存在”“测试存在”“当前核对真实执行通过”和“外部服务未闭合”。
 
-### 17.5 本轮审计结论与限制
+### 17.5 当前核对审计结论与限制
 
-1. 未发现需要修改的源码、测试、配置或 docs 文件；遵守“禁止其他修改”，本轮只更新根 `ARCHITECTURE.md`。
-2. 没有安装依赖、启动服务、连接 SQLite/Postgres、调用远程 API、运行 pytest 或构建 CLI，因此测试文件存在不等于本轮验证通过。
+1. 未发现需要修改的源码、测试、配置或 docs 文件；遵守“禁止其他修改”，当前核对只更新根 `ARCHITECTURE.md`。
+2. 没有安装依赖、启动服务、连接 SQLite/Postgres、调用远程 API、运行 pytest 或构建 CLI，因此测试文件存在不等于当前核对验证通过。
 3. CodeGraph 不可用是目标仓库的索引状态，不是源码缺陷；调用关系以逐段源码和测试证据为准。
-4. API server、远程 rollback、认证/权限、生产数据库事务隔离、密钥轮换、宿主崩溃恢复和外部副作用 exactly-once 仍属于仓库外或未闭合能力，不能由本轮静态审计升级为已实现事实。
+
+## 18. 本轮源码复核补录（2026-08-22）
+
+### 18.1 Pregel loop 的可执行边界
+
+本轮以目标仓库 `f09cfe8ffc1eeffd68f4b628ed69c30f7cad229f` 的当前源码为准，补核 `libs/langgraph/langgraph/pregel/main.py`、`pregel/_loop.py`、`pregel/_runner.py`、`types.py` 与 `errors.py`：
+
+```text
+Pregel.stream()/astream()
+  → _defaults()：解析 stream modes、interrupt 前后点、checkpointer、store、cache、durability
+  → SyncPregelLoop/AsyncPregelLoop（上下文管理器）
+  → PregelRunner.tick()/atick()
+      → submit runnable tasks（同一 superstep 并发）
+      → 收集 task writes / GraphInterrupt / error
+  → loop.after_tick()
+      → apply_writes()：更新 channel versions/versions_seen
+      → 按 durability 写入 checkpoint
+  → 下一 tick，或 done / out_of_steps / draining / interrupt / error
+```
+
+`main.py:2655-3018` 明确说明：`stream()` 在 loop 退出后才调用 `run_manager.on_chain_end(loop.output)`；因此“收到流事件”不能等价于运行成功。`stream_mode` 可以是单值或序列；`messages`、`custom`、`subgraphs` 会安装回调/写入器，`subgraphs=True` 时事件带 namespace。`durability` 默认 `async`，`sync` 在下一步前等待 `_put_checkpoint_fut`，`exit` 只在退出边界持久化；无 checkpointer 时源码发出“durability has no effect”警告（`main.py:2802-2805`）。
+
+`_loop.py:599-724` 将 `tick()` 与 `after_tick()` 分离：前者检查输入、interrupt_before/after、drain 和任务状态，后者应用 writes、更新版本并提交 checkpoint。`_runner.py:176-358,360-596` 显示同步/异步 runner 均按 task attempt 收集结果；`GraphInterrupt` 是控制流而不是普通失败，多个 task 的 interrupt 会汇总后再抛出。重试只清理该 attempt 的 writes 并重新执行 runnable，不能把外部副作用变成 exactly-once。
+
+### 18.2 interrupt/resume 的实际恢复语义
+
+`types.py:858-967` 的 `interrupt(value)` 首次调用通过当前 task scratchpad 的调用序号抛出 `GraphInterrupt`，恢复时按相同调用顺序消费 resume 值；多个中断可以用 interrupt id 映射。`errors.py:102-114` 将 `GraphInterrupt` 定义为 `GraphBubbleUp` 分支，故它不会被 runner 的普通异常重试路径当作业务失败。恢复从节点函数开头重新运行，节点在第一次 interrupt 之前的网络、文件、扣费或随机副作用必须由应用自行幂等化。
+
+### 18.3 并发、取消与清理边界
+
+`_runner.py` 的 async 路径通过 executor/semaphore 限制并发并等待任务收尾；loop 退出时释放 stream waiter。同步路径只能取消尚未开始的 Future，无法安全抢占已经运行的同步节点。`Runtime.control` 的 drain 在调度边界把 loop 置为 `draining`，不是强杀当前节点；`GraphDrained`、timeout、取消、interrupt 和普通异常应分别记录。`SyncPregelLoop`/`AsyncPregelLoop` 使用 `ExitStack`/`AsyncExitStack` 管理 executor、队列和回调，但这只覆盖正常进程内退出，不覆盖宿主崩溃后的租约、子进程、数据库事务或外部副作用清理。
+
+### 18.4 测试证据清单与未执行边界
+
+当前源码树存在下列直接相关测试文件（本轮未安装依赖、未执行 pytest）：
+
+| 主题 | 主要文件 | 可确认范围 |
+|---|---|---|
+| Pregel/BSP、版本、并发 | `libs/langgraph/tests/test_pregel.py`, `test_pregel_async.py` | 同步/异步 loop、step、并发任务与错误路径 |
+| interrupt/resume、迁移 | `test_interruption.py`, `test_interrupt_migration.py` | 中断值、resume、durability 与兼容迁移 |
+| replay/fork | `test_time_travel.py`, `test_time_travel_async.py` | 历史 checkpoint、fork、分支隔离 |
+| stream 投影 | `test_stream_*`, `test_pregel_stream_events_v3.py`, `test_stream_events_v3_e2e.py` | values/updates/messages/custom/checkpoints/tasks/debug、subgraph namespace、v3 事件 |
+| retry/timeout | `test_retry.py` | 异常匹配、重试、backoff、timeout、CancelledError |
+| checkpoint/store | `libs/checkpoint/tests/test_store.py`, `libs/checkpoint-sqlite/tests/test_sqlite.py`, `libs/checkpoint-postgres/tests/test_async.py` | 基础契约、SQLite/Postgres 同步异步实现（真实数据库依赖环境） |
+| SDK 流 | `libs/sdk-py/tests/streaming/` | SSE/WebSocket、共享流、游标与 replay（假服务/测试传输） |
+
+这些文件只能证明“测试源码覆盖了该路径”，不能证明本机当前通过。要把它们升级为成功证据，必须在目标仓库安装依赖后运行该仓库规定的测试命令，并单独启动所需 SQLite/Postgres/远程假服务；本平台文档不把未执行的测试写成通过。
+
+### 18.5 唯一文档边界
+
+平台侧本文件是该源码参考项目在 `系统工程平台/开发文档/源码参考研究/项目/.../langgraph/` 下的唯一持续维护架构文档。目标源码仓库根目录当前还有一个未跟踪的 `ARCHITECTURE.md`，它不在本工作包允许修改范围内，故未删除或改写；后续发布前应由维护者决定是否清理该源码树内的重复文档，避免把源码参考仓库的临时产物误当平台权威文档。
+4. API server、远程 rollback、认证/权限、生产数据库事务隔离、密钥轮换、宿主崩溃恢复和外部副作用 exactly-once 仍属于仓库外或未闭合能力，不能由当前核对静态审计升级为已实现事实。

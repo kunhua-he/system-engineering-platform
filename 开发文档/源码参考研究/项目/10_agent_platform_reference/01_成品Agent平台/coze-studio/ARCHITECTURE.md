@@ -191,11 +191,11 @@ README 将对话、聊天、Workflow API 和 Chat SDK 作为公开集成能力�
 - `make sync_db`、`make dump_db`、`make sql_init`、`make atlas-hash`
 - `make down`、`make down_web`、`make clean`
 
-本轮只读取命令定义，未执行任何启动、构建、安装或数据库命令。
+当前核对只读取命令定义，未执行任何启动、构建、安装或数据库命令。
 
 ### 5.4 前端包与 SDK 入口
 
-`frontend/apps/coze-studio/package.json` 确认主应用是 `@coze-studio/app`，使用 React 18、React Router、Zustand；开发/构建由 Rsbuild，测试由 Vitest。应用依赖多个 `workspace:*` 包，包括 `@coze-project-ide/main`、`@coze-studio/api-schema`、Studio workspace 包、Workflow playground adapter 和基础设施包。`frontend/packages/workflow/sdk/README.md` 存在，说明 Workflow SDK 是独立前端包边界；具体导出符号和浏览器调用协议未在本轮展开。
+`frontend/apps/coze-studio/package.json` 确认主应用是 `@coze-studio/app`，使用 React 18、React Router、Zustand；开发/构建由 Rsbuild，测试由 Vitest。应用依赖多个 `workspace:*` 包，包括 `@coze-project-ide/main`、`@coze-studio/api-schema`、Studio workspace 包、Workflow playground adapter 和基础设施包。`frontend/packages/workflow/sdk/README.md` 存在，说明 Workflow SDK 是独立前端包边界；具体导出符号和浏览器调用协议未在当前核对展开。
 
 ## 6. 技术栈与基础设施
 
@@ -225,9 +225,9 @@ README/CLAUDE 与实际 `backend/go.mod` 存在版本口径差异：指导文档
 - 后端测试使用 Go 原生测试生态；当前可见 `backend/domain/workflow/service/executable_impl_test.go`，采用 `testing`、Testify、Gomock、生成 Mock 和跨领域消息 Mock，覆盖执行实现内部逻辑和错误/历史场景。
 - `backend/api/handler/coze/workflow_service_test.go` 存在工作流服务 API 测试，已检索到 `TestListWorkflowAsToolData` 等用例。
 - 前端主应用脚本为 `vitest --run --passWithNoTests` 与 coverage 变体；Rush 指导命令是 `rush test`、`rush lint`。
-- CLAUDE.md 给出按 Rush level 的覆盖率目标：Level 1 80%（增量 90%）、Level 2 30%（增量 60%）、Level 3/4 灵活；该覆盖率策略未在本轮执行工具核实。
-- IDL 生成代码位于 `backend/api/model/` 等目录；代码生成链和生成命令未在本轮执行确认。
-- 本轮未安装依赖、启动服务、构建、运行测试或访问数据库；因此本文不宣称当前分支测试通过，也不宣称部署可用。
+- CLAUDE.md 给出按 Rush level 的覆盖率目标：Level 1 80%（增量 90%）、Level 2 30%（增量 60%）、Level 3/4 灵活；该覆盖率策略未在当前核对执行工具核实。
+- IDL 生成代码位于 `backend/api/model/` 等目录；代码生成链和生成命令未在当前核对执行确认。
+- 当前核对未安装依赖、启动服务、构建、运行测试或访问数据库；因此本文不宣称当前分支测试通过，也不宣称部署可用。
 
 ## 8. 关键路径索引
 
@@ -258,22 +258,22 @@ README/CLAUDE 与实际 `backend/go.mod` 存在版本口径差异：指导文档
 5. Trace/Span 的具体落库实现、SSE 事件订阅端和执行历史写入时机未完全确认。
 6. Open API/Chat SDK 的认证、限流、错误码、请求体和 handler→domain 逐方法链路需要继续读取 IDL 及对应 handler。
 7. 根目录没有 `package.json`/`go.mod`；前端/后端是独立子项目，其他语言脚本和 Python setup 的职责尚未详查。
-8. `rush.json` 声明的完整前端包数、层级依赖和各 package 的实际依赖图本轮未重新统计；CLAUDE.md 的“135+”是指导文档口径。
+8. `rush.json` 声明的完整前端包数、层级依赖和各 package 的实际依赖图当前核对未重新统计；CLAUDE.md 的“135+”是指导文档口径。
 9. 公开部署的安全风险是 README 的警告，不等于已完成安全审计；尤其 Python 代码节点、SSRF、注册和横向越权仍需单独验证。
-10. 本轮专属 MCP 绑定存在环境问题：`project_context` 返回的是非目标 `华世王镞_v3`/`project_toolkit`，`codegraph_explore` 报告目标缺少 `.codegraph/` 索引；因此本文件的目标仓库证据来自直接静态读取，而不是代码地图结果。
+10. 当前核对专属 MCP 绑定存在环境问题：`project_context` 返回的是非目标 `华世王镞_v3`/`project_toolkit`，`codegraph_explore` 报告目标缺少 `.codegraph/` 索引；因此本文件的目标仓库证据来自直接静态读取，而不是代码地图结果。
 
-## 10. 本轮范围与变更纪律
+## 10. 当前核对范围与变更纪律
 
 本文件已吸收此前 `细探-coze-studio.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 仅新增/更新本项目根目录 `ARCHITECTURE.md`。未改源码、依赖清单、测试、配置或 README；未安装依赖；未启动服务；未构建；未提交 Git。
 
 ---
 
-# 第三轮：通用底座映射、组件契约与执行生命周期
+# 后续：通用底座映射、组件契约与执行生命周期
 
-> 本章是基于当前磁盘源码的第三轮增量，不把 Coze Studio 直接复制为系统工程平台。映射目标是提取可复用的公共契约、模块编排、运行核心和统一网关边界；没有运行时验证的内容明确标为“静态已见/待实测”。
+> 本章是基于当前磁盘源码的后续增量，不把 Coze Studio 直接复制为系统工程平台。映射目标是提取可复用的公共契约、模块编排、运行核心和统一网关边界；没有运行时验证的内容明确标为“静态已见/待实测”。
 
-## 11. 第三轮结论与唯一链路
+## 11. 后续结论与唯一链路
 
 ### 11.1 总体归属
 
@@ -310,7 +310,7 @@ README/CLAUDE 与实际 `backend/go.mod` 存在版本口径差异：指导文档
 4. **状态与证据的权威 owner**：工作流执行写 `WorkflowExecution`/`NodeExecution`，中断和取消分别由 `InterruptEventStore`/`CancelSignalStore` 维护；其他层只能调用 Repository/Domain Service，不能旁路改表或直接改 Redis key。
 5. **统一网关不承担领域编排**：`backend/api/router/coze/api.go` 只把生成路由绑定到 handler；handler 只做 BindAndValidate、调用 Application Service、转换 JSON/SSE。公共网关层不应承载节点注册、模型选择或数据库事务。
 
-### 11.3 第三轮裁决
+### 11.3 后续裁决
 
 | 模式 | 裁决 | 证据与边界 |
 |---|---|---|
@@ -385,7 +385,7 @@ WorkflowEditService.addNode / 表单变更
 保存与发布的通用底座要求：
 
 1. 草稿、已发布版本、快照、执行输入必须有不同的稳定身份，不能以“当前 Canvas”覆盖已执行版本。
-2. 发布前必须同时校验节点类型、端口、必填参数、插件/数据库/知识依赖和子工作流版本；源码已有 `ValidateTree`、`WorkflowSchemaCheck` 和引用端口，但本轮未确认每一种发布事务的原子提交范围。
+2. 发布前必须同时校验节点类型、端口、必填参数、插件/数据库/知识依赖和子工作流版本；源码已有 `ValidateTree`、`WorkflowSchemaCheck` 和引用端口，但当前核对未确认每一种发布事务的原子提交范围。
 3. 资源复制/移动必须沿 `UseDatabase/UseKnowledge/UsePlugin` 元数据收集依赖并建立引用；不能只复制 Canvas JSON。
 4. 恢复必须携带 `ExecuteID + EventID + ResumeData`；`WorkflowRunner.Prepare` 会核对中断事件存在性、ID 匹配和数据库条件锁，见 `backend/domain/workflow/internal/compose/workflow_run.go:126-158,177-258`。
 
@@ -473,19 +473,19 @@ WorkflowEditService.addNode / 表单变更
 | 进程崩溃/强杀 | 当前静态证据未形成完整 running 执行恢复状态机 | L3 强杀 API/worker 后重启；L4 验证无半发布、无孤儿锁、可重试/人工介入 |
 | SSE/网络断开 | handler defer 关闭 writer/reader；后台运行与客户端连接解耦的完整语义待核 | 断开后验证 context/stream/后台任务策略，避免双写、阻塞、泄漏 |
 
-## 15. L0-L4 验证分层与本轮状态
+## 15. L0-L4 验证分层与当前核对状态
 
-| 等级 | 目标 | 具体验收 | 本轮状态 |
+| 等级 | 目标 | 具体验收 | 当前核对状态 |
 |---|---|---|---|
-| L0 静态契约 | 证明边界、入口和源码存在 | 检查 `ARCHITECTURE.md`、IDL 路由、Service/Repository、NodeAdaptor/Registry、Runner、DAL/provider 文件；检查旧细探未被本轮删除 | **已执行静态读取**；目标 `.codegraph/` 不存在，不能冒充代码图证据 |
+| L0 静态契约 | 证明边界、入口和源码存在 | 检查 `ARCHITECTURE.md`、IDL 路由、Service/Repository、NodeAdaptor/Registry、Runner、DAL/provider 文件；检查旧细探未被当前核对删除 | **已执行静态读取**；目标 `.codegraph/` 不存在，不能冒充代码图证据 |
 | L1 单元/契约 | 证明组件局部行为 | `go test` 定向跑 `domain/workflow/service/executable_impl_test.go`、`api/handler/coze/workflow_service_test.go`；前端 `vitest --run` 跑 registry/form/autosave/节点校验；覆盖坏参数、重复注册、错误码、resume mismatch | **未执行**；依赖/构建成本未启动 |
 | L2 集成 | 证明真实基础设施链 | 隔离 Docker Compose 启 MySQL/Redis/ES/Milvus/MinIO/MQ；创建/保存/发布/执行/取消/中断恢复；核对 DB 行、Redis TTL/list、MQ ack/retry、对象存储、checkpoint | **未执行**；不能把配置文件当服务可用 |
-| L3 进程/API E2E | 证明网关与运行核心贯通 | `make middleware` + server/static；调用 `/api/workflow_api/test_run`、`get_process`、`cancel`、`test_resume`、`/v1/workflow/run`、`stream_run`；断开客户端、强杀进程、重启后查状态/残留 | **未执行**；本轮禁止启动服务和写数据库 |
+| L3 进程/API E2E | 证明网关与运行核心贯通 | `make middleware` + server/static；调用 `/api/workflow_api/test_run`、`get_process`、`cancel`、`test_resume`、`/v1/workflow/run`、`stream_run`；断开客户端、强杀进程、重启后查状态/残留 | **未执行**；当前核对禁止启动服务和写数据库 |
 | L4 部署/混沌/兼容 | 证明上线边界和恢复 | Helm 部署、滚动升级、DB/MQ/Redis 重启、provider 超时/限流、节点/插件版本兼容、压力/并发/资源上限、崩溃恢复和审计证据 | **未执行**；Helm/Compose 仅作部署静态证据 |
 
 L0 之外的任何“通过”都必须同时记录命令、退出码、测试数量、外部依赖、数据库/Redis/MQ 隔离身份、资源清理结果。源码中存在接口、历史测试存在、打印成功日志和子代理回信均不能替代真实执行。
 
-## 16. 第三轮缺口、装配计划与后续复核
+## 16. 后续缺口、装配计划与后续复核
 
 ### 16.1 必补缺口
 
@@ -510,8 +510,8 @@ S0 契约冻结：能力ID/版本/参数/错误/状态/资源 owner
 
 任何新能力都必须先查现有注册表和支持库，命中则复用；只在契约、资源责任和验证缺口明确后升级/新建，不能按 Coze 的目录名复制第二套“工作流引擎”。
 
-### 16.3 第三轮证据边界
+### 16.3 后续证据边界
 
 - 目标仓库当前没有可用的 `.codegraph/`；专属 `system_engineering_toolkit` 的 `project_context` 实际返回了非目标项目 `华世王镞_v3`，MCP 实例为 `project_toolkit`，其代码图和最近成功验证也属于该非目标项目；随后对目标路径的 `codegraph_explore` 明确报“目标缺少 `.codegraph/` 索引”。因此本章所有 coze-studio 结论均来自目标路径直接静态读取，不能引用或冒充非目标代码图/验证证据。
-- 目标目录搜索未发现独立旧细探文件；本轮没有删除任何文件。旧细探已被既有 `ARCHITECTURE.md:267` 声明为已吸收，本轮只追加本文件。
-- 本轮允许修改范围只有目标根 `ARCHITECTURE.md`；本轮不改源码、依赖、配置、测试、README、Git，不安装依赖，不启动服务，不写正式数据库。
+- 目标目录搜索未发现独立旧细探文件；当前核对没有删除任何文件。旧细探已被既有 `ARCHITECTURE.md:267` 声明为已吸收，当前核对只追加本文件。
+- 当前核对允许修改范围只有目标根 `ARCHITECTURE.md`；当前核对不改源码、依赖、配置、测试、README、Git，不安装依赖，不启动服务，不写正式数据库。

@@ -10,9 +10,9 @@
 - **上游**：`https://github.com/SYSTRAN/faster-whisper.git`
 - **许可证**：仓库代码 MIT；Whisper/转换后模型权重的许可证需按具体模型另行核对。
 - **语言与版本**：Python `>=3.9`；包版本 `1.2.1`，证据：`setup.py:14-19`、`faster_whisper/version.py:1-3`。
-- **Git 基线**：本地 `master`/`HEAD` 为 `ed9a06cd89a93e47838f564998a6c09b655d7f43`，提交时间 `2025-11-19T14:40:46Z`，提交说明 `Adds new VAD parameters (#1386)`；本轮现场 `git ls-remote origin HEAD refs/heads/master` 返回相同提交。工作树在本任务开始时已有两个未跟踪文档：`ARCHITECTURE.md` 与 `细探-faster-whisper.md`。
+- **Git 基线**：本地 `master`/`HEAD` 为 `ed9a06cd89a93e47838f564998a6c09b655d7f43`，提交时间 `2025-11-19T14:40:46Z`，提交说明 `Adds new VAD parameters (#1386)`；当前核对现场 `git ls-remote origin HEAD refs/heads/master` 返回相同提交。工作树在本任务开始时已有两个未跟踪文档：`ARCHITECTURE.md` 与 `细探-faster-whisper.md`。
 - **研究边界**：只读取当前仓库源码、README、依赖、测试、CI、Docker/benchmark、Git 元数据和旧细探；不改源码、配置、测试、依赖或 Git，不安装依赖、不下载模型、不启动服务。
-- **性能口径**：README 的“最高 4 倍、更少内存、8-bit”是项目说明/历史 benchmark 口径，不是本机本轮实测结论。
+- **性能口径**：README 的“最高 4 倍、更少内存、8-bit”是项目说明/历史 benchmark 口径，不是本机当前核对实测结论。
 - **代码图状态**：专属 `project_toolkit` 的 `project_context` 首次绑定到了错误项目 `华世王镞_v3`（根目录 `~/Documents/Agent/PHP/华世王镞_v3`）；随后按要求用 `codegraph_explore` 指定目标根，但目标目录及其父级没有 `.codegraph/`，返回“未建立代码图”。本档案以下事实全部以目标仓库现场文件为证据，不能把错误项目代码图冒充本项目证据。
 
 ## 2. 定位与边界
@@ -216,9 +216,9 @@ transcribe
 | 模型别名非法/Hub repo 格式不合法 | `download_model` 抛 `ValueError` | 否 | 配置预校验；不可盲目重试 | 已静态核对：`utils.py:81-89` |
 | Hub 网络、鉴权、缺文件、revision 不可用 | Hugging Face 异常向上抛 | 否（Hub cache 语义除外） | 本地预热、revision 锁定、退避/超时、失败状态和 cache 校验 | 未实测外部 Hub |
 | tokenizer/config 缺失或 JSON 坏 | tokenizer 可能从 Hub fallback；preprocessor JSON 坏时 warning 后使用当前 config | 仅隐式 fallback | 离线模式必须预置文件并验证 hash/版本；不要把 warning 当成功 | 已静态核对：`transcribe.py:700-745` |
-| PyAV 媒体错误/空输入 | 个别 `InvalidDataError` 帧跳过；其他异常传播；空 waveform 可返回空结果 | 否 | 输入格式/时长校验、错误分类、上层超时 | 空音频有测试源码，未本轮执行 |
+| PyAV 媒体错误/空输入 | 个别 `InvalidDataError` 帧跳过；其他异常传播；空 waveform 可返回空结果 | 否 | 输入格式/时长校验、错误分类、上层超时 | 空音频有测试源码，未当前核对执行 |
 | 缺 `onnxruntime` 或 ONNX session 失败 | 开启 VAD 时 `RuntimeError`/session 异常 | 否 | provider 预检，按能力降级或明确失败 | 已静态核对：`vad.py:329-348` |
-| VAD 无 speech chunks | `collect_chunks` 返回空数组/零 duration；批量可能产生空结果；单路拼接空 waveform | 否 | 业务上区分“无语音”与“失败”，保留 info/状态 | 测试覆盖意图存在，未本轮实测 |
+| VAD 无 speech chunks | `collect_chunks` 返回空数组/零 duration；批量可能产生空结果；单路拼接空 waveform | 否 | 业务上区分“无语音”与“失败”，保留 info/状态 | 测试覆盖意图存在，未当前核对实测 |
 | 长音频无 VAD、无 clip | 单路抛 `RuntimeError`，要求 VAD 或 clip | 否 | 明确切片策略，不把异常当空结果 | 已静态核对：`transcribe.py:913-919` |
 | 非法 task/language | `Tokenizer` 抛 `ValueError` | 否 | 参数契约预校验 | 已静态核对：`tokenizer.py:21-32` |
 | prompt + max_new_tokens 超过 `max_length=448` | 单路/批量抛 `ValueError` | 否 | 限制 prompt、记录拒绝原因 | 已静态核对：`transcribe.py:198-207,1421-1430` |
@@ -234,13 +234,13 @@ transcribe
 
 | 等级 | 可证明内容 | 本项目证据 | 不能冒充的结论 |
 |---|---|---|---|
-| **L0 存在性** | 文档、源码路径、测试/CI/资产文件存在 | 本轮读取 `ARCHITECTURE.md`、旧细探、源码、测试、CI；目标目录未建立 codegraph | 不证明代码可导入、测试通过或模型可用 |
+| **L0 存在性** | 文档、源码路径、测试/CI/资产文件存在 | 当前核对读取 `ARCHITECTURE.md`、旧细探、源码、测试、CI；目标目录未建立 codegraph | 不证明代码可导入、测试通过或模型可用 |
 | **L1 静态实现** | 符号、调用关系、分支和数据结构在当前文件中存在 | `transcribe.py` 1941 行、`audio.py`/`vad.py`/`utils.py`/测试等源码逐段核对 | 不证明外部依赖版本兼容、实际 CT2 输出或资源释放现场 |
-| **L2 历史/声明验证** | CI 命令、README 示例、测试意图和远程基线被记录 | `.github/workflows/ci.yml:13-90`；README 使用示例；Git 本地/远程同 commit | 不证明 CI 在本轮或本机通过；README benchmark 不等于本机 benchmark |
-| **L3 本轮真实执行** | 本轮命令实际退出码为 0，并给出可复现输出 | 见第 12 节；仅列现场 Git/静态文档检查，未安装依赖、未运行推理 | 不把静态 AST/Markdown 检查当端到端转写 |
+| **L2 历史/声明验证** | CI 命令、README 示例、测试意图和远程基线被记录 | `.github/workflows/ci.yml:13-90`；README 使用示例；Git 本地/远程同 commit | 不证明 CI 在当前核对或本机通过；README benchmark 不等于本机 benchmark |
+| **L3 当前核对真实执行** | 当前核对命令实际退出码为 0，并给出可复现输出 | 见第 12 节；仅列现场 Git/静态文档检查，未安装依赖、未运行推理 | 不把静态 AST/Markdown 检查当端到端转写 |
 | **L4 外部依赖/硬件端到端** | 真实模型、PyAV、HF、ONNX、CT2、CUDA 或完整 pytest 实测 | **未执行**：没有下载模型、安装依赖、运行全量 pytest、GPU/CUDA、Hub 或 ONNX 推理 | 不得声称“模型能跑”“VAD 通过”“GPU 可用”“性能达到 README” |
 
-## 12. 测试、CI 与本轮验证
+## 12. 测试、CI 与当前核对验证
 
 ### 12.1 仓库已有测试与 CI（存在不等于通过）
 
@@ -262,7 +262,7 @@ CI `.github/workflows/ci.yml:13-90` 在 Python 3.9 上执行：
 
 这些测试中的 `WhisperModel("tiny")` 会加载或下载模型（例如 `test_transcribe.py:10-16`），所以本任务不在未准备依赖和网络/模型条件下擅自运行。
 
-### 12.2 本轮实际验证
+### 12.2 当前核对实际验证
 
 | 检查 | 命令/证据 | 退出码 | 结论 |
 |---|---|---:|---|
@@ -285,7 +285,7 @@ CI `.github/workflows/ci.yml:13-90` 在 Python 3.9 上执行：
 
 ### 不直接采信/改为待核
 
-- “同精度快 4 倍”“更省内存”只保留为 README/历史 benchmark 声明，不写成本轮实测；
+- “同精度快 4 倍”“更省内存”只保留为 README/历史 benchmark 声明，不写成当前核对实测；
 - “8-bit CPU/GPU”保留为 CT2/README 能力边界，不推断本机设备可用；
 - “tests/（基准）”更正为测试与 benchmark 分离：`tests/` 是集成测试，`benchmark/` 才是速度、内存、WER 和 YouTube Commons 评估；
 - “多提供者”不作为本库已实现事实：当前代码只有 CTranslate2 主推理，Silero/ONNX 是 VAD provider，不存在 FunASR/WhisperX 路由或统一 provider 注册表；
@@ -322,7 +322,7 @@ CI `.github/workflows/ci.yml:13-90` 在 Python 3.9 上执行：
 
 它适合作为离线/批量 ASR 推理能力或独立适配器的底层实现，不应被误当成业务 API、任务编排器、持久化系统或原生 streaming 引擎。真正接入前的 P0 是：锁定模型与依赖版本、隔离模型/请求资源、消费 generator、补齐错误/超时/取消/崩溃恢复和逐段持久化，并用 L3/L4 真实证据验证，而不是把源码存在、CI 声明或 README benchmark 当作假绿。
 
-## 16. 第三轮通用底座映射（仅形成接入裁决，不改生产底座）
+## 16. 后续通用底座映射（仅形成接入裁决，不改生产底座）
 
 本节把当前源码能力映射到“支持库—媒体转写模块—模型提供者—运行核心”四个职责边界。它是平台后续需求登记、能力复用搜索和装配计划的输入，不表示本仓库已有这些平台组件，也不授权在本仓库内新增第二套任务系统。所有“应”字样都是接入约束；当前项目事实仍以第 1—15 节的源码证据为准。
 
@@ -430,7 +430,7 @@ CI `.github/workflows/ci.yml:13-90` 在 Python 3.9 上执行：
 | HF cache / model artifact | Hub 管缓存，当前库未做摘要事务或完整性核验 | 模型制品支持库维护 revision、文件清单、摘要、临时目录与原子发布；运行核心只管租约、并发和故障恢复 |
 | Segment/Word 结果 | generator 局部 yield，库不持久化 | 媒体模块逐段转公共 DTO；运行核心/权威状态记录提交 offset 和终态，崩溃后只重放未提交部分 |
 
-### 16.6 第三轮复用/升级/新建/废弃裁决
+### 16.6 后续复用/升级/新建/废弃裁决
 
 | 裁决 | 结论 | 理由与边界 |
 |---|---|---|
@@ -444,7 +444,7 @@ CI `.github/workflows/ci.yml:13-90` 在 Python 3.9 上执行：
 
 **单链路验收条件**：同一模型、同一输入、同一 revision 的单路与批量可以有明确的 provider 内部差异，但必须通过同一个媒体转写模块契约、同一个任务/资源治理链和同一个结果/证据 owner；不能因为批量、VAD 或词级时间戳分别再造入口、状态表、缓存或错误翻译。
 
-### 16.7 第三轮 L0-L4 验收矩阵
+### 16.7 后续 L0-L4 验收矩阵
 
 | 能力 | 当前最高证据 | L3 必须真实执行 | L4 必须真实执行 | 当前结论 |
 |---|---|---|---|---|
@@ -456,7 +456,7 @@ CI `.github/workflows/ci.yml:13-90` 在 Python 3.9 上执行：
 | 状态/取消/超时/故障回收 | L0/L1 仅能证明源码没有这些接口；第 10 节反向矩阵 | 先以真实 worker/任务监督器做取消、分阶段 deadline、SIGTERM/killpg/wait、残留核验 | GPU OOM、SIGKILL、Hub 中断、解释器重启后幂等恢复和证据对账 | 属平台接入缺口，不得归功于 faster-whisper |
 | CPU/GPU/CT2 资源 | L1：`transcribe.py:620-698,1391-1400`；L2：README/requirements | CPU CT2 真实推理、线程/内存峰值与 provider 错误分类 | CUDA/cuBLAS/cuDNN、量化、显存并发/OOM 和设备恢复 | 当前无本机硬件证据 |
 
-L0/L1/L2 的源码、测试、CI 和 README 证据只能证明“存在/实现分支/声明或测试意图”；L3 才能证明本轮命令真实执行，L4 才能证明外部模型、硬件和故障回收。当前本文件没有新增模型下载、推理或 GPU 执行，因此本轮映射结论最高仍是静态/历史证据，不能写成“转写链路已接入平台”。
+L0/L1/L2 的源码、测试、CI 和 README 证据只能证明“存在/实现分支/声明或测试意图”；L3 才能证明当前核对命令真实执行，L4 才能证明外部模型、硬件和故障回收。当前本文件没有新增模型下载、推理或 GPU 执行，因此当前核对映射结论最高仍是静态/历史证据，不能写成“转写链路已接入平台”。
 
 ### 16.8 装配工作包与退出条件
 
@@ -471,9 +471,9 @@ L0/L1/L2 的源码、测试、CI 和 README 证据只能证明“存在/实现�
 
 **退出条件**：能力目录只有一个转写 owner；模型下载只有一个制品/cache owner；VAD/align 没有旁路实现；任务状态/取消/超时/回收只由运行核心和媒体模块按职责负责；所有外部结果可读回、残留可验证、L3/L4 证据与本档案路径/命令/退出码一致。
 
-## 18. 第二轮深挖收口：CTranslate2、装载、解码、beam/batch、设备与生命周期
+## 18. 后续深挖收口：CTranslate2、装载、解码、beam/batch、设备与生命周期
 
-本节是第二轮针对底层执行边界的收口。它只描述当前快照的真实实现，不把 CTranslate2、FFmpeg/PyAV、ONNX Runtime 或 GPU 驱动的外部能力扩写成 `faster-whisper` 自己的能力。行号以本轮源码现场为准；若后续上游变化，应重新核对源码而不是沿用本节结论。
+本节是后续针对底层执行边界的收口。它只描述当前快照的真实实现，不把 CTranslate2、FFmpeg/PyAV、ONNX Runtime 或 GPU 驱动的外部能力扩写成 `faster-whisper` 自己的能力。行号以当前核对源码现场为准；若后续上游变化，应重新核对源码而不是沿用本节结论。
 
 ### 18.1 CTranslate2 调用边界：一个模型对象、三类执行调用
 
@@ -482,7 +482,7 @@ L0/L1/L2 的源码、测试、CI 和 README 证据只能证明“存在/实现�
 | CT2 调用 | Python 输入形状/批次 | 传入的关键参数 | 输出消费方式 | 失败与所有权 |
 |---|---|---|---|---|
 | `Whisper.encode` | 单路特征先扩为 batch 维；批量特征由 `np.stack` 形成 batch | `StorageView`；多 GPU 时 `to_cpu=True` | `StorageView` 继续交给 `generate` 或 `align` | CT2 异常直接上抛；encoder output 只由当前 generator/批次引用，不落盘；`encode` 无独立 close |
-| `Whisper.generate`（单路） | `[encoder_output]` 与 `[prompt]`，实际 batch=1 | 公共长度/惩罚/抑制参数；温度 0 用 `beam_size`+`patience`，非零温度用 `beam_size=1`、`num_hypotheses=best_of`、`sampling_topk=0`、`sampling_temperature` | 取返回列表第一个结果的 `sequences_ids[0]`、`scores[0]`、`no_speech_prob` | 每个温度是一次串行 CT2 调用；CT2 异常不会触发下一温度 fallback；返回对象只在本轮候选计算中持有 |
+| `Whisper.generate`（单路） | `[encoder_output]` 与 `[prompt]`，实际 batch=1 | 公共长度/惩罚/抑制参数；温度 0 用 `beam_size`+`patience`，非零温度用 `beam_size=1`、`num_hypotheses=best_of`、`sampling_topk=0`、`sampling_temperature` | 取返回列表第一个结果的 `sequences_ids[0]`、`scores[0]`、`no_speech_prob` | 每个温度是一次串行 CT2 调用；CT2 异常不会触发下一温度 fallback；返回对象只在当前核对候选计算中持有 |
 | `Whisper.generate`（批量） | 一次传入一个 Python batch 的多条 `StorageView`/prompt | `beam_size`、`patience`、`length_penalty`、`max_length`、抑制参数、`sampling_temperature=temperatures[0]`；不传 `num_hypotheses` | 逐结果读取 `sequences_ids[0]`、`scores[0]`、`no_speech_prob`，再按 chunk metadata 切段 | `batch_size` 只控制调用前后的 Python 切片；整批 CT2 异常使当前批次 generator 中断，已 yield 的前批次不会回滚 |
 | `Whisper.align` | 一次对一组文本 token 与 encoder output 对齐 | `sot_sequence`、文本 token、`num_frames`、`median_filter_width=7` | `alignments`、token 概率经 Python DTW/词切分变成 `Word` | 对齐异常直接上抛；空文本在 Python 侧短路为空列表 |
 
@@ -576,7 +576,7 @@ av.open(input_file, metadata_errors="ignore")
 
 特别要区分三类“取消”：(1) 不遍历返回的 generator，只是推理尚未开始或尚未继续；(2) Python `generator.close()`，最多停止后续 Python 迭代，源码没有把它传给 CT2 cancel；(3) worker 进程被 SIGTERM/kill，才是外层能验证的硬停止边界。当前项目只实现了第一、第二类的 Python 语义，没有第三类进程治理。
 
-### 18.7 第二轮失败矩阵与接入验收补强
+### 18.7 后续失败矩阵与接入验收补强
 
 | 反向场景 | 当前源码可确认行为 | 不应宣称 | 外层验收动作 |
 |---|---|---|---|
@@ -589,21 +589,21 @@ av.open(input_file, metadata_errors="ignore")
 | generator 中途抛错/close | `pbar`、批 pipeline 状态可能不走末尾清理 | 返回 tuple 或首个 segment 即代表完成 | 用异常注入验证状态、句柄、worker、临时目录和部分结果读回 |
 | CUDA/CT2/ONNX OOM 或驱动异常 | 异常向上抛，没有自动降 batch/换设备/重建 | “重试”已由库提供 | 独立进程组、kill/reap、租约释放、重建上限和错误分类由运行核心负责 |
 
-第二轮结论：CTranslate2 是单一数值推理边界，但模型下载、音频解码、特征构造、VAD、tokenizer、结果切段都发生在同一 Python 进程；该库没有把其中任一环节变成可取消、可回滚、可恢复的任务。生产接入的最小硬边界仍是“模型/解码/CT2/VAD 放 provider worker，任务状态/超时/取消/进程回收/逐段幂等落盘放外层唯一 owner”。
+后续结论：CTranslate2 是单一数值推理边界，但模型下载、音频解码、特征构造、VAD、tokenizer、结果切段都发生在同一 Python 进程；该库没有把其中任一环节变成可取消、可回滚、可恢复的任务。生产接入的最小硬边界仍是“模型/解码/CT2/VAD 放 provider worker，任务状态/超时/取消/进程回收/逐段幂等落盘放外层唯一 owner”。
 
-### 18.8 本轮验证等级与边界
+### 18.8 当前核对验证等级与边界
 
-| 检查 | 本轮真实动作 | 结果/等级 |
+| 检查 | 当前核对真实动作 | 结果/等级 |
 |---|---|---|
 | CTranslate2、装载、解码、特征、VAD、测试源码取证 | 读取 `transcribe.py`、`audio.py`、`feature_extractor.py`、`vad.py`、`utils.py`、`requirements.txt`、`tests/test_transcribe.py` 的相关实现 | L1 静态实现证据；关键调用、参数映射、异常分支和资源路径均有源码路径 |
-| 历史细探对照 | 读取 `细探-faster-whisper.md`，保留旧文件并将第二轮有效事实补入本文件 | L0/L1；旧细探仍是历史线索，不是并行事实源 |
+| 历史细探对照 | 读取 `细探-faster-whisper.md`，保留旧文件并将后续有效事实补入本文件 | L0/L1；旧细探仍是历史线索，不是并行事实源 |
 | 文档结构与目标范围 | 仅写目标根 `ARCHITECTURE.md`；目标根 `git status --short` 仍只显示既有未跟踪的两份文档；`git diff --check -- ARCHITECTURE.md` 返回 0 | 文档写入成功；未改源码、依赖、配置、测试或 Git；由于架构文档本身未跟踪，Git diff 不作为内容差异证据 |
 | 真实模型/CT2/PyAV/ONNX/GPU/线程/崩溃测试 | 未安装依赖、未下载模型、未启动推理或故障 worker | L3/L4 未验证；不能宣称模型可运行、GPU 可用、线程数达到预期或异常释放已现场通过 |
 
-## 19. 第三轮更新后的剩余风险
+## 19. 后续更新后的剩余风险
 
-1. 专属 MCP `project_context` 首次绑定错误项目，`codegraph_explore` 指定 faster-whisper 时确认目标无 `.codegraph/`；本轮没有把错误项目代码图当作目标证据，也没有重复请求不可用代码图。
+1. 专属 MCP `project_context` 首次绑定错误项目，`codegraph_explore` 指定 faster-whisper 时确认目标无 `.codegraph/`；当前核对没有把错误项目代码图当作目标证据，也没有重复请求不可用代码图。
 2. 当前源码没有任务状态、取消、超时、OOM、崩溃回收或持久化结果；第 16.4—16.8 节是平台接入契约和验收要求，不是源码已具备能力。
-3. `download_model` 的 Hub cache、tokenizer fallback 和外部模型完整性未在本轮实测；不得把下载成功测试源码当作当前网络/凭证/模型 revision 证据。
+3. `download_model` 的 Hub cache、tokenizer fallback 和外部模型完整性未在当前核对实测；不得把下载成功测试源码当作当前网络/凭证/模型 revision 证据。
 4. 单路/批量默认值、quality fallback、VAD 参数原地修改和 `last_speech_timestamp` 差异可能造成结果漂移；统一模块契约必须显式固定而不能只做 drop-in 声明。
 5. 本任务严格只修改本文件；没有创建支持库、媒体模块、provider、运行核心、测试、配置或模型制品，也没有删除 `细探-faster-whisper.md`。

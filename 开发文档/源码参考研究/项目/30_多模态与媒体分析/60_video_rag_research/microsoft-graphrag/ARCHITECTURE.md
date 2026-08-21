@@ -2,7 +2,7 @@
 
 > 建档范围：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/60_video_rag_research/microsoft-graphrag`
 >
-> 建档性质：第二轮内部收口、只读源码研究后的架构事实记录。本文只描述当前源码与仓库文档，不把设计意图当作已实现事实；旧细探保留为历史原始记录。
+> 建档性质：后续内部收口、只读源码研究后的架构事实记录。本文只描述当前源码与仓库文档，不把设计意图当作已实现事实；旧细探保留为历史原始记录。
 >
 > 建档基线：本地 `main` / `14a00ad88fc33cf2b52f4f113f25807556f8e25e`（`Release v3.1.1 (#2458)`，本地时间 `2026-07-17T19:16:53-06:00`）。
 >
@@ -397,7 +397,7 @@ CLI `graphrag index` / Python `build_index`
 | 资源 | 创建/持有 | 正常释放 | 失败、超时、取消、崩溃 | 当前证据与缺口 |
 |---|---|---|---|---|
 | 输入/输出 `Storage`、`TableProvider` | `run_pipeline` 的 `create_storage/create_table_provider`，放入 `PipelineRunContext` | provider 本身无统一 context-manager；由实现/进程结束回收 | pipeline 异常没有统一 close；宿主崩溃可留下半写文件或旧 `context.json` | `run_pipeline.py:39-49,82-107`; 需 provider-specific 实测 |
-| `Table` reader/writer | `TableProvider.open`，异步迭代/写行 | 使用 `async with` 才保证 `__aexit__ -> close()` | 若调用方未进入 context，异常/取消可能不 flush；文件 provider 的临时文件/原子替换未在本轮实测 | `tables/table.py:16-125`; 现有接口声明强于 pipeline 的调用约束 |
+| `Table` reader/writer | `TableProvider.open`，异步迭代/写行 | 使用 `async with` 才保证 `__aexit__ -> close()` | 若调用方未进入 context，异常/取消可能不 flush；文件 provider 的临时文件/原子替换未在当前核对实测 | `tables/table.py:16-125`; 现有接口声明强于 pipeline 的调用约束 |
 | DataFrame 与表缓冲 | `read_dataframe/write_dataframe`、各 workflow 中间 DataFrame | Python 引用释放；workflow 自身决定写入时机 | 大表读取和 `_copy_previous_output` 明确会整表读入内存；无总内存预算/取消回滚 | `run_pipeline.py:182-189`; 与 Table 流式抽象并存，不能概括为全链路流式 |
 | LLM/embedding HTTP 会话 | LiteLLM middleware/provider；completion/embedding thread runner 可包线程池 | provider 自己关闭/请求结束；线程 runner 正常路径发送 sentinel、join worker、结束 handler | runner 任意异常路径不保证 `_cleanup`；异步取消不在 `except KeyboardInterrupt` 中；进程崩溃只能由 OS/provider 回收 | `completion_thread_runner.py:181-243`; `embedding_thread_runner.py:154-216`; no end-to-end crash probe |
 | 线程、队列、信号 | runner 创建 `threading.Event`、worker threads、input/output Queue | normal `_cleanup` 逐线程 sentinel + join，再结束 handler | queue_limit=0 可无界；KeyboardInterrupt 直接 `sys.exit(1)`；阻塞 provider 可能延长 join；无强制 join deadline | 同上；这是资源/取消风险，不宣称已修复 |
@@ -411,7 +411,7 @@ CLI `graphrag index` / Python `build_index`
 | 场景 | 当前实现可确认的行为 | 能否安全重试/恢复 | 证据等级 |
 |---|---|---|---|
 | 非法配置/未知 method/workflow | Pydantic/config 与 factory/CLI 处抛出校验或查找错误 | 启动前修正后重试；无统一错误码契约 | L1 静态源码 |
-| 单文档 LLM 抽取异常 | `GraphExtractor.__call__` 回调记录后返回空 entities/relationships | 可能继续；是否导致空图终止要看上层 workflow 数据校验，不能默认安全 | L1；无本轮运行 |
+| 单文档 LLM 抽取异常 | `GraphExtractor.__call__` 回调记录后返回空 entities/relationships | 可能继续；是否导致空图终止要看上层 workflow 数据校验，不能默认安全 | L1；无当前核对运行 |
 | provider 网络/模型异常 | middleware 可配置 retry、rate limit、cache；线程 worker 将 `Exception` 放入 response queue | 依赖异常类型和 provider；retry 不是幂等/事务，可能产生重复外部请求 | L1 |
 | Global map JSON 解析失败 | map 结果转为空/低分点，后续排序过滤；全无效且禁用通用知识时返回 `NO_DATA_ANSWER` | 查询可重新执行，但可能重新消耗 LLM；无请求 id 幂等 | L1 |
 | DRIFT primer/动作 shape 错误 | primer 结果缺字段会 `ValueError/RuntimeError`；空 query `ValueError` | 调用方修正输入或重试；没有已提交 QueryState 的持久恢复链 | L1 |
@@ -423,12 +423,12 @@ CLI `graphrag index` / Python `build_index`
 
 ### 14.6 防假绿验证分级（L0–L4）
 
-| 等级 | 证明什么 | 本仓库对应证据 | 本轮状态/不能宣称 |
+| 等级 | 证明什么 | 本仓库对应证据 | 当前核对状态/不能宣称 |
 |---|---|---|---|
 | L0 | 路径、源码、文档、注册表存在 | `read_file/search_files` 读取旧细探、本文、README、pyproject、关键 Python 源码；codegraph 明确返回“无 `.codegraph/`” | 已完成静态取证；不是行为通过 |
-| L1 | 纯单元/契约行为可执行 | `tests/unit`、`tests/verbs` 覆盖配置、factory、抽取、社区、存储、向量等；如 `tests/verbs/test_pipeline_state.py` 只证明 state passthrough | 本轮未安装依赖、未运行；测试文件存在不等于 pass |
-| L2 | 本地真实 provider/文件产物可运行 | `tests/integration/vector_stores/test_lancedb.py` 创建临时 LanceDB、插入/检索/清理；smoke fixtures 检查 output/stats/artifacts/NaN | 本轮未运行；不能宣称 LanceDB/Parquet 全链路绿 |
-| L3 | CLI 子进程端到端索引/查询与制品断言 | `tests/smoke/test_fixtures.py` 用 `uv run poe index/query`、检查退出码、`stats.json` workflow 集合、行数范围、NaN，并清理 output/cache | 代码存在但未执行；没有本轮退出码 |
+| L1 | 纯单元/契约行为可执行 | `tests/unit`、`tests/verbs` 覆盖配置、factory、抽取、社区、存储、向量等；如 `tests/verbs/test_pipeline_state.py` 只证明 state passthrough | 当前核对未安装依赖、未运行；测试文件存在不等于 pass |
+| L2 | 本地真实 provider/文件产物可运行 | `tests/integration/vector_stores/test_lancedb.py` 创建临时 LanceDB、插入/检索/清理；smoke fixtures 检查 output/stats/artifacts/NaN | 当前核对未运行；不能宣称 LanceDB/Parquet 全链路绿 |
+| L3 | CLI 子进程端到端索引/查询与制品断言 | `tests/smoke/test_fixtures.py` 用 `uv run poe index/query`、检查退出码、`stats.json` workflow 集合、行数范围、NaN，并清理 output/cache | 代码存在但未执行；没有当前核对退出码 |
 | L4 | 真实外部 LLM、Azure/Cosmos/Azurite、网络、限流/断线/取消/崩溃恢复 | `tests/integration` 和 smoke 配置提供部分入口，但需外部服务/密钥/运行环境 | 未验证；这是最大证据缺口 |
 
 ## 15. 未验证项、吸收/不吸收裁决与剩余风险
@@ -458,7 +458,7 @@ CLI `graphrag index` / Python `build_index`
 
 ## 16. 验证记录与后续最小验收命令
 
-本轮实际执行的只读验证：
+当前核对实际执行的只读验证：
 
 | 命令/动作 | 退出码/结果 | 用途 |
 |---|---:|---|
@@ -477,7 +477,7 @@ PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/smoke/test_fixtures.py
 uv run poe check
 ```
 
-这些是后续验收命令，不是本轮已通过的命令；在未实际运行前不得写成绿色结论。
+这些是后续验收命令，不是当前核对已通过的命令；在未实际运行前不得写成绿色结论。
 
 ## 17. 单一文档规则
 
@@ -485,13 +485,13 @@ uv run poe check
 - `细探-GraphRAG.md` 保留为历史原始细探，本次未删除、未改写；它不再承载后续增量事实。
 - 源码、测试、配置、依赖、Git 均未修改；本次只补充本文件的深度架构事实、证据边界和验证裁决。
 
-## 18. 第三轮通用底座映射：GraphRAG → 支持库、知识图谱模块、运行核心
+## 18. 后续通用底座映射：GraphRAG → 支持库、知识图谱模块、运行核心
 
-> 本节是第三轮“底座映射与裁决”，不是把 GraphRAG 源码复制进生产平台，也没有启动任何底座实现。所有“应映射/建议建立”均是装配输入；当前项目事实仍以 §2–§17 和源码证据为准。
+> 本节是后续“底座映射与裁决”，不是把 GraphRAG 源码复制进生产平台，也没有启动任何底座实现。所有“应映射/建议建立”均是装配输入；当前项目事实仍以 §2–§17 和源码证据为准。
 
 ### 18.1 三层职责裁决
 
-| GraphRAG 能力 | 支持库（可复用的原子能力） | 知识图谱模块（领域流程 owner） | 运行核心（统一生命周期 owner） | 第三轮裁决 |
+| GraphRAG 能力 | 支持库（可复用的原子能力） | 知识图谱模块（领域流程 owner） | 运行核心（统一生命周期 owner） | 后续裁决 |
 |---|---|---|---|---|
 | `PipelineFactory`、Standard/Fast/Update workflow | 有序工作流接口、能力注册表、运行状态/事件类型 | 声明 `load/chunk/extract/merge/community/report/embed/update` 的领域步骤 | 根据方法、版本和配置装配并顺序驱动；统一停止、错误、指标和证据 | **吸收为“注册表 + 装配计划”模式**；不让每个业务复制一套 pipeline |
 | `Storage` / `TableProvider` / `Table` | `artifact-storage`、命名空间、表/行流式读写、schema/manifest 校验 | 只通过表契约读写 `documents/text_units/entities/relationships/...` | 创建 provider、绑定 run namespace、控制提交/激活、记录状态 | **升级支持库边界**；当前接口没有事务，不能直接当事实账本 |
@@ -546,7 +546,7 @@ uv run poe check
 
 ### 18.4 事务、幂等、部分写入：底座必须补的提交协议
 
-当前源码明确是“先写产物、最后写状态”，`previous/delta` 也只是命名空间和复制备份：`run_pipeline.py:54-90,182-189` 没有 run lease、manifest 校验、原子激活指针或跨表 commit。第三轮映射因此采用以下**待实现的公共契约**，不是对 GraphRAG 当前能力的夸大：
+当前源码明确是“先写产物、最后写状态”，`previous/delta` 也只是命名空间和复制备份：`run_pipeline.py:54-90,182-189` 没有 run lease、manifest 校验、原子激活指针或跨表 commit。后续映射因此采用以下**待实现的公共契约**，不是对 GraphRAG 当前能力的夸大：
 
 ```text
 RunCreated(run_id, input_digest, schema/model/prompt/embedding/graph versions)
@@ -580,17 +580,17 @@ RunCreated(run_id, input_digest, schema/model/prompt/embedding/graph versions)
 
 当前线程实现的资源责任必须归入支持库：`request_id` 是关联标识但不是幂等提交键；`_cleanup()` 对 worker 使用无 deadline 的循环 join，阻塞 provider 可能无限等待；因此不能把现有线程池直接作为运行核心的“取消已完成”证据。
 
-### 18.6 L0–L4 验收映射（第三轮不制造假绿）
+### 18.6 L0–L4 验收映射（后续不制造假绿）
 
-| 等级 | 对底座映射的最低证明 | 本项目已有证据 | 本轮结论 |
+| 等级 | 对底座映射的最低证明 | 本项目已有证据 | 当前核对结论 |
 |---|---|---|---|
 | **L0 结构/静态** | 源码路径、注册表、输入输出表、唯一链路和缺口可定位 | 已读取 workflow/storage/table/vector/query/thread/cache/update 源码；`codegraph_explore` 明确返回目标仓库无 `.codegraph/` | **完成**；是事实建档，不是运行通过 |
-| **L1 契约/单元** | workflow 顺序、ID mapping、表 schema、cache key、向量维度、取消/错误类型有可执行断言 | `tests/unit`、`tests/verbs` 覆盖相关模块，但本轮未运行 | **未验证**；测试文件存在不等于通过 |
-| **L2 本地真实 provider** | 临时文件/Parquet/Table、Memory/Json cache、LanceDB 或 mock vector、失败后旧快照仍可读 | 仓库有 storage/vector/cache/integration fixture；本轮未安装依赖、未执行 | **未验证**；尤其缺 partial write/cancel probe |
-| **L3 本地端到端** | CLI/API 完整 index → commit → vector/fulltext/graph retrieve；断言 manifest、证据 ID、stats、退出码和残留 | `tests/smoke/test_fixtures.py` 提供历史测试入口；当前无本轮退出码，且全文能力没有内置实现 | **未验证/全文缺口**；不能宣称完整链路绿 |
-| **L4 外部与故障** | Azure/Cosmos/真实 LLM、限流/断网、重复 run、SIGKILL 重启、stale lease、取消清理和跨 provider 一致性 | 集成目录提供部分 provider 入口；无本轮外部服务和故障注入证据 | **未验证，P0 风险保留** |
+| **L1 契约/单元** | workflow 顺序、ID mapping、表 schema、cache key、向量维度、取消/错误类型有可执行断言 | `tests/unit`、`tests/verbs` 覆盖相关模块，但当前核对未运行 | **未验证**；测试文件存在不等于通过 |
+| **L2 本地真实 provider** | 临时文件/Parquet/Table、Memory/Json cache、LanceDB 或 mock vector、失败后旧快照仍可读 | 仓库有 storage/vector/cache/integration fixture；当前核对未安装依赖、未执行 | **未验证**；尤其缺 partial write/cancel probe |
+| **L3 本地端到端** | CLI/API 完整 index → commit → vector/fulltext/graph retrieve；断言 manifest、证据 ID、stats、退出码和残留 | `tests/smoke/test_fixtures.py` 提供历史测试入口；当前无当前核对退出码，且全文能力没有内置实现 | **未验证/全文缺口**；不能宣称完整链路绿 |
+| **L4 外部与故障** | Azure/Cosmos/真实 LLM、限流/断网、重复 run、SIGKILL 重启、stale lease、取消清理和跨 provider 一致性 | 集成目录提供部分 provider 入口；无当前核对外部服务和故障注入证据 | **未验证，P0 风险保留** |
 
-### 18.7 第三轮落点、装配计划与最终裁决
+### 18.7 后续落点、装配计划与最终裁决
 
 | 工作包 | owner | 交付契约 | 当前状态 |
 |---|---|---|---|
@@ -608,11 +608,11 @@ RunCreated(run_id, input_digest, schema/model/prompt/embedding/graph versions)
 - **新建/待核**：统一全文检索能力、候选/证据归一化、run 幂等键、跨表提交协议、stale-run 恢复和取消/崩溃故障测试。
 - **不吸收**：GraphRAG 直接写生产库、模块各自建立向量/全文旁路、以 timestamp 作为唯一幂等键、以 cache 命中或 prompt 引用代替事实校验、以 `PipelineRunResult.error` 代替回滚。
 
-本节不改变仓库源码、配置、依赖和测试；它把第三轮研究结果限定为“底座升级输入”，后续只有在目标平台能力搜索、契约评审、占用租约和 L0–L4 验收完成后，才可进入实现。
+本节不改变仓库源码、配置、依赖和测试；它把后续研究结果限定为“底座升级输入”，后续只有在目标平台能力搜索、契约评审、占用租约和 L0–L4 验收完成后，才可进入实现。
 
-## 19. 第二轮源码收口补充：从索引到检索的可执行事实
+## 19. 后续源码收口补充：从索引到检索的可执行事实
 
-> 本节是第二轮源码收口的补充，不是新实现说明。以下结论来自目标仓库当前文件的直接阅读；本轮没有调用 MCP、Hermes、远程服务或测试服务，也没有修改除本文件之外的文件。
+> 本节是后续源码收口的补充，不是新实现说明。以下结论来自目标仓库当前文件的直接阅读；当前核对没有调用 MCP、Hermes、远程服务或测试服务，也没有修改除本文件之外的文件。
 
 ### 19.1 索引、实体图与社区摘要的实际边界
 
@@ -713,8 +713,8 @@ GraphRAG 源码没有独立的 task queue、scheduler、worker lease 或任务�
 
 最终裁决：GraphRAG 可以作为“有序索引运算 + 多策略查询”的源码参考，但不能把 `PipelineRunResult.error` 当作回滚，把 cache/retry 当作幂等，把 async interface 当作低内存流式，把 callback 当作任务系统，或把 prompt 引用格式当作事实校验。若底座要复用该模式，必须在其外增加 run identity、staging manifest、schema/reference/vector 校验、单指针提交、bounded queue、取消传播、join deadline、stale-run 扫描和可重放的失败制品。
 
-### 19.7 本轮收口的证据与限制
+### 19.7 当前核对收口的证据与限制
 
-本轮直接核对的关键源码包括：`index/workflows/factory.py`、`index/run/run_pipeline.py`、`index/operations/cluster_graph.py`、`index/operations/summarize_communities/summarize_communities.py`、`index/operations/embed_text/embed_text.py`、`query/factory.py`、Local/Global/DRIFT/Basic structured search、`graphrag_llm` 的 completion/embedding middleware 与 thread runner、`graphrag-storage` 的 Table/ParquetTable、`graphrag-vectors` 的 VectorStore 以及 callbacks/typing 文件。
+当前核对直接核对的关键源码包括：`index/workflows/factory.py`、`index/run/run_pipeline.py`、`index/operations/cluster_graph.py`、`index/operations/summarize_communities/summarize_communities.py`、`index/operations/embed_text/embed_text.py`、`query/factory.py`、Local/Global/DRIFT/Basic structured search、`graphrag_llm` 的 completion/embedding middleware 与 thread runner、`graphrag-storage` 的 Table/ParquetTable、`graphrag-vectors` 的 VectorStore 以及 callbacks/typing 文件。
 
-本轮未安装依赖、未启动服务、未运行 pytest/CLI、未注入网络故障、取消、超时、磁盘满、SIGKILL 或真实 LLM/provider。因而本文新增结论均为 L0 静态源码事实和由源码直接推导的风险；不存在本轮 L1–L4 行为通过记录。唯一修改文件仍为根 `ARCHITECTURE.md`。
+当前核对未安装依赖、未启动服务、未运行 pytest/CLI、未注入网络故障、取消、超时、磁盘满、SIGKILL 或真实 LLM/provider。因而本文新增结论均为 L0 静态源码事实和由源码直接推导的风险；不存在当前核对 L1–L4 行为通过记录。唯一修改文件仍为根 `ARCHITECTURE.md`。

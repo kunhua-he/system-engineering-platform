@@ -10,7 +10,7 @@
 - `setup.py`、`Dockerfile`、`docker-compose.yml`、`frontend/package.json`：依赖、入口、构建和容器拓扑。
 - `goldenverba/`：服务、编排、组件、数据模型和持久化实现。
 - `goldenverba/tests/`：当前仓库内的 pytest 测试。
-- `细探-Verba.md`：既有细探结论；本轮已逐项核对并吸收，按任务边界保留原文件，不删除或改写。
+- `细探-Verba.md`：既有细探结论；当前核对已逐项核对并吸收，按任务边界保留原文件，不删除或改写。
 
 源码标识、路径、类名、函数名、字段名、路由和命令均保留原文；说明、备注、风险和结论使用中文。
 
@@ -227,7 +227,7 @@ Verba/
 4. 按 `chunk_id` 排序，形成前端 `documents` 和拼接文本 `context`。
 5. 无命中返回 `([], "We couldn't find any chunks to the query")`。
 
-备注：`normalize_value()` 在最大分数等于最小分数时存在除零风险；这是源码级风险，不在本轮修复。
+备注：`normalize_value()` 在最大分数等于最小分数时存在除零风险；这是源码级风险，不在当前核对修复。
 
 ## 6. 数据模型与持久化
 
@@ -391,7 +391,7 @@ pytest goldenverba/tests
 
 测试成熟度限制：`TECHNICAL.md` 的 Automated Testing 仍为 `TODO`；`test_create_document_from_file_config()` 只有 `assert True`；没有看到覆盖 FastAPI 路由、WebSocket、Weaviate CRUD、导入编排、连接缓存、组件 Manager、检索质量、LLM 流式错误和容器部署的测试。因此测试只能证明少量数据对象行为，不能证明端到端可用性。
 
-本轮按任务约束未安装依赖、未启动服务、未构建前端或 Docker；仅读取测试源码、依赖和入口。不得将未执行的集成测试描述为通过。
+当前核对按任务约束未安装依赖、未启动服务、未构建前端或 Docker；仅读取测试源码、依赖和入口。不得将未执行的集成测试描述为通过。
 
 ## 11. 版本新鲜度
 
@@ -402,7 +402,7 @@ pytest goldenverba/tests
 - 远程 `origin/main`：`70b6cfb8ef59c9f178ffccfaf3aadcf737757a18`
 - 本地与远程：同一提交，无落后提交，无需建立独立最新源码快照
 - 本地原有未跟踪文件：`细探-Verba.md`
-- 本轮新增文件：`ARCHITECTURE.md`
+- 当前核对新增文件：`ARCHITECTURE.md`
 
 由于远程与本地提交一致，未执行 fetch、pull 或 worktree 操作；没有改动源码、依赖、测试、配置或既有细探文件。
 
@@ -419,7 +419,7 @@ pytest goldenverba/tests
 9. **异常处理不统一**：部分 API 返回空列表/空对象并隐藏异常，部分 WebSocket 异常直接把异常对象放入 JSON；调用方不能只凭 HTTP 200 判断业务成功。
 10. **前后端版本漂移**：`setup.py`、`frontend/package.json`、页面显示版本和 README 图片/链接版本不完全一致，不能把单一版本字符串视作可靠发布标识。
 11. **文档不完整**：`TECHNICAL.md` 明确存在 `ClientManager`、`BatchManager`、WebSocket、测试等 TODO；本架构文档以源码为准补全，但没有替代缺失的正式开发维护文档。
-12. **当前未确认项**：未执行依赖安装、pytest、前端 `npm run build`、Docker Compose、Weaviate 实例连接和任何外部 LLM/Reader API；这些行为需要独立环境和明确凭证，不能由本轮静态建档推断。
+12. **当前未确认项**：未执行依赖安装、pytest、前端 `npm run build`、Docker Compose、Weaviate 实例连接和任何外部 LLM/Reader API；这些行为需要独立环境和明确凭证，不能由当前核对静态建档推断。
 
 ## 13. 架构结论与参考价值
 
@@ -579,10 +579,10 @@ POST /api/query
 | 等级 | 证明目标 | 本仓库证据 | 当前结论 |
 |---|---|---|---|
 | L0 源码存在 | 路由、管理器、组件、模型和测试文件真实存在 | 本文引用的 `server/`、`components/`、`tests/` 文件已读取 | **通过（静态存在）**；不等于可运行 |
-| L1 静态契约 | Python 可解析、导入边界/路由/模型形状能对齐 | 本轮只做源码阅读和 Markdown 校验；未安装依赖，未把 import 成功当作证明 | **部分**；尚未执行完整静态检查，不能声称包导入通过 |
+| L1 静态契约 | Python 可解析、导入边界/路由/模型形状能对齐 | 当前核对只做源码阅读和 Markdown 校验；未安装依赖，未把 import 成功当作证明 | **部分**；尚未执行完整静态检查，不能声称包导入通过 |
 | L2 单元测试 | 数据对象行为在隔离测试中通过 | 测试文件只有 Document/Chunk；其中 `test_create_document_from_file_config` 是 `assert True` | **存在但未执行**；即使执行也只覆盖窄面 |
-| L3 集成测试 | FastAPI、WebSocket、Weaviate CRUD、导入/检索/生成链连通 | 仓库没有对应覆盖；本轮未启动 Weaviate、未跑服务 | **未验证** |
-| L4 外部真实链路 | 真实 provider、模型、网络、容器部署、断线/恢复和资源清理 | 本轮未使用凭证、未调用外部 API、未启动 Docker/Weaviate | **未验证** |
+| L3 集成测试 | FastAPI、WebSocket、Weaviate CRUD、导入/检索/生成链连通 | 仓库没有对应覆盖；当前核对未启动 Weaviate、未跑服务 | **未验证** |
+| L4 外部真实链路 | 真实 provider、模型、网络、容器部署、断线/恢复和资源清理 | 当前核对未使用凭证、未调用外部 API、未启动 Docker/Weaviate | **未验证** |
 
 严格口径：源码中有 `return`、日志显示 `DONE`、历史构建物存在、README 标记 implemented、子模块单测通过，都不能升级为 L3/L4。当前唯一可写入的验证事实是静态源码证据与后文新鲜的文档检查；任何运行级结论必须另行执行并记录退出码、测试数、依赖和清理结果。
 
@@ -610,21 +610,21 @@ POST /api/query
 - 前端当前分片顺序、断线重传、`DONE/ERROR` 状态消费和生成 WebSocket 的重连行为。
 - Docker Compose 在真实环境中的匿名访问、健康检查、卷恢复和跨容器 Ollama 网络。
 - 高并发、多请求共享 `ClientManager`、锁/缓存淘汰以及跨集合补偿失败后的数据修复。
-- 全部测试、前端构建、Docker/Weaviate 集成、外部模型调用和崩溃恢复；这些均未由本轮静态研究证明。
+- 全部测试、前端构建、Docker/Weaviate 集成、外部模型调用和崩溃恢复；这些均未由当前核对静态研究证明。
 
-## 22. 本轮证据与专属 MCP 状态
+## 22. 当前核对证据与专属 MCP 状态
 
 - **目标项目根**：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/65_rag_frameworks/Verba`
 - **专属 MCP 实例**：`project_toolkit`（用户指定名称为 `system_engineering_toolkit`；当前工具返回的 MCP 实例字段为 `project_toolkit`，按返回值如实记录）。
 - **`project_context`**：已作为开工第一调用执行，但错误绑定到 `~/Documents/Agent/PHP/华世王镞_v3`，项目名为 `华世王镞_v3`，不是本任务的 Verba；其代码地图摘要为 2,055 files/36,605 nodes/93,082 edges，提交 `682fd41...`，不能作为 Verba 证据。
 - **`codegraph_explore`**：随后按要求调用并明确传入 Verba 根目录；返回 `no .codegraph/ index exists`，且 MCP 元信息仍显示错误项目根 `~/Documents/Agent/PHP/华世王镞_v3`。结果为**不可用/错绑**，未绕过、未冒充代码图；本文全部代码事实改由当前源码逐文件读取取得。
-- **Git 基线**：本地 `main`，`70b6cfb8ef59c9f178ffccfaf3aadcf737757a18`；工作树原有未跟踪 `细探-Verba.md`，本轮只允许修改 `ARCHITECTURE.md`。
+- **Git 基线**：本地 `main`，`70b6cfb8ef59c9f178ffccfaf3aadcf737757a18`；工作树原有未跟踪 `细探-Verba.md`，当前核对只允许修改 `ARCHITECTURE.md`。
 
 本文件是唯一正式架构事实源；`细探-Verba.md` 是保留的历史细探，不删除、不继续扩写。
 
-## 23. 第三轮：通用底座映射与服务边界裁决
+## 23. 后续：通用底座映射与服务边界裁决
 
-本节不是把 Verba 直接改造成平台组件，而是把当前源码中可验证的能力，映射到“组件支持库—检索模块—运行核心—统一网关”四个职责边界，明确哪些只是 Verba 产品层。所有“应归入”均为底座设计输入，不代表本轮已经修改或实现系统工程平台。
+本节不是把 Verba 直接改造成平台组件，而是把当前源码中可验证的能力，映射到“组件支持库—检索模块—运行核心—统一网关”四个职责边界，明确哪些只是 Verba 产品层。所有“应归入”均为底座设计输入，不代表当前核对已经修改或实现系统工程平台。
 
 ### 23.1 映射原则与源码事实
 
@@ -634,7 +634,7 @@ POST /api/query
 
 当前实现的六类能力边界如下：
 
-| 源码能力 | 真实入口/职责 | 输入输出事实 | 第三轮归属判断 |
+| 源码能力 | 真实入口/职责 | 输入输出事实 | 后续归属判断 |
 |---|---|---|---|
 | `Reader` | `interfaces.py:57-72`；具体实现位于 `components/reader/` | `load(config, FileConfig) -> list[Document]`；`BasicReader` 从 base64 文件解码并支持文本/PDF/DOCX/CSV/Excel，`FirecrawlReader` 调外部 URL 服务并可能返回多个 `Document` | **组件支持库**的 Reader 契约 + Reader provider；文件格式解析和远端抓取是非 Agent 通用能力，业务导入编排不放进 Reader |
 | `Chunker` | `interfaces.py:93-116`；`components/chunking/` | `chunk(config, documents, embedder, embedder_config) -> list[Document]`；部分语义分块可借用 `Embedding` | **组件支持库**的分块原子能力；按文档类型选择策略可由检索/导入模块编排，不能让 Chunker 直接管理任务状态 |
@@ -665,7 +665,7 @@ POST /api/query
 
 源码的导入状态枚举在 `server/types.py:80-93`：`READY`、`CREATE_NEW`、`STARTING`、`LOADING`、`CHUNKING`、`EMBEDDING`、`INGESTING`、`DONE`、`ERROR`，另预留 `NER`、`EXTRACTION`、`SUMMARIZING`。`LoggerManager.send_report()` 在 `server/helpers.py:12-28` 把 `{fileID,status,message,took}` 直接发送到 socket；`BatchManager` 在 `helpers.py:44-79` 按 `fileID`、`total`、`order` 在内存拼接 JSON。
 
-第三轮将其拆成三层契约：
+后续将其拆成三层契约：
 
 ```text
 运行核心 Job/Step 状态
@@ -789,7 +789,7 @@ POST /api/query
 | 连接锁/租约 | 当前按凭证 hash 创建 `asyncio.Lock`，字典永久保留 | 临界区退出释放锁、client 引用计数归零 | 获取/连接失败不得遗留锁或半初始化对象 | Task cancellation 必须 finally 释放租约；当前无专门测试 | 进程死按 lease owner/expiry 回收；内存锁本身不可恢复，不能当持久互斥 |
 | WebSocket/事件订阅 | 网关 accept；当前 `LoggerManager` 持 socket | 发送唯一终态后关闭或保持订阅 | 发送失败转事件账本，不把异常对象直接 JSON 化 | 断开触发 job cancel 或明确“后台继续”；上游生成要 cancel/close | socket 崩溃不应丢 job；订阅重连按 sequence 补发；当前无重放 |
 
-### 23.9 失败、超时、取消、崩溃矩阵（第三轮验收口径）
+### 23.9 失败、超时、取消、崩溃矩阵（后续验收口径）
 
 | 场景 | 当前源码行为 | 底座必须固定的契约 | 当前裁决 |
 |---|---|---|---|
@@ -805,17 +805,17 @@ POST /api/query
 | 重复提交/重复事件 | 同名文档检查非原子；分片同 order 覆盖；建议先查后写有竞态 | upload/job/step/idempotency key + sequence + store constraint | 只能吸收“需要去重”的事实，不能吸收实现 |
 | 错误路径清理自身失败 | 多数异常直接向上抛或只打印；删除补偿失败无二次队列 | 清理动作有独立结果和证据，二次清理/人工隔离；禁止吞异常后 DONE | 待核，需要真实故障注入 |
 
-### 23.10 第三轮 L0-L4 防假绿分级
+### 23.10 后续 L0-L4 防假绿分级
 
-| 等级 | 本轮要证明什么 | Verba 现有证据 | 第三轮结论/升级条件 |
+| 等级 | 当前核对要证明什么 | Verba 现有证据 | 后续结论/升级条件 |
 |---|---|---|---|
 | **L0 源码事实** | 文件、符号、路由、集合、状态和调用链确实存在 | 已读取 `interfaces.py`、`managers.py`、`verba_manager.py`、`server/api.py`、`helpers.py`、`types.py`、`WindowRetriever.py`、代表 provider、`docker-compose.yml` 和旧细探 | **通过静态建档**；这是存在性，不是行为通过 |
-| **L1 静态契约** | Python/依赖/路由/DTO/导入关系可解析，边界形状无明显矛盾 | 当前历史文档列出依赖与测试，但本轮未安装依赖、未执行编译；源码可见 `timeout=None`、错误对象入 JSON、重复终态等静态问题 | **部分**；要升级须在隔离环境执行 `python -m py_compile`/导入审计，并记录退出码 |
-| **L2 单元/组件** | Document/Chunk、组件契约、配置序列化、状态事件转换和策略边界通过 | 仓库只有 `goldenverba/tests/document/test_document.py`、`chunk/test_chunk.py`；没有 Manager/provider/状态机测试，本轮未执行 | **存在窄测试但未证明底座契约**；需补无 provider、空输入、维度错、重复事件、取消测试 |
-| **L3 集成** | 网关→运行核心→模块→支持库→Weaviate/模型的真实链路、断线、补偿、重启恢复 | 没有覆盖 FastAPI/WS/Weaviate CRUD/导入/检索/生成的有效集成测试，本轮未启动服务 | **未验证**；需隔离 Weaviate、假 provider/真实 HTTP、上传恢复、跨集合对账和唯一终态实测 |
-| **L4 外部真实** | 真实模型/Weaviate/容器/网络、速率限制、超时、取消、进程崩溃和残留均可审计 | 本轮未使用任何凭证、未访问外部 provider、未启动 Docker/Weaviate/Ollama、未做强杀 | **未验证**；不能以模型列表 fallback、历史镜像或 `DONE` 日志冒充 |
+| **L1 静态契约** | Python/依赖/路由/DTO/导入关系可解析，边界形状无明显矛盾 | 当前历史文档列出依赖与测试，但当前核对未安装依赖、未执行编译；源码可见 `timeout=None`、错误对象入 JSON、重复终态等静态问题 | **部分**；要升级须在隔离环境执行 `python -m py_compile`/导入审计，并记录退出码 |
+| **L2 单元/组件** | Document/Chunk、组件契约、配置序列化、状态事件转换和策略边界通过 | 仓库只有 `goldenverba/tests/document/test_document.py`、`chunk/test_chunk.py`；没有 Manager/provider/状态机测试，当前核对未执行 | **存在窄测试但未证明底座契约**；需补无 provider、空输入、维度错、重复事件、取消测试 |
+| **L3 集成** | 网关→运行核心→模块→支持库→Weaviate/模型的真实链路、断线、补偿、重启恢复 | 没有覆盖 FastAPI/WS/Weaviate CRUD/导入/检索/生成的有效集成测试，当前核对未启动服务 | **未验证**；需隔离 Weaviate、假 provider/真实 HTTP、上传恢复、跨集合对账和唯一终态实测 |
+| **L4 外部真实** | 真实模型/Weaviate/容器/网络、速率限制、超时、取消、进程崩溃和残留均可审计 | 当前核对未使用任何凭证、未访问外部 provider、未启动 Docker/Weaviate/Ollama、未做强杀 | **未验证**；不能以模型列表 fallback、历史镜像或 `DONE` 日志冒充 |
 
-第三轮的底座验收不能只复跑现有两组窄单测。最低新增验收契约应包括：一个 provider 缺失、一个 HTTP 超时、一个用户取消、一个客户端断线、一个 Weaviate 部分写入、一个进程强杀、一个重启恢复、重复分片/重复 job、事件序号与唯一终态；每个场景记录真实命令、退出码、测试数、外部服务和清理结果。
+后续的底座验收不能只复跑现有两组窄单测。最低新增验收契约应包括：一个 provider 缺失、一个 HTTP 超时、一个用户取消、一个客户端断线、一个 Weaviate 部分写入、一个进程强杀、一个重启恢复、重复分片/重复 job、事件序号与唯一终态；每个场景记录真实命令、退出码、测试数、外部服务和清理结果。
 
 ### 23.11 复用/升级/新建/废弃裁决
 
@@ -825,20 +825,20 @@ POST /api/query
 | **升级** | `available` 元数据、模型目录探测、Weaviate 连接/集合适配、导入事件、ClientManager 连接缓存、跨集合补偿 | 有可用模式但当前实现混合产品/网关职责，且缺健康、租约、持久状态、幂等和崩溃恢复 |
 | **新建** | 统一能力注册表；导入/查询/生成 job；事件账本与回放；VectorStore/DocumentStore 抽象；模型资源管理；唯一终态和对账器；取消/超时监督器 | Verba 没有这些通用治理能力，不能把 `Manager` 重命名后假装具备 |
 | **废弃/隔离** | archived 项目直接作为生产底座；全局组件实例；构造器联网 `/models`；WS socket 注入 `LoggerManager`；`timeout=None`；HTTP 200/字符串伪成功；匿名 Weaviate；删后插入配置；跨集合最佳努力补偿冒充事务 | 与平台单一 owner、资源生命周期、统一错误和安全边界冲突 |
-| **待核** | 各 provider 当前 SDK/API 版本、向量维度迁移、真实 Firecrawl crawl 轮询、Weaviate 4.9.6 与目标服务、断线后后台任务策略、外部限流与重试 | 本轮严格只读，未凭证实测，不能把源码声明升为运行事实 |
+| **待核** | 各 provider 当前 SDK/API 版本、向量维度迁移、真实 Firecrawl crawl 轮询、Weaviate 4.9.6 与目标服务、断线后后台任务策略、外部限流与重试 | 当前核对严格只读，未凭证实测，不能把源码声明升为运行事实 |
 
-### 23.12 第三轮唯一事实源与后续装配计划
+### 23.12 后续唯一事实源与后续装配计划
 
 - 本文件继续是 Verba 唯一正式架构事实源；旧 `细探-Verba.md` 已保留且不删除，后续只更新本文件。
-- 本轮没有修改系统工程平台、Verba 源码、依赖、配置、测试、README 或 Git；“映射”不等于生产底座已经新增能力。
+- 当前核对没有修改系统工程平台、Verba 源码、依赖、配置、测试、README 或 Git；“映射”不等于生产底座已经新增能力。
 - 若进入实现，顺序必须是：先登记需求与消费者契约 → 搜索已有能力并裁决复用/升级/新建 → 冻结 `Document`/`Chunk`/VectorStore/事件/错误/取消契约 → 以 provider 隔离方式装配 → 用 L0-L4 验收 → 记录资源残留与回滚证据。禁止先复制 `components/managers.py` 再补治理。
 - 一个原子能力只能有一个能力 id、一个契约 owner、一个公开入口和一条调用链；provider 差异只能在支持库适配层；产品层差异只能在项目适配层/模块策略；网关不拥有领域状态；运行核心不拥有具体第三方 SDK。
 
-### 23.13 第三轮证据、MCP 与范围说明
+### 23.13 后续证据、MCP 与范围说明
 
 - **目标根目录**：`~/Documents/Agent/github 源码参考/30_多模态与媒体分析/65_rag_frameworks/Verba`。
 - **首次 `project_context`**：按任务要求先调用，但当前 MCP 返回错误绑定到 `~/Documents/Agent/PHP/华世王镞_v3`，项目名为 `华世王镞_v3`、开工 id 为空；该结果不是 Verba 证据，已排除。
 - **`codegraph_explore`**：随后显式传入 Verba 根目录；返回该项目不存在 `.codegraph/`，代码图不可用，并要求改用本地 Read/Grep；未再次调用，也未把其他项目代码图冒充 Verba。
-- **`development_start`/专属 MCP**：尝试以 Verba 根目录和仅允许修改本文件的路径开工，但 `project_toolkit` MCP 连续失败后不可达；因此没有有效开工 id、没有 MCP 验证入账，也没有伪造反馈或成功证据。用户指定的 `system_engineering_toolkit (http://127.0.0.1:8766/mcp/)` 在本轮不可用，工具返回的实例名为 `project_toolkit`，两者均如实记录。
-- **本轮真实取证替代**：使用本地只读文件读取核对 `ARCHITECTURE.md`、`细探-Verba.md`、六类接口、Manager、API/WS、进度、Weaviate、代表 Reader/Embedding/Generator、Retriever、Docker Compose 和 setup.py；只追加本节到 `ARCHITECTURE.md`。
-- **正式验证状态**：由于专属 MCP 不可达，无法执行其要求的 `mcp_feedback` 与 `verify_and_record`；本轮不宣称 L1-L4 通过。修改文件仅为目标根 `ARCHITECTURE.md`，旧细探明确未删。
+- **`development_start`/专属 MCP**：尝试以 Verba 根目录和仅允许修改本文件的路径开工，但 `project_toolkit` MCP 连续失败后不可达；因此没有有效开工 id、没有 MCP 验证入账，也没有伪造反馈或成功证据。用户指定的 `system_engineering_toolkit (http://127.0.0.1:8766/mcp/)` 在当前核对不可用，工具返回的实例名为 `project_toolkit`，两者均如实记录。
+- **当前核对真实取证替代**：使用本地只读文件读取核对 `ARCHITECTURE.md`、`细探-Verba.md`、六类接口、Manager、API/WS、进度、Weaviate、代表 Reader/Embedding/Generator、Retriever、Docker Compose 和 setup.py；只追加本节到 `ARCHITECTURE.md`。
+- **正式验证状态**：由于专属 MCP 不可达，无法执行其要求的 `mcp_feedback` 与 `verify_and_record`；当前核对不宣称 L1-L4 通过。修改文件仅为目标根 `ARCHITECTURE.md`，旧细探明确未删。

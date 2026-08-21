@@ -1,6 +1,6 @@
 # cncalendar 架构建档
 
-> 首轮全量建档；本文是项目根唯一架构事实源。源码、工程文件和 Git 仓库均按只读方式检查，未修改源码、未安装依赖、未启动程序、未执行构建。
+> 当前全量建档；本文是项目根唯一架构事实源。源码、工程文件和 Git 仓库均按只读方式检查，未修改源码、未安装依赖、未启动程序、未执行构建。
 
 ## 1. 项目定位与当前结论
 
@@ -52,7 +52,7 @@ cncalendar_dllMain.cpp
 
 ## 3. 真实目录与文件职责
 
-当前提交中 Git 记录的项目文件共 23 个；仓库没有 README、`AGENTS.md`、测试目录、示例目录或旧 `细探-*.md` 文件。
+当前提交中 Git 记录的项目文件共 23 个；仓库没有 README、`AGENTS.md`、测试目录、示例目录或旧 `既有专项文档` 文件。
 
 ```text
 cncalendar/
@@ -245,7 +245,7 @@ void 命令实现(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 未在 macOS 上运行 Visual Studio/MSBuild，不具备该 Windows 构建环境；
 - 未执行任何构建、链接、DLL 加载、易语言 IDE 注册或 API 运行验证；
 - 未验证日期算法、闰月边界、节气时刻、四柱、属相切换、日期范围或编码兼容；
-- `codegraph` 对该目录不可用：目标目录及其上级没有 `.codegraph/` 索引，因此本轮使用逐文件只读取证替代，没有初始化索引。
+- `codegraph` 对该目录不可用：目标目录及其上级没有 `.codegraph/` 索引，因此当前取证使用逐文件只读取证替代，没有初始化索引。
 
 ## 10. 风险与后续复核点
 
@@ -269,8 +269,25 @@ void 命令实现(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)
 - 提交说明：`初始化仓库`
 - 远程只读核对：`git ls-remote origin HEAD refs/heads/master` 返回同一提交；没有执行 fetch/pull。
 - 主要证据：`cncalendar_cmd_typedef.h`、`cncalendar_cmdDef.cpp`、`cncalendar_cmdInfo.cpp`、`cncalendar_dtType.cpp`、`cncalendar_dllMain.cpp`、`cncalendar_const.cpp`、`include_cncalendar_header.h`、`cncalendar.vcxproj`、`cncalendar_static/cncalendar_static.vcxproj`、`Source_cncalendar.def`、`elib/lib2.h`、`elib/fnshare.cpp`。
-- 旧细探：目标根及其子目录未发现 `细探-*.md`，因此没有可吸收的旧细探结论；后续只维护本文件。
+- 既有细探材料：目标根及其子目录未发现 `既有专项文档`，因此没有可吸收的既有细探材料结论；后续只维护本文件。
 
-## 12. 本轮验收口径
+## 12. 当前取证验收口径
 
-本轮交付物仅为本文件。文档应满足：中文说明、源码标识符/路径原文保留、包含 `text` 流程图、真实目录/入口/API/数据模型/依赖/测试/版本基线、明确区分“存在于元数据”和“已实现/已验证”，并诚实列出未验证事项。源码和工程文件保持原状。
+当前取证交付物仅为本文件。文档应满足：中文说明、源码标识符/路径原文保留、包含 `text` 流程图、真实目录/入口/API/数据模型/依赖/测试/版本基线、明确区分“存在于元数据”和“已实现/已验证”，并诚实列出未验证事项。源码和工程文件保持原状。
+
+## 13. 小型仓规模说明与边界
+
+本仓库只有 23 个 Git 跟踪文件，核心由易语言支持库生成器文件组成；没有业务源码目录、运行时资源、示例程序或测试夹具。因此文档不人为扩张到 500 行，以下事实覆盖全部文件：
+
+- `cncalendar_cmdDef.cpp`：命令元数据和处理器占位；需与 `cncalendar_cmdInfo.cpp` 的名称、参数数量逐项对应。
+- `cncalendar_cmd_typedef.h`：命令函数指针、参数包装和返回类型声明，是 ABI 的第一入口。
+- `cncalendar_dtType.cpp`：自定义数据类型注册；当前只描述类型，不提供日期算法实现。
+- `cncalendar_const.cpp`：常量表；为空或仅含占位时，不能推导出运行时常量。
+- `cncalendar_dllMain.cpp`：导出入口、库信息、`GetNewInf` 注册和宿主通知挂接。
+- `include_cncalendar_header.h`：公共声明聚合，供动态工程与静态工程共享。
+- `Source_cncalendar.def`：DLL 导出名边界；必须与 `dllMain` 的导出符号一致。
+- `cncalendar.vcxproj`：动态 DLL 的编译单元、预处理宏、链接配置和输出目录。
+- `cncalendar_static/cncalendar_static.vcxproj`：静态库配置；与动态工程共享源码但输出形态不同。
+- `elib/*`：易语言宿主 ABI 头文件和内存/通知桥接，不是本项目的日期业务实现。
+
+未发现 `tests/`、示例、第三方依赖清单或可执行资源。当前环境为 macOS，无法运行 MSVC、易语言 IDE 或 Windows DLL；因此命令返回值、线程安全、异常回收和跨版本兼容均未验证。任何使用方都应先在目标 Windows 环境确认导出表、宿主装载和空实现行为。

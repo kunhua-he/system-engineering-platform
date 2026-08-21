@@ -8,7 +8,7 @@
 - **许可证**：Apache License 2.0；子组件可能另有许可证，详见各自目录。
 - **本次基线**：分支 `main`，提交 `2661c7c0ef5c613e8f93c6e93b2e052399f0f854`。
 - **证据范围**：直接读取本仓库 `README.md`、`细探-PaddleOCR.md`、`pyproject.toml`、`requirements.txt`、入口/核心实现、MCP 服务、API SDK、测试与发布说明；并检查 Git 远程版本。
-- **代码地图**：目标仓库未发现 `.codegraph/`，本档案不把其他项目的代码地图或证据当作本项目事实；架构结论以目标仓库当前文件为准。
+- **代码地图**：目标仓库项目本地 `.codegraph/` 已存在且索引最新；`codegraph status` 显示 1,160 files、14,850 nodes、33,164 edges、42.61 MB、node:sqlite WAL（Python 593、YAML 240、C++ 105、TypeScript 90 等）。本次使用项目本地 CodeGraph 做符号辅助，不经过 MCP。
 - **细探保留**：`细探-PaddleOCR.md` 是既有细粒度只读探索，本档案只做权威收口，不删除或改写它。
 
 ## 2. 项目定位
@@ -281,7 +281,7 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 
 - 本档案是项目根唯一 `ARCHITECTURE.md`；后续架构事实只维护本文件。
 - `细探-PaddleOCR.md` 已完整读取并作为输入逐项对照；**按用户要求保留，不删除、不改写**。它仍是历史细粒度研究记录，不与本档案并列为权威事实源。
-- 本轮只允许修改本文件；没有改源码、配置、依赖、测试、Git 元数据或旧细探。
+- 当前核对只允许修改本文件；没有改源码、配置、依赖、测试、Git 元数据或旧细探。
 - 旧细探的事实若与当前源码一致，收口到第 3—11 节；以下表格记录吸收裁决，避免“旧文档存在”被误认成“当前实现已验证”。
 
 ### 12.2 旧细探逐项对照与裁决
@@ -297,8 +297,8 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 | 官方 API 提交/轮询/JSONL | `_api_client/_http.py:34-206`、`_poller.py:44-152`、`_async_poller.py:36-86`；第 3.4/13.2 节 | **吸收** | 轮询默认 3s 起步、1.5 倍退避、15s 上限、600s 总等待；`done` 还必须有 `resultUrl.jsonUrl` 并成功解析 JSONL。 |
 | 旧参数兼容 | `paddleocr/_pipelines/ocr.py:44-56,155-168`；第 3.1 节 | **吸收** | 新旧参数同时传入直接 `ValueError`；`lang/ocr_version` 与显式模型目录并用时是 warning+忽略，不是静默混合。 |
 | monkeypatch 修复上游布局解析 | `paddleocr/_pipelines/_patch_layout_parsing.py`、`tests/unit/test_patch_layout_parsing.py`；第 9 节 | **吸收** | 仅说明边界补丁模式，不把单测当端到端证明；补丁须随 PaddleX 版本回归。 |
-| 权重/许可证/隐私提醒 | 根 `LICENSE`、各组件 LICENSE/THIRD_PARTY、README；第 6/10 节 | **吸收** | README 的精度、速度、Star 和“领先”是声明/营销材料，不作为本轮运行证据；代码 Apache-2.0 不自动覆盖模型权重和第三方组件条款。 |
-| `skills/` agent 技能包 | 仓库 `skills/` 下各 `SKILL.md`；旧细探第 2.4/3 节 | **待核** | 已确认文件形态与触发元数据存在；未在本轮验证安装器、环境变量注入和实际 agent 触发。 |
+| 权重/许可证/隐私提醒 | 根 `LICENSE`、各组件 LICENSE/THIRD_PARTY、README；第 6/10 节 | **吸收** | README 的精度、速度、Star 和“领先”是声明/营销材料，不作为当前核对运行证据；代码 Apache-2.0 不自动覆盖模型权重和第三方组件条款。 |
+| `skills/` agent 技能包 | 仓库 `skills/` 下各 `SKILL.md`；旧细探第 2.4/3 节 | **待核** | 已确认文件形态与触发元数据存在；未在当前核对验证安装器、环境变量注入和实际 agent 触发。 |
 | HPD-Parsing/VL/JS/生态旁路线索 | `docs/`、`paddleocr-js/`、`deploy/`、`langchain-paddleocr/` | **待核/隔离** | 作为旁路线索保留，不混入当前 v3 OCR 主调用链；每条需要独立版本、依赖和运行证据。 |
 
 ## 13. 深度事实表
@@ -343,7 +343,7 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 
 | 资源 | 创建 | 正常释放 | 业务失败/超时/取消 | 崩溃/残留核验 |
 |---|---|---|---|---|
-| PaddleX pipeline/模型上下文 | `PaddleXPipelineWrapper.__init__` 调 `create_pipeline` | wrapper `close()` 调 `paddlex_pipeline.close()`（`base.py:79-80`） | 构造失败由异常传播；源码未展示统一 cancel；调用方须显式 close | 进程崩溃由 OS/运行时接管；本轮未做显存/句柄现场核验。MCP local `stop()` 未调用 wrapper close，是重要缺口。 |
+| PaddleX pipeline/模型上下文 | `PaddleXPipelineWrapper.__init__` 调 `create_pipeline` | wrapper `close()` 调 `paddlex_pipeline.close()`（`base.py:79-80`） | 构造失败由异常传播；源码未展示统一 cancel；调用方须显式 close | 进程崩溃由 OS/运行时接管；当前核对未做显存/句柄现场核验。MCP local `stop()` 未调用 wrapper close，是重要缺口。 |
 | `LocalSyncRunner` 线程、Queue、Future | `local_sync_runner.py:21-29` | sentinel + `run_in_executor(thread.join)`（41-45） | worker 异常传 Future；取消中的 Future、排队任务和 close 并发没有专门状态协议 | 正常 stop 可 join；宿主崩溃不保证；未做线程数/队列现场核验。 |
 | 输入临时 PDF/AI Studio Base64 文件 | `NamedTemporaryFile(delete=False)` | context manager finally `unlink(missing_ok=True)` | 推理异常/取消离开上下文仍删；进程硬崩溃可能留残留 | 正常代码有 finally；未执行临时目录扫描，不能宣称零残留。 |
 | `requests.Session`/异步 API client | API client/HTTP client 初始化 | `client.close()`；MCP AI Studio `stop()` 调用 | request/poll 异常由上层转换；轮询取消未证明服务端 job 停止 | 崩溃可能由连接池/远端作业自行回收；未做服务端/连接现场验证。 |
@@ -355,7 +355,7 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 
 | 场景 | 当前实现 | 可重试判断 | 不能假绿的验收要求 |
 |---|---|---|---|
-| 空输入/相对路径/不存在路径 | `input_contract.py:108-127` 前置拒绝 | 不应重试，先修输入 | 必须断言未调用 provider；当前仅源码/测试存在性，未本轮执行。 |
+| 空输入/相对路径/不存在路径 | `input_contract.py:108-127` 前置拒绝 | 不应重试，先修输入 | 必须断言未调用 provider；当前仅源码/测试存在性，未当前核对执行。 |
 | 非法模型/provider 组合 | `selection.py`/`InferenceFactory.create` 抛 `ValueError`；CLI model 解析 exit 2 | 不应重试 | 应覆盖每个白名单外组合和错误码。 |
 | provider 凭据缺失 | `__main__.py:153-181` exit 2 | 不应重试 | 参数门禁测试不能替代真实认证。 |
 | HTTP 401/403/400/429/503/504 | `_core.py:148-159` 分层异常 | 401/400 通常不可重试；429/503 需退避和配额策略，但本库不自动重试提交 | 需用 mock/真实服务分别证实调用次数、退避和异常映射。 |
@@ -374,9 +374,9 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 | 等级 | 证明目标 | 合格证据 | 当前状态 |
 |---|---|---|---|
 | L0 静态事实 | 文件、符号、入口、配置和调用箭头确实存在 | 当前源码路径+行号、Git 基线、无 `.codegraph/` 事实 | **已完成静态取证**；专属 MCP `codeexplore` 返回目标根无 `.codegraph/`，不能声称有代码图。 |
-| L1 单元/契约 | 纯函数和边界契约的输入/输出/异常 | 直接运行对应单测并记录测试数/退出码；不是“测试文件存在” | **部分可见，未本轮运行**；存在 `tests/api_client/`、`tests/unit/`、`tests/security/`，不能计为本轮通过。 |
-| L2 组件集成 | wrapper↔adapter↔task、API client↔mock HTTP、MCP 注册组合 | 隔离 mock/fixture 运行，断言调用次数、异常、资源清理 | **未验证**；旧 `TEST_REPORT.md`/历史报告不计本轮证据。 |
-| L3 真实端到端 | 真实 PaddleX/权重或真实 provider/API 完成 OCR/解析 | 明确环境、模型/服务、输入、输出、退出码、资源清理 | **未验证**；本轮未安装依赖、未下载权重、未启动 MCP、未调用云 API。 |
+| L1 单元/契约 | 纯函数和边界契约的输入/输出/异常 | 直接运行对应单测并记录测试数/退出码；不是“测试文件存在” | **部分可见，未当前核对运行**；存在 `tests/api_client/`、`tests/unit/`、`tests/security/`，不能计为当前核对通过。 |
+| L2 组件集成 | wrapper↔adapter↔task、API client↔mock HTTP、MCP 注册组合 | 隔离 mock/fixture 运行，断言调用次数、异常、资源清理 | **未验证**；旧 `TEST_REPORT.md`/历史报告不计当前核对证据。 |
+| L3 真实端到端 | 真实 PaddleX/权重或真实 provider/API 完成 OCR/解析 | 明确环境、模型/服务、输入、输出、退出码、资源清理 | **未验证**；当前核对未安装依赖、未下载权重、未启动 MCP、未调用云 API。 |
 | L4 逆向/生产韧性 | 超时、取消、断线、失败、重启、崩溃、并发、资源零残留 | 故障注入+现场读回线程/进程/端口/临时目录/远端状态/输出完整性 | **未验证**；源码只支持部分 finally/atomic write，不能推导崩溃安全。 |
 
 ## 16. 未验证项、吸收/不吸收裁决与剩余风险
@@ -384,7 +384,7 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 ### 16.1 未验证项
 
 1. 目标仓库没有 `.codegraph/`；不能提供符号图、最近成功验证或影响面图。`project_context` 返回的代码地图属于错绑项目 `~/Documents/Agent/PHP/华世王镞_v3`，已排除，不作为 PaddleOCR 证据。
-2. 没有在本轮安装 PaddlePaddle/PaddleX、下载模型、启动 FastMCP、调用本地推理或真实云 provider；因此所有 L2-L4 仍是未验证。
+2. 没有在当前核对安装 PaddlePaddle/PaddleX、下载模型、启动 FastMCP、调用本地推理或真实云 provider；因此所有 L2-L4 仍是未验证。
 3. 未运行 pytest/TIPC/API mock 测试；测试目录和历史 `TEST_REPORT.md` 只证明测试材料存在/曾有记录。
 4. 未验证 `mcp_server` 发行包 `paddleocr>=3.7.0` 与当前源码 checkout 的实际解析组合、provider endpoint schema、token 权限和预签名 URL 有效期。
 5. 未验证大 PDF/长文档的内存上限、并发模型、GPU/CPU 设备释放、PaddleX `close()` 是否在 MCP local stop 中确实需要调用。
@@ -397,7 +397,7 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 - **吸收**：旧细探中的 v3 薄封装、传统 `ppstructure`、MCP provider 工厂、输入适配、官方异步 API、结果转换、资源保存、错误层次、测试分层和依赖/许可证边界；已映射到本档案第 3—15 节。
 - **不吸收为当前事实**：README/旧细探中的性能、精度、模型领先性、外部服务可用性、远端 SLA、技能实际触发、旁路线部署成功；这些只能作为声明或待核线索。
 - **隔离保留**：v2 训练/推理线、HPD-Parsing、PaddleOCR-VL、JS、LangChain、C++/Serving/容器作为独立边界，不与 `paddleocr` 主 pipeline 调用链拼成单一实现。
-- **待核升级条件**：建立目标根 `.codegraph/` 后重新跑目标项目代码图；在隔离环境执行 L1-L4；对本地 pipeline `close()`、取消、远端 job 回收和多资源输出做故障注入；以真实退出码和现场读回替换当前静态结论。
+- **待核升级条件**：在隔离环境执行 L1-L4；对本地 pipeline `close()`、取消、远端 job 回收和多资源输出做故障注入；以真实退出码和现场读回替换当前静态结论。项目本地 CodeGraph 已同步，能够辅助 Python/YAML/C++/TypeScript 等索引范围内的符号定位，但不替代运行态证据。
 
 ### 16.3 关键剩余风险
 
@@ -408,10 +408,43 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 | P1 | `LocalSyncRunner` 取消与关闭竞态未定义 | `local_sync_runner.py:34-59` 没有检查 Future 状态/取消传播；可能出现排队任务、已取消 Future 或关闭时线程行为未证实。 |
 | P1 | 远端 API 与发行包版本耦合 | 根包 `paddlex` 约束、MCP 已发布 `paddleocr>=3.7.0` 和当前 checkout 需一起锁定；否则 wrapper/结果字段可能漂移。 |
 | P1 | 资源批量保存非事务 | `_resources.py:89-119` 逐个写入，失败后前面文件保留；调用方需清单/断点/覆盖策略。 |
+
+## 17. 当前版本与 CodeGraph 复核
+
+本次复核确认本地 `HEAD=2661c7c0ef5c613e8f93c6e93b2e052399f0f854`，`origin/main` 的 `ls-remote` 同为该提交，未发现本地与远程分叉。项目本地 CodeGraph `status`：1,160 files、14,850 nodes、33,164 edges、42.61 MB、`node:sqlite` WAL；语言统计 Python 593、YAML 240、C++ 105、TypeScript 90、Kotlin 43、Swift 33、Go 14 等，索引 up to date。
+
+`codegraph sync` 返回 Already up to date；`codegraph explore PaddleOCRPipelineWrapper PaddleOCR predict LocalSyncRunner --max-files 8` 返回 13 symbols，识别出 `PaddleOCR.predict` 等 10 个 `PaddleXPipelineWrapper` 运行时实现，以及 `LocalSyncRunner` 被三个 MCP local provider 使用。该 CodeGraph 是目标源码目录本地索引，不经过 MCP；不能代替真实模型、GPU、远端 job 或线程回收验证。
+
+## 18. 版本化入口导航
+
+| 入口 | 当前源码证据 | 备注 |
+|---|---|---|
+| v3 OCR | `paddleocr/_pipelines/ocr.py:44-237` | 支持 PP-OCRv3/v4/v5/v6，旧参数映射到新参数 |
+| v3 基类 | `paddleocr/_pipelines/base.py:18-109` | 配置合并、PaddleX create/close |
+| 版面 | `paddleocr/_pipelines/pp_structurev3.py` | 外部 PaddleX pipeline |
+| 传统检测 | `tools/infer/predict_det.py:42-244` | PP-OCRv5/v6 detector、batch 参数 |
+| 传统识别 | `tools/infer/predict_rec.py:45-195` | 多语言模型与识别 batch |
+| 传统总链 | `tools/infer/predict_system.py` | det→cls→rec 组合 |
+| MCP local | `mcp_server/paddleocr_mcp/inference/shared/local_sync_runner.py:21-59` | 线程/队列/未来对象 |
+| Python API SDK | `api_sdk/python/` | HTTP API、异步 client、结果转换 |
+| JS SDK | `paddleocr-js/packages/core/` | Worker-backed 浏览器 OCR |
+| Android SDK | `deploy/ppocr-android/ppocr-sdk/` | DetectionEngine/RecognitionEngine |
+| 文档转换 | `paddleocr/_doc2md/` | PDF/Office/HTML 等转 Markdown |
+
+## 19. 当前核对未验证项
+
+- 未安装 PaddlePaddle/PaddleX 或 MCP extras，未下载 PP-OCR 权重。
+- 未执行 CPU/GPU 单图、多页 PDF、表格、版面、公式和印章样本。
+- 未启动 MCP stdio/HTTP、官方 API、JS Worker、Android 或 C++ 服务。
+- 未实测 batch 并发、线程 join、GPU 显存回收、PaddleX `close()` 和取消竞态。
+- 未实测远端 job 超时后的服务端资源、预签名 URL 过期和重复提交幂等性。
+- 未运行全量 pytest、TIPC、benchmark、移动端 benchmark 或部署脚本。
+
+本轮仅修改平台唯一 `ARCHITECTURE.md`；源码仓库未改，`.codegraph/` 与源码侧文档保留。全程未调用 MCP，只使用 shell/git/项目本地 CodeGraph。
 | P1 | 默认跳过 resource-intensive 测试 | 根 `pyproject.toml` 的 pytest `addopts` 排除资源密集型测试；轻量绿色不证明模型/设备/内存可用。 |
 | P2 | 敏感文档与结果资源 | 输入可能是身份证、发票、合同；默认 stdio/127.0.0.1 不是完整鉴权、审计、加密和保留期方案。 |
 
-## 17. 本轮验证记录
+## 17. 当前核对验证记录
 
 | 项目 | 结果 |
 |---|---|
@@ -419,19 +452,19 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 | `project_context` | **退出/返回成功但错绑**：返回项目 `华世王镞_v3`、根 `~/Documents/Agent/PHP/华世王镞_v3`；不能当目标项目身份证据。 |
 | `codeexplore`（用户称 `codegraph_explore`） | **失败/不可用**：目标根无 `.codegraph/`；MCP 明确 `可重试=false`，未绕过冒充。 |
 | 目标项目根 | `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/20_vision_ocr_detection/PaddleOCR` |
-| Git 基线 | `main`，HEAD `2661c7c0ef5c613e8f93c6e93b2e052399f0f854`；既有档案记录 `HEAD...origin/main = 0 0`，本轮未重新 fetch。 |
+| Git 基线 | `main`，HEAD `2661c7c0ef5c613e8f93c6e93b2e052399f0f854`；既有档案记录 `HEAD...origin/main = 0 0`，当前核对未重新 fetch。 |
 | 文件变更范围 | 仅本文件；`细探-PaddleOCR.md` 保留。最终需用 `git status --short` 和 diff 复核。 |
-| 真实执行 | 本轮未安装依赖、未启动服务、未跑模型/云 API、未运行测试；L0 静态取证完成，L1-L4 未通过。 |
+| 真实执行 | 当前核对未安装依赖、未启动服务、未跑模型/云 API、未运行测试；L0 静态取证完成，L1-L4 未通过。 |
 
 **收口结论**：旧细探的有效源码事实已吸收到本唯一 `ARCHITECTURE.md`；旧细探不删除。对于无法从当前源码证明的成功、性能、取消、崩溃清理和真实 provider 行为，明确标为未验证或待核，不以历史报告、测试文件存在或 MCP 错绑项目的成功结果冒充绿色。
 
-## 18. 第三轮：通用底座映射与唯一归属裁决
+## 18. 后续：通用底座映射与唯一归属裁决
 
-### 18.1 本轮目标、边界和证据口径
+### 18.1 当前核对目标、边界和证据口径
 
-本轮不把 PaddleOCR 复制进系统工程平台，也不把 `mcp_server` 的工具名当作平台能力边界，而是回答：**PaddleOCR 的能力分别应由通用 OCR/文档模块、支持库、运行核心和项目适配层中的哪一个唯一 owner 承担**。本节是目标平台的映射输入，不表示平台已经完成对应实现。
+当前核对不把 PaddleOCR 复制进系统工程平台，也不把 `mcp_server` 的工具名当作平台能力边界，而是回答：**PaddleOCR 的能力分别应由通用 OCR/文档模块、支持库、运行核心和项目适配层中的哪一个唯一 owner 承担**。本节是目标平台的映射输入，不表示平台已经完成对应实现。
 
-本轮直接对照的目标仓库源码证据包括：
+当前核对直接对照的目标仓库源码证据包括：
 
 - v3 模型包装与 PaddleX 接线：`paddleocr/_pipelines/base.py:54-109`、`ocr.py:66-237`、`pp_structurev3.py:31-298`；
 - 传统版面/表格/文档恢复：`ppstructure/predict_system.py:44-271`、`ppstructure/table/predict_table.py:58-153`、`ppstructure/recovery/recovery_to_markdown.py:129-187`、`recovery_to_doc.py:32-84`；
@@ -464,7 +497,7 @@ PaddleOCR 当前是一个**多入口、多运行时、以 PaddleX 为 v3 推理�
 
 ### 18.3 现有能力命中表与唯一 owner
 
-| PaddleOCR 能力/证据 | 通用底座落点 | 唯一 owner 裁决 | 本轮状态 |
+| PaddleOCR 能力/证据 | 通用底座落点 | 唯一 owner 裁决 | 当前核对状态 |
 |---|---|---|---|
 | `PaddleOCR` 的方向分类、去畸变、文本检测、文本行方向、文本识别 | 通用 OCR 模块编排；模型名、配置覆盖和推理句柄下沉 provider/运行核心 | OCR 模块只负责 OCR 流程和参数契约；PaddleX wrapper 不是模块 owner | **吸收/拆分** |
 | `PPStructureV3` 的版面、区域、表格、公式、图表、印章和 GeneralOCR 组合 | 通用文档解析模块；版面/表格/公式/印章是文档块生产能力 | 文档解析模块拥有统一文档结果；各模型实现只作为 provider 策略 | **吸收** |
@@ -611,7 +644,7 @@ provider 的 `pending/running/done/failed` 只能作为外部状态映射。`can
 
 ### 18.9 装配计划与依赖顺序
 
-本轮不修改生产底座；未来落地必须按以下工作包冻结租约，禁止边查边在公共入口加旁路：
+当前核对不修改生产底座；未来落地必须按以下工作包冻结租约，禁止边查边在公共入口加旁路：
 
 1. **契约冻结**：在公共契约中冻结 `通用文档`、`文本块`、`表格数据`、`文档资源`、`生成/解析结果`、任务状态和错误码；用 `schema_version`、模型/provider 元信息和原始字段定位承接 PaddleOCR 差异。
 2. **能力搜索与复用裁决**：检索现有 OCR、文档解析、文件、模型制品、HTTP、异步任务、资源监督能力；每个能力只保留一个能力 id、契约 owner 和注册路径。没有搜索/租约/验收契约不得新建。
@@ -625,24 +658,24 @@ provider 的 `pending/running/done/failed` 只能作为外部状态映射。`can
 
 | 等级 | 本项目映射验证 | 必须记录的证据 | 当前状态 |
 |---|---|---|---|
-| **L0 静态** | 源码路径、能力/模型/provider 矩阵、结果字段、资源创建/释放箭头、依赖边界 | 文件/行号、版本基线、目标根、`.codegraph/` 状态、错绑上下文 | **本轮完成**；目标根无代码图 |
+| **L0 静态** | 源码路径、能力/模型/provider 矩阵、结果字段、资源创建/释放箭头、依赖边界 | 文件/行号、版本基线、目标根、`.codegraph/` 状态、错绑上下文 | **当前核对完成**；目标根无代码图 |
 | **L1 契约** | 纯函数验证模型白名单、provider 组合、输入互斥、状态枚举、结果转换、错误映射 | 定向单测测试数/跳过数/退出码；禁止把测试存在当通过 | **未执行** |
 | **L2 组件集成** | wrapper↔provider adapter↔module、HTTP mock、异步 poller、JSONL→通用文档、临时文件清理 | mock 调用次数、状态轨迹、统一结果字段、session/文件释放 | **未执行** |
 | **L3 真实端到端** | 隔离环境运行 local OCR/PP-StructureV3，或真实 AI Studio/Qianfan/self-hosted；输入真实图片/PDF | Python/依赖/模型/设备、job id、输出摘要、退出码、模型/显存/文件清理 | **未执行**；未装依赖、未下载权重、未启动服务、未调用云端 |
 | **L4 逆向与韧性** | 注入提交断线、轮询超时、unknown state、job failed、主动取消、worker 异常、SIGKILL、结果下载失败、重复幂等 | 任务状态最终值、重试次数、取消确认、PID/线程/端口/临时目录/显存 lease/远端 job 读回 | **未执行**；当前源码不能推出崩溃安全或远端取消 |
 
-L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是历史 `TEST_REPORT.md`、README 声明、mock 通过或 MCP tool 能注册。L3/L4 若外部 provider 不可用，记录 `HOST_UNAVAILABLE`/`UNVERIFIED` 及阻塞原因，不得改写为 skip 后绿色。
+L0-L4 的通过口径是“当前核对真实命令+退出码+现场读回”，不是历史 `TEST_REPORT.md`、README 声明、mock 通过或 MCP tool 能注册。L3/L4 若外部 provider 不可用，记录 `HOST_UNAVAILABLE`/`UNVERIFIED` 及阻塞原因，不得改写为 skip 后绿色。
 
-### 18.11 第三轮裁决结论与剩余风险
+### 18.11 后续裁决结论与剩余风险
 
 - **吸收**：v3 PaddleX 薄封装的“参数映射→配置合并→外部 pipeline”、MCP provider 选择矩阵、统一输入适配、官方异步 job/JSONL 协议、版面/表格/文档投影的事实，作为通用 OCR/文档模块和 provider 适配的输入。
 - **唯一归属**：OCR/版面/表格/公式/文档块编排归通用文档模块；输入/结果/模型制品/文件/HTTP 薄转换归支持库；任务状态/监督/超时/取消/模型显存/句柄和崩溃清理归运行核心；provider 只绑定外部差异；MCP/API 只做协议适配。
 - **隔离**：`mcp_server` 的智能代理工具面、`TextContent/ImageContent`、`simple/detailed`、`LocalSyncRunner` Future、旧 `ppstructure` 全局路径和过程式落盘不进入平台公共边界。
 - **P0 剩余风险**：local provider `stop()` 没有显式调用 PaddleOCR/PaddleX wrapper `close()`；官方轮询 timeout/async cancel 没有服务端 cancel；当前无统一平台 task id、幂等状态和资源租约证据。这三项在底座装配前必须先冻结验收契约。
 - **P1 剩余风险**：provider 返回结构差异、批量资源非事务、模型/显存峰值和大文档内存上限、MCP 发行包与 checkout 版本组合尚未在真实环境验证。
-- **不得越界**：本轮没有修改系统工程平台、PaddleOCR 源码、配置、依赖、测试、README 或旧细探；本节只作为第三轮底座映射文档输入。
+- **不得越界**：当前核对没有修改系统工程平台、PaddleOCR 源码、配置、依赖、测试、README 或旧细探；本节只作为后续底座映射文档输入。
 
-## 19. 第三轮 MCP/验证记录补充
+## 19. 后续 MCP/验证记录补充
 
 | 项目 | 结果 |
 |---|---|
@@ -654,11 +687,11 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | `verify_and_record` | **命令退出码 0，但上下文不匹配**：执行 `git diff --check`，返回“弱验证/工作包”，临时开工 id=`临时-2300a80e2cdd`、源码指纹=`a21170ed0797606b`、证据 id 列表为空；同时返回 `MCP_WORK_ID_REQUIRED`，元信息项目根仍是 `~/Documents/Agent/PHP/华世王镞_v3`。因此仅记录命令退出 0，不记为 PaddleOCR 目标项目的有效强验证。 |
 | 项目根 | `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/20_vision_ocr_detection/PaddleOCR` |
 | 修改文件 | 仅 `ARCHITECTURE.md`；`细探-PaddleOCR.md` 保留，源码/配置/依赖/测试/README 未修改。 |
-| 真实验证 | 第三轮为静态源码映射；未安装依赖、未运行模型、未启动 provider/MCP、未调用真实 API；L0 完成，L1-L4 未通过。 |
+| 真实验证 | 后续为静态源码映射；未安装依赖、未运行模型、未启动 provider/MCP、未调用真实 API；L0 完成，L1-L4 未通过。 |
 
-## 20. 第二轮深挖收口：模型注册、预处理、设备、批处理与释放
+## 20. 后续深挖收口：模型注册、预处理、设备、批处理与释放
 
-本节是第二轮指定主题的补充收口，优先记录“源码实际做了什么”，并把 v3 `paddleocr/`、v2 `tools/infer`/`ppocr/`、MCP 服务三条边界分开。除文末验证记录外，本节仍是 L0 静态取证；没有把 PaddleX 外部实现、README 性能声明或测试文件存在当成运行证据。
+本节是后续指定主题的补充收口，优先记录“源码实际做了什么”，并把 v3 `paddleocr/`、v2 `tools/infer`/`ppocr/`、MCP 服务三条边界分开。除文末验证记录外，本节仍是 L0 静态取证；没有把 PaddleX 外部实现、README 性能声明或测试文件存在当成运行证据。
 
 ### 20.1 模型注册与模型身份：三种机制，不能混写
 
@@ -724,7 +757,7 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | v2/ONNX/Paddle Inference predictor | `create_predictor()` 建 session/config/predictor；输入 copy、run、输出 copy 到 CPU；TensorRT 可写 `.cache/trt` 或 dynamic shape 文件 | 文件缺失/配置非法抛 `ValueError` 或提前退出；设备不可用有时只 warning 后继续初始化 | 本仓库推理脚本没有统一 predictor `close()`/显存归还契约；ONNX session 和 TensorRT cache 的释放依赖进程/运行时 |
 | 结果/输出文件 | v2 入口创建输出目录并写 `det_results.txt`/识别结果/可视化；v3 API 资源保存使用临时文件再 `os.replace`/link | 单文件临时写失败会清临时文件；批量资源中途失败保留之前已完成文件 | 无批量事务回滚；强杀时临时文件、半成品、显存和线程残留没有现场核验 |
 
-### 20.5 失败矩阵与第二轮验收重点
+### 20.5 失败矩阵与后续验收重点
 
 | 失败/边界 | 静态结论 | 不能宣称的能力 | 后续应如何验收 |
 |---|---|---|---|
@@ -736,7 +769,7 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | 结果批量落盘失败 | 单文件原子，批量非事务 | 不能宣称全量成功或自动回滚 | 注入第 N 个资源失败，核对已写文件清单、临时文件和重复运行覆盖策略 |
 | 正常退出与强杀 | Python CLI/MCP 的 `finally` 覆盖正常异常控制流；SIGKILL 不执行 | 不能以 finally 证明崩溃清理、显存归还、远端任务取消 | 对本地 MCP/v2 服务做 SIGTERM/SIGKILL，现场读回 PID/线程/端口/临时目录/缓存/远端任务 |
 
-### 20.6 第二轮收口裁决
+### 20.6 后续收口裁决
 
 - **吸收为项目事实**：v3 的语言/版本模型别名选择、点路径配置覆盖、方向—检测—行方向—识别阶段开关；v2 的 YAML builder、检测 resize/归一化/坐标回映射、裁剪、方向旋转、识别按宽高比排序分批和结果复原；MCP 的模型→工具→provider 双层注册；设备/引擎参数的分层与旧 CLI 的失败码风险。
 - **明确隔离**：v3 具体预处理算子属于 PaddleX；v2 `ppocr` 训练网络 builder 与 v3 pipeline 不是同一模型注册系统；MCP `InferenceFactory` 只拥有服务组合，不拥有公共 OCR 领域模型；ONNX/TensorRT/CUDA/CPU 的真实可用性必须按运行环境验证。
@@ -744,7 +777,7 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 - **P1 保留**：`LocalSyncRunner` 无界队列和取消/关闭竞态；`TextSystem` 全量持有 crop；slice 全空时 `np.concatenate`；recognizer/classifier 有批处理而 detector 默认单图；v2 predictor/session 没有统一服务级 close；批量资源非事务。
 - **验证等级**：本节补充完成 L0 静态证据；未安装依赖、未加载权重、未执行 L1 单测、未做 L2 mock、未运行 L3 本地/远端推理，也未执行 L4 OOM/取消/SIGKILL/残留扫描。上述问题只能记为源码风险和验收项，不能记为已修复。
 
-### 20.7 本轮证据索引
+### 20.7 当前核对证据索引
 
 | 主题 | 关键源码路径 |
 |---|---|
@@ -756,9 +789,9 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | v2 预处理/切片/设备 | `ppocr/data/imaug/__init__.py:68-96`、`operators.py:72-134,208-347`、`tools/infer/utility.py:177-438,935-1038` |
 | MCP 入口/注册/本地桥 | `mcp_server/paddleocr_mcp/__main__.py:144-274`、`selection.py:20-77`、`inference/factory.py:32-200`、`inference/shared/local_sync_runner.py:21-59`、`inference/ocr/local.py:25-131` |
 
-**第二轮收口结论**：PaddleOCR 不是“一个模型注册表 + 一条固定预处理链”。v3 是 PaddleX 外部内核的配置/生命周期薄壳，v2 是 YAML 类名驱动的过程式推理线，MCP 是模型/provider 服务组合层；三条线的预处理、批处理、设备和释放责任不同。当前最需要在真实环境补证的是 local wrapper 关闭、取消/超时语义、GPU/CPU 实际设备与内存、空切片/假成功退出码，以及长驻服务的队列和 predictor 资源治理。
+**后续收口结论**：PaddleOCR 不是“一个模型注册表 + 一条固定预处理链”。v3 是 PaddleX 外部内核的配置/生命周期薄壳，v2 是 YAML 类名驱动的过程式推理线，MCP 是模型/provider 服务组合层；三条线的预处理、批处理、设备和释放责任不同。当前最需要在真实环境补证的是 local wrapper 关闭、取消/超时语义、GPU/CPU 实际设备与内存、空切片/假成功退出码，以及长驻服务的队列和 predictor 资源治理。
 
-## 21. 第三轮：OCR 通用能力映射总表
+## 21. 后续：OCR 通用能力映射总表
 
 本节把前两轮的分散事实压缩为可装配的通用 OCR 能力矩阵。它只描述当前 PaddleOCR 源码能够证明的边界，并明确哪些行为属于外部 PaddleX、运行环境或真实服务，避免把 v2、v3、MCP 三条线拼成一条不存在的实现。映射目标是“一个平台契约、多个 provider”，不是把 PaddleOCR 的内部参数原样暴露为公共 API。
 
@@ -834,7 +867,7 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | 结果临时文件与资源 | 资源支持库 | 原子替换后清临时文件 | 批次清单记录部分成功，补偿删除或续传 | 批量写入非事务，前置成功项不会自动回滚 |
 | 远端 job/预签名 URL | 远端 provider | 客户端只查询/下载 | timeout 必须 reconcile；URL 过期应可解释失败 | 源码没有统一 cancel endpoint 或幂等保证 |
 
-### 21.6 第三轮失败矩阵
+### 21.6 后续失败矩阵
 
 | 失败场景 | 源码可确认语义 | 通用平台状态/可重试 | 验收必须证明 |
 |---|---|---|---|
@@ -849,7 +882,7 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | 批量资源第 N 项失败 | 单文件原子；先前文件保留 | `partial_success`，允许从失败清单恢复 | 已写清单、临时文件、覆盖策略、补偿清理 |
 | SIGTERM/SIGKILL/宿主崩溃 | finally 只覆盖正常控制流和可传播异常 | `crashed`/`recovery_required`；远端 job 单独 reconcile | PID/线程/端口/临时目录/显存 lease/远端任务现场读回 |
 
-### 21.7 第三轮唯一归属与落地顺序
+### 21.7 后续唯一归属与落地顺序
 
 1. **通用 OCR 模块**：拥有“页面 OCR”的领域流程、阶段开关、文本块语义、顺序和置信度语义；不导入 PaddleOCR/PaddleX。
 2. **通用文档模块**：拥有版面、表格、公式、图像、阅读顺序和统一文档结构；Markdown/HTML/DOCX 是投影或转换。
@@ -861,9 +894,9 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 
 落地顺序冻结为：统一文档/任务/错误契约 → 结果与输入转换支持库 → PaddleOCR 四 provider 适配 → 运行核心状态与资源租约 → MCP/API 协议适配 → L1-L4 故障注入验收。未完成前，不得以成功注册工具、mock 绿色或 `finally` 存在宣称设备释放、远端取消、崩溃安全或批量事务。
 
-### 21.8 第三轮映射验收清单
+### 21.8 后续映射验收清单
 
-| 验收层 | 本轮要验证的通用映射 | 当前结论 |
+| 验收层 | 当前核对要验证的通用映射 | 当前结论 |
 |---|---|---|
 | L0 静态 | 预处理阶段、检测/识别箭头、模型设备、batch、服务、输出、资源和失败矩阵 | **已完成**：基于当前 checkout 静态源码；v3 外部算子明确标记边界 |
 | L1 契约 | 模型/provider 白名单、输入分类、统一 schema、错误映射、状态枚举 | **未执行**：未运行测试命令 |
@@ -871,4 +904,4 @@ L0-L4 的通过口径是“本轮真实命令+退出码+现场读回”，不是
 | L3 真实 | local CPU/GPU、AI Studio/Qianfan/self-hosted、真实图片/PDF 输出 | **未执行**：未安装依赖、未下载权重、未启动服务 |
 | L4 韧性 | OOM、取消、断线、重复提交、SIGKILL、残留和远端 job reconcile | **未执行**：仍是待建故障注入工作包 |
 
-**第三轮结论**：PaddleOCR 可映射为“通用 OCR/文档模块 + PaddleOCR provider + 运行核心资源治理”的组合，但不能直接复用其 v3/v2/MCP 任一层作为平台公共核心。最关键的不可假绿边界是：v3 预处理由外部 PaddleX 执行、v2 设备/算子与 v3 不同、MCP local 是无界单线程同步桥、远端 timeout 没有 cancel 证明、批量资源没有事务、正常 finally 不覆盖强杀。上述事实仅完成 L0 静态映射，后续实现必须以 L1-L4 真实证据推进。
+**后续结论**：PaddleOCR 可映射为“通用 OCR/文档模块 + PaddleOCR provider + 运行核心资源治理”的组合，但不能直接复用其 v3/v2/MCP 任一层作为平台公共核心。最关键的不可假绿边界是：v3 预处理由外部 PaddleX 执行、v2 设备/算子与 v3 不同、MCP local 是无界单线程同步桥、远端 timeout 没有 cancel 证明、批量资源没有事务、正常 finally 不覆盖强杀。上述事实仅完成 L0 静态映射，后续实现必须以 L1-L4 真实证据推进。

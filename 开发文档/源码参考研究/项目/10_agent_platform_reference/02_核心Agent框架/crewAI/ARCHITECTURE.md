@@ -1,10 +1,10 @@
 # CrewAI 架构建档
 
-> 第二轮深挖与收口档案。结论来自本地源码、配置、测试与现有 `细探-crewAI.md`，不是对远程仓库或运行时服务的推断；旧细探保留为历史材料，后续只维护本文件。
+> 后续深挖与收口档案。结论来自本地源码、配置、测试与现有 `细探-crewAI.md`，不是对远程仓库或运行时服务的推断；旧细探保留为历史材料，后续只维护本文件。
 >
 > - **项目**：`crewAI`（GitHub：`crewAIInc/crewAI`）
-> - **源码版本**：`1.15.5`（`lib/crewai/src/crewai/__init__.py:51`；workspace 子包均以 `1.15.5` 互相约束）
-> - **审计基线**：Git `b14d36bfe447c6458df8b08e5184f17d1ec58ed6`；工作树在开始时已有未跟踪文件 `细探-crewAI.md`，本次未修改、未删除。
+> - **源码版本**：`1.15.17`（`lib/crewai/src/crewai/__init__.py:51`；本地 workspace 成员源码/构建元数据均约束到该版本）
+> - **审计基线**：Git `f4731f5025f861c78e3af0487cc80bf5e7c64782`（`feat(events): record whether a run had inputs, without recording the inputs`）；`origin/main` 当前与本地一致。工作树已有未跟踪 `ARCHITECTURE.md` 与 `.codegraph/`，本次未修改、未删除。
 > - **许可证**：MIT（`LICENSE:1-19`）。
 > - **本次范围**：在首轮基础上深挖 Agent/Task/Crew/Flow、LLM/Tool、状态/队列/并发、资源释放、失败/取消/崩溃边界和测试真假；仍只修改本文件，不改源码、依赖、配置、测试、README、Git，也不删除旧细探。
 
@@ -510,13 +510,13 @@ console script 在 `lib/crewai/pyproject.toml:147-155` 与 `lib/cli/pyproject.to
 
 ## 11. 未确认项与边界声明
 
-以下内容本轮没有凭空补齐，后续若需要应单独深挖：
+以下内容当前核对没有凭空补齐，后续若需要应单独深挖：
 
 - 未运行 `uv sync`、pytest、mypy、ruff、构建或 CLI；因此未声明当前环境“可运行/全绿”。
 - 未读取 `.env.test` 的实际内容，避免暴露 secret；只根据 `conftest.py` 确认其被加载。
 - `uv.lock` 记录了约 476 个包和多平台/多 Python resolution，但未逐一核对所有 optional extra 的最终解析图；此处只记录 workspace、锁格式和关键包。
 - `crewai.experimental.AgentExecutor` 的完整实现、A2A server/client、MCP transport、Memory/LanceDB/Chroma 内部 schema、RAG factory 的 provider 细节未全部展开；本文只建档其边界和入口。
-- Flow persistence 的各具体 backend、SQLite checkpoint 与 Flow `@persist` backend 的差异已确认存在，但默认 backend 的完整存储实现未在本轮逐文件展开。
+- Flow persistence 的各具体 backend、SQLite checkpoint 与 Flow `@persist` backend 的差异已确认存在，但默认 backend 的完整存储实现未在当前核对逐文件展开。
 - README 中的开发者数量、性能、企业控制平面能力属于项目自述/产品说明，不是本地源码可验证指标。
 - CLI 的完整命令表随 `cli.py` 后续分段和子模块变化；本文列的是从注册点与模块树实际确认的主要入口，不替代 Click `--help` 的运行时输出。
 - 本仓库的 `docs/v*` 是冻结文档快照；根据 `AGENTS.md` 不应直接修改。本次没有修改任何 docs、源码、配置、依赖或测试。
@@ -564,9 +564,9 @@ console script 在 `lib/crewai/pyproject.toml:147-155` 与 `lib/cli/pyproject.to
 - 关键 `tests/` 与 `.github/workflows/` 文件
 - 已有细探文件 `细探-crewAI.md`（本次保留原样）
 
-## 14. 第三轮底座映射：通用模块与上层编排裁决
+## 14. 后续底座映射：通用模块与上层编排裁决
 
-> 本节是第三轮映射，不是对 crewAI 生产化改造的承诺。**吸收**表示可作为公共契约/模块的输入；**隔离**表示能力有价值但必须停留在适配层或项目编排层；**待核**表示源码边界已定位但仍缺运行时/外部服务证据。任何平台落地都必须另行经过能力登记、契约确认、资源租约和真实验收。
+> 本节是后续映射，不是对 crewAI 生产化改造的承诺。**吸收**表示可作为公共契约/模块的输入；**隔离**表示能力有价值但必须停留在适配层或项目编排层；**待核**表示源码边界已定位但仍缺运行时/外部服务证据。任何平台落地都必须另行经过能力登记、契约确认、资源租约和真实验收。
 
 ### 14.1 映射总原则与唯一入口
 
@@ -585,7 +585,7 @@ Python/配置/CLI 项目
       └─ 横切统一经过 event bus、RuntimeState、checkpoint provider、hooks、tracing
 ```
 
-第三轮的**唯一入口裁决**：
+后续的**唯一入口裁决**：
 
 1. **上层业务/项目只能选择 `Crew.kickoff*` 或 `Flow.kickoff*` 作为一次运行的根入口**；不把 `Task.execute_*`、`Agent.execute_task`、`AgentExecutor.invoke` 当作平台级工作流入口。它们是被上层入口调用的内部执行节点，直接调用会绕开 Crew/Flow 的上下文、事件、恢复和清理。
 2. **Crew 与 Flow 不能被压成同一个编排器**：Crew 负责团队/任务协作，Flow 负责显式控制流、状态和人机反馈；Flow 方法可以嵌入 Crew，但必须由 Flow 作为该次流程的根 owner，反之亦然。
@@ -594,7 +594,7 @@ Python/配置/CLI 项目
 
 ### 14.2 能力分类表
 
-|对象/能力|源码中的通用模块流程|属于上层编排的部分|第三轮裁决|
+|对象/能力|源码中的通用模块流程|属于上层编排的部分|后续裁决|
 |---|---|---|---|
 |`Agent` / `BaseAgent`|角色/目标/背景、LLM、工具、memory/knowledge、executor、输入输出契约；以 `entity_type="agent"` 进入 `RuntimeState`|具体角色 prompt、是否允许 delegation、给哪个 Task、A2A/MCP 配置、选择哪个 executor|**吸收公共 Agent 执行契约；隔离角色与项目策略**。不能把一个具体角色当平台公共组件|
 |`Task`|任务描述/期望输出、Agent 绑定、context、结构化输出、guardrail、重试、文件输出、TaskStarted/Completed/Failed 事件|任务之间的业务依赖、context 拓扑、输出模型与业务验收条件|**吸收任务节点契约和失败/重试骨架；上层拥有任务图与业务语义**|
@@ -661,8 +661,8 @@ Python/配置/CLI 项目
 |Flow thread pool|`_execute_method` 为同步方法用 `asyncio.to_thread`|await 返回后由运行时释放|同步方法卡死/外部调用不受 Flow 业务超时自动治理；需外围硬截止/子进程隔离策略|
 |MCP client/transport|`MCPToolResolver` 持有 `_clients`；wrapper 按次建立 streamable HTTP session|resolver `cleanup()` disconnect 全部 client 并清空列表；wrapper async context 关闭 transport/session|连接失败、timeout、CancelledError、解释器退出都要验证 session/连接关闭；当前 cleanup 记录错误后仍清空引用，不等于远端已关闭|
 |A2A HTTP/stream/poll/push 会话|A2A delegation helper/handler|请求/流结束、poll/push handler 完成|认证失败、超时、远端取消、重复 update、断线需验证本地 task/delegation state 不悬挂；远端资源无法由本地 finally 全权释放|
-|checkpoint 文件/SQLite|`BaseProvider` 实现|checkpoint 写入；按 branch prune|路径/branch traversal 校验；半写文件、SQLite 写失败、损坏 JSON、进程崩溃恢复需单独实测，当前本轮只确认契约与 provider 路径|
-|Memory/Knowledge/FileInput|Crew/Agent/Task 的 memory、knowledge、文件临时目录 owner|Crew/Task finally 清理临时文件；memory writes 在成功/失败收尾 drain|外部向量库/文件 provider 的连接、锁和缓存释放未在本轮逐项展开；不得把“clear_files”当所有 provider 资源已释放的证据|
+|checkpoint 文件/SQLite|`BaseProvider` 实现|checkpoint 写入；按 branch prune|路径/branch traversal 校验；半写文件、SQLite 写失败、损坏 JSON、进程崩溃恢复需单独实测，当前当前核对只确认契约与 provider 路径|
+|Memory/Knowledge/FileInput|Crew/Agent/Task 的 memory、knowledge、文件临时目录 owner|Crew/Task finally 清理临时文件；memory writes 在成功/失败收尾 drain|外部向量库/文件 provider 的连接、锁和缓存释放未在当前核对逐项展开；不得把“clear_files”当所有 provider 资源已释放的证据|
 |OTel span/exporter|`Telemetry`/`TraceCollectionListener`|span close、provider force_flush/shutdown（进程退出最多 5 秒）|export 失败被安全吞掉；需用测试 exporter/collector 验证 span 完整性，不能仅凭无异常日志判定已上报|
 
 ## 16. 失败矩阵与验证边界
@@ -688,14 +688,14 @@ Python/配置/CLI 项目
 
 ### 16.1 真假验证分层
 
-|等级|能证明什么|本轮状态|
+|等级|能证明什么|当前核对状态|
 |---|---|---|
 |源码存在|类、入口、分支、异常处理和资源 finally 存在|已对 `crew.py`、`task.py`、`flow/runtime`、`state`、`event_bus`、`tools`、`mcp`、`a2a`、`telemetry` 做静态取证|
-|测试源码存在|项目作者为某场景写了测试|已有测试主题已登记在第 9 节；不把测试文件存在当本轮执行通过|
-|静态文档验证|第三轮裁决表、流程图、证据路径和未确认项一致|本轮应执行 `git diff --check` + 文档关键章节/旧细探仍存在检查|
-|定向测试执行|当前工作树在指定 Python/依赖/环境下真实通过|本轮未运行 pytest/uv sync/构建/服务；禁止据此写“全绿”|
-|外部协议实测|MCP/A2A/OTLP 真实连接、认证、超时、资源释放|本轮未执行；必须提供隔离 server/collector 或录制 fixture，并记录退出码、请求数和清理现场|
-|崩溃/强杀验证|线程、进程、socket、临时文件、checkpoint 半写现场可恢复|本轮未执行；CrewAI 本地库没有因此自动获得 exactly-once/回滚承诺|
+|测试源码存在|项目作者为某场景写了测试|已有测试主题已登记在第 9 节；不把测试文件存在当当前核对执行通过|
+|静态文档验证|后续裁决表、流程图、证据路径和未确认项一致|当前核对应执行 `git diff --check` + 文档关键章节/旧细探仍存在检查|
+|定向测试执行|当前工作树在指定 Python/依赖/环境下真实通过|当前核对未运行 pytest/uv sync/构建/服务；禁止据此写“全绿”|
+|外部协议实测|MCP/A2A/OTLP 真实连接、认证、超时、资源释放|当前核对未执行；必须提供隔离 server/collector 或录制 fixture，并记录退出码、请求数和清理现场|
+|崩溃/强杀验证|线程、进程、socket、临时文件、checkpoint 半写现场可恢复|当前核对未执行；CrewAI 本地库没有因此自动获得 exactly-once/回滚承诺|
 
 ## 17. 底座落地输入与剩余风险
 
@@ -720,14 +720,14 @@ Python/配置/CLI 项目
 
 ### 17.3 剩余风险
 
-- 本地源码版本基线为 `1.15.5`；MCP/A2A/Flow runtime 的外部依赖、协议版本和传输行为未在本轮联网/实跑确认。
+- 本地源码版本基线为 `1.15.17`；MCP/A2A/Flow runtime 的外部依赖、协议版本和传输行为未在当前核对联网/实跑确认。
 - event bus 使用单例与 contextvars runtime state；跨线程、跨 asyncio loop、嵌套 kickoff 的隔离正确性需要真实并发测试，静态代码不能替代。
 - `Task.execute_async` 的 daemon thread、Flow 的 `to_thread`、MCP/A2A 网络会话和外部 memory provider 的崩溃清理边界仍待强杀/超时验证。
 - checkpoint 能恢复本地模型/执行上下文，不等价于 LLM、工具、MCP、A2A 外部副作用可回滚；若平台要求可重放，必须另建幂等键/效果账本。
 - `Telemetry` 的安全失败保护降低了观测对业务的耦合，但也可能丢失证据；生产平台需要独立可靠事件/证据账本，不可只依赖 OTel。
-- 本轮首个 `project_context` 返回的是另一项目 `华世王镞_v3` 且代码图实例为 `project_toolkit`；随后按任务给出的 crewAI 绝对路径做了人工源码取证，专属 `system_engineering_toolkit` 的开工/验证服务在本轮调用时不可达。因此 MCP 开工 id、反馈入账和验证记录尚待服务恢复后补登记，不能伪造为已成功。
+- 当前核对首个 `project_context` 返回的是另一项目 `华世王镞_v3` 且代码图实例为 `project_toolkit`；随后按任务给出的 crewAI 绝对路径做了人工源码取证，专属 `system_engineering_toolkit` 的开工/验证服务在当前核对调用时不可达。因此 MCP 开工 id、反馈入账和验证记录尚待服务恢复后补登记，不能伪造为已成功。
 
-## 18. 第三轮证据索引
+## 18. 后续证据索引
 
 - Agent/Crew/Process：`lib/crewai/src/crewai/agent/core.py:171-396`、`agents/agent_builder/base_agent.py:200-797`、`crew.py:159-405,980-1071,1112-1200`、`process.py:4-11`
 - Task/guardrail/callback：`lib/crewai/src/crewai/task.py:114-300,572-789`
@@ -740,9 +740,9 @@ Python/配置/CLI 项目
 - 遥测：`lib/crewai/src/crewai/telemetry/telemetry.py:90-267,269-728`、`telemetry/utils.py:19-112`
 - 旧细探仍保留：`细探-crewAI.md`；本次仅修改 `ARCHITECTURE.md`。
 
-## 19. 第二轮深挖：执行契约、队列与并发
+## 19. 后续深挖：执行契约、队列与并发
 
-> 本节是第二轮收口的新增证据。它把“有某个模块”推进到“谁创建、谁持有、谁等待、谁失败、谁清理”。没有运行时实测的地方明确标为静态结论，不把测试源码或方法名当成通过证明。
+> 本节是后续收口的新增证据。它把“有某个模块”推进到“谁创建、谁持有、谁等待、谁失败、谁清理”。没有运行时实测的地方明确标为静态结论，不把测试源码或方法名当成通过证明。
 
 ### 19.1 Agent / Task / Crew 的真实执行契约
 
@@ -781,22 +781,22 @@ Flow `kickoff_async` 每次先处理两套互斥恢复参数、ExecutionStart/In
 |`ToolUsage`|先查 cache，再做 usage limit，再调用 `tool.ainvoke`/工具；工具异常发 error event、递增 attempts，未超过 parsing retry 上限时递归重试；finally 尽量发 finished event（`tools/tool_usage.py:276-467,516-704`）|cache 命中会跳过真实副作用；自然语言错误结果可能被送回 Agent 而非立刻抛出。工具调用 retry 不是幂等保证，副作用工具必须由上层提供幂等键或禁用 cache/retry。|
 |MCP|`MCPToolWrapper` 每次调用在 `streamablehttp_client(..., terminate_on_close=True)` 与 `ClientSession` 两层 async context 中建连，单次执行 60 秒超时，最多 3 次、退避 1/2 秒（`tools/mcp_tool_wrapper.py:10-15,85-203`）|ImportError/auth/not-found 不重试；timeout/network/json parsing 重试；`CancelledError` 被转换为 `TimeoutError`。返回的是字符串错误/超时文本，不能直接当统一错误码。每次 session 由 context manager 关闭，但重试期间已发生的远端副作用不撤销。|
 
-## 20. 第二轮资源生命周期与四种终态
+## 20. 后续资源生命周期与四种终态
 
 |资源|创建/持有者|正常完成|业务失败/主动取消|宿主崩溃/强杀|当前证据等级|
 |---|---|---|---|---|---|
-|Crew/Flow runtime scope、baggage、ContextVar|根 `kickoff`|`finally` detach/reset、`_exit_runtime_scope`|Crew/Flow 失败路径仍进 finally；取消若命中 Python finally 同样执行|进程被杀无法执行 finally；下次进程只会创建新 ContextVar|源码存在；跨线程/嵌套隔离有 thread-safety 测试源码但本轮未执行|
+|Crew/Flow runtime scope、baggage、ContextVar|根 `kickoff`|`finally` detach/reset、`_exit_runtime_scope`|Crew/Flow 失败路径仍进 finally；取消若命中 Python finally 同样执行|进程被杀无法执行 finally；下次进程只会创建新 ContextVar|源码存在；跨线程/嵌套隔离有 thread-safety 测试源码但当前核对未执行|
 |Task input files / 临时文件|Task/Crew file store|Task finally `clear_task_files`，Crew finally `clear_files`|异常路径同样清理；Future 取消不能保证后台 daemon 已结束后再清理外部副作用|强杀可能留下文件，源码未提供启动时全量 orphan sweep 证据|源码存在；残留现场未实测|
 |Task daemon thread / Future|`Task.execute_async`|Future 设置 result，线程自然退出|异常设置 exception；Future 没有绑定线程取消，阻塞线程继续运行|宿主退出回收进程资源，线程内外部调用可能在杀前已产生副作用|源码明确无取消契约|
 |Crew async tasks / Flow listener tasks|Crew `_execute_tasks`、Flow `gather`|边界 await 完成；Crew finally 做自身清理|异常传播；没有统一 task registry + cancel-and-await 的证据|强杀只由 OS 回收，外部连接/副作用需 provider 自己处理|源码存在；取消/部分失败未实测|
-|事件 bus sync executor / async loop|首次 emit 懒创建；sync pool 10 workers，async 专用 daemon loop（`events/event_bus.py:95-191`）|Crew/Flow 显式 flush；进程 `atexit` 调 shutdown|handler 异常被记录，不覆盖主流程；`flush(timeout=30)` 返回 False 但调用方未统一把 False 作为业务失败|`shutdown(wait=False)` 取消 loop tasks 后 stop/join/close pool；强杀无法保证 handler 完成|shutdown 测试源码存在；本轮未执行|
+|事件 bus sync executor / async loop|首次 emit 懒创建；sync pool 10 workers，async 专用 daemon loop（`events/event_bus.py:95-191`）|Crew/Flow 显式 flush；进程 `atexit` 调 shutdown|handler 异常被记录，不覆盖主流程；`flush(timeout=30)` 返回 False 但调用方未统一把 False 作为业务失败|`shutdown(wait=False)` 取消 loop tasks 后 stop/join/close pool；强杀无法保证 handler 完成|shutdown 测试源码存在；当前核对未执行|
 |MCP session/transport|`MCPToolWrapper._execute_tool` 的两个 async context|离开 context 关闭 session/transport|timeout/取消由 `wait_for` 退出 context；错误重试重新建 session|强杀依赖 MCP client/OS；本地无远端回滚|源码存在；无真实 MCP server 实测|
 |Checkpoint 文件/SQLite|`JsonProvider` 文件写入；`SqliteProvider` 每次 `sqlite3.connect`/`aiosqlite.connect`|文件 close 或 SQLite context commit/close；WAL 模式|写失败由异常向上抛；JsonProvider 直接 `open(...,"w")`，未见临时文件+原子 rename|强杀可能留下半写 JSON；SQLite 事务/WAL 由 SQLite 恢复，但不能把这当成应用级 checkpoint 完整性|源码存在；损坏/强杀未实测|
 |Memory/Telemetry/usage futures|Crew/Flow 持有；event bus/后台 handler 消费|Crew/Flow `_drain_memory_writes`、event `flush` 后再结束；Flow usage listener 在 finally detach|handler/exporter 失败被记录/安全吞掉，可能造成证据缺失而非业务失败|强杀可能丢 pending memory/trace/usage；无外部可靠账本则不可审计|源码存在；collector/强杀未实测|
 
 **资源裁决：** CrewAI 对“正常完成”和“Python 异常”有较多 finally/上下文管理器；对主动取消、硬超时、进程崩溃只提供局部 provider 语义，没有统一运行句柄、子进程隔离、取消传播、租约或 orphan recovery。因此平台不能把 `finally` 的存在升级为“任意终态资源必清”或“外部副作用可回滚”。
 
-## 21. 失败、取消、崩溃矩阵（第二轮收口）
+## 21. 失败、取消、崩溃矩阵（后续收口）
 
 |场景|真实行为|不能宣称|底座接入要求|
 |---|---|---|---|
@@ -819,10 +819,10 @@ Flow `kickoff_async` 每次先处理两套互斥恢复参数、ExecutionStart/In
 |等级|现场证据|结论|
 |---|---|---|
 |源码存在|已逐文件核对 `crew.py`、`task.py`、`experimental/agent_executor.py`、`flow/runtime`、`event_bus.py`、`base_tool.py`、`tool_usage.py`、MCP wrapper、checkpoint provider|证明分支/异常/finally 存在，不证明时序、线程安全或外部协议行为已经通过|
-|测试源码存在|`lib/crewai/tests` 有 213 个 `test_*.py`；其中明确覆盖 `test_crew_thread_safety.py`、`test_async_crew.py`、`test_flow_resumability_regression.py`、`utilities/events/test_shutdown.py`、`tools/test_tool_usage_limit.py`、`test_checkpoint.py`、MCP transport 与 LLM provider 测试|证明作者写过目标场景；fixture/mock/patch 可能隔离了真实 LLM、网络或执行器，不能当本轮通过|
+|测试源码存在|`lib/crewai/tests` 有 213 个 `test_*.py`；其中明确覆盖 `test_crew_thread_safety.py`、`test_async_crew.py`、`test_flow_resumability_regression.py`、`utilities/events/test_shutdown.py`、`tools/test_tool_usage_limit.py`、`test_checkpoint.py`、MCP transport 与 LLM provider 测试|证明作者写过目标场景；fixture/mock/patch 可能隔离了真实 LLM、网络或执行器，不能当当前核对通过|
 |录制/隔离测试|根 `pyproject.toml:138-154` 配置 `asyncio_mode=strict`、`--block-network`、60 秒 timeout、xdist；多处 `@pytest.mark.vcr()`，并有 `tests/cassettes/`；根 `conftest.py:190-251` 每测清事件 handler、重置事件上下文、创建临时 storage，并修补 VCR/aiohttp/httpx|VCR playback、mock、patch 和 block-network 是可重复性手段，不是当前 provider/网络真实可用性证明；临时目录清理是测试 harness 语义|
-|本轮静态验证|已完成旧细探逐项对照、补入 Agent/Task/Crew/Flow/工具/模型/状态/队列/并发/资源/失败矩阵；旧 `细探-crewAI.md` 仍存在，目标文档非空且保留文本流程图|可声明“文档收口完成”；不能声明 pytest、构建、安装依赖、MCP/A2A/OTLP 真实连接通过|
-|本轮真实执行|未运行 `uv sync`、pytest、mypy、ruff、CLI、服务或外部协议；遵守源码参考库只读研究边界|退出码、测试数、跳过数和现场残留均无本轮运行证据；最终状态必须写“未执行”，不能写全绿|
+|当前核对静态验证|已完成旧细探逐项对照、补入 Agent/Task/Crew/Flow/工具/模型/状态/队列/并发/资源/失败矩阵；旧 `细探-crewAI.md` 仍存在，目标文档非空且保留文本流程图|可声明“文档收口完成”；不能声明 pytest、构建、安装依赖、MCP/A2A/OTLP 真实连接通过|
+|当前核对真实执行|未运行 `uv sync`、pytest、mypy、ruff、CLI、服务或外部协议；遵守源码参考库只读研究边界|退出码、测试数、跳过数和现场残留均无当前核对运行证据；最终状态必须写“未执行”，不能写全绿|
 
 ### 22.2 反向场景覆盖判断
 
@@ -830,11 +830,11 @@ Flow `kickoff_async` 每次先处理两套互斥恢复参数、ExecutionStart/In
 - **只有静态或局部证据：** Task Future 取消、Flow listener 部分失败后的剩余任务、LLM provider 真取消、MCP 真实 timeout/断线/远端副作用、checkpoint 半写、进程强杀、Memory/Telemetry 丢失后的恢复。
 - **当前未形成证据：** 全局队列公平性/backpressure、统一 deadline、跨 provider exactly-once、外部 side effect compensation、重启 orphan 扫描、所有 optional extra 的真实安装组合。
 
-因此测试结论必须按“源码存在 / 测试源码存在 / 录制或 mock 隔离 / 本轮真实执行 / 外部服务实测”分栏；`pass`、日志打印、VCR cassette、子代理自报和测试文件数量均不能越级为真实通过。
+因此测试结论必须按“源码存在 / 测试源码存在 / 录制或 mock 隔离 / 当前核对真实执行 / 外部服务实测”分栏；`pass`、日志打印、VCR cassette、子代理自报和测试文件数量均不能越级为真实通过。
 
-## 23. 第二轮旧细探逐条收口与最终裁决
+## 23. 后续旧细探逐条收口与最终裁决
 
-|旧细探主张|第二轮裁决|收口位置与证据|
+|旧细探主张|后续裁决|收口位置与证据|
 |---|---|---|
 |Crew 是 Agent + Task，Process 为 sequential/hierarchical|**吸收**；补足了 validator、Task batch、manager delegation 和输出/失败路径|第 4、5、19 节；`crew.py:709-868,1495-1609`|
 |`from_checkpoint` 是从最后完成任务续跑|**校正**：checkpoint 恢复 RuntimeState、事件记录、实体运行时和 task output 起点；不等于外部副作用回滚或 exactly-once|第 4.5、15、20、21 节；`state/runtime.py`、`crew.py:998-1000,1532-1539`|
@@ -844,9 +844,9 @@ Flow `kickoff_async` 每次先处理两套互斥恢复参数、ExecutionStart/In
 |MCP/A2A 可作为外部协议边界|**吸收为适配层**；MCP wrapper 有局部 timeout/retry/context cleanup，取消被转为 timeout；A2A/MCP 均不提供本地外部副作用回滚|第 17、19.3、20、21 节；`tools/mcp_tool_wrapper.py:85-203`；A2A 路径见第 18 节|
 |可借鉴“分叉回滚”|**禁止照搬“回滚”措辞**：当前 fork 保留 parent/branch lineage，Flow state fork 会新 state id；没有通用 merge 或外部补偿证据|第 14.2、15.1、17.1、21 节|
 
-**第二轮完成标准：** Agent/Task/Crew/Flow 的节点契约、工具/模型边界、状态/队列/并发模型、四终态资源表、失败/取消/崩溃矩阵、测试真假分层和旧细探裁决均已写入唯一 `ARCHITECTURE.md`；`细探-crewAI.md` 按任务要求保留，源码、依赖、配置、测试、README 和 Git 均未修改。后续只需在本文件增量维护事实，不再把旧细探作为并行事实源。
+**后续完成标准：** Agent/Task/Crew/Flow 的节点契约、工具/模型边界、状态/队列/并发模型、四终态资源表、失败/取消/崩溃矩阵、测试真假分层和旧细探裁决均已写入唯一 `ARCHITECTURE.md`；`细探-crewAI.md` 按任务要求保留，源码、依赖、配置、测试、README 和 Git 均未修改。后续只需在本文件增量维护事实，不再把旧细探作为并行事实源。
 
-## 24. 第二轮补充深挖：模型、记忆与事件队列的实际调度
+## 24. 后续补充深挖：模型、记忆与事件队列的实际调度
 
 ### 24.1 AgentExecutor 是带状态机的单实例执行器
 
@@ -884,19 +884,19 @@ Memory 的 `close()` 顺序是 drain pending saves → close storage → shutdow
 
 因此事件有投递与排空语义，但不是 durable queue：进程崩溃、`flush` 超时、event bus 在 shutdown 后收到 emit，都可能留下未处理或被忽略的事件。事件记录可进入 RuntimeState/checkpoint，但 handler 执行完成本身不等于 checkpoint 已写入，也不等于 tracing/telemetry 已送达。
 
-### 24.7 第二轮增量裁决
+### 24.7 后续增量裁决
 
 1. **模型执行**：LLM provider 是可替换调用边界；AgentExecutor state、tool call、usage 和输出是本地运行态，不能包装成 provider 事务。
 2. **队列定义**：Crew pending Future、Flow pending event、Memory pending save、EventBus pending future 都是局部内存集合；CrewAI 没有统一作业队列服务。
 3. **取消定义**：只有 Flow `or_()` racing group 和 event bus `shutdown(wait=False)` 有明确局部取消动作；Task/Future、Agent timeout、MCP timeout 的取消都不等于底层工作已停止。
 4. **记忆定义**：Memory 写入采用单线程后台提交与 recall 读屏障，失败可旁路化；这提供最终可见性，不提供 exactly-once、崩溃恢复或外部向量库事务。
-5. **证据定义**：本节仍为源码静态证据。并行完成顺序、取消后的线程残留、Memory 强杀丢失、事件 flush 超时和 provider 真取消均未在本轮运行验证。
+5. **证据定义**：本节仍为源码静态证据。并行完成顺序、取消后的线程残留、Memory 强杀丢失、事件 flush 超时和 provider 真取消均未在当前核对运行验证。
 
 ## 25. 全项目审计收口：冲突、歧义与文档噪声
 
 ### 25.1 审计边界与分段导航
 
-本次按以下分段完成源码、测试、文档和配置的静态审计；目标仓库没有 `.codegraph/` 索引，因此先执行了 CodeGraph 探索并记录其不可用，再使用仓库内检索和分段文件读取，不自行初始化索引。
+本次按以下分段完成源码、测试、文档和配置的静态审计；目标仓库存在未跟踪 `.codegraph/` 索引，但它不属于当前 Git 提交的版本化证据；结论以当前提交源码、测试和配置为准。
 
 | 分段 | 主要事实来源 | 本文对应章节 |
 |---|---|---|
@@ -910,7 +910,7 @@ Memory 的 `close()` 顺序是 drain pending saves → close storage → shutdow
 
 ### 25.2 已裁决的重复与潜在冲突
 
-1. 第 19、20、21 已经完整描述执行契约、资源生命周期和失败/取消矩阵；第 24 又以“第二轮补充”重述其中的并发、Future、Memory 和 EventBus。两组内容没有发现事实级互相矛盾，但存在文档重复和维护漂移风险。当前保留两组章节以保留研究轮次证据，**第 24 节是增量细节，第 19～21 节是总览裁决**；以后新增事实应只写入本节或替换对应总览，不再复制整张矩阵。
+1. 第 19、20、21 已经完整描述执行契约、资源生命周期和失败/取消矩阵；第 24 又以“后续补充”重述其中的并发、Future、Memory 和 EventBus。两组内容没有发现事实级互相矛盾，但存在文档重复和维护漂移风险。当前保留两组章节以保留研究轮次证据，**第 24 节是增量细节，第 19～21 节是总览裁决**；以后新增事实应只写入本节或替换对应总览，不再复制整张矩阵。
 2. “UnifiedMemory”不是源码类名。运行实现公开类是 `Memory`，文件名为 `unified_memory.py`；本文将“Unified Memory”作为架构概念，将 `Memory` 作为代码符号，避免把文件名误写成 API。
 3. “事件队列”容易被理解成 durable queue。EventBus 只维护进程内 pending futures，Memory 只维护进程内 pending saves，Crew/Flow 也只有一次运行内的 pending 集合。本文统一称为“局部内存调度集合”，不称作作业队列或持久队列。
 4. “取消”必须区分请求状态和底层工作状态。`Future.cancel()`、async task cancellation、MCP `wait_for`、Flow `or_()` sibling cancel 各自只覆盖局部对象；不能合并成 CrewAI 提供全链路取消。本文将 Flow `or_()` 和 EventBus `shutdown(wait=False)` 标为局部明确取消，其余标为取消请求或等待链取消。
@@ -934,16 +934,16 @@ Memory 的 `close()` 顺序是 drain pending saves → close storage → shutdow
 
 - 第 1～10 节保留快速架构地图、公共入口和工程配置。
 - 第 11～18 节保留第一次裁决、映射和失败边界。
-- 第 19～24 节保留第二轮执行/资源/取消/Memory/EventBus 深挖。
+- 第 19～24 节保留后续执行/资源/取消/Memory/EventBus 深挖。
 - 本节作为后续唯一的冲突和术语索引；新增事实应链接到既有章节，不再创建“第 N 轮”重复总览。
 - `细探-crewAI.md` 明确是历史材料，不与 `ARCHITECTURE.md` 并列维护；它保留原样，仅用于追溯首轮判断。
 
 ### 25.5 文档、测试与配置审计结论
 
 - 根 `README.md` 与源码边界一致地描述 Crews 偏自主协作、Flows 偏精确控制；其产品宣传语不能替代本架构文档中的资源、取消和证据限制。
-- `docs/v1.10.1`、`v1.13.0`、`v1.15.4`、`v1.15.5` 是多个版本快照，不能与当前源码无条件混读；本文以当前源码版本 `1.15.5`、根配置和当前测试树为准。
+- `docs/v1.10.1`、`v1.13.0`、`v1.15.4`、`v1.15.5` 是历史版本快照，不能与当前源码无条件混读；本文以当前源码版本 `1.15.17`、根配置和当前测试树为准。
 - 根 `pyproject.toml` 明确是 uv workspace，pytest 默认 strict asyncio、阻断网络、60 秒超时和 xdist；这解释了测试的隔离与并行方式，但不证明真实 provider、外部协议或强杀场景通过。
-- 测试覆盖面很广，尤其是 Crew、Flow、checkpoint、tool usage、事件关闭和 loader；仍不能把 mock、VCR cassette、测试文件存在或默认 pytest 配置当作本轮实际执行证据。
+- 测试覆盖面很广，尤其是 Crew、Flow、checkpoint、tool usage、事件关闭和 loader；仍不能把 mock、VCR cassette、测试文件存在或默认 pytest 配置当作当前核对实际执行证据。
 - `.env.test` 只确认被测试 harness 加载，本次没有读取其 secret 内容；`uv.lock` 只作为锁定依赖事实，不在本文逐项重建 optional extras 的解析图。
 - 本次没有运行安装、pytest、ruff、mypy、构建、CLI、外部 MCP/A2A/OTLP 或强杀验证，因此本文最终状态仍是“静态审计完成，运行验证未执行”。
 

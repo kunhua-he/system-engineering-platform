@@ -361,7 +361,7 @@ README 的安装和环境变量意图见 `README.md:69-116`、`259-281`；实际
 8. **解析结果受 PyYAML 影响**：有 PyYAML 时使用完整 YAML，缺失时回退简化解析；`tags`、引号、复杂值等兼容性应视为部署环境变量，而不是固定保证。
 9. **质量门禁是启发式**：训练质量依赖字段存在和正则/长度规则；评估的任务完成度主要按响应长度，格式按正则，风格按词频余弦相似度（`scripts/eval-replacement.py:106-140`），不能证明真实任务等价或安全。
 
-### 10.2 本轮未确认项
+### 10.2 当前核对未确认项
 
 - Hermes v0.6.0+ 实际插件加载器是否要求特定返回类型、异步 handler、schema 校验或 manifest 额外字段；仓库只有调用方假设，没有宿主 SDK 源码/锁定版本。
 - `HERMES_HOME` 在不同 Hermes profile 的真实注入方式，以及 profile-specific `.env` 的加载顺序；README 描述了 profile 用法，但未在真实 Hermes 进程中验证。
@@ -369,7 +369,7 @@ README 的安装和环境变量意图见 `README.md:69-116`、`259-281`；实际
 - 是否存在外部生产 fabric 数据、旧版 frontmatter、`refs`/`cycle` 字段的完整历史兼容要求；仓库仅能从解析/导出代码推断兼容路径。
 - 同一 fabric 目录跨平台/跨进程并发下的文件系统语义、备份恢复一致性、权限和敏感信息保护；未进行压力或故障注入。
 - 模型切换后 Hermes 是否立即重新读取 `.env`，还是必须重启；README 写有重启配置提示，但运行时宿主行为未被本仓库验证。
-- 真实 Obsidian 对 generated links 区块、daily note 和 vault root 的显示行为；本轮只读源码并执行临时 fixture 测试。
+- 真实 Obsidian 对 generated links 区块、daily note 和 vault root 的显示行为；当前核对只读源码并执行临时 fixture 测试。
 
 ## 11. 架构结论
 
@@ -377,9 +377,9 @@ Icarus 已形成一条清晰的纵向闭环：`Hermes plugin SDK → hooks/tools
 
 当前它更准确地是“单机/低并发、文件型自记忆和模型替换原型”，而不是具备多进程一致性、严格 schema 契约、可审计发布事务和生产级训练评估的服务平台。若进入生产化阶段，优先需要补齐：共享 fabric 的锁与版本/冲突策略、侧车状态原子更新、训练前参数校验与幂等、模型配置与 registry 的一致性协议、宿主 SDK 版本契约，以及修正 smoke handoff 的 ID 解析断言。
 
-## 12. 第三轮底座映射：可复用模块与治理缺口
+## 12. 后续底座映射：可复用模块与治理缺口
 
-本轮不是把 Icarus 的文件直接搬进平台，而是把“插件注册、生命周期钩子、质量门、训练导出、模型注册、配置原子替换、回滚”逐项映射到平台已有的公共契约、支持库、模块库、运行核心和统一网关。结论分为：**吸收**（可作为通用能力输入）、**升级**（模式有价值但必须补一致性/证据/宿主验证）、**隔离**（第三方或宿主特定实现留在适配层）、**待核**（缺少真实宿主或线上证据）。
+当前核对不是把 Icarus 的文件直接搬进平台，而是把“插件注册、生命周期钩子、质量门、训练导出、模型注册、配置原子替换、回滚”逐项映射到平台已有的公共契约、支持库、模块库、运行核心和统一网关。结论分为：**吸收**（可作为通用能力输入）、**升级**（模式有价值但必须补一致性/证据/宿主验证）、**隔离**（第三方或宿主特定实现留在适配层）、**待核**（缺少真实宿主或线上证据）。
 
 ### 12.1 现有能力命中表
 
@@ -419,7 +419,7 @@ Icarus 当前只实现了“单文件临时 rename + 单份备份”的局部原
 
 ### 12.3 真实宿主验证与防假绿
 
-现有 `scripts/test-plugin.sh` 是临时目录 fixture 测试，源码中还使用 fake Together 响应（`scripts/test-plugin.sh:773-805`），它能证明离线文件逻辑的一部分，但不能证明真实 Hermes 宿主契约、真实 provider、跨进程并发或远端 API。`scripts/smoke-handoff.sh` 当前还失败，且失败证据指向 `parse_id` 未去掉 frontmatter 引号（本文件第 9.2 节）。因此第三轮验收必须分层，不允许以“66 passed”覆盖宿主未验证和 smoke 失败：
+现有 `scripts/test-plugin.sh` 是临时目录 fixture 测试，源码中还使用 fake Together 响应（`scripts/test-plugin.sh:773-805`），它能证明离线文件逻辑的一部分，但不能证明真实 Hermes 宿主契约、真实 provider、跨进程并发或远端 API。`scripts/smoke-handoff.sh` 当前还失败，且失败证据指向 `parse_id` 未去掉 frontmatter 引号（本文件第 9.2 节）。因此后续验收必须分层，不允许以“66 passed”覆盖宿主未验证和 smoke 失败：
 
 | 验证层 | 通过标准 | 不能替代的证据 |
 |---|---|---|
@@ -439,7 +439,7 @@ Icarus 当前只实现了“单文件临时 rename + 单份备份”的局部原
 - 质量门本身要做恒真破坏：移除阈值、把错误响应当成功、跳过宿主读回、强制 active=true 后，独立测试必须失败；否则门禁不可证明。
 - 训练导出要比较输入快照摘要和输出 manifest，不能只看 `total pairs` 文本；模型切换要比较 `.env` 与 registry 的旧/新代，不能只看返回 JSON。
 
-### 12.4 第三轮落点与装配顺序
+### 12.4 后续落点与装配顺序
 
 ```text
 插件 manifest/真实宿主适配器
@@ -460,7 +460,7 @@ Icarus 当前只实现了“单文件临时 rename + 单份备份”的局部原
 4. 再实现模型注册与发布事务；配置文件和 registry 不允许由两个普通 `write_text` 组成“伪事务”。
 5. 最后接真实 Hermes 宿主、真实 profile、真实进程重启和可控 Together 验证；所有未执行外部验证保留为“未验证”，不得用 fixture 绿灯替代。
 
-本轮裁决：**插件注册、生命周期编排、质量门、训练导出、模型注册、配置原子替换、多代回滚都值得成为通用模块，但只有“注册/编排/证据/原子文件操作”的抽象可吸收；Icarus 的英文业务字段、正则评分、Together 直连、全局状态和单备份回滚必须留在项目适配层或被隔离。**
+当前核对裁决：**插件注册、生命周期编排、质量门、训练导出、模型注册、配置原子替换、多代回滚都值得成为通用模块，但只有“注册/编排/证据/原子文件操作”的抽象可吸收；Icarus 的英文业务字段、正则评分、Together 直连、全局状态和单备份回滚必须留在项目适配层或被隔离。**
 
 ## 13. 旧细探吸收裁决与维护边界
 
@@ -492,11 +492,11 @@ Icarus 当前只实现了“单文件临时 rename + 单份备份”的局部原
 
 ## 14. 本次变更边界
 
-仅修改项目根目录唯一架构文档 `ARCHITECTURE.md`，将旧细探中仍有源码证据的事实吸收并追加第三轮底座映射、治理契约和防假绿规则。未修改源码、依赖、测试、配置或 `细探-Icarus.md`；未安装依赖、启动服务、构建项目、提交 Git，也未删除任何已有文件。代码图服务对 Icarus 返回未建立 `.codegraph/`，故本轮代码图状态记为“不可用”，不把错误项目（华世王镞_v3）上下文或代码图结果混入本项目结论。
+仅修改项目根目录唯一架构文档 `ARCHITECTURE.md`，将旧细探中仍有源码证据的事实吸收并追加后续底座映射、治理契约和防假绿规则。未修改源码、依赖、测试、配置或 `细探-Icarus.md`；未安装依赖、启动服务、构建项目、提交 Git，也未删除任何已有文件。代码图服务对 Icarus 返回未建立 `.codegraph/`，故当前核对代码图状态记为“不可用”，不把错误项目（华世王镞_v3）上下文或代码图结果混入本项目结论。
 
-## 15. 第二轮收口：入口、抽取、事件/存储/协议、资源与失败恢复
+## 15. 后续收口：入口、抽取、事件/存储/协议、资源与失败恢复
 
-本节是针对“第二轮深挖”要求的收口，不把设计建议写成当前实现。证据基线仍为 `main/e46cba30fb95a0b54b7c4d6c26169a424283d72b`；本节引用的路径均为当前源码。Icarus 的核心事实是：它没有独立事件总线、数据库、守护进程或插件卸载 API，而是同步 Python 回调 + 共享文件 + Together AI HTTP 的单机插件。
+本节是针对“后续深挖”要求的收口，不把设计建议写成当前实现。证据基线仍为 `main/e46cba30fb95a0b54b7c4d6c26169a424283d72b`；本节引用的路径均为当前源码。Icarus 的核心事实是：它没有独立事件总线、数据库、守护进程或插件卸载 API，而是同步 Python 回调 + 共享文件 + Together AI HTTP 的单机插件。
 
 ### 15.1 Hermes 插件入口与真实宿主契约
 
@@ -575,13 +575,13 @@ Icarus 没有独立事件总线；源码中的“事件”是三种不同性质�
 
 | 资源 | 创建/持有 | 正常释放 | 业务失败/超时 | 崩溃/残留风险 |
 |---|---|---|---|---|
-| Fabric/Obsidian 文件 | `Path.mkdir`、`write_text`；可选 format/daily 二次写 | Python 文件调用结束后句柄关闭；无显式 fsync | Obsidian 二次写失败只 debug 日志，原 fabric 条目保留；直接写失败由工具转 error 或部分文件风险 | fabric、daily、`.obsidian/app.json` 均无临时文件/恢复意图；并发写可能互相覆盖 | 
-| JSON/JSONL 侧车 | registry/state/job 使用 `write_text`，telemetry 使用 `open(...,"a")` | `with open` 的 telemetry 正常关闭；普通 `write_text` 依赖调用返回 | registry 保存异常只 warning；state/telemetry 写异常部分被吞；无校验后重写 | 中断可留下半 JSON；下一次 `_load_registry/load_creative` 退回空结构，造成静默丢历史 | 
-| 导出临时目录 | `state.export_training` 使用 `tempfile.TemporaryDirectory`，子进程在其中写 4 个输出 | `with` 正常退出/异常退出都会清理目录 | 子进程非零返回错误；`TimeoutExpired` 未在 `export_training` 内单独转换，但会被上层 handler 捕获；目录上下文仍负责清理 | 子进程默认不建立独立进程组；超时/强杀时孙进程残留未被扫描 | 
-| Together HTTP response | `urllib.request.urlopen` 返回 response，读取 JSON | 代码只 `read()`，没有 `with`/显式 close 责任 | HTTP、JSON、超时统一进入少量 error 分支；无重试/断点 | 连接/远端任务不由本地恢复器管理；上传文件可能成为孤儿 | 
-| 评估子进程 | `subprocess.run(..., timeout=300)` 启动 `eval-replacement.py` | 正常返回后进程结束；超时由 `subprocess.run` 处理 | 捕获 `TimeoutExpired` 返回 `eval timed out`；非零和非法 JSON 返回 error | 未设置 `start_new_session`/进程组；子进程的网络请求或孙进程不保证随树清理，未读回残留 | 
-| `.env` 与备份 | `shutil.copy2` 覆盖单份 `.env.backup`；固定 `.tmp` 写入后 rename | rename 后临时名通常消失 | 缺 key 检查发生在备份之后；写失败不主动删除 `.tmp`；registry 保存失败会留下已切配置 | 无 fsync、权限显式设置、意图日志或多代备份；并发切换会争用同一 `.tmp/.backup` | 
-| 内存态 session | hook 维护全局 exchanges、recall log、last query tokens | 新 session 重置部分 buffer；end 写 session/memory | 低分 session 跳过 session 条目，但仍先写 `memories/MEMORY.md`；中途异常无 checkpoint | 宿主进程崩溃丢失未落盘 exchange、creative 变更和未追加 telemetry | 
+| Fabric/Obsidian 文件 | `Path.mkdir`、`write_text`；可选 format/daily 二次写 | Python 文件调用结束后句柄关闭；无显式 fsync | Obsidian 二次写失败只 debug 日志，原 fabric 条目保留；直接写失败由工具转 error 或部分文件风险 | fabric、daily、`.obsidian/app.json` 均无临时文件/恢复意图；并发写可能互相覆盖 |
+| JSON/JSONL 侧车 | registry/state/job 使用 `write_text`，telemetry 使用 `open(...,"a")` | `with open` 的 telemetry 正常关闭；普通 `write_text` 依赖调用返回 | registry 保存异常只 warning；state/telemetry 写异常部分被吞；无校验后重写 | 中断可留下半 JSON；下一次 `_load_registry/load_creative` 退回空结构，造成静默丢历史 |
+| 导出临时目录 | `state.export_training` 使用 `tempfile.TemporaryDirectory`，子进程在其中写 4 个输出 | `with` 正常退出/异常退出都会清理目录 | 子进程非零返回错误；`TimeoutExpired` 未在 `export_training` 内单独转换，但会被上层 handler 捕获；目录上下文仍负责清理 | 子进程默认不建立独立进程组；超时/强杀时孙进程残留未被扫描 |
+| Together HTTP response | `urllib.request.urlopen` 返回 response，读取 JSON | 代码只 `read()`，没有 `with`/显式 close 责任 | HTTP、JSON、超时统一进入少量 error 分支；无重试/断点 | 连接/远端任务不由本地恢复器管理；上传文件可能成为孤儿 |
+| 评估子进程 | `subprocess.run(..., timeout=300)` 启动 `eval-replacement.py` | 正常返回后进程结束；超时由 `subprocess.run` 处理 | 捕获 `TimeoutExpired` 返回 `eval timed out`；非零和非法 JSON 返回 error | 未设置 `start_new_session`/进程组；子进程的网络请求或孙进程不保证随树清理，未读回残留 |
+| `.env` 与备份 | `shutil.copy2` 覆盖单份 `.env.backup`；固定 `.tmp` 写入后 rename | rename 后临时名通常消失 | 缺 key 检查发生在备份之后；写失败不主动删除 `.tmp`；registry 保存失败会留下已切配置 | 无 fsync、权限显式设置、意图日志或多代备份；并发切换会争用同一 `.tmp/.backup` |
+| 内存态 session | hook 维护全局 exchanges、recall log、last query tokens | 新 session 重置部分 buffer；end 写 session/memory | 低分 session 跳过 session 条目，但仍先写 `memories/MEMORY.md`；中途异常无 checkpoint | 宿主进程崩溃丢失未落盘 exchange、creative 变更和未追加 telemetry |
 
 结论是：Icarus 的“释放”主要依靠 Python `with` 和 shell `trap` 的正常/异常退出清理，资源治理并未形成统一 owner。`test-plugin.sh`/`smoke-handoff.sh` 对测试临时根目录使用 `trap 'rm -rf ...' EXIT`（`scripts/test-plugin.sh:5-8`、`scripts/smoke-handoff.sh:5-8`），这只能证明测试夹具清理，不证明生产路径的文件、进程、连接和远端制品可恢复。
 
@@ -603,16 +603,16 @@ Icarus 没有独立事件总线；源码中的“事件”是三种不同性质�
 | session/hook 中途崩溃 | 未写入的 exchanges/creative/telemetry 丢失；已写 fabric 文件保留 | 已完成的独立文件仍可被下次读取 | 无 checkpoint、幂等 hook key、重放或清理协议；全局状态不适合并发 session |
 | Obsidian format/daily 写失败 | `state.write_entry` 保留主条目，异常只 debug | 主写与可选展示解耦 | daily/link 不一致不会进入错误结果；无补偿队列 |
 
-### 15.6 第二轮验证等级与剩余待核
+### 15.6 后续验证等级与剩余待核
 
-| 验证项 | 本轮证据 | 等级/结论 |
+| 验证项 | 当前核对证据 | 等级/结论 |
 |---|---|---|
 | Python 语法 | `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile __init__.py schemas.py tools.py hooks.py state.py obsidian.py fabric-retrieve.py export-training.py scripts/eval-replacement.py`，退出码 0 | **静态通过**；不证明宿主/网络 |
 | 离线 fixture | `PYTHONDONTWRITEBYTECODE=1 bash scripts/test-plugin.sh`，退出码 0，`66 passed, 0 failed` | **局部通过**；覆盖文件逻辑、训练 pair、模型切换 fixture、Obsidian fixture；未证明真实 Hermes/Together/并发/崩溃恢复 |
-| handoff 冒烟 | `PYTHONDONTWRITEBYTECODE=1 bash scripts/smoke-handoff.sh`，退出码 1；在 `reviewer session-start includes source id` 处失败 | **未通过，必须保留**；`state.write_entry` 用 `_yaml_scalar` 将 id 写成带引号标量（`state.py:281-283`、`327-330`），而脚本 `parse_id` 仅 `.strip()` 不去引号（`scripts/smoke-handoff.sh:63-67`）；`hooks.on_session_start` 读回 frontmatter 后把带引号值放入上下文（`hooks.py:72-90`）。这是当前测试夹具与生产写入格式的契约漂移证据，不在本轮范围内修复 |
+| handoff 冒烟 | `PYTHONDONTWRITEBYTECODE=1 bash scripts/smoke-handoff.sh`，退出码 1；在 `reviewer session-start includes source id` 处失败 | **未通过，必须保留**；`state.write_entry` 用 `_yaml_scalar` 将 id 写成带引号标量（`state.py:281-283`、`327-330`），而脚本 `parse_id` 仅 `.strip()` 不去引号（`scripts/smoke-handoff.sh:63-67`）；`hooks.on_session_start` 读回 frontmatter 后把带引号值放入上下文（`hooks.py:72-90`）。这是当前测试夹具与生产写入格式的契约漂移证据，不在当前核对范围内修复 |
 | 真实宿主加载 | 仓库无 Hermes loader/SDK 类型/实际 profile 进程验证 | **未验证** |
-| Together 线上 API | 仅 fixture fake response；本轮无凭据、无网络写入 | **未验证**；不能把 fake response 当外部协议通过 |
+| Together 线上 API | 仅 fixture fake response；当前核对无凭据、无网络写入 | **未验证**；不能把 fake response 当外部协议通过 |
 | 多进程/并发 | 无锁、无 CAS、无压力或故障注入测试 | **未验证且有明确风险** |
 | 进程崩溃/恢复 | 无意图日志、恢复器、进程组扫描、远端补偿测试 | **未验证且当前没有实现证据** |
 
-第二轮收口结论：**Hermes 入口和工具/hook 的源码链路已闭合；记忆与训练抽取规则、文件/JSON/JSONL/HTTP 协议边界已闭合；资源释放与失败恢复的“有实现/只有局部/没有实现”边界已明确。**当前能称为已实现的是同步单进程、临时目录清理、检索降级、工具错误字符串、单文件 `.env` rename 和单份备份；不能称为已实现的是宿主版本契约、事件总线、持久事件重放、跨文件事务、并发一致性、远端幂等/清理、进程树回收、崩溃恢复和多代回滚。后续只维护本文件，旧 `细探-Icarus.md` 仍为历史记录，不构成第二事实源。
+后续收口结论：**Hermes 入口和工具/hook 的源码链路已闭合；记忆与训练抽取规则、文件/JSON/JSONL/HTTP 协议边界已闭合；资源释放与失败恢复的“有实现/只有局部/没有实现”边界已明确。**当前能称为已实现的是同步单进程、临时目录清理、检索降级、工具错误字符串、单文件 `.env` rename 和单份备份；不能称为已实现的是宿主版本契约、事件总线、持久事件重放、跨文件事务、并发一致性、远端幂等/清理、进程树回收、崩溃恢复和多代回滚。后续只维护本文件，旧 `细探-Icarus.md` 仍为历史记录，不构成第二事实源。

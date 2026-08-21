@@ -1,6 +1,6 @@
 # htmlview 架构建档
 
-> 首轮全量架构建档，基于本地源码现场人工读取形成。本文是本项目根目录唯一架构事实文档；后续细探应增量更新本文件，不另建平行架构结论。
+> 当前全量架构建档，基于本地源码现场人工读取形成。本文是本项目根目录唯一架构事实文档；后续核查应直接更新本文件，不另建平行架构结论。
 >
 > 状态标记约定：
 > - **源码已实现**：源码中存在可直接确认的实现、元数据或导出路径。
@@ -21,7 +21,7 @@
 
 **结论**：项目定位为 Windows/易语言支持库的 `HtmlViewer` 组件声明与接入骨架；“浏览器功能已可运行”在当前仓库证据下属于未验证，部分核心行为明确尚未实现。
 
-## 2. 首轮架构流程图
+## 2. 当前架构流程图
 
 ```text
 易语言 IDE / 编译运行时
@@ -414,9 +414,9 @@ DLL_PROCESS_ATTACH / DLL_PROCESS_DETACH / DLL_THREAD_ATTACH / DLL_THREAD_DETACH
 - 两个 `.vcxproj.user` 只有空 `PropertyGroup`，没有可复用的本地环境路径（`htmlview.vcxproj.user:1-4`、`htmlview_static/htmlview_static.vcxproj.user:1-3`）。
 - 当前仓库只有一次浅历史提交 `f71a451`，没有可从 Git 历史追溯的功能演进。
 
-### 9.2 本轮实际验证
+### 9.2 当前取证实际验证
 
-本轮只执行了只读源码/工程/Git 盘点，未在 macOS 上运行 Windows Visual Studio 构建、未加载 DLL、未连接易语言 IDE、未调用浏览器 COM，也未运行任何测试。验证边界如下：
+当前取证只执行了只读源码/工程/Git 盘点，未在 macOS 上运行 Windows Visual Studio 构建、未加载 DLL、未连接易语言 IDE、未调用浏览器 COM，也未运行任何测试。验证边界如下：
 
 | 项目 | 结果 | 说明 |
 |---|---|---|
@@ -469,7 +469,7 @@ DLL_PROCESS_ATTACH / DLL_PROCESS_DETACH / DLL_THREAD_ATTACH / DLL_THREAD_DETACH
 4. 若后续实现组件，需单独建立窗口创建、浏览器对象管理、COM 事件接收、属性序列化、宿主事件通知、资源释放和错误路径的验证矩阵。
 5. 补充最小宿主集成测试：DLL 装载与元数据计数、组件创建/销毁、属性往返、`Navigate`、POST、状态查询、事件顺序、COM 对象释放和 x86/x64 构建。
 
-以上建议仅是架构复核入口；本轮没有修改源码、工程、依赖、测试或配置，也没有启动实现工作。
+以上建议仅是架构复核入口；当前取证没有修改源码、工程、依赖、测试或配置，也没有启动实现工作。
 
 ## 12. Git 基线与证据索引
 
@@ -481,7 +481,7 @@ DLL_PROCESS_ATTACH / DLL_PROCESS_DETACH / DLL_THREAD_ATTACH / DLL_THREAD_DETACH
 - 基线提交：`f71a451d954c9af23a96d6878dc1ac4ec2292f5b`
 - 提交主题：`初始化仓库`
 - 提交时间：`2022-12-19T16:09:14+08:00`
-- 初始现场状态：`master...origin/master`，工作树无已知修改；本文件为本轮唯一允许新增/更新的文件。
+- 初始现场状态：`master...origin/master`，工作树无已知修改；本文件为当前取证唯一允许新增/更新的文件。
 
 ### 12.2 关键证据路径
 
@@ -498,6 +498,12 @@ DLL_PROCESS_ATTACH / DLL_PROCESS_DETACH / DLL_THREAD_ATTACH / DLL_THREAD_DETACH
 - 工程输入与配置：`htmlview.sln:5-40`；`htmlview.vcxproj:21-201`；`htmlview_static/htmlview_static.vcxproj:21-166`
 - 工程筛选器：`htmlview.vcxproj.filters:1-74`；`htmlview_static/htmlview_static.vcxproj.filters:1-66`
 
-## 13. 本轮变更边界
+## 13. 当前取证变更边界
 
-本轮只新增或更新目标根目录 `ARCHITECTURE.md`。未修改源码、工程文件、依赖、测试、配置或 Git 历史；未删除任何旧细探（现场未发现旧细探文件）。
+当前取证只新增或更新目标根目录 `ARCHITECTURE.md`。未修改源码、工程文件、依赖、测试、配置或 Git 历史；未删除任何既有细探材料（现场未发现既有细探材料文件）。
+
+## 14. 调用链与失败边界补充
+
+`htmlview` 是 23 文件的支持库模板，命令表和类型表位于 `htmlview_cmdDef.cpp`、`htmlview_cmdInfo.cpp`、`htmlview_cmd_typedef.h`、`htmlview_dtType.cpp`；DLL 入口由 `htmlview_dllMain.cpp` 和 `Source_htmlview.def` 约束。仓内没有浏览器控件实现、COM 封装、资源文件或测试程序，因此“HTML 加载、脚本执行、导航事件、窗口销毁”只能视为接口意图。
+
+动态/静态工程分别是 `htmlview.vcxproj` 与 `htmlview_static/htmlview_static.vcxproj`，共享 `elib/*` ABI。使用前必须在 Windows 验证 WebBrowser/COM 初始化、线程亲和、导航失败、回调重入、释放顺序、x86/x64 导出和宿主异常隔离；当前 macOS 未执行这些行为测试。23 文件的小型规模与文档现有 500 行以上篇幅相符，无需重复铺陈。

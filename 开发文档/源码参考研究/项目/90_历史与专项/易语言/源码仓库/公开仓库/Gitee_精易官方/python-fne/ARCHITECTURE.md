@@ -33,7 +33,7 @@
 ### 2.2 证据分级
 
 - **已实现（源码直接证实）**：`GetNewInf` 注册入口、支持库元信息装配、命令函数、Python C API 包装类、动态符号绑定、PythonTest 示例主流程。
-- **仅声明/配置（文件声明但未由本轮构建证实）**：Visual Studio 解决方案、Win32/x64 配置、`.fne` 输出后缀、Python 3.8 调试/发布库文件、导出符号 `GetNewInf`。
+- **仅声明/配置（文件声明但未由当前核对构建证实）**：Visual Studio 解决方案、Win32/x64 配置、`.fne` 输出后缀、Python 3.8 调试/发布库文件、导出符号 `GetNewInf`。
 - **未验证**：本机 macOS 上无法直接验证 Windows `LoadLibrary`、`windows.h`、易语言宿主加载、Visual Studio/MSBuild 编译、`.fne` 在易语言 IDE/运行时中的装载，以及 Python DLL 版本兼容性。
 - **风险性事实（代码可见但未做行为测试）**：错误处理留痕不完整、引用计数和内存所有权复杂、若干指针/函数签名存在可疑实现，详见“风险与未确认项”。
 
@@ -366,7 +366,7 @@ MDATA_INF
 | Python C API | `PyDll.h/.cpp`、`PythonTest/include/Python.h` | 已实现调用；版本兼容未验证 |
 | C++ STL | `vector`、`list`、`memory`、`string` | 已实现使用 |
 | Python 标准库模块 | `PythonTest/dom.py`、`py/HmyPath.py` | 仅示例验证材料，无自动测试 |
-| Visual Studio/MSBuild v143 | `.sln`、`.vcxproj` | 仅工程声明，未在本轮执行 |
+| Visual Studio/MSBuild v143 | `.sln`、`.vcxproj` | 仅工程声明，未在当前核对执行 |
 
 ## 10. 测试与验证现状
 
@@ -378,9 +378,9 @@ MDATA_INF
 
 ### 10.2 未发现的测试机制
 
-本仓库没有发现 `README.md`、`requirements.txt`、`pyproject.toml`、pytest/unittest 测试目录、CI 配置或自动化测试脚本。`PythonTest` 只是 VS 控制台项目；仓库中没有本轮可执行的跨 Windows/易语言宿主测试命令。
+本仓库没有发现 `README.md`、`requirements.txt`、`pyproject.toml`、pytest/unittest 测试目录、CI 配置或自动化测试脚本。`PythonTest` 只是 VS 控制台项目；仓库中没有当前核对可执行的跨 Windows/易语言宿主测试命令。
 
-### 10.3 本轮未执行的验证
+### 10.3 当前核对未执行的验证
 
 - 未在 macOS 编译：源码依赖 Windows 类型、Windows API、Visual Studio 项目系统；
 - 未在 Windows + Visual Studio 下编译 Debug/Release、Win32/x64；
@@ -417,7 +417,7 @@ MDATA_INF
 4. 对 `PyDll` 符号表做运行时完整性校验，逐项核对函数签名，尤其是线程状态 API、`PyObject*` 宽度和 x64；
 5. 用 CPython debug build 或 refcount 统计覆盖复制、返回、容器取值、模块属性和易语言对象析构；
 6. 用两个真实线程验证 GIL/`PyEval_SaveThread`/`PyEval_RestoreThread`/`PyGILState_Ensure` 的调用协议；
-7. 将 `PythonTest` 从手工 printf 示例扩展为有返回码的最小回归程序，但这属于后续开发，不是本轮修改范围。
+7. 将 `PythonTest` 从手工 printf 示例扩展为有返回码的最小回归程序，但这属于后续开发，不是当前核对修改范围。
 
 ## 13. 证据路径索引
 
@@ -436,8 +436,8 @@ MDATA_INF
 - Python 示例模块：`PythonFne_vs2019/PythonTest/dom.py`、`py/dom.py`、`py/HmyPath.py`
 - 构建依赖快照：`PythonFne_vs2019/PythonTest/include/`、`PythonFne_vs2019/PythonTest/libs/`
 - 项目功能说明：`PythonFne_vs2019/PythonFne_vs2019/更新说明.txt`
-- Git 基线：`git status --short --branch`、`git log -1`、`git remote -v`（本轮现场结果见第 2 节）
+- Git 基线：`git status --short --branch`、`git log -1`、`git remote -v`（当前核对现场结果见第 2 节）
 
 ---
 
-**范围声明**：本轮只新增根目录 `ARCHITECTURE.md`，未修改源码、工程、依赖、测试、配置、Git 历史或删除任何旧细探文件。
+**范围声明**：当前核对只新增根目录 `ARCHITECTURE.md`，未修改源码、工程、依赖、测试、配置、Git 历史或删除任何旧细探文件。

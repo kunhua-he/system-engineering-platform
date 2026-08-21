@@ -380,13 +380,13 @@ python3 -c 'from pathlib import Path; print(sum(p.is_file() and p.suffix == ".py
 
 本次未执行安装、启动、构建、Git 提交或源码/依赖/测试配置修改。
 
-## 13. 第三轮：向模型支持库、模块库、运行核心与网关映射
+## 13. 后续：向模型支持库、模块库、运行核心与网关映射
 
-本轮只做底座映射和裁决，不把 DSPy 源码复制进生产底座，也不修改 DSPy 源码、依赖、配置或测试。此前调用平台 `project_context` 时返回的是另一个项目（`~/Documents/Agent/PHP/华世王镞_v3`），与本目标根不一致；该结果仅记录为环境错绑，不作为 DSPy 的代码地图、验证或架构证据。本轮结论均回到目标仓库本地源码静态取证。
+当前核对只做底座映射和裁决，不把 DSPy 源码复制进生产底座，也不修改 DSPy 源码、依赖、配置或测试。此前调用平台 `project_context` 时返回的是另一个项目（`~/Documents/Agent/PHP/华世王镞_v3`），与本目标根不一致；该结果仅记录为环境错绑，不作为 DSPy 的代码地图、验证或架构证据。当前核对结论均回到目标仓库本地源码静态取证。
 
 ### 13.1 现有能力命中与归属表
 
-| DSPy 能力/源码证据 | 平台归属 | 第三轮裁决 | 边界 |
+| DSPy 能力/源码证据 | 平台归属 | 后续裁决 | 边界 |
 |---|---|---|---|
 | `dspy/signatures/signature.py` 的 `SignatureMeta`、`make_signature`、字段顺序/类型/指令、`dump_state`/`load_state` | 公共契约 + 模块库的声明模型 | **吸收契约模式** | 签名是模块输入/输出契约，不是 provider 配置；动态签名生成必须由唯一契约编译入口管理 |
 | `dspy/core/types.py` 的 `LMRequest`/`LMResponse`、`LMMessage`/`LMPart`/`LMToolSpec`/`LMConfig` | 模型支持库的跨 provider 标准类型 | **升级现有模型支持库候选** | 统一多模态、工具、reasoning、usage、cost、cache_hit 和 provider metadata；不把供应商对象穿透到模块 |
@@ -413,7 +413,7 @@ python3 -c 'from pathlib import Path; print(sum(p.is_file() and p.suffix == ".py
 | 编译状态不等于发布状态 | `Module._compiled` 仅影响参数遍历/冻结；部分优化器把它设为 `True` | **模块库产生候选，运行核心/控制面负责制品、签名、激活和回滚**；`_compiled` 只能作为模块内部提示 |
 | 没有跨 HTTP/MCP/SDK 的单一对外结果信封 | DSPy 主要返回 `Prediction`/`EvaluationResult`/`LMResponse`，没有平台统一网关信封 | **新建网关契约**；只向外暴露成功/值/错误码/错误说明/可重试/状态/证据引用，隐藏 provider 异常对象 |
 
-结论是：DSPy 最值得吸收的是“规范请求响应 + 声明式模块 + 评估编译闭环 + provider 适配边界”，不是整个框架作为一个新运行时接入。没有需求确认、能力搜索、复用决策、占用租约、验收契约和装配计划时，本轮不修改平台生产底座。
+结论是：DSPy 最值得吸收的是“规范请求响应 + 声明式模块 + 评估编译闭环 + provider 适配边界”，不是整个框架作为一个新运行时接入。没有需求确认、能力搜索、复用决策、占用租约、验收契约和装配计划时，当前核对不修改平台生产底座。
 
 ## 14. 唯一调用链与责任转移
 
@@ -439,7 +439,7 @@ python3 -c 'from pathlib import Path; print(sum(p.is_file() and p.suffix == ".py
 
 证据分别位于 `dspy/predict/predict.py:141-275`、`dspy/primitives/module.py:93-129`、`dspy/clients/base_lm.py:321-406`、`dspy/clients/lm.py:208-322`、`dspy/clients/cache.py:216-310` 和 `dspy/evaluate/evaluate.py:162-226`。这条链是 DSPy 当前 Python 内部链，不应被误写成平台已经存在的统一网关。
 
-### 14.2 平台唯一装配链（第三轮落点）
+### 14.2 平台唯一装配链（后续落点）
 
 ```text
 正式代码/上层项目
@@ -470,7 +470,7 @@ python3 -c 'from pathlib import Path; print(sum(p.is_file() and p.suffix == ".py
 | `TrainingJob`/`ReinforceJob`、训练线程 | `LM.finetune` 创建线程和 `TrainingJob`；provider 持有远端 job | `Future.set_result` 返回新 LM；RL 由 provider checkpoint/terminate | `_run_finetune_job` 捕获异常并写入 Future | `TrainingJob.cancel` 默认仅 Future 语义；provider 必须覆盖远端取消；LM 留有 cancel TODO | 训练远端 job、文件、线程可能脱离父进程；平台必须有 job owner、status poll、回收和超时 |
 | save/load 文件、pickle/cloudpickle | `BaseModule.save`/`Settings.save`/LM state；调用方提供路径 | JSON/state 或 program 制品写入 | 非可序列化/版本不一致警告或失败 | 取消写入要采用临时文件+原子替换，源码当前未统一保证 | 不可信 pickle 可执行任意代码；平台只允许可信制品和签名校验 |
 
-本表区分了“源码中有释放/上限钩子”和“本轮真实证明已释放”。DSPy 当前只读静态证据不足以证明 provider、网络流、线程、远端训练 job 在四种终态均无残留。
+本表区分了“源码中有释放/上限钩子”和“当前核对真实证明已释放”。DSPy 当前只读静态证据不足以证明 provider、网络流、线程、远端训练 job 在四种终态均无残留。
 
 ## 16. 失败、超时、取消与状态裁决
 
@@ -509,22 +509,22 @@ python3 -c 'from pathlib import Path; print(sum(p.is_file() and p.suffix == ".py
 L0：README/注释/命令表/函数声明存在
 L1：源码中存在可执行路径
 L2：测试源码覆盖该路径
-L3：本轮真实执行，记录命令、退出码、测试数和输出
+L3：当前核对真实执行，记录命令、退出码、测试数和输出
 L4：外部依赖/真实宿主/真实服务/真实资源释放已验证
 ```
 
 | 结论项 | L0 | L1 | L2 | L3 | L4/当前边界 |
 |---|---:|---:|---:|---:|---|
-| Signature/Module/Predict/Adapter 主链 | ✓ 文档和 API 声明 | ✓ `signature.py`、`module.py`、`predict.py`、`adapters/` | 有对应模块/适配器测试目录 | **本轮未运行** | 未接真实 provider |
-| LM provider/错误/缓存 | ✓ docstring/依赖声明 | ✓ `clients/base_lm.py`、`lm.py`、`provider.py`、`cache.py` | `tests/clients/test_lm.py`、`test_cache.py`、`test_lm_local.py` 存在 | **本轮未运行** | LiteLLM/API key/真实网络未验证 |
-| Evaluate/编译优化 | ✓ `Evaluate`/`Teleprompter` API | ✓ `evaluate.py`、`teleprompt/`、`gepa/` | `tests/evaluate/test_evaluate.py`、`tests/teleprompt/test_teleprompt.py` 及优化器测试存在 | **本轮未运行** | 外部 GEPA/真实模型质量未验证 |
-| 缓存/历史/序列化 | ✓ save/load/cache 声明 | ✓ `clients/cache.py`、`settings.py`、`base_module.py` | `tests/clients/test_cache.py`、保存/设置相关测试存在 | **本轮未运行** | 磁盘权限、pickle 信任边界、崩溃残留未验证 |
-| 并发/超时/取消/训练 job | ✓ docstring/参数 | ✓ `parallelizer.py`、`provider.py`、`clients/openai.py` | `tests/utils/test_parallelizer.py`、provider/并行测试存在 | **本轮未运行** | 真实强杀、远端取消、线程/进程/端口清理未验证 |
-| 平台统一网关与单链路 | **DSPy 无统一平台网关声明** | **目标源码未见平台注册/HTTP/MCP 统一调用器** | DSPy MCP 测试只覆盖可选协议边界 | **本轮未运行** | **L4 不成立，必须平台侧另行设计/实测** |
+| Signature/Module/Predict/Adapter 主链 | ✓ 文档和 API 声明 | ✓ `signature.py`、`module.py`、`predict.py`、`adapters/` | 有对应模块/适配器测试目录 | **当前核对未运行** | 未接真实 provider |
+| LM provider/错误/缓存 | ✓ docstring/依赖声明 | ✓ `clients/base_lm.py`、`lm.py`、`provider.py`、`cache.py` | `tests/clients/test_lm.py`、`test_cache.py`、`test_lm_local.py` 存在 | **当前核对未运行** | LiteLLM/API key/真实网络未验证 |
+| Evaluate/编译优化 | ✓ `Evaluate`/`Teleprompter` API | ✓ `evaluate.py`、`teleprompt/`、`gepa/` | `tests/evaluate/test_evaluate.py`、`tests/teleprompt/test_teleprompt.py` 及优化器测试存在 | **当前核对未运行** | 外部 GEPA/真实模型质量未验证 |
+| 缓存/历史/序列化 | ✓ save/load/cache 声明 | ✓ `clients/cache.py`、`settings.py`、`base_module.py` | `tests/clients/test_cache.py`、保存/设置相关测试存在 | **当前核对未运行** | 磁盘权限、pickle 信任边界、崩溃残留未验证 |
+| 并发/超时/取消/训练 job | ✓ docstring/参数 | ✓ `parallelizer.py`、`provider.py`、`clients/openai.py` | `tests/utils/test_parallelizer.py`、provider/并行测试存在 | **当前核对未运行** | 真实强杀、远端取消、线程/进程/端口清理未验证 |
+| 平台统一网关与单链路 | **DSPy 无统一平台网关声明** | **目标源码未见平台注册/HTTP/MCP 统一调用器** | DSPy MCP 测试只覆盖可选协议边界 | **当前核对未运行** | **L4 不成立，必须平台侧另行设计/实测** |
 
-因此本轮只能写：**L0/L1 已由文档和源码确认，L2 有测试源码覆盖，L3/L4 未验证**。测试文件存在不等于测试通过；本轮没有安装依赖、启动 LiteLLM/HTTP/MCP/向量服务、调用真实模型、强杀线程/进程或验证远端训练取消，不能写“本轮验证通过”。
+因此当前核对只能写：**L0/L1 已由文档和源码确认，L2 有测试源码覆盖，L3/L4 未验证**。测试文件存在不等于测试通过；当前核对没有安装依赖、启动 LiteLLM/HTTP/MCP/向量服务、调用真实模型、强杀线程/进程或验证远端训练取消，不能写“当前核对验证通过”。
 
-## 18. 第三轮装配计划与验收契约
+## 18. 后续装配计划与验收契约
 
 1. **需求与能力搜索**：先把“模型调用、模块执行、评估、编译/优化、训练 job、缓存读写、状态查询”登记为候选能力，搜索平台现有能力并确认是否已有唯一 owner。
 2. **模型支持库**：以 `LMRequest/LMResponse`、统一错误、usage/cost/cache 元数据、provider 能力探测、重试预算、训练 job 句柄为公开契约；每个 provider 单独受管，API key/连接/线程不出边界。
@@ -535,4 +535,4 @@ L4：外部依赖/真实宿主/真实服务/真实资源释放已验证
 7. **验收契约**：至少包含正常调用、缺 LM、非法 Signature、provider 认证/限流/超时/上下文窗口、缓存命中/坏 entry、评估单样本失败、max_errors、主动取消、SIGINT、straggler 重提交、训练 job cancel、stream 关闭、崩溃恢复和二次释放；每项记录 L0-L4、命令、退出码、测试/跳过数、外部依赖和资源残留。
 8. **装配前置**：未完成需求确认、能力命中、复用/升级/新建/废弃裁决、占用租约和验收契约前，不对生产底座实施任何新增能力。
 
-第三轮最终裁决：**吸收** DSPy 的规范 LM 类型、声明式签名/模块、评估编译闭环、provider 隔离和缓存/历史边界；**升级** 模型支持库与运行核心的 typed 契约、错误/重试/资源生命周期；**新建** 平台唯一能力调用器和统一网关装配；**隔离/废弃** 直接把 DSPy 全局 Settings、隐式 fallback、线程弱取消、provider 私有对象和 Python SDK 当作平台治理或统一网关的做法；外部真实资源释放和跨进程语义继续 **待核**。
+后续最终裁决：**吸收** DSPy 的规范 LM 类型、声明式签名/模块、评估编译闭环、provider 隔离和缓存/历史边界；**升级** 模型支持库与运行核心的 typed 契约、错误/重试/资源生命周期；**新建** 平台唯一能力调用器和统一网关装配；**隔离/废弃** 直接把 DSPy 全局 Settings、隐式 fallback、线程弱取消、provider 私有对象和 Python SDK 当作平台治理或统一网关的做法；外部真实资源释放和跨进程语义继续 **待核**。

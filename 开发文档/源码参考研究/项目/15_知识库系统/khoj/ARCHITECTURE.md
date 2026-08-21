@@ -1,10 +1,10 @@
 # Khoj 架构建档
 
-> 本文是对本地源码参考快照的首轮全量架构建档。说明、备注、风险与结论使用中文；源码标识、包名、类名、函数名、路由与配置键保留原文。
+> 本文是对本地源码参考快照的前序研究全量架构建档。说明、备注、风险与结论使用中文；源码标识、包名、类名、函数名、路由与配置键保留原文。
 >
 > 目标目录：`~/Documents/Agent/github 源码参考/15_知识库系统/khoj`
 >
-> 建档范围：README、细探文件、构建与依赖清单、Python/TypeScript/JavaScript 入口、Django 数据模型与迁移、FastAPI 路由、处理器、检索链、客户端、文档、测试与 Docker 编排。没有安装依赖、启动服务、构建或修改源码/测试/配置。
+> 建档范围：README、历史研究文件、构建与依赖清单、Python/TypeScript/JavaScript 入口、Django 数据模型与迁移、FastAPI 路由、处理器、检索链、客户端、文档、测试与 Docker 编排。没有安装依赖、启动服务、构建或修改源码/测试/配置。
 
 ## 1. 项目身份与版本基线
 
@@ -13,12 +13,22 @@
 - 本地 Git：分支 `master`，HEAD `1e30154d1070c7b132f389638c008b490be1481b`，提交时间 `2026-06-24T14:13:59-07:00`，提交说明 `Do not log unnecessary details when connect to Notion`。
 - 远程 Git：`origin=https://github.com/khoj-ai/khoj.git`；远程 `HEAD`/`master` 当前为 `ae229ca894c0b80ad84664afcfdde523b5e87057`，因此本地提交落后远程。
 - 远程独立快照：通过 `127.0.0.1:4780` 对远程提交的 `README.md`、`pyproject.toml`、`src/khoj/main.py`、`src/khoj/configure.py`、`src/khoj/database/models/__init__.py` 做了只读快照比对；这些抽查文件与本地内容相同。未把远程快照写回工作树，也未覆盖本地版本。
-- 工作树基线：已有未跟踪文件 `细探-khoj.md`；该文件不是本轮创建或修改。根目录未发现可作为仓库级开发指令的 `AGENTS.md`/`CLAUDE.md`；`documentation/docs/features/AGENTS.md` 实际是 Agents 文档页，不是额外工程规则文件。
-- 本地细探：`细探-khoj.md` 已提供处理器、检索、Agent、自动化和客户端的初步导航；本文在源码核验后补充入口、数据关系、API、异步边界和风险。
+- 工作树基线：已有未跟踪文件 `历史研究-khoj.md`；该文件不是当前审计创建或修改。根目录未发现可作为仓库级开发指令的 `AGENTS.md`/`CLAUDE.md`；`documentation/docs/features/AGENTS.md` 实际是 Agents 文档页，不是额外工程规则文件。
+- 本地历史研究：`历史研究-khoj.md` 已提供处理器、检索、Agent、自动化和客户端的初步导航；本文在源码核验后补充入口、数据关系、API、异步边界和风险。
 
 ### MCP 证据备注
 
-本轮按要求先调用专属 `system_engineering_toolkit` 的 `project_context`，再调用 `codegraph_explore`。该 MCP 当前返回的项目根是 `~/Documents/Agent/PHP/系统工程平台`，其 CodeGraph 也只覆盖系统工程平台，而不是本目标 `khoj`；因此 MCP 返回的证据可信度、最近成功验证和代码地图不能作为 Khoj 的源码证据。Khoj 本文事实以目标目录的只读文件、Git 版本信息、远程只读快照与现有 `细探-khoj.md` 为准。该 MCP 项目根错配是本轮必须保留的集成风险。
+当前审计按要求先调用专属 `system_engineering_toolkit` 的 `project_context`，再调用 `codegraph_explore`。该 MCP 当前返回的项目根是 `~/Documents/Agent/PHP/系统工程平台`，其 CodeGraph 也只覆盖系统工程平台，而不是本目标 `khoj`；因此 MCP 返回的证据可信度、最近成功验证和代码地图不能作为 Khoj 的源码证据。Khoj 本文事实以目标目录的只读文件、Git 版本信息、远程只读快照与现有 `历史研究-khoj.md` 为准。该 MCP 项目根错配是当前审计必须保留的集成风险。
+
+```text
+客户端(Web/Obsidian/Desktop/Emacs/Android)
+  -> FastAPI/Starlette认证、HTTP/WebSocket与Django ASGI
+  -> content processor读取/分块/嵌入
+  -> PostgreSQL/Django ORM + pgvector索引
+  -> bi-encoder召回 + cross-encoder重排
+  -> Chat/Agent/工具/自动化调度
+  -> 流式响应、会话持久化、遥测与失败清理
+```
 
 ## 2. 一句话架构结论
 
@@ -118,7 +128,7 @@ khoj/
 ├── prod.Dockerfile                   # 生产镜像
 ├── computer.Dockerfile               # computer operator 相关镜像
 ├── manifest.json / versions.json     # 项目与客户端版本元数据
-├── 细探-khoj.md                       # 已有源码细探导航（非本轮修改）
+├── 历史研究-khoj.md                       # 已有源码历史研究导航（非当前审计修改）
 ├── src/
 │   ├── khoj/
 │   │   ├── main.py                   # FastAPI + Django + scheduler 进程入口
@@ -295,7 +305,7 @@ Operator 是高风险边界：它具备截图、点击、输入、文件操作�
 
 ### 9.4 自动化、Newsletter 与通知
 
-自动化不是单独的进程，而是 `APScheduler`/`DjangoJobStore` 中的用户任务：`routers/api_automation.py` 提供创建、编辑、删除、查询和手动触发接口，创建时校验 cron、补齐 `/automated_task` 查询前缀、创建关联 `Conversation`，并通过 `schedule_automation` 注册任务；手动触发会在独立线程中执行任务函数。仓库文档将执行结果定义为发往用户收件箱的邮件，并举例说明 custom newsletters、新闻摘要和事件通知（`documentation/docs/features/automations.md`）。因此旧细探所称“自动化 = newsletter/通知”可以吸收为产品行为描述，但邮件服务配置、真实投递、失败重试和端到端送达本轮未运行验证。
+自动化不是单独的进程，而是 `APScheduler`/`DjangoJobStore` 中的用户任务：`routers/api_automation.py` 提供创建、编辑、删除、查询和手动触发接口，创建时校验 cron、补齐 `/automated_task` 查询前缀、创建关联 `Conversation`，并通过 `schedule_automation` 注册任务；手动触发会在独立线程中执行任务函数。仓库文档将执行结果定义为发往用户收件箱的邮件，并举例说明 custom newsletters、新闻摘要和事件通知（`documentation/docs/features/automations.md`）。因此历史研究所称“自动化 = newsletter/通知”可以吸收为产品行为描述，但邮件服务配置、真实投递、失败重试和端到端送达当前审计未运行验证。
 
 ## 10. API 与客户端契约地图
 
@@ -390,7 +400,7 @@ Operator 是高风险边界：它具备截图、点击、输入、文件操作�
 - `hatch-vcs`：Python 版本动态来自 Git。
 - Web：Next.js `lint`、TypeScript 编译、Prettier、Husky/lint-staged。
 - Obsidian：TypeScript `tsc` + esbuild。
-- 本轮按用户边界未安装依赖、未构建、未启动、未执行 pytest/ruff/mypy；本文中的测试结论只描述源码中已有测试布局和契约，不宣称当前环境测试通过。
+- 当前审计按用户边界未安装依赖、未构建、未启动、未执行 pytest/ruff/mypy；本文中的测试结论只描述源码中已有测试布局和契约，不宣称当前环境测试通过。
 
 ## 13. 关键风险与维护注意
 
@@ -435,19 +445,19 @@ Operator 是高风险边界：它具备截图、点击、输入、文件操作�
 - 内容解析→分块/哈希→embedding→ORM 写入，以及查询 embedding→向量召回→过滤/重排→`SearchResponse` 的关键调用链。
 - `pyproject.toml`、客户端 `package.json`、`docker-compose.yml`、现有 pytest fixtures 与测试文件布局。
 
-### 项目自述或文档说明，未在本轮端到端实跑确认
+### 项目自述或文档说明，未在当前审计端到端实跑确认
 
 - README 中“可扩展到云规模企业 AI”“在现代检索与推理基准上表现优秀”等产品/性能表述，仅作为项目自述，不作为本架构事实或性能证据。
-- 文档中关于“super fast search”、支持的全部客户端/模型、Operator 可执行任务范围和线上服务可用性的说明，未在本轮启动服务或调用外部服务验证。
-- Docker Compose 中的镜像、健康检查、SearxNG/Terrarium/Computer 互通、真实 PostgreSQL+pgvector 迁移和多 worker 调度领导选举，未在本轮启动验证。
-- HuggingFace/OpenAI/Anthropic/Google、Whisper、Firecrawl/Exa/Olostep、E2B、MCP 等外部 provider 的真实成功、超时、重试、错误和降级语义，未在本轮调用验证。
-- Web/Obsidian/Desktop/Android 的实际构建产物、静态复制、客户端登录和版本兼容，未在本轮安装或构建验证。
+- 文档中关于“super fast search”、支持的全部客户端/模型、Operator 可执行任务范围和线上服务可用性的说明，未在当前审计启动服务或调用外部服务验证。
+- Docker Compose 中的镜像、健康检查、SearxNG/Terrarium/Computer 互通、真实 PostgreSQL+pgvector 迁移和多 worker 调度领导选举，未在当前审计启动验证。
+- HuggingFace/OpenAI/Anthropic/Google、Whisper、Firecrawl/Exa/Olostep、E2B、MCP 等外部 provider 的真实成功、超时、重试、错误和降级语义，未在当前审计调用验证。
+- Web/Obsidian/Desktop/Android 的实际构建产物、静态复制、客户端登录和版本兼容，未在当前审计安装或构建验证。
 - 远程 `ae229ca...` 相对本地 `1e30154...` 的完整仓库差异未做全量比较；只对关键文件做了远程独立快照抽查，抽查结果相同。
 
 ### 未解决的基础设施问题
 
 - `system_engineering_toolkit` 的 `project_context`/`codegraph_explore` 当前绑定系统工程平台，不能为 Khoj 提供目标仓库 CodeGraph 和匹配验证证据；这是后续自动化架构分析前必须解决的前置条件。
-- 本地存在未跟踪的 `细探-khoj.md`，本轮只读引用，未删除、覆盖或迁移。
+- 本地存在未跟踪的 `历史研究-khoj.md`，当前审计只读引用，未删除、覆盖或迁移。
 
 ## 16. 结论
 
@@ -460,13 +470,13 @@ Khoj 的核心价值在于把个人知识摄取、向量检索、可配置 Agent
 - Web/Obsidian/Desktop/Emacs/Android 都是 API 客户端，Web 和 Django 静态系统共享构建产物；
 - PostgreSQL/pgvector、外部模型 API、搜索服务、代码沙箱与 Operator 容器共同构成运行时依赖面。
 
-首轮建档完成，但由于本地版本落后远程且专属 MCP 项目绑定错位，本文应被视为“本地源码基线 + 远程抽查已知”的权威导航，而不是远程最新全量快照的替代品。
+前序研究建档完成，但由于本地版本落后远程且专属 MCP 项目绑定错位，本文应被视为“本地源码基线 + 远程抽查已知”的权威导航，而不是远程最新全量快照的替代品。
 
-## 17. 旧细探吸收与裁决
+## 17. 历史研究吸收与裁决
 
-本节收口 `细探-khoj.md` 的全部有价值信息；旧文件保留作为历史细探，不再与本文并列维护。以下裁决均以目标目录当前源码、仓库文档或本文已记录的版本基线为依据。
+本节收口 `历史研究-khoj.md` 的全部有价值信息；旧文件保留作为历史历史研究，不再与本文并列维护。以下裁决均以目标目录当前源码、仓库文档或本文已记录的版本基线为依据。
 
-| 旧细探结论 | 裁决 | 吸收位置与证据 |
+| 历史研究结论 | 裁决 | 吸收位置与证据 |
 |---|---|---|
 | Khoj 是 `Your AI second brain`，提供搜索、Agent、自动化和文档检索 | **吸收** | 项目身份、总体架构与结论；`README.md` 的产品定位和功能清单，`src/khoj/main.py`/`configure.py`/`routers/`/`processor/` 的实现边界 |
 | `processor` 分为 content、conversation、embeddings、image、speech、operator、tools 七类 | **吸收** | 目录地图与各层边界；`src/khoj/processor/` 下对应目录/文件。这里的“七类”是处理器能力域，不把它误写成七种统一的内容入库格式；实际 `IndexerInput` 由 `api_content.py` 明确支持 `org`、`markdown`、`pdf`、`plaintext`、`image`、`docx` |
@@ -480,17 +490,17 @@ Khoj 的核心价值在于把个人知识摄取、向量检索、可配置 Agent
 
 ### 收口状态
 
-- 已完整读取并逐项对照 `细探-khoj.md`（92 行）；旧细探未删除、未修改。
+- 已完整读取并逐项对照 `历史研究-khoj.md`（92 行）；历史研究未删除、未修改。
 - 有源码或项目文档证据的内容已并入本文件；仅有宣传性质的结论没有升级为源码事实。
-- 本文件仍是目标根唯一权威架构文档；后续 Khoj 架构事实只更新 `ARCHITECTURE.md`，不在旧细探中追加新结论。
+- 本文件仍是目标根唯一权威架构文档；后续 Khoj 架构事实只更新 `ARCHITECTURE.md`，不在历史研究中追加新结论。
 
-## 18. 第三轮：面向系统底座的能力域映射
+## 18. 当前裁决：面向系统底座的能力域映射
 
-本节不是把 Khoj 源码搬进平台，而是把已由源码确认的能力拆成“通用模块契约”和“Khoj 项目适配”。判断基线仍是本地 `1e30154d1070c7b132f389638c008b490be1481b`；本轮没有修改 Khoj 源码、配置、依赖、测试或旧细探。以下“通用”表示可由平台公开能力承载，“适配”表示必须由 Khoj 绑定 Django/数据库/HTTP/第三方服务/产品语义，不能泄漏进通用底座。
+本节不是把 Khoj 源码搬进平台，而是把已由源码确认的能力拆成“通用模块契约”和“Khoj 项目适配”。判断基线仍是本地 `1e30154d1070c7b132f389638c008b490be1481b`；当前审计没有修改 Khoj 源码、配置、依赖、测试或历史研究。以下“通用”表示可由平台公开能力承载，“适配”表示必须由 Khoj 绑定 Django/数据库/HTTP/第三方服务/产品语义，不能泄漏进通用底座。
 
 ### 18.1 处理器能力域映射表
 
-| Khoj 事实域 | 真实实现证据 | 可抽取的通用模块 | 必须保留在 Khoj 项目适配层 | 第三轮裁决 |
+| Khoj 事实域 | 真实实现证据 | 可抽取的通用模块 | 必须保留在 Khoj 项目适配层 | 当前裁决裁决 |
 |---|---|---|---|---|
 | `processor/content` | `processor/content/*_to_entries.py`、`text_to_entries.py`；`api_content.IndexerInput` 支持 `org/markdown/pdf/plaintext/image/docx`，并把内容切块、哈希、写入 `FileObject/Entry` | `ContentSource`、格式解析、统一文档块、分块策略、内容摘要/幂等、索引任务状态 | `IndexerInput` 类型枚举、Django `FileObject/Entry/EntryDates`、`EntryType`、文件来源权限、Notion/GitHub 同步 | **吸收为内容摄取能力域；升级为“解析→规范文档→分块→摘要→索引提交”唯一链，不复制每种格式的入库流程** |
 | `processor/conversation` | `conversation/openai`、`anthropic`、`google`、`prompts.py`、`routers/helpers.py::send_message_to_model_wrapper` | 对话请求、上下文装配、模型路由、流式事件、结构化输出、模型失败回退 | `ChatModel/ AiModelApi`、订阅/fast model 选择、Khoj `Conversation` 日志格式、供应商参数和提示词产品文案 | **吸收为对话编排模块；各 provider 只是策略适配，不允许路由或 Agent 再实现第二套模型回退链** |
@@ -503,7 +513,7 @@ Khoj 的核心价值在于把个人知识摄取、向量检索、可配置 Agent
 
 ### 18.2 检索类型、过滤和排序的拆分
 
-源码当前有 `SearchType`：`all/org/markdown/image/pdf/github/notion/plaintext/docx`（`utils/config.py`），但 `routers/helpers.py::search` 的文本检索分支实际只调度 `all/org/markdown/github/notion/plaintext/pdf`，`text_search.search_type_to_embeddings_type` 也只映射 `org/markdown/plaintext/pdf/github/notion/all`；`image`、`docx` 的完整向量检索接线不能仅凭枚举存在而判定已闭环。这是第三轮必须保留的**实现/声明差异**。
+源码当前有 `SearchType`：`all/org/markdown/image/pdf/github/notion/plaintext/docx`（`utils/config.py`），但 `routers/helpers.py::search` 的文本检索分支实际只调度 `all/org/markdown/github/notion/plaintext/pdf`，`text_search.search_type_to_embeddings_type` 也只映射 `org/markdown/plaintext/pdf/github/notion/all`；`image`、`docx` 的完整向量检索接线不能仅凭枚举存在而判定已闭环。这是当前裁决必须保留的**实现/声明差异**。
 
 现有唯一检索事实链应抽象为：
 
@@ -609,12 +619,12 @@ Khoj 适配层的边界为：`AutomationAdapters`/`api_automation.py` 的 HTTP �
 
 | 资源 | 创建/持有 | 正常释放 | 失败、超时、取消、崩溃要求 | 当前 Khoj 证据/风险 |
 |---|---|---|---|---|
-| Django/PostgreSQL 连接、事务 | ORM 查询、`DjangoJobStore`、middleware | `AsyncCloseConnectionsMiddleware`/Django 连接管理 | 请求断连、job 异常、进程退出均 close；迁移失败不能半初始化 | 源码有连接清理 middleware；真实 DB/锁/断连未本轮实跑 |
+| Django/PostgreSQL 连接、事务 | ORM 查询、`DjangoJobStore`、middleware | `AsyncCloseConnectionsMiddleware`/Django 连接管理 | 请求断连、job 异常、进程退出均 close；迁移失败不能半初始化 | 源码有连接清理 middleware；真实 DB/锁/断连未当前审计实跑 |
 | embedding/cross-encoder 模型与 GPU/CPU 内存 | `initialize_server` 装入 `state.embeddings_model/cross_encoder_model`，由 `state.device` 持有 | 进程退出或显式重载 | provider 缺失、维度不符、OOM、模型下载失败要返回明确错误；重建索引前锁定版本 | 模块级全局状态；无统一 close/版本失效契约 |
 | 查询缓存 | `state.query_cache[user.uuid]` 的 LRU | 淘汰/进程退出 | 过滤、模型、权限、知识更新后必须失效；不能跨租户复用 | 当前 key 是字符串拼接且进程内，项目适配遗留 |
 | 文件/临时内容/向量文件 | 内容解析、上传、embedding 保存、sandbox 输入输出 | `finally` 删除临时文件/关闭文件句柄；数据库提交后保留权威制品 | 解析异常/部分写入/取消时删除临时产物，不能留下半条 Entry；索引重建可恢复 | `TextToEntries`/各解析器和 sandbox 有局部清理，统一残留审计未验证 |
 | APScheduler、`schedule` 轮询、Timer 线程 | `main.run` 创建 scheduler；`poll_task_scheduler` 每 60 秒创建 daemon Timer | `shutdown_scheduler`、释放 `SCHEDULE_LEADER` | 进程崩溃靠锁超时接管；禁止多个 leader 执行；Timer 不得无限递归泄漏 | 代码有 shutdown/leader/pause；多 worker 与崩溃恢复未实跑 |
-| `ProcessLock` | `INDEX_CONTENT/SCHEDULED_JOB/SCHEDULE_LEADER` | 完成/异常 finally、过期清理、shutdown | 任务异常/强杀要清 stale lock；锁 owner/租约/最大时长应入证据 | 有数据库锁和 12 小时领导锁；缺本轮强杀验证 |
+| `ProcessLock` | `INDEX_CONTENT/SCHEDULED_JOB/SCHEDULE_LEADER` | 完成/异常 finally、过期清理、shutdown | 任务异常/强杀要清 stale lock；锁 owner/租约/最大时长应入证据 | 有数据库锁和 12 小时领导锁；缺当前审计强杀验证 |
 | HTTP sessions / 外部 provider | `aiohttp.ClientSession`、`requests`、模型 SDK、Resend SDK | async context 或调用结束 | 超时取消必须关闭 session；重试有界；provider 不可达不可返回空成功 | 在线搜索逐 provider新建 session并局部捕获；Resend 无统一重试/回执 |
 | E2B/Terrarium 沙箱 | `AsyncSandbox.create` 或 `aiohttp` `/` 调用；输入文件 base64 上传 | E2B sandbox 关闭/超时 stop；输出截断 | 代码超时调用 `/stop`，stop 失败也要保留原故障；进程/容器不得残留 | `run_code.py` 有 tenacity 三次重试、超时 stop；真实沙箱未验证 |
 | MCP 会话/stdio 子进程 | `MCPClient.exit_stack`、SSE/stdio `ClientSession` | `MCPClient.close()` 退出栈、session/stream close | connect/list/call 失败和客户端取消均 close；stdio 子进程不得孤儿 | `close()` 路径存在；调用异常、进程残留和重连未验证 |
@@ -661,7 +671,7 @@ Khoj 适配层的边界为：`AutomationAdapters`/`api_automation.py` 的 HTTP �
 - 调度执行与邮件通知缺少持久化的“尝试→结果→回执→重试/死信”链；当前自动化 metadata 和 DjangoJobExecution 不能直接替代统一通知证据。
 - 全局模型/cache/scheduler 生命周期与租约没有统一重启、强杀、资源残留验证；多 worker 领导选举只由源码和局部测试可见。
 - 测试中的外部 API `skipif`（例如 `tests/test_api_automation.py` 的 `GEMINI_API_KEY`）使“收集成功”与“真实外部成功”必须分级报告。
-- 专属 MCP 错绑且目标 Khoj 无 `.codegraph/`；本轮不能把错误项目的代码图、开工 id 或验证入账冒充 Khoj 证据。
+- 专属 MCP 错绑且目标 Khoj 无 `.codegraph/`；当前审计不能把错误项目的代码图、开工 id 或验证入账冒充 Khoj 证据。
 
 ## 21. 唯一链路裁决与装配计划
 
@@ -687,7 +697,7 @@ Khoj client/router
 5. Provider fallback 只能发生在能力调用器内部并产生一次调用证据；不能出现“在线搜索 fallback 一份、自动化再 fallback 一份、Agent 再 fallback 一份”的隐式叠加。
 6. 任何外部资源的创建者、持有者、转移者和释放者必须在请求/任务上下文显式记录；正常完成、业务失败、超时/取消、宿主崩溃四种终态都要有验证。
 
-### 21.2 装配计划（只作为底座输入，不是本轮生产改造）
+### 21.2 装配计划（只作为底座输入，不是当前审计生产改造）
 
 | 波次 | 工作包 | 依赖/验收契约 | 项目适配输出 |
 |---|---|---|---|
@@ -698,19 +708,19 @@ Khoj client/router
 | E | ToolRunner/Sandbox/MCP | 参数/权限/预算/进程组/session close/输出上限/重试状态 | `online_search`、Terrarium/E2B、MCPServer、Operator computer |
 | F | 真实装配与部署探针 | 不依赖外部 key 的契约测试 + 有 key 的真实 provider 分层；健康检查和清理证据 | Compose 服务、环境变量、卷、迁移/静态收集、端口和容器健康 |
 
-没有需求登记、能力命中/缺口确认、复用或新建裁决、资源租约、消费者验收契约和装配计划前，不应修改系统工程平台生产底座；本轮只形成映射输入。
+没有需求登记、能力命中/缺口确认、复用或新建裁决、资源租约、消费者验收契约和装配计划前，不应修改系统工程平台生产底座；当前审计只形成映射输入。
 
-## 22. 第三轮验证等级、失败证据与剩余风险
+## 22. 当前裁决验证等级、失败证据与剩余风险
 
-### 22.1 本轮已验证的静态事实
+### 22.1 当前审计已验证的静态事实
 
-- `ARCHITECTURE.md`、`细探-khoj.md`、关键 processor/search/filter/router/model/main/configure/docker/test 文件均来自目标路径的只读读取。
+- `ARCHITECTURE.md`、`历史研究-khoj.md`、关键 processor/search/filter/router/model/main/configure/docker/test 文件均来自目标路径的只读读取。
 - 已核对处理器目录、`SearchType` 枚举、三种过滤器、`text_search.query`/`routers/helpers.py::search` 链、Agent 字段和知识隔离、APScheduler/`schedule`/ProcessLock、Resend 邮件入口、Compose 服务及测试外部依赖门槛。
-- 旧 `细探-khoj.md` 仍存在且未修改；本轮只追加本文件。
+- 旧 `历史研究-khoj.md` 仍存在且未修改；当前审计只追加本文件。
 
 ### 22.2 未宣称通过的验证
 
-本轮没有安装依赖、启动 PostgreSQL/pgvector、启动 Compose、调用模型/搜索/沙箱/MCP/Resend、运行 pytest、构建客户端或执行多 worker 强杀。因而以下均为“源码存在/测试存在”而非“真实通过”：邮件送达、scheduler leader 故障接管、任务幂等、模型 fallback、向量维度兼容、外部 provider 超时/重试、沙箱 stop 后无残留、MCP stdio 无孤儿进程和 Operator 容器隔离。
+当前审计没有安装依赖、启动 PostgreSQL/pgvector、启动 Compose、调用模型/搜索/沙箱/MCP/Resend、运行 pytest、构建客户端或执行多 worker 强杀。因而以下均为“源码存在/测试存在”而非“真实通过”：邮件送达、scheduler leader 故障接管、任务幂等、模型 fallback、向量维度兼容、外部 provider 超时/重试、沙箱 stop 后无残留、MCP stdio 无孤儿进程和 Operator 容器隔离。
 
 ### 22.3 推荐的分级验收命令
 
@@ -727,11 +737,11 @@ python -m compileall -q src/khoj
 
 外部依赖测试必须单独列出：无 key/服务不可达/返回畸形/超时/部分成功/真实成功；不能把 `skipif` 的退出码 0 写成 provider 通过。真实自动化验收至少需：创建→读回 job metadata→手动 trigger→读执行结果→通知 accepted/failed/disabled→删除→确认 job/lock/线程/连接无残留；真实多 worker 验收需确认只有一个 `SCHEDULE_LEADER` 执行 scheduled job。
 
-### 22.4 本轮专属 MCP 阻断
+### 22.4 当前审计专属 MCP 阻断
 
-任务要求的 `project_context` 两次均返回错误根目录 `~/Documents/Agent/PHP/华世王镞_v3`（MCP 实例 `project_toolkit`），不是目标 Khoj；随后对目标路径调用 `codegraph_explore` 返回“未发现 `.codegraph/`，不要再次调用”。因此本轮没有有效的 Khoj 开工 id、代码图或 MCP 验证入账；后续若要自动影响分析，必须先给 Khoj 建立独立 CodeGraph/正确项目绑定。此阻断不影响本轮目标目录只读源码取证，但会降低自动化影响分析和验证证据等级。
+任务要求的 `project_context` 两次均返回错误根目录 `~/Documents/Agent/PHP/华世王镞_v3`（MCP 实例 `project_toolkit`），不是目标 Khoj；随后对目标路径调用 `codegraph_explore` 返回“未发现 `.codegraph/`，不要再次调用”。因此当前审计没有有效的 Khoj 开工 id、代码图或 MCP 验证入账；后续若要自动影响分析，必须先给 Khoj 建立独立 CodeGraph/正确项目绑定。此阻断不影响当前审计目标目录只读源码取证，但会降低自动化影响分析和验证证据等级。
 
-## 23. 第三轮最终裁决
+## 23. 当前裁决最终裁决
 
 - **吸收**：处理器能力域分类、内容解析/分块/embedding/rerank 两阶段检索、date/file/word 过滤 DSL、Agent 的知识+人设+模型+工具组合、APScheduler 任务与单 leader、通知策略与邮件 provider 分离、Compose 的服务/数据/高风险 Operator 边界。
 - **升级现有能力**：统一 SearchRequest/FilterPlan、AgentSpec/ContextPlan、ModelCall fallback、ScheduledTask/ExecutionRecord/NotificationResult、ToolRunner/Sandbox/MCP session 和资源生命周期/错误契约；并为 Khoj 保留映射适配器。
@@ -739,11 +749,11 @@ python -m compileall -q src/khoj
 - **废弃/隔离**：不复制 Khoj 的 Django ORM、`database/adapters` 巨型聚合、模块级 `state`、产品 prompt、Resend SDK、Compose 具体镜像和 Operator Docker socket；不把 `schedule` 维护轮询误扩成第二个用户任务系统。
 - **待核**：`image/docx` 检索闭环、EntryAdapters 的全部过滤 SQL、自动化邮件真实送达/重试、ProcessLock 崩溃接管、外部 provider 真实资源回收，以及正确 Khoj CodeGraph/MCP 绑定。
 
-本轮第三轮底座映射完成的定义是：事实仍归 Khoj `ARCHITECTURE.md`，通用能力与项目适配有明确边界，资源/失败/调度/通知/部署有可验收契约，并且所有复用、新建、升级、隔离结论都收敛到上述唯一链路；不等同于系统工程平台已经实施这些能力。
+当前审计当前裁决底座映射完成的定义是：事实仍归 Khoj `ARCHITECTURE.md`，通用能力与项目适配有明确边界，资源/失败/调度/通知/部署有可验收契约，并且所有复用、新建、升级、隔离结论都收敛到上述唯一链路；不等同于系统工程平台已经实施这些能力。
 
-## 24. 第二轮源码收口：摄取、检索、Agent、调度、模型、数据库、API 与恢复
+## 24. 本次复审源码收口：摄取、检索、Agent、调度、模型、数据库、API 与恢复
 
-本节是对旧 `细探-khoj.md` 的第二轮逐项收口，不是新的产品宣传摘要。事实基线为本地 `HEAD=1e30154d1070c7b132f389638c008b490be1481b`；路径后的行号按本轮读取的源码记录，后续版本变动时必须重新核对。旧细探只给出“七类 processor、语义检索、Agent 四元组合、自动化通知、Docker”五类结论，以下把它们收敛为可追踪的调用链和失败语义。
+本节是对旧 `历史研究-khoj.md` 的本次复审逐项收口，不是新的产品宣传摘要。事实基线为本地 `HEAD=1e30154d1070c7b132f389638c008b490be1481b`；路径后的行号按当前审计读取的源码记录，后续版本变动时必须重新核对。历史研究只给出“七类 processor、语义检索、Agent 四元组合、自动化通知、Docker”五类结论，以下把它们收敛为可追踪的调用链和失败语义。
 
 ### 24.1 内容摄取与索引：真实契约
 
@@ -788,7 +798,7 @@ UploadFile / NotionConfig / GithubConfig
 4. `configure_content()` 在 `files is None` 判断前执行 `files.get(...)`；当前 API 始终传字典所以通常不触发，但直接调用该函数传 `None` 会先抛异常。`initialize_content()`/`/api/update` 是同步调用，和上传入口的 executor 语义不同。
 5. 图片临时文件使用相对路径和时间戳文件名，正常/异常路径有 `finally` 删除证据，但宿主被强杀时没有残留扫描；PDF/DOCX 使用 `NamedTemporaryFile`，外部解析器异常按文件跳过。
 
-**第二轮裁决：** 吸收“多格式内容处理”作为内容摄取能力域，但不能把各 `*ToEntries` 类当作独立入库流程；通用契约必须补充 `source_file_id/hash、chunk_id/corpus_id、model/version、attempt、partial-success、checkpoint、rebuild 状态`。当前 Khoj 只实现了 hash 增量和局部清理，未实现可读回的索引任务账本。
+**本次复审裁决：** 吸收“多格式内容处理”作为内容摄取能力域，但不能把各 `*ToEntries` 类当作独立入库流程；通用契约必须补充 `source_file_id/hash、chunk_id/corpus_id、model/version、attempt、partial-success、checkpoint、rebuild 状态`。当前 Khoj 只实现了 hash 增量和局部清理，未实现可读回的索引任务账本。
 
 ### 24.2 索引/检索：召回、过滤、缓存和重排
 
@@ -815,7 +825,7 @@ GET /api/search
 - 结果最多先取 10 个候选，再按 `n` 截断；`collate_results()` 同时用 `hashed_value` 和 `corpus_id` 去重，输出原文、距离、来源、文件、URI、compiled 和 heading。rerank 只捕获 `requests.exceptions.HTTPError`，超时/网络异常可能直接上抛；HTTP cross-encoder 失败时用全 0 cross score 继续排序，属于静默降级。
 - 查询缓存位于 `state.query_cache[user.uuid]`，key 只有 `query-n-type-r-max_distance-dedupe`，不含 agent、过滤规范化结果、embedding/cross-encoder 模型版本或知识库版本；索引完成时仅按用户重置整个 LRU。相同用户切换 Agent 或模型后可能命中旧结果，这是项目适配层的 P1 缓存失效风险。
 
-**第二轮裁决：** 吸收过滤 DSL、向量召回和可选重排，但把 `SearchRequest/FilterPlan/SearchResponse` 定为唯一检索契约；当前 Khoj 适配层必须补 scope、agent、模型版本、知识库版本和阶段性降级标记，不能由客户端各自复刻过滤语法。
+**本次复审裁决：** 吸收过滤 DSL、向量召回和可选重排，但把 `SearchRequest/FilterPlan/SearchResponse` 定为唯一检索契约；当前 Khoj 适配层必须补 scope、agent、模型版本、知识库版本和阶段性降级标记，不能由客户端各自复刻过滤语法。
 
 ### 24.3 Agent、记忆和模型组合
 
@@ -854,7 +864,7 @@ Agent/用户/订阅/fast-deep/vision
 - `send_message_to_model_wrapper_sync()` 只选一个默认模型，没有异步 wrapper 的 fallback 链；自动化的 `should_notify()`、`format_automation_response()` 走该同步路径，模型失败时通知判断反而默认返回 `True`。
 - `ChatModel.ai_model_api` 在模型调用前被直接解引用；配置缺失时可能在 fallback 之前抛属性错误。模型列表、key/base URL 和本地 embedding/cross-encoder 初始化失败主要靠日志，未形成统一 provider 状态。
 
-**第二轮裁决：** 吸收 `Agent = persona + knowledge snapshot + model + tools + output modes` 的组合思想；平台契约必须把知识引用/快照、memory scope、model attempt、fallback reason、tool permission 分开。不能把 Khoj 复制索引和同步通知 fallback 当作无损的通用实现。
+**本次复审裁决：** 吸收 `Agent = persona + knowledge snapshot + model + tools + output modes` 的组合思想；平台契约必须把知识引用/快照、memory scope、model attempt、fallback reason、tool permission 分开。不能把 Khoj 复制索引和同步通知 fallback 当作无损的通用实现。
 
 ### 24.4 调度、自动化与通知：执行证据并不完整
 
@@ -877,7 +887,7 @@ POST /api/automation 或对话中的 schedule_query
 - 手动 `POST /api/automation/trigger` 直接在新的裸 `threading.Thread` 中执行 job 函数，HTTP 200 只代表线程启动；线程不 join、不返回 execution id，也没有客户端取消/状态查询。job 内的 `run_with_process_lock` 仍会防止同一 `SCHEDULED_JOB` 并发，但锁竞争/异常只写日志。
 - `ProcessLockAdapters.run_with_lock()` 是“先查询锁→再 create”的竞态保护，依靠唯一约束的 `IntegrityError` 兜底；函数异常 finally 删除本进程锁。锁超时由 `is_process_locked()` 直接删除旧记录，没有 fencing token/owner 代次，长任务超过 lease 后存在旧 worker 与新 worker 重叠风险。
 
-**第二轮裁决：** 吸收“APScheduler + DB JobStore + leader lock + notification provider”分层，不吸收裸线程 fire-and-forget。通用 `ScheduledTask/ExecutionRecord/NotificationResult` 必须可读回 job、尝试、结果、回执、重试/死信和取消状态；当前 Khoj 只具备 Job/部分 DjangoJobExecution 和日志证据。
+**本次复审裁决：** 吸收“APScheduler + DB JobStore + leader lock + notification provider”分层，不吸收裸线程 fire-and-forget。通用 `ScheduledTask/ExecutionRecord/NotificationResult` 必须可读回 job、尝试、结果、回执、重试/死信和取消状态；当前 Khoj 只具备 Job/部分 DjangoJobExecution 和日志证据。
 
 ### 24.5 数据库、认证和 API 边界
 
@@ -940,13 +950,13 @@ API 层还存在几个不能被“路由已注册”掩盖的边界：
 | HTTP/WebSocket stream | generator、disconnect monitor、interrupt queue | END event/取消 monitor/连接注销 | 正常保存是 fire-and-forget，buffer 延迟任务存在取消竞态 |
 | MCP/sandbox/operator | `processor/tools` 与 `processor/operator` 创建外部会话/容器 | 各模块局部 close/stop | 未实跑连接失败、子进程孤儿、容器残留和权限回收 |
 
-**真假验证分级：** 本轮只做了目标源码静态读取和旧细探逐条核对；没有安装依赖、启动 PostgreSQL/pgvector、启动 Compose、调用任何模型/Notion/GitHub/搜索/沙箱/MCP/Resend、执行 pytest/ruff/mypy、构建客户端或做多 worker 强杀。因此上表的“当前动作”是源码存在证据，不是运行通过证据。现有测试文件存在不等于外部 provider 通过；`skipif`、日志、HTTP 200、线程已启动和历史二进制都不能升级为成功。
+**真假验证分级：** 当前审计只做了目标源码静态读取和历史研究逐条核对；没有安装依赖、启动 PostgreSQL/pgvector、启动 Compose、调用任何模型/Notion/GitHub/搜索/沙箱/MCP/Resend、执行 pytest/ruff/mypy、构建客户端或做多 worker 强杀。因此上表的“当前动作”是源码存在证据，不是运行通过证据。现有测试文件存在不等于外部 provider 通过；`skipif`、日志、HTTP 200、线程已启动和历史二进制都不能升级为成功。
 
-### 24.8 第二轮最终裁决与待核清单
+### 24.8 本次复审最终裁决与待核清单
 
 - **吸收**：多格式解析→统一 Entry→hash 增量→pgvector 召回；过滤 DSL→ORM 过滤→可选 cross-encoder；Agent 的人设/知识快照/模型/工具；APScheduler/DjangoJobStore/leader lock；多 provider model fallback；HTTP/WS 流式事件和断连部分保存。
 - **升级候选**：内容索引任务账本与 checkpoint、统一 SearchRequest/FilterPlan/结果降级状态、AgentSpec 与知识引用/快照版本、ModelCall attempt/fallback 证据、ScheduledTask/ExecutionRecord/NotificationResult、统一 error code/retry/timeout/cancel/cleanup。
 - **隔离/废弃为底座模式**：模块级全局 state、`database/adapters/__init__.py` 聚合巨型适配器、Entry/Agent 的复制式知识同步、裸 automation thread、无 timeout 的本机 HTTP callback、具体 Resend/Compose/第三方 SDK 直连。
 - **待核**：正确的远程最新版本差异、`image/docx` 检索闭环、Agent protected 权限是否产品期望、Entry `bulk_create`/`save()` 的生产行为、索引删除/重建的事务边界、leader fencing、scheduler 执行重复、chat 最终保存失败、外部工具子进程/容器残留以及真实 provider 错误/重试/送达回执。
 
-本节完成“第二轮收口”的定义：旧细探的每条结论都有吸收、细化或降级位置；内容摄取、检索、Agent、调度、模型、数据库、API 和失败恢复均有源码调用链、资源边界和未验证项；没有把静态源码证据冒充真实运行通过，也没有修改 Khoj 源码、依赖、配置、测试、README 或 Git。
+本节完成“本次复审收口”的定义：历史研究的每条结论都有吸收、细化或降级位置；内容摄取、检索、Agent、调度、模型、数据库、API 和失败恢复均有源码调用链、资源边界和未验证项；没有把静态源码证据冒充真实运行通过，也没有修改 Khoj 源码、依赖、配置、测试、README 或 Git。

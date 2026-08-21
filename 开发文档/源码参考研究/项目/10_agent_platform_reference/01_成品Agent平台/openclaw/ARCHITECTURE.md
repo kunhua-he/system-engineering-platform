@@ -1,8 +1,8 @@
 # OpenClaw 架构建档
 
 > 建档范围：仅基于当前源码、根/相关目录规则、依赖清单、已有细探和静态目录证据；不把设计文档当作运行时证明。
-> 
-> 源码快照：`1fc81c20548e3323c2f5ab05cd41338b5647c726`。
+>
+> 源码快照：`cb563bb16d94930b43ad5a6e003ea2f0a4d569ca`（目标 checkout 当前 `main` HEAD，2026-08-22 复核）。
 
 ## 1. 定位与总体架构
 
@@ -235,8 +235,8 @@ README 记录的公开操作路径包括：
 
 ## 7. 未确认项与剩余风险
 
-1. **代码地图不可用**：目标项目未发现 `.codegraph/`，`codegraph_explore` 明确返回无法索引；本建档的代码地图查询记录为“目标项目无 `.codegraph/`，未取得目标项目 CodeGraph 符号/调用图”，因此分层与调用链均以人工静态读取为依据。
-2. **MCP 项目身份不匹配**：首轮 `project_context` 返回的项目名称/根目录是另一个项目（`华世王镞_v3`），不是本目标 `openclaw`；其代码地图和最近成功验证不能作为 OpenClaw 的代码证据，已明确排除，不在本文中冒充目标项目验证。
+1. **代码地图边界**：目标 checkout 含 `.codegraph/`，本轮已在目标仓库运行 `codegraph explore` 查询；代码地图只用于定位，最终判断仍以当前源码和 Git 快照为准。
+2. **平台上下文边界**：`project_context` 记录的是本平台项目身份（系统工程平台），不是 OpenClaw 源码仓库身份；目标项目提交、代码地图和运行态证据均单独从 OpenClaw checkout 读取，不把平台最近验证冒充为目标测试通过。
 3. **运行态未确认**：未启动 Gateway、未连接 WebSocket、未验证端口、握手认证、pairing、RPC 响应、事件广播、plugin HTTP/MCP 或 channel delivery。
 4. **完整 RPC 表未冻结**：server-methods 是持续扩展的领域注册表；本文列出真实领域和关键机制，不承诺完整 method 名单。以协议 schema 与当前 handler registry 生成结果为准。
 5. **Provider/Plugin 实现规模未逐一审计**：extensions 数量和各插件依赖/启用条件来自目录与已有细探；没有逐插件验证依赖、manifest hash、启动性能和运行时兼容性。
@@ -257,22 +257,22 @@ README 记录的公开操作路径包括：
 - Plugin contracts/boundaries：`src/plugins/types.ts:1-6`, `src/plugins/types.ts:111-152`, `src/plugins/manifest-types.ts:14-36`, `src/plugins/AGENTS.md:22-86`。
 - 本文件已吸收此前 `细探-openclaw.md` 的源码分析结论；后续只维护本文件，旧细探笔记不再作为独立事实源。
 
-## 9. 第三轮：通用底座映射与唯一链路裁决
+## 9. 后续：通用底座映射与唯一链路裁决
 
 ### 9.1 映射口径
 
-本轮不是把 OpenClaw 的目录直接复制为平台目录，而是把源码中已经出现的**契约、所有权、生命周期和故障围栏**映射为四种可复用边界：
+当前核对不是把 OpenClaw 的目录直接复制为平台目录，而是把源码中已经出现的**契约、所有权、生命周期和故障围栏**映射为四种可复用边界：
 
 - **支持库**：无业务路由的原子能力、类型/协议、规范化、安全、资源句柄和可测试基础设施。它可以被多个模块复用，但不能持有某个渠道的业务状态。对应当前源码的 `packages/*`、`src/infra/*`、`src/process/*`、`src/plugin-sdk/*` 等窄边界。
 - **模块库**：一个领域流程的组合器，负责把支持库拼成 Channel turn、模型解析、插件注册、文件/终端/浏览器、队列投递等可复用流程；不对外承担连接认证和不复制 Gateway 方法。对应 `src/channels/turn/*`、`src/agents/*`、`src/plugins/*`、`src/infra/outbound/*`、`src/gateway/worker-environments/*` 等。
 - **运行核心**：跨渠道必须一致的执行所有权和状态机：`sessionId/runId/turnId`、epoch/generation fence、模型/工具执行、transcript parentId、事件 seq、资源 claim、取消/超时和崩溃恢复。它只能通过公开契约调用插件和 provider，不反向知道具体渠道。
 - **网关**：控制面和适配面：WebSocket/HTTP/CLI 入口、握手认证、role/scope、RPC registry、事件广播、节点/插件/渠道接入与运维 admission。网关编排核心能力，但不另造一套 Agent turn、模型调用、工具执行或持久投递链。
 
-第三轮固定原则：一个原子能力只有一个规范 id、一个契约 owner、一个注册/调用路径；provider/channel/plugin 是策略或适配，不得成为第二个运行核心。以下“吸收/升级/新建/废弃/待核”是平台映射裁决，不代表对 OpenClaw 源码实施改造。
+后续固定原则：一个原子能力只有一个规范 id、一个契约 owner、一个注册/调用路径；provider/channel/plugin 是策略或适配，不得成为第二个运行核心。以下“吸收/升级/新建/废弃/待核”是平台映射裁决，不代表对 OpenClaw 源码实施改造。
 
 ### 9.2 能力命中与四层落点表
 
-| 能力 | 源码事实与证据 | 支持库落点 | 模块库/运行核心落点 | 网关落点 | 第三轮裁决 |
+| 能力 | 源码事实与证据 | 支持库落点 | 模块库/运行核心落点 | 网关落点 | 后续裁决 |
 |---|---|---|---|---|---|
 | Gateway | `src/gateway/server.ts` 延迟加载实现；`src/gateway/server-methods.ts:52-220` 建立领域 lazy handlers，`src/gateway/server-methods.ts:889-1111` 进行 registry、角色/scope、session mutation、限流、挂起/重启准入和 plugin request scope。 | `packages/gateway-protocol` 的 TypeBox schema、validator、错误/版本；`packages/gateway-client` 的客户端契约。 | 运行核心只暴露 command/query/event facade；方法 handler 只能调用核心 owner。 | WS 握手、auth/pairing、RPC registry、scope/role、broadcast、节点和控制 UI。 | **吸收** Gateway 作为唯一控制面；**废弃** 每个渠道或模块自建 RPC/鉴权链；协议 v4 和方法名以当前源码为基线。 |
 | Channel | `src/channels/plugins/types.plugin.ts:48-118` 的 `ChannelPlugin` 拆 config/setup/security/pairing/outbound/gateway/streaming/threading/actions；`src/channels/turn/kernel.ts:43-57` 统一 dispatch；`src/channels/turn/lifecycle.ts:47-73` 从 route 解析 agent/session/store。 | 渠道 id、目标/账号/消息、能力矩阵、reply payload、错误和 delivery outcome 类型；消息规范化与媒体访问应保持窄 SDK。 | `src/channels/message/ingress-queue.ts` 接收/claim/去重；`src/channels/turn/*` 做 preflight→admission→turn→delivery；路由只产出统一 `agentId/sessionKey`。 | 只负责 webhook/WS/CLI 接入、渠道账户状态、pairing、消息 RPC 和最终事件/投递可见性。 | **吸收** 多渠道适配器 + 单一 turn kernel；**升级** 统一 ingress/outbound queue 和 receipt；**废弃** 渠道插件直接启动独立 Agent 链。 |
@@ -348,7 +348,7 @@ Telegram/Discord/Feishu/Slack/WebChat/CLI/Node
 | Event stream | register run context/window | lifecycle generation + seq + ACK/pending bytes | terminal event 后 release context/fence run | error terminal，审计事件保留 | release run、clear pending、发送 cancelled/timeout terminal | 恢复只采用 binding+owner epoch 证明的 cursor；未匹配 owner 从 seq 0，避免旧事件污染新 run。 |
 | Queue claim | enqueue/claim token | ownerId + token + lease | ack/complete + retention prune | fail/retry/backoff/dead-letter | release/expiry；worker 不得无界占 lane | reclaim stale claim，unknown-after-send 走 reconcile，而不是盲重发。 |
 
-`runBestEffortCleanup` 只能降低清理异常对主结果的影响，不能替代残留验证。平台验收必须把“清理函数返回”与“现场不存在进程/端口/临时文件/锁/浏览器 tab/queue claim”分栏记录；当前源码有大量单测和恢复测试，但本轮未启动服务，不能把静态 cleanup 分支写成运行态已证明。
+`runBestEffortCleanup` 只能降低清理异常对主结果的影响，不能替代残留验证。平台验收必须把“清理函数返回”与“现场不存在进程/端口/临时文件/锁/浏览器 tab/queue claim”分栏记录；当前源码有大量单测和恢复测试，但当前核对未启动服务，不能把静态 cleanup 分支写成运行态已证明。
 
 ### 9.6 失败、超时、取消、崩溃矩阵
 
@@ -366,7 +366,7 @@ Telegram/Discord/Feishu/Slack/WebChat/CLI/Node
 | Process/worker | command timeout、无输出超时、SIGTERM 不收敛、父进程退出 | supervisor、process-tree kill、output caps、finished TTL、worker draining/reconcile | cancel/kill tree；terminal failed/cancelled；残留进入 reconcile，不重复 teardown 新 owner | process/worker tests 存在，未启动真实 worker |
 | Event stream | sink throw、payload 超限、seq/epoch 过期、断线 | frame validator、25MiB/窗口/bytes caps、ACK cursor、generation fence | 发送失败以 terminal/provider error 收口；断线按 ACK 恢复；旧 run 不可见 | live-events/inference tests 存在 |
 | Outbound delivery | 发送前失败、发送后未知、平台部分发送、重启 | delivery queue claim、backoff、max retry、unknown-send reconciliation、receipt/partial result | before-send 可重试；after-send 不盲重试；未知进入 reconcile；ACK 后清理 spool | recovery/queue/crash tests 存在，未实平台发送 |
-| Gateway/宿主崩溃 | process restart、SQLite lock、worker orphan、半写 artifact | schema preflight、WAL/transactions、startup recovery、placement journal、snapshot manifest | 以 durable rows/leases 重建状态；不可证明的事实进入 quarantine/unknown | 静态和恢复测试；未做 crash injection 本轮执行 |
+| Gateway/宿主崩溃 | process restart、SQLite lock、worker orphan、半写 artifact | schema preflight、WAL/transactions、startup recovery、placement journal、snapshot manifest | 以 durable rows/leases 重建状态；不可证明的事实进入 quarantine/unknown | 静态和恢复测试；未做 crash injection 当前核对执行 |
 
 ### 9.7 L0-L4 通用底座分级
 
@@ -387,7 +387,7 @@ Telegram/Discord/Feishu/Slack/WebChat/CLI/Node
 | **复用** | `gateway-protocol` 的 typed envelope/validator；`plugin-sdk` 的窄 entrypoints；`fs-safe` root/file policy；`normalization-core`；`net-policy`；worker inference 的 seq/terminal/fence 思路；ingress/outbound claim/recovery 语义。 | 已有明确 owner、源码和测试，重复实现会造成错误码/事件/资源责任漂移。 |
 | **升级** | 统一 `ExecutionHandle`（session/run/turn/owner epoch/generation）、`ResourceHandle`（owner/expiry/release）、`DeliveryReceipt`（before/after/unknown）；模型、工具、浏览器、进程、队列都接入相同的 terminal/cancel/recovery contract。 | 当前事实分散在多个类型和模块；可先加适配 facade，不改变既有源码。 |
 | **升级** | 把多渠道的 ingress→turn→delivery 接口冻结为一套 contract test matrix，所有 channel plugin 只填 adapter capability。 | 当前 `ChannelPlugin` 已有类型组合，但完整多渠道运行一致性和所有 provider 的运行态仍未全部验证。 |
-| **新建（平台层，不在本仓库实施）** | 资源句柄登记/泄漏审计器、跨进程残留探针、统一 failure ledger 和可查询 evidence record。 | OpenClaw 有分散的 cleanup/recovery/test hooks，但本轮未发现覆盖所有 browser/file/process/queue 的统一现场账本。 |
+| **新建（平台层，不在本仓库实施）** | 资源句柄登记/泄漏审计器、跨进程残留探针、统一 failure ledger 和可查询 evidence record。 | OpenClaw 有分散的 cleanup/recovery/test hooks，但当前核对未发现覆盖所有 browser/file/process/queue 的统一现场账本。 |
 | **新建（平台层，不在本仓库实施）** | provider/channel/plugin capability registry 的静态 descriptor schema，区分 discovery/light artifact 与 heavy runtime。 | 现有 manifest-first/light artifact 是事实模式，平台需要把它提升为跨项目公共契约。 |
 | **废弃** | 每渠道独立 Agent loop、每插件独立 transcript、以 `EventEmitter`/内存 FIFO 作为 durable fact、裸路径/裸 child pid/裸 CDP page 跨层传递、隐藏 fallback、无 owner 的全局 mutable registry。 | 与单链路、最小权限、崩溃恢复和资源生命周期铁律冲突。 |
 | **待核** | 远程 CDP/Playwright 断线重连、所有第三方渠道的 after-send unknown reconciliation、worker crash 后真实 orphan 进程/端口清理、跨重启 session transcript 与事件 replay 的端到端行为。 | 目前仅有静态代码和针对性测试证据；未启动 Gateway、worker、真实渠道或 provider。 |
@@ -400,9 +400,9 @@ Telegram/Discord/Feishu/Slack/WebChat/CLI/Node
 4. 在 L3 只装配 auth/RPC/events/node/CLI，所有业务调用落到 L2；为每类连接做 backpressure 和断线恢复测试。
 5. 最后按 L4 plugin/channel/provider 逐个接入，先 light descriptor 再 heavy runtime，使用同一 contract/lifecycle/failure matrix 验收。
 
-### 9.9 本轮测试与真假验证表
+### 9.9 当前核对测试与真假验证表
 
-| 事实/能力 | 源码或测试存在 | 本轮静态读取 | 本轮真实执行 | 结论 |
+| 事实/能力 | 源码或测试存在 | 当前核对静态读取 | 当前核对真实执行 | 结论 |
 |---|---|---|---|---|
 | Gateway lazy registry、scope、request plugin scope | `src/gateway/server-methods.ts`、`src/gateway/AGENTS.md`、Gateway tests | 已读关键实现和规则 | 未启动 WS/Gateway | **部分实现/静态确认** |
 | Channel plugin + turn kernel + durable ingress/outbound | `src/channels/plugins/*`、`src/channels/turn/*`、`src/channels/message/ingress-queue.ts`、`src/infra/outbound/*` tests | 已读类型、kernel、lifecycle、queue contract | 未跑跨渠道端到端 | **部分实现/静态确认** |
@@ -411,11 +411,11 @@ Telegram/Discord/Feishu/Slack/WebChat/CLI/Node
 | Browser/file/process lifecycle | `src/plugin-sdk/browser-types.ts`、`src/browser-lifecycle-cleanup.ts`、`src/infra/fs-safe.ts`、`src/process/*`、对应 tests | 已读 handle/cleanup/kill tree/output cap | 未连接 CDP、未拉起真实 worker/process 树 | **部分实现/静态确认** |
 | Event/stream backpressure and terminal | `src/infra/agent-events.ts`、`live-events.ts`、`worker-environments/inference.ts` tests | 已读 seq/window/bytes/generation/terminal | 未做断线、sink throw、超限实测 | **部分实现/静态确认** |
 | Queue timeout/retry/crash recovery | ingress、outbound recovery、command queue 及 recovery/crash tests | 已读 claim/backoff/unknown-send/lane timeout | 未执行 Vitest、未注入进程崩溃 | **部分实现/静态确认** |
-| 项目身份/代码图 | 目标仓库 `git rev-parse HEAD` 为 `1fc81c20548e3323c2f5ab05cd41338b5647c726`；`project_context` 错绑华世王镞_v3 | 已排除错绑代码图与提交指纹 | 未建立目标 CodeGraph | **弱验证，不能用错绑图作证据** |
+| 项目身份/代码图 | 目标仓库 `git rev-parse HEAD` 为 `cb563bb16d94930b43ad5a6e003ea2f0a4d569ca`；目标 checkout 含 `.codegraph/` | 已用目标仓库 `codegraph explore` 查询并以源码复核 | 未建立运行态验证 | **静态代码证据，不能替代运行态** |
 
-本轮遵守只改根 `ARCHITECTURE.md` 的边界；没有执行 `pnpm install`、Gateway/worker 启动、真实渠道/provider/browser 请求或项目测试，因此“测试文件存在”不等于“本轮通过”。后续若要把映射升级为平台实现，必须另立实施任务并先完成需求、能力搜索、复用决策、文件占用和验收契约。
+当前核对遵守只改根 `ARCHITECTURE.md` 的边界；没有执行 `pnpm install`、Gateway/worker 启动、真实渠道/provider/browser 请求或项目测试，因此“测试文件存在”不等于“当前核对通过”。后续若要把映射升级为平台实现，必须另立实施任务并先完成需求、能力搜索、复用决策、文件占用和验收契约。
 
-## 10. 第二轮源码收口：Gateway/Channel/Session/Plugin/Tool/Model/Browser/文件/进程/事件/队列
+## 10. 后续源码收口：Gateway/Channel/Session/Plugin/Tool/Model/Browser/文件/进程/事件/队列
 
 本节是对前述架构映射的源码级收口。收口口径不是“目录存在”，而是确认每个边界的入口、状态事实、资源持有者、终态写入和失败恢复方式。结论仍只适用于本文档顶部记录的源码快照；未启动服务或第三方运行时的项目，不把静态测试存在写成运行态通过。
 
@@ -465,7 +465,7 @@ Gateway connect/handshake
 6. **内存结构不是跨崩溃事实**：`Map`/`Set`/EventEmitter 只能做进程内去重、并发闸门或缓存；跨进程消息、投递、重放和恢复必须由 SQLite/durable queue/manifest 承载。
 7. **权限不可升级**：Gateway admin、plugin enabled、tool visible、node paired、MCP requester 和文件 root 是不同授权；上层身份不能自动获得下层句柄。
 
-### 10.4 本轮收口后的实现/验证分界
+### 10.4 当前核对收口后的实现/验证分界
 
 | 项目 | 已从源码收口 | 仍不能声称已验证 |
 |---|---|---|
@@ -474,24 +474,24 @@ Gateway connect/handshake
 | Browser/文件/进程 | session cleanup、root/manifest/hash、进程树终止、输出上限、finished TTL | 真实 CDP 断线、worker orphan/端口回收、跨重启文件残留现场 |
 | 事件/队列/恢复 | seq/ACK/window/generation、durable claim、backoff、dead-letter、unknown-send reconciliation 代码路径 | crash injection、真实平台 after-send unknown、实际 pending buffer/资源上限压测 |
 
-因此第二轮源码收口结论是：**OpenClaw 已形成“Gateway 控制面 + 单一 Channel turn + Session/Model/Tool 核心 + durable delivery + 有围栏的资源清理/恢复”主链；未闭合项集中在真实运行态和第三方边界，而不是再增加平行架构层。**
+因此后续源码收口结论是：**OpenClaw 已形成“Gateway 控制面 + 单一 Channel turn + Session/Model/Tool 核心 + durable delivery + 有围栏的资源清理/恢复”主链；未闭合项集中在真实运行态和第三方边界，而不是再增加平行架构层。**
 
-## 11. 第三轮风险与后续复核
+## 11. 后续风险与后续复核
 
-1. **目标项目上下文绑定错误**：`project_context` 返回 `~/Documents/Agent/PHP/华世王镞_v3`，不是目标 openclaw；本轮已完全排除其代码图、最近验证和工作区指纹，所有事实来自目标仓库本地静态读取，因此映射证据等级为弱验证/静态确认。
-2. **旧细探事实源**：当前目标根和其父级参考库用文件搜索未找到 `细探-openclaw.md`；现有 `ARCHITECTURE.md` 已声明此前细探结论已吸收，本轮未删除任何旧文件，也未把找不到旧文件解释为不存在历史内容。
-3. **源码快照新鲜度**：目标 HEAD 为 `1fc81c20548e3323c2f5ab05cd41338b5647c726`，本轮没有 fetch/pull 或远程对照；结论仅适用于该 checkout，不能宣称 upstream 最新行为。
+1. **项目上下文边界**：`project_context` 返回的是平台根 `~/Documents/Agent/PHP/系统工程平台`；目标 OpenClaw 的源码、提交和代码地图均从 `~/Documents/Agent/github 源码参考/10_agent_platform_reference/01_成品Agent平台/openclaw` 单独读取，平台验证记录不作为目标测试通过证据。
+2. **旧细探事实源**：当前目标根和其父级参考库用文件搜索未找到 `细探-openclaw.md`；现有 `ARCHITECTURE.md` 已声明此前细探结论已吸收，当前核对未删除任何旧文件，也未把找不到旧文件解释为不存在历史内容。
+3. **源码快照新鲜度**：目标 HEAD 为 `cb563bb16d94930b43ad5a6e003ea2f0a4d569ca`，当前核对没有 fetch/pull 或远程对照；结论仅适用于该 checkout，不能宣称 upstream 最新行为。
 4. **运行态缺口**：没有启动 Gateway、worker、CDP、真实渠道、provider 或节点，无法证明端口、握手、跨进程清理、真实投递、unknown-send reconciliation 和恢复后的现场无残留。
 5. **抽象升格风险**：`src/*` 的内部模块有全局 singleton、插件 registry、AsyncLocalStorage 和同步 SQLite 等运行约束；平台抽取时若只复制类型不复制 owner/生命周期/测试，会产生“同名支持库、两条执行链”的伪复用。
 6. **流式状态边界**：当前 inference/live-events 已有 seq、ACK、bytes/window、epoch/generation，但不同 Gateway event、channel streaming、delivery queue 的统一 envelope/重放语义仍需跨模块实测和契约测试。
 7. **资源残留风险**：浏览器、子进程、worker tunnel、媒体 spool、SQLite claim、临时文件和队列 dead-letter 的清理 owner 分散；后续必须加现场探针和 crash-child tests，不能以 best-effort 日志代替验收。
 8. **权限组合风险**：plugin grant、tool policy、operator scope、node command allowlist、MCP requester identity 分层清晰，但跨层组合仍需逐工具/逐渠道测试；任何“启用即允许”或“可见即可执行”的捷径都应判为 L4 不合格。
 
-本节及第 9 节是本项目根文档的第三轮增量；后续只维护本 `ARCHITECTURE.md`，不恢复平行细探事实源。
+本节及第 9 节是本项目根文档的后续增量；后续只维护本 `ARCHITECTURE.md`，不恢复平行细探事实源。
 
 ## 12. 深度源码核对：耐久队列、围栏、事件与资源回收
 
-本轮对当前 checkout 的 Gateway、channel、session、plugin、tool、model、browser、process、event、queue 相关实现、共址测试、配置类型和架构文档做了定向全文核对。结论只描述源码确实实现的语义；测试文件存在不等于本轮已执行测试。未找到独立的 `细探*` 文件，因此不删除、不重建旧细探；本文只吸收当前 checkout 可复核的证据。
+当前核对对当前 checkout 的 Gateway、channel、session、plugin、tool、model、browser、process、event、queue 相关实现、共址测试、配置类型和架构文档做了定向全文核对。结论只描述源码确实实现的语义；测试文件存在不等于当前核对已执行测试。未找到独立的 `细探*` 文件，因此不删除、不重建旧细探；本文只吸收当前 checkout 可复核的证据。
 
 ### 12.1 Durable queue 的真实状态机
 
@@ -505,7 +505,7 @@ Gateway connect/handshake
 
 入站 queue claim 返回 `{token, ownerId, claimedAt}`；`complete/release/fail` 接受 claim ref 时必须以 token 作为写权限，过期 claim 只可由 stale recovery 在仍满足 token/status/时间条件时释放。旧 worker 的 token 不匹配时 SQL 影响行数为零，不能 ack、fail 或覆盖新 owner。队列接口显式暴露 `recoverStaleClaims(staleMs, shouldRecover...)` 和 corrupt-payload claim，说明 payload 解码失败也不会绕过 claim 保护（`ingress-queue.ts:39-72,199-247,420-456,981-1070`）。
 
-出站恢复的 `withActiveDeliveryClaim` 是进程内 entry id claim；真正的跨重启 ownership 由 SQLite attempt reservation 和状态迁移承担。`reserveDeliveryAttempt` 在调用 provider 前预留 attempt；发送前失败清除 `platformSendStartedAt/recoveryState`，发送已开始的失败写入 `unknown_after_send`，绝不把“可能已对用户可见”伪装成普通 retry（`delivery-queue-storage.ts:263-361`）。这套 claim 不是通用分布式 lease：本轮未找到一个跨所有 outbound adapter 的统一 claim-token schema；因此文档第 9 节的“所有队列统一 token/lease”应视为平台映射要求，而非 OpenClaw 已完全统一的事实。
+出站恢复的 `withActiveDeliveryClaim` 是进程内 entry id claim；真正的跨重启 ownership 由 SQLite attempt reservation 和状态迁移承担。`reserveDeliveryAttempt` 在调用 provider 前预留 attempt；发送前失败清除 `platformSendStartedAt/recoveryState`，发送已开始的失败写入 `unknown_after_send`，绝不把“可能已对用户可见”伪装成普通 retry（`delivery-queue-storage.ts:263-361`）。这套 claim 不是通用分布式 lease：当前核对未找到一个跨所有 outbound adapter 的统一 claim-token schema；因此文档第 9 节的“所有队列统一 token/lease”应视为平台映射要求，而非 OpenClaw 已完全统一的事实。
 
 generation/epoch 是多处独立的生命周期围栏，而非一个全局 fencing token：
 
@@ -521,7 +521,7 @@ generation/epoch 是多处独立的生命周期围栏，而非一个全局 fenci
 
 出站 recovery 看到 `send_attempt_started` 或 `unknown_after_send` 时先调用 adapter 的 `durableFinal.reconcileUnknownSend`，而不是普通重发（`src/infra/outbound/delivery-queue-recovery.ts:168-191,284-329,625-640`）。reconcile 返回 sent 时构造 receipt 并运行 afterCommit；unresolved 会保留 unknown 和 retryable 诊断。`src/infra/outbound/delivery-queue.recovery.test.ts` 覆盖 simulated crash、恢复重放、owner-completed/suppressed/rejected operation、backoff 和 unknown-send 分支；`src/infra/outbound/outbound-audit.test.ts:112-160` 明确要求未知状态不能被发明成 failure。
 
-因此“unknown send 不盲重发”是出站队列的真实实现；但它不是所有 channel 的事实保证：adapter 必须声明 capability 和支持的 unknown-send kinds，且默认 final path 可以不要求该能力。真实第三方平台在请求已到达但 receipt 丢失时能否可靠查询、平台消息 id 是否可稳定关联，本轮未通过 live channel 验证。
+因此“unknown send 不盲重发”是出站队列的真实实现；但它不是所有 channel 的事实保证：adapter 必须声明 capability 和支持的 unknown-send kinds，且默认 final path 可以不要求该能力。真实第三方平台在请求已到达但 receipt 丢失时能否可靠查询、平台消息 id 是否可稳定关联，当前核对未通过 live channel 验证。
 
 ### 12.4 事件顺序、断线重连与恢复
 
@@ -529,7 +529,7 @@ Gateway 概念文档 `docs/concepts/architecture.md:75-93,141-145` 给出 WS fra
 
 重启恢复只接受“同一 environment binding + 同一 runEpoch”证明过的 startup owner；源码明确写明不匹配的 owner row 从 zero 开始，不能伪造 post-restart ACK（`live-events.ts:107-121`）。credential rotation 可保留 durable ACK cursor，但 `newProcessTurn` 会释放旧 run claims、清 transient pending/terminal state（`153-185`）。session identity mutation 会重新绑定并在失败时清 window、撤销 startup owner（`289-315`）。worker runtime 测试还验证 lifecycle end、cancel、fenced、live failure、burst coalescing 和每帧字节上限（`src/worker/worker.runtime.test.ts:939-1043`）。
 
-事件结论应精确表述为：普通 Gateway 文档事件没有全局 replay contract；worker live stream 有基于 ACK/cursor、binding 和 epoch 的有限未确认后缀重放/resync contract。两者不能合并成“所有事件可重放”，也不能简化为“所有事件永不重放”。本轮未建立真实断开 WS、重连、丢包、重复帧和跨进程网络故障的端到端证据。
+事件结论应精确表述为：普通 Gateway 文档事件没有全局 replay contract；worker live stream 有基于 ACK/cursor、binding 和 epoch 的有限未确认后缀重放/resync contract。两者不能合并成“所有事件可重放”，也不能简化为“所有事件永不重放”。当前核对未建立真实断开 WS、重连、丢包、重复帧和跨进程网络故障的端到端证据。
 
 ### 12.5 Browser、PTY/子进程、临时文件与崩溃清理
 
@@ -549,18 +549,18 @@ Gateway 概念文档 `docs/concepts/architecture.md:75-93,141-145` 给出 WS fra
 | browser/process/temp 在结束、取消、崩溃后清理 | 有 tracked tab cleanup、process-tree kill、stdio drain、spool orphan sweep、snapshot pending marker | **保留为静态代码路径**，不升级为现场无残留保证 |
 | 单一 Gateway + Channel turn + Session/Model/Tool 主链 | 当前目录、类型、测试和 docs 均与该主链一致；durable delivery 由 channel adapter capability 参与 | **保留**，但 platform mapping 中的“统一所有队列/统一所有 event envelope”仍是目标设计，不是当前完全实现 |
 
-### 12.7 本轮新增未验证边界
+### 12.7 当前核对新增未验证边界
 
 1. 未启动 Gateway 或真实 WS client；握手、断线、重连、重复/丢失 frame、普通 Gateway event 的 replay 行为仍未做 live 验证。
 2. 未连接任一真实 channel/provider；unknown-send reconciliation 的平台查询可靠性、第三方 receipt 丢失和 afterCommit 幂等性仍未证实。
-3. 未执行 Vitest；本轮只读取测试源码和测试设计，不能报告测试通过、覆盖率或运行时性能。
+3. 未执行 Vitest；当前核对只读取测试源码和测试设计，不能报告测试通过、覆盖率或运行时性能。
 4. 未做 crash injection、SIGTERM/SIGKILL、父进程退出、worker orphan、PTY pipe 继承、CDP 断开、临时目录权限/磁盘满和 SQLite 锁竞争实测。
 5. 未逐一审计所有 plugin/channel/tool/model provider；当前结论适用于已读取的公共 facade、核心 queue/recovery、worker event 和代表性测试，不代表每个扩展均实现相同能力。
-6. `ARCHITECTURE.md` 顶部源码快照仍是目标 checkout 的静态记录；本轮没有 fetch/pull，也没有修改或删除任何旧细探文件。
+6. `ARCHITECTURE.md` 顶部源码快照仍是目标 checkout 的静态记录；当前核对没有 fetch/pull，也没有修改或删除任何旧细探文件。
 
 ## 13. 第四轮分段审计：恢复、未知发送与资源边界
 
-本轮先在目标 checkout 建立并查询 CodeGraph，再按 gateway、channel、session、plugin、tool、model、browser、process、event、queue、sqlite、claim/lease/epoch、live stream、media、tests、docs 分段核对。CodeGraph 索引覆盖当前 checkout 的 TypeScript、Swift、Kotlin、Go、Rust 和配置文件；本文只引用目标仓库自身源码、测试和文档，不使用其他项目的 MCP、记忆或验证证据。
+当前核对先在目标 checkout 查询 CodeGraph，再按 gateway、channel、session、plugin、tool、model、browser、process、event、queue、sqlite、claim/lease/epoch、live stream、media、tests、docs 分段核对。CodeGraph 是目标仓库的工程辅助索引；本文只引用目标仓库自身源码、测试和文档，不使用其他项目的 MCP、记忆或验证证据。
 
 ### 13.1 Gateway、channel 与 session
 
@@ -593,7 +593,7 @@ SessionManager 的 transcript 同时支持 SQLite 持久化和兼容的文件快
 
 worker live stream 是窄恢复协议，不代表 Gateway 所有事件都可重放。它维护 `ackedSeq`、pending map、pending bytes、run epoch 和 terminal state；乱序事件只推进连续前缀，超窗或超字节预算返回 `resync-required` 并清理 speculative pending。startup recovery 只有在 environment binding 和 run epoch 都匹配时才接受旧 ACK/cursor；credential rotation 或 session identity mutation 会清除 transient pending，并释放旧 run claim。
 
-普通 Gateway event 仍是连接投影，客户端通常自行 refresh；它与 worker live stream 的 ACK/cursor contract 不应在文档中合并成一个“全局事件总线 replay”能力。断线、丢包、重复帧和真实 WS 重连本轮未运行验证。
+普通 Gateway event 仍是连接投影，客户端通常自行 refresh；它与 worker live stream 的 ACK/cursor contract 不应在文档中合并成一个“全局事件总线 replay”能力。断线、丢包、重复帧和真实 WS 重连当前核对未运行验证。
 
 ### 13.5 Browser、process、media 与 SQLite 释放
 
@@ -604,14 +604,14 @@ worker live stream 是窄恢复协议，不代表 Gateway 所有事件都可重�
 
 ### 13.6 测试与文档结构审计
 
-测试结构按共址单测、Gateway/协议 contract、worker/runtime、channel/outbound recovery、browser/media/process，以及更重的 E2E/live/Docker 项目分层。代表性测试覆盖 dead-letter、claim token、simulated crash、unknown-send、ACK window、epoch fencing、browser tracking compensation、media spool durability 和 process cleanup；这些文件证明回归意图和静态分支存在，本轮没有执行 Vitest、真实 Gateway、真实 provider/channel、CDP 或 crash injection。
+测试结构按共址单测、Gateway/协议 contract、worker/runtime、channel/outbound recovery、browser/media/process，以及更重的 E2E/live/Docker 项目分层。代表性测试覆盖 dead-letter、claim token、simulated crash、unknown-send、ACK window、epoch fencing、browser tracking compensation、media spool durability 和 process cleanup；这些文件证明回归意图和静态分支存在，当前核对没有执行 Vitest、真实 Gateway、真实 provider/channel、CDP 或 crash injection。
 
 文档结构以根 README、根/目录级 `AGENTS.md`、`docs/concepts` 架构概念、`docs/channels` 渠道操作说明、包/插件 README 和本根 `ARCHITECTURE.md` 为主。渠道文档会记录各平台能力差异，例如 streaming、media cap、pairing 和 delivery replay 限制；这些产品文档不能替代核心协议或源码证据。根 `ARCHITECTURE.md` 作为本次静态审计的唯一汇总事实源，后续分段应继续追加到本文件，而不是恢复平行的细探笔记。
 
-### 13.7 本轮结论与剩余风险
+### 13.7 当前核对结论与剩余风险
 
 1. OpenClaw 的主链仍是 Gateway 控制面 → durable channel ingress → session/turn → model/tool → transcript/event → durable outbound delivery；没有发现需要增加第二条 Agent 执行链的源码证据。
 2. unknown-send、claim、lease、generation 和 live ACK 都已出现实际实现，但分属不同 owner 域；平台抽象可以统一它们的术语和验收矩阵，不能声称源码已经拥有一个全局 lease/epoch。
 3. 资源释放覆盖 browser tab、进程树、stdio、media spool、SQLite row 和 queue claim，但 owner 分散；现场无残留必须用进程、端口、文件、锁、tab 和数据库 row 探针单独验收。
-4. 文档中应始终区分“源码路径存在”“测试设计覆盖”“本轮测试通过”和“真实第三方运行态已证实”四个证据等级。
-5. CodeGraph 建图目录是本轮目标仓库的工程辅助产物；本轮只改根 `ARCHITECTURE.md`，不把 CodeGraph 数据库当作产品运行时依赖，也不据此替代测试。
+4. 文档中应始终区分“源码路径存在”“测试设计覆盖”“当前核对测试通过”和“真实第三方运行态已证实”四个证据等级。
+5. CodeGraph 建图目录是当前核对目标仓库的工程辅助产物；当前核对只改根 `ARCHITECTURE.md`，不把 CodeGraph 数据库当作产品运行时依赖，也不据此替代测试。

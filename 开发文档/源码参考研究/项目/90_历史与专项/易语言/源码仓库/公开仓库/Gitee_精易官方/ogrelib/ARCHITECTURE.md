@@ -1,6 +1,6 @@
 # ogrelib 架构档案
 
-> 本文件是 `ogrelib` 项目根目录的唯一架构事实源。本轮只读取源码、工程文件和 Git 元数据，并且只新增本文件；未修改源码、工程、依赖、测试、配置或 Git。文中把“源码已经写出”“仅有声明/元数据”“未验证”明确区分，不能把命令说明表误认为 Direct3D 功能已经实现。
+> 本文件是 `ogrelib` 项目根目录的唯一架构事实源。当前核对只读取源码、工程文件和 Git 元数据，并且只新增本文件；未修改源码、工程、依赖、测试、配置或 Git。文中把“源码已经写出”“仅有声明/元数据”“未验证”明确区分，不能把命令说明表误认为 Direct3D 功能已经实现。
 
 ## 1. 项目定位
 
@@ -185,7 +185,7 @@ ogrelib/
 - 描述结构：`D3DVERTEXBUFFER_DESC`、`D3DVERTEXELEMENT9`、`D3DINDEXBUFFER_DESC`、`D3DPRESENT_PARAMETERS`、`Colour`、`SurfaceDest`、`LockedRect`、`PaletteEntry`、`DisplayMode`、`D3DBOX`、`D3DVOLUME_DESC`、`D3DCAPS9`、`D3DXIMAGE_INFO`、`D3DXATTRIBUTERANGE`、`D3DXINTERSECTINFO`。
 - 枚举/常量类型：`LightType`、`DeviceConst`、`RenderState`、`D3DSAMPLERSTATETYPE`、`D3DTEXTUREADDRESS`、`D3DTEXTUREFILTERTYPE`、`D3DTEXTURESTAGESTATETYPE`、`D3DTEXTUREOP`、`D3DTA`、`D3DTSS_TCI`、`D3DTEXTURETRANSFORMFLAGS`、`D3DFORMAT`、`D3DRESOURCETYPE`、`D3DUSAGE`、`D3DMULTISAMPLE_TYPE`、`D3DPOOL`、`D3DTRANSFORMSTATETYPE`、`D3DCUBEMAP_FACES`、`D3DFVF`、`D3DDECLTYPE`、`D3DDECLMETHOD`、`D3DDECLUSAGE`、`D3DX_FILTER`、`D3DXIMAGE_FILEFORMAT`、`D3DXMESH`、`D3DXMESHOPT`。
 
-对象方法通过静态索引数组绑定到命令索引。例如 `Vector3` 绑定 289-301，`Device` 绑定 142-224 及 134，`ID3DXMesh` 绑定 354-381（`ogrelib_dtType.cpp:4-177`）。源码中 `Device` 索引数组包含 `177` 两次而缺少预期的 `197` 位置，这属于应在后续轮次复核的元数据风险，本轮不改源码。
+对象方法通过静态索引数组绑定到命令索引。例如 `Vector3` 绑定 289-301，`Device` 绑定 142-224 及 134，`ID3DXMesh` 绑定 354-381（`ogrelib_dtType.cpp:4-177`）。源码中 `Device` 索引数组包含 `177` 两次而缺少预期的 `197` 位置，这属于应在后续轮次复核的元数据风险，当前核对不改源码。
 
 ### 6.4 支持库描述：`LIB_INFO`
 
@@ -313,9 +313,9 @@ OGRELIB_NAME(index, name)
 - 未发现 `test`、`tests`、`spec`、CI 配置、CTest、GoogleTest、Catch2 或自定义验收脚本。
 - 工程只有 Debug/Release 和 Win32/x64 配置，没有测试项目。
 
-### 10.2 本轮执行的只读检查
+### 10.2 当前核对执行的只读检查
 
-本轮没有安装依赖、启动服务、生成构建物或修改源码；执行的是源码与 Git 静态盘点：
+当前核对没有安装依赖、启动服务、生成构建物或修改源码；执行的是源码与 Git 静态盘点：
 
 - 读取 `ogrelib.sln`、两个 `.vcxproj`、两个 `.filters`、`.def`、公共头和所有 C/C++ 源码。
 - 统计并核对：`OGRELIB_DEF` 382 条、命令函数 382 个、参数编号 `000..648` 共 649 条、顶层数据类型 `000..068` 共 69 个、常量数量 0。
@@ -360,7 +360,7 @@ OGRELIB_NAME(index, name)
 - ABI 基础结构：`elib/lib2.h:1-35`、`:149-292`、`:297-390`、`:740-824`、`:1225-1318`。
 - 宿主通知/内存辅助：`elib/fnshare.h:20-169`、`elib/fnshare.cpp:1-71`。
 - 工程配置：`ogrelib.sln:1-40`、`ogrelib.vcxproj:21-202`、`ogrelib_static/ogrelib_static.vcxproj:21-167`。
-- 项目文件清单：`git ls-files`；当前无 README、测试或既有 `细探-*.md`，因此本轮不存在需吸收或删除的旧细探文档。
+- 项目文件清单：`git ls-files`；当前无 README、测试或既有 `细探-*.md`，因此当前核对不存在需吸收或删除的旧细探文档。
 
 ## 12. 后续复核优先级
 
@@ -371,4 +371,4 @@ OGRELIB_NAME(index, name)
 5. **P1：建立 Windows 验收工程**——至少覆盖 `GetNewInf` 加载、命令表/类型表计数、一个资源创建-释放闭环、纹理读写、D3DX 数学函数和静态库链接。
 6. **P2：补齐常量表或明确全部常量由枚举数据类型承载**——当前 `g_ConstInfo...` 数量为 0，但大量“常量数据类型”存在于 `g_DataType...` 中，需确认这是设计选择还是遗漏。
 
-本轮结论：`ogrelib` 当前是“易语言 DirectX3D 支持库的 ABI/编辑器元数据与命令骨架”，不是已验证可运行的 DirectX 9 适配实现。
+当前核对结论：`ogrelib` 当前是“易语言 DirectX3D 支持库的 ABI/编辑器元数据与命令骨架”，不是已验证可运行的 DirectX 9 适配实现。
