@@ -1,0 +1,336 @@
+# cnvpe 架构档案
+
+## 1. 项目定位
+
+`cnvpe` 是一个面向易语言的 Windows 支持库源码骨架，目标是提供一个“可执行文件数据转换”命令：输入使用易语言 `SDT_BIN` 表示的 PE 文件数据（EXE/DLL 等），按转换码处理后返回新的字节集，并可通过可选变量返回状态码。源码同时保留动态支持库（`.fne`/DLL）和静态库（`.lib`）两种工程配置。
+
+当前仓库的实现状态必须与目标描述区分：命令元数据、易语言 ABI 接口和通知转发框架已经搭好，但核心转换函数 `cnvpe_cnvpe_0_cnvpe` 当前只读取参数，没有填充返回值，也没有实现转换算法。因此本项目基线更准确地说是“支持库接口/工程模板 + 未完成的命令实现”，不能据此宣称已经具备 PE 转换能力。
+
+## 2. 真实调用与通知流程
+
+```text
+宿主：易语言 IDE / 编译器 / 运行环境
+  │
+  ├─ 动态装载 cnvpe.fne（或同类 DLL）
+  │    ├─ 通过固定导出名 GetNewInf()
+  │    │    └─ 返回 PLIB_INFO
+  │    ├─ 读取 LIB_INFO
+  │    │    ├─ 命令表 g_cmdInfo_cnvpe_global_var[]
+  │    │    ├─ 命令函数表 g_cmdInfo_cnvpe_global_var_fun[]
+  │    │    ├─ 参数表 g_argumentInfo_cnvpe_global_var[]
+  │    │    └─ 常量/自定义数据类型表（当前数量均为 0）
+  │    └─ 按命令表调用 cnvpe_cnvpe_0_cnvpe()
+  │
+  ├─ 命令调用：
+  │    PMDATA_INF pRetData + INT nArgCount + PMDATA_INF pArgInf[]
+  │    └─ 当前实现只取 pArgInf[0..2]，未写 pRetData/转换结果/状态码
+  │
+  └─ 系统通知：cnvpe_ProcessNotifyLib_cnvpe(nMsg, dwParam1, dwParam2)
+       ├─ NL_SYS_NOTIFY_FUNCTION
+       │    └─ ProcessNotifyLib() 保存 PFN_NOTIFY_SYS，并查询 NRS_GET_PRG_TYPE
+       ├─ NL_GET_CMD_FUNC_NAMES
+       │    └─ 返回静态编译所需的命令实现函数名数组
+       ├─ NL_GET_NOTIFY_LIB_FUNC_NAME
+       │    └─ 返回 cnvpe_ProcessNotifyLib_cnvpe
+       ├─ NL_GET_DEPENDENT_LIBS
+       │    └─ 返回空的双零结尾依赖列表
+       ├─ NL_FREE_LIB_DATA / NL_UNLOAD_FROM_IDE / NL_IDE_READY 等
+       │    └─ 当前无资源清理或 IDE 行为
+       └─ 未识别消息 → NR_ERR
+
+静态编译分支：
+  cnvpe_static.vcxproj（StaticLibrary）
+    └─ 复用同一批 cnvpe/elib 源文件，以 __E_STATIC_LIB 改变符号名和元数据编译路径
+```
+
+## 3. 目录与文件地图
+
+仓库首轮盘点得到 23 个 Git 跟踪文件，未发现 README、测试目录、CI 配置、依赖清单或已有 `ARCHITECTURE.md`。
+
+```text
+cnvpe/
+├── cnvpe.sln                         # VS 解决方案，含动态库与静态库两个项目
+├── cnvpe.vcxproj                     # 动态库项目，目标 cnvpe
+├── cnvpe.vcxproj.filters             # VS 文件筛选器
+├── cnvpe.vcxproj.user                # 空的用户属性组
+├── cnvpe_cmd_typedef.h               # 单一命令定义宏及符号拼接
+├── cnvpe_cmdInfo.cpp                 # 命令参数表、命令元数据表
+├── cnvpe_cmdDef.cpp                  # 命令实现；当前仅为未完成骨架
+├── cnvpe_const.cpp                   # 常量表；当前 0 项
+├── cnvpe_dtType.cpp                  # 自定义数据类型表；当前 0 项
+├── cnvpe_dllMain.cpp                 # DLL 入口、LIB_INFO、导出信息、系统通知
+├── include_cnvpe_header.h            # 项目公共头，连接 elib ABI 与命令定义
+├── Source_cnvpe.def                  # 动态库导出 GetNewInf
+├── cnvpe_static/
+│   ├── cnvpe_static.vcxproj          # 静态库项目，复用根目录实现文件
+│   ├── cnvpe_static.vcxproj.filters
+│   └── cnvpe_static.vcxproj.user
+└── elib/                              # 易语言支持库 SDK/运行时 ABI 头文件与辅助实现
+    ├── lib2.h                         # LIB_INFO、CMD_INFO、MDATA_INF、通知码、类型码等
+    ├── mtypes.h                       # 基础 Windows 风格类型别名与基础宏
+    ├── lang.h                         # 编译语言版本；当前为 GBK 中文
+    ├── krnllib.h                      # 系统核心支持库 GUID、名称、版本和类型编号
+    ├── fnshare.h / fnshare.cpp       # NotifySys、内存、数组、通知转发辅助
+    ├── untshare.h                     # 通用组件/属性辅助骨架
+    └── PublicIDEFunctions.h           # IDE AddIn/编辑器功能号声明
+```
+
+### 核心模块职责
+
+| 文件 | 真实职责 | 当前状态 |
+|---|---|---|
+| `cnvpe_cmd_typedef.h` | 用 `CNVPE_DEF(_MAKE)` 作为单一命令清单，生成声明、元数据、函数表、静态符号名 | 1 个命令：`cnvpe`，索引 0 |
+| `cnvpe_cmdInfo.cpp` | 声明 3 个参数并展开 `CMD_INFO` | 动态库路径启用；静态库通过 `__E_STATIC_LIB` 排除 |
+| `cnvpe_cmdDef.cpp` | 接收 `PMDATA_INF` 参数的命令函数 | 只有局部变量取参，无转换逻辑/返回写入 |
+| `cnvpe_dllMain.cpp` | 构造 `LIB_INFO`，提供 `GetNewInf` 和 `cnvpe_ProcessNotifyLib_cnvpe` | 动态/静态路径用条件编译分开 |
+| `elib/fnshare.cpp` | 保存宿主通知函数，转发系统通知，读取调试/发布运行类型 | 进程内静态状态，无持久化 |
+| `elib/lib2.h` | 定义易语言支持库 ABI 的结构、宏、类型和通知协议 | 主要外部契约 |
+
+## 4. 对外接口、协议与符号
+
+### 4.1 DLL 入口与导出
+
+- 固定导出：`GetNewInf()`，声明为 `EXTERN_C PLIB_INFO WINAPI GetNewInf()`，由 `Source_cnvpe.def` 的 `EXPORTS GetNewInf` 暴露。
+- 支持库信息：`g_LibInfo_cnvpe_global_var`。
+- 支持库 GUID：`5BB4003870154917CC7D8230CF4FA58B`。
+- 支持库版本：主版本 `2`、次版本 `0`、构建号 `0`。
+- 库名：`可执行文件数据转换支持库`。
+- 目标系统：`_LIB_OS(__OS_WIN)`，仅 Windows。
+- 依赖的易语言系统版本：`3.6`；系统核心支持库版本：`3.0`。
+- 分类：`PE数据转换`。
+- 自定义数据类型和预定义常量数量目前均为 `0`。
+- `m_szzDependFiles` 为 `NULL`；通知协议中的静态依赖列表返回 `"\0\0"`。
+
+### 4.2 命令 ABI
+
+命令清单在 `CNVPE_DEF` 中唯一声明：
+
+- 中文名：`转换可执行文件数据`。
+- 英文名：`cnvpe`。
+- 生成的动态函数符号：`cnvpe_cnvpe_0_cnvpe`。
+- 返回类型：`SDT_BIN`（易语言字节集）。
+- 用户级别：`LVL_SIMPLE`。
+- 类别索引：`1`。
+- 实现原型：`void(PMDATA_INF pRetData, INT nArgCount, PMDATA_INF pArgInf)`。
+
+参数表 `g_argumentInfo_cnvpe_global_var`：
+
+| 序号 | 名称 | 类型 | 传递约束 | 说明 |
+|---:|---|---|---|---|
+| 0 | `可执行文件数据` | `SDT_BIN` | 普通字节集 | 要转换的 PE 数据，描述允许 EXE/DLL |
+| 1 | `转换码` | `SDT_INT` | `AS_DEFAULT_VALUE_IS_EMPTY` | 非零值决定转换结果；0 或省略时按说明使用随机值/默认值 |
+| 2 | `转换结果` | `SDT_INT` | `AS_DEFAULT_VALUE_IS_EMPTY \| AS_RECEIVE_VAR` | 可选输出变量；文档约定 `0` 成功、`-1` 数据无效、`-2` 无可转换部分、`-3` 无插入空间 |
+
+`cnvpe_cmdDef.cpp` 当前仅执行：
+
+1. `pArgInf[0].m_pBin` 取输入字节集指针；
+2. `pArgInf[1].m_int` 取转换码；
+3. `pArgInf[2].m_pInt` 取状态变量指针；
+4. 函数直接结束。
+
+因此当前实现没有：输入长度/PE 结构校验、PE 节区或代码空间分析、转换码处理、输出字节集分配/复制、`pRetData` 类型或值设置、`转换结果` 状态写回、异常/错误路径。参数表中的可选参数与实现中的无条件 `pArgInf[1]`/`pArgInf[2]` 访问也存在 ABI 边界风险，需后续按易语言运行时实际传参规则复核。
+
+### 4.3 系统通知协议
+
+`cnvpe_ProcessNotifyLib_cnvpe` 是宿主到支持库的通知入口，处理以下消息：
+
+- `NL_SYS_NOTIFY_FUNCTION`：把 `dwParam1` 解释为 `PFN_NOTIFY_SYS`，交给 `ProcessNotifyLib` 保存；首次收到时查询 `NRS_GET_PRG_TYPE`。
+- `NL_GET_CMD_FUNC_NAMES`：返回 `g_cmdNamescnvpe`，供静态编译获取命令函数名。
+- `NL_GET_NOTIFY_LIB_FUNC_NAME`：返回通知入口的字符串名。
+- `NL_GET_DEPENDENT_LIBS`：返回空依赖字符串。
+- `NL_FREE_LIB_DATA`、`NL_UNLOAD_FROM_IDE`、`NR_DELAY_FREE`、`NL_IDE_READY`、`NL_RIGHT_POPUP_MENU_SHOW`、`NL_ADD_NEW_ELEMENT`：当前只保留空处理分支。
+- 其他消息：返回 `NR_ERR`。
+
+`elib/fnshare.cpp` 的 `NotifySys` 只在已收到宿主通知函数时转调宿主；`ealloc`/`efree` 使用 `NRS_MALLOC`/`NRS_MFREE`，但当前 cnvpe 命令未调用这些辅助函数。
+
+## 5. 数据模型与资源边界
+
+本项目没有数据库、配置文件、网络协议、磁盘数据模型或业务持久化。核心数据完全由宿主通过 ABI 传入，并由静态表描述：
+
+- `LIB_INFO`：支持库身份、版本、系统要求、作者信息、类别、命令、常量、数据类型和通知回调。
+- `CMD_INFO`：命令名称、英文名、说明、类别、状态标志、返回类型、用户级别和参数表指针。
+- `ARG_INFO`：参数名称、说明、数据类型、默认值和变量/数组接收标志。
+- `MDATA_INF`：运行时数据联合体，覆盖整数、浮点、文本、字节集、变量指针、复合数据和数组数据，并带 `m_dtDataType`。
+- `DATA_TYPE`：系统/用户/库定义类型及数组、变量标志；当前 cnvpe 只声明 `SDT_BIN`、`SDT_INT` 参数和 `SDT_BIN` 返回值。
+- `LIB_CONST_INFO`、`LIB_DATA_TYPE_INFO`：当前都以数量 0 暴露空表。
+
+资源与生命周期目前仅有 SDK 层约束：与易语言交互的内存应通过 `NRS_MALLOC`/`NRS_MFREE`，通知回调由宿主注入；cnvpe 自身没有文件句柄、线程、锁、缓存、注册表或释放逻辑。
+
+## 6. 工程、依赖与构建边界
+
+### 动态库项目
+
+`cnvpe.vcxproj` 为 `DynamicLibrary`，包含 6 个编译单元：5 个根目录 `.cpp` 加 `elib/fnshare.cpp`，并引用 `elib` 与项目头文件。配置包括 `Debug/Release × Win32/x64`，工具集为 `v141`，Windows SDK 目标为 `10.0.15063.0`，字符集为 Unicode。Win32 配置使用静态运行库 `/MTd` 或 `/MT`，Debug 目标扩展名为 `.fne`；链接入口由 `Source_cnvpe.def` 导出 `GetNewInf`。
+
+### 静态库项目
+
+`cnvpe_static/cnvpe_static.vcxproj` 为 `StaticLibrary`，复用动态库同一批实现和头文件；Win32 Debug/Release 明确设置 `__E_STATIC_LIB` 与 `__E_FNENAME=cnvpe`，使 `lib2.h` 的符号拼接和静态编译路径生效。静态路径会排除动态库的 `LIB_INFO`/命令元数据实现，并通过通知协议返回函数名。
+
+### 依赖边界
+
+- 平台/工具链：Visual Studio C++、Windows SDK、MSVC v141。
+- 系统头：`windows.h`、`stdio.h`、`math.h`、`time.h` 等，主要由 `elib/lib2.h`、`elib/mtypes.h` 引入。
+- 易语言 SDK：仓库内自带 `elib` 头文件和 `fnshare.cpp`，不依赖外部包管理器。
+- 未发现第三方库、子模块、NuGet/vcpkg 清单、运行时配置或测试依赖。
+- 源码以 Windows/易语言 ABI 为前提；macOS 本地无法等价验证 DLL/静态库的宿主加载语义。
+
+## 7. 测试与验证现状
+
+- 仓库内没有测试源文件、测试项目、CI 工作流或测试说明。
+- 本轮未执行构建、链接、测试、DLL 加载或静态库消费验证，原因是任务明确禁止构建运行，且当前环境为 macOS。
+- 已完成的只读证据检查：目标根目录与 Git 工作树核对、Git 远程与分支核对、完整跟踪文件盘点、解决方案/两个 VS 项目配置读取、核心 C/C++ 源码与 SDK ABI 读取、远程 `HEAD`/`master` 指针查询。
+- Git 工作树在建档前为干净状态；本地 `master` 与 `origin/master` 均指向 `ee0cbf1a5b00b2e78756064fbe49abc45b250c45`。
+
+## 8. Git 与版本基线
+
+- 本地分支：`master`。
+- 远程：`https://gitee.com/JYtechnology/cnvpe.git`。
+- 远程跟踪：`origin/master`，远程 `HEAD` 指向 `master`。
+- 当前唯一提交：`ee0cbf1a5b00b2e78756064fbe49abc45b250c45`，提交时间 `2022-12-19 16:53:34 +0800`，提交说明 `初始化仓库`。
+- 当前仓库为浅克隆（存在 `.git/shallow`），因此历史演进、被删文件和更早实现不能仅凭本地 Git 基线确认。
+- 源码文件保留 Windows CRLF/非 UTF-8 中文字节编码特征；`elib/lang.h` 明确声明 `__GBK_LANG_VER=1`。后续编辑应避免无意改写源码编码和换行，架构文档使用 UTF-8 中文。
+
+## 9. 风险、缺口与后续复核点
+
+### 已由静态证据确认的风险
+
+1. **核心功能未实现**：`cnvpe_cnvpe_0_cnvpe` 未设置返回字节集和状态码，当前调用不会完成命令说明所承诺的转换。
+2. **参数边界未处理**：实现无 `nArgCount` 检查，且无条件访问三个参数；可选参数省略时是否由宿主补齐空值需结合易语言 ABI 复核。
+3. **返回数据契约未兑现**：命令元数据声明 `SDT_BIN` 返回值，但实现没有填充 `pRetData->m_pBin` 或 `m_dtDataType`。
+4. **Win32/x64 配置不对称**：动态库 x64 的预处理器定义没有看到 `__E_FNENAME=cnvpe`，而 `elib/lib2.h` 在未定义该宏时会报错；x64 链接配置也未显式引用 `Source_cnvpe.def`，存在 `GetNewInf` 不导出的风险。
+5. **静态库 x64 配置不对称**：x64 配置没有看到 Win32 配置中的 `__E_STATIC_LIB`/`__E_FNENAME=cnvpe`，且设置了 `PrecompiledHeader=Use`，仓库文件清单中没有 `pch.h`。这些配置只能静态审计为高风险，未在本轮构建验证。
+6. **错误处理和输入校验缺失**：没有 PE DOS/NT 头、节表、位数、边界、整数溢出、异常或不可转换场景处理代码。
+7. **ABI/架构依赖 Windows**：`lib2.h` 直接包含 `windows.h` 并使用 Windows 类型、调用约定和宿主通知，跨平台不可直接成立。
+
+### 尚未确认的事项
+
+- 转换算法的设计目标、PE 修改范围、转换码生成规则和幂等性未在仓库中出现。
+- `cnvpe` 是否曾在上游其他分支/历史仓库中有完整实现，因当前为浅克隆且只有初始化提交，无法从本地证实。
+- 易语言宿主对 `AS_DEFAULT_VALUE_IS_EMPTY` 参数的实际 `pArgInf` 补齐规则、字节集内存布局和返回字节集所有权，需要在 Windows + 易语言运行环境中通过最小宿主样例确认。
+- `GetNewInf` 的 x64 导出、静态库链接、`MDATA_INF` 结构布局和调用约定尚未经过真实编译/加载验证。
+
+## 10. 旧细探收口与证据路径
+
+- 在目标仓库内未找到 `细探-*.md`、README 或其他旧架构说明；目标仓库外按专项目录搜索时只命中与 `cnvpe` 无关的 `非Git源码/Claude-Code/细探-Claude-Code.md`，没有可吸收的 cnvpe 旧细探。
+- 本文件是目标项目根唯一架构事实源；后续深挖应直接增量维护本文件，不另建平行项目架构报告。
+- 关键证据路径：
+  - `cnvpe_dllMain.cpp`：`LIB_INFO`、`GetNewInf`、通知入口、动态/静态条件编译。
+  - `cnvpe_cmd_typedef.h`：命令清单、名称和符号拼接。
+  - `cnvpe_cmdInfo.cpp`：参数和 `CMD_INFO` 元数据。
+  - `cnvpe_cmdDef.cpp`：当前命令实现的真实空缺。
+  - `include_cnvpe_header.h`：公共 ABI 汇总及命令声明展开。
+  - `elib/lib2.h`：`LIB_INFO`、`CMD_INFO`、`ARG_INFO`、`MDATA_INF`、`PFN_NOTIFY_*` 和通知码。
+  - `cnvpe.vcxproj` / `cnvpe_static/cnvpe_static.vcxproj`：工程类型、平台、预处理器、工具集和链接配置。
+  - `Source_cnvpe.def`：动态库导出边界。
+  - `.git/config`、Git 远程与提交记录：版本基线。
+
+## 11. 第三轮：PE 解析、资源治理与底座归类
+
+本轮只基于当前仓库源码做静态取证，并把“源码已经实现的事实”和“系统工程平台应如何承接的候选边界”分开。后者是架构映射，不是对本仓库能力的完成声明。
+
+### 11.1 PE/可执行文件能力的真实状态
+
+当前仓库没有 PE 解析器，也没有可执行文件改写器。`cnvpe_cmdDef.cpp:7-13` 的命令函数只读取 `pArgInf[0].m_pBin`、`pArgInf[1].m_int`、`pArgInf[2].m_pInt`，没有读取 `nArgCount`，没有访问 `pRetData`，没有 DOS/NT 头、节表、数据目录、插入空间或重定位处理。命令说明与参数表只是声明目标行为：`cnvpe_cmd_typedef.h:12-13`、`cnvpe_cmdInfo.cpp:18-20`；不能把“支持 PE 转换”的元数据当作算法实现。
+
+现有 SDK 只提供宿主 ABI 的字节集外壳：
+
+- `elib/lib2.h:780-824` 的 `MDATA_INF` 把 `SDT_BIN` 表示为只读 `m_pBin` 指针；该结构本身没有显式字节长度字段。
+- `elib/fnshare.h:108-139` 的 `GetAryElementInf`/`GetBinData` 通过字节集数组头读取维数和成员数，再复制数据；读取和成员数乘法没有针对不可信输入的边界/溢出校验，因此不能替代 PE 安全解析器。
+- `elib/lib2.h:1234-1239` 规定 `pRetData` 是命令返回数据，`elib/lib2.h:811-812` 规定写入字节集变量前要释放旧值；当前命令没有执行这些返回值和所有权动作。
+- 全部 `.cpp/.h` 的静态搜索没有发现 `IMAGE_DOS_HEADER`、`IMAGE_NT_HEADERS`、`IMAGE_SECTION_HEADER`、`CreateFile`、`ReadFile`、`MapViewOfFile`、`CloseHandle`、`LoadLibrary`、`VirtualAlloc` 等 PE/文件/动态装载实现。`elib/mtypes.h:52-59` 的 `HANDLE` 只是 `DWORD` 类型别名，不是句柄生命周期管理器。
+
+因此本项目现状应记为：**PE 转换命令的 ABI/元数据骨架，PE 解析、结构校验、转换策略、输出构造、损坏处理和版本兼容均未实现，亦未验证。** `elib/untshare.h:197-268` 附近的图标读取代码和 `catch (...)` 全部在注释内，只能算 SDK 历史线索，不能算可执行证据。
+
+### 11.2 “二进制/系统支持库”与“运行核心”的单链路落点
+
+建议平台化后保持一条调用链，不让每个转换模块重复解析 PE 或自行管理进程/句柄：
+
+```text
+项目适配层/易语言 ABI
+  → 模块库/可执行文件转换流程（参数、策略、状态码、幂等性）
+  → 二进制/系统支持库公开能力
+      ├─ 二进制格式：边界读取、PE 视图、结构校验、损坏分类
+      └─ 系统 I/O：文件/映射/动态库句柄的 OS 适配
+  → 运行核心
+      ├─ 版本/宿主能力选择与隔离
+      ├─ 超时、取消、崩溃、重启和证据
+      └─ 句柄/内存/临时文件的统一释放与残留核验
+  → Windows API/易语言宿主
+```
+
+| 能力 | 唯一归属 | 应负责的契约 | 本仓库证据与结论 |
+|---|---|---|---|
+| 原始字节读取与安全游标 | 二进制/系统支持库 | 所有读取先做 `offset + size <= input_size`，加法/乘法溢出拒绝；不得把裸指针直接暴露给模块 | 当前只有 `m_pBin` 和无长度的数组头读取；未实现，属于高风险缺口 |
+| DOS/NT/COFF/Optional Header/节表解析 | 二进制/系统支持库 | 统一输出 PE32/PE32+、机器类型、节区范围、数据目录和校验结果 | 未出现任何 `IMAGE_*` 或等价结构；不能归模块各自实现 |
+| 结构完整性与损坏分类 | 二进制/系统支持库 | `INVALID_SIGNATURE`、`TRUNCATED`、`OVERFLOW`、`UNSUPPORTED_MACHINE`、`UNSUPPORTED_OPTIONAL_MAGIC`、`INVALID_SECTION_RANGE` 等稳定错误；失败不得返回可继续写入的半解析对象 | 当前无校验、无错误码实现；命令文档的 `-1` 只描述“数据无效” |
+| 文件、映射、动态库句柄 | 系统支持库提供者 + 运行核心治理 | 支持库只封装 `CreateFile`/映射/动态库等 OS 差异并声明创建/借用/转移/关闭；运行核心统一超时、强制关闭和残留核验 | 当前没有任何文件句柄或映射 API；不要在 `cnvpe` 模块内补第二套句柄管理 |
+| 转换空间定位与字节改写 | 二进制/系统支持库的原子能力，由模块编排 | 只能对已校验范围做受限写入；输出是新字节集或事务性临时制品，原输入不可变；无空间时映射 `-3` | 当前没有节区扫描、插入空间或写回逻辑；命令说明中的 `-2/-3` 未被实现 |
+| 转换码、随机种子、一次转换约束 | 模块库 | 同一输入+非零转换码产生确定结果；零值随机必须声明不可复现语义；重复转换应显式拒绝或给出风险，不由解析器决定 | 只有参数说明，没有算法和幂等实现 |
+| 易语言返回值和状态码适配 | 项目适配层/模块公开门面 | 将二进制支持库错误映射为 `SDT_BIN` 空结果及 `0/-1/-2/-3`，按 `nArgCount` 和可选变量安全写回 | 当前函数无 `nArgCount` 检查、无 `pRetData` 写入、无状态写回 |
+| 宿主/支持库/PE 版本兼容 | 分两层：二进制支持库分类，运行核心选择 | 二进制层识别 PE32/PE32+、机器与目录能力；运行核心校验 Windows/易语言 SDK/提供者版本并选择兼容策略；不把未知版本静默当已支持 | `cnvpe_dllMain.cpp:35-40` 只有支持库格式、易语言系统 `3.6`、核心支持库 `3.0` 声明，没有 PE 版本判断或运行时协商 |
+| 崩溃、超时、取消、重启 | 运行核心 | 不可信输入/第三方解析在边界外隔离；记录退出码/信号/输入摘要；有界重启，重复失败熔断；恢复后重新验证输入和输出 | 当前无异常/SEH、无子进程、无监督；`cnvpe_cmdDef.cpp` 直接解引用参数 |
+
+硬边界是：**二进制/系统支持库拥有格式知识和 OS 适配；模块库拥有转换业务策略；运行核心拥有执行与资源生命周期；项目适配层只做 ABI/错误映射。** PE 结构字段不应下沉到运行核心，运行核心也不应被模块绕过来直接持有第三方/Windows 句柄。
+
+### 11.3 文件句柄、内存和宿主回调生命周期
+
+| 资源 | 当前源码语义 | 应落的运行契约 | 当前风险/验证等级 |
+|---|---|---|---|
+| 输入字节集 | `MDATA_INF.m_pBin` 只读借用；`cnvpe_cmdDef.cpp:9` 直接取裸指针 | 调用期间只读；解析器内部不得保存跨调用指针；输出必须新建并由宿主所有 | **已确认未校验**；没有显式长度，不能安全处理任意损坏输入 |
+| 输出字节集 | `pRetData` 应承载 `SDT_BIN`；`m_ppBin` 替换前应按 `MFree` 释放旧值 | 创建者/转移者/释放者明确；成功、失败、取消、异常都不得泄漏或留下半成品 | **已确认未实现**；当前不分配、不返回 |
+| SDK 内存 | `fnshare.h:26-39` 的 `ealloc` 经 `NRS_MALLOC`，`efree` 经 `NRS_MFREE`；`CloneBinData` 生成易语言数组形态 | 只用宿主分配器跨 ABI 交付；分配失败、大小溢出和重复释放都要变成稳定错误 | **静态发现缺口**：`ealloc` 未在辅助层检查 `NotifySys` 返回的空指针，辅助函数也未做长度乘法溢出防护 |
+| 宿主通知回调 | `fnshare.cpp:7-16,24-64` 用进程级静态 `s_pfnNotifySys` 保存回调，未见清空动作；`NotifySys` 为空时静默返回 0 | 装载时绑定、卸载前失效；回调借用不可跨宿主生命周期；并发/重入语义需明确 | **静态确认**：`NL_UNLOAD_FROM_IDE` 和 `NL_FREE_LIB_DATA` 分支为空，存在卸载后回调悬挂风险（尚未运行验证） |
+| DLL 生命周期 | `cnvpe_dllMain.cpp:7-22` 的 attach/detach/thread 分支均为空 | 不在 `DllMain` 做复杂 I/O；退出由运行核心/通知协议统一排空 | **已确认无自有清理** |
+| 文件/映射/动态库句柄 | 当前源码无创建点、持有点或关闭点 | 提供者返回“借用/拥有”句柄类型；`finally`/守护回收覆盖正常、业务失败、取消超时、宿主崩溃 | **已确认不存在，不能宣称支持文件输入** |
+| 线程/锁/临时目录 | 当前源码未见创建点 | 运行核心按调用预算治理，并在进程终止后检查线程、句柄、临时文件残留 | **已确认不存在** |
+
+### 11.4 损坏、兼容与失败矩阵
+
+未来二进制支持库至少应按以下顺序执行，任何一步失败都不得进入转换写入：
+
+1. 校验输入对象和可读长度；拒绝空指针、负数/异常尺寸和整数溢出。
+2. 校验 DOS 签名与 `e_lfanew` 范围，再校验 NT 签名、COFF 头、Optional Header magic、节表位置和节区的 `PointerToRawData + SizeOfRawData` 范围。
+3. 对 PE32/PE32+、机器类型、节数量、目录数量和对齐值做明确能力分类；未知 magic/机器/版本返回“不支持”，不能降级成“可能可写”。
+4. 对转换目标空间做只读规划；规划结果固定后才在临时输出缓冲上写入，最终一次性生成新字节集。中途异常不能把半改输入交给宿主。
+5. 将稳定错误映射到模块/适配层：无效数据 `-1`、无可转换部分 `-2`、无插入空间 `-3`；其他内部错误保留诊断原因并禁止伪装为成功。
+
+| 反向场景 | 二进制/系统支持库判定 | 运行核心动作 | 当前仓库状态 |
+|---|---|---|---|
+| 截断、坏签名、越界节表 | `INVALID_SIGNATURE`/`TRUNCATED`/`INVALID_RANGE` | 不重试；记录输入摘要与解析阶段 | 未实现 |
+| PE32/PE32+ 或机器不支持 | `UNSUPPORTED_FORMAT`/`UNSUPPORTED_MACHINE` | 按能力矩阵选择其他提供者；无候选则明确失败 | 未实现；仅元数据声明 Windows |
+| 转换区不存在 | `NO_CONVERTIBLE_PART` 或 `NO_INSERT_SPACE` | 正常业务失败，不重启提供者 | 仅在命令文字中出现 `-2/-3` |
+| 解析器崩溃/访问冲突 | 不返回伪成功 | 隔离进程 kill 整个进程组、回收句柄、记录退出证据，有界重启/熔断 | 未实现；无 `try/catch`/SEH/隔离 |
+| 宿主回调失效/卸载竞态 | `HOST_UNAVAILABLE` | 先停止新调用，排空/取消在途任务，清空回调并验证无残留 | 当前回调是静态指针，卸载分支为空 |
+| 输出分配失败或写入异常 | `OUTPUT_ALLOCATION_FAILED`/`OUTPUT_WRITE_FAILED` | 丢弃临时输出，不覆盖输入；释放已拥有内存 | 当前无输出分配路径 |
+| 重复转换 | 模块策略错误，不是格式损坏 | 不自动重试或再次改写；必要时要求显式强制 | 仅命令说明警告，未实现 |
+
+### 11.5 L0-L4 分层与验收边界
+
+```text
+L4 运行核心/宿主治理：版本选择、隔离、超时取消、崩溃恢复、资源回收、证据
+  ↑
+L3 模块库/转换流程：转换码、随机性/确定性、空间选择策略、状态码与幂等策略
+  ↑
+L2 二进制支持库能力：PE 解析、结构校验、兼容分类、可转换区域规划
+  ↑
+L1 二进制模型：DOS/NT/COFF/Optional Header/Section/Data Directory 的受限视图
+  ↑
+L0 安全字节基础：有界游标、端序、checked add/mul、切片、摘要
+```
+
+| 层级 | 权威 owner | 必须证明的事实 | 本项目对应状态 |
+|---|---|---|---|
+| L0 | 二进制/系统支持库 | 任意 offset/size 不越界；加乘溢出拒绝；输入只读 | 当前 SDK 数组辅助不满足，未实现 |
+| L1 | 二进制/系统支持库 | PE 头字段只从已验证切片读取；32/64 位布局不混用 | 未见 PE 结构代码 |
+| L2 | 二进制/系统支持库 | 损坏/不兼容稳定分类；规划阶段不改数据；输出范围可审计 | 未见解析、校验或空间规划 |
+| L3 | 模块库 | 转换码和随机性契约、一次转换策略、`-1/-2/-3` 映射、结果幂等语义 | 仅命令说明，函数为空 |
+| L4 | 运行核心 + 项目适配层 | ABI 参数边界、提供者版本、超时/取消/崩溃、资源释放、残留证据 | 当前仅有 ABI 壳和空通知分支，无治理实现 |
+
+L0-L4 不是把五层都塞进 `cnvpe_cmdDef.cpp`：该文件未来只能作为项目适配层/公开门面，调用 L3；L3 通过 L2；L2 依赖 L0/L1；L4 负责托管整个调用链。任何层直接复制另一层的解析、错误码、句柄或恢复逻辑，都会形成第二条事实链。
+
+### 11.6 本轮结论与验证等级
+
+- **吸收（源码事实）**：`MDATA_INF` 输入/输出所有权约束、宿主 `NRS_MALLOC/NRS_MFREE` 分配协议、通知入口和卸载通知码可作为二进制支持库与运行核心契约的输入，证据为 `elib/lib2.h`、`elib/fnshare.h/.cpp`、`cnvpe_dllMain.cpp`。
+- **待核（需 Windows/易语言宿主实测）**：字节集数组头的真实长度/布局、可选参数省略时 `pArgInf` 的补齐规则、宿主返回字节集的确切分配与释放路径、回调卸载时序、Win32/x64 ABI 对齐。
+- **废弃（不能当实现）**：命令说明中的 PE 转换算法、`elib/untshare.h` 注释内图标解析草稿、当前空的 `NL_FREE_LIB_DATA`/`NL_UNLOAD_FROM_IDE` 分支，均不能作为已具备的 PE 解析、异常恢复或资源释放能力。
+- **本轮未执行**：未构建、未加载 DLL、未运行易语言宿主、未对损坏 PE/PE32+/PE32/截断输入做动态验证；仓库无测试和 CI，macOS 不能等价验证 Windows 行为。

@@ -544,7 +544,9 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             if 数据 is None:
                 数据 = {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": "公开能力不存在"}
         elif 名称 == "mcp_feedback":
-            反馈开工id = _有效开工id(参数.get("work_id"))
+            反馈开工id = str(参数.get("work_id") or 当前开工id)
+            if not 反馈开工id:
+                raise PermissionError("尚未建立开工上下文")
             数据 = 写入反馈(
                 反馈路径, 开工id=反馈开工id, 任务=当前任务名称, 角色=网关角色名,
                 总结=str(参数["summary"]), 不满意=str(参数["dissatisfaction"]),
@@ -710,7 +712,7 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "collaboration_status":
             数据 = 查询协作状态(str(参数.get("work_id", "")), 任务=str(参数.get("任务", "")))
         elif 名称 == "delivery_closeout":
-            数据 = 收口登记(str(参数["work_id"]), 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
+            数据 = 收口登记(str(参数.get("work_id", "")), 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
         elif 名称 == "validate_verification_command":
             数据 = 校验验证命令受控(list(参数["命令"]))
         elif 名称 == "judge_verification_result":
