@@ -105,6 +105,23 @@ class TestPythonDocx提供者(unittest.TestCase):
             解析 = 解析文字文档(str(文件路径))
             self.assertFalse(解析.成功)
 
+    def test_注册能力为内部实现且阻断公开owner(self):
+        """Provider 只登记内部能力，公开文字文档 owner 不得被其覆盖。"""
+        from 公共契约.能力契约.契约 import 能力注册表
+        from 支持库.适配层.python_docx提供者 import 注册能力
+
+        注册表 = 能力注册表()
+        注册能力(注册表)
+        能力id列表 = 注册表.能力id列表
+        # 注册表按能力 id 稳定排序；顺序不是公开契约。
+        self.assertEqual(能力id列表, sorted(["内部.文字文档.解析", "内部.文字文档.生成"]))
+        self.assertNotIn("文字文档.解析文字文档", 能力id列表)
+        self.assertNotIn("文字文档.生成文字文档", 能力id列表)
+        self.assertEqual(
+            [参数["名称"] for 参数 in 注册表.获取("内部.文字文档.解析").参数],
+            ["文件路径", "格式", "最大字节数", "超时秒"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -122,7 +122,7 @@ def 生成网关参数校验(契约: dict[str, Any]) -> str:
         类型检查 = {
             "整数": f"isinstance(参数表.get({名称!r}), int)",
             "文本": f"isinstance(参数表.get({名称!r}), str)",
-            "布尔": f"isinstance(参数表.get({名称!r}), bool)",
+            "逻辑型": f"isinstance(参数表.get({名称!r}), bool)",
         }.get(参数类型)
         if 类型检查 and 必填:
             校验行.append(f'    if 参数表.get({名称!r}) is not None and not {类型检查}:\n        return "参数不合法", f"参数类型错误: {名称}（应为 {参数类型}）"')

@@ -512,7 +512,7 @@ L0-L4 是平台接入验收等级，不是 SimpleMem 当前已经通过的等级
 
 | 等级 | 验证内容 | SimpleMem 需要的最小命令/证据 | 当前核对判定 |
 |---|---|---|---|
-| **L0 静态契约** | 目标项目身份、源码路径、公开入口、模型/字段、依赖和四层映射；检查文档结构、路径存在、无旁路写入口 | `git diff --check -- ARCHITECTURE.md`；静态 AST/路径扫描；逐条源码路径回读 | **部分具备**：源码路径和入口已回读；目标 codegraph 不可用，错误 project_context 已明确隔离 |
+| **L0 静态契约** | 目标项目身份、源码路径、公开入口、模型/字段、依赖和四层映射；检查文档结构、路径存在、无旁路写入口 | `git diff --check -- ARCHITECTURE.md`；静态 AST/路径扫描；逐条源码路径回读 | **部分具备**：源码路径和入口已回读；目标根存在独立 `.codegraph/`，仅作 CLI 定位辅助；错误 project_context 已明确隔离 |
 | **L1 确定性单元** | 不依赖网络/模型的窗口、规范化、ID 幂等、过滤、去重、预算、错误形状、取消状态机 | `python -m pytest tests/test_vector_store_backend.py`、对应 Cross/Omni 单元（需环境满足）；新增平台实现须有确定性 fake provider | **只有历史测试源码证据**；当前核对未执行，且现有测试多使用 fake/mock，不能覆盖完整外部链 |
 | **L2 真实本地持久化** | 临时 LanceDB/SQLite/JSONL/FAISS 写读、重启加载、索引重建、重复提交、部分失败对账、租户隔离 | `python -m pytest tests/ cross/tests/test_storage.py OmniSimpleMem/tests/test_vector_store.py`（独立临时目录）；读回计数/ID/文件残留 | **未验证**：既有 Cross E2E 使用临时 SQLite 但向量多为 mock；现有存储没有统一跨表事务 |
 | **L3 真实 provider/网关** | 真实 embedding/LLM、MCP Streamable HTTP/REST、认证租户、超时、断线、限流、取消和错误码 | 启动隔离服务后用真实 HTTP/MCP 客户端逐条走 add/batch/query/retrieve/clear；记录端口、provider、deadline、退出码 | **未执行**：当前核对禁止启动/外部调用；源码也没有统一 timeout/cancel 契约 |

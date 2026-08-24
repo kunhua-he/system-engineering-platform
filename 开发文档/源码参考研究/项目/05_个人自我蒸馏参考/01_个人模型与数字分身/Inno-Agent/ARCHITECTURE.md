@@ -413,7 +413,7 @@ Web 创建 `/api/terminal/sessions` → `TerminalSessionManager.create()` 根据
 
 当前核对只把当前源码中已经存在的能力映射为通用底座候选，不把 Inno 的产品策略改写成平台事实，也不声称 Inno 已经接入系统工程平台。源码证据主要来自 `apps/inno-agent/src/agent/pi-runner.ts`、`agent/inno-extension.ts`、`server.ts`、`chat/stream-registry.ts`、`scheduler/*`、`workspace/*`、`terminal/*`、`storage/file-store.ts`、`channels/*`、`config.ts`、`runtime.ts` 和 `electron/main.js`。
 
-目标项目第一次 `project_context` 返回的项目是 `~/Documents/Agent/PHP/华世王镞_v3`，不是本项目；随后 `development_start` 以本项目路径开工被 MCP 以 `MCP_TARGET_PROJECT_MISMATCH` 拒绝。`codegraph_explore` 已按本项目绝对路径调用，但明确返回“未建立 `.codegraph/`，不可查询”；因此当前核对没有把错误项目代码图或不存在的代码图当证据，以下定位均来自目标目录现场源码读取。目标目录及其已搜索的父级范围内没有找到独立的 `细探-*.md` 文件；现有文档末尾关于 `细探-Inno-Agent.md` 的吸收声明保留，但独立旧笔记不能再次核验。
+目标项目第一次 `project_context` 返回的项目是 `~/Documents/Agent/PHP/华世王镞_v3`，不是本项目；随后 `development_start` 以本项目路径开工被 MCP 以 `MCP_TARGET_PROJECT_MISMATCH` 拒绝，本轮不采用该 MCP 证据。Inno-Agent 根目录当前存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位，以下结论仍来自目标目录现场源码读取。目标目录及其已搜索的父级范围内没有找到独立的 `细探-*.md` 文件；现有文档末尾关于 `细探-Inno-Agent.md` 的吸收声明保留，但独立旧笔记不能再次核验。
 
 ### 11.2 四层归属原则
 
@@ -562,7 +562,7 @@ HTTP/WS terminal route
 
 | 等级 | 目标 | Inno 应验证的内容 | 当前核对证据/命令 | 判定 |
 |---|---|---|---|---|
-| **L0 静态契约** | 证明目录、公开符号、注册点和依赖边界存在 | `createInnoExtension` 注册工具；`modelRegistry` 注册/注销；`pi-runner` 唯一 queue；四类链路和文件 owner；无第二份任务/队列/网关内核 | 当前核对源码读取；代码图明确不可用；目标 `ARCHITECTURE.md` 追加本章 | **已完成静态整理**，不等于运行通过 |
+| **L0 静态契约** | 证明目录、公开符号、注册点和依赖边界存在 | `createInnoExtension` 注册工具；`modelRegistry` 注册/注销；`pi-runner` 唯一 queue；四类链路和文件 owner；无第二份任务/队列/网关内核 | 当前核对源码读取；目标根 `.codegraph/` 可由 CLI 定位但不代替源码回读；目标 `ARCHITECTURE.md` 追加本章 | **已完成静态整理**，不等于运行通过 |
 | **L1 纯单元/性质** | 不启动外部服务，验证状态机和纯逻辑 | queue 取消不执行、StreamRegistry 终态/事件序号/replay/TTL、路径 containment、JSONL 坏行/轮转、cron due、JobStore mutate、sentinel 退出码 | 现有 Vitest 文件存在，但当前核对未运行 | **未验证** |
 | **L2 本地组件集成** | 临时目录 + 本地 SQLite/PTY/mock provider | lazy bootstrap、配置热更新、session/workspace 绑定、L1/L2/L3 读写、后台索引、JobStore→runner、terminal run record | 应运行 `npm test -- --run` 或项目等价的 Vitest 入口（当前核对按任务边界不执行） | **未验证** |
 | **L3 真实进程/HTTP/WS** | 跨进程与协议边界真实执行 | `npm run build`；server `/health`、chat/SSE abort/replay、session switch、terminal WS/PTY、Electron spawn→health→非零退出清理；隔离 sidecar mock | 应运行 `npm run build`、`server.smoke.test.ts` 及独立 WS/PTY smoke（当前核对未执行） | **未验证** |

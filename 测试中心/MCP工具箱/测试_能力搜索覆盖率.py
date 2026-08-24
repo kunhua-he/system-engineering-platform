@@ -43,7 +43,7 @@ class 能力搜索覆盖率测试(unittest.TestCase):
                     self.assertIsInstance(能力["验证状态"], str)
 
     def test_参数列表含必填标记(self) -> None:
-        读取 = 公开能力模块.读取公开能力(项目根, "图像解码.解码图像")
+        读取 = 公开能力模块.读取公开能力(项目根, "图像处理.识别图像格式")
         self.assertIsNotNone(读取)
         参数字典 = {参数["名称"]: 参数 for 参数 in 读取["参数"]}
         self.assertEqual(参数字典["字节"]["必填"], True)
@@ -99,19 +99,18 @@ class 能力搜索覆盖率测试(unittest.TestCase):
             self.assertEqual(读取["能力id"], 能力["能力id"])
 
     def test_版本提供者返回结构真实值(self) -> None:
-        解码图像 = 公开能力模块.读取公开能力(项目根, "图像解码.解码图像")
+        解码图像 = 公开能力模块.读取公开能力(项目根, "图像处理.识别图像格式")
         self.assertIsNotNone(解码图像)
         self.assertEqual(解码图像["版本"], "1.0.0")
-        self.assertEqual(解码图像["提供者"], "支持库.适配层.Pillow提供者")
-        self.assertEqual(解码图像["返回结构"], "结果")
-        self.assertIn("格式未知", 解码图像["错误码"])
-        self.assertIn("文件损坏", 解码图像["错误码"])
+        self.assertEqual(解码图像["提供者"], "模块库.图像处理")
+        self.assertIsInstance(解码图像["返回结构"], dict)
+        self.assertIn("参数不合法", 解码图像["错误码"])
         self.assertEqual(解码图像["调用示例"], "无")
 
     def test_验证状态如实标注当前真实状态(self) -> None:
-        解码图像 = 公开能力模块.读取公开能力(项目根, "图像解码.解码图像")
+        解码图像 = 公开能力模块.读取公开能力(项目根, "图像处理.识别图像格式")
         self.assertIsNotNone(解码图像)
-        self.assertEqual(解码图像["验证状态"], "有验证场景引用；无验证成功记录")
+        self.assertIn("验证场景引用", 解码图像["验证状态"])
         # 支持库包版本来自 能力定义/包声明，全部为版本字符串
         for 字段 in ("版本", "提供者"):
             self.assertTrue(解码图像[字段])
@@ -125,6 +124,13 @@ class 能力搜索覆盖率测试(unittest.TestCase):
             self.assertIn("参数", 能力)
             self.assertIn("返回", 能力)
             self.assertEqual(能力["返回"], 能力["返回结构"])
+
+    def test_模板能力不进入公开搜索(self) -> None:
+        结果 = 公开能力模块.搜索公开能力(项目根, "模板", 100)
+        self.assertFalse(
+            any(项.get("包id") == "模块库._模板" or str(项.get("能力id", "")).startswith("_模板.") for 项 in 结果),
+            结果,
+        )
 
 
 if __name__ == "__main__":

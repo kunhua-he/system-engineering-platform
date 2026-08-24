@@ -356,3 +356,145 @@ L2 的唯一公开原子能力建议命名为 `structured_output.execute`（名�
 4. **资源**：同步/异步 client、HTTP transport、stream、锁、缓存 backend、临时文件、子进程分别标 owner；四种终态读回无端口、进程、临时目录、锁和连接残留。外部注入 shared client 不得被误关。
 5. **错误/证据**：L4 只收到稳定错误信封；raw prompt、api key、完整 provider response 按脱敏策略处理；保存 run id、attempt、错误类别、usage、释放结果和验证命令。
 6. **真假验证**：当前仓库只提供静态源码和确定性测试证据；当前核对未安装依赖、未运行 `pytest`、未调用真实 LLM、未验证 provider 网络/取消/崩溃回收。因此后续结论中“吸收”仅指契约/静态实现可吸收，不等于平台已通过。
+
+## 14. 本轮增量深挖（2026-08-22）
+
+本轮重新读取当前 checkout、代码地图和 v2 核心实现，重点确认“一个结构化输出入口如何选择 provider、如何把 response model 转成 provider schema、如何处理验证失败重试、如何处理同步/异步流式结果”。本轮仍未安装可选 SDK、调用真实 LLM 或修改源码。
+
+### 14.1 版本与索引证据
+
+| 项目 | 当前证据 |
+|---|---|
+| 本地 `HEAD` | `6754a32b1e35d57dfd94aea8099be68478f1e133`；工作树只有未跟踪 `.codegraph/` 和本文件，未改源码 |
+| 远程核对 | 本轮 `git ls-remote` 未在时限内返回可复核结果；不能宣称当前 checkout 是远程最新版，保留“远程待核” |
+| CodeGraph | 534 files、7,227 nodes、13,781 edges，索引 up-to-date；定位查询覆盖 `from_provider`、`ProviderSpec`、`ResponseSchema`、stream/retry 相关符号 |
+| 运行验证 | 未执行 `pytest`、真实 provider 请求、网络/取消/连接关闭或残留扫描；仅有源码与仓库测试代码证据 |
+
+### 14.2 从入口到 provider 的实际调用链
+
+```text
+调用方传入 provider/model + response_model
+        ↓ instructor/v2/auto_client.py:60-163
+拆分 provider/model_name、剥离 api_key、注入 cache
+        ↓ _PROVIDER_BUILDERS:1590-1614
+按 provider 注册表选择唯一 builder
+        ↓ instructor/v2/providers/*/client.py
+懒导入 SDK、构造同步/异步 client 和 ProviderSpec
+        ↓ instructor/v2/core/patch.py + decorators.py
+把 create 调用包装成准备请求/发送/解析/重试链
+        ↓ provider handler.prepare_request / parse_response
+response_model → provider schema/tool/json 参数；响应 → Pydantic 校验
+        ↓ instructor/v2/core/retry.py + response.py:455-570
+验证失败时复制可变请求、生成 reask、按上限重试
+        ↓ partial.py / json.py
+stream/partial/iterable 逐块解析；结束后才形成 final 结果
+```
+
+`from_provider()` 的核心事实是：它只拆分字符串、选择 `_PROVIDER_BUILDERS` 并把参数传入 builder；它不执行网络请求，也不拥有业务状态。当前注册表包含 OpenAI 兼容族、Anthropic、Google、Bedrock、Mistral、Cohere、Ollama、LiteLLM 等多个入口（`auto_client.py:1590-1614`），因此平台复用时应把它视为 provider 适配器注册表候选，不应把每个 provider 当成一个模块。
+
+### 14.3 结构化结果与流式状态
+
+- `instructor/v2/core/response_model.py:38-80` 负责把 `list[T]`、`Iterable[T]`、`Partial[T]` 等类型转成工作模型；类型错误在请求前失败，不应等 provider 返回后才发现。
+- `instructor/v2/providers/openai/handlers.py:385-425` 以 `stream` 和 `IterableBase/PartialBase` 登记流式模型，`_consume_streaming_flag()` 消费一次性标志；这说明流式状态存在 handler 内部可变映射，不能跨请求共享为平台全局状态。
+- `instructor/v2/dsl/partial.py:405-430,518-588` 分别提供同步/异步流提取器；不完整 JSON 会保留部分数据，流结束后才进行完整校验。源码能证明“有解析路径”，不能证明底层 SDK iterator 在取消、断线和异常时一定关闭。
+- `instructor/v2/core/json.py:76-177` 同时维护同步和异步 JSON stream extractor；这属于支持库内部格式转换，不应暴露为上层模块自己的解析协议。
+
+### 14.4 重试、reask 与幂等边界
+
+`instructor/v2/core/response.py:455-570` 的 `handle_reask_kwargs()` 将 provider-specific handler 选取、失败历史和异常上下文合并为下一次请求参数；`instructor/v2/core/messages.py:41-42` 明确复制会被 reask handler 修改的消息列表。由源码可证：重试不是简单重复原请求，而是可能改变 messages/tools/错误上下文的派生请求。
+
+平台吸收时应固定以下边界：
+
+| 边界 | 源码事实 | 平台裁决 |
+|---|---|---|
+| attempt 上限 | retry/reask 由 v2 core 组织，测试覆盖局部路径 | 统一能力契约必须显式声明最大 attempt、deadline 和是否可重试 |
+| 请求幂等 | reask 会复制并修改消息，provider 可能再次计费 | 不能把 retry 当作幂等；需 request hash/idempotency key 和 usage 证据 |
+| provider 差异 | handler 按 provider/mode 生成不同 schema/reask | 差异只留支持库适配层，模块只看统一结果 |
+| 错误边界 | 配置、validation、provider response 分层抛错 | L4 统一成错误码/说明/可重试，禁止泄漏原始 SDK 异常 |
+
+### 14.5 资源生命周期与未证项
+
+当前源码主要处理数据转换和迭代器消费，没有统一的 client owner、lease 或进程监督器。`from_provider()` 可接收外部 client 或懒导入 SDK，但本轮没有找到一个跨 provider 的统一 `close/aclose` 责任协议；代码图只标出测试中的动态 `getattr(client, name, None)` 关闭探测，不能推断所有真实 client 都会被关闭。
+
+```text
+provider SDK/client 创建
+  → Instructor 包装层借用或持有（取决于 builder/调用方）
+  → 同步/异步 create 与 stream 消费
+  → 正常结束时应关闭 iterator/client（源码跨 provider 不统一）
+  → 取消/断线/异常/进程崩溃时的释放待运行验证
+```
+
+因此本项目对系统工程平台的落点是“结构化输出支持库/Provider 适配层”，不是模块库，也不是 HTTP 网关。可吸收的是 schema 注册、provider 选择、错误归一化、reask 历史和流式 partial 解析；必须由平台运行核心补齐的是 client ownership、超时/取消传播、幂等键、usage 账本、资源释放证据和真实 provider 验证。当前没有证据要求新增顶层支持库类别，只需在现有 LLM/结构化输出能力簇中登记一个唯一能力 owner。
+
+## 15. Provider 注册与版本兼容矩阵
+
+下表依据 `instructor/v2/auto_client.py:1590-1614` 和各 `instructor/v2/providers/*/client.py` 的 builder 入口整理。它描述源码已经登记的适配面，不表示本机安装了对应 SDK，也不表示远程 API 当前可用。
+
+| Provider 族 | 注册键/别名 | 适配入口 | 主要模式差异 | 当前证据等级 |
+|---|---|---|---|---|
+| OpenAI 兼容 | `openai`、`anyscale`、`together`、`deepseek`、`groq`、`fireworks`、`openrouter` 等 | `providers/openai/client.py` 与 handlers | tools/json/json-schema、stream、parallel | L1；未调用真实 API |
+| Anthropic | `anthropic` | `providers/anthropic/client.py` | tools、content blocks、reask 消息形状 | L1；局部测试 L2 |
+| Google | `google`、`gemini`、`vertexai`、`generative-ai` | 对应 client/handler | Gemini schema、媒体输入、异步生成 | L1；凭证和 SDK 未验证 |
+| AWS | `bedrock` | `providers/bedrock/client.py`、`handlers.py` | tool use、JSON、流式事件 | L1；真实 AWS 未验证 |
+| 其他 | `mistral`、`cohere`、`ollama`、`litellm`、`xai`、`cerebras` 等 | 各 provider 目录 | 各自 schema、错误和 stream 方言 | L1；覆盖程度按测试文件单独核对 |
+
+兼容键不能在上层模块中重复展开。平台注册表应保存规范 provider id、别名归一化规则、契约版本、必需 SDK、能力模式、超时/取消支持和 client ownership；`from_provider()` 的字符串解析只可作为支持库内部适配，不应被业务项目直接当成平台注册表。
+
+## 16. 测试证据地图与假绿边界
+
+当前仓库的测试目录覆盖 v1 兼容、v2 registry、provider handler、response model、streaming 和 typing/public surface，但本轮没有执行测试。后续复核必须按以下顺序记录，不能用“测试文件存在”替代退出码：
+
+```text
+静态契约测试
+  → provider alias / registry / schema 形状
+  → response model / retry / stream parser 单元测试
+  → mock SDK 的同步/异步调用
+  → 真实 provider 小请求（受控凭证和预算）
+  → timeout/cancel/disconnect/iterator close
+  → client/临时资源残留扫描与重复请求幂等核对
+```
+
+| 验证层 | 能证明什么 | 当前状态 |
+|---|---|---|
+| L0 | README、类型声明、测试文件和公开入口存在 | 已读取 |
+| L1 | 当前源码存在可执行分支和 provider 路由 | 已确认 `from_provider`、handler、partial、retry |
+| L2 | 测试源码对局部路径有断言 | 仓库可见，未在本轮运行 |
+| L3 | 本轮命令真实执行且退出码为 0 | 未执行 |
+| L4 | 真实 SDK/API、取消、关闭和资源残留得到证据 | 未执行 |
+
+特别注意：mock client 能证明参数转换，不证明 SDK 的连接复用、重试计费、响应流关闭或 provider 端取消；历史测试通过也不能证明当前远程主分支行为。
+
+## 17. 失败、取消和恢复矩阵
+
+| 失败点 | 源码可见行为 | 不可直接推断 | 平台应补的统一字段 |
+|---|---|---|---|
+| provider 字符串非法 | `auto_client.py:107-115` 抛 `ConfigurationError` | 调用方是否收到稳定跨语言错误码 | `error_code`、参数字段、是否可重试=false |
+| provider 未登记/SDK 缺失 | `auto_client.py:141-153` 或 builder 懒导入失败 | SDK 安装、版本和密钥是否满足 | `provider_unavailable`、环境指纹、可重试策略 |
+| schema/validation 失败 | handler 解析后进入 reask | reask 后再次请求是否幂等、是否超预算 | attempt、failed_attempts、usage、deadline |
+| stream 中途断开 | extractor 可能只得到不完整 JSON | iterator/client 是否关闭、部分结果是否落账 | `partial/final`、断点、取消原因、释放证据 |
+| 外部取消/超时 | 本库接收调用参数，但跨 SDK 传播不统一 | provider 请求是否已在服务端停止 | deadline、cancel_ack、残留扫描、终态 |
+| 进程崩溃 | 本库无独立进程监督器 | client、连接、临时文件、计费状态恢复 | execution_id、crash_exit、重试幂等、回收证据 |
+
+恢复策略不能由每个 provider handler 自行发明。上层运行核心应先判定请求是否已经产生外部副作用，再决定重试、补偿或人工复核；“重新发送一次”不是通用恢复语义。
+
+## 18. 底座装配输入与禁止吸收项
+
+若将本项目接入系统工程平台，装配计划至少需要以下机器可读输入：
+
+```text
+能力 id / 契约版本
+  + provider 规范 id / 别名 / SDK 版本约束
+  + response schema 版本摘要
+  + mode/stream/partial/iterable 能力声明
+  + deadline / max_attempts / token_budget / request_size
+  + idempotency_key / usage / 脱敏规则
+  + client 创建者 / 持有者 / 转移 / close-aclose 责任
+  + timeout / cancel / crash / retry 的结果映射
+  + L0-L4 验证命令和证据位置
+```
+
+允许吸收：provider schema 适配、统一 response model、失败历史结构、流式 JSON 增量解析、同步/异步接口对称性。禁止直接吸收：provider SDK 对象、全局 `_streaming_models` 状态、裸 `kwargs` 作为跨模块契约、无幂等键的自动重试、把 Pydantic/SDK 异常原样暴露给正式代码，以及把 `from_provider()` 当作平台网关。
+
+本轮最终裁决：`instructor` 是“结构化输出/LLM Provider 适配支持库”的高价值参考，不需要新增模块库顶层节点；其缺口集中在运行核心的资源、证据和真实外部调用治理，下一轮应优先以受控 mock + 真实小请求验证这些缺口，而不是继续扩展 provider 数量。
+
+本文件仍是本项目唯一架构事实源；后续远程快照增量必须回写本文件并更新版本、行号和证据等级。

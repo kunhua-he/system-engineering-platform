@@ -785,3 +785,7 @@ Python/Notebook/CLI/App
 **待核**：Brain provider 的增量/删除/取消，GridFS 中断和事务边界，DataLoader/ffprobe 强杀残留，delegated lease 重启恢复，`/media` 路径安全与 object-store 适配，SSE 背压和 GraphQL 数字分页一致性。上述待核项没有 L3/L4 证据，不得写成平台已具备能力。
 
 本节仍只修改本项目根 `ARCHITECTURE.md`；未修改源码、依赖、配置、测试、README 或 `细探-fiftyone.md`，未安装依赖、启动服务、生成数据库/媒体/权重/构建物。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标目录没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/40_embedding_retrieval/fiftyone` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 4,440 files、70,480 nodes、234,959 edges。索引只用于源码导航，Brain、GridFS、SSE、媒体路径和 worker lease 等运行风险仍未验证。

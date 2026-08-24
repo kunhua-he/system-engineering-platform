@@ -260,7 +260,7 @@ README/CLAUDE 与实际 `backend/go.mod` 存在版本口径差异：指导文档
 7. 根目录没有 `package.json`/`go.mod`；前端/后端是独立子项目，其他语言脚本和 Python setup 的职责尚未详查。
 8. `rush.json` 声明的完整前端包数、层级依赖和各 package 的实际依赖图当前核对未重新统计；CLAUDE.md 的“135+”是指导文档口径。
 9. 公开部署的安全风险是 README 的警告，不等于已完成安全审计；尤其 Python 代码节点、SSRF、注册和横向越权仍需单独验证。
-10. 当前核对专属 MCP 绑定存在环境问题：`project_context` 返回的是非目标 `华世王镞_v3`/`project_toolkit`，`codegraph_explore` 报告目标缺少 `.codegraph/` 索引；因此本文件的目标仓库证据来自直接静态读取，而不是代码地图结果。
+10. 当前核对不使用跨项目 MCP；目标 checkout 已存在本地 `.codegraph/`，但状态显示上次索引被中断且引用待解析。因此 CodeGraph 仅作为导航线索，最终结论仍以目标源码逐段静态读取为准，不能把未完成索引当作完整调用图。
 
 ## 10. 当前核对范围与变更纪律
 
@@ -512,6 +512,6 @@ S0 契约冻结：能力ID/版本/参数/错误/状态/资源 owner
 
 ### 16.3 后续证据边界
 
-- 目标仓库当前没有可用的 `.codegraph/`；专属 `system_engineering_toolkit` 的 `project_context` 实际返回了非目标项目 `华世王镞_v3`，MCP 实例为 `project_toolkit`，其代码图和最近成功验证也属于该非目标项目；随后对目标路径的 `codegraph_explore` 明确报“目标缺少 `.codegraph/` 索引”。因此本章所有 coze-studio 结论均来自目标路径直接静态读取，不能引用或冒充非目标代码图/验证证据。
+- 目标 checkout 存在独立 `.codegraph/`（本轮 `codegraph status`：3,683 files / 114,529 nodes / 143,796 edges），但索引曾被中断，仍有引用待解析；本章只将其作为定位工具，所有结论仍来自目标路径直接静态读取，不调用跨项目 MCP，也不把代码图冒充运行验证。
 - 目标目录搜索未发现独立旧细探文件；当前核对没有删除任何文件。旧细探已被既有 `ARCHITECTURE.md:267` 声明为已吸收，当前核对只追加本文件。
 - 当前核对允许修改范围只有目标根 `ARCHITECTURE.md`；当前核对不改源码、依赖、配置、测试、README、Git，不安装依赖，不启动服务，不写正式数据库。

@@ -79,9 +79,14 @@ def _宿主目录() -> 结果 | Path:
     临时根 = os.environ.get("TMPDIR") or os.environ.get("TEMP") or "/tmp"
     宿主 = _调用("资源管理.创建唯一运行目录", {"基础目录": 临时根})
     if isinstance(宿主, 结果):
-        return 宿主
-    if not isinstance(宿主, Path):
+        if not 宿主.成功:
+            return 宿主
+        宿主值 = 宿主.值
+    else:
+        宿主值 = 宿主
+    if not isinstance(宿主值, (str, os.PathLike, Path)):
         return _失败("验证失败", "宿主运行目录创建异常")
+    宿主 = Path(宿主值)
     登记 = _调用("文件系统.登记临时资源", {"路径": str(宿主)})
     if not 登记.成功:
         return 登记
@@ -157,13 +162,14 @@ def 验证修复(仓库路径: str, 验证命令: object, 期望摘要: str = ""
     摘要 = ""
     if 检查文件 and 期望摘要:
         try:
-            摘要 = _调用("资源管理.创建内容摘要", {
+            摘要结果 = _调用("资源管理.创建内容摘要", {
                 "文件路径": str(Path(仓库路径).resolve() / 检查文件),
             })
         except OSError:
             return _失败("验证失败", f"摘要检查文件不可读: {检查文件}")
-        if not isinstance(摘要, str):
+        if not 摘要结果.成功 or not isinstance(摘要结果.值, str):
             return _失败("验证失败", f"摘要检查文件不可读: {检查文件}")
+        摘要 = 摘要结果.值
         if 摘要 != 期望摘要:
             return _失败("验证失败", f"内容摘要不匹配: 期望 {期望摘要} 实际 {摘要}")
     return 结果.成功结果({

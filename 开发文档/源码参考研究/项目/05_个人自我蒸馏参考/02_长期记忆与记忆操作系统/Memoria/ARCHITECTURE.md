@@ -337,7 +337,7 @@ SDK 的 pyproject 实际要求 Python >=3.10、运行依赖 `httpx>=0.27`；dev 
 3. 当前核对现场命令结果；
 4. 旧细探材料（仅作线索，不能覆盖源码）。
 
-现场事实：目标根目录为 `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Memoria`；首次 `project_context` 错绑到 `华世王镞_v3`（返回根目录 `~/Documents/Agent/PHP/华世王镞_v3`），不能作为 Memoria 的项目身份或代码图证据。随后对明确 Memoria 路径调用 `codegraph_explore`，结果为“未发现 `.codegraph/`，无法查询”；因此当前核对所有源码事实均来自直接读取，不能声称有代码图佐证。根目录当前只有 `ARCHITECTURE.md` 被 Git 标记为未跟踪；预期的根目录 `细探-Memoria.md` 当前现场未找到，不能宣称对旧细探做了当前核对逐文件复核或删除。
+现场事实：目标根目录为 `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Memoria`；首次 `project_context` 曾错绑到 `华世王镞_v3`，不能作为 Memoria 的项目身份或代码图证据。Memoria 根目录当前存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位；所有源码事实仍以直接读取为准，不能把图谱状态当运行验证。根目录当前只有 `ARCHITECTURE.md` 被 Git 标记为未跟踪；预期的根目录 `细探-Memoria.md` 当前现场未找到，不能宣称对旧细探做了当前核对逐文件复核或删除。
 
 为避免把“源码存在”写成“平台已接入”，当前核对使用以下判断：
 
@@ -618,4 +618,4 @@ Memoria 项目适配层
 | 插件发布/审核/激活/审计 | `memoria/crates/memoria-service/src/plugin/repository.rs`、`manifest.rs`、`rhai_runtime.rs`；`memoria/crates/memoria-api/src/routes/plugins.rs` |
 | 测试存在但当前核对未运行 | `memoria/crates/memoria-storage/tests/`、`memoria/crates/memoria-git/tests/git_ops.rs`、`memoria/crates/memoria-service/tests/`、`memoria/crates/memoria-api/tests/`、`memoria/crates/memoria-mcp/tests/`、`sdk/python/tests/`、`plugins/openclaw/openclaw/__tests__/` |
 
-**后续状态：已完成源码级映射和裁决，未完成真实运行验证。** `project_context` 错绑、Memoria 无代码图、旧细探现场缺失、MatrixOne/外部 provider 未启动，以及异步任务取消/崩溃恢复、snapshot 非原子恢复、审计 buffer 丢失等均保留为剩余风险；没有把它们写成已解决。后续只维护本文件，不删除或改写旧细探材料。
+**后续状态：已完成源码级映射和裁决，未完成真实运行验证。** `project_context` 错绑、旧细探现场缺失、MatrixOne/外部 provider 未启动，以及异步任务取消/崩溃恢复、snapshot 非原子恢复、审计 buffer 丢失等均保留为剩余风险；目标根 `.codegraph/` 已存在但仅作 CLI 定位，不能把它写成运行证据。后续只维护本文件，不删除或改写旧细探材料。

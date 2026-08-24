@@ -498,4 +498,8 @@ partition.auto.partition()
 
 本文件至此为 unstructured 的唯一架构文档，后续只增量修订本文件并保留版本、证据等级和未验证边界。
 
+## 22. 代码地图现状复核（2026-08-22）
+
+第 13 节的“当前没有代码地图索引”属于早期审计记录，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/20_文档解析与IR/2026_06_25_document_json_unification/unstructured` 存在独立 `.codegraph/`；在该根执行 `codegraph status` 退出码为 0，返回 321 files、6,918 nodes、17,842 edges。此前错绑 MCP 的结果仍不采纳；CodeGraph 也只证明索引可用，不证明运行态或外部 provider 已验证。
+
 审计结束。

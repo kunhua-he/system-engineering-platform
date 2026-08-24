@@ -504,3 +504,7 @@ MCP 项目错绑是本次工具链缺陷而非 LightRAG 事实：project_context
 | API security tests | `tests/api/auth/`、`tests/api/test_error_message_sanitization.py` |
 
 这张表是导航索引，不替代源码；行号随未来远程更新可能变化，更新 checkout 后应重新核对并在文档元数据中记录新的 commit。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标仓库没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/55_knowledge_graph_rag/LightRAG` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 846 files、22,965 nodes、68,289 edges。索引仅用于静态源码导航；provider、向量库、API security 和真实并发仍按本文未验证边界处理。

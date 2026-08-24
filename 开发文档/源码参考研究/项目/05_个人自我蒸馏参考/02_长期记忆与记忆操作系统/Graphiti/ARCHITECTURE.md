@@ -518,3 +518,10 @@ Graphiti 的可复用核心是：以 episode 为 provenance 输入，以 entity/
 - 本文件是 Graphiti 在平台侧的唯一权威研究入口，目录导航和证据矩阵均服务于该入口。
 - 任何后续增量应优先修正已有章节，而不是新增轮次标题或平行说明文件。
 - 本轮 500 行以上的篇幅来自具体路径、符号、字段、状态和验证边界，不代表运行验证已完成。
+
+## 20. 2026-08-22 增量复核
+
+- 本地与 `origin/HEAD` 均为 `993e081a6d7948a0d8851c12a5fbdbeb49fed862`；经 `http://127.0.0.1:4780` 复核无远程漂移，未覆盖未跟踪 `.codegraph/` 与 `ARCHITECTURE.md`。
+- `codegraph status`：290 files、5,137 nodes；查询 `Graphiti add_episode search` 成功，命中 `graphiti_core/graphiti.py:980`、MCP queue `:101` 和 REST ingest 调用方。
+- L0/L1 已复核；L2 测试源码存在但本轮未运行；L3/L4 Neo4j/FalkorDB/Neptune/Kuzu、LLM、embedding、REST/MCP、并发和关闭均未验证。
+- 仅使用 shell/git/codegraph CLI，未调用任何 MCP；本轮只修改平台侧本文件。

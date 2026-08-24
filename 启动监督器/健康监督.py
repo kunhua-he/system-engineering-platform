@@ -132,7 +132,9 @@ class 系统提供者健康监督:
         try:
             self._证据文件.parent.mkdir(parents=True, exist_ok=True)
         except OSError:
-            pass  # 证据目录不可创建时静默：探针与主进程不受影响
+            self._证据目录错误 = "健康证据目录无法创建"
+        else:
+            self._证据目录错误 = ""
         self._状态: dict[str, dict[str, Any]] = {}
         self._锁 = threading.Lock()
         self._停止事件 = threading.Event()
@@ -171,7 +173,10 @@ class 系统提供者健康监督:
         with self._锁:
             状态表 = {名: dict(状态) for 名, 状态 in self._状态.items()}
         return {
-            "成功": True,
+            "成功": bool(状态表)
+            and all(状态.get("健康") and 状态.get("成功", True)
+                    for 状态 in 状态表.values())
+            and 证据写入失败提供者数 == 0,
             "提供者数": len(状态表),
             "健康提供者数": sum(1 for 状态 in 状态表.values()
                                 if 状态.get("健康")),
@@ -188,7 +193,10 @@ class 系统提供者健康监督:
         最后检查时间 = max((状态.get("最后检查时间") or ""
                             for 状态 in 状态表.values()), default="")
         return {
-            "成功": True,
+            "成功": bool(状态表) and all(
+                状态.get("最后检查时间") and 状态.get("健康")
+                and 状态.get("成功", True) for 状态 in 状态表.values()
+            ) and not any(状态.get("证据写入失败") for 状态 in 状态表.values()),
             "提供者数": len(状态表),
             "健康提供者数": sum(1 for 状态 in 状态表.values()
                                 if 状态.get("健康")),
@@ -375,7 +383,7 @@ class 系统提供者健康监督:
         策略未启用（保留条数/TTL 均为 0 或缺省）时不裁剪，保持无限追加；
         只从文件尾部倒读窗口（保留条数+保护行软上限+1 行），不做全文件
         O(n) 重写；保护行（任何情况下不裁剪）：失败证据行（成功=False 或
-        健康=False，字段缺失按成功/健康处理）与本轮刚写入的当前任务行
+        健康=False，关键字段缺失/损坏也按失败保护）与本轮刚写入的当前任务行
         （时间戳等于本次检查时间戳）；失败保护行超过软上限时裁剪最旧
         保护行（防失败风暴无界增长）；TTL 只对非保护行生效，条数只对非
         保护行计数并保留最近 N 条非保护行，因此文件总行数可能超过
@@ -404,15 +412,21 @@ class 系统提供者健康监督:
         for 序号, 行 in enumerate(行表):
             try:
                 记录 = json.loads(行)
+                if not isinstance(记录, dict) or "健康" not in 记录:
+                    raise ValueError("健康证据缺少健康字段")
                 时间戳文本 = 记录.get("时间") or ""
-                # 字段缺失时 成功/健康 按 True 处理（非失败行）
+                # 成功字段在旧版证据中不存在；只要健康字段是严格逻辑值，
+                # 缺失成功按成功处理。损坏值仍然 fail-closed 为失败保护行。
                 成功 = 记录.get("成功", True)
-                健康 = 记录.get("健康", True)
+                健康 = 记录["健康"]
+                if not isinstance(成功, bool) or not isinstance(健康, bool):
+                    raise ValueError("健康证据成功/健康字段必须是逻辑值")
                 秒 = (time.mktime(time.strptime(时间戳文本, 时间格式))
                       if 时间戳文本 else float("inf"))
             except (ValueError, TypeError, json.JSONDecodeError):
                 秒 = float("inf")  # 无法解析的时间戳保守保留
-                成功, 健康 = True, True
+                # 无法证明健康的记录必须按失败保护，不能被裁剪或计入绿状态。
+                成功, 健康 = False, False
             是保护行 = False
             if 成功 is False or 健康 is False:
                 是保护行 = True  # 失败证据行：软上限内不裁剪

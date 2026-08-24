@@ -564,3 +564,7 @@ datasets/retrieval/.../query2videos.json（静态输入，非上一步自动输�
 ### 18.6 后续收束结论
 
 真实源码显示，VideoRAG 当前最有价值的可复用边界是“归一化视频/文本 embedding + 多模型视频输入适配器 + 研究级静态脚本消费”，而不是完整的媒体知识摄取平台。后续若生产化，优先级应为：先冻结资产/片段/span/evidence 与错误码 schema；再把媒体解码、采样、ASR、OCR、embedding、LVLM 放入可隔离 provider；随后由知识模块接管增量索引、检索快照和证据包；最后由运行核心补齐模型生命周期、GPU 预算、超时取消、崩溃恢复和原子制品提交。任何只把当前脚本挂到网关、而不解决静态 `query2videos.json` 接线、全量内存排序和最终写盘丢失的问题，都不构成真实 VideoRAG 生产闭环。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标仓库没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/60_video_rag_research/starsuzi-VideoRAG` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 170 files、5,117 nodes、7,365 edges。索引只用于源码导航；静态脚本、全量排序、最终写盘和运行核心缺口仍未验证。

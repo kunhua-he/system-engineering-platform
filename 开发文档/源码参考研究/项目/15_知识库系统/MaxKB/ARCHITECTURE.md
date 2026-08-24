@@ -4,21 +4,29 @@
 
 ## 1. 文档定位与证据边界
 
-本文是对本地 `MaxKB` 仓库的首轮全量架构建档，基线为本地 `v2` 工作树，而不是远端最新代码。
+本文是对本地 `MaxKB` 仓库的持续全量架构建档，基线为当前 `v2` 工作树；远端差异单独记录，不把未同步代码写成本地事实。
 
 - 项目：`1Panel-dev/MaxKB`
 - 本地根目录：`~/Documents/Agent/github 源码参考/15_知识库系统/MaxKB`
 - 本地分支：`v2`
-- 本地 `HEAD`：`5084a37a372fd7b2a4f5ea7c6643b743a50b415a`（`fix: Knowledge base zip upload file authorization error (#6507)`）
+- 本地 `HEAD`：`b10105d2677ddb829480ac37c8ee96fa5829a816`（`feat: add V2 (MiniMax-H3) support with API version detection and payload construction`，2026-08-20）。
+- 远端对账（2026-08-22）：`origin/HEAD` 为 `b10105d2677ddb829480ac37c8ee96fa5829a816`，但 `origin/main` 为 `847755b1c2bba658a2062e0f47dd97fa8ae37247`；当前分支 `v2` 不等同远端 `main`。未 fetch、未 pull、未覆盖工作树；如需吸收 main，必须先在隔离目录建立快照并重新审计。
 - 许可证：GPLv3，见 `LICENSE` 与 `README.md:61-67`；`README_CN.md:82-90` 亦声明 GPLv3。
 - 直接证据优先级：`CLAUDE.md`、源码/路由/模型/配置、`pyproject.toml`、`ui/package.json`、安装脚本；`README*` 与 `细探-MaxKB.md` 用作定位说明，不能替代源码事实。
 
 ### 证据限制
 
 - 专属 `project_context` 返回的是另一项目“华世王镞_v3”及其根目录，不是本项目；不能将该上下文中的项目代码地图或状态作为 MaxKB 证据。
-- 对 MaxKB 执行 `codegraph_explore` 时，服务明确返回：目标目录没有 `.codegraph/`，项目未建立 CodeGraph 索引；因此本文未使用代码地图结论，改用仓库文件直接读取。
+- 目标归档当前含独立 `.codegraph/`（未纳入 Git）；本轮使用目标目录 `codegraph explore "MaxKB main entry, API routes, knowledge document ingestion, retrieval and tests"` 定位 `DocumentReadAPI`、`Document` 及 127 个调用关系，并回读 `apps/knowledge/api/document.py:12-178`、`apps/knowledge/models/knowledge.py:187-215`。代码地图只用于定位，结论仍以当前源码为准。
 - 仓库已有 `细探-MaxKB.md`，本文吸收其中有效架构线索，但以当前源码复核结果为准。
 - 当前核对禁止安装、启动、构建和运行测试；“测试”章节记录的是仓库中可见的测试形态，不是运行结果。
+
+### 本轮增量核对（2026-08-22）
+
+- **已证**：文档上传/拆分/取消等 API 契约集中在 `apps/knowledge/api/document.py:12-178,231-250`；`Document` 以 Django 模型保存知识库外键、状态与状态元数据，证据为 `apps/knowledge/models/knowledge.py:187-215`。CodeGraph 显示 `Document` 被 70 个调用点引用，当前定位结果未发现覆盖这些 API 的测试，不能把接口存在写成行为通过。
+- **已证**：本地提交已加入 MiniMax-H3 API 版本探测与 payload 构造，但该能力只代表 `v2` 工作树事实；远端 `main` 领先提交不得直接回填本节。
+- **未证**：未启动 Django、Celery/任务队列、向量库或模型服务，未执行测试；数据库事务、异步任务恢复、检索一致性和多模态链路仍是静态证据。
+- **待核**：若选用远端 `main`，需在 `/tmp` 或其他隔离快照核对迁移、API 变更、前端契约和部署清单，再决定是否更新本地参考源码；本轮严格未覆盖工作树。
 
 ## 2. 项目定位
 
@@ -915,7 +923,29 @@ Celery 事实需以源码分开记录：`apps/ops/celery/__init__.py:16-35` 建�
 | 工作流 | 已补应用流与知识库流差异、节点契约、KnowledgeAction、取消和 executor 边界 |
 | 模型 | 已补 Model 持久化、RSA credential、22 provider、ModelInfoManage、ModelManage/VectorStore 缓存 |
 | 任务/数据库/缓存 | 已补 Celery queue/autodiscover、RedisLock、Django Redis、MemCache、连接池和事务 outbox 风险 |
+
 | 失败/资源/接口 | 已补失败矩阵、资源生命周期、HTTP/Celery/内部调用边界和未验证项 |
 | 实际执行 | 未执行服务、迁移、依赖安装或测试；不能声称运行通过 |
 
 当前核对只修改目标根 `ARCHITECTURE.md`；`细探-MaxKB.md` 保留且未改，源码、依赖、配置、测试和 Git 均未修改。后续 MaxKB 架构事实只维护本文件，旧细探仅作历史线索。
+
+## 33. 远程固定 SHA/raw 定点复核（2026-08-22）
+
+本轮按远程不覆盖共享工作树的规则，尝试通过 `http://127.0.0.1:4780` 读取远端固定提交的少量文件；未调用其他 MCP，未 fetch、pull、clone 或修改 MaxKB 源码。
+
+| 项目 | 固定目标 | 请求与结果 | 证据判定 |
+|---|---|---|---|
+| MaxKB | `847755b1c2bba658a2062e0f47dd97fa8ae37247`（已有记录的远端 `main`） | `curl -L --proxy http://127.0.0.1:4780 --max-time 20 https://raw.githubusercontent.com/1Panel-dev/MaxKB/847755b1c2bba658a2062e0f47dd97fa8ae37247/apps/knowledge/api/document.py`；退出码 `56`，HTTP `404`，未取得文件字节 | 远端 API 文件在本轮 **未证**；不能据此宣称 `main` 已包含或删除本地文档/任务契约 |
+| MaxKB | 同上 | `git ls-remote` 经 4780 读取 `refs/heads/v2 refs/heads/main`；退出码 `142`（25 秒 alarm 超时） | 本轮未刷新远端 SHA；第 15 节已有的 SHA 记录仅作历史证据，不等同本轮成功 |
+
+当前可用事实仍来自本地 `v2`：`apps/knowledge/api/document.py:139-247` 暴露文档读/编辑/删除、取消、网站同步和 refresh 入口；`apps/knowledge/task/embedding.py:61-177` 注册 embedding/tokenize/delete Celery 任务。远端 raw 404/超时不能推翻这些本地事实，也不能证明远端与本地一致。
+
+### 33.1 L0-L4 证据边界
+
+- **L0**：固定 URL、SHA、代理参数和退出码已记录。
+- **L1**：本地源码行号和调用链已复核；现有第 25-30 节仍是本地静态证据。
+- **L2**：远端定点文件未成功读取，故没有远端差异的可复核快照。
+- **L3**：未启动 Django/PostgreSQL/Redis/Celery、未调用文档上传或向量 API。
+- **L4**：未执行并发、崩溃恢复、跨后端一致性或发布验证。
+
+下一轮如需追远端，必须先用可返回的固定 raw 文件或隔离 tar 快照取得字节，再将远端变化逐文件与本地 `v2` 对照；在此之前不得覆盖本地参考源码或把远端实现写成当前能力。

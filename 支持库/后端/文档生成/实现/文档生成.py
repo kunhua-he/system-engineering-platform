@@ -3,9 +3,9 @@
 能力签名：生成DOCX/生成XLSX/生成PPTX/生成PDF(参数dict) → 结果[生成产物]。
 第三方生成能力经 能力调用器 调用受管提供者能力（本模块绝不 import
 第三方库/适配层实现）：
-- docx → `文字文档.生成文字文档`（python_docx提供者）
+- docx → `内部.文字文档.生成`（python_docx提供者）
 - xlsx → `表格文档.生成表格文档`（openpyxl提供者）
-- pptx → `演示文稿.生成演示文稿`（python_pptx提供者）
+- pptx → `内部.演示文稿.生成`（python_pptx提供者）
 - pdf  → `PDF生成.生成PDF`（reportlab提供者）
 调用器未装配时如实返回 提供者不可用。
 
@@ -26,9 +26,10 @@ from 支持库.后端.文档生成.实现.签名校验 import 校验签名
 
 来源 = "文档生成"
 生成能力id表 = {
-    "docx": "文字文档.生成文字文档",
+    # Provider 生成实现使用内部能力 id；公开生成能力由本支持库唯一拥有。
+    "docx": "内部.文字文档.生成",
     "xlsx": "表格文档.生成表格文档",
-    "pptx": "演示文稿.生成演示文稿",
+    "pptx": "内部.演示文稿.生成",
     "pdf": "PDF生成.生成PDF",
 }
 媒体类型表 = {
@@ -139,7 +140,23 @@ def _归一化PDF参数(参数: dict) -> dict:
     标题 = str(参数.get("标题") or "")
     段落列表: list[dict[str, Any]] = []
     表格列表: list[dict[str, Any]] = []
-    for 块 in 参数.get("内容块列表") or []:
+    内容块列表 = 参数.get("内容块列表")
+    # PDF 支持库的公开参数本身允许标题/段落列表/表格列表；模块入口
+    # 统一使用内容块列表。两种公开契约在这里收口，避免跨层参数漂移。
+    if not isinstance(内容块列表, list):
+        内容块列表 = []
+        for 段落 in 参数.get("段落列表") or []:
+            if isinstance(段落, dict):
+                内容块列表.append({"类型": "段落", **段落})
+            else:
+                内容块列表.append({"类型": "段落", "文本": 段落})
+        for 表格 in 参数.get("表格列表") or []:
+            if isinstance(表格, dict):
+                内容块列表.append({"类型": "表格", **表格})
+        if 标题 and not any(str(块.get("类型", "")).lower() in {"标题", "heading", "h1"}
+                            for 块 in 内容块列表 if isinstance(块, dict)):
+            内容块列表.insert(0, {"类型": "标题", "文本": 标题})
+    for 块 in 内容块列表:
         if not isinstance(块, dict):
             continue
         类型 = str(块.get("类型") or 块.get("type") or "段落").lower()

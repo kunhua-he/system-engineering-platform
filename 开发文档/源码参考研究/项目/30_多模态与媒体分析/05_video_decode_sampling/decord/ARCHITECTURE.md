@@ -501,3 +501,7 @@ Decord 的核心价值是把 FFmpeg/NVDEC 解码、VideoReader/AudioReader/Video
 - [x] 更新平台唯一 `ARCHITECTURE.md`，覆盖目录、入口、调用链、状态、资源、测试、部署、版本风险和平台映射。
 - [x] `git diff --check` 通过。
 - [ ] Decord C++/Python 真实构建、导入、媒体读取、GPU、bridge、压力和强杀恢复，未执行。
+
+## 30. 代码地图现状复核（2026-08-22）
+
+第 22 节及第 29 项关于“没有 `.codegraph`”是早期审计记录，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/05_video_decode_sampling/decord` 存在独立 `.codegraph/`；在该根执行 `codegraph status` 退出码为 0，返回 137 files、2,161 nodes、3,880 edges。该索引只作为静态源码导航；构建、导入、媒体读取、GPU 和强杀恢复仍未验证。

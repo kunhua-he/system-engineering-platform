@@ -212,7 +212,7 @@ README 只明确给出 npm 包名 `@letta-ai/letta-code`，并将当前源代码
 |---|---|---|
 | 本地目标项目 | `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/Letta`，`main`，HEAD `87fd37a` | L0；这里只是 landing page，不能作为 Agent runtime 源码 |
 | 本地运行时代码 | 不存在 `letta/`、`src/`、`server/`、`api/`、`tests/` 等实现目录；Git HEAD 只有 9 个受跟踪文件 | L0；本地目标树不能验证 Agent、数据库、队列或服务端实现 |
-| 代码图 | `codegraph_explore` 明确返回目标项目没有 `.codegraph/`，未建立索引 | 代码图不可用；当前核对没有冒充代码图证据 |
+| 代码图 | Letta 根目录当前存在独立 `.codegraph/`；本轮用目标目录内 CodeGraph CLI 状态核对 | 图谱仅作定位辅助；当前核对没有把索引状态冒充运行验证 |
 | `project_context` | 专属 MCP 返回错误绑定到华世王镞_v3，不是 Letta | MCP 身份/最近成功验证均作废，不用于 Letta 证据 |
 | 旧细探 | 目标目录、上级 `02_长期记忆与记忆操作系统` 和参考库中均未找到 `细探-Letta.md`；本地 `ARCHITECTURE.md` 只能证明它曾被引用过 | 不能声称当前核对读取了不存在的旧文件；不删除、不重建、不把聊天记忆当细探 |
 | 当前实现入口 | 目标 `README.md`/`AGENTS.md` 指向外部 `letta-ai/letta-code` | 仅在明确“外部当前实现证据”标签下使用 |
@@ -442,7 +442,7 @@ Letta 当前实现只能吸收“ID 关联 + cancel/timeout 触发点”，不�
 
 - 本地事实：`AGENTS.md`、`README.md`、`ARCHITECTURE.md`、`git ls-files`、`git ls-tree -r --name-only HEAD`、`git status --short --branch`。
 - 外部当前实现只读路径：`letta-ai/letta-code` `main`，提交 `4f2d0d13496117e8fbf584aa24bea595c464f11b`；重点源码路径见 10.3、10.8。
-- MCP 事实：`project_context` 错绑华世王镞_v3；`codegraph_explore` 对目标返回无 `.codegraph/`；两者均未被用作 Letta 成功证据。
+- MCP 事实：`project_context` 曾错绑华世王镞_v3，本轮不采用该 MCP 证据；Letta 根目录当前存在独立 `.codegraph/`，仅用目标目录 CLI 作定位，不把它当运行成功证据。
 - 未解决风险：旧细探缺失、外部 server 源码未取得、L2-L4 未执行、LocalStore 原子性/锁/恢复未证明、远端数据库/队列/租约边界未知、`globalThis` context 与多会话并发隔离仍需真实测试。
 
 ---
@@ -606,7 +606,7 @@ Service managers / Agent loop
 
 当前核对按用户指定主题继续只读核对 `origin/archive` 的退役 V1 源码、迁移、测试、配置和文档入口。目标 `main` 仍是 landing page；因此本节不是当前 Letta 产品行为说明，而是**退役 V1 的历史实现审计**，用于辨认状态、资源和底座契约，不能升级为 `letta-code` 或 Cloud server 的事实。
 
-代码图复核结果仍为目标目录没有 `.codegraph/`，所以当前核对没有伪造 CodeGraph 调用链证据；使用的定位方式是 Git 对象级 `git show`、`git grep` 和文件清单。没有安装依赖、启动服务、连接数据库/Redis、运行 pytest 或执行故障注入；所有 L2-L4 结论继续标为未验证。
+代码图复核结果：目标目录当前存在独立 `.codegraph/`，本轮仅用目标目录内 CLI 作定位，并继续用 Git 对象级 `git show`、`git grep` 和文件清单回读源码。没有安装依赖、启动服务、连接数据库/Redis、运行 pytest 或执行故障注入；所有 L2-L4 结论继续标为未验证。
 
 ## 12.2 真实交互主线：请求到 Agent loop 再到流投影
 

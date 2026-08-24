@@ -349,7 +349,7 @@ Root Cargo 的 default contributor feature set 实际为 `media, skills, flows, 
 - **隔离**：能力有通用形状，但产品策略、身份、权限、持久化 owner 或外部 provider 仍必须留在 OpenHuman 宿主。
 - **待核**：存在源码或测试线索，但未在当前核对运行真实构建、服务、第三方 provider 或跨进程恢复，不能写成“运行已证实”。
 
-代码图证据不适用于本项目：OpenHuman 没有 `.codegraph/` 索引；因此当前核对所有源码事实均来自目标仓库本地文件读取，不借用其他仓库的代码图、记忆或验证记录。
+OpenHuman 根目录当前存在独立 `.codegraph/`；本轮只用目标目录内 CodeGraph CLI 作定位，所有源码事实仍来自目标仓库本地文件读取，不借用其他仓库的代码图、记忆或验证记录，也不把索引状态当运行验证。
 
 ### 2. 四层映射总表
 
@@ -428,7 +428,7 @@ UI / CLI / channel webhook / MCP / embedded host
 
 | 等级 | 验证对象 | 当前核对证据/命令 | 通过含义与当前状态 |
 |---|---|---|---|
-| **L0 证据身份** | 根目录、源码路径、vendor 版本、旧细探是否存在、修改范围 | 目标路径本地读取；`AGENTS.md`、`ARCHITECTURE.md`、各 `Cargo.toml`；`find` 类搜索等价由文件索引完成 | 已完成静态核对；OpenHuman 代码图不可用，不能把其他项目图当证据 |
+| **L0 证据身份** | 根目录、源码路径、vendor 版本、旧细探是否存在、修改范围 | 目标路径本地读取；`AGENTS.md`、`ARCHITECTURE.md`、各 `Cargo.toml`；目标 `.codegraph/` 仅作定位；`find` 类搜索等价由文件索引完成 | 已完成静态核对；不把其他项目图当证据 |
 | **L1 文档/契约静态** | Markdown 结构、四层映射、唯一链路、矩阵、源码路径存在、只改正式文档 | `python3 -c` 断言 `ARCHITECTURE.md` 非空且含 `后续`、`TinyAgents`、`TinyFlows`、`TinyChannels`、`TinyMemory`、`L0-L4`、`失败`、`崩溃`；`git diff --check`；`git diff --name-only` | 当前核对应执行并记录退出码 0；只证明文档与范围，不证明 Rust 行为 |
 | **L2 类型/编译契约** | root/app Cargo manifests、feature/path 依赖、adapter 类型边界 | 受控命令：`cargo metadata --no-deps --format-version 1 --offline`（不编译、不启动、不触碰外部服务） | 可证明 manifest 可解析；当前核对不把 metadata 当 `cargo check`，实际 compile 仍待核 |
 | **L3 隔离运行** | TinyAgents/TinyFlows/TinyChannels/TinyMemory 单元与 hermetic mock：cancel/timeout/retry/checkpoint/queue/receipt/driver audit | 待执行：各 vendor workspace 的 `cargo test` 或 OpenHuman 定向 `cargo test`，必须固定 feature、报告 skip、禁止网络/真实账号 | 当前 ARCHITECTURE 旧轮已明确“未运行 build/test”；当前核对不伪造通过 |
@@ -550,7 +550,7 @@ Agent 的产品会话由 `agent/harness/session/types.rs` 的 `Agent`/`AgentBuil
 
 ### 15. 审计范围与证据边界
 
-当前核对在目标 checkout 内分段读取了 React/Vite、Tauri、CLI/HTTP/MCP、TinyAgents、TinyChannels、AgentBox/JobStore、Rust integration tests 与开发文档。目标仓库没有 `.codegraph/` 索引，CodeGraph 首次探测明确不可用；因此当前核对不借用其他仓库的代码图、MCP、Hermes、记忆或验证证据。只修改根 `ARCHITECTURE.md`，不修改源码和既有开发文档。
+当前核对在目标 checkout 内分段读取了 React/Vite、Tauri、CLI/HTTP/MCP、TinyAgents、TinyChannels、AgentBox/JobStore、Rust integration tests 与开发文档。目标仓库当前存在 `.codegraph/`，本轮仅用目标目录内 CLI 作定位；不借用其他仓库的代码图、MCP、Hermes、记忆或验证证据。只修改根 `ARCHITECTURE.md`，不修改源码和既有开发文档。
 
 以下判断按证据强度区分：源码中的状态机、路由、存储和调用关系是“当前实现”；测试注释、设计文档和架构矩阵中的要求是“设计/验收约束”，不能自动升级为已实现能力。未执行编译、服务、真实 provider/channel、数据库故障注入或跨进程重启，所以本节不声明运行通过。
 
@@ -626,5 +626,5 @@ TinyChannels 的 outbound 线必须是：intent 先进入宿主 `DeliveryQueueSt
 4. **P2 文档治理**：刷新或删除 CEF/CDP/旧 sidecar 叙述，保留历史迁移说明时加日期和“非当前运行事实”标记；generated provider chain 继续只从 `App.tsx` 生成。
 5. **P2 验证缺口**：补 AgentBox timeout 后 provider 副作用、cancel/restart、JobStore eviction、unknown-send 三分支、unknown-method feature/domain gating、Tauri startup recovery 的隔离测试；当前 `tests/agentbox_e2e.rs` 明确 `#[ignore]`，不能算端到端通过。
 
-当前核对未运行测试或构建。已完成的是本地分段源码/测试/文档静态审计与根文档更新；CodeGraph 不可用，MCP/Hermes 未使用。
+当前核对未运行测试或构建。已完成的是本地分段源码/测试/文档静态审计与根文档更新；目标根 `.codegraph/` 仅由本地 CLI 用作定位，未使用 MCP/Hermes，也不把图谱状态当运行验证。
  # OpenHuman 架构取证

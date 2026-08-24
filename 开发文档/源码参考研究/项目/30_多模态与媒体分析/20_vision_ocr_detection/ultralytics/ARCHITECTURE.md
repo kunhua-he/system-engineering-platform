@@ -567,3 +567,7 @@ Ultralytics 的架构主线是 **统一用户外观 → task map 装配任务组
 | **L4** | 本地没有等价的统一控制面 | 只能提出准入、租约、监督和证据要求 | 不能把本源码仓库宣称为生产治理实现 |
 
 当前核对最终裁决：复用 `Model/task_map` 的装配思想、Trainer/Validator/Predictor 的任务差异分层、`Results` 的内部结果模型、source/batch 的流式边界以及 AutoBackend 的 provider 隔离思想；不复用 AGPL 实现，不把内部对象作为平台协议，不允许隐式下载、无界批处理、全局 tracker 或未监督的训练/导出进程。只有 L0-L3 定向验收和 L4 运行核心证据同时存在时，才能将视觉能力标记为生产可用。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标仓库无 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/20_vision_ocr_detection/ultralytics` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 430 files、6,464 nodes、16,343 edges。该索引仅作为源码导航，AGPL 合规、模型下载、任务取消和生产治理仍按本文未验证边界执行。

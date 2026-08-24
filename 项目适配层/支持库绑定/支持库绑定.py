@@ -82,10 +82,13 @@ def 校验绑定(支持库id: str, 版本约束: str, 支持库根目录: Path) 
             结果.问题列表.append(f"支持库存在依赖循环: {支持库id}")
             return 结果
 
-    # 6. 宿主冲突（同名能力不得跨越支持库/模块重复声明；废弃包不参与）
+    # 6. 宿主冲突（同名能力不得跨越正式支持库宿主重复声明；废弃包与
+    # 适配层 Provider 不参与）。Provider 只是公开 owner 的内部实现，
+    # 不能因实现声明同一能力而被算作第二个宿主。
     能力id出现: dict[str, int] = {}
     for 条目 in 声明列表:
-        if getattr(条目, "已废弃", False):
+        if (getattr(条目, "已废弃", False)
+                or 条目.包id.startswith("支持库.适配层.")):
             continue
         for 能力 in 条目.能力:
             能力id出现[能力.能力id] = 能力id出现.get(能力.能力id, 0) + 1

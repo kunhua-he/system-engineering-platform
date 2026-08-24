@@ -256,7 +256,7 @@ TS SDK要求显式 `command/args` 启动 runtime；Python SDK负责 bundled runt
 
 以下项目在当前核对未通过构建、启动或完整测试确认，后续工作应以源码和实际验证为准：
 
-- **专属 MCP 代码地图未对目标仓库生效**：当前核对 `system_engineering_toolkit` 的 `project_context` 返回的根与代码地图指向 `~/Documents/Agent/PHP/系统工程平台`，`codegraph_explore` 也返回该平台的符号；因此本文没有把该错误地图当作 DeepSeek-Harness 证据，目标仓库架构依据直接源码/文档读取建立。需要后续为目标仓库建立或绑定正确 CodeGraph 索引。
+- **代码地图边界**：目标 checkout 已有独立 `.codegraph/`（本轮 `codegraph status`：4,066 files / 43,235 nodes / 243,611 edges）；本轮只使用目标仓库本地 CLI 作为导航，不使用跨项目 MCP。架构结论仍以目标源码/文档逐段读取为准。
 - **当前 profile 的真实 bundle 树**：profile 解析与内置模板已确认，未启动 `dsh --dump-config`，因此某一台机器当前实际挂载的第三方/用户 patch 集合未确认。
 - **API 完整 endpoint 清单**：Typert gateway 的 `/api/<namespace>/<method>` 机制已确认，但具体 endpoint 由运行时服务和 generated definitions 动态决定，本文未宣称固定业务路由表。
 - **Web/ACP 运行组合细节**：包和 snapshot 位置已确认，未启动浏览器、ACP server 或 Web server，具体运行时端口、环境变量和当前界面组合未确认。
@@ -501,3 +501,26 @@ DeepSeek-Harness 的能力只能沿下列单链路映射，不允许每个包族
 | “开发者预览、破坏性变更” | **保留为版本风险**：根 `AGENTS.md` 的 pre-release stance 仍有效，session format/schema 和 public package contract 不应被旧细探的概括性兼容假设覆盖。 |
 
 后续收口后的未确认项仍是实测边界，而不是实现缺陷的推断：本机 profile 的实际 Loader 组合、Seatbelt/Landlock/Windows backend 的运行态 enforcement、真实 DeepSeek API、跨进程 persistence writer、built/Python/native artifact、崩溃后的子进程/临时目录/ACL survivor sweep 均未在当前核对执行。本文因此把“源码存在”“测试存在”“当前核对静态核对”“真实执行”“外部状态复核”严格分栏，不把任何 `skip`、历史制品、日志或模型自报写成通过。
+
+## 19.8 2026-08-22 远程对账与代码图增量
+
+| 项目事实 | 证据 | 结论 |
+|---|---|---|
+| 本地 checkout | `git rev-parse HEAD` = `528c682e061696f5a160f363f236ecbf53cbd006`，分支 `master`，origin=`https://github.com/deepseek-ai/deepseek-harness.git` | 本文前述静态事实绑定此 checkout |
+| 远程 HEAD | 4780 代理 `git ls-remote` 返回 `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`（`HEAD`/`master`） | 远程领先本地；本轮未能完成隔离 clone/codeload，故没有把远程新源码混入本地证据，也没有覆盖共享 checkout |
+| CodeGraph | 目标 `.codegraph` 存在，`codegraph status` = 4,066 files / 43,235 nodes / 243,611 edges；`codegraph explore 'AgentLoop executeToolCalls Session append'` 显示 `append` 运行时分派到 8 个 `SessionPersistence` 实现，`executeToolCalls` 位于 `packages/core/agent-loop/src/tool-calls.ts:59` | **已证静态导航**；持久化 provider 选择必须按运行时实现继续核对 |
+| 当前关键锚点 | `packages/core/session/src/index.ts:604-609` 的 `Session.append`；`packages/core/agent-loop/src/tool-calls.ts:59` 的工具调度入口 | 当前文档的事实链仍可定位，但远程领先提交可能改变行号和实现，不能外推到 b150 快照 |
+
+本轮仅使用 shell、Git 和目标仓库 CodeGraph；**未调用其他 MCP**。远程 SHA 已确认但隔离快照下载在 4780 长连接窗口内未完成，因此远程增量源码审计仍是未完成项；源码、依赖、测试和配置均未修改。
+
+### 19.9 2026-08-22 固定 SHA 定点请求复核
+
+本轮按任务边界仅通过 `http://127.0.0.1:4780` 发起 3 个 raw 定点请求，目标均锁定 `b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`。代理 TCP/HTTP CONNECT 成功，但 TLS 握手超时；以下退出码是实际 `curl --connect-timeout 5 --max-time 30 -fsSL` 结果：
+
+| 定点文件 | URL | 退出码/字节数 | 可用结论 |
+|---|---|---:|---|
+| Session 内存日志 | `https://raw.githubusercontent.com/deepseek-ai/DeepSeek-Harness/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/packages/core/session/src/index.ts` | `28 / 0` | 远程内容未取得；不得把当前 checkout 行号外推到该 SHA。 |
+| 工具调度 | `https://raw.githubusercontent.com/deepseek-ai/DeepSeek-Harness/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/packages/core/agent-loop/src/tool-calls.ts` | `28 / 0` | 远程内容未取得；并发/取消结论仍只绑定本地静态证据。 |
+| JSONL 持久化 | `https://raw.githubusercontent.com/deepseek-ai/DeepSeek-Harness/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/packages/session/session-persistence-jsonl/src/index.ts` | `28 / 0` | 远程内容未取得；不能宣称固定 SHA 的尾部修复语义未变。 |
+
+本轮未下载 codeload 压缩包、未 clone、未覆盖共享 checkout；因此远程增量仍为“SHA 已确认、源码未核验”。下一次应优先重试同一三个文件或使用代理恢复后的隔离临时目录，并在成功读到内容后再填写差异，而不是凭远程分支名推断实现变化。

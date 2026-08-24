@@ -10,15 +10,15 @@
 
 - 项目名：`khoj`；产品定位：`Your AI second brain`。
 - 许可证：根 `pyproject.toml` 声明 `AGPL-3.0-or-later`；`src/interface/obsidian/package.json` 与 `src/interface/desktop/package.json` 各自声明 `GPL-3.0-or-later`，分发时应按组件边界核对许可证。
-- 本地 Git：分支 `master`，HEAD `1e30154d1070c7b132f389638c008b490be1481b`，提交时间 `2026-06-24T14:13:59-07:00`，提交说明 `Do not log unnecessary details when connect to Notion`。
-- 远程 Git：`origin=https://github.com/khoj-ai/khoj.git`；远程 `HEAD`/`master` 当前为 `ae229ca894c0b80ad84664afcfdde523b5e87057`，因此本地提交落后远程。
+- 本地 Git：分支 `master`，HEAD `ae229ca894c0b80ad84664afcfdde523b5e87057`，提交时间 `2026-08-01T18:55:40-07:00`，提交说明 `Make chat export robust and fix export truncation (#1314)`。
+- 远程 Git：`origin=https://github.com/khoj-ai/khoj.git`；远程 `HEAD`/`master` 与本地均为 `ae229ca894c0b80ad84664afcfdde523b5e87057`，`git rev-list --left-right --count HEAD...origin/master` 为 `0 0`。
 - 远程独立快照：通过 `127.0.0.1:4780` 对远程提交的 `README.md`、`pyproject.toml`、`src/khoj/main.py`、`src/khoj/configure.py`、`src/khoj/database/models/__init__.py` 做了只读快照比对；这些抽查文件与本地内容相同。未把远程快照写回工作树，也未覆盖本地版本。
 - 工作树基线：已有未跟踪文件 `历史研究-khoj.md`；该文件不是当前审计创建或修改。根目录未发现可作为仓库级开发指令的 `AGENTS.md`/`CLAUDE.md`；`documentation/docs/features/AGENTS.md` 实际是 Agents 文档页，不是额外工程规则文件。
 - 本地历史研究：`历史研究-khoj.md` 已提供处理器、检索、Agent、自动化和客户端的初步导航；本文在源码核验后补充入口、数据关系、API、异步边界和风险。
 
 ### MCP 证据备注
 
-当前审计按要求先调用专属 `system_engineering_toolkit` 的 `project_context`，再调用 `codegraph_explore`。该 MCP 当前返回的项目根是 `~/Documents/Agent/PHP/系统工程平台`，其 CodeGraph 也只覆盖系统工程平台，而不是本目标 `khoj`；因此 MCP 返回的证据可信度、最近成功验证和代码地图不能作为 Khoj 的源码证据。Khoj 本文事实以目标目录的只读文件、Git 版本信息、远程只读快照与现有 `历史研究-khoj.md` 为准。该 MCP 项目根错配是当前审计必须保留的集成风险。
+本轮未调用任何 MCP；目标目录现有独立 `.codegraph/`，当前 `codegraph status` 报告索引 `up to date`。代码地图只用于目标仓库导航，本文事实以目标目录的只读文件、Git 版本信息、远程只读快照与现有 `历史研究-khoj.md` 为准。
 
 ```text
 客户端(Web/Obsidian/Desktop/Emacs/Android)
@@ -406,8 +406,8 @@ Operator 是高风险边界：它具备截图、点击、输入、文件操作�
 
 ### P0/P1：架构级风险
 
-1. **MCP 项目错配**：`system_engineering_toolkit` 当前 CodeGraph/上下文指向系统工程平台，不能证明 Khoj 的源码证据；后续若依赖该 MCP 做 Khoj 影响分析，必须先修正项目绑定或使用独立 Khoj 代码地图。
-2. **本地版本落后远程**：本地 HEAD 与远程 `master` 不同。当前抽查的核心文件内容一致，但不能据此推断完整仓库无漂移；任何开发或发布应先明确以本地历史版还是远程 `ae229ca...` 为基线。
+1. **代码地图边界**：目标 `.codegraph/` 仅用于导航，不能代替逐段源码读取或运行验证。
+2. **远程版本**：当前 HEAD 与远程 `master` 对齐；后续远程指针变化时，仍须建立隔离快照并逐文件核对，不能仅凭分支名推断实现。
 3. **启动阶段副作用过重**：`khoj.main` 导入即 `django.setup()`、迁移和 `collectstatic`；对多 worker、Gunicorn preload、测试导入和故障恢复都有耦合。迁移/静态收集失败会阻止 API 进程建立。
 4. **数据库是硬依赖**：默认 PostgreSQL + pgvector；`Entry`/`UserMemory` 的向量字段使 SQLite 不能作为等价替代。`pgserver` 只是显式开启时的可选本地路径。
 5. **全局可变状态**：模型、OpenAI/Whisper client、scheduler、认证模式、缓存、telemetry 都位于 `khoj.utils.state` 模块级变量；同进程多租户、多测试和热更新时需要严格重置状态。
@@ -426,8 +426,8 @@ Operator 是高风险边界：它具备截图、点击、输入、文件操作�
 
 ## 14. 后续阅读与演进建议
 
-1. **先冻结版本基线**：明确是以本地 `1e30154...` 作为历史参考，还是以远程 `ae229ca...` 建立新版快照；不要在未裁决的情况下混合两套结构结论。
-2. **先修 MCP 绑定**：让 `system_engineering_toolkit` 能识别 Khoj 根目录，或建立 Khoj 专属只读代码地图；否则后续“影响面/验证证据”只能依赖人工源码核对。
+1. **先冻结版本基线**：当前以本地与远程共同指向的 `ae229ca...` 为基线；后续若指针变化，不得混合未核对的两套结构结论。
+2. **代码地图边界**：目标仓库已有独立只读代码地图；后续“影响面/验证证据”仍必须回读 Khoj 源码并执行受控验证，不能依赖其他项目 MCP。
 3. **按调用链拆分大型聚合文件**：优先将 `database/adapters` 按用户/Agent/Conversation/Entry/Automation/ProcessLock 分域，将 `api_chat` 拆分为 HTTP、WebSocket、事件流、会话管理；拆分前先锁定公开 import 与 API 契约。
 4. **隔离启动副作用**：把迁移、静态收集、模型加载、scheduler 启动从模块导入路径中分离，区分“构造 app”“数据库准备”“worker 启动”；这会显著改善测试和多进程部署。
 5. **建立索引任务边界**：将内容解析/embedding/数据库写入的状态、重试、取消、幂等键和进度显式化；继续使用 `ProcessLock` 时应补充崩溃恢复和跨 worker 验证。
@@ -452,11 +452,11 @@ Operator 是高风险边界：它具备截图、点击、输入、文件操作�
 - Docker Compose 中的镜像、健康检查、SearxNG/Terrarium/Computer 互通、真实 PostgreSQL+pgvector 迁移和多 worker 调度领导选举，未在当前审计启动验证。
 - HuggingFace/OpenAI/Anthropic/Google、Whisper、Firecrawl/Exa/Olostep、E2B、MCP 等外部 provider 的真实成功、超时、重试、错误和降级语义，未在当前审计调用验证。
 - Web/Obsidian/Desktop/Android 的实际构建产物、静态复制、客户端登录和版本兼容，未在当前审计安装或构建验证。
-- 远程 `ae229ca...` 相对本地 `1e30154...` 的完整仓库差异未做全量比较；只对关键文件做了远程独立快照抽查，抽查结果相同。
+- 当前本地与 `origin/master` 提交一致；本轮未运行服务或完整测试，因此版本对齐不等于行为通过。
 
 ### 未解决的基础设施问题
 
-- `system_engineering_toolkit` 的 `project_context`/`codegraph_explore` 当前绑定系统工程平台，不能为 Khoj 提供目标仓库 CodeGraph 和匹配验证证据；这是后续自动化架构分析前必须解决的前置条件。
+- 本轮未使用 `system_engineering_toolkit`；目标仓库独立 `.codegraph/` 仅作导航，不能替代 Khoj 源码和运行验证。
 - 本地存在未跟踪的 `历史研究-khoj.md`，当前审计只读引用，未删除、覆盖或迁移。
 
 ## 16. 结论
@@ -470,7 +470,7 @@ Khoj 的核心价值在于把个人知识摄取、向量检索、可配置 Agent
 - Web/Obsidian/Desktop/Emacs/Android 都是 API 客户端，Web 和 Django 静态系统共享构建产物；
 - PostgreSQL/pgvector、外部模型 API、搜索服务、代码沙箱与 Operator 容器共同构成运行时依赖面。
 
-前序研究建档完成，但由于本地版本落后远程且专属 MCP 项目绑定错位，本文应被视为“本地源码基线 + 远程抽查已知”的权威导航，而不是远程最新全量快照的替代品。
+前序研究建档完成；当前本地与远程提交对齐，本文是基于该固定提交的权威导航，但仍不是运行验证或未来远程提交的替代品。
 
 ## 17. 历史研究吸收与裁决
 
@@ -496,7 +496,7 @@ Khoj 的核心价值在于把个人知识摄取、向量检索、可配置 Agent
 
 ## 18. 当前裁决：面向系统底座的能力域映射
 
-本节不是把 Khoj 源码搬进平台，而是把已由源码确认的能力拆成“通用模块契约”和“Khoj 项目适配”。判断基线仍是本地 `1e30154d1070c7b132f389638c008b490be1481b`；当前审计没有修改 Khoj 源码、配置、依赖、测试或历史研究。以下“通用”表示可由平台公开能力承载，“适配”表示必须由 Khoj 绑定 Django/数据库/HTTP/第三方服务/产品语义，不能泄漏进通用底座。
+本节不是把 Khoj 源码搬进平台，而是把已由源码确认的能力拆成“通用模块契约”和“Khoj 项目适配”。判断基线是本地与远程共同指向的 `ae229ca894c0b80ad84664afcfdde523b5e87057`；当前审计没有修改 Khoj 源码、配置、依赖、测试或历史研究。以下“通用”表示可由平台公开能力承载，“适配”表示必须由 Khoj 绑定 Django/数据库/HTTP/第三方服务/产品语义，不能泄漏进通用底座。
 
 ### 18.1 处理器能力域映射表
 
@@ -671,7 +671,7 @@ Khoj 适配层的边界为：`AutomationAdapters`/`api_automation.py` 的 HTTP �
 - 调度执行与邮件通知缺少持久化的“尝试→结果→回执→重试/死信”链；当前自动化 metadata 和 DjangoJobExecution 不能直接替代统一通知证据。
 - 全局模型/cache/scheduler 生命周期与租约没有统一重启、强杀、资源残留验证；多 worker 领导选举只由源码和局部测试可见。
 - 测试中的外部 API `skipif`（例如 `tests/test_api_automation.py` 的 `GEMINI_API_KEY`）使“收集成功”与“真实外部成功”必须分级报告。
-- 专属 MCP 错绑且目标 Khoj 无 `.codegraph/`；当前审计不能把错误项目的代码图、开工 id 或验证入账冒充 Khoj 证据。
+- 本轮未调用 MCP；目标 `.codegraph/` 已存在且状态为 `up to date`，仍不能把代码图导航结果冒充运行验证证据。
 
 ## 21. 唯一链路裁决与装配计划
 

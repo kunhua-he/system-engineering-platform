@@ -905,3 +905,7 @@ L0-L4 的通过口径是“当前核对真实命令+退出码+现场读回”，
 | L4 韧性 | OOM、取消、断线、重复提交、SIGKILL、残留和远端 job reconcile | **未执行**：仍是待建故障注入工作包 |
 
 **后续结论**：PaddleOCR 可映射为“通用 OCR/文档模块 + PaddleOCR provider + 运行核心资源治理”的组合，但不能直接复用其 v3/v2/MCP 任一层作为平台公共核心。最关键的不可假绿边界是：v3 预处理由外部 PaddleX 执行、v2 设备/算子与 v3 不同、MCP local 是无界单线程同步桥、远端 timeout 没有 cancel 证明、批量资源没有事务、正常 finally 不覆盖强杀。上述事实仅完成 L0 静态映射，后续实现必须以 L1-L4 真实证据推进。
+
+## 代码地图现状复核（2026-08-22）
+
+文中“目标仓库没有 `.codegraph`”属于早期核对记录，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/20_vision_ocr_detection/PaddleOCR` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 1,160 files、14,850 nodes、33,164 edges。此前错绑 MCP 证据仍不采纳，索引可用也不代表 L1-L4 运行验证完成。

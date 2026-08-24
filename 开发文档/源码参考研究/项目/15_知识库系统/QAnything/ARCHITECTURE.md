@@ -2,9 +2,16 @@
 
 > 审计对象：`~/Documents/Agent/github 源码参考/15_知识库系统/QAnything`
 >
-> 审计方式：CodeGraph 首次尝试后发现目标仓库没有 `.codegraph/` 索引；未初始化索引，改用源码、配置、Compose、前端、测试和文档的分段静态读取。
+> 审计方式：目标归档当前含独立 `.codegraph/`（未纳入 Git）；本轮用目标目录 `codegraph explore` 定位 `LocalFileForInsert`、`LocalFile`、`SelfMilvus` 及其调用关系，再回读源码、配置、Compose、前端、测试和文档。代码地图仅用于定位，结论以当前源码为准。
 >
 > 变更边界：当前核对只修改本文件。未安装依赖、未启动 Docker/模型/数据库、未调用 API、未执行测试或构建，因此本文是静态证据，不是运行通过证明。
+
+## 0. 版本与远程新鲜度增量核对（2026-08-22）
+
+- 本地工作树 `HEAD`：`65de10426b99d5945b8c616a4814afa5a92826cb`（2025-03-12，`Merge pull request #622 from fucktx/qanything-v2`）。
+- `git ls-remote origin HEAD refs/heads/master`：远端 `HEAD` 为 `65de10426...`，`origin/master` 为 `30e260f1a28e0aa1d03490c328c9c5497d5a668e`；本地落后远端 master。未 fetch、未 pull、未覆盖工作树；最新代码若需研究，应通过 `127.0.0.1:4780` 建立隔离快照后再逐文件核对。
+- **已证调用链**：CodeGraph 定位 `qanything_kernel/core/local_file.py:9`（上传文件抽象，4 个 handler 调用者）、`qanything_kernel/core/retriever/general_document.py:65`（解析入口，2 个 insert worker 调用者）和 `qanything_kernel/core/retriever/vectorstore.py:14-33,155-263`（Milvus 异步写入/flush）。`SelfMilvus` 使用后台 `asyncio.create_task(asyncio.to_thread(...flush))`，因此 flush 完成不在当前调用栈内；原有“后台 flush/非原子提交”风险得到当前源码再次确认。
+- **未证/待核**：未运行 Sanic、insert worker、Milvus/MySQL/ES 或模型服务，未执行测试；远端 master 的 API、模型和部署变化均不能写成本地已实现事实。需在隔离快照核对后再决定是否更新参考源码。
 
 ## 1. 一句话结论
 
@@ -499,3 +506,24 @@ QAnything 已实现一条可导航的 RAG 领域链：上传登记、异步解�
 - 外部模型：未调用。
 - 数据库/索引：未连接。
 - 验证等级：静态源码审计。
+
+## 15. 远程固定 SHA/raw 定点复核（2026-08-22）
+
+本轮只通过 `http://127.0.0.1:4780` 尝试读取 QAnything 远端 `master` 的少量固定 raw 文件；未调用其他 MCP，未 fetch、pull、clone 或覆盖共享源码树。
+
+| 项目 | 固定目标 | 请求与结果 | 证据判定 |
+|---|---|---|---|
+| QAnything | `30e260f1a28e0aa1d03490c328c9c5497d5a668e`（已有记录的远端 `master`） | `curl -L --proxy http://127.0.0.1:4780 --max-time 20 https://raw.githubusercontent.com/netease-youdao/QAnything/30e260f1a28e0aa1d03490c328c9c5497d5a668e/qanything_kernel/core/retriever/vectorstore.py`；退出码 `56`，HTTP `404`，未取得文件字节 | 远端向量写入实现本轮 **未证**；不能把远端 `master` 的行为回填为本地事实 |
+| QAnything | `HEAD/master/main` | `git ls-remote` 经 4780；本轮未在短时限内返回，记录为超时/无成功退出码；第 0 节已有的 SHA 记录不因本轮失败而更新 | 本轮未刷新远端引用；已有 SHA 仅作先前记录 |
+
+当前可用事实仍来自本地 `qanything-v2`：`qanything_kernel/core/retriever/vectorstore.py:14-33` 的 `SelfMilvus._milvus_flush` 用 `asyncio.create_task(asyncio.to_thread(self.col.flush))`，`vectorstore.py:253-259` 的批量写入同样异步 flush；解析入口和 worker 链路见第 3-5 节。raw 404/远端超时既不能证明远端已修复后台 flush，也不能证明远端与本地一致。
+
+### 15.1 L0-L4 证据边界
+
+- **L0**：固定仓库、SHA、raw 路径、代理参数、HTTP 404 和退出码已记录。
+- **L1**：本地解析、embedding、Milvus/ES/MySQL 写入顺序和失败窗口有源码行号证据。
+- **L2**：远端固定文件未成功读取，没有远端差异快照。
+- **L3**：未启动 Sanic、insert worker、MySQL、Milvus、ES 或模型服务，未发上传/问答请求。
+- **L4**：未执行端到端上传→解析→索引→问答→删除、崩溃恢复、压力或发布验证。
+
+下一轮必须先取得远端固定 raw 字节或隔离归档，再比较 parser、worker、Milvus flush、删除和状态字段；在取得证据前，不更新本地参考源码，也不把远端版本称为已审计。

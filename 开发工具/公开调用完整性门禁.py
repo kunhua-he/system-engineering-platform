@@ -1,11 +1,12 @@
-"""公开调用完整性门禁：六环一致性（声明→注册→说明书→搜索→公开调用→验证场景）。
+"""公开调用完整性门禁：正式公开包的六环一致性。
 
-扫描 支持库/适配层、支持库/后端 与 模块库/ 下全部包（有 包声明.json 的目录），
-逐能力校验六环；另做跨包全局检查：同义能力（同名不同包）与重复提供者
-（同能力id多包）。注册表为唯一事实源（包声明.json/能力定义.json 能力列表），
-公开调用必须经由注册能力 导出，不得绕过。
-任一违规 → 退出码 1 并打印 缺口类型/能力id/包/路径 清单；全部通过 → 退出码 0。
-用法：python3.14 开发工具/公开调用完整性门禁.py [扫描根目录（默认仓库根）]
+正式公开边界只有 ``支持库/后端`` 与 ``模块库``。``支持库/适配层`` 是
+Provider/第三方实现边界：它可以声明内部实现能力，但不能成为公开能力
+owner，也不能因为和正式包使用同一能力 id 而制造重复 owner。模板目录（如
+``模块库/_模板``）同样不是正式包，禁止进入扫描、注册和冲突统计。
+
+注册表为唯一事实源（包声明.json 能力列表），公开调用必须经由注册能力导出。
+任一违规 → 退出码 1 并打印缺口类型/能力id/包/路径清单；全部通过 → 退出码 0。
 """
 from __future__ import annotations
 
@@ -15,7 +16,16 @@ import sys
 from pathlib import Path
 
 仓库根 = Path(__file__).resolve().parents[1]
-扫描段 = ("支持库/适配层", "支持库/后端", "模块库")
+# 这里只列出可以向调用方公开能力的正式包根。适配层 Provider 有自己的
+# 依赖/运行时门禁，不得混入公开能力六环或公开 owner 冲突统计。
+扫描段 = ("支持库/后端", "模块库")
+
+
+def _是保留目录(路径: Path) -> bool:
+    """模板、隐藏目录和缓存目录均不属于正式公开包。"""
+    # 传入的是正式扫描段的直接子目录；只检查目录名，避免用户把仓库放在
+    # ``/_工作区/`` 等父目录时误把整个仓库排除。
+    return 路径.name.startswith(("_", "."))
 
 
 def 读取json(路径: Path):
@@ -26,9 +36,50 @@ def 读取json(路径: Path):
 
 
 def 找包目录(根: Path) -> list[Path]:
-    """扫描段下含 包声明.json 的目录（无声明的目录不是包，跳过）。"""
-    目录 = [d for 段 in 扫描段 if (根 / 段).is_dir() for d in (根 / 段).iterdir()]
-    return sorted(d for d in 目录 if (d / "包声明.json").is_file())
+    """返回正式公开包目录。
+
+    包必须是正式扫描段的直接子目录；这样 ``模块库/_模板``、工程缓存和
+    ``支持库/适配层/*Provider`` 即使存在完整 ``包声明.json`` 也不会被当作
+    可公开能力或 owner。物理目录层级不是调用契约，但正式包根的边界是门禁
+    的安全边界，不能通过递归扫描悄悄扩大。
+    """
+    目录: list[Path] = []
+    for 段 in 扫描段:
+        扫描根 = 根 / 段
+        if not 扫描根.is_dir():
+            continue
+        for 子目录 in 扫描根.iterdir():
+            if not 子目录.is_dir() or _是保留目录(子目录):
+                continue
+            if (子目录 / "包声明.json").is_file():
+                目录.append(子目录)
+    return sorted(目录)
+
+
+def _公开owner字段(声明: dict) -> list[str]:
+    """读取显式公开 owner 字段，供正式包反向阻断 Provider 越界声明。
+
+    ``提供者`` 是实现路由字段，不等于公开 owner，因此不会被误判；只有
+    明确写成 ``公开所有者``/``公开owner``/``owner`` 的字段才进入该检查。
+    """
+    字段值: list[str] = []
+    for 键 in ("公开所有者", "公开owner", "owner"):
+        值 = 声明.get(键)
+        if isinstance(值, str) and 值:
+            字段值.append(值)
+    for 能力 in 声明.get("能力") or []:
+        if not isinstance(能力, dict):
+            continue
+        for 键 in ("公开所有者", "公开owner", "owner"):
+            值 = 能力.get(键)
+            if isinstance(值, str) and 值:
+                字段值.append(值)
+    return 字段值
+
+
+def _是适配层Provider(owner: str) -> bool:
+    """判定 owner 是否指向适配层 Provider（只做声明门禁，不加载实现）。"""
+    return owner.startswith("支持库.适配层.") and owner.endswith("提供者")
 
 
 def 提取注册映射(源码: str) -> dict[str, str]:
@@ -82,6 +133,11 @@ def 检查包(包目录: Path) -> list[dict]:
     源码 = 入口路径.read_text(encoding="utf-8") if 入口路径.is_file() else ""
     导出名 = 提取导出名(源码)
     映射 = 提取注册映射(源码)
+    for owner in _公开owner字段(声明):
+        if _是适配层Provider(owner):
+            违规.append({"能力id": "*", "包": 包id,
+                        "缺口类型": "提供者-适配层Provider不得成为公开owner",
+                        "路径": str(声明路径)})
     if not 能力列表:
         违规.append({"能力id": "*", "包": 包id, "缺口类型": "声明-包声明.json未列能力", "路径": str(声明路径)})
     if not (包目录 / "能力定义.json").is_file():

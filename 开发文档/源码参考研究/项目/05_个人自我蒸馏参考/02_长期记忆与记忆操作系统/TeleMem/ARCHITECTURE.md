@@ -456,7 +456,7 @@ MMCoreAgent tool-calling QA
 
 > 本节不是把 TeleMem 宣称成已经具备的系统工程平台，而是把本仓库当前真实实现映射到“支持库—记忆模块—运行核心—网关”的公共底座边界。凡源码没有实现、没有测试或依赖 `mem0ai` 私有 API 的地方，均明确标为“缺口/待核”，不得把目标设计当成当前能力。
 >
-> **当前核对身份与证据边界**：目标根目录为 `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/TeleMem`；代码图 MCP 已按该路径探测，返回“没有 `.codegraph/`，不可查询”，因此本节只使用现场源码、现有 `ARCHITECTURE.md`、仓库文件和测试代码，不冒充代码图证据。项目最近源码基线仍为 `a8e537c7064e00e3f3d4593f8408f32bb528d10d`（2026-08-17T07:30:12Z，`Update star-history chart`）。
+> **当前核对身份与证据边界**：目标根目录为 `~/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/TeleMem`；目标根当前存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位，不调用 MCP，也不冒充代码图为运行验证。项目最近源码基线仍为 `a8e537c7064e00e3f3d4593f8408f32bb528d10d`（2026-08-17T07:30:12Z，`Update star-history chart`）。
 
 ### 15.1 映射规则：当前归属与平台目标归属分开
 
@@ -710,4 +710,4 @@ L4 caller/task
 - MCP 工具/默认 scope/删除保护/错误/协议测试：`tests/test_mcp.py:48-89,136-383`
 - provider 结构/环境变量/外部 integration 门控：`tests/test_providers.py:43-223`
 - 依赖与 CLI entry points：`pyproject.toml:31-73`
-- 当前 Git 基线：`a8e537c7064e00e3f3d4593f8408f32bb528d10d`，2026-08-17；目标代码图探测结果为无 `.codegraph/`。
+- 当前 Git 基线：`a8e537c7064e00e3f3d4593f8408f32bb528d10d`，2026-08-17；目标根存在独立 `.codegraph/`，仅作 CLI 定位辅助，不能替代运行验证。

@@ -7,7 +7,7 @@
 - 项目：AnythingLLM（`Mintplex-Labs/anything-llm`）
 - 本地根目录：`~/Documents/Agent/github 源码参考/15_知识库系统/anything-llm`
 - 本地分支：`master`，跟踪 `origin/master`
-- 本地源码基线提交：`28fbff47f8d3dd57f7228f81355406e78065cbd5`
+- 本地源码基线提交：`c8bd6442e6b6eee8d08a761452960f7f77e334a9`
 - 本地提交时间：`2026-07-17T16:27:55-07:00`
 - 本地包版本：根、`server`、`collector` 均为 `1.15.0`
 - 许可证：仓库代码标注 MIT；自托管相关条款另见 `TERMS_SELF_HOSTED.md`；`open-computer` 文档标注 AGPL-3.0，使用时应分别核对许可边界。
@@ -18,7 +18,7 @@
 
 本建档以本地源码、README、依赖清单、Prisma schema、迁移、测试、部署文件和已有细探文档为主；没有启动、安装、构建或接入运行时，因此“实现存在”只表示静态源码证据，不表示运行时已验证。
 
-专属 `codegraph_explore` 已按要求调用，但目标目录未发现 `.codegraph/`，工具明确返回“未建立索引，无法查询”；未使用其他仓库代码地图或验证证据。首个 `project_context` 返回的活动项目却是 `华世王镞_v3`，根目录为 `~/Documents/Agent/PHP/华世王镞_v3`，与本项目不一致，因此该上下文不能作为本项目证据。
+本轮未调用任何 MCP；目标目录现有独立 `.codegraph/`，当前 `codegraph status` 报告索引 `up to date`。代码地图只用于目标仓库导航，不把其他项目上下文或代码图作为本项目证据。
 
 ## 2. 项目定位与总体拓扑
 
@@ -302,11 +302,7 @@ OpenAI-compatible 契约位于 `server/endpoints/api/openai/index.js`：
 
 ## 12. 远程版本与漂移
 
-本地 `origin/master` 记录为 `28fbff...`，通过 `git ls-remote` 读取到远程 `master` 为：
-
-- 远程 master：`b1b165e0740ca22728845717c4192ac3549d31c3`
-- 远程 tag `v1.15.0`：`70e0d2eb1dcb08cbb18a44b927d94f8667f57a7f`
-- 结论：本地落后远程 master，不能把本建档视为当前 upstream 的完整最新架构。
+当前 checkout 的 `HEAD` 与 `origin/master` 均为 `c8bd6442e6b6eee8d08a761452960f7f77e334a9`（`git rev-list --left-right --count HEAD...origin/master` 为 `0 0`）；本档的当前源码事实以该提交为准。此前基于旧提交的远程快照记录仅作为历史审计痕迹，不覆盖当前本地事实。
 
 按照要求，使用 `http://127.0.0.1:4780` 仅对远程 commit 做了独立快照读取，没有 fetch、覆盖工作树或写入项目目录。读取到的远程关键事实：
 
@@ -320,7 +316,7 @@ OpenAI-compatible 契约位于 `server/endpoints/api/openai/index.js`：
 
 ### 风险
 
-1. **远程漂移**：本地版本落后 `origin/master`，今后若按 upstream 开发应先建立独立快照或更新归档；当前 ARCHITECTURE 明确以本地提交为基线。
+1. **远程漂移**：当前 checkout 已与 `origin/master` 对齐；后续若远程指针变化，仍须在隔离快照中逐文件核对后再更新本档。
 2. **跨存储一致性**：Prisma、文件 JSON、vector namespace/cache、collector 临时目录各自持久化，删除/重嵌入不是单一数据库事务；失败恢复要逐层核对。
 3. **Provider 组合复杂度**：LLM、Embedding、Vector DB 均是可配置适配器，workspace 配置、系统环境变量和 `anythingllm-router` 有 waterfall；新增 provider 需同步 provider factory、Agent provider、模型选择和 UI/API。
 4. **Agent 工具权限**：普通插件、MCP、导入插件、文件系统工具和 Open Computer 都能产生外部副作用；`AGENT_AUTO_APPROVED_SKILLS`、MCP cooldown、工具调用上限和 WebSocket 审批是安全边界，不能只依赖提示词。
@@ -341,7 +337,7 @@ OpenAI-compatible 契约位于 `server/endpoints/api/openai/index.js`：
 
 AnythingLLM 的主架构是“React UI + Express 主服务 + 独立文档 collector + Prisma 元数据 + 文件/向量双层检索 + 可插拔 LLM/Embedding/Vector DB + WebSocket Agent/MCP”的模块化单体/伴生服务组合。其核心聚合对象是 workspace，核心数据流是“文档解析 → 文件/元数据 → embedding → vector namespace → workspace chat/Agent → SSE/WebSocket/API”。
 
-本次已完成首轮静态全量建档，唯一写入文件为项目根目录的 `ARCHITECTURE.md`。没有修改源码、依赖、测试、配置、细探文档、submodule，没有安装、启动、构建或提交。由于专属项目上下文串到了其他项目、目标仓库未建 codegraph 索引且本地落后远程，后续若要进行开发或升级审计，第一步应重新绑定目标根目录并以明确 commit 快照复核本文件。
+本次已完成首轮静态全量建档，唯一写入文件为项目根目录的 `ARCHITECTURE.md`。没有修改源码、依赖、测试、配置、细探文档、submodule，没有安装、启动、构建或提交。后续升级审计仍应以目标根目录的明确 commit 快照和独立 CodeGraph 为证据。
 
 ## 15. 旧细探吸收与裁决记录
 
@@ -362,7 +358,7 @@ AnythingLLM 的主架构是“React UI + Express 主服务 + 独立文档 collec
 
 ## 16. 后续底座映射：收集器扩展、完整性、暂存资源与部署边界
 
-当前核对不是把 AnythingLLM 的目录直接复制成平台目录，而是把可复用的原子能力、领域编排、运行时治理和项目部署适配分开。以下判断只基于本地源码基线 `28fbff47f8d3dd57f7228f81355406e78065cbd5`；本节中的“吸收”表示作为平台设计输入，不表示已迁移或已接入平台。
+当前核对不是把 AnythingLLM 的目录直接复制成平台目录，而是把可复用的原子能力、领域编排、运行时治理和项目部署适配分开。以下判断只基于本地源码基线 `c8bd6442e6b6eee8d08a761452960f7f77e334a9`；本节中的“吸收”表示作为平台设计输入，不表示已迁移或已接入平台。
 
 ### 16.1 单一权威链路与归属裁决
 
@@ -461,18 +457,18 @@ Dockerfile 安装 Node、FFMPEG、Chromium 依赖和 uvx，构建 frontend 静�
 
 **单一链路验收标准。** 未来平台化实现必须能够从一次 `operationId` 追踪：请求签名 → 路由/能力 id → 模块调用 → provider 进程 → 临时资源创建 → 输出摘要 → 正式制品/文档写入 → 向量/元数据投影 → 清理证据。任何直接写 hotdir、直接调用 ffmpeg、绕过唯一签名验证或扩展自行维护第二套路由/错误码的路径，都判为侧链。
 
-**剩余风险。** (1) collector 的 HTTP 200 + `success:false` 与 HTTP 400/500 混用；(2) 当前签名没有从源码中确认 canonicalization、时间窗、nonce、轮换和重放保护；(3) `isWithin` 不防 symlink；(4) FFMPEG 同步执行且缺少显式超时/进程组治理，失败 output 清理不完整；(5) hotdir 启动 wipe 没有租约，存在并发互删/崩溃后误删边界；(6) 文件、Prisma、向量库和 collector 暂存区不是单事务；(7) 本地基线落后远程 master，远程差异未完整获取；(8) 当前核对没有运行测试、服务或容器，所有 L1-L4 均不能宣称通过。
+**剩余风险。** (1) collector 的 HTTP 200 + `success:false` 与 HTTP 400/500 混用；(2) 当前签名没有从源码中确认 canonicalization、时间窗、nonce、轮换和重放保护；(3) `isWithin` 不防 symlink；(4) FFMPEG 同步执行且缺少显式超时/进程组治理，失败 output 清理不完整；(5) hotdir 启动 wipe 没有租约，存在并发互删/崩溃后误删边界；(6) 文件、Prisma、向量库和 collector 暂存区不是单事务；(7) 当前核对没有运行测试、服务或容器，所有 L1-L4 均不能宣称通过。
 
 ### 16.8 后续修改与证据边界
 
 - 当前核对唯一修改文件：项目根 `ARCHITECTURE.md`；未修改源码、配置、依赖、测试、README、Git 或旧细探文件。
 - 目标项目本地源码证据：`collector/index.js`、`collector/extensions/index.js`、`collector/middleware/verifyIntegrity.js`、`collector/middleware/setDataSigner.js`、`collector/convertAudioToWav/index.js`、`collector/utils/files/index.js`、`collector/utils/WhisperProviders/ffmpeg/index.js`、`server/utils/collectorApi/index.js`、`server/endpoints/extensions/index.js`、`docker/Dockerfile`、`docker/docker-compose.yml`。
-- 专属 `system_engineering_toolkit` 已真实连接；其 `project_context`/`codegraph_explore` 当前绑定的是系统工程平台根目录，不能当作 AnythingLLM 的代码图或目标仓库验证证据；因此本节明确将目标专属 codegraph 标为不可用，不伪造代码图结果。
+- 本轮未调用 `system_engineering_toolkit` 或其他 MCP；目标仓库独立 `.codegraph/` 的 `up to date` 状态仅作导航证据，最终结论仍以目标源码逐段读取为准。
 - 当前核对未执行测试、安装、启动、构建、容器或部署命令；后续执行必须在目标根目录、隔离资源和明确验证等级下进行，并将退出码、测试数、跳过数、provider 状态及临时资源清理结果入账。
 
 ## 17. 后续深挖收口：workspace、文档摄取、向量库、Provider、插件、任务与 API
 
-本节是后续内部事实审计，仍以本地源码基线 `28fbff47f8d3dd57f7228f81355406e78065cbd5` 为准；只补充 AnythingLLM 已有实现，不把后续平台设想写成当前实现。旧细探 `细探-anything-llm.md` 已逐条对照：其“hotdir 热目录监听”仍裁决为错误线索，其他概览内容已在前文吸收；旧文件按用户要求保留，不是新的权威事实源。
+本节是后续内部事实审计，仍以本地源码基线 `c8bd6442e6b6eee8d08a761452960f7f77e334a9` 为准；只补充 AnythingLLM 已有实现，不把后续平台设想写成当前实现。旧细探 `细探-anything-llm.md` 已逐条对照：其“hotdir 热目录监听”仍裁决为错误线索，其他概览内容已在前文吸收；旧文件按用户要求保留，不是新的权威事实源。
 
 ### 17.1 Workspace 聚合对象与配置契约
 

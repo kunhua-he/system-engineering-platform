@@ -579,3 +579,7 @@ VALIDATED/DECODING/BATCHING/INFERENCING/COMMITTING
 - **必须隔离的运行单元**：TensorFlow、PyTorch、ffmpeg、GPU 上下文和权重转换。它们可以作为 L0 Provider 被 L1 调用，但不得进入 L2 媒体模块、L3 运行核心或 L4 网关的直接依赖面。
 
 本卡片完成的是后续架构映射和责任冻结；由于真实 LFS 权重、TensorFlow/PyTorch/ffmpeg、GPU 和服务宿主均未在当前核对启动，L0 运行事实、L3 资源回收事实和 L4 服务事实仍为待验收项。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标仓没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/10_scene_segmentation/TransNetV2` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 17 files、389 nodes、676 edges。索引只用于静态源码导航；权重、GPU、ffmpeg、服务和故障注入仍未验证。

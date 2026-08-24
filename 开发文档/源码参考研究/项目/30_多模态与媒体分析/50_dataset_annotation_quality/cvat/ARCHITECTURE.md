@@ -946,3 +946,7 @@ CVAT `Data.move_to_backing_cloud_storage` / `move_from_backing_cs` 通过 `trans
 - **证据段：** `tests/python/README.md`、requests/jobs/quality/webhook/cloud storage REST tests、site architecture/webhooks/quality/cloud storage docs。
 - **CodeGraph：** 已尝试，目标仓库没有 `.codegraph/`，未运行 `codegraph init`，未伪造调用图证据。
 - **修改范围：** 仅本文件追加本节；未改 CVAT 源码、配置、依赖或测试，也未删除原始 `细探-cvat.md`。
+
+## 代码地图现状复核（2026-08-22）
+
+文中“目标仓库没有 `.codegraph`”属于早期核对记录，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/50_dataset_annotation_quality/cvat` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 1,686 files、28,581 nodes、72,755 edges。错绑 MCP 仍不作为 CVAT 证据；CodeGraph 可用不代表 Django/RQ、对象存储或 webhook 已运行验证。

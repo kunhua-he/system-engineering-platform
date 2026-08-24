@@ -22,6 +22,7 @@ unittest discover 的 VALID_MODULE_NAME 只认 ASCII 标识符，无法加载
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import os
@@ -133,6 +134,10 @@ def _构建git指纹映射(*, 强制刷新: bool = False) -> None:
             capture_output=True, check=False,
         )
         if 状态结果.returncode != 0:
+            # status 失败时不能继续使用已取得的 blob 映射，否则工作区改动
+            # 会被误当作干净文件并命中阶段缓存。
+            _git指纹映射 = {}
+            _git脏文件集合 = set()
             return
         for 条目 in 状态结果.stdout.decode("utf-8", errors="replace").split("\0"):
             # 条目形如 "XY 路径"；重命名条目的旧路径段不以两位状态码+空格开头，跳过
@@ -142,7 +147,7 @@ def _构建git指纹映射(*, 强制刷新: bool = False) -> None:
     except (OSError, ValueError):
         # git 不可用或输出格式异常 → 回退现场哈希
         _git指纹映射 = {}
-        _git脏文件集合 = {}
+        _git脏文件集合 = set()
 
 
 def _文件摘要(文件: Path) -> str:
@@ -161,8 +166,7 @@ def _目录摘要(目录: Path) -> str:
     """目录内容摘要（rglob 全量枚举，逐文件 git 指纹或现场哈希；排除缓存）。"""
     摘要器 = hashlib.sha256()
     for 文件 in sorted(目录.rglob("*")):
-        if 文件.is_file() and "pycache" not in str(文件) and "工程缓存" not in str(文件) \
-                and "完整性摘要.json" != 文件.name:
+        if 文件.is_file() and "pycache" not in str(文件) and "工程缓存" not in str(文件):
             摘要器.update(str(文件.relative_to(目录)).encode("utf-8"))
             摘要器.update(_文件摘要(文件).encode("utf-8"))
     return 摘要器.hexdigest()[:16]
@@ -281,14 +285,38 @@ def 阶段缓存可复用(
         return False
     if 阶段名 == "慢速层" and 强制慢速:
         return False
-    # 环境摘要对所有阶段生效；缺失字段（旧式缓存项）跳过比对，生产缓存恒带该字段
-    if 缓存项.get("环境摘要") is not None and 缓存项.get("环境摘要") != 环境摘要:
+    # 环境摘要是缓存可信度的必要证据；缺失或不匹配一律不能复用。
+    if 缓存项.get("环境摘要") != 环境摘要:
         return False
     if 阶段名 in 环境敏感阶段:
         记录时间 = float(缓存项.get("时间戳", 0))
         if (当前时间 or time.time()) - 记录时间 > 环境敏感缓存有效秒:
             return False
     return True
+
+
+def 常规阶段缓存证据() -> tuple[bool, str]:
+    """在验证锁被外层持有时，重新计算常规阶段缓存是否仍可信。
+
+    嵌套发布门禁不能再次启动全量测试，但也不能把锁冲突当成成功；
+    只有每个常规阶段的源码/依赖/环境摘要和成功证据都匹配，才允许
+    发布门禁复用这份证据。
+    """
+    缓存 = 读取缓存()
+    环境摘要 = 运行环境摘要()
+    缺失或失效: list[str] = []
+    for 阶段名, 匹配表 in 常规阶段顺序表:
+        测试文件列表 = 收集阶段文件(匹配表)
+        if not 测试文件列表:
+            缺失或失效.append(f"{阶段名}:未发现测试文件")
+            continue
+        依赖目录表 = 阶段依赖目录表(测试文件列表)
+        摘要 = 阶段摘要(测试文件列表, 依赖目录表)
+        if not 阶段缓存可复用(阶段名, 缓存.get(阶段名), 摘要, 环境摘要):
+            缺失或失效.append(阶段名)
+    if 缺失或失效:
+        return False, f"常规阶段证据缺失或失效: {', '.join(缺失或失效)}"
+    return True, f"常规阶段 {len(常规阶段顺序表)} 项缓存证据已重新核对"
 
 
 def _文件缓存路径(测试文件: Path) -> Path:
@@ -524,7 +552,10 @@ def _构建目录摘要表(目录列表: list[str]) -> dict[str, str]:
     全仓扫描型测试（组件合规等）扫描数百目录，逐一递归摘要开销爆炸且必然失效。
     """
     if len(目录列表) > 目录摘要上限:
-        return {}
+        raise RuntimeError(
+            f"目录摘要数量 {len(目录列表)} 超过上限 {目录摘要上限}，"
+            "拒绝使用不完整摘要进入缓存"
+        )
     目录摘要表: dict[str, str] = {}
     for 相对路径 in 目录列表:
         目录 = Path(相对路径)
@@ -913,10 +944,8 @@ def _解析阶段失败原因(输出: str) -> str:
 
 
 def _阶段真实失败(结果: dict[str, object]) -> bool:
-    """真实失败判定：负退出码（被兄弟失败连带信号终止）不计入断点。"""
+    """真实失败判定：任何非零退出码都是真实失败。"""
     退出码 = int(结果.get("退出码", 0))
-    if 退出码 < 0:
-        return False
     return 退出码 != 0
 
 
@@ -1366,7 +1395,9 @@ def 主函数(
         if 判断零测试(套件):
             print("零测试门禁失败：未发现任何测试用例（测试数量为零不允许返回成功）")
             return 1
-        结果 = unittest.TextTestRunner(verbosity=2).run(套件)
+        # 反向验证会故意注入一个失败子套件；其诊断只应由返回码表达，
+        # 不能把嵌套失败文本泄漏到外层阶段输出而触发假失败解析。
+        结果 = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(套件)
         if not 结果.wasSuccessful() or 判断导入失败(结果) or 判断存在跳过(结果):
             return 1
         print(f"门禁通过：共 {套件.countTestCases()} 个测试全部成功")

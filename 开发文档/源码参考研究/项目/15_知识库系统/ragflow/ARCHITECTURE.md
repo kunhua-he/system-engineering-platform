@@ -24,11 +24,11 @@
 
 ### 1.2 本地版本与远程版本
 
-- 本地分支：`main`，HEAD：`f796721f`，已与 `origin/main` 同步。
-- 远程 `origin/main`：`c87aa3b1683bc40631a35039c6d78d00341134ef`。
-- 本地明显落后远程；本地工作树初始状态有一个未跟踪文件 `细探-RAGFlow.md`，不是当前核对创建。
+- 本地分支：`main`，HEAD：`f796721ff25f0f86e4499c166f0c49228d5f6ad7`，已与当前 `origin/main` 同步（`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`）。
+- 当前 `origin/main` 指向 `f796721ff25f0f86e4499c166f0c49228d5f6ad7`；此前远程定点比较记录的是旧远程指针，不能继续作为当前版本差异。
+- 本地工作树初始状态有一个未跟踪文件 `细探-RAGFlow.md`，不是当前核对创建。
 - 远程快照通过 `127.0.0.1:4780` 代理以独立内存读取方式分析，未 fetch、未 checkout、未覆盖本地工作树。GitHub API 递归 tree 查询受到代理返回的 `403 rate limit exceeded`，因此远程比较以 `raw.githubusercontent.com` 的定点文件快照为准，不宣称已获得完整远程目录。
-- 远程定点比较确认：远程 `README.md`、`AGENTS.md`、`pyproject.toml`、`go.mod`、`web/package.json`、`api/ragflow_server.py`、`rag/svr/task_executor.py`、`rag/nlp/search.py`、`agent/canvas.py`、`internal/router/router.go` 等已经变化；`deepdoc/parser/pdf_parser.py` 与 `mcp/server/server.py` 在比较的两个提交间字节一致。远程 `pyproject.toml` 已是 `0.27.0`，本地为 `0.26.4`。
+- 旧远程定点比较曾记录若干文件差异和 `pyproject.toml` 版本变化；由于当前 `origin/main` 已回到与本地相同的固定提交，这些差异仅保留为历史审计记录，不写成当前源码事实。
 - 本轮按用户授权未使用 MCP；RAGFlow 的事实证据来自目标工作树本地文件、Git 元数据、CodeGraph 与既有 `细探-RAGFlow.md`。
 
 ## 2. 项目定位与总体形态
@@ -234,7 +234,7 @@ OpenAI 兼容 API 在 `api/apps/restful_apis/openai_api.py`，通过 SSE 转换�
 
 ### 10.1 风险
 
-- **版本漂移**：本地已同步 `origin/main`；版本号、API 和运行时行为仍以当前提交源码为准。
+- **版本漂移**：当前本地已同步 `origin/main`；后续远程指针变化仍需隔离快照逐文件复核，版本对齐不等于运行通过。
 - **双后端事实源**：Python Peewee 与 Go GORM/AutoMigrate 共同触及关系模型，Python/Go 路由又存在 hybrid/兼容面；变更 schema、删除语义或 API 时必须双向核对。
 - **文档与索引双存储一致性**：MySQL 状态、对象存储文件、document engine chunk/vector、Redis task progress 之间不是单事务；删除残留和任务重试需要重点验证。
 - **native/第三方负担**：DeepDOC、OCR、Tika、模型资源、C/C++ 静态库、Chrome、ODBC 和沙箱造成构建/运行环境高度敏感；不能将 Python import 通过等同于可部署。

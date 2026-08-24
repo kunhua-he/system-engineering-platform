@@ -62,9 +62,9 @@ def _解析旧格式(路径: str, 格式: str, 目标格式: str) -> 结果:
         )
     except Exception as 错误:
         return _失败("转换失败", f"创建转换临时目录失败: {错误}")
-    if not isinstance(目录值, (str, os.PathLike)):
+    if not 目录值.成功 or not isinstance(目录值.值, (str, os.PathLike)):
         return _失败("转换失败", "创建转换临时目录未返回目录路径")
-    目录 = str(目录值)
+    目录 = str(目录值.值)
     try:
         转换 = 服务.调用能力(
             "LibreOffice转换.转换办公文件",

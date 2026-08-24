@@ -107,7 +107,7 @@ class Test健康监督失败语义(unittest.TestCase):
             证据文件=_临时证据文件())
         # 不 raise/崩溃，返回检查完成结果
         结果 = 监督.执行一次周期检查()
-        self.assertTrue(结果["成功"])
+        self.assertFalse(结果["成功"], "探针失败时整体健康检查必须失败")
         self.assertEqual(结果["健康提供者数"], 0)
         状态表 = 结果["提供者"]
         for 提供者名 in ("LibreOffice", "textutil"):
@@ -125,7 +125,7 @@ class Test健康监督失败语义(unittest.TestCase):
             周期秒=0.5, 探针函数=炸裂探针,
             证据文件=_临时证据文件())
         结果 = 监督.执行一次周期检查()
-        self.assertTrue(结果["成功"])
+        self.assertFalse(结果["成功"], "探针异常时整体健康检查必须失败")
         self.assertEqual(结果["健康提供者数"], 0)
         self.assertEqual(
             结果["提供者"]["LibreOffice"]["错误码"], "探针异常")
@@ -151,7 +151,7 @@ class Test健康监督失败语义(unittest.TestCase):
             周期秒=0.5, 探针函数=_超时探针函数(),
             证据文件=_临时证据文件())
         结果 = 监督.执行一次周期检查()
-        self.assertTrue(结果["成功"])
+        self.assertFalse(结果["成功"], "探针超时时整体健康检查必须失败")
         self.assertEqual(结果["健康提供者数"], 0)
         for 提供者名 in ("LibreOffice", "textutil"):
             状态 = 结果["提供者"][提供者名]
@@ -165,7 +165,7 @@ class Test健康监督失败语义(unittest.TestCase):
             周期秒=0.5, 探针函数=_工具缺失探针函数(),
             证据文件=_临时证据文件())
         结果 = 监督.执行一次周期检查()
-        self.assertTrue(结果["成功"])
+        self.assertFalse(结果["成功"], "工具缺失时整体健康检查必须失败")
         self.assertEqual(结果["健康提供者数"], 0)
         for 提供者名 in ("LibreOffice", "textutil"):
             状态 = 结果["提供者"][提供者名]
@@ -202,7 +202,7 @@ class Test健康监督查询(unittest.TestCase):
             周期秒=0.5, 探针函数=_成功探针函数(),
             证据文件=_临时证据文件())
         检查前 = 监督.查询健康状态()
-        self.assertTrue(检查前["成功"])
+        self.assertFalse(检查前["成功"])
         self.assertEqual(检查前["提供者数"], 0)  # 未检查前无提供者状态
         监督.执行一次周期检查()
         状态 = 监督.查询健康状态()
@@ -290,17 +290,17 @@ class Test健康监督诊断证据(unittest.TestCase):
             周期秒=0.5, 探针函数=_成功探针函数(),
             证据文件=证据文件)
         结果 = 监督.执行一次周期检查()
-        self.assertTrue(结果["成功"])
+        self.assertFalse(结果["成功"])
         self.assertEqual(结果["健康提供者数"], 2)
 
-    def test_证据写入失败标记不影响健康(self):
-        """证据文件路径不可写 → 只标记 证据写入失败，健康/错误码/成功 不受影响。"""
+    def test_证据写入失败阻断成功(self):
+        """证据文件路径不可写 → 结果不能报告成功。"""
         证据文件 = Path("/dev/null/不存在子目录") / "健康证据.jsonl"
         监督 = 系统提供者健康监督(
             周期秒=0.5, 探针函数=_成功探针函数(),
             证据文件=证据文件)
         结果 = 监督.执行一次周期检查()
-        self.assertTrue(结果["成功"])
+        self.assertFalse(结果["成功"])
         self.assertEqual(结果["健康提供者数"], 2)
         self.assertGreaterEqual(结果["证据写入失败提供者数"], 1)
         for 提供者名 in ("LibreOffice", "textutil"):

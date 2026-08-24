@@ -958,3 +958,10 @@
 18. Hindsight 的控制面和多 SDK 说明所有外部接口都应围绕同一 OpenAPI/operation 契约生成或薄封装。
 19. 这些是源码观察结论，不代表系统工程平台应无条件照抄实现细节；平台仍需按自身中文契约和权限模型复用原则裁剪。
 20. 本文是该 Hindsight 仓库根目录唯一架构文档；后续审计只更新此文件，不新增平行架构摘要。
+
+## 33. 2026-08-22 远程增量复核
+
+- 本地 `HEAD=6ff6dc692ea588067aa5e7235e80640c6a842ba6`；经 `http://127.0.0.1:4780` 复核，`origin/HEAD=94017ede34dfc7f8d157c2bdc66bf395f354b918`，远程领先两个提交。
+- `git diff HEAD..origin/main` 仅包含文档与两张图片，无 API、engine、worker、schema、client 或 MCP 核心代码变更；既有调用链和风险裁决无需重写。
+- `codegraph status`：2,410 files、50,335 nodes；查询 `MemoryEngine retain recall reflect` 成功。L0/L1 已复核；L2 测试未运行；L3/L4 数据库、LLM、worker、迁移、重启、并发和真实 provider 未验证。
+- 未执行 pull/merge/覆盖工作树；仅使用 shell/git/codegraph CLI，未调用任何 MCP；本轮只修改平台侧本文件。

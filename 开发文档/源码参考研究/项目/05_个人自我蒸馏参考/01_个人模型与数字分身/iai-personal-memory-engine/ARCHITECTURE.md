@@ -289,7 +289,7 @@ MCP server 是 `mcp-wrapper/src/index.ts` 的 `buildServer()`；默认通过 `St
 - 项目身份：`iai-personal-memory-engine`，源码 Python 包为 `iai_mcp`；下载目录记录的基线为仓库 `CodeAbra/iai-personal-memory-engine`、`main`、提交 `91887e085964dda17edbff4ad77854b82da82062`。
 - 旧细探：目标目录内当前核对未发现独立 `细探-*.md` 文件；现有 `ARCHITECTURE.md` 已声明此前 `细探-iai.md` 的结论已吸收。当前核对不删除、不重建旧细探，也不把聊天回执当事实源。
 - MCP 开工核对：首次 `project_context` 返回的是**错误绑定**的项目 `华世王镞_v3`、根目录 `~/Documents/Agent/PHP/华世王镞_v3`，不是本目标；该返回没有提供本目标的开工 id，不能冒充本项目开工证据。
-- 代码图：对目标根目录调用 `codegraph_explore` 的真实结果是“未索引，未找到 `.codegraph/`，不能查询”；以下源码路径、函数和行号均来自本地只读读取，不来自代码图。不能把错误项目的代码图摘要迁移到本项目。
+- 代码图：目标根目录当前存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位；以下源码路径、函数和行号仍来自本地只读读取，不把图谱状态当运行验证，也不迁移错误项目的代码图摘要。
 - 当前核对验证边界：只修改本文件；未安装依赖、未启动 daemon、未调用外部模型、未运行 pytest/npm/cargo，因此下面的“已实现”是静态源码事实，“已验证”仍须按最后的验证表区分。
 
 ## 2. 一条真实的端到端链路
@@ -491,7 +491,7 @@ L4 宿主/Provider
 
 ### 当前核对剩余风险
 
-- MCP `project_context` 错绑且 `codegraph` 未索引目标，无法给出本项目的可信开工 id/代码图摘要；后续应在正确项目上下文中重新绑定并由维护者决定是否 `codegraph init`。
+- MCP `project_context` 曾错绑，本轮不采用其开工 id；目标根当前已有独立 `.codegraph/`，由目标目录内 CLI 读取状态，图谱只作定位辅助，不能替代源码和运行验证。
 - `direct_write.py`、CLI/bank fallback、brainview/direct-store 与 daemon `MemoryStore` 形成多个访问面；虽然目标是可用性和只读降级，但写 owner/幂等/投影边界仍需平台级收敛。
 - `user_model.py` 把派生画像写成独立 JSON，而 profile 写 `_hippo_meta`；两者的加密、版本、水位、恢复契约不同，不能直接合并为一个“画像已持久化”结论。
 - `SleepPipeline` 的中断是 cooperative，模型 provider 有子进程终止，但整个系统还没有统一任务取消、租约、强杀后资源对账和单一 task receipt。

@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from 开发工具.项目编译.正式包索引 import 构建索引
+
 搜索字段表 = (
     "能力id", "中文名称", "说明", "参数", "返回结构", "错误码",
     "版本", "提供者", "调用示例", "验证状态",
@@ -179,15 +181,14 @@ def _能力记录(声明: dict[str, Any], 包目录: Path,
 def _全部能力(项目根: Path) -> list[dict[str, Any]]:
     验证历史表 = _读取验证历史(项目根)
     结果: list[dict[str, Any]] = []
-    for 根目录 in (项目根 / "支持库", 项目根 / "模块库"):
-        if not 根目录.is_dir():
+    索引 = 构建索引(项目根)
+    # 公开目录只读取正式支持库/模块库；Provider 仅供依赖闭包使用，模板已由索引排除。
+    for 包目录, 声明 in [*索引["支持库"].values(), *索引["模块库"].values()]:
+        包id = str(声明.get("包id", ""))
+        if 包id.startswith("支持库.适配层."):
             continue
-        for 路径 in 根目录.rglob("包声明.json"):
-            声明 = _读取声明(路径)
-            if 声明 is None:
-                continue
-            包辅助 = _包辅助数据(路径.parent)
-            结果.extend(_能力记录(声明, 路径.parent, 包辅助, 验证历史表))
+        包辅助 = _包辅助数据(包目录)
+        结果.extend(_能力记录(声明, 包目录, 包辅助, 验证历史表))
     return sorted(结果, key=lambda 项: (项["能力id"], 项["包id"]))
 
 

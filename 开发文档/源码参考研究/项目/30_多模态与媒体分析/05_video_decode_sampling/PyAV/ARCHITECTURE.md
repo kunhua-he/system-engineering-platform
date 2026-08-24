@@ -1096,3 +1096,7 @@ README 和 `AGENTS.md` 给出的项目流程是 `source ./scripts/activate.sh`�
 - **代码图**：未建立；目标仓库不存在 `.codegraph/`，已按工具返回停止重复尝试。
 - **执行验证**：未安装、构建、导入、运行 pytest、下载 FATE、启动 FFmpeg、探测硬件或执行 ASAN/UBSAN；当前核对不能宣称 L1-L4 通过。
 - **剩余风险**：分配失败清理、关闭期异常、阻塞 callback、同 context 并发、DLPack/CUDA refcount、测试样本完整性和宿主 ABI 矩阵仍待真实验证。
+
+## 23. 代码地图现状复核（2026-08-22）
+
+第 22.5 节的“未建立 `.codegraph`”是早期审计时的状态，现已过期。当前目标根 `~/Documents/Agent/github 源码参考/30_多模态与媒体分析/05_video_decode_sampling/PyAV` 存在独立 `.codegraph/`；在该根执行 `codegraph status` 退出码为 0，返回 117 files、2,539 nodes、6,173 edges。索引仅用于源码导航，未改变本文对未构建、未运行和未验证风险的判断。

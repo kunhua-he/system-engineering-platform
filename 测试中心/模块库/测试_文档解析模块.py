@@ -65,6 +65,11 @@ class Test文档解析模块(unittest.TestCase):
         from 支持库.适配层.pdfplumber提供者 import 注册能力 as 注册pdf
         from 支持库.适配层.LibreOffice提供者 import 注册能力 as 注册libre
         from 支持库.后端.资源管理 import 注册能力 as 注册资源管理
+        # Provider 只注册内部实现能力；组合模块调用的公开能力由后端 owner 注册。
+        from 支持库.后端.文字文档 import 注册能力 as 注册文字文档
+        from 支持库.后端.表格文档 import 注册能力 as 注册表格文档
+        from 支持库.后端.演示文稿 import 注册能力 as 注册演示文稿
+        from 支持库.后端.PDF文档 import 注册能力 as 注册PDF文档
 
         注册表 = 能力注册表()
         注册docx(注册表)
@@ -73,6 +78,11 @@ class Test文档解析模块(unittest.TestCase):
         注册pdf(注册表)
         注册libre(注册表)
         注册资源管理(注册表)
+        注册文字文档(注册表)
+        注册表格文档(注册表)
+        注册演示文稿(注册表)
+        注册PDF文档(注册表)
+        self.注册表 = 注册表
         设置全局唯一服务(唯一能力调用服务(注册表))
 
     def tearDown(self):
@@ -80,6 +90,21 @@ class Test文档解析模块(unittest.TestCase):
         设置全局唯一服务(None)
         import shutil
         shutil.rmtree(self.临时目录, ignore_errors=True)
+
+    def test_公开能力owner与内部实现分离(self):
+        """公开能力必须由后端支持库持有，Provider 只能提供内部实现。"""
+        for 公开id, owner, 内部id, provider in [
+            ("文字文档.解析文字文档", "支持库.后端.文字文档", "内部.文字文档.解析", "支持库.适配层.python_docx提供者"),
+            ("表格文档.解析表格文档", "支持库.后端.表格文档", "内部.表格文档.解析", "支持库.适配层.openpyxl提供者"),
+            ("演示文稿.解析演示文稿", "支持库.后端.演示文稿", "内部.演示文稿.解析", "支持库.适配层.python_pptx提供者"),
+        ]:
+            公开实现 = self.注册表.获取(公开id)
+            内部实现 = self.注册表.获取(内部id)
+            self.assertIsNotNone(公开实现, 公开id)
+            self.assertIsNotNone(内部实现, 内部id)
+            self.assertEqual(公开实现.包id, owner)
+            self.assertEqual(内部实现.包id, provider)
+            self.assertNotEqual(公开实现.包id, 内部实现.包id)
 
     def test_docx往返(self):
         路径 = Path(self.临时目录) / "测试.docx"

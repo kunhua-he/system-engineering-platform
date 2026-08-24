@@ -594,3 +594,10 @@ AsyncMemory.add/search/update/delete
 
 - 当前 HEAD 为 `feb12852c0789a1f1182b05ee0dbc386037b012f`，分支 `main`，远端 `https://github.com/mem0ai/mem0.git`；工作树仅有未跟踪 `.codegraph/` 与根 `ARCHITECTURE.md`。
 - `codegraph sync` 退出码 0；查询 `Memory.add search update delete history AsyncMemory VectorStoreBase SQLiteManager entity_store` 退出码 0，输出 618 行。文档补充后应执行 `git diff --check`、结构/实现词扫描；未运行真实 provider、SQLite migration、并发 scope、server auth 或崩溃恢复测试。
+
+## 21. 2026-08-22 增量复核
+
+- 本地与 `origin/HEAD` 均为 `feb12852c0789a1f1182b05ee0dbc386037b012f`；经 `http://127.0.0.1:4780` 复核无远程漂移，未覆盖未跟踪 `.codegraph/` 与 `ARCHITECTURE.md`。
+- `codegraph status`：1,021 files、13,805 nodes；查询 `Memory add search update delete` 成功，命中 Python `mem0/memory/main.py:760`、异步 `:2434`、TypeScript `index.ts:720` 及 provider dispatch。
+- L0/L1 已复核；L2 测试源码存在但本轮未运行；L3/L4 真实 vector provider、SQLite migration、server auth、取消、崩溃恢复和跨资源对账均未验证。
+- 仅使用 shell/git/codegraph CLI，未调用任何 MCP；本轮只修改平台侧本文件。
