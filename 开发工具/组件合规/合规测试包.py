@@ -13,7 +13,14 @@ S0 缺项阻断清单（正式包形态一律阻断）：配置契约/权限契�
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
+import os
+import socket
 import sys
+import subprocess
+import shutil
+import tempfile
 import time
 import unittest
 from dataclasses import dataclass, field
@@ -30,6 +37,105 @@ from typing import Any
                 "队列长度", "文件句柄上限", "临时空间上限", "单次调用超时",
                 "每分钟重启次数", "空闲回收时间")
 禁止参数类型 = {"任意", ""}
+
+
+def _空闲端口() -> int:
+    """取得当前进程可用的回环端口；不占用固定代理端口。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as 套接字:
+        套接字.bind(("127.0.0.1", 0))
+        return int(套接字.getsockname()[1])
+
+
+def _最小PNG() -> bytes:
+    """返回一个真实的 1x1 PNG，供图像能力做最小成功调用。"""
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+        "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+
+
+def _参数最小值(能力id: str, 参数: dict[str, Any], 根目录: Path) -> Any:
+    """按公开参数契约生成最小合法值，不把占位字符串冒充真实输入。"""
+    名称 = str(参数.get("名称", ""))
+    类型 = str(参数.get("类型", ""))
+    能力输入根 = 根目录 / "工程缓存" / "合规真实输入" / hashlib.sha1(
+        能力id.encode("utf-8")).hexdigest()[:10]
+    if 名称 in {"端口", "监听端口"}:
+        return _空闲端口()
+    if 名称 in {"调用函数", "回调函数"} or 类型 in {"函数", "子程序", "句柄型"}:
+        return lambda *参数值, **关键字值: {"成功": True, "值": 参数值[0] if 参数值 else ""}
+    if 类型 in {"逻辑型", "逻辑"}:
+        return bool(参数.get("默认值", False))
+    if 类型 in {"整数型", "整数", "单精度整数型", "双精度整数型", "双精度数型", "浮点数型"}:
+        if "默认值" in 参数 and 参数.get("默认值") is not None:
+            return 参数["默认值"]
+        return 1 if 名称 in {"宽度", "高度", "最大边长", "字节数", "最大页数", "最大幻灯片数"} else 0
+    if 类型 in {"字节集型", "二进制型"} or 名称 in {"字节", "图片字节"}:
+        return _最小PNG()
+    if 类型 in {"字典型", "映射型"}:
+        if 名称 in {"编码选项", "请求参数"}:
+            return {}
+        return {"标题": "合规测试", "内容": "真实输入"} if "文档" in 能力id or "生成" in 能力id else {}
+    if 类型 in {"列表型", "数组型"}:
+        if 名称 == "验证命令":
+            return [[sys.executable, "-c", "print('ok')"]]
+        if 名称 == "补丁列表":
+            return []
+        return ["合规测试"]
+    if 类型 in {"空值型", "空"}:
+        return None
+    if "提交哈希" in 名称:
+        try:
+            return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=根目录, text=True).strip()
+        except (OSError, subprocess.SubprocessError):
+            return "0" * 40
+    if "仓库路径" in 名称:
+        return str(根目录)
+    if "受控根目录" in 名称 or 名称 in {"基础目录", "锁目录", "来源目录", "快照目录", "输出目录"}:
+        目录 = 能力输入根
+        目录.mkdir(parents=True, exist_ok=True)
+        if 名称 == "来源目录":
+            (目录 / "来源.txt").write_text("真实快照输入", encoding="utf-8")
+        return str(目录)
+    if "相对路径" in 名称:
+        目录 = 能力输入根
+        目录.mkdir(parents=True, exist_ok=True)
+        (目录 / "输入.txt").write_text("真实文件输入", encoding="utf-8")
+        return "输入.txt"
+    if "路径" in 名称 or 名称 in {"文件", "源文件"}:
+        扩展名 = {"PDF文档": ".pdf", "表格文档": ".xlsx", "演示文稿": ".pptx",
+                 "文字文档": ".docx"}.get(能力id.split(".", 1)[0], ".txt")
+        路径 = 能力输入根 / f"输入{扩展名}"
+        路径.parent.mkdir(parents=True, exist_ok=True)
+        if not 路径.exists():
+            if 扩展名 == ".pdf":
+                候选 = next((根目录 / "支持库" / "适配层").rglob("示例.pdf"), None)
+                if 候选 and 候选.is_file():
+                    路径.write_bytes(候选.read_bytes())
+                else:
+                    路径.write_bytes(b"%PDF-1.4\n")
+            elif 扩展名 == ".txt":
+                路径.write_text("真实文档输入\n第二段", encoding="utf-8")
+            else:
+                路径.write_bytes("真实格式输入".encode("utf-8"))
+        return str(路径)
+    if 名称 in {"地址", "网址", "URL"}:
+        return "http://127.0.0.1:1"
+    if 名称 in {"提供者名", "提供者"}:
+        return "全部"
+    if 名称 in {"目标格式", "输出格式", "格式"}:
+        return str(参数.get("默认值") or "txt")
+    if 名称 in {"文本", "内容", "标题", "页面说明", "旧文本", "新文本", "目标", "字段名", "键", "值", "条目", "分隔符", "语言"}:
+        return "合规测试"
+    if "时间戳" in 名称:
+        return time.time()
+    if 名称 in {"提交消息", "操作", "分支名", "期望值", "新值", "期望版本", "资源id", "持有者"}:
+        return "合规测试"
+    if "默认值" in 参数 and 参数["默认值"] is not None:
+        return 参数["默认值"]
+    if 类型 in {"文本型", "文本", "字符串型"}:
+        return "合规测试"
+    return "合规测试"
 
 
 def _加载模块(文件路径: Path):
@@ -630,38 +736,63 @@ class 组件合规:
             契约.get("能力id", ""): (契约.get("调用示例") or {}).get("参数", {})
             for 契约 in 能力表 if isinstance(契约.get("调用示例"), dict)
         }
-        for 能力id in 注册表.能力id列表:
-            实现对象 = 注册表.获取(能力id)
-            if 实现对象 is None:
-                问题.append(f"{能力id} 注册表获取失败")
-                continue
-            参数表 = 实现对象.参数
-            示例参数 = 示例参数表.get(能力id, {})
-            成功参数 = dict(示例参数) if 示例参数 else {
-                参数["名称"]: "测试值" for 参数 in 参数表 if 参数.get("必填", True)
-            }
-            try:
-                成功结果 = 实现对象.调用(**成功参数)
-            except Exception as 错误:
-                问题.append(f"{能力id} 成功路径异常: {错误}")
-                continue
-            if 成功结果 is None:
-                问题.append(f"{能力id} 成功路径无返回（真实返回为空）")
-            if 参数表:
-                失败参数 = {参数["名称"]: "测试值" for 参数 in 参数表
-                            if not 参数.get("必填", True)}
+        真实输入根 = self._系统根 / "工程缓存" / "合规真实输入"
+        try:
+            for 能力id in 注册表.能力id列表:
+                实现对象 = 注册表.获取(能力id)
+                if 实现对象 is None:
+                    问题.append(f"{能力id} 注册表获取失败")
+                    continue
+                # 真实调用参数以组件自身聚合契约为准；入口注册表可能携带
+                # 提供者内部参数，不能把那些跨边界参数错误传入公开入口。
+                契约 = next((条目 for 条目 in 能力表 if 条目.get("能力id") == 能力id), {})
+                参数表 = 契约.get("参数", []) if isinstance(契约.get("参数", []), list) else []
+                示例参数 = 示例参数表.get(能力id, {})
+                # 示例只覆盖显式值；必填参数和未显式给出的默认参数均由契约语义补齐。
+                成功参数 = {
+                    参数["名称"]: 示例参数.get(参数["名称"], _参数最小值(能力id, 参数, self._系统根))
+                    for 参数 in 参数表 if isinstance(参数, dict) and 参数.get("名称")
+                }
+                # 固定端口是共享资源，测试必须改用实时探测的空闲端口。
+                for 参数 in 参数表:
+                    if isinstance(参数, dict) and 参数.get("名称") in {"端口", "监听端口"}:
+                        成功参数[参数["名称"]] = _空闲端口()
                 try:
-                    失败结果 = 实现对象.调用(**失败参数)
-                    是成功 = False
-                    if isinstance(失败结果, dict):
-                        是成功 = bool(失败结果.get("成功"))
-                    elif hasattr(失败结果, "成功"):
-                        是成功 = bool(失败结果.成功)
-                    if 是成功:
-                        问题.append(f"{能力id} 缺必填参数未返回失败（失败语义缺失）")
-                except TypeError:
-                    # 缺必填参数被 Python 签名拒绝 = 失败语义成立
-                    pass
+                    成功结果 = 实现对象.调用(**成功参数)
                 except Exception as 错误:
-                    问题.append(f"{能力id} 缺必填参数调用异常（失败语义缺失）: {错误}")
+                    问题.append(f"{能力id} 成功路径异常: {错误}")
+                    continue
+                try:
+                    if 成功结果 is None:
+                        问题.append(f"{能力id} 成功路径无返回（真实返回为空）")
+                finally:
+                    # 浏览器/句柄型能力必须真实释放，防止固定端口和线程残留污染后续包。
+                    for 方法名 in ("shutdown", "server_close", "关闭", "释放", "close"):
+                        方法 = getattr(成功结果, 方法名, None) if 成功结果 is not None else None
+                        if callable(方法):
+                            try:
+                                方法()
+                            except Exception:
+                                pass
+                必填参数表 = [参数 for 参数 in 参数表 if 参数.get("必填", True)]
+                # 没有必填参数时不存在“缺少必填参数”场景。
+                if 必填参数表:
+                    失败参数 = {参数["名称"]: _参数最小值(能力id, 参数, self._系统根)
+                                for 参数 in 参数表 if not 参数.get("必填", True)}
+                    try:
+                        失败结果 = 实现对象.调用(**失败参数)
+                        是成功 = False
+                        if isinstance(失败结果, dict):
+                            是成功 = bool(失败结果.get("成功"))
+                        elif hasattr(失败结果, "成功"):
+                            是成功 = bool(失败结果.成功)
+                        if 是成功:
+                            问题.append(f"{能力id} 缺必填参数未返回失败（失败语义缺失）")
+                    except TypeError:
+                        # 缺必填参数被 Python 签名拒绝 = 失败语义成立
+                        pass
+                    except Exception as 错误:
+                        问题.append(f"{能力id} 缺必填参数调用异常（失败语义缺失）: {错误}")
+        finally:
+            shutil.rmtree(真实输入根, ignore_errors=True)
         return 问题

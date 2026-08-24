@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from 模块库.图像处理.实现.图像处理 import 分析图像文件
 from 模块库.图像处理.实现.图像处理 import 生成占位图
 from 模块库.图像处理.实现.图像处理 import 识别图像格式
@@ -23,6 +26,12 @@ def 注册能力(注册表) -> None:
     """由模块加载器调用。"""
     from 公共契约.能力契约.契约 import 能力实现
 
+    契约 = json.loads((Path(__file__).parent / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+    类型表 = {
+        条目["能力id"]: {参数["名称"]: 参数.get("类型", "") for 参数 in 条目.get("参数", [])}
+        for 条目 in 契约.get("能力契约", [])
+    }
+
     for 能力id, 函数, 参数名 in [
         ("图像处理.分析图像文件", 分析图像文件,
          ["受控根目录", "相对路径", "最大字节数"]),
@@ -41,8 +50,8 @@ def 注册能力(注册表) -> None:
                 能力id=能力id,
                 包id="模块库.图像处理",
                 实现函数=函数,
-                参数=[{"名称": 名称, "类型": "任意"} for 名称 in 参数名],
-                返回="结果",
+                参数=[{"名称": 名称, "类型": 类型表[能力id][名称]} for 名称 in 参数名],
+                返回="结果型",
                 说明="模块组合能力",
             )
         )

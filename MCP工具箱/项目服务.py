@@ -755,6 +755,8 @@ async def 主程序() -> None:
 
 async def 主程序HTTP(端口: int = 8766) -> None:
     """以 Streamable HTTP 协议提供 MCP 服务（opencode remote 接入）。"""
+    from 公共契约.运行时.端口策略 import 校验应用监听端口
+    校验应用监听端口(端口)
     from starlette.applications import Starlette
     from starlette.routing import Route
     import uvicorn

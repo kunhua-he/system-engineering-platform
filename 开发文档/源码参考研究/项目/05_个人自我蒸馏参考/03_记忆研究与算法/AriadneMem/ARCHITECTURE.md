@@ -566,7 +566,7 @@ L4 项目适配层 / MCP / Python 门面
 | 持久化 | LanceDB `ariadnemem_entries` 表 + 同目录 `enhanced_index.json`；原始 `Dialogue` 没有独立持久化表 | `database/vector_store.py:69-108,110-138,375-401`；与第 4.3 节一致 |
 | 外部依赖 | OpenAI SDK、SentenceTransformers/PyTorch、LanceDB/PyArrow、FastAPI/Uvicorn 等；配置是复制 `config.py.example` 后运行 | `requirements.txt`、`config.py.example:6-10`、`MCP/server/http_server.py:22-33` |
 | 验证 | 顶层只有手写 `quick_test.py`、LoCoMo benchmark 和 demo；没有发现式单元测试、CI、迁移/协议/故障矩阵 | `ARCHITECTURE.md:376-402`；当前核对未安装依赖、未启动服务、未运行 benchmark |
-| 代码图 | 目标 AriadneMem 没有 `.codegraph/`；MCP `codeexplore` 明确返回 CodeGraph 不可用 | 当前核对 MCP 返回 `no .codegraph/index exists`，因此以下源码结论来自直接文件读取，不能伪称代码图验证通过 |
+| 代码图 | 目标 AriadneMem 根目录存在独立 `.codegraph/`；本轮用目标目录内 CLI 状态核对 | 图谱仅作定位辅助；以下源码事实仍以直接读取为准，未调用 MCP，也不把索引状态当运行验证 |
 
 ### 15.2 生产缺口分级
 

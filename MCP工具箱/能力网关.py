@@ -29,6 +29,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 开发工具.开发入口 import 搜索能力, 查看契约, 真实调用能力
+from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 
 class 能力网关请求处理器(BaseHTTPRequestHandler):
@@ -122,6 +123,7 @@ class 能力网关请求处理器(BaseHTTPRequestHandler):
 
 def 启动网关(*, 端口: int, 地址: str = "127.0.0.1") -> None:
     """启动 HTTP 能力网关。"""
+    校验应用监听端口(端口)
     httpd = ThreadingHTTPServer((地址, 端口), 能力网关请求处理器)
     print(f"能力网关已启动: http://{地址}:{端口}")
     print("接口: GET /能力/搜索  GET /能力/契约/{能力id}  POST /能力/执行")

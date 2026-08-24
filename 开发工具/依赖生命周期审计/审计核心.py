@@ -15,7 +15,10 @@ from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
 包声明文件名 = "包声明.json"
 完整性摘要文件名 = "完整性摘要.json"
 能力定义文件名 = "能力定义.json"
-探针关键词 = ("探针", "健康")
+生命周期契约文件名 = "生命周期契约.json"
+# 提供者现有公开能力中，“检查提供者/检查可用性”与“版本探针”都是
+# 同一健康契约的合法中文命名；不能只认“探针/健康”两个词而误报。
+探针关键词 = ("探针", "健康", "检查提供者", "检查可用性", "检查提供者版本")
 停止关键词 = ("停止", "关闭", "释放", "终结", "终止")
 
 
@@ -48,7 +51,12 @@ def 扫描提供者目录(系统根: Path) -> tuple[list[Path], list[str]]:
 
 
 def 收集第三方名称(目录: Path, 声明: dict) -> tuple[set[str], list[str]]:
-    """从 依赖锁.json 与 包声明.依赖 收集第三方名称；返回 (名称集合, 违规)。"""
+    """收集发行包归属，而非把同一发行包的命令/模块误判为混装。
+
+    依赖锁条目可用 ``发行包`` 声明实际归属（例如 ffmpeg 与 ffprobe
+    都属于 FFmpeg发行包）。旧条目没有该字段时退回名称，保持严格审计：
+    未明确归属的不同名称仍然会被判为混装。
+    """
     依赖锁路径 = 目录 / 依赖锁文件名
     if not 依赖锁路径.is_file():
         return set(), [f"缺依赖锁: {依赖锁文件名} 不存在，无独立版本声明"]
@@ -58,7 +66,8 @@ def 收集第三方名称(目录: Path, 声明: dict) -> tuple[set[str], list[st
     except (json.JSONDecodeError, OSError) as 错误:
         return set(), [f"依赖锁损坏: {错误}"]
     名称集合 = {
-        str(条目["名称"]) if isinstance(条目, dict) else 条目
+        str(条目.get("发行包") or 条目["名称"])
+        if isinstance(条目, dict) else 条目
         for 条目 in (包列表 + (声明.get("依赖") or []))
         if (isinstance(条目, dict) and 条目.get("名称")) or isinstance(条目, str)
     }
@@ -98,7 +107,7 @@ def 检查完整性摘要(目录: Path, 声明: dict) -> list[str]:
 
 
 def 检查健康探针(目录: Path) -> list[str]:
-    """健康探针能力存在性：能力定义.json 含 探针/健康 能力。"""
+    """健康探针能力存在性：能力定义或生命周期契约必须可审计。"""
     能力路径 = 目录 / 能力定义文件名
     if not 能力路径.is_file():
         return [f"缺健康探针: {能力定义文件名} 不存在，无法声明探针能力"]
@@ -112,11 +121,29 @@ def 检查健康探针(目录: Path) -> list[str]:
         名称文本 = f"{能力.get('能力id', '')} {能力.get('中文名称', '')}"
         if any(词 in 名称文本 for 词 in 探针关键词):
             return []
-    return ["缺健康探针: 能力定义.json 未声明 探针/健康 能力"]
+    契约路径 = 目录 / 生命周期契约文件名
+    if 契约路径.is_file():
+        try:
+            契约 = json.loads(契约路径.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as 错误:
+            return [f"缺健康探针: 生命周期契约损坏 {错误}"]
+        探针 = 契约.get("健康探针")
+        入口 = str(探针.get("入口") or "") if isinstance(探针, dict) else ""
+        入口路径 = 入口.split(":", 1)[0].strip()
+        入口存在 = bool(入口路径) and (目录 / 入口路径).is_file()
+        身份一致 = 契约.get("提供者id") in {
+            str(目录.name),
+            f"支持库.适配层.{目录.name}",
+        }
+        if (isinstance(探针, dict) and 探针.get("方式")
+                and 探针.get("成功条件") and 探针.get("失败码")
+                and 入口存在 and 身份一致):
+            return []
+    return ["缺健康探针: 能力定义.json 未声明探针且生命周期契约无效"]
 
 
 def 检查停止入口(目录: Path) -> list[str]:
-    """停止与资源释放证据：实现/ 下 AST 找到 停止/关闭/释放/终结/终止 函数。"""
+    """停止与资源释放证据：实现函数或生命周期契约必须明确释放语义。"""
     实现目录 = 目录 / "实现"
     if not 实现目录.is_dir():
         return ["缺停止入口: 实现/ 目录不存在"]
@@ -129,7 +156,25 @@ def 检查停止入口(目录: Path) -> list[str]:
             if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if any(词 in 节点.name for 词 in 停止关键词):
                     return []
-    return ["缺停止入口: 实现/ 下无 停止/关闭/释放/终结/终止 函数（无资源释放证据）"]
+    契约路径 = 目录 / 生命周期契约文件名
+    if 契约路径.is_file():
+        try:
+            契约 = json.loads(契约路径.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            契约 = {}
+        资源模型 = 契约.get("资源模型")
+        释放策略 = 契约.get("释放策略")
+        身份一致 = 契约.get("提供者id") in {
+            str(目录.name),
+            f"支持库.适配层.{目录.name}",
+        }
+        释放文本 = str(释放策略 or "")
+        释放证据词 = ("finally", "关闭", "释放", "终止", "回收", "无跨调用状态")
+        if (资源模型 == "调用内临时资源" and 身份一致
+                and any(词 in 释放文本 for 词 in 释放证据词)
+                and len(释放文本) >= 12):
+            return []
+    return ["缺停止入口: 实现/ 下无停止函数且无明确生命周期释放契约"]
 
 
 def 审计单个提供者(目录: Path) -> 提供者审计结果:

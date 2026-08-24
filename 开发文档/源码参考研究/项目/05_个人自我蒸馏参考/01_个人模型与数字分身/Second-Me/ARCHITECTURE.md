@@ -272,7 +272,7 @@ Second-Me 是一个本地训练、本地托管、可通过网络或应用连接�
 平台 L4  统一网关：HTTP/MCP/SSE/CLI 等协议适配、认证、限流、背压
 ```
 
-当前目标源码没有可用的 `.codegraph/` 索引；专属 MCP 首次返回的是错误项目 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，切换目标后 MCP 又不可达。因此当前核对源码事实只采用本地文件读取结果和已读旧细探，不把错误项目的代码图或 MCP 摘要当作 Second-Me 证据；运行验证也未被冒充为通过。
+当前目标源码根目录存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位；专属 MCP 首次返回的是错误项目 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，切换目标后不采用该 MCP 证据。因此当前核对源码事实仍只采用本地文件读取结果和已读旧细探，不把错误项目的代码图或 MCP 摘要当作 Second-Me 证据；运行验证也未被冒充为通过。
 
 ## 2. 平台 L0-L4 的可复用原子能力定义
 
@@ -476,3 +476,37 @@ cancel_token / release_policy / cleanup_evidence
 
 **当前核对结论**：Second-Me 最值得进入通用底座的不是“个人 AI self”产品语义，也不是重量训练链，而是“原文到派生记忆的分段边界、版本化身份投影、分轨检索与上下文预算、步骤状态机、受管进程边界和显式资源清理要求”。这些模式只有在 L0 契约、L1 原子能力、L2 组合模块、L3 生命周期治理、L4 统一网关五层各归其位后，才可复用；当前缺失的句柄/租约/崩溃回收能力仍是**待底座实现和真实验证**，不能宣称已从 Second-Me 直接得到。
  # Second-Me 架构取证
+
+## 9. 源码证据索引与增量维护规则
+
+为避免后续调研重复遍历整个仓库，本节固定记录“先读哪里、验证什么、结论能到哪一级”。行号以本次审计 checkout 为准；源码提交变化后必须重新运行代码地图同步并更新行号。
+
+| 关注问题 | 首选入口（源码） | 需要联读的实现 | 当前可下结论 |
+|---|---|---|---|
+| HTTP 应用如何启动 | `lpm_kernel/app.py`、`lpm_kernel/api/__init__.py` | 各 domain `routes.py`、`api/common/response.py` | Flask app 与蓝图注册链存在（L0/L1） |
+| 文档如何变成记忆 | `file_data/process_factory.py`、`document_service.py`、`chunker.py` | processors、`embedding_service.py`、`chroma_utils.py` | 解析→切块→embedding→向量写入顺序可读（L1） |
+| L0/L1 如何生成 | `L0/l0_generator.py`、`kernel/l1/l1_manager.py` | `L1/l1_generator.py`、topics/shade/status 生成器 | 两级派生及版本对象存在；一致性仍待运行验证 |
+| L2 训练如何编排 | `L2/l2_generator.py`、`L2/train.py`、`api/domains/trainprocess` | data_pipeline、merge、GGUF、MLX 分支 | 步骤状态和制品路径可定位；取消/恢复不闭环 |
+| 模型服务如何接入 | `api/domains/kernel2`、`api/services/local_llm_service.py` | SSE handler、OpenAI client、llama-server 脚本 | 本地/外部模型适配存在；进程 owner 与关闭需补证据 |
+| MCP/Space 对外边界 | `mcp/mcp_local.py`、`mcp/mcp_public.py`、`api/domains/space` | DTO、repository、discussion strategies | transport 与协作流程可定位；远端认证/幂等待核 |
+| 持久化与迁移 | `common/repository/database_session.py`、`models/`、`database/` | BaseRepository、vector repository、migration scripts | SQLite/Chroma 双存储事实成立；跨存储事务不成立 |
+
+### 9.1 每次增量审计的固定步骤
+
+1. 读取远程分支与当前提交，记录 `git rev-parse HEAD`、远程地址和工作树状态；源码 checkout 只读。
+2. 若存在 `.codegraph/`，先执行 `codegraph status`，再对“入口 + 状态 + 资源 owner”组合查询；索引不可用时改用 `rg --files` 与定向源码读取，并在文档中标明。
+3. 先复核本节入口表，再读取受影响符号上下游各一跳；不得只依据 README、历史细探或测试文件名推断实现。
+4. 任何“持久化、幂等、恢复、实时、事务”措辞必须同时给出源码路径和运行证据；只有源码存在时写 L0/L1，未运行不得写 L2-L4 通过。
+5. 将新增结论写回本文件对应章节；禁止新增同项目第二份架构摘要。
+6. 文档变更后执行 `git diff --check`、行号/路径存在性扫描，并把未执行的 provider、数据库、压力、强杀和发布验证列入剩余风险。
+
+### 9.2 本次审计边界
+
+本次只修改平台侧本文件；未修改 Second-Me 源码、依赖、配置、测试或 README，未安装重量训练依赖，未启动 Flask、Next.js、Chroma、llama-server、MCP 或 Space 远端。文中所有运行相关内容均明确标记为待验证，后续代理可直接从上表入口继续，不需要重新扫描目录。
+
+## 10. 2026-08-22 增量复核
+
+- 本地与 `origin/HEAD` 均为 `d0e40251d9de61b3340b8d0d7d83150669f1885a`，经 `http://127.0.0.1:4780` 复核无版本漂移；未覆盖未跟踪 `ARCHITECTURE.md` 与 `.codegraph/`。
+- `codegraph status`：357 files、4,663 nodes；查询 `DocumentService L1Generator ChatService` 成功，定位 `document_service.py:24`、`chat_service.py:24` 及调用方。
+- L0/L1 已复核；L2 测试源码存在但本轮未运行；L3/L4 真实模型、数据库、网络、训练和故障恢复均未验证。
+- 仅使用 shell/git/codegraph CLI，未调用任何 MCP；本轮只修改平台侧本文件。

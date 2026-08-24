@@ -280,7 +280,7 @@ coverage erase
 
 以下项目在当前核对没有运行时验证，不能仅凭静态阅读宣称已闭环：
 
-1. **目标代码地图未建立**：对目标目录的 codegraph 查询返回“未发现 `.codegraph/`”；专属 `system_engineering_toolkit` 当前自身根目录是系统工程平台，无法为该外部仓库提供同仓库地图。本文因此以本地源码/目录/已有细探文档为依据，没有采用其他仓库地图结果。
+1. **代码地图边界**：目标目录已有独立 `.codegraph/`（本轮 `codegraph status`：857 files / 16,153 nodes / 48,823 edges，索引最新）。本轮只把目标仓库本地 CLI 代码图用于导航，架构结论仍以目标源码/目录逐段读取为依据，不使用跨项目 MCP。
 2. **MCP 开工上下文根目录不匹配**：专属 MCP 返回的项目根是 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，不是本目标目录，因而不能为外部目标仓库建立受控 worktree/文件账本。架构文档仍只写入目标根的 `ARCHITECTURE.md`；该隔离差异需后续将专属 MCP 配置到目标仓库或提供跨仓库只读模式。
 3. **未跑测试/覆盖率/conformance**：当前核对没有安装、启动、构建或执行测试；测试数量、100% coverage、跨 Python 3.10–3.14、Windows/POSIX 行为均只是配置和静态结构事实。
 4. **现代协议仍在演进**：当前版本表已含 2026-07-28，但 Tasks 等扩展在 methods surface 中存在按版本缺失/延后情况；后续扩展应同时核对规范、wire models、methods map、runner、client parser 与 conformance。
@@ -293,7 +293,7 @@ coverage erase
 - 允许修改范围：仅目标项目根目录。
 - 实际修改：新增本文件 `ARCHITECTURE.md`；未修改源码、依赖、测试、配置、锁文件或 Git 提交。
 - 未删除或改写既有 `细探-MCP官方SDK.md`。
-- 代码地图查询：专属 MCP `system_engineering_toolkit` 的 `codegraph_explore` 已调用，但其地图指向系统工程平台；目标仓库未建立 `.codegraph/`，所以未使用该错误根下的任何源码/地图证据。
+- 代码地图查询：目标仓库本地 `codegraph status/explore` 可用；仅作为导航，未把其他项目的地图或验证证据混入本档。
 
 ## 12. 旧细探吸收与裁决
 

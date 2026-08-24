@@ -718,3 +718,7 @@ GraphRAG 源码没有独立的 task queue、scheduler、worker lease 或任务�
 当前核对直接核对的关键源码包括：`index/workflows/factory.py`、`index/run/run_pipeline.py`、`index/operations/cluster_graph.py`、`index/operations/summarize_communities/summarize_communities.py`、`index/operations/embed_text/embed_text.py`、`query/factory.py`、Local/Global/DRIFT/Basic structured search、`graphrag_llm` 的 completion/embedding middleware 与 thread runner、`graphrag-storage` 的 Table/ParquetTable、`graphrag-vectors` 的 VectorStore 以及 callbacks/typing 文件。
 
 当前核对未安装依赖、未启动服务、未运行 pytest/CLI、未注入网络故障、取消、超时、磁盘满、SIGKILL 或真实 LLM/provider。因而本文新增结论均为 L0 静态源码事实和由源码直接推导的风险；不存在当前核对 L1–L4 行为通过记录。唯一修改文件仍为根 `ARCHITECTURE.md`。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标仓库没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/60_video_rag_research/microsoft-graphrag` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 610 files、5,797 nodes、12,653 edges。索引只用于源码导航，未把索引状态提升为 GraphRAG pipeline、provider 或故障注入运行证据。

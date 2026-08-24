@@ -5,11 +5,11 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "2454d952deab1f6a154ef3bda6808feea882eb0604c6d661e26baa8a58d258b8"
+      "sha256": "ce899827828abd0509e4669853d63eb5c925715962177484f6de871461b4b77a"
     },
     {
       "路径": "包声明.json",
-      "sha256": "e04d29b716e8901519701526f5aa46a01bf284486bcd91228ff0c8f485730fb0"
+      "sha256": "1c1dc15fefb77b2b3ea25eb821fdec2954e2f4d6fc6f8ffa690d91cf4a9e67e5"
     },
     {
       "路径": "实现/_模板.py",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "9b2f32f1efff173b998b7e066fd53988bd9bf142560010a8e6a3dc7c1b24209d"
+      "sha256": "3262273ed32792ca434ecd2f4c9ae857b9a22ddcab7ee9fc72a7c43119f4c4f3"
     },
     {
       "路径": "说明/使用说明.md",

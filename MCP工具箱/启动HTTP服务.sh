@@ -4,10 +4,10 @@
 # 默认端口 8766（单一对外网关，无角色）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
-端口="${1:-8766}"
+SERVICE_PORT="${1:-8766}"
 mkdir -p 工程缓存
-日志="工程缓存/mcp_http_${端口}.log"
-echo "启动 MCP HTTP 服务: http://127.0.0.1:${端口}/mcp/  (单一网关)"
-echo "日志: ${日志}"
+LOG_PATH="工程缓存/mcp_http_${SERVICE_PORT}.log"
+echo "启动 MCP HTTP 服务: http://127.0.0.1:${SERVICE_PORT}/mcp/  (单一网关)"
+echo "日志: ${LOG_PATH}"
 PYTHONPATH=. \
-  exec python3.14 MCP工具箱/项目服务.py --http --端口 "${端口}"
+  exec python3.14 MCP工具箱/项目服务.py --http --端口 "${SERVICE_PORT}"

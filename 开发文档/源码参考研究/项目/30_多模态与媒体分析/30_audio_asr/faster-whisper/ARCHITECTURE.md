@@ -607,3 +607,7 @@ av.open(input_file, metadata_errors="ignore")
 3. `download_model` 的 Hub cache、tokenizer fallback 和外部模型完整性未在当前核对实测；不得把下载成功测试源码当作当前网络/凭证/模型 revision 证据。
 4. 单路/批量默认值、quality fallback、VAD 参数原地修改和 `last_speech_timestamp` 差异可能造成结果漂移；统一模块契约必须显式固定而不能只做 drop-in 声明。
 5. 本任务严格只修改本文件；没有创建支持库、媒体模块、provider、运行核心、测试、配置或模型制品，也没有删除 `细探-faster-whisper.md`。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标目录没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/30_audio_asr/faster-whisper` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 21 files、273 nodes、508 edges。索引只支持静态定位，模型下载、ASR 实测、取消、OOM 和崩溃回收仍未验证。

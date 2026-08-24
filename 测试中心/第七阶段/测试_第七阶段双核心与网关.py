@@ -206,6 +206,17 @@ class Test本地网关(unittest.TestCase):
         self.assertEqual(响应["值"]["和"], 5)
         self.assertTrue(响应["请求id"])
 
+    def test_网关最小请求目标参数即可(self):
+        """新公开面只要求目标和参数；旧操作/能力id字段不再是必填。"""
+        状态码, 响应 = self._发送("/网关/请求", {
+            "目标": "示例.加法", "参数": {"甲": 4},
+        })
+        self.assertEqual(状态码, 200)
+        self.assertTrue(响应["成功"])
+        self.assertEqual(响应["值"]["和"], 4)
+        self.assertIn("句柄", 响应)
+        self.assertEqual(响应["句柄"], "")
+
     def test_网关未知能力失败(self):
         状态码, 响应 = self._发送("/网关/请求", {"操作": "调用能力", "能力id": "不存在.能力"})
         self.assertFalse(响应["成功"])

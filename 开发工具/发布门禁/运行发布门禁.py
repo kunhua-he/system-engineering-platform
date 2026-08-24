@@ -16,8 +16,10 @@ import shutil
 import subprocess
 import sys
 import os
+import signal
 import tempfile
 import time
+import ast
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -75,11 +77,99 @@ class 门禁结果:
 
 def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0) -> tuple[int, str]:
     """运行子进程（供门禁检查使用）。"""
+    进程 = None
     try:
-        进程 = subprocess.run(命令列表, capture_output=True, text=True, timeout=超时秒)
-        return 进程.returncode, (进程.stdout or "") + (进程.stderr or "")
+        进程对象 = subprocess.Popen(
+            命令列表, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, start_new_session=(os.name == "posix"),
+        )
+        进程 = 进程对象
+        输出, _ = 进程对象.communicate(timeout=超时秒)
+        return 进程对象.returncode, 输出 or ""
     except subprocess.TimeoutExpired:
+        if 进程 is not None and 进程.poll() is None:
+            try:
+                if os.name == "posix":
+                    os.killpg(进程.pid, signal.SIGKILL)
+                else:
+                    进程.kill()
+            except OSError:
+                pass
+            try:
+                输出, _ = 进程.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                return -1, f"超时且进程组未能回收（> {超时秒} 秒）"
+            return -1, f"超时（> {超时秒} 秒），已回收进程组\n{输出 or ''}"
         return -1, f"超时（> {超时秒} 秒）"
+    except OSError as 错误:
+        return -1, f"启动子进程失败: {错误}"
+
+
+def _外层慢速事务可核验(事务: str, 父进程文本: str) -> bool:
+    """只接受真实慢速协调器签发的继承事务，拒绝任意环境变量旁路。"""
+    if not 事务 or not 父进程文本.isdigit() or int(父进程文本) != os.getppid():
+        return False
+    try:
+        父命令 = subprocess.run(
+            ["ps", "-p", 父进程文本, "-o", "command="],
+            capture_output=True, text=True, timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if 父命令.returncode != 0:
+        return False
+    命令 = 父命令.stdout.strip()
+    return (
+        "测试中心/运行测试.py" in 命令 and "--范围" in 命令 and "慢速" in 命令
+    ) or "测试_残留审计.py" in 命令
+
+
+def _扫描英文函数命名() -> str:
+    """使用 Python AST 扫描正式源码，避免依赖平台差异化 grep -P。"""
+    扫描根列表 = [系统根 / 名称 for 名称 in ("支持库", "模块库", "公共契约", "运行核心", "项目适配层")]
+    协议方法 = {"log_message", "do_GET", "do_POST", "setup", "read", "close", "headers", "status",
+                "is_set", "handle_starttag", "handle_endtag", "handle_data"}
+    违规: list[str] = []
+    for 根 in 扫描根列表:
+        if not 根.is_dir():
+            continue
+        for 文件 in sorted(根.rglob("*.py")):
+            if "__pycache__" in 文件.parts:
+                continue
+            try:
+                树 = ast.parse(文件.read_text(encoding="utf-8"), filename=str(文件))
+            except (OSError, UnicodeDecodeError, SyntaxError) as 错误:
+                违规.append(f"{文件}: AST扫描失败: {错误}")
+                continue
+            for 节点 in ast.walk(树):
+                if not isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                名称 = 节点.name
+                if 名称.startswith("__") or 名称 in 协议方法:
+                    continue
+                if 名称 and 名称.isascii() and 名称[0].isalpha():
+                    违规.append(f"{文件}:{节点.lineno}: {名称}")
+    return "\n".join(违规)
+
+
+def _监听端口快照() -> set[str]:
+    """读取当前 TCP 监听端点；工具不可用或输出异常时 fail-closed。"""
+    try:
+        结果 = subprocess.run(
+            ["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as 错误:
+        raise RuntimeError(f"无法获取监听端口快照: {错误}") from 错误
+    if 结果.returncode != 0:
+        raise RuntimeError(f"监听端口快照失败（退出码 {结果.returncode}）: {结果.stderr[:200]}")
+    端点表: set[str] = set()
+    for 行 in (结果.stdout or "").splitlines()[1:]:
+        列 = 行.split()
+        if len(列) < 9:
+            continue
+        端点表.add(列[8].replace("(LISTEN)", "").strip())
+    return 端点表
 
 
 def _是否已废弃包(包目录: Path) -> bool:
@@ -116,9 +206,12 @@ def 执行逐包权威合规(包目录列表: list[Path]) -> tuple[bool, list[tu
     未达标: list[str] = []
     for 包目录 in 包目录列表:
         报告 = 组件合规(包目录).执行()
-        失败场景 = "；".join(
-            f"{名称}({详情[:40]})" for 名称, 通过, 详情 in 报告.场景结果表 if not 通过
-        )
+        # 保留每个失败场景的名称；只截断单项详情，不能截断整个场景证据。
+        # 反向破坏必须能区分“公共入口”“完整性摘要”等具体失败落点。
+        失败场景表 = [
+            f"{名称}({详情[:160]})" for 名称, 通过, 详情 in 报告.场景结果表 if not 通过
+        ]
+        失败场景 = "；".join(失败场景表)
         证据列表.append((包目录.name, 失败场景, 报告.成功, 报告.通过数))
         if not 报告.成功:
             未达标.append(f"{包目录.name}({报告.通过数}/13)")
@@ -317,21 +410,38 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         检查("包声明合法", False, "未发现任何正式候选包")
         检查("第三方权限声明", False, "未发现任何正式候选包", 强制=False)
 
-    # 2. 中文边界（核心代码无英文业务命名扫描；排除 __init__ 等强制接口）
-    中文扫描 = subprocess.run(
-        ["grep", "-r", "-P", "def [a-zA-Z_][a-zA-Z0-9_]*\\(", "支持库", "模块库", "公共契约",
-         "加载器", "项目适配层", "--include=*.py"],
-        cwd=str(系统根), capture_output=True, text=True,
-    ).stdout.strip()
-    中文扫描 = "\n".join(
-        行 for 行 in 中文扫描.splitlines() if "def __" not in 行
-    )
+    # 2. 中文边界（核心代码无英文业务命名扫描；排除协议回调）
+    中文扫描 = _扫描英文函数命名()
     检查("中文边界", not 中文扫描, f"英文命名文件: {中文扫描[:100] or '无'}")
 
     # 3. 测试全部通过 + 语法编译全部通过
     if 运行测试:
-        退出码, 输出 = 运行子进程(["python3.14", "测试中心/运行测试.py", "--并行数", "1"], 超时秒=600)
-        检查("测试全部通过", 退出码 == 0, f"退出码 {退出码}（{'通过' if 退出码 == 0 else '失败'}）")
+        # 慢速综合审计会在外层全量验证持锁期间调用本门禁。此时禁止
+        # 再启动一个全量测试进程；改为重新计算常规阶段缓存证据，
+        # 缓存任一失效仍然阻断，不把互斥锁冲突伪装成成功。
+        外层事务 = os.environ.get("系统底座_慢速验证事务", "")
+        外层进程 = os.environ.get("系统底座_慢速验证进程", "")
+        外层慢速有效 = _外层慢速事务可核验(外层事务, 外层进程)
+        if 外层慢速有效:
+            try:
+                from 测试中心.运行测试 import 常规阶段缓存证据
+                常规通过, 常规证据 = 常规阶段缓存证据()
+                检查("测试全部通过", 常规通过,
+                     f"复用外层慢速事务；{常规证据}")
+            except Exception as 错误:
+                检查("测试全部通过", False, f"常规缓存证据核对异常: {错误}")
+        else:
+            退出码, 输出 = 运行子进程(["python3.14", "测试中心/运行测试.py", "--并行数", "1"], 超时秒=600)
+            # 失败时必须保留子测试的可定位证据；只报告退出码会把嵌套门禁
+            # 的真实失败压扁成无法诊断的“测试失败”。
+            测试失败项 = "\n".join(
+                行 for 行 in 输出.splitlines()
+                if "失败" in 行 or "FAIL" in 行 or "错误" in 行
+            )
+            测试证据 = f"退出码 {退出码}（{'通过' if 退出码 == 0 else '失败'}）"
+            if 测试失败项:
+                测试证据 += f"；失败摘要: {测试失败项[:600]}"
+            检查("测试全部通过", 退出码 == 0, 测试证据)
     else:
         检查("测试全部通过", False, "已请求跳过测试，强制门禁未执行")
     if 运行编译:
@@ -459,11 +569,34 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     # 9. 浏览器真实交互（页面生成 + 网关调用要素）
     try:
         from 前端核心.浏览器交互 import 浏览器交互提供者
+        from 支持库.前端.浏览器宿主 import 启动网页服务
+        from urllib.request import Request, urlopen
         提供者 = 浏览器交互提供者(网关地址="http://127.0.0.1:0")
         页面 = 提供者.渲染(_浏览器请求())
-        浏览器通过 = 页面["成功"] and "fetch" in 页面["html"] and "调用网关" in 页面["html"] \
+        HTML通过 = 页面["成功"] and "fetch" in 页面["html"] and "调用网关" in 页面["html"] \
             and "错误区" in 页面["html"] and "加载状态" in 页面["html"]
-        检查("浏览器真实交互", 浏览器通过, f"HTML {len(页面['html'])} 字符，要素齐全")
+        服务 = None
+        try:
+            服务, 地址 = 启动网页服务(
+                标题="门禁网页", 页面说明="真实 HTTP 交互",
+                调用函数=lambda 文本: {"成功": True, "值": {"回显": 文本}},
+                端口=0, 自动打开=False,
+            )
+            页面响应 = urlopen(Request(地址, method="GET"), timeout=3).read().decode("utf-8")
+            请求体 = json.dumps({"文本": "门禁"}, ensure_ascii=False).encode("utf-8")
+            调用响应 = json.loads(urlopen(Request(
+                地址 + "/api/%E8%B0%83%E7%94%A8", data=请求体,
+                headers={"Content-Type": "application/json"}, method="POST"), timeout=3
+            ).read().decode("utf-8"))
+            HTTP通过 = "门禁网页" in 页面响应 and 调用响应.get("成功") is True \
+                and 调用响应.get("值", {}).get("回显") == "门禁"
+        finally:
+            if 服务 is not None:
+                服务.shutdown()
+                服务.server_close()
+        浏览器通过 = HTML通过 and HTTP通过
+        检查("浏览器真实交互", 浏览器通过,
+             f"HTML要素={'通过' if HTML通过 else '失败'}；HTTP GET/POST={'通过' if HTTP通过 else '失败'}")
     except Exception as 错误:
         检查("浏览器真实交互", False, f"异常: {错误}")
 
@@ -577,18 +710,17 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
 
     # 16. 所有子进程清理 + 所有监听端口释放
     try:
-        import socket as _socket
         from 运行核心.加载器.提供者隔离.独立进程 import 独立进程
+        基线监听 = _监听端口快照()
         进程 = 独立进程("门禁清理")
-        进程.启动()
+        启动成功, 启动消息 = 进程.启动()
         进程.优雅停止()
         清理通过 = 进程.进程 is None or 进程.进程.poll() is not None
         检查("所有子进程清理", 清理通过, f"进程退出码: {进程.退出码}")
-        探测端口 = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-        探测端口.bind(("127.0.0.1", 0))
-        端口号 = 探测端口.getsockname()[1]
-        探测端口.close()
-        检查("所有监听端口释放", True, f"临时端口 {端口号} 可绑定（网关已优雅关闭）")
+        终态监听 = _监听端口快照()
+        新增监听 = sorted(终态监听 - 基线监听)
+        检查("所有监听端口释放", 启动成功 and not 新增监听,
+             f"基线 {len(基线监听)} 个；终态新增监听: {新增监听 or '无'}")
     except Exception as 错误:
         检查("所有子进程清理", False, f"异常: {错误}")
         检查("所有监听端口释放", False, f"异常: {错误}")
@@ -687,11 +819,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     # 是本门禁的直接父进程时，才复用外层正在执行的慢速证据，避免递归。
     慢速事务 = os.environ.get("系统底座_慢速验证事务", "")
     慢速进程文本 = os.environ.get("系统底座_慢速验证进程", "")
-    外层慢速有效 = (
-        bool(慢速事务)
-        and 慢速进程文本.isdigit()
-        and int(慢速进程文本) == os.getppid()
-    )
+    外层慢速有效 = _外层慢速事务可核验(慢速事务, 慢速进程文本)
     if 外层慢速有效:
         检查("平台-慢速层真实执行", True,
               f"复用外层验证事务 {慢速事务[:12]}（父进程 {慢速进程文本} 已核验）")
@@ -703,7 +831,10 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             慢速运行 = _子进程.run(
                 ["python3.14", "测试中心/运行测试.py", "--范围", "慢速", "--并行数", "1"],
                 capture_output=True, text=True, timeout=300,
-                env={**os.environ, "PYTHONPATH": ""})
+                env={**os.environ, "PYTHONPATH": "",
+                     # 本门禁已经是慢速验证的外层协调者；内部慢速层
+                     # 只做残留快照，禁止再次启动本门禁形成递归。
+                     "系统级支持库_残留审计_递归防护": "1"})
             慢速耗时 = _时间.monotonic() - 慢速开始
             慢速通过 = 慢速运行.returncode == 0 and "门禁通过" in 慢速运行.stdout
             检查("平台-慢速层真实执行", 慢速通过,

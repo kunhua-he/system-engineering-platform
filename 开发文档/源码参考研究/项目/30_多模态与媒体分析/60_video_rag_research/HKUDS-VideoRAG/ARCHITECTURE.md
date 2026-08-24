@@ -722,3 +722,7 @@ ImageBind 是当前最明确的重型资源：研究版在向量存储操作中�
 | 网关/项目适配层 | 认证授权、输入校验、任务提交/查询/取消、统一错误与制品引用 | 不把 `success: started` 当完成，不让 renderer 自行拼检索链，不接受任意本机路径 |
 
 因此，VideoRAG 最值得吸收的是“时间片段作为统一 evidence 主键 + ASR/视觉描述/跨模态向量/文本图路的阶段化融合”；最不应吸收的是“Process + 无锁 JSON + 多文件独立保存 + 前端轮询”作为生产任务底座。当前仓库的事实结论仍为 L2，以上治理项均为通用底座映射或待实现边界。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标根及父路径没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/60_video_rag_research/HKUDS-VideoRAG` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 95 files、1,401 nodes、2,609 edges。该索引只证明静态导航可用，不改变 VideoRAG 任务状态、GPU、恢复和制品提交仍待验证的结论。

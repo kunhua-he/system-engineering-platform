@@ -144,7 +144,7 @@ class Test生成演示文稿(unittest.TestCase):
 
 
 class Test注册能力(unittest.TestCase):
-    def test_入口注册两项能力(self):
+    def test_入口注册内部能力且阻断公开owner(self):
         记录 = []
 
         class 假注册表:
@@ -152,7 +152,12 @@ class Test注册能力(unittest.TestCase):
                 记录.append(能力)
 
         入口模块.注册能力(假注册表())
-        self.assertEqual([能力.能力id for 能力 in 记录], ["演示文稿.解析演示文稿", "演示文稿.生成演示文稿"])
+        能力id列表 = [能力.能力id for 能力 in 记录]
+        self.assertEqual(能力id列表, ["内部.演示文稿.解析", "内部.演示文稿.生成"])
+        # Provider 不能夺取公开 owner；公开能力由 支持库/后端/演示文稿
+        # 与 支持库/后端/文档生成 分别持有。
+        self.assertNotIn("演示文稿.解析演示文稿", 能力id列表)
+        self.assertNotIn("演示文稿.生成演示文稿", 能力id列表)
         self.assertEqual(([参数["名称"] for 参数 in 记录[0].参数], [参数["名称"] for 参数 in 记录[1].参数]), (["文件路径", "格式", "最大幻灯片数", "最大字节数", "超时秒"], ["内容参数"]))
 
 

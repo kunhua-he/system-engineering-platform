@@ -418,7 +418,7 @@ git diff --check
 
 ## 11. 未确认项与风险
 
-- **代码地图风险（已确认）**：按任务要求调用的专属 MCP `system_engineering_toolkit`（`http://127.0.0.1:8766/mcp/`）返回的 `project_context` 和 `codegraph_explore` 均绑定到其当前项目 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，未切换到 Prefect；因此本档不采用该错误项目的符号/调用链证据，架构事实来自 Prefect 目录内实际读取的源码、`AGENTS.md`、README、`pyproject.toml` 和 `细探-prefect.md`。后续若需要完整代码地图，应先修复专属 MCP 的项目绑定，再按 Prefect 根目录重建/查询地图。
+- **代码地图边界**：Prefect checkout 已有独立 `.codegraph/`（本轮 `codegraph status`：3,701 files / 73,534 nodes / 205,471 edges）。本轮只使用 Prefect 根目录本地 CLI 作为导航，不使用跨项目 MCP；架构事实仍来自 Prefect 目录内源码、`AGENTS.md`、README、`pyproject.toml` 和 `细探-prefect.md`，代码图不替代运行验证。
 - 当前核对没有启动 Prefect server、Runner、Worker、UI 或外部数据库，未对运行时调用链、真实 HTTP/WebSocket、迁移、调度精度和取消时序做动态验证。
 - 未执行依赖解析、构建、pytest、Vitest、Playwright、lint 或类型检查；测试命令仅记录项目约定，不能视为通过证据。
 - 代码存在新旧架构并存面：Worker 与新 Runner 同时存在，旧 `Runner.execute_bundle()` 等路径仍有迁移缺口；UI v1 与 UI v2 并存。
@@ -626,3 +626,26 @@ active DeploymentSchedule
 静态代码足以确认：状态机有终态闭包和按优先级排列的编排规则；重试由客户端策略与服务端裁决共同完成；队列是数据库事实而非内存 FIFO；取消是有 owner 的多阶段序列；租约和临时资源有过期/`finally` 补偿；事件与 heartbeat 是观测通道而非主状态事实。测试源码足以确认：项目主动覆盖了 map/future 超时、嵌套线程池死锁警告、重试、事务回滚、租约续约失败、取消 observer fallback、scheduler 和 cleanup。
 
 当前核对不能确认：真实部署下的调度延迟和优先级公平性、数据库锁竞争、结果双写断线后的残留对象、Worker channel 重连期间的重复领取、真实 SIGTERM/SIGKILL 时序、容器/PID 清理、孤儿 run 是否被安全重排、以及资源释放最终是否归零。唯一实际执行的验证是文档级 `git diff --check`；未执行 pytest、服务启动或外部系统联调。
+
+## 16.6 2026-08-22 远程对账与代码图增量
+
+| 项目事实 | 证据 | 结论 |
+|---|---|---|
+| 本地 checkout | `git rev-parse HEAD` = `00dd3e99c172c437e7c3e7415a0043732cac2f31`，分支 `main`，origin=`https://github.com/PrefectHQ/prefect.git` | 本文第 1、16 节的动态事实绑定此 checkout |
+| 远程 HEAD | 4780 代理的并行 `git ls-remote` 返回 `ce79dd3d6cfa2b7337265498210dbc4d25bcdc98`（`HEAD`/`main`）；后续单仓重试超时 | 远程领先本地；SHA 证据已取得，但未完成远程隔离快照，不把远程新实现写成本地已证 |
+| CodeGraph | 目标 `.codegraph` 存在，`codegraph status` = 3,701 files / 73,534 nodes；`codegraph explore 'FlowRunEngine TaskRunEngine SchedulerService Worker'` 定位 `FlowRunEngine` 到 `src/prefect/flow_engine.py:638` 并返回 27 个调用方 | **已证静态导航**；其余 Worker 同名符号包含集成包，不能只按名称归并 |
+| 当前关键边界 | `src/prefect/flow_engine.py:638` 的 FlowRunEngine 与 `src/prefect/server/database/interface.py:240-242` 的 ORM `Worker` 为不同层级符号 | 继续维护文档时必须保留执行引擎、数据库模型和集成 Worker 的层次区分 |
+
+本轮仅使用 shell、Git 和目标 checkout CodeGraph；**未调用其他 MCP**。远程 SHA 已记录，但隔离快照下载未完成，故远程增量源码与迁移变化仍待下一轮定点获取；源码、依赖、测试和配置未修改。
+
+### 16.7 2026-08-22 固定 SHA 定点请求复核
+
+本轮按任务边界仅通过 `http://127.0.0.1:4780` 发起 3 个 raw 定点请求，目标均锁定 `ce79dd3d6cfa2b7337265498210dbc4d25bcdc98`。代理 TCP/HTTP CONNECT 成功，但 TLS 握手超时；以下退出码是实际 `curl --connect-timeout 5 --max-time 30 -fsSL` 结果：
+
+| 定点文件 | URL | 退出码/字节数 | 可用结论 |
+|---|---|---:|---|
+| Flow 引擎 | `https://raw.githubusercontent.com/PrefectHQ/prefect/ce79dd3d6cfa2b7337265498210dbc4d25bcdc98/src/prefect/flow_engine.py` | `28 / 0` | 远程内容未取得；Flow 状态/恢复结论仍只绑定本地静态证据。 |
+| Task 引擎 | `https://raw.githubusercontent.com/PrefectHQ/prefect/ce79dd3d6cfa2b7337265498210dbc4d25bcdc98/src/prefect/task_engine.py` | `28 / 0` | 远程内容未取得；租约、重试和取消不能外推到固定 SHA。 |
+| 编排核心策略 | `https://raw.githubusercontent.com/PrefectHQ/prefect/ce79dd3d6cfa2b7337265498210dbc4d25bcdc98/src/prefect/server/orchestration/core_policy.py` | `28 / 0` | 远程内容未取得；ACCEPT/REJECT/WAIT 规则变化仍待核。 |
+
+本轮未下载 codeload 压缩包、未 clone、未覆盖共享 checkout；因此远程增量仍为“SHA 已确认、源码未核验”。下一次应优先重试同一三个文件或使用代理恢复后的隔离临时目录，并在成功读到内容后再填写差异，而不是凭远程分支名推断实现变化。

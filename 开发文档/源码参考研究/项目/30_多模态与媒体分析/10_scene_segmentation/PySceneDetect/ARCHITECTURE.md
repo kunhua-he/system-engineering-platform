@@ -738,3 +738,7 @@ deprecated 转发模块，不能作为第二套切分实现。
 decode failures、终态、stderr 摘要、输出清单和清理结果，并由宿主提供墙钟 deadline、进程组回收、
 幂等/manifest/hash/原子 rename。不能直接复用当前同步 `subprocess.call`、GC 析构、daemon thread
 或“返回 0”作为取消、资源释放或制品提交协议。
+
+## 代码地图现状复核（2026-08-22）
+
+文中早期“目标项目没有 `.codegraph`”记录对应旧快照，现已过期。当前目标根 `/Users/hekunhua/Documents/Agent/github 源码参考/30_多模态与媒体分析/10_scene_segmentation/PySceneDetect` 存在独立 `.codegraph/`；`codegraph status` 退出码为 0，返回 98 files、1,820 nodes、4,731 edges。该状态只证明源码导航索引可用，不提升真实媒体运行、取消或资源回收验证等级。

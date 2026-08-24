@@ -5,15 +5,15 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "d51eba33965ce9e0f6a953bc411fd905c057df5ceec46362971e27a30dd25351"
+      "sha256": "69ce6c38e149eaec391b7636317d4815ee7b2ab4bc1bac6a1b156c617b2347b9"
     },
     {
       "路径": "依赖契约/依赖契约.json",
-      "sha256": "95cea7eda47785dc511d1aeb78a7c9f624804f139147d7f85e312cb4a72ff60f"
+      "sha256": "8246aa55e7f5abdd8f42282bc14395c80ba00fedce2a51450d6947c11c352143"
     },
     {
       "路径": "包声明.json",
-      "sha256": "867f1bc0c962a35c1c77d28abbf0bd90ddd022a6dcce0a4a4361e2befcb6dc29"
+      "sha256": "04c79f76ab8a6aefbf619d262455764a293cd1905624d8a22daffea68aeed693"
     },
     {
       "路径": "复用决策.json",
@@ -21,11 +21,11 @@
     },
     {
       "路径": "实现/文档生成.py",
-      "sha256": "b24ed430f33e347b19f1991eca1ac2a2f56e50ab89abe96a898225732dcaa81a"
+      "sha256": "1612f15b0ce6668d73f6399e0e3c88c660c9378497b93726055590a9f4cfa7db"
     },
     {
       "路径": "实现/签名校验.py",
-      "sha256": "15b4e8901fd7ca88009cdaeeb09b5efe388909bd37d50f3628706041f930624b"
+      "sha256": "2588a33af6c1492efe7bd71b2bf8bc80f0afc08767a59b6f89f385a23a89c0fd"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -33,15 +33,27 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "ca9eb065f61014a8359273040bf03608ba8b1ebdefffbb60deecbb6c09d4863f"
+      "sha256": "60572a9137d10f210af52d414191923acaa66c07f223ed6959396c33863a5110"
+    },
+    {
+      "路径": "能力定义.json",
+      "sha256": "18de4d4940efdf0a613d11cb99561b4b8224b0772af039472d56cd92c1169c4c"
+    },
+    {
+      "路径": "能力数据/Agent查询数据.json",
+      "sha256": "3cb81342c47aa121a4a9e89bed4bac990f5e6ed1010a09b53ef33045e11c2600"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "1c53fa270e65fad879fc81578f99c85431c6d1d94e09df47c31666c1b34cacdf"
+      "sha256": "87bc7723391a38d2c88ea6107bf9ce775440e632d262985437f3b96e9e251fec"
     },
     {
       "路径": "说明/使用说明.md",
       "sha256": "a2820550d709ccfee03eb12f7957adfa5d0a6f786ed21d2f02c361bcfe5d0718"
+    },
+    {
+      "路径": "说明/目录树与命令.md",
+      "sha256": "98e396b1bd8c6f6b19d6a60f59ce2537770aa084e1ca910963edd13850fd62b1"
     },
     {
       "路径": "资源预算.json",

@@ -18,6 +18,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 开发工具.契约编译.能力定义编译器 import (
     编译能力定义, 编译结果, 生成Agent数据, 生成包声明, 生成能力契约,
     生成注册入口, 生成搜索数据, 生成验证场景引用, 读取能力定义, 校验能力定义,
+    从现有包生成能力定义,
 )
 from 开发工具.契约编译.漂移检测 import 检测能力定义漂移
 
@@ -171,6 +172,50 @@ class Test能力定义编译器(unittest.TestCase):
         self.assertEqual(条目["能力id"], "文字文档.解析文字文档")
         self.assertIn("参数", 条目)
         self.assertIn("错误码", 条目)
+
+    def test_从现有契约迁移唯一能力定义(self):
+        """历史包只提供声明与参数契约时，迁移结果可被编译器校验。"""
+        包目录 = self.临时 / "迁移包"
+        (包目录 / "能力契约").mkdir(parents=True)
+        (包目录 / "包声明.json").write_text(json.dumps({
+            "包id": "测试.迁移包", "名称": "迁移包", "类型": "支持库",
+            "版本": "1.0.0", "说明": "迁移测试", "依赖": [],
+            "能力": [{"能力id": "迁移.执行", "名称": "执行"}],
+        }, ensure_ascii=False), encoding="utf-8")
+        (包目录 / "能力契约" / "参数契约.json").write_text(json.dumps({
+            "契约版本": "1.0.0", "能力契约": [{
+                "能力id": "迁移.执行", "版本": "1.0.0", "说明": "执行测试",
+                "参数": [{"名称": "输入", "类型": "文本型", "必填": True}],
+                "返回": {"类型": "结果型"}, "错误码": ["参数不合法"],
+            }],
+        }, ensure_ascii=False), encoding="utf-8")
+        路径, 问题 = 从现有包生成能力定义(包目录)
+        self.assertEqual([], 问题)
+        self.assertIsNotNone(路径)
+        定义 = 读取能力定义(路径)
+        self.assertEqual([], 校验能力定义(定义), 定义)
+        self.assertEqual(["迁移.执行"], [x["能力id"] for x in 定义["能力列表"]])
+        self.assertEqual({"类型": "结果型"}, 定义["能力列表"][0]["返回"])
+
+    def test_已有能力定义不覆盖(self):
+        """迁移入口不得覆盖作者已经维护的唯一事实源。"""
+        包目录 = self.包目录
+        (包目录 / "能力契约").mkdir(exist_ok=True)
+        (包目录 / "包声明.json").write_text(json.dumps({
+            "包id": "支持库.适配层.python_docx提供者", "版本": "1.0.0",
+        }, ensure_ascii=False), encoding="utf-8")
+        (包目录 / "能力契约" / "参数契约.json").write_text(
+            json.dumps({"能力契约": []}, ensure_ascii=False), encoding="utf-8")
+        路径, 问题 = 从现有包生成能力定义(包目录)
+        self.assertEqual(路径, self.定义文件)
+        self.assertTrue(any("已有能力定义" in x for x in 问题))
+
+    def test_值结构类型使用易语言标准类型(self):
+        """迁移只转换值结构中的类型词，不改字段名等业务语义。"""
+        from 开发工具.契约编译.能力定义编译器 import 标准化易语言类型
+        数据 = {"值结构": {"标题": "文本", "宽度": "整数", "块列表": "列表"}}
+        结果 = 标准化易语言类型(数据)
+        self.assertEqual({"标题": "文本型", "宽度": "整数型", "块列表": "列表型"}, 结果["值结构"])
 
 
 if __name__ == "__main__":

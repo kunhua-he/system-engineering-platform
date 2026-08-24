@@ -30,17 +30,18 @@ def 写(路径: Path, 内容: str) -> None:
     路径.write_text(内容, encoding="utf-8")
 
 
-def 合法包(根: Path, 包名: str = "示例包", 包id: str = "支持库.适配层.示例包",
-         能力id: str = "示例.测试能力", 能力名: str = "测试能力") -> Path:
+def 合法包(根: Path, 包名: str = "示例包", 包id: str = "支持库.后端.示例包",
+         能力id: str = "示例.测试能力", 能力名: str = "测试能力",
+         公开根: str = "支持库/后端") -> Path:
     """构造六环完整合法包，返回包目录。"""
-    包目录 = 根 / "支持库" / "适配层" / 包名
+    包目录 = 根 / 公开根 / 包名
     写(包目录 / "包声明.json", json.dumps({"包id": 包id, "能力": [{"能力id": 能力id, "名称": 能力名}]}, ensure_ascii=False))
     写(包目录 / "能力定义.json", json.dumps({"包id": 包id, "能力列表": [{"能力id": 能力id}]}, ensure_ascii=False))
     写(包目录 / "能力数据" / "能力搜索数据.json", json.dumps([{"能力id": 能力id, "名称": 能力名}], ensure_ascii=False))
     写(包目录 / "说明" / "使用说明.md", f"# {包名}\n{能力名} 能力说明")
     写(包目录 / "验证场景引用.json", json.dumps({"验证场景引用": [{"场景id": "支持库.资产验证", "目标": 包id, "范围": "资产"}]}, ensure_ascii=False))
     写(包目录 / "__init__.py",
-       f"""from 支持库.适配层.{包名}.实现.实现 import {能力名}
+       f"""from {包id.replace('.', '.')}.实现.实现 import {能力名}
 
 __all__ = ["{能力名}"]
 
@@ -62,6 +63,11 @@ class Test公开调用完整性门禁(unittest.TestCase):
 
     def test_无声明目录跳过(self):
         (self.临时 / "支持库" / "适配层" / "基础组件").mkdir(parents=True)
+        self.assertEqual(找包目录(self.临时), [])
+
+    def test_模板与适配层Provider不进入正式扫描(self):
+        合法包(self.临时, 包名="_模板", 包id="模块库._模板", 公开根="模块库")
+        合法包(self.临时, 包名="提供者", 包id="支持库.适配层.提供者", 公开根="支持库/适配层")
         self.assertEqual(找包目录(self.临时), [])
 
     def test_声明未列能力检出(self):
@@ -137,16 +143,32 @@ class Test公开调用完整性门禁(unittest.TestCase):
         self.assertEqual(违规[0]["缺口类型"], "验证场景-未覆盖能力")
 
     def test_同义能力检出(self):
-        合法包(self.临时, 包名="甲包", 包id="支持库.适配层.甲包", 能力id="甲.测试能力", 能力名="测试能力")
-        合法包(self.临时, 包名="乙包", 包id="支持库.适配层.乙包", 能力id="乙.测试能力", 能力名="测试能力")
+        合法包(self.临时, 包名="甲包", 包id="支持库.后端.甲包", 能力id="甲.测试能力", 能力名="测试能力")
+        合法包(self.临时, 包名="乙包", 包id="支持库.后端.乙包", 能力id="乙.测试能力", 能力名="测试能力")
         类型表 = [条["缺口类型"] for 条 in 运行门禁(self.临时)]
         self.assertIn("同义能力-跨包同名", 类型表)
 
     def test_重复提供者检出(self):
-        合法包(self.临时, 包名="丙包", 包id="支持库.适配层.丙包", 能力id="重复.能力", 能力名="丙能力")
-        合法包(self.临时, 包名="丁包", 包id="支持库.适配层.丁包", 能力id="重复.能力", 能力名="丁能力")
+        合法包(self.临时, 包名="丙包", 包id="支持库.后端.丙包", 能力id="重复.能力", 能力名="丙能力")
+        合法包(self.临时, 包名="丁包", 包id="模块库.丁包", 能力id="重复.能力", 能力名="丁能力", 公开根="模块库")
         类型表 = [条["缺口类型"] for 条 in 运行门禁(self.临时)]
         self.assertIn("重复提供者-同能力id多包", 类型表)
+
+    def test_适配层Provider重复能力不形成公开owner冲突(self):
+        合法包(self.临时, 包名="正式包", 包id="支持库.后端.正式包", 能力id="重复.能力", 能力名="正式能力")
+        合法包(self.临时, 包名="Provider甲", 包id="支持库.适配层.Provider甲", 能力id="重复.能力", 能力名="Provider能力", 公开根="支持库/适配层")
+        合法包(self.临时, 包名="Provider乙", 包id="支持库.适配层.Provider乙", 能力id="重复.能力", 能力名="Provider能力", 公开根="支持库/适配层")
+        类型表 = [条["缺口类型"] for 条 in 运行门禁(self.临时)]
+        self.assertNotIn("重复提供者-同能力id多包", 类型表)
+
+    def test_正式包显式把适配层Provider声明为公开owner时阻断(self):
+        包目录 = 合法包(self.临时)
+        声明路径 = 包目录 / "包声明.json"
+        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+        声明["公开所有者"] = "支持库.适配层.示例提供者"
+        声明路径.write_text(json.dumps(声明, ensure_ascii=False), encoding="utf-8")
+        类型表 = [条["缺口类型"] for 条 in 运行门禁(self.临时)]
+        self.assertIn("提供者-适配层Provider不得成为公开owner", 类型表)
 
     def test_循环注册映射提取(self):
         源码 = '''from 模块库.OCR.实现.OCR import 识别图片文字
@@ -167,16 +189,13 @@ def 注册能力(注册表) -> None:
         self.assertIn("识别图片文字", 导出)
 
     def test_真实扫描如实输出(self):
-        """真实仓库当前存在缺口（能力定义/搜索数据未迁移包），必须如实报告。"""
+        """真实仓库已完成公开能力收口，门禁必须真实通过且不假绿。"""
         违规 = 运行门禁(仓库根)
-        self.assertGreater(len(违规), 0)
-        for 条 in 违规:
-            self.assertIn("缺口类型", 条)
-            self.assertIn("路径", 条)
+        self.assertEqual(违规, [], f"真实仓库不应残留公开调用缺口: {违规}")
         结果 = subprocess.run([sys.executable, "开发工具/公开调用完整性门禁.py"],
                              cwd=仓库根, capture_output=True, text=True)
-        self.assertIn("项违规", 结果.stdout)
-        self.assertEqual(结果.returncode, 1)
+        self.assertIn("公开调用完整性门禁通过", 结果.stdout)
+        self.assertEqual(结果.returncode, 0)
 
 
 if __name__ == "__main__":

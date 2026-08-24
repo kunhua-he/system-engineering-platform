@@ -405,7 +405,7 @@ LightRAG 自带的 `api/lightrag_server.py` 是另一套 API 工厂，包含 `/d
 
 本节不是把 MemVerse 直接改造成系统工程平台，而是把当前源码中可复用的底层机制与产品语义分开，作为支持库、记忆模块、运行核心和统一网关的候选输入。当前目标根未找到独立的 `细探-MemVerse.md` 文件；第 1 行已经声明此前细探结论已吸收到本文件，当前核对以现有正式文档和再次读取的源码为证据，不把缺失的旧文件当作可引用事实。
 
-代码图前置核对结果：目标根没有 `.codegraph/`，`codegraph_explore` 返回“未建立代码图”，因此当前核对使用源码路径、函数、类和行号静态取证回退流程。`project_context`/`development_start` 被错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，并以 `MCP_TARGET_PROJECT_MISMATCH` 拒绝 MemVerse work package；本节不把 MCP 或代码图结果伪装成目标项目验证。
+代码图前置核对结果：目标根当前存在独立 `.codegraph/`，本轮使用目标目录内 CodeGraph CLI 状态和源码路径、函数、类、行号静态取证；图谱仅用于定位，不能代替运行验证。`project_context`/`development_start` 曾错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，本轮不采用该 MCP 证据，也不把 MCP 或代码图结果伪装成目标项目运行验证。
 
 本节中的“现状”是源码事实；“映射/建议”是平台侧设计裁决，不表示 MemVerse 已经拥有这些平台组件，也不表示当前核对修改了生产底座。
 

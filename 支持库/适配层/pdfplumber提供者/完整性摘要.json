@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "717edfc3d702c728f9429a82d4d48194abd5875c06c1a43cdf45a2f393241a12"
+      "sha256": "a5b84c66f38134dd09959918e0eef7127d3cfe6f249168e4c574a300b3bcc268"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "02e5f6bd0cfa5408d0ac7ddcd24bc3e872d29258182db53ce7a0105500e1df9d"
+      "sha256": "64eda5e1f49121be0988789763f295a3a813a9f74830070a0ad59c9cbf8f03c2"
     },
     {
       "路径": "复用决策.json",
@@ -32,28 +32,36 @@
       "sha256": "4f526fff5e2d622d99753e6a8e2a204b245f9f61aacccb4b630a3303d097044f"
     },
     {
+      "路径": "生命周期契约.json",
+      "sha256": "74a25e994fe675df8d01dce90a12004a420e24e43e313d9362eb40370a58e141"
+    },
+    {
       "路径": "示例/示例.pdf",
       "sha256": "0fdd30c0aa67e879eabad47e903472a9304b992b87c815c474f112faa672c038"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "9a3f5c715ae3ffbe66a9b0da45b03e486fc632ba2ed82bb01988fdc3c73573f3"
+      "sha256": "8f3a76dba4e341dacdce38740d08e6d475a025dc9cc49b69500cb9809ee5ed5e"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "09db0d6634f1dd1bde13b42a6bcae980c7e3550af8a7ce6d85e47efbe7e66e44"
+      "sha256": "d38d2e29b108d3a9caf1411c34c33f81fa89c1d1648b6fba608362c650a1cf1c"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "4bb9f5edb9bc04817a0b772534028e3494055480a002002b5549034e53d52365"
+      "sha256": "11d8b6921713670a3099092cb8dec609cdf40db17db5ae08cac2af0a8eef1b59"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "a31b4e0700f93d80d8d5cc520fd376e690130d342fb233f2a717a991ca975976"
+      "sha256": "460f89b3ff6cd3efa55fbe90a09d8242d21e5473cde71a00bd1cfe1dd4cd4b7e"
     },
     {
       "路径": "说明/使用说明.md",
       "sha256": "5c8707904e11e330f49faa6f488057c7a392f87e912f8e2da594723b218f185b"
+    },
+    {
+      "路径": "说明/目录树与命令.md",
+      "sha256": "65eed5815c0d245a0f59ec44b5c5c4c67a59ad395c9a101c3adb3f23a3989974"
     },
     {
       "路径": "资源预算.json",

@@ -615,3 +615,24 @@ worker live stream 是窄恢复协议，不代表 Gateway 所有事件都可重�
 3. 资源释放覆盖 browser tab、进程树、stdio、media spool、SQLite row 和 queue claim，但 owner 分散；现场无残留必须用进程、端口、文件、锁、tab 和数据库 row 探针单独验收。
 4. 文档中应始终区分“源码路径存在”“测试设计覆盖”“当前核对测试通过”和“真实第三方运行态已证实”四个证据等级。
 5. CodeGraph 建图目录是当前核对目标仓库的工程辅助产物；当前核对只改根 `ARCHITECTURE.md`，不把 CodeGraph 数据库当作产品运行时依赖，也不据此替代测试。
+
+## 13.8 2026-08-22 远程对账与代码图增量
+
+| 项目事实 | 证据 | 结论 |
+|---|---|---|
+| 本地 checkout | `git rev-parse HEAD` = `cb563bb16d94930b43ad5a6e003ea2f0a4d569ca`，分支 `main`，origin=`https://github.com/openclaw/openclaw.git` | 与本文顶部快照一致 |
+| 远程 HEAD | 经 4780 代理执行 `git ls-remote` 超过本轮窗口未返回 SHA | **未证**；不声称本地为最新版，不覆盖共享 checkout |
+| CodeGraph 状态 | 目标 `.codegraph` 存在，但 status 报告上次索引被中断、2,914,623 references 待解析 | 只能用于已返回的局部导航；不能把缺失 caller/impact edge 当成不存在 |
+| 当前节点会话证据 | `apps/shared/OpenClawKit/Sources/OpenClawKit/GatewayNodeSession.swift:79-129` 定义 actor、receipt state、admission generation、lifecycle barrier；代码图查询还显示 Android `GatewaySession` 有 117 个调用方 | 节点连接与 Gateway 控制面之间存在独立的幂等/生命周期边界，不能只审计 TypeScript Gateway |
+
+本轮仅使用 shell、Git 和目标 checkout 的 CodeGraph；**未调用其他 MCP**。由于 4780 对 GitHub 的长请求未完成，未建立远程隔离快照；远程版本与当前源码的增量仍待下一轮定点 raw/快照核对。源码未修改。
+
+## 13.9 2026-08-22 远程 HEAD 定点复核（本轮）
+
+| 项目 | 请求与结果 | 证据边界 |
+|---|---|---|
+| 远程仓库 | `https://api.github.com/repos/openclaw/openclaw/commits/main`，经 `http://127.0.0.1:4780`，`curl --connect-timeout 5 --max-time 20` | 代理 TLS 连接超时，curl 退出码 `28`（外层命令退出码 `1`）；未返回 JSON、SHA 或响应正文 |
+| 本地对照 | 本文既有 `cb563bb16d94930b43ad5a6e003ea2f0a4d569ca` checkout 证据保持不变 | 只能说明当前磁盘快照，不能证明 upstream 最新；不执行覆盖、fetch 或整仓下载 |
+| MCP 边界 | 本轮未调用任何 MCP；仅使用 shell、现有文档和受限 HTTP 请求 | CodeGraph（如有）仅属本地导航，不作为远程版本证明 |
+
+本轮远程请求在失败后停止，没有重试或扩大请求范围。下一次远程对账应优先使用可返回明确 HTTP 状态和 SHA 的短请求；在此之前，所有“当前版本”表述必须带本地 checkout 限定。

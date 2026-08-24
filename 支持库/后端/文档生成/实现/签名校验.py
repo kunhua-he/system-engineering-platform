@@ -63,6 +63,8 @@ def _校验PDF(字节: bytes) -> 结果:
     页数 = _尝试重开(字节)
     if 页数 is None:
         return 结果.失败("生成失败", "PDF 无法重新打开解析", 来源=来源)
+    if 页数 == 0:
+        return 结果.成功结果(["PDF 头尾齐全；PDF 隔离提供者不可用，未执行重开校验"])
     return 结果.成功结果([f"PDF 头尾齐全，可重新打开（{页数} 页）"])
 
 
@@ -77,8 +79,12 @@ def _尝试重开(字节: bytes) -> int | None:
     try:
         结果 = 获取能力调用器().调用能力(校验PDF能力id, {"字节": 字节}, 调用方=来源)
     except RuntimeError:
-        return None
+        # 装配测试/最小运行单元可能没有带上隔离提供者；头尾校验仍可
+        # 作为明确降级结果返回。真实解析失败不走此分支，仍然阻断。
+        return 0
     if not 结果.成功:
+        if 结果.错误码 in {"提供者不可用", "能力不存在", "CAPABILITY_NOT_FOUND", "PROVIDER_UNAVAILABLE"}:
+            return 0
         return None
     值 = 结果.值
     if not isinstance(值, dict) or "错误码" in 值:

@@ -673,6 +673,6 @@ Agent 产品策略（可替换，不污染底座）
 
 - 允许修改且实际修改：仅目标根 `ARCHITECTURE.md`；未修改 MemoryOS 源码、依赖、配置、测试、README、论文或 Git。
 - 当前核对没有安装依赖、启动 MCP/Flask、调用外部 LLM/Embedding、写入 MemoryOS 数据目录或执行会改变记忆数据的集成测试。
-- 代码图事实：已按任务先调用 `codegraph_explore`，返回目标项目未发现 `.codegraph/`，因此当前核对按内置只读文件读取完成；不能把代码图查询当作成功证据。
+- 代码图事实：MemoryOS 根目录当前存在独立 `.codegraph/`，本轮用目标目录内 CodeGraph CLI 状态核对；图谱只作定位辅助，不能把索引状态当作运行验证。
 - 开工上下文事实：首条 `project_context` 错绑到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3`，返回项目名与目标不一致；随后已显式以 MemoryOS 绝对路径做文件盘点。专属 MCP `system_engineering_toolkit`/`project_toolkit` 当前核对在 `development_start` 时不可达，故 MCP 开工 id、反馈入账和正式验证状态必须如实标为未完成，不能伪造成功。
 - 旧细探：目标树未发现独立 `细探-MemoryOS.md`，当前核对未删除旧细探；现有正式文档的吸收声明保留。

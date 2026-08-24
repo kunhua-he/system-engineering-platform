@@ -268,7 +268,7 @@ Hub 的 `EventBus` 将 Engine、频道、DM、Bridge、插件和 UI 事件接在
 
 - **当前源码证据**：`core/engine.ts:349-729,2373-2668,2696-2812`、`hub/event-bus.ts:31-218`、`hub/event-bus-capabilities.ts:664-738`、`core/session-manifest/store.ts:237-360`、`lib/task-registry.ts:73-511`、`lib/session-execution-registry.ts:21-125`、`core/plugin-manager.ts:220-245,386-445,491-612,614-800`、`core/provider-registry.ts:489-741`、`server/index.ts:435-547,1285-1369`、`core/mcp/clients/stdio-client.ts:20-180`、`server/bootstrap.ts:32-73`、`lib/terminal/terminal-session-manager.ts:51-180`、`lib/resource-io/providers/url-provider.ts:28-220`。
 - **旧细探状态**：当前工作树没有 `细探-HanaAgent.md`，Git 索引也没有该文件；正式文档第 249、255 行曾引用并声明吸收它。因此当前核对只能以当前源码和现有 `ARCHITECTURE.md` 为证据，不能伪称已读取一个当前不存在的旧笔记；旧笔记若在其他归档位置，应由主协调者另行提供后再复核。
-- **代码图状态**：目标目录没有 `.codegraph/`，`codegraph_explore` 返回“未建立代码图”；当前核对未使用错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3` 的项目上下文结果，也未把任何其他仓库证据写入本文件。
+- **代码图状态**：HanaAgent 根目录当前存在独立 `.codegraph/`，本轮仅用目标目录内 CodeGraph CLI 作定位；当前核对未采用错误绑定到 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3` 的项目上下文结果，也未把任何其他仓库证据写入本文件。
 - **当前文档事实与当前核对映射分离**：已有章节描述“项目是什么”；本章只新增“哪些真实能力可以抽象为底座契约、哪些仍是项目编排”。未因存在 `Agent`、`workflow`、`prompt`、`memory` 等词就认定存在通用运行核心。
 
 ### 3.2 四层边界总图（映射目标，不是现状宣称）
@@ -344,7 +344,7 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 
 | 等级 | 目标 | 必须验证的真实内容 | HanaAgent 当前核对状态 |
 |---|---|---|---|
-| **L0 静态边界** | 证明目录/契约/owner 没有明显越界 | 仅 `ARCHITECTURE.md` 变更；所有证据路径存在；四层映射、唯一 owner、禁止 route 直写和 workflow 非底座声明齐全；代码图不可用必须留痕 | **当前核对可执行**，但不等价于源码行为通过 |
+| **L0 静态边界** | 证明目录/契约/owner 没有明显越界 | 仅 `ARCHITECTURE.md` 变更；所有证据路径存在；四层映射、唯一 owner、禁止 route 直写和 workflow 非底座声明齐全；CodeGraph 仅作定位 | **当前核对可执行**，但不等价于源码行为通过 |
 | **L1 单元/契约** | 证明纯契约和状态机 | `event-bus-capabilities`、`event-bus-request`、`task-registry`、`session-execution-registry`、`execution-lease-registry`、`tool-invocation-permission`、`plugin-manager`；覆盖重复注册、权限拒绝、超时、幂等 release/cancel | 测试文件存在；依赖未安装，执行结果待命令验证 |
 | **L2 组合/持久化** | 证明一个 owner 跨模块可恢复 | manifest SQLite WAL+迁移、JSONL/sidecar、TaskRegistry restart recovery、session ref/locator、plugin contribution cleanup、ResourceAccess 脱敏/审计；重启后读回同一 ID/版本 | 源码有组合链和测试名；未运行，不能宣称通过 |
 | **L3 真实外部边界** | 证明网关到真实 provider/process/service | 启动真实 Server；HTTP/WS auth+scope；Pi provider；MCP child；node-pty；URL SSRF/redirect/size/timeout；CLI/native helper；真实取消、SIGTERM/SIGKILL、进程树/端口清理 | 当前仅有源码/测试契约，未安装依赖且未启动服务 |
@@ -482,7 +482,7 @@ L0-L4 是平台化验收等级，不把某个 Agent workflow 的 happy path 当�
 
 当前核对按“入口 → 关系 → 运行面 → 持久化 → 调度/任务 → 测试/文档”分段读取当前工作树，目标是补齐前几轮文档中的状态与资源结论，而不是重复描述产品功能。
 
-- **代码图状态**：目标仓库没有 `.codegraph/`；在仓库根执行 `codegraph explore "project entrypoints, Electron CLI server hub engine provider tools events JSONL SQLite cron task tests docs architecture"` 返回索引不存在。因此当前核对不能提供 CodeGraph 节点/调用边证据，入口关系改由 `package.json`、入口文件的静态 import、组合根和路由注册源码核对；不能把全文搜索结果冒充代码图关系。
+- **代码图状态**：目标仓库当前存在 `.codegraph/`；本轮在仓库根用 CodeGraph CLI 定位 `project entrypoints, Electron CLI server hub engine provider tools events JSONL SQLite cron task tests docs architecture`，入口关系仍由 `package.json`、入口文件静态 import、组合根和路由注册源码回读确认，不能把图谱或全文搜索结果冒充运行证据。
 - **工作区状态**：基线分支为 `main`，HEAD 为 `c6d0405 chore(release): prepare v0.447.4 digest`。当前核对开始时仅发现根 `ARCHITECTURE.md` 为未跟踪文件；当前核对只更新该文件，未修改源码、配置、锁文件、测试或构建产物。
 - **源码事实**：来自当前核对实际读取的文件和静态关系；可说明实现意图、状态字段、边界和清理路径。
 - **测试存在**：仅说明测试文件/测试策略存在，不说明测试通过。

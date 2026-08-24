@@ -419,3 +419,7 @@ Lua filter 通过 `engineApplyFilter` 执行；Lua 模块另提供 `pandoc.pipe`
 `pandoc` 的真实核心仍是 `输入 → Reader → Pandoc AST → Filter/Transform → Writer → 输出`，但可落地的调用契约还包括：输入先整体读入、文本/二进制分流、filters 串行 JSON/Lua 进程边界、MediaBag 资源策略、PDF 临时目录与外部 engine、`PandocIO`/`PandocPure` 双运行模型，以及 CLI/server 各自的错误表。旧细探关于统一 AST、`pandoc-api-version` 和 filter 的方向有效；当前核对已将“对称扩展”“纯确定性”“GPL 只能独立进程”等过宽或未充分证实的表述收窄为源码可证事实和明确风险。
 
 当前工作树仍为本地 `3.10.1` 快照，远程 main 已到 `3.10.2`。当前核对只更新本文件，未改源码、依赖、测试、配置、旧细探或 Git；未安装、启动、构建、运行完整测试或实测外部进程。后续若要将 Pandoc 接入平台，最低验收契约应显式包含格式白名单、AST API 版本、filter 禁止/允许策略、输入/输出大小、PDF/filter wall-clock timeout、进程组清理、临时目录残留扫描、目标文件原子写入和失败证据。
+
+## 12. 代码地图现状复核（2026-08-22）
+
+此前“目标仓库无 `.codegraph`”是早期审计时的现场状态，不能继续作为当前状态。当前目标根 `/Users/hekunhua/Documents/Agent/github 源码参考/20_文档解析与IR/2026_06_25_document_json_unification/pandoc` 存在独立 `.codegraph/`；在该根执行 `codegraph status` 退出码为 0，返回 233 files、802 nodes、1,689 edges。该索引只用于源码导航，未把代码图状态升级为运行/测试通过证据。

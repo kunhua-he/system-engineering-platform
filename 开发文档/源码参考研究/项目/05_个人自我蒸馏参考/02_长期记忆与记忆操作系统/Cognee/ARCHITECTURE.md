@@ -793,7 +793,7 @@ content_type="skills"
 
 ### 15.1 探索方法、范围和项目地图
 
-- 目标根目录为当前仓库本身；首先检查 `.codegraph`，结果为**不存在**。因此没有 CodeGraph 项目地图、节点或调用链证据，当前核对改用本地目录读取、Glob、rg/Grep、分段完整读取和源码行号定位。不能把任何 CodeGraph 等级或缓存索引状态外推到此仓库。
+- 目标根目录为当前仓库本身；当前检查确认存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位。因此源码事实仍以本地目录读取、Glob、rg/Grep、分段完整读取和源码行号定位为准，不能把 CodeGraph 状态外推为运行验证。
 - 根入口：`cognee/__init__.py` 汇聚 V1 API、V2 memory API、pipeline、migration、observability、agent memory、tools 和关系模型注册；`cognee/__main__.py` 转到 CLI；`pyproject.toml` 注册 `cognee-cli`。
 - 服务入口：`cognee/api/client.py` 创建 FastAPI app、执行 lifespan 迁移/默认用户/过期 run 恢复、注册 `/api/v1/*` 路由；`cognee-mcp/src/server.py` 建立 FastMCP，支持 stdio、SSE、Streamable HTTP、工具搜索和 direct/API client；`cognee-frontend/` 是独立 Next.js 交付面。
 - 领域主链：`api/v1/add` 摄取输入，`api/v1/cognify` 构建按 item 路由的 task resolver，`modules/pipelines/operations/run_tasks.py` 持有一个 logical run，`tasks/storage/add_data_points.py` 跨关系库/图/向量写入，`api/v1/recall/recall.py` 依次合并 session、trace、context、graph、tools。

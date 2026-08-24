@@ -655,7 +655,7 @@ L0-L4 不是按目录机械搬运：`libs/langgraph` 同时包含 L2 Graph API �
 - **源码证据**：`libs/langgraph/langgraph/graph/state.py:131,1177-1401`；`libs/langgraph/langgraph/pregel/main.py:450-477,487-512,708-828`；`libs/langgraph/langgraph/pregel/_retry.py:460-515,573-684`；`libs/langgraph/langgraph/pregel/_executor.py:40-217`；`libs/langgraph/langgraph/runtime.py:124-240`。
 - **持久化/安全证据**：`libs/checkpoint/langgraph/checkpoint/base/__init__.py:176-415,468-589`；`libs/checkpoint/langgraph/checkpoint/serde/jsonplus.py:82-254`；`libs/checkpoint/langgraph/checkpoint/serde/encrypted.py:8-80`；`libs/checkpoint/langgraph/store/base/__init__.py:708-944`；SQLite/Postgres 后端及其 tests。
 - **交付/远程证据**：`libs/cli/langgraph_cli/cli.py:276-465,758-922`；`libs/sdk-py/langgraph_sdk/_sync/runs.py:195-346,925-1037`；`libs/sdk-py/langgraph_sdk/schema.py:23-31,374-380,607-611`；`AGENTS.md` 依赖关系图。
-- **代码图与 MCP 绑定风险**：按任务要求先调用 `system_engineering_toolkit` 的 `project_context`，但该 MCP 返回的根目录是 `/Users/hekunhua/Documents/Agent/PHP/系统工程平台`，随后 `codegraph_explore` 也只查询该平台并明确未命中 LangGraph；它不是目标仓库的代码图证据，已按“错绑阻断”处理，不能写成 LangGraph 事实。此前通过 deferred `project_toolkit` 的查询同样显示目标 LangGraph 没有 `.codegraph/` 索引。本文后续结论因此只采用目标仓库现场源码/测试/AGENTS 证据。
+- **代码图边界**：目标仓库已有独立 `.codegraph/`（本轮 `codegraph status`：490 files / 14,352 nodes / 47,223 edges，索引最新）。本轮只使用目标仓库本地 CLI 作为导航，不使用跨项目 MCP；本文结论仍以目标仓库现场源码/测试/AGENTS 证据为准。
 - **当前核对未执行**：未安装依赖、未启动 API server、未运行 CLI/SDK/SQLite/Postgres 端到端，也未修改源码；故无法把外部服务认证、远程取消、数据库事务隔离、密钥轮换和崩溃恢复列为“真实执行通过”。
 - **剩余风险**：`CompiledStateGraph` 与 stream transformer/durability 的所有内部调用路径仍需后续按具体工作包取证；CLI 所依赖的 API server/runtime、完整远程权限模型、provider 连接池/锁语义和生产密钥管理不在当前仓库闭合；`DeltaChannel` 的复制/裁剪若实现者忽略祖先链会产生静默状态损坏。
 
@@ -916,7 +916,7 @@ configurable.thread_id
 
 ## 17. 当前核对完整审计补录：调用关系、测试面与文档质量
 
-本节记录当前核对按用户指定范围进行的分段读取结果。目标仓库没有 `.codegraph/` 索引；已先尝试 `codegraph explore "StateGraph Pregel ..."`，工具明确返回索引不存在，因此没有自行初始化索引，也没有把代码图结果冒充为调用链证据。以下调用关系来自当前源码逐段核对，范围包括 `libs/langgraph/langgraph`、`libs/checkpoint*`、核心测试、包配置、根 README、`docs/` 和本文件。
+本节记录当前核对按用户指定范围进行的分段读取结果。目标仓库有独立 `.codegraph/` 索引，本轮仅用本地 `codegraph explore` 辅助定位；以下调用关系仍来自当前源码逐段核对，范围包括 `libs/langgraph/langgraph`、`libs/checkpoint*`、核心测试、包配置、根 README、`docs/` 和本文件。
 
 ### 17.1 StateGraph → Pregel 的实际调用关系
 

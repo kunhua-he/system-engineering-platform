@@ -513,3 +513,24 @@ python -m hermes_cli.main doctor
 唯一文档继续有效。
 
 审计完成。
+
+## 24. 2026-08-22 远程对账与当前代码图复核
+
+| 项目事实 | 证据 | 结论 |
+|---|---|---|
+| 本地 checkout | `git rev-parse HEAD` = `23a64a97ec928945b49389e8dfb6d06a11cb0132`，分支 `main`，origin=`https://github.com/NousResearch/hermes-agent.git` | 本文第 22 节的旧锚点 `624723130` 已过期，当前行号必须以本表提交为准 |
+| 远程 HEAD | 通过 `http(s)_proxy=http://127.0.0.1:4780 git ls-remote` 重试；本次返回 `LibreSSL SSL_connect: SSL_ERROR_SYSCALL`，未拿到远程 SHA | **未证**；没有把本地 checkout 宣称为 upstream 最新，也没有覆盖源码树 |
+| CodeGraph | 目标仓库 `.codegraph` 存在；`codegraph status` 显示 7,343 files / 160,462 nodes；`codegraph explore 'AIAgent run_conversation tools registry'` 返回当前源码和调用关系 | **已证静态导航**，索引是工程辅助，不是运行态证明 |
+| 当前主循环调用图 | `run_agent.py:8482` 的 `run_conversation` 有 46 个调用方；`agent/conversation_loop.py:1762` 的同名函数有 3 个调用方，分别覆盖 CLI 与测试/后台路径 | 入口仍是窄腰，但不能只以单个 `AIAgent` 符号推断所有入口行为 |
+
+本轮仅使用 shell、Git 和目标仓库本地 CodeGraph；**未调用其他 MCP**。远程下载/浅克隆因 4780 对 GitHub 的 TLS/长响应不稳定未完成，故本文件保留本地源码证据和明确的远程未确认边界。源码仓库未修改。
+
+## 25. 2026-08-22 远程 HEAD 定点复核（本轮）
+
+| 项目 | 请求与结果 | 证据边界 |
+|---|---|---|
+| 远程仓库 | `https://api.github.com/repos/NousResearch/hermes-agent/commits/main`，经 `http://127.0.0.1:4780`，`curl --connect-timeout 5 --max-time 20` | 代理 TLS 连接超时，curl 退出码 `28`（外层命令退出码 `1`）；未返回 JSON、SHA 或响应正文 |
+| 本地对照 | 现有文档记录的本地 checkout/行号继续有效 | 只能说明当前磁盘快照，不能证明 upstream 最新；不执行覆盖、fetch 或整仓下载 |
+| MCP 边界 | 本轮未调用任何 MCP；仅使用 shell、现有文档和受限 HTTP 请求 | CodeGraph（如有）仅属本地导航，不作为远程版本证明 |
+
+本轮远程请求在失败后停止，没有重试或扩大请求范围。下一次远程对账应优先使用可返回明确 HTTP 状态和 SHA 的短请求；在此之前，所有“当前版本”表述必须带本地 checkout 限定。

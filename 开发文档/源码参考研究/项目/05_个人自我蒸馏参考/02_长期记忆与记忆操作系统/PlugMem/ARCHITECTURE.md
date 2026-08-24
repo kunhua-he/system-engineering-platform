@@ -533,7 +533,7 @@ succeeded/failed/cancelled/timed_out/crashed
 | 开工 id | 首次 `project_context` 返回 `开工id` 为空 | 开工记录不完整；不能编造 id |
 | MCP 实例 | 返回 `project_toolkit`，不是任务指定的 `system_engineering_toolkit` | 错绑事实保留；未将错绑上下文当 PlugMem 证据 |
 | project_context 项目 | 返回“华世王镞_v3”，根目录 `/Users/hekunhua/Documents/Agent/PHP/华世王镞_v3` | 与目标 PlugMem 不一致，按阻断处理 |
-| 代码图 | `codegraph_explore(projectPath=PlugMem)` 明确返回目标根向上没有 `.codegraph/`，不可查询 | 代码图不可用；未冒充代码图成功，源码事实来自目标路径只读核对 |
+| 代码图 | PlugMem 根目录当前存在独立 `.codegraph/`，本轮用目标目录内 CLI 状态核对 | 图谱只作定位辅助；源码事实来自目标路径只读核对，未冒充运行验证 |
 | 目标根 | `/Users/hekunhua/Documents/Agent/github 源码参考/05_个人自我蒸馏参考/02_长期记忆与记忆操作系统/PlugMem` | 已按绝对路径核对 |
 | 修改范围 | 仅追加本文件后续章节 | 未改源码、依赖、配置、测试、README、旧细探或 Git |
 | 运行验证 | 当前核对未安装依赖、未启动服务、未执行 Python/TypeScript 测试或真实 provider | L1-L4 均未验证；文档写入成功不等于实现完成 |

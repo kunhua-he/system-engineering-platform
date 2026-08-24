@@ -35,6 +35,13 @@ from 开发工具.契约编译.聚合契约解析 import 解析聚合契约
     "错误码", "可重试性",
 ]
 
+易语言类型别名 = {
+    "文本": "文本型", "布尔": "逻辑型", "整数": "整数型",
+    "长整数": "长整数型", "双精度数": "双精度数型",
+    "单精度数": "单精度数型", "字典": "字典型", "列表": "列表型",
+    "字节集": "字节集型", "空值": "空值型",
+}
+
 
 @dataclass
 class 编译结果:
@@ -92,6 +99,112 @@ def 提取能力列表(定义: dict[str, Any]) -> list[dict]:
     if 定义.get("能力id"):
         return [定义]
     return []
+
+
+def 标准化易语言类型(对象: Any, *, 值结构: bool = False) -> Any:
+    """只标准化类型字段和值结构中的类型值，不改业务字段/说明文字。"""
+    if isinstance(对象, dict):
+        结果 = {}
+        for 键, 值 in 对象.items():
+            if (键 in {"类型", "数据类型"} or 值结构) and isinstance(值, str):
+                结果[键] = 易语言类型别名.get(值, 值)
+            else:
+                结果[键] = 标准化易语言类型(值, 值结构=(键 == "值结构"))
+        return 结果
+    if isinstance(对象, list):
+        return [标准化易语言类型(值, 值结构=值结构) for 值 in 对象]
+    return 对象
+
+
+def 从现有包生成能力定义(包目录: Path, *, 覆盖: bool = False) -> tuple[Path | None, list[str]]:
+    """从既有包声明与参数契约迁移唯一能力定义。
+
+    这是一次性迁移入口，不读取实现源码，也不覆盖已有定义。历史包的
+    参数契约/包声明是迁移事实输入；行为字段使用保守的显式默认值，后续
+    能力作者可在唯一定义中修订。返回(定义路径,问题列表)，便于批次审计
+    逐包记录无法安全生成的情况。
+    """
+    包目录 = Path(包目录)
+    声明路径 = 包目录 / "包声明.json"
+    契约路径 = 包目录 / "能力契约" / "参数契约.json"
+    定义路径 = 包目录 / "能力定义.json"
+    问题: list[str] = []
+    if not 声明路径.is_file():
+        return None, ["缺少包声明.json"]
+    if not 契约路径.is_file():
+        return None, ["缺少能力契约/参数契约.json"]
+    if 定义路径.exists() and not 覆盖:
+        return 定义路径, ["已有能力定义，按保护规则跳过"]
+    try:
+        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+        契约原文 = json.loads(契约路径.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as 错误:
+        return None, [f"输入 JSON 不可读: {错误}"]
+    能力列表 = 契约原文.get("能力契约") if isinstance(契约原文, dict) else None
+    if not isinstance(能力列表, list) or not 能力列表:
+        return None, ["参数契约缺少非空 能力契约 列表"]
+    包id = 声明.get("包id")
+    if not isinstance(包id, str) or not 包id:
+        return None, ["包声明缺少包id"]
+    版本 = str(声明.get("版本") or "1.0.0")
+    迁移列表: list[dict[str, Any]] = []
+    for 原能力 in 能力列表:
+        if not isinstance(原能力, dict) or not 原能力.get("能力id"):
+            问题.append("存在缺少能力id的契约条目")
+            continue
+        能力id = str(原能力["能力id"])
+        能力版本 = str(原能力.get("版本") or 版本)
+        名称 = 能力id.rsplit(".", 1)[-1]
+        # 只补齐编译器要求的治理字段，不改变参数/返回/错误码事实。
+        行为 = {
+            "修改输入": False,
+            "幂等": True,
+            "副作用": "只读",
+            "排序稳定": True,
+            "时区": "不涉及",
+            "编码": "utf-8",
+            "精度": "不涉及",
+            "空值": "按参数契约处理",
+            "输入上限": "由资源预算约束",
+            "超时可重试": False,
+            "取消": "不支持",
+            "重试条件": "无",
+            "事务边界": "无",
+            "补偿动作": "无",
+            "线程安全": True,
+            "进程安全": True,
+            "资源释放": "按句柄生命周期自动释放",
+            "错误码": "统一",
+            "可重试性": "参数错误不可重试",
+        }
+        迁移列表.append({
+            "能力id": 能力id,
+            "版本": 能力版本,
+            "中文名称": str(原能力.get("中文名称") or 名称),
+            "说明": str(原能力.get("说明") or 名称),
+            "参数": 原能力.get("参数") if isinstance(原能力.get("参数"), list) else [],
+            "返回": 标准化易语言类型(原能力.get("返回") or "结果型"),
+            "错误码": 原能力.get("错误码") if isinstance(原能力.get("错误码"), list) and 原能力.get("错误码") else ["参数不合法"],
+            "行为": 行为,
+            "提供者": {"默认": 包id, "版本": f">={能力版本}"},
+        })
+    if 问题:
+        return None, 问题
+    定义 = {
+        "包id": 包id,
+        "版本": 版本,
+        "说明": str(声明.get("说明") or ""),
+        "能力列表": 迁移列表,
+        "迁移来源": {
+            "参数契约": "能力契约/参数契约.json",
+            "包声明": "包声明.json",
+            "规则": "批次5：只从现有契约与声明迁移，不读取实现源码",
+        },
+    }
+    if not 校验能力定义(定义):
+        定义路径.write_text(json.dumps(定义, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        return 定义路径, []
+    return None, ["迁移结果未通过能力定义结构校验"]
 
 
 def 校验能力定义(定义: dict[str, Any]) -> list[str]:

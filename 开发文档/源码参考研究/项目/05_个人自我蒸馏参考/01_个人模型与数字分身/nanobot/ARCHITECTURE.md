@@ -454,7 +454,7 @@ cd tui && bun test
 
 ## 13. 后续：通用底座映射裁决
 
-本节不是把 nanobot 的 Agent 策略直接搬进平台，而是把当前源码中可复用的契约、资源边界和运行时机制映射到四个职责面。`codegraph_explore` 已按目标根目录尝试，但该仓库没有 `.codegraph/` 索引；以下证据因此全部来自本地当前工作树源码、测试/规则文件和本档案，不能把代码图缺失冒充为图谱证据。
+本节不是把 nanobot 的 Agent 策略直接搬进平台，而是把当前源码中可复用的契约、资源边界和运行时机制映射到四个职责面。nanobot 根目录当前存在独立 `.codegraph/`，本轮只用目标目录内 CodeGraph CLI 作定位；以下证据仍全部来自本地当前工作树源码、测试/规则文件和本档案，不能把图谱状态冒充为运行验证。
 
 ### 13.1 四层职责
 
@@ -644,7 +644,7 @@ nanobot 主要是 asyncio 单事件循环，不是一个通用线程池 Agent：
 | Cron JSON/action journal/dirty snapshot/腐坏备份 | `cron/service.py:216-256,351-565` | L1 Cron module + L3 scheduler | **吸收/待核**：保留不覆盖原则；补 async stop、幂等副作用和 crash 注入 |
 | Gateway process identity/lease/TERM→KILL | `process_runtime.py:115-194,205-242,334-358`; `gateway/runtime.py` | L0 process supervisor + L3 gateway | **吸收**：进程身份和进程组；补跨平台实测 |
 | Dream/Goal/subagent/模型 fallback/提示模板 | `agent/memory.py`, `session/goal_state.py`, `agent/subagent.py`, `providers/factory.py` | L4 策略模块 | **隔离**：只借鉴治理接口，不进公共底座 |
-| 代码图证据 | 目标仓没有 `.codegraph/`，`codegraph_explore` 明确返回未索引 | 不作为架构事实证据 | **待核**：若需要图谱，用户另行初始化；当前核对不伪造图证据 |
+| 代码图证据 | 目标根存在独立 `.codegraph/`，目标目录内 CLI 状态可读 | 仅作为定位辅助，不作为运行事实证据 | **静态定位可用**；仍需源码回读与运行验证 |
 
 ## 20. 当前核对证据、验证边界与剩余风险
 

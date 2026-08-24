@@ -192,7 +192,8 @@ class Test装配接入环境缓存(unittest.TestCase):
             str(结果.问题列表),
         )
         证据 = self.证据行()
-        self.assertEqual(证据[-1]["类型"], "命中", "空锁走系统解释器命中路径")
+        self.assertEqual(证据[-1]["类型"], "失败", "空锁必须走 fail-closed 失败路径")
+        self.assertEqual(证据[-1]["错误码"], "依赖锁为空")
         self.assertEqual(证据[-1]["摘要"], "")
 
     def test_仅外部应用提供者真实命中路径(self):

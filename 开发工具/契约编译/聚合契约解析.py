@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-正式类型表 = {"文本", "整数", "浮点数", "布尔", "字典", "列表", "资源引用",
-              "空", "字节", "数字"}
+from 公共契约.基础类型.类型表 import 正式类型表
+
 任意类型 = "任意"
 未约束类型 = "未约束"
 

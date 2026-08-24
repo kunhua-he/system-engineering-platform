@@ -97,6 +97,27 @@ class Test依赖与生命周期审计(unittest.TestCase):
         self.assertTrue(any("缺健康探针" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
         self.assertTrue(any("缺停止入口" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
 
+    def test_生命周期契约入口与身份篡改检出(self):
+        """契约不能靠任意非空文本假绿：入口必须存在且提供者身份必须匹配。"""
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        提供者目录 = 构造合法提供者(目录)
+        (提供者目录 / "实现" / "提供者.py").write_text(
+            "def 执行任务(请求):\n    return 请求\n", encoding="utf-8")
+        (提供者目录 / "能力定义.json").write_text(json.dumps({
+            "包id": 包id, "版本": "1.0.0", "能力列表": [],
+        }, ensure_ascii=False), encoding="utf-8")
+        (提供者目录 / "生命周期契约.json").write_text(json.dumps({
+            "提供者id": "别的提供者", "健康探针": {
+                "方式": "随便写", "入口": "不存在.py", "成功条件": "x", "失败码": "y"
+            }, "资源模型": "调用内临时资源", "释放策略": "这是一段足够长但没有释放证据的文本",
+        }, ensure_ascii=False), encoding="utf-8")
+        摘要 = 生成完整性摘要(提供者目录, 包id=包id, 版本="1.0.0")
+        (提供者目录 / "完整性摘要.json").write_text(
+            json.dumps(摘要, ensure_ascii=False), encoding="utf-8")
+        结果 = 审计单个提供者(提供者目录)
+        self.assertTrue(any("缺健康探针" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
+        self.assertTrue(any("缺停止入口" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
+
     def test_真实审计现有提供者输出(self):
         """真实跑 worktree 现有提供者目录，输出审计报告（不 mock）。"""
         结果列表, 跳过列表 = 审计全部(系统根)
