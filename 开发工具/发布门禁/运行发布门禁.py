@@ -157,14 +157,21 @@ def _监听端口快照() -> set[str]:
     try:
         结果 = subprocess.run(
             ["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired) as 错误:
         raise RuntimeError(f"无法获取监听端口快照: {错误}") from 错误
     if 结果.returncode != 0:
-        raise RuntimeError(f"监听端口快照失败（退出码 {结果.returncode}）: {结果.stderr[:200]}")
+        错误输出 = 结果.stderr or b""
+        if isinstance(错误输出, bytes):
+            错误输出 = 错误输出.decode("utf-8", errors="replace")
+        raise RuntimeError(f"监听端口快照失败（退出码 {结果.returncode}）: {错误输出[:200]}")
+    原始输出 = 结果.stdout or b""
+    if isinstance(原始输出, bytes):
+        # lsof 的命令/路径字段可能来自系统原始字节，不能让本地编码污染发布门禁。
+        原始输出 = 原始输出.decode("utf-8", errors="replace")
     端点表: set[str] = set()
-    for 行 in (结果.stdout or "").splitlines()[1:]:
+    for 行 in 原始输出.splitlines()[1:]:
         列 = 行.split()
         if len(列) < 9:
             continue
