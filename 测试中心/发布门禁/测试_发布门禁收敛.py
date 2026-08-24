@@ -11,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
@@ -110,6 +111,19 @@ def _MCP合规(临时根: Path, 模块名: str = "破坏模块") -> dict:
 
 class Test发布门禁收敛(unittest.TestCase):
     """发布门禁逐包权威合规接入与反向破坏一致性。"""
+
+    def test_监听端口快照容忍非UTF8系统输出(self) -> None:
+        """系统进程字段可能含非 UTF-8 字节，门禁不能因此误报资源残留。"""
+        from 开发工具.发布门禁 import 运行发布门禁 as 门禁
+
+        模拟结果 = type("模拟结果", (), {
+            "returncode": 0,
+            "stdout": b"COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n"
+                       b"svc 1 user 3u IPv4 0 0 0 127.0.0.1:45678 (LISTEN)\xff\xfe\n",
+            "stderr": b"",
+        })()
+        with patch.object(门禁.subprocess, "run", return_value=模拟结果):
+            self.assertEqual(门禁._监听端口快照(), {"127.0.0.1:45678"})
 
     def test_齐全包_合规_MCP_门禁三通过(self) -> None:
         """齐全正式包：组件合规 13/13、MCP 合规成功、门禁逐包 13/13。"""
