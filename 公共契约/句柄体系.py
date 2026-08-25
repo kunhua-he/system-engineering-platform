@@ -1,7 +1,8 @@
 """公共句柄契约与唯一状态机实现。"""
 from __future__ import annotations
 import time
-import uuid
+import secrets
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,6 +18,17 @@ from typing import Any
 失效原因_回收 = "回收"
 失效原因_释放 = "释放"
 失效原因_超时 = "超时"
+句柄位数 = 6
+
+
+def 是合法句柄id(句柄id: str) -> bool:
+    """公共对外句柄格式：固定六位数字字符串，允许前导零。"""
+    return isinstance(句柄id, str) and len(句柄id) == 句柄位数 and 句柄id.isascii() and 句柄id.isdecimal()
+
+
+def 生成句柄id() -> str:
+    """生成固定六位数字 ID；资源表负责校验活动句柄冲突。"""
+    return f"{secrets.randbelow(1000000):06d}"
 
 @dataclass
 class 句柄:
@@ -42,11 +54,18 @@ class 句柄体系:
     def __init__(self) -> None:
         self.句柄表: dict[str, 句柄] = {}
         self.回收证据表: list[dict[str, Any]] = []
+        self._锁 = threading.Lock()
 
     def 创建句柄(self, *, 句柄类型: str, 资源id: str, 项目id: str = "", 所有者: str = "", 版本: str = "") -> 句柄:
-        对象 = 句柄(uuid.uuid4().hex[:16], 句柄类型, 资源id, 项目id, 所有者, 状态_有效, time.strftime("%Y-%m-%d %H:%M:%S"), 版本=版本)
-        self.句柄表[对象.句柄id] = 对象
-        return 对象
+        with self._锁:
+            for _ in range(100):
+                句柄id = 生成句柄id()
+                if 句柄id not in self.句柄表:
+                    对象 = 句柄(句柄id, 句柄类型, 资源id, 项目id, 所有者, 状态_有效,
+                                time.strftime("%Y-%m-%d %H:%M:%S"), 版本=版本)
+                    self.句柄表[句柄id] = 对象
+                    return 对象
+        raise RuntimeError("六位句柄已耗尽")
 
     def 校验(self, 句柄id: str, *, 项目id: str = "", 所有者: str = "") -> tuple[bool, str]:
         对象 = self.句柄表.get(句柄id)
@@ -73,4 +92,4 @@ class 句柄体系:
     def 状态快照(self) -> dict[str, Any]:
         return {"句柄总数": len(self.句柄表), "活跃句柄数": self.活跃句柄数(), "回收证据数": len(self.回收证据表)}
 
-__all__ = ["句柄", "句柄体系", "句柄类型_读取", "句柄类型_修改事务", "句柄类型_资源", "句柄类型_任务", "句柄类型_会话", "状态_已创建", "状态_有效", "状态_已失效", "失效原因_过期", "失效原因_回收", "失效原因_释放", "失效原因_超时"]
+__all__ = ["句柄", "句柄体系", "是合法句柄id", "生成句柄id", "句柄位数", "句柄类型_读取", "句柄类型_修改事务", "句柄类型_资源", "句柄类型_任务", "句柄类型_会话", "状态_已创建", "状态_有效", "状态_已失效", "失效原因_过期", "失效原因_回收", "失效原因_释放", "失效原因_超时"]
