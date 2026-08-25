@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from 公共契约.句柄体系 import 句柄类型_资源, 句柄体系
+from 公共契约.句柄体系 import 句柄类型_资源, 句柄体系, 是合法句柄id
 
 
 class 资源句柄服务:
@@ -19,6 +19,8 @@ class 资源句柄服务:
              元数据: dict[str, Any] | None = None) -> dict[str, Any]:
         if not isinstance(句柄id, str) or not 句柄id.strip():
             raise ValueError("句柄不能为空")
+        if not 是合法句柄id(句柄id):
+            raise ValueError("句柄必须是六位数字")
         已有 = self.句柄体系.句柄表.get(句柄id)
         if 已有 is None:
             已有 = self.句柄体系.创建句柄(
