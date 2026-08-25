@@ -207,8 +207,13 @@ class 后端核心:
             return {}
         return 数据 if isinstance(数据, dict) else {}
 
-    def 能力目录(self, *, 关键词: str = "") -> dict:
-        """Skill 式第一层：只返回包级树和紧凑简介，不返回命令参数。"""
+    def 能力目录(self, *, 关键词: str = "", 偏移: int = 0, 限制: int = 20) -> dict:
+        """Skill 式第一层：分页返回包级树和紧凑简介，不返回命令参数。"""
+        if isinstance(偏移, bool) or not isinstance(偏移, int) or 偏移 < 0:
+            偏移 = 0
+        if isinstance(限制, bool) or not isinstance(限制, int) or 限制 < 1:
+            限制 = 20
+        限制 = min(限制, 100)
         包表: dict[str, dict] = {}
         for 能力id in self.注册表.能力id列表:
             实现 = self.注册表.获取(能力id)
@@ -227,9 +232,14 @@ class 后端核心:
                 包id: 条目 for 包id, 条目 in 包表.items()
                 if 关键词 in 包id or 关键词 in 条目["名称"] or 关键词 in 条目["简介"]
             }
+        包条目表 = [条目 for _, 条目 in sorted(包表.items())]
+        总数 = len(包条目表)
+        当前页 = 包条目表[偏移:偏移 + 限制]
+        下一偏移 = 偏移 + len(当前页)
         支持库树: dict[str, list[dict]] = {}
         模块列表: list[dict] = []
-        for 包id, 条目 in sorted(包表.items()):
+        for 条目 in 当前页:
+            包id = 条目["包id"]
             if 包id.startswith("支持库."):
                 分段 = 包id.split(".")
                 领域 = 分段[1] if len(分段) > 2 else "其他"
@@ -240,7 +250,12 @@ class 后端核心:
             "使用顺序": ["选择包", "查看包详情", "查看能力详情", "调用能力"],
             "支持库": [{"领域": 领域, "包": 包列表} for 领域, 包列表 in sorted(支持库树.items())],
             "模块库": 模块列表,
-            "包数": len(包表),
+            "包数": len(当前页),
+            "总包数": 总数,
+            "偏移": 偏移,
+            "限制": 限制,
+            "下一偏移": 下一偏移 if 下一偏移 < 总数 else None,
+            "是否完成": 下一偏移 >= 总数,
         }
 
     def 包详情(self, 包id: str) -> dict | None:

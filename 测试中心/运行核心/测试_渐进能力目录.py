@@ -45,13 +45,26 @@ class 渐进能力目录测试(unittest.TestCase):
         响应 = self.请求("能力目录")
         self.assertTrue(响应["成功"])
         目录 = 响应["值"]
-        self.assertEqual(目录["包数"], 51)
+        self.assertEqual(目录["包数"], 20)
+        self.assertEqual(目录["总包数"], 51)
+        self.assertEqual(目录["偏移"], 0)
+        self.assertEqual(目录["下一偏移"], 20)
+        self.assertFalse(目录["是否完成"])
         self.assertEqual(目录["使用顺序"], ["选择包", "查看包详情", "查看能力详情", "调用能力"])
         条目表 = [条目 for 领域 in 目录["支持库"] for 条目 in 领域["包"]] + 目录["模块库"]
-        self.assertEqual(len(条目表), 51)
+        self.assertEqual(len(条目表), 20)
         for 条目 in 条目表:
             self.assertEqual(set(条目), {"包id", "名称", "简介", "能力数"})
             self.assertLessEqual(len(条目["简介"]), 60)
+
+    def test_目录支持分页直到完成(self) -> None:
+        第一页 = self.请求("能力目录", {"限制": 7})["值"]
+        第二页 = self.请求("能力目录", {"偏移": 第一页["下一偏移"], "限制": 7})["值"]
+        第一批 = [条目["包id"] for 领域 in 第一页["支持库"] for 条目 in 领域["包"]] + [条目["包id"] for 条目 in 第一页["模块库"]]
+        第二批 = [条目["包id"] for 领域 in 第二页["支持库"] for 条目 in 领域["包"]] + [条目["包id"] for 条目 in 第二页["模块库"]]
+        self.assertEqual(len(第一批), 7)
+        self.assertEqual(len(第二批), 7)
+        self.assertTrue(set(第一批).isdisjoint(第二批))
 
     def test_包详情只返回命令目录(self) -> None:
         响应 = self.请求("包详情", {"包id": "模块库.文档读取"})
