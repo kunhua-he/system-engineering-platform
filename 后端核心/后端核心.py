@@ -21,7 +21,8 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
-from 运行核心.能力调用.运行上下文.上下文 import 运行上下文
+from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
+from 运行核心.资源协调 import 资源句柄服务
 
 _装配模板: 能力注册表 | None = None
 _装配锁 = threading.Lock()
@@ -51,6 +52,17 @@ class 后端核心:
         self.停止标记 = False
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
+        self.资源句柄服务 = 资源句柄服务()
+
+    def 资源状态(self, 句柄: str, *, 项目id: str = "", 所有者: str = "") -> dict | None:
+        return self.资源句柄服务.状态(句柄, 项目id=项目id, 所有者=所有者)
+
+    def 资源续租(self, 句柄: str, *, 租约秒: float = 300,
+                 项目id: str = "", 所有者: str = "") -> dict:
+        return self.资源句柄服务.续租(句柄, 租约秒=租约秒, 项目id=项目id, 所有者=所有者)
+
+    def 资源关闭(self, 句柄: str, *, 项目id: str = "", 所有者: str = "") -> dict:
+        return self.资源句柄服务.关闭(句柄, 项目id=项目id, 所有者=所有者)
 
     def 启用自动排空(self, 排空超时秒: float = 3.0) -> None:
         """启用自动有状态排空：调用前后自动计数，异常路径也减。"""
@@ -126,7 +138,11 @@ class 后端核心:
                 return 结果.失败("外部不可访问", "排空中，拒绝新请求", 来源="后端核心")
             排空活动 = True
         try:
-            return self._调用内部(能力id, 参数, 上下文)
+            全局上下文管理器.进入(上下文)
+            try:
+                return self._调用内部(能力id, 参数, 上下文)
+            finally:
+                全局上下文管理器.退出()
         finally:
             if 排空活动:
                 self.排空.结束请求()  # 异常路径也减计数
