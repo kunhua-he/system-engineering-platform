@@ -11,6 +11,8 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
 
 环境变量前缀 = "环境变量:"
 钥匙串前缀 = "钥匙串:"
@@ -20,6 +22,85 @@ import subprocess
 错误码_密钥缺失 = "SECRET_MISSING"
 错误码_钥匙串不可用 = "KEYCHAIN_UNAVAILABLE"
 引用模式 = re.compile(r"\{([^{}]*)\}")
+
+
+@dataclass
+class 环境变量句柄:
+    """一次 .env 配置会话；值只存在句柄内存，关闭后立即清空。"""
+
+    _变量表: dict[str, str]
+    来源: str = ""
+    _已关闭: bool = False
+
+    def 读取(self, 变量名: str) -> tuple[bool, str, str]:
+        if self._已关闭:
+            return (False, "", "HANDLE_CLOSED")
+        if not isinstance(变量名, str) or not 变量名 or not 变量名.isidentifier():
+            return (False, "", 错误码_引用不合法)
+        值 = self._变量表.get(变量名)
+        return (True, 值, 错误码_成功) if 值 else (False, "", 错误码_密钥缺失)
+
+    def 关闭(self) -> None:
+        self._变量表.clear()
+        self._已关闭 = True
+
+    def __enter__(self) -> "环境变量句柄":
+        return self
+
+    def __exit__(self, _类型, _值, _回溯) -> None:
+        self.关闭()
+
+    def __del__(self) -> None:
+        # 兜底释放；调用方应优先显式关闭或使用 with。
+        self.关闭()
+
+
+def _解析环境文件(路径: Path) -> tuple[bool, dict[str, str], str]:
+    """解析 .env 的 KEY=VALUE 行，不执行表达式、不展开变量、不修改 os.environ。"""
+    变量表: dict[str, str] = {}
+    try:
+        行列表 = 路径.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as 错误:
+        return (False, {}, f"ENV_READ_FAILED:{错误.__class__.__name__}")
+    for 行号, 原行 in enumerate(行列表, 1):
+        行 = 原行.strip()
+        if not 行 or 行.startswith("#"):
+            continue
+        if 行.startswith("export "):
+            行 = 行[7:].lstrip()
+        if "=" not in 行:
+            return (False, {}, f"ENV_SYNTAX_INVALID:{行号}")
+        变量名, 值 = (片段.strip() for 片段 in 行.split("=", 1))
+        if not 变量名.isidentifier():
+            return (False, {}, f"ENV_NAME_INVALID:{行号}")
+        值 = 值.strip()
+        if len(值) >= 2 and 值[0] == 值[-1] and 值[0] in ("'", '"'):
+            值 = 值[1:-1]
+        变量表[变量名] = 值
+    return (True, 变量表, 错误码_成功)
+
+
+def 打开环境配置(文件路径: str = ".env") -> tuple[bool, 环境变量句柄 | None, str]:
+    """打开 .env 为内存句柄；不覆盖进程环境，不返回明文到日志。"""
+    if not isinstance(文件路径, str) or not 文件路径.strip():
+        return (False, None, 错误码_引用不合法)
+    成功, 变量表, 错误码 = _解析环境文件(Path(文件路径).expanduser())
+    return (成功, 环境变量句柄(变量表, 文件路径) if 成功 else None, 错误码)
+
+
+def 读取环境配置(句柄: 环境变量句柄, 变量名: str) -> tuple[bool, str, str]:
+    """按变量名读取句柄；同一服务商多个 key 通过不同变量名隔离。"""
+    if not isinstance(句柄, 环境变量句柄):
+        return (False, "", 错误码_引用不合法)
+    return 句柄.读取(变量名)
+
+
+def 关闭环境配置(句柄: 环境变量句柄) -> tuple[bool, None, str]:
+    """关闭并清空句柄内存。"""
+    if not isinstance(句柄, 环境变量句柄):
+        return (False, None, 错误码_引用不合法)
+    句柄.关闭()
+    return (True, None, 错误码_成功)
 
 
 def 拆分引用(引用: str) -> tuple[str, list[str]]:
