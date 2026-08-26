@@ -32,6 +32,7 @@ class 运行上下文:
     权限范围: list[str] = field(default_factory=list)
     来源地址: str = ""
     操作id: str = ""
+    句柄: str = ""
 
     def __post_init__(self) -> None:
         if not self.请求id:
@@ -45,7 +46,7 @@ class 运行上下文:
             "能力id": self.能力id, "包版本": self.包版本, "契约版本": self.契约版本,
             "提供者": self.提供者, "父请求id": self.请求id,
             "权限范围": list(self.权限范围), "来源地址": self.来源地址,
-            "操作id": self.操作id,
+            "操作id": self.操作id, "句柄": self.句柄,
         }
         字段表.update(覆盖字段)
         return 运行上下文(**字段表)
@@ -57,7 +58,7 @@ class 运行上下文:
             "能力id": self.能力id, "包版本": self.包版本, "契约版本": self.契约版本,
             "提供者": self.提供者, "父请求id": self.父请求id,
             "权限范围": list(self.权限范围), "来源地址": self.来源地址,
-            "操作id": self.操作id,
+            "操作id": self.操作id, "句柄": self.句柄,
         }
 
     def 事件字段(self) -> dict[str, Any]:
@@ -67,7 +68,7 @@ class 运行上下文:
             "模块id": self.模块id, "版本": self.包版本, "契约版本": self.契约版本,
             "提供者": self.提供者, "用户id": self.用户id,
             "会话id": self.会话id, "任务id": self.任务id,
-            "来源地址": self.来源地址, "操作id": self.操作id,
+            "来源地址": self.来源地址, "操作id": self.操作id, "句柄": self.句柄,
         }
 
     @classmethod
