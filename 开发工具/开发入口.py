@@ -56,22 +56,23 @@ def 查看契约(能力id: str) -> dict[str, Any]:
     """查看契约与参数返回。"""
     from 开发工具.契约编译.契约编译器 import 校验契约结构
     结果: dict[str, Any] = {"能力id": 能力id, "找到": False}
-    for 契约文件 in (系统根 / "支持库").rglob("能力契约/*.json"):
-        try:
-            数据 = json.loads(契约文件.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        条目表 = 数据.get("能力契约", [数据] if isinstance(数据, list) else [])
-        if not 条目表 and isinstance(数据, dict) and "能力id" in 数据:
-            条目表 = [数据]
-        for 条目 in 条目表:
-            if 条目.get("能力id") == 能力id:
-                问题 = 校验契约结构(条目)
-                结果.update({"找到": True, "版本": 条目.get("版本", ""),
-                            "参数": 条目.get("参数", []), "返回": 条目.get("返回", ""),
-                            "错误码": 条目.get("错误码", []), "结构问题": 问题,
-                            "来源": str(契约文件)})
-                return 结果
+    for 根目录 in [系统根 / "支持库", 系统根 / "模块库"]:
+        for 契约文件 in 根目录.rglob("能力契约/*.json"):
+            try:
+                数据 = json.loads(契约文件.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            条目表 = 数据.get("能力契约", [数据] if isinstance(数据, list) else [])
+            if not 条目表 and isinstance(数据, dict) and "能力id" in 数据:
+                条目表 = [数据]
+            for 条目 in 条目表:
+                if 条目.get("能力id") == 能力id:
+                    问题 = 校验契约结构(条目)
+                    结果.update({"找到": True, "版本": 条目.get("版本", ""),
+                                "参数": 条目.get("参数", []), "返回": 条目.get("返回", ""),
+                                "错误码": 条目.get("错误码", []), "结构问题": 问题,
+                                "来源": str(契约文件)})
+                    return 结果
     return 结果
 
 
