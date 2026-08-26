@@ -1,6 +1,6 @@
 import unittest
 
-from 支持库.核心.类型转换 import 文本转整数, 文本转逻辑, 整数转文本, 数值转文本
+from 支持库.后端.数据操作支持库.类型转换 import 文本转整数, 文本转逻辑, 整数转文本, 数值转文本
 
 
 class 测试类型转换(unittest.TestCase):

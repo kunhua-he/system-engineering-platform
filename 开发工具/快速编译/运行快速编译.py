@@ -147,9 +147,9 @@ def 检查包(目标: Path, *, 执行样例: bool = False, 执行外部: bool = 
         退出码 = 20 if any("owner" in 项 or "装配" in 项 for 项 in 问题) else 10
     else:
         退出码 = 0
-    if 执行样例 and 退出码 == 0 and str(声明.get("包id")) == "支持库.核心.类型转换":
+    if 执行样例 and 退出码 == 0 and str(声明.get("包id")) == "支持库.后端.数据操作支持库.类型转换":
         try:
-            from 支持库.核心.类型转换 import 文本转整数
+            from 支持库.后端.数据操作支持库.类型转换 import 文本转整数
             结果 = 文本转整数("123")
             if not 结果.成功 or 结果.值 != 123:
                 问题.append("确定性样例失败: 文本转整数('123')")
