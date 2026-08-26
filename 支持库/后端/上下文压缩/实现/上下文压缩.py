@@ -1,41 +1,34 @@
 """上下文压缩原子能力实现（不对外暴露，只经包级中文入口调用）。
 
 职责：对话历史的 token 估算与压缩（借鉴 Claude Code compact + Codex auto_compact）。
-额度原则（华哥口径）：默认不限制；调用时可通过参数配置额度。
-- 压缩阈值：默认 None（内置默认 8000 token），调用方可配置。
-- 摘要长度上限：默认 None（不限制），调用方可配置。
+额度原则：默认不限制；调用时可通过参数配置额度。
 压缩策略：保留最近 N 条完整消息，更早消息合并为摘要。
-只做估算与压缩，不调用模型；摘要生成由调用方/提供者完成。
+只做估算与压缩，不调用模型。
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 from 公共契约.基础类型.结果类型 import 结果
 
-默认压缩阈值 = 8000   # token
+默认压缩阈值 = 8000
 
 
 def _估算文本token(文本: str) -> int:
     """中文约 1 token/字（保守 0.6），英文约 4 字符/token。"""
     if not 文本:
         return 0
-    # 简单估算：中文按 1 字 ≈ 1 token，英文按 4 字符 ≈ 1 token
     中文字数 = sum(1 for c in 文本 if ord(c) > 127)
     英文字符数 = len(文本) - 中文字数
     return int(中文字数 * 0.8 + 英文字符数 / 4) + 1
 
 
 def 估算token数(文本: str = None) -> 结果:
-    """估算文本 token 数。返回 {token数, 字符数}。"""
     if not isinstance(文本, str):
         return 结果.失败("参数不合法", "文本必须是非空字符串", 来源="上下文压缩")
     return 结果.成功结果({"token数": _估算文本token(文本), "字符数": len(文本)})
 
 
 def 估算消息token数(消息列表: list = None) -> 结果:
-    """估算消息列表 token 数（含角色开销）。返回 {token数, 消息数}。"""
     if not isinstance(消息列表, list) or not 消息列表:
         return 结果.失败("参数不合法", "消息列表必须是非空列表", 来源="上下文压缩")
     总数 = 0
@@ -43,7 +36,7 @@ def 估算消息token数(消息列表: list = None) -> 结果:
         if not isinstance(消息, dict):
             continue
         内容 = str(消息.get("content", ""))
-        总数 += _估算文本token(内容) + 4  # 角色/格式开销
+        总数 += _估算文本token(内容) + 4
     return 结果.成功结果({"token数": 总数, "消息数": len(消息列表)})
 
 
@@ -51,7 +44,8 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
              保留最近条数: int = None, 摘要长度上限: int = None, 摘要模式: str = None) -> 结果:
     """压缩对话历史：超阈值时，保留最近 N 条完整，更早消息合并为摘要。
 
-    额度原则：压缩阈值 默认 None（内置 8000）；摘要长度上限 默认 None（不限制）。
+    额度原则：压缩阈值/摘要长度上限 默认 None（内置 8000/不限制），调用方可配置。
+    超限不是拒绝，是触发压缩的信号（由调用方决定是否压缩后重试）。
     返回 {已压缩, 压缩前token, 压缩后token, 消息列表, 摘要}。
     """
     if not isinstance(消息列表, list) or not 消息列表:
@@ -71,7 +65,6 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
 
     保留列表 = 消息列表[-保留条数:]
     早期列表 = 消息列表[:-保留条数]
-    # 合并摘要：角色:内容 拼接
     摘要文本 = "\n".join(
         f"{m.get('role', 'user')}: {m.get('content', '')}" for m in 早期列表 if isinstance(m, dict)
     )
@@ -79,9 +72,7 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
         if 模式 == "截断":
             摘要文本 = 摘要文本[:摘要长度上限] + ("…" if len(摘要文本) > 摘要长度上限 else "")
         else:
-            # 拼接模式：按 token 上限截断
             if _估算文本token(摘要文本) > 摘要长度上限:
-                摘要文本 = 摘要文本[:摘要长度上限 * 2]  # 粗略字符截断
                 摘要文本 = 摘要文本[:摘要长度上限 * 2] + "…"
 
     新消息列表 = [{"role": "system", "content": f"[历史摘要] {摘要文本}"}] + 保留列表 if 摘要文本 else list(保留列表)
