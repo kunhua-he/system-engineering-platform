@@ -12,8 +12,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
+import uuid
 from typing import Any, Callable
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -34,6 +37,20 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 默认超时秒 = 1800                            # 华哥口径：不申报默认 30 分钟（1800 秒），模块/支持库应主动申报
 内存安全阈值 = 0.80                              # 系统内存占用安全阈值（80%）
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
+
+
+def _包申报超时() -> int:
+    """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""
+    try:
+        import json
+        声明路径 = os.path.join(os.path.dirname(__file__), "..", "包声明.json")
+        with open(声明路径, encoding="utf-8") as f:
+            申报 = json.load(f).get("句柄超时秒")
+        if isinstance(申报, int) and 申报 > 0:
+            return 申报
+    except Exception:
+        pass
+    return 默认超时秒
 
 
 def _失败(错误码: str, 消息: str) -> 结果:
@@ -105,14 +122,15 @@ def _登记连接(连接类型: str, 配置: dict, *, 超时秒: int, 所有者:
         if 守卫 is not None:
             return 守卫
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"模型连接-{连接类型}", 所有者=所有者)
+        有效超时 = 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()
         连接表[对象.句柄id] = {
             "类型": 连接类型, "配置": dict(配置), "创建时间": time.time(),
-            "最后活动时间": time.time(), "超时秒": 超时秒 or 默认超时秒, "释放函数": None,
+            "最后活动时间": time.time(), "超时秒": 有效超时, "释放函数": None,
         }
         return 结果.成功结果({"句柄": 对象.句柄id, "连接类型": 连接类型,
                                 "模型": 配置.get("模型名") or 配置.get("模型"),
-                                "部署形态": 配置.get("部署形态") or "本地", "超时秒": 超时秒 or 默认超时秒,
-                                "说明": "句柄无人使用将自动释放，可续租"})
+                                "部署形态": 配置.get("部署形态") or "本地", "超时秒": 有效超时,
+                                "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续租，可显式释放"})
 
 
 def _取连接(句柄id: str) -> tuple[dict[str, Any] | None, str]:
@@ -357,13 +375,14 @@ def 启动本地模型(模型路径: str = None, 启动器: str = None, 模型�
             return 守卫
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"本地模型-{类型}", 所有者="")
         # 预留连接登记（真实进程拉起由适配层 Provider 完成，这里只登记生命周期）
+        有效超时 = 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()
         连接表[对象.句柄id] = {
             "类型": 类型, "配置": dict(配置), "创建时间": time.time(),
-            "最后活动时间": time.time(), "超时秒": 超时秒 or 默认超时秒,
+            "最后活动时间": time.time(), "超时秒": 有效超时,
             "释放函数": _终止本地进程,
         }
         return 结果.成功结果({"句柄": 对象.句柄id, "模型类型": 类型, "启动器": 启动器名,
-                                "模型路径": 模型路径, "端口": 端口, "超时秒": 超时秒 or 默认超时秒,
+                                "模型路径": 模型路径, "端口": 端口, "超时秒": 有效超时,
                                 "说明": "本地模型已登记生命周期，真实进程由适配层 Provider 拉起"})
 
 
