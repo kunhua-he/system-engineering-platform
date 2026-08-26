@@ -875,6 +875,34 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     except Exception as 错误:
         检查("工程缓存无Python源码", False, f"异常: {错误}")
 
+    # 示例独立制品必须绑定当前来源并具备可重算的整体摘要。
+    try:
+        制品目录 = 系统根 / "示例项目" / "可双击演示" / "产物文件夹" / "20260822-demo"
+        来源路径 = 制品目录 / "制品来源.json"
+        摘要路径 = 制品目录 / "制品完整性摘要.json"
+        清单路径 = 制品目录 / "编译清单.json"
+        if not (来源路径.is_file() and 摘要路径.is_file() and 清单路径.is_file()):
+            raise ValueError("缺少制品来源、制品摘要或编译清单")
+        来源 = json.loads(来源路径.read_text(encoding="utf-8"))
+        摘要 = json.loads(摘要路径.read_text(encoding="utf-8"))
+        清单 = json.loads(清单路径.read_text(encoding="utf-8"))
+        提交 = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=系统根, capture_output=True, text=True,
+            timeout=15, check=True,
+        ).stdout.strip()
+        if 来源.get("提交") != 提交 or 清单.get("来源提交") != 提交:
+            raise ValueError(f"制品来源提交 {来源.get('提交')} 与当前 {提交} 不一致")
+        if not 摘要.get("文件清单") or not 摘要.get("制品摘要"):
+            raise ValueError("制品完整性摘要缺少文件清单或整体摘要")
+        from 开发工具.项目编译.项目编译器 import _制品文件摘要
+        实际摘要 = _制品文件摘要(制品目录)
+        if 实际摘要.get("制品摘要") != 摘要.get("制品摘要"):
+            raise ValueError("制品完整性摘要与真实文件不一致")
+        检查("示例制品来源与摘要", True,
+             f"提交 {提交[:12]}；文件 {摘要['文件数']}；摘要 {摘要['制品摘要'][:12]}")
+    except Exception as 错误:
+        检查("示例制品来源与摘要", False, f"异常: {错误}")
+
     # 24 个旧过渡顶层目录不得存在
     try:
         旧过渡目录表 = ["加载器", "异步任务", "有状态排空", "控制调用", "网关", "诊断中心",

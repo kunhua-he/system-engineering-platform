@@ -101,6 +101,13 @@ class 测试项目编译器(unittest.TestCase):
         编译项目(Path("示例项目/可双击演示/开发文件夹"), 制品)
         锁 = json.loads((制品 / "依赖锁.json").read_text(encoding="utf-8"))
         self.assertTrue(锁["依赖闭包"])
+        来源 = json.loads((制品 / "制品来源.json").read_text(encoding="utf-8"))
+        摘要 = json.loads((制品 / "制品完整性摘要.json").read_text(encoding="utf-8"))
+        清单 = json.loads((制品 / "编译清单.json").read_text(encoding="utf-8"))
+        self.assertEqual(来源["项目id"], "示例项目.可双击演示")
+        self.assertEqual(清单["来源提交"], 来源["提交"])
+        self.assertEqual(清单["制品摘要文件"], "制品完整性摘要.json")
+        self.assertGreater(摘要["文件数"], 0)
         环境 = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         结果 = subprocess.run(
             ["python3.14", "-B", str(制品 / "运行入口" / "启动.py"), "--帮助"],

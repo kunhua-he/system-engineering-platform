@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,45 @@ from 开发工具.项目编译.正式包索引 import 构建索引, 校验显式
 运行时适配文件 = ("__init__.py", "脱敏模式.py", "系统探针.py", "适配契约.py")
 依赖锁文件名 = "依赖锁.json"
 编译器版本 = "1.2.0"
+
+
+def _来源指纹() -> dict[str, str]:
+    """记录编译输入对应的 Git 提交和工作区指纹，避免旧制品冒充当前源码。"""
+    def 执行(命令: list[str]) -> str:
+        try:
+            结果 = subprocess.run(
+                命令, cwd=系统根, capture_output=True, text=True, timeout=15, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return 结果.stdout.strip() if 结果.returncode == 0 else ""
+
+    提交 = 执行(["git", "rev-parse", "HEAD"])
+    状态 = 执行(["git", "status", "--porcelain=v1", "-z"])
+    return {
+        "提交": 提交 or "未知",
+        "工作区摘要": hashlib.sha256(状态.encode("utf-8")).hexdigest(),
+        "工作区状态": "干净" if not 状态 else "含未提交变更",
+    }
+
+
+def _制品文件摘要(目录: Path) -> dict[str, Any]:
+    """对制品文件做稳定清单摘要；元数据文件不纳入自身摘要。"""
+    文件表 = []
+    for 文件 in sorted(目录.rglob("*")):
+        if not 文件.is_file() or 文件.name in {"制品来源.json", "制品完整性摘要.json", "编译清单.json"}:
+            continue
+        if 文件.suffix in {".pyc", ".pyo"} or "__pycache__" in 文件.parts:
+            continue
+        文件表.append({
+            "路径": 文件.relative_to(目录).as_posix(),
+            "sha256": hashlib.sha256(文件.read_bytes()).hexdigest(),
+        })
+    汇总 = hashlib.sha256()
+    for 项 in 文件表:
+        汇总.update(项["路径"].encode("utf-8")); 汇总.update(项["sha256"].encode("ascii"))
+    return {"摘要算法": "sha256", "文件数": len(文件表), "文件清单": 文件表,
+            "制品摘要": 汇总.hexdigest()}
 
 
 def _读取(路径: Path, 默认: Any = None) -> Any:
@@ -293,6 +333,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     )
     (启动器目录 / "__init__.py").write_text('"""独立项目运行入口。"""\n', encoding="utf-8")
     (启动器目录 / "启动网页.command").chmod(0o755)
+    来源 = _来源指纹()
     清单 = {"制品类型": "独立项目", "编译器版本": 编译器版本, "项目id": 声明["项目id"],
            "来源目录": "编译输入项目", "能力引用": sorted(能力集合), "模块引用": sorted(选中模块),
            "支持库引用": sorted(选中支持库), "开发网关": "不包含",
@@ -301,6 +342,9 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
            "运行时目录": list(固定运行时目录),
            "依赖锁": 依赖锁文件名,
            "源页面摘要": 输入摘要.hexdigest(), "源页面修订号": [int(页面.get("修订号", 0)) for 页面 in 页面表]}
+    清单["来源提交"] = 来源["提交"]
+    清单["来源工作区摘要"] = 来源["工作区摘要"]
+    清单["来源工作区状态"] = 来源["工作区状态"]
     (输出目录 / "编译清单.json").write_text(json.dumps(清单, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (输出目录 / 依赖锁文件名).write_text(json.dumps({
         "格式": "独立项目依赖锁",
@@ -315,6 +359,15 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
         ],
         "依赖闭包": 依赖锁,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (输出目录 / "制品来源.json").write_text(json.dumps({
+        "格式": "独立制品来源绑定", "编译器版本": 编译器版本,
+        "项目id": 声明["项目id"], **来源,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (输出目录 / "制品完整性摘要.json").write_text(
+        json.dumps(_制品文件摘要(输出目录), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    清单["制品摘要文件"] = "制品完整性摘要.json"
+    清单["来源绑定文件"] = "制品来源.json"
+    (输出目录 / "编译清单.json").write_text(json.dumps(清单, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 清单
 
 

@@ -24,6 +24,7 @@ from 支持库.后端.资源管理 import (
 )
 from 运行核心.权威状态 import 权威状态
 from 运行核心.资源id编码 import 校验资源id, 安全资源id
+from 公共契约.句柄体系 import 生成句柄id
 from 运行核心.进程身份 import 进程身份
 
 
@@ -85,7 +86,7 @@ class 资源协调器:
         """打开读取句柄：锁定当前快照版本（旧读取者读旧快照）。"""
         资源id = self._资源id(资源id)
         数据, 版本, _令牌 = self.读取基础版本(资源id)
-        句柄id = uuid.uuid4().hex[:16]
+        句柄id = 生成句柄id()
         self.状态.保存句柄(
             句柄id=句柄id, 句柄类型="读取句柄", 资源id=资源id,
             项目id=项目id, 所有者=所有者, 状态="有效", 版本=版本,
@@ -134,7 +135,7 @@ class 资源协调器:
         资源id = self._资源id(资源id)
         数据, 版本, 令牌 = self.读取基础版本(资源id)
         事务id = uuid.uuid4().hex[:16]
-        句柄id = uuid.uuid4().hex[:16]
+        句柄id = 生成句柄id()
         self.状态.保存句柄(
             句柄id=句柄id, 句柄类型="修改事务句柄", 资源id=资源id,
             项目id=项目id, 所有者=所有者, 状态="有效", 版本=版本,
