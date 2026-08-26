@@ -15,7 +15,7 @@ def 加载模块(名称: str, 相对路径: str):
     规格.loader.exec_module(模块)
     return 模块
 
-实现模块 = 加载模块("python_pptx提供者_实现", "实现/演示文稿.py")
+实现模块 = 加载模块("python_pptx提供者_实现", "实现/办公文档支持库.演示文稿.py")
 入口模块 = 加载模块("python_pptx提供者_入口", "__init__.py")
 最小PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 
@@ -156,8 +156,8 @@ class Test注册能力(unittest.TestCase):
         self.assertEqual(能力id列表, ["内部.演示文稿.解析", "内部.演示文稿.生成"])
         # Provider 不能夺取公开 owner；公开能力由 支持库/后端/演示文稿
         # 与 支持库/后端/文档生成 分别持有。
-        self.assertNotIn("演示文稿.解析演示文稿", 能力id列表)
-        self.assertNotIn("演示文稿.生成演示文稿", 能力id列表)
+        self.assertNotIn("办公文档支持库.演示文稿.解析演示文稿", 能力id列表)
+        self.assertNotIn("办公文档支持库.演示文稿.生成演示文稿", 能力id列表)
         self.assertEqual(([参数["名称"] for 参数 in 记录[0].参数], [参数["名称"] for 参数 in 记录[1].参数]), (["文件路径", "格式", "最大幻灯片数", "最大字节数", "超时秒"], ["内容参数"]))
 
 

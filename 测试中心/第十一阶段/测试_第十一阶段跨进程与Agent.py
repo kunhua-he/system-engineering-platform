@@ -212,7 +212,7 @@ class Test依赖防火墙(unittest.TestCase):
         import ast as _ast
         来源文件 = 系统根 / "运行核心" / "_违规样例.py"
         来源文件.write_text(
-            "from 支持库.后端.资源管理.实现.资源管理 import 原子写入\n", encoding="utf-8")
+            "from 支持库.后端.系统核心支持库.资源管理.实现.资源管理 import 原子写入\n", encoding="utf-8")
         try:
             结果2 = 审计依赖(系统根 / "运行核心")
             self.assertTrue(any("实现" in 违规.规则 for 违规 in 结果2.违规列表),
@@ -235,15 +235,15 @@ class TestAgent开发闭环(unittest.TestCase):
         搜索 = 执行操作("搜索能力", {"关键词": "分割"})
         self.assertTrue(搜索["成功"])
         self.assertGreaterEqual(len(搜索["数据"]), 1)
-        契约 = 执行操作("查看契约", {"能力id": "文本处理.分割文本"})
+        契约 = 执行操作("查看契约", {"能力id": "数据操作支持库.文本处理.分割文本"})
         self.assertTrue(契约["数据"]["找到"])
         调用 = 执行操作("真实调用能力", {
-            "能力id": "文本处理.分割文本",
+            "能力id": "数据操作支持库.文本处理.分割文本",
             "参数": {"文本": "甲，乙", "分隔符": "，"}})
         self.assertTrue(调用["成功"], 调用)
         self.assertEqual(调用["数据"]["值"], ["甲", "乙"])
         self.assertIn("请求id", 调用["数据"]["证据链"])
-        诊断 = 执行操作("查看已知失败", {"能力id": "文本处理.分割文本"})
+        诊断 = 执行操作("查看已知失败", {"能力id": "数据操作支持库.文本处理.分割文本"})
         self.assertIn("成功", 诊断)
 
     def test_命令行入口复用同一实现(self):

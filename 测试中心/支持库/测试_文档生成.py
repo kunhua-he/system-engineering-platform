@@ -1,4 +1,4 @@
-"""支持库.后端.文档生成 原子能力真实测试。
+"""支持库.后端.办公文档支持库.文档生成 原子能力真实测试。
 
 覆盖：四格式最小有效文件 + 签名校验（ZIP 成员/PDF 头尾）、中文内容、
 生成→第三方库重开往返、缺库降级（monkeypatch → 提供者不可用）、
@@ -19,7 +19,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 系统根 = Path(__file__).resolve().parents[2]
 
 from 公共契约.基础类型.结果类型 import 结果
-from 支持库.后端.文档生成 import 生成DOCX, 生成PDF, 生成PPTX, 生成XLSX, 校验签名
+from 支持库.后端.办公文档支持库.文档生成 import 生成DOCX, 生成PDF, 生成PPTX, 生成XLSX, 校验签名
 
 
 class 假调用器:
@@ -221,8 +221,8 @@ class Test生成PPTX(测试基类):
         from pptx import Presentation
 
         演示文稿 = Presentation(io.BytesIO(结果.值.字节))
-        self.assertEqual(len(演示文稿.slides), 1)
-        页面 = 演示文稿.slides[0]
+        self.assertEqual(len(办公文档支持库.演示文稿.slides), 1)
+        页面 = 办公文档支持库.演示文稿.slides[0]
         全部文本 = "".join(
             形状.text for 形状 in 页面.shapes if 形状.has_text_frame
         )

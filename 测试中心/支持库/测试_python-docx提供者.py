@@ -115,8 +115,8 @@ class TestPythonDocx提供者(unittest.TestCase):
         能力id列表 = 注册表.能力id列表
         # 注册表按能力 id 稳定排序；顺序不是公开契约。
         self.assertEqual(能力id列表, sorted(["内部.文字文档.解析", "内部.文字文档.生成"]))
-        self.assertNotIn("文字文档.解析文字文档", 能力id列表)
-        self.assertNotIn("文字文档.生成文字文档", 能力id列表)
+        self.assertNotIn("办公文档支持库.文字文档.解析文字文档", 能力id列表)
+        self.assertNotIn("办公文档支持库.文字文档.生成文字文档", 能力id列表)
         self.assertEqual(
             [参数["名称"] for 参数 in 注册表.获取("内部.文字文档.解析").参数],
             ["文件路径", "格式", "最大字节数", "超时秒"],

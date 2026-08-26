@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 # 支持库包级中文公开入口（禁止深入 实现/ 目录）
-from 支持库.后端.资源管理 import (
+from 支持库.后端.系统核心支持库.资源管理 import (
     创建唯一运行目录, 原子写入,
 )
 from 运行核心.权威状态 import 权威状态

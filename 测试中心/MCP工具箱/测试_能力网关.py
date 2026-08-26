@@ -70,7 +70,7 @@ class 能力网关测试(unittest.TestCase):
         self.assertTrue(数据["成功"])
         self.assertGreater(数据["数量"], 0)
         能力表 = 数据["能力表"]
-        self.assertTrue(any("文件系统.读取文件" == 能力["能力id"] for 能力 in 能力表))
+        self.assertTrue(any("文件系统支持库.文件操作.读取文件" == 能力["能力id"] for 能力 in 能力表))
         # 每条能力带 能力id/名称/包id/参数
         for 能力 in 能力表:
             self.assertIn("能力id", 能力)
@@ -83,11 +83,11 @@ class 能力网关测试(unittest.TestCase):
         self.assertGreater(数据["数量"], 0)
 
     def test_查看契约返回参数与返回(self) -> None:
-        数据 = self._GET(self._编码URL("/能力/契约/文件系统.读取文件"))
+        数据 = self._GET(self._编码URL("/能力/契约/文件系统支持库.文件操作.读取文件"))
         self.assertTrue(数据["成功"])
         契约 = 数据["契约"]
         self.assertTrue(契约["找到"])
-        self.assertEqual(契约["能力id"], "文件系统.读取文件")
+        self.assertEqual(契约["能力id"], "文件系统支持库.文件操作.读取文件")
         # 参数含 文件路径（必填）与 编码
         参数表 = {参数["名称"]: 参数 for 参数 in 契约["参数"]}
         self.assertIn("文件路径", 参数表)
@@ -100,7 +100,7 @@ class 能力网关测试(unittest.TestCase):
 
     def test_执行能力返回统一结果与证据链(self) -> None:
         数据 = self._POST({
-            "能力id": "文件系统.读取文件",
+            "能力id": "文件系统支持库.文件操作.读取文件",
             "参数": {"文件路径": "公共契约/能力契约/契约.py", "编码": "utf-8"},
         })
         self.assertTrue(数据["成功"])

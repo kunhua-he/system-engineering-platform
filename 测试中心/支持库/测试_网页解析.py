@@ -12,7 +12,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 支持库.后端.网页解析 import 提取网页标题, 提取网页正文
+from 支持库.后端.网络通信支持库.网页解析 import 提取网页标题, 提取网页正文
 系统根 = Path(__file__).resolve().parents[2]
 from 模块库.网页分析 import 提取网页信息
 

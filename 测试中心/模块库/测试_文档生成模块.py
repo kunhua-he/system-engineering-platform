@@ -40,7 +40,7 @@ class Test生成文档(unittest.TestCase):
         from 支持库.适配层.openpyxl提供者 import 注册能力 as 注册xlsx
         from 支持库.适配层.python_pptx提供者 import 注册能力 as 注册pptx
         from 支持库.适配层.reportlab提供者 import 注册能力 as 注册pdf
-        from 支持库.后端.文档生成 import 注册能力 as 注册文档生成
+        from 支持库.后端.办公文档支持库.文档生成 import 注册能力 as 注册文档生成
 
         注册docx(注册表)
         注册xlsx(注册表)
@@ -148,7 +148,7 @@ class Test生成文档(unittest.TestCase):
 
         注册能力(注册表)
         self.assertEqual(len(注册表.条目), 1)
-        self.assertEqual(注册表.条目[0].能力id, "文档生成.生成文档")
+        self.assertEqual(注册表.条目[0].能力id, "办公文档支持库.文档生成.生成文档")
         self.assertEqual(注册表.条目[0].包id, "模块库.文档生成")
 
 
