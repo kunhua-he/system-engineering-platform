@@ -387,7 +387,7 @@ def 启动本地模型(模型路径: str = None, 启动器: str = None, 模型�
 
 
 def _终止本地进程(句柄id: str) -> None:
-    """句柄释放时终止对应本地模型进程，并核查回收所有资源（killpg 杀进程树 + 端口清理 + 幂等）。"""
+    """句柄释放时终止对应本地模型进程。资源回收由状态机（句柄体系）失效时统一维护。"""
     import subprocess as _subprocess
     进程 = 本地进程表.pop(句柄id, None)
     if 进程 is not None:
@@ -395,22 +395,24 @@ def _终止本地进程(句柄id: str) -> None:
             进程.terminate()
         except Exception:
             pass
-    # 核查回收：登记过的资源（PID/端口）统一补回收一趟
-    try:
-        from 支持库.后端.资源回收确认 import 核查回收
-        核查回收(句柄=句柄id)
-    except Exception:
-        pass
 
 
 def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
-    """把真实拉起的子进程绑定到句柄（由适配层 Provider 调用）。"""
+    """把真实拉起的子进程绑定到句柄，并登记到状态机统一回收（由适配层 Provider 调用）。"""
     if not isinstance(句柄, str) or not 句柄.strip():
         return _失败("参数不合法", "句柄必须是非空字符串")
     连接 = 连接表.get(句柄)
     if 连接 is None:
         return _失败("句柄失效", f"句柄 {句柄} 不存在")
     本地进程表[句柄] = 进程对象
+    # 登记到状态机（句柄体系）：进程资源，失效时统一回收
+    try:
+        pid = getattr(进程对象, "pid", None)
+        端口 = 连接.get("配置", {}).get("端口")
+        if isinstance(pid, int):
+            句柄系统.登记资源(句柄, 资源类型="进程", PID=pid, 端口=端口 if isinstance(端口, int) else None)
+    except Exception:
+        pass
     return 结果.成功结果({"句柄": 句柄, "已绑定进程": True})
 
 
