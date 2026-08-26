@@ -127,12 +127,18 @@ def 连接会话存储(库路径: str = None, 超时秒: int = None) -> 结果:
 
 
 def 释放句柄(句柄: str = None) -> 结果:
-    """释放句柄（幂等）。"""
+    """释放句柄（幂等）。关闭 SQLite 连接 + 核查回收所有资源。"""
     if not isinstance(句柄, str) or not 句柄.strip():
         return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
     with 锁:
         连接表.pop(句柄, None)
         句柄系统.失效(句柄, "释放")
+    # 核查回收登记过的资源（SQLite 连接等）
+    try:
+        from 支持库.后端.资源回收确认 import 核查回收
+        核查回收(句柄=句柄)
+    except Exception:
+        pass
     return 结果.成功结果({"句柄": 句柄, "已释放": True})
 
 
@@ -160,6 +166,12 @@ def _回收过期句柄() -> None:
         if 空闲 > 连接.get("超时秒", 默认超时秒):
             连接表.pop(句柄id, None)
             句柄系统.失效(句柄id, "超时")
+            # 核查回收登记过的资源（SQLite 连接等）
+            try:
+                from 支持库.后端.资源回收确认 import 核查回收
+                核查回收(句柄=句柄id)
+            except Exception:
+                pass
 
 
 def _更新活动(句柄: str) -> None:

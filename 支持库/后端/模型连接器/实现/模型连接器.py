@@ -387,7 +387,7 @@ def 启动本地模型(模型路径: str = None, 启动器: str = None, 模型�
 
 
 def _终止本地进程(句柄id: str) -> None:
-    """句柄释放时终止对应本地模型进程。"""
+    """句柄释放时终止对应本地模型进程，并核查回收所有资源（killpg 杀进程树 + 端口清理 + 幂等）。"""
     import subprocess as _subprocess
     进程 = 本地进程表.pop(句柄id, None)
     if 进程 is not None:
@@ -395,6 +395,12 @@ def _终止本地进程(句柄id: str) -> None:
             进程.terminate()
         except Exception:
             pass
+    # 核查回收：登记过的资源（PID/端口）统一补回收一趟
+    try:
+        from 支持库.后端.资源回收确认 import 核查回收
+        核查回收(句柄=句柄id)
+    except Exception:
+        pass
 
 
 def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
