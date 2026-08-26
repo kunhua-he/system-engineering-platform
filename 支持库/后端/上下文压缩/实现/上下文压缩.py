@@ -65,15 +65,16 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
 
     保留列表 = 消息列表[-保留条数:]
     早期列表 = 消息列表[:-保留条数]
+    # 摘要预算：早期内容必须显著压缩（默认压缩到早期 token 的 20%，可配上限）
+    早期token = sum(_估算文本token(str(m.get("content", ""))) + 4 for m in 早期列表 if isinstance(m, dict))
+    摘要预算 = 摘要长度上限 if isinstance(摘要长度上限, int) and 摘要长度上限 > 0 else max(200, int(早期token * 0.2))
     摘要文本 = "\n".join(
         f"{m.get('role', 'user')}: {m.get('content', '')}" for m in 早期列表 if isinstance(m, dict)
     )
-    if 摘要长度上限 is not None and isinstance(摘要长度上限, int) and 摘要长度上限 > 0:
-        if 模式 == "截断":
-            摘要文本 = 摘要文本[:摘要长度上限] + ("…" if len(摘要文本) > 摘要长度上限 else "")
-        else:
-            if _估算文本token(摘要文本) > 摘要长度上限:
-                摘要文本 = 摘要文本[:摘要长度上限 * 2] + "…"
+    # 真正压缩：摘要必须显著小于早期原文
+    摘要文本 = 摘要文本[:摘要预算]
+    if len(摘要文本) >= 摘要预算:
+        摘要文本 = 摘要文本 + "…"
 
     新消息列表 = [{"role": "system", "content": f"[历史摘要] {摘要文本}"}] + 保留列表 if 摘要文本 else list(保留列表)
     压缩后token = _估算文本token(摘要文本) + sum(_估算文本token(str(m.get("content", ""))) + 4 for m in 保留列表 if isinstance(m, dict))
