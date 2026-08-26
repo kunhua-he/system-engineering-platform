@@ -24,6 +24,20 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 默认超时秒 = 1800   # 华哥口径：不申报默认 30 分钟，模块应主动申报自身需要多久
 锁 = threading.Lock()
 
+
+def _包申报超时() -> int:
+    """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""
+    try:
+        import json
+        声明路径 = os.path.join(os.path.dirname(__file__), "..", "包声明.json")
+        with open(声明路径, encoding="utf-8") as f:
+            申报 = json.load(f).get("句柄超时秒")
+        if isinstance(申报, int) and 申报 > 0:
+            return 申报
+    except Exception:
+        pass
+    return 默认超时秒
+
 # 句柄 → 连接信息（库路径等），由 连接会话存储() 登记
 句柄系统 = 句柄体系()
 连接表: dict[str, dict] = {}
@@ -107,9 +121,9 @@ def 连接会话存储(库路径: str = None, 超时秒: int = None) -> 结果:
         _回收过期句柄()
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id="会话存储", 所有者="")
         连接表[对象.句柄id] = {"库路径": 路径, "最后活动时间": time.time(),
-                               "超时秒": 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else 默认超时秒}
+                               "超时秒": 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()}
     return 结果.成功结果({"句柄": 对象.句柄id, "超时秒": 连接表[对象.句柄id]["超时秒"],
-                            "说明": "句柄默认 30 分钟超时（未申报时），可续约，可显式释放；传 超时秒>0 覆盖"})
+                            "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续约，可显式释放；传 超时秒>0 覆盖"})
 
 
 def 释放句柄(句柄: str = None) -> 结果:
