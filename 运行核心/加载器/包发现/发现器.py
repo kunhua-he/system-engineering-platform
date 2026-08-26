@@ -38,6 +38,13 @@ def 扫描目录(根目录: Path, 包类型: str) -> list[包声明]:
     for 声明路径 in sorted(根目录.rglob(声明文件名)):
         if any(部分.startswith("_") for 部分 in 声明路径.parts):
             continue
+        # 功能域分组 v2：跳过聚合支持库内部的子域包声明（子域只是目录分组，不是独立包）
+        if 包类型 == "支持库":
+            相对部分 = 声明路径.relative_to(根目录).parts
+            # 形如 后端/系统核心支持库/会话存储/包声明.json（≥4 部分）→ 子域，跳过
+            # 形如 后端/系统核心支持库/包声明.json（3 部分）→ 聚合库，保留
+            if len(相对部分) >= 4:
+                continue
         声明 = 加载声明文件(声明路径)
         if 声明.类型 in 模块类别集合:
             声明列表.append(声明)

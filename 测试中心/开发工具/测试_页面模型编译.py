@@ -72,10 +72,10 @@ class 测试页面模型编译(unittest.TestCase):
             源 = Path(临时) / "源.json"
             源.write_text(json.dumps(页面([{
                 "组件id": "按钮", "对象id": "按钮", "类型": "按钮", "属性": {},
-                "事件": [{"名称": "点击", "能力id": "文本处理.统计长度"}],
+                "事件": [{"名称": "点击", "能力id": "数据操作支持库.文本处理.统计长度"}],
             }]), ensure_ascii=False), encoding="utf-8")
             结果 = 编译(源, 输出)
-            self.assertEqual(结果["能力依赖"], ["文本处理.统计长度"])
+            self.assertEqual(结果["能力依赖"], ["数据操作支持库.文本处理.统计长度"])
 
 
 if __name__ == "__main__":

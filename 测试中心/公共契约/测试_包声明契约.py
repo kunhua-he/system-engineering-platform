@@ -47,7 +47,7 @@ class Test包声明契约(unittest.TestCase):
     def test_加载声明文件(self):
         样例 = Path(__file__).resolve().parents[2] / "支持库/后端/文件系统/包声明.json"
         声明 = 加载声明文件(样例)
-        self.assertEqual(声明.包id, "支持库.后端.文件系统")
+        self.assertEqual(声明.包id, "支持库.后端.文件系统支持库.文件操作")
         self.assertGreaterEqual(len(声明.能力), 9)
 
 

@@ -99,7 +99,7 @@ def 建收敛组件() -> Path:
                     "每分钟重启次数": 2, "空闲回收时间": 30}, ensure_ascii=False),
         encoding="utf-8")
     (目录 / "复用决策.json").write_text(
-        json.dumps({"搜索词": "合规", "候选能力id": ["支持库.后端.文件系统.读取文件"]},
+        json.dumps({"搜索词": "合规", "候选能力id": ["支持库.后端.文件系统支持库.文件操作支持库.文件操作.读取文件"]},
                    ensure_ascii=False), encoding="utf-8")
     (目录 / "验证场景引用.json").write_text(
         json.dumps({"验证场景引用": [{"场景id": "模块.装配验证",

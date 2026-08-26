@@ -19,8 +19,8 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 模块库.自修复工具 import 创建修复工作区, 获取当前提交哈希, 回滚修复, 验证修复
-from 支持库.后端.文件系统 import 清理全部临时资源
-from 支持库.后端.资源管理 import 创建内容摘要
+from 支持库.后端.文件系统支持库.文件操作 import 清理全部临时资源
+from 支持库.后端.系统核心支持库.资源管理 import 创建内容摘要
 
 
 def 运行命令(命令列表: list[str], 工作目录: str) -> subprocess.CompletedProcess:
@@ -33,8 +33,8 @@ def 装配能力调用器() -> None:
     from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
     from 支持库.适配层.Git提供者 import 注册能力 as 注册Git
     from 支持库.适配层.本地进程适配器 import 本地进程适配器
-    from 支持库.后端.文件系统 import 注册能力 as 注册文件系统
-    from 支持库.后端.资源管理 import 注册能力 as 注册资源管理
+    from 支持库.后端.文件系统支持库.文件操作 import 注册能力 as 注册文件系统
+    from 支持库.后端.系统核心支持库.资源管理 import 注册能力 as 注册资源管理
     from 模块库.自修复工具 import 注册能力 as 注册自修复
 
     注册表 = 能力注册表()
@@ -229,7 +229,7 @@ class Test自修复工具(unittest.TestCase):
 
     def test_零残留(self):
         """创建全程后：无 worktree、登记临时资源已可清理（宿主目录由清理方/运行器 teardown 兜底）。"""
-        from 支持库.后端.文件系统.实现.文件系统 import _临时资源登记表
+        from 支持库.后端.文件系统支持库.文件操作支持库.文件操作.实现.文件系统 import _临时资源登记表
         登记前 = list(_临时资源登记表)
         创建 = 创建修复工作区(
             str(self.仓库), self.补丁(), self.验证命令(), "修复提交")

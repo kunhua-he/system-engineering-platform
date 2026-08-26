@@ -64,12 +64,12 @@ class Test文档解析模块(unittest.TestCase):
         from 支持库.适配层.python_pptx提供者 import 注册能力 as 注册pptx
         from 支持库.适配层.pdfplumber提供者 import 注册能力 as 注册pdf
         from 支持库.适配层.LibreOffice提供者 import 注册能力 as 注册libre
-        from 支持库.后端.资源管理 import 注册能力 as 注册资源管理
+        from 支持库.后端.系统核心支持库.资源管理 import 注册能力 as 注册资源管理
         # Provider 只注册内部实现能力；组合模块调用的公开能力由后端 owner 注册。
-        from 支持库.后端.文字文档 import 注册能力 as 注册文字文档
-        from 支持库.后端.表格文档 import 注册能力 as 注册表格文档
-        from 支持库.后端.演示文稿 import 注册能力 as 注册演示文稿
-        from 支持库.后端.PDF文档 import 注册能力 as 注册PDF文档
+        from 支持库.后端.办公文档支持库.文字文档 import 注册能力 as 注册文字文档
+        from 支持库.后端.办公文档支持库.表格文档 import 注册能力 as 注册表格文档
+        from 支持库.后端.办公文档支持库.演示文稿 import 注册能力 as 注册演示文稿
+        from 支持库.后端.办公文档支持库.PDF文档 import 注册能力 as 注册PDF文档
 
         注册表 = 能力注册表()
         注册docx(注册表)
@@ -94,9 +94,9 @@ class Test文档解析模块(unittest.TestCase):
     def test_公开能力owner与内部实现分离(self):
         """公开能力必须由后端支持库持有，Provider 只能提供内部实现。"""
         for 公开id, owner, 内部id, provider in [
-            ("文字文档.解析文字文档", "支持库.后端.文字文档", "内部.文字文档.解析", "支持库.适配层.python_docx提供者"),
-            ("表格文档.解析表格文档", "支持库.后端.表格文档", "内部.表格文档.解析", "支持库.适配层.openpyxl提供者"),
-            ("演示文稿.解析演示文稿", "支持库.后端.演示文稿", "内部.演示文稿.解析", "支持库.适配层.python_pptx提供者"),
+            ("办公文档支持库.文字文档.解析文字文档", "支持库.后端.办公文档支持库.文字文档", "内部.文字文档.解析", "支持库.适配层.python_docx提供者"),
+            ("办公文档支持库.表格文档.解析表格文档", "支持库.后端.办公文档支持库.表格文档", "内部.表格文档.解析", "支持库.适配层.openpyxl提供者"),
+            ("办公文档支持库.演示文稿.解析演示文稿", "支持库.后端.办公文档支持库.演示文稿", "内部.演示文稿.解析", "支持库.适配层.python_pptx提供者"),
         ]:
             公开实现 = self.注册表.获取(公开id)
             内部实现 = self.注册表.获取(内部id)

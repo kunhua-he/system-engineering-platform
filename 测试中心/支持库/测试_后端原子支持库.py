@@ -14,13 +14,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from 支持库.后端.文件系统 import (
+from 支持库.后端.文件系统支持库.文件操作 import (
     复制文件, 判断存在, 读取文件, 删除文件, 获取大小, 列出目录, 移动文件, 写入文件,
 )
-from 支持库.后端.数据集合 import 列表查找, 列表排序, 字典获取
-from 支持库.后端.数据交换 import 反序列化CSV, 反序列化JSON, 序列化CSV, 序列化JSON
-from 支持库.后端.文本处理 import 按行分割, 查找文本, 去空白, 分割文本, 替换文本, 统计长度, 转大写
-from 支持库.后端.时间日期 import 解析文本时间, 时间戳转换, 格式化为文本, 获取当前时间, 计算间隔
+from 支持库.后端.数据操作支持库.数据集合 import 列表查找, 列表排序, 字典获取
+from 支持库.后端.数据操作支持库.数据交换 import 反序列化CSV, 反序列化JSON, 序列化CSV, 序列化JSON
+from 支持库.后端.数据操作支持库.文本处理 import 按行分割, 查找文本, 去空白, 分割文本, 替换文本, 统计长度, 转大写
+from 支持库.后端.数据操作支持库.时间日期 import 解析文本时间, 时间戳转换, 格式化为文本, 获取当前时间, 计算间隔
 
 
 class Test文件系统(unittest.TestCase):

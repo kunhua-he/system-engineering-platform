@@ -1,4 +1,4 @@
-"""支持库.后端.PDF文档 真实解析测试：经隔离提供者执行。
+"""支持库.后端.办公文档支持库.PDF文档 真实解析测试：经隔离提供者执行。
 
 覆盖：最小有效/多页/中文/空内容/表格/图像/损坏/加密/超页数/超大小/
 文件不存在/参数不合法/提供者缺失（环境变量依赖注入）/超时/往返。
@@ -23,7 +23,7 @@ from unittest import mock
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 支持库.后端.PDF文档 import 解析PDF
+from 支持库.后端.办公文档支持库.PDF文档 import 解析PDF
 
 
 def _生成文本PDF(路径: Path, 页数: int = 1, 加密: bool = False) -> Path:

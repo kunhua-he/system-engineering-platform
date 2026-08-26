@@ -531,7 +531,7 @@ class 组件合规:
         if 问题列表:
             return False, "; ".join(问题列表)
         import tempfile as _临时
-        from 支持库.后端.资源管理 import (
+        from 支持库.后端.系统核心支持库.资源管理 import (
             创建唯一运行目录, 原子写入, 安全释放资源, 资源短锁,
         )
         try:

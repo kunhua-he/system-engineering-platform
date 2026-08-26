@@ -68,7 +68,7 @@ class 能力搜索覆盖率测试(unittest.TestCase):
                 self.assertIn(参数["必填"], (True, False, "未声明"),
                               f"{能力['能力id']} 参数 {参数['名称']} 必填应如实标注")
         # 支持库/后端/PDF文档 错误码已从契约补齐：应为真实错误码列表（非"无"）
-        解析PDF = 公开能力模块.读取公开能力(项目根, "PDF文档.解析PDF")
+        解析PDF = 公开能力模块.读取公开能力(项目根, "办公文档支持库.PDF文档.解析PDF")
         self.assertIsNotNone(解析PDF)
         self.assertIsInstance(解析PDF["错误码"], list)
         self.assertGreater(len(解析PDF["错误码"]), 0)

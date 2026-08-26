@@ -19,12 +19,12 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 支持库.适配层.本地进程适配器 import 本地进程适配器
-from 支持库.后端.文件系统 import (
+from 支持库.后端.文件系统支持库.文件操作 import (
     创建目录, 复制文件, 判断存在, 读取二进制文件, 读取文件, 读取文件头部字节,
     清理全部临时资源, 登记临时资源, 删除文件, 获取大小, 获取修改时间,
     列出目录, 移动文件, 写入文件,
 )
-from 支持库.后端.资源管理 import 创建内容摘要
+from 支持库.后端.系统核心支持库.资源管理 import 创建内容摘要
 
 
 class Test文件系统补齐(unittest.TestCase):
@@ -49,7 +49,7 @@ class Test文件系统补齐(unittest.TestCase):
         self.assertEqual(缺失.错误码, "文件不存在")
 
     def test_流式摘要大文件分块哈希(self):
-        """流式摘要（复用 资源管理.创建内容摘要）：大文件分块哈希正确。"""
+        """流式摘要（复用 系统核心支持库.资源管理.创建内容摘要）：大文件分块哈希正确。"""
         大文件 = self.临时目录 / "分块摘要.bin"
         内容 = os.urandom(3 * 1024 * 1024 + 12345)  # 3MB+，多块读取
         大文件.write_bytes(内容)

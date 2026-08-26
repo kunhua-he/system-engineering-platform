@@ -18,7 +18,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 系统根 = Path(__file__).resolve().parents[2]
 
 from 公共契约.基础类型.结果类型 import 结果
-from 支持库.后端.文字文档 import 解析文字文档
+from 支持库.后端.办公文档支持库.文字文档 import 解析文字文档
 
 
 class 假调用器:

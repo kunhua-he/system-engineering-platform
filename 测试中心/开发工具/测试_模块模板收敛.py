@@ -30,7 +30,7 @@ from 开发工具.组件规范.模块模板生成器 import 生成模块模板
     {"名称": "读取文件", "参数": [{"名称": "文件路径", "类型": "文本", "必填": True}],
      "返回": "结果", "说明": "经调用器读取文件"},
 ]
-依赖清单 = [{"能力": "文件系统.读取文件", "版本": ">=1.0.0"}]
+依赖清单 = [{"能力": "文件系统支持库.文件操作.读取文件", "版本": ">=1.0.0"}]
 
 
 class Test模块模板收敛(unittest.TestCase):
@@ -89,7 +89,7 @@ class Test模块模板收敛(unittest.TestCase):
         模块目录 = Path(结果.值["模块目录"])
         实现文本 = (模块目录 / "实现" / "示例统计.py").read_text(encoding="utf-8")
         self.assertIn("获取能力调用器().调用能力", 实现文本)
-        self.assertIn('"文件系统.读取文件"', 实现文本)
+        self.assertIn('"文件系统支持库.文件操作.读取文件"', 实现文本)
         self.assertNotIn("import 支持库", 实现文本)
         self.assertNotIn("import 运行核心", 实现文本)
         self.assertNotIn("import tempfile", 实现文本)
