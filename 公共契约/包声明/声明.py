@@ -53,6 +53,7 @@ class 包声明:
     配置项: list[dict] = field(default_factory=list)
     来源路径: str = ""
     已废弃: bool = False
+    内部层: bool = False   # 第三方能力内部支持库：装配可用、网关 0 暴露
 
     def 转字典(self) -> dict[str, Any]:
         return {
@@ -65,6 +66,7 @@ class 包声明:
             "依赖": self.依赖,
             "能力": [能力.转字典() for 能力 in self.能力],
             "来源路径": self.来源路径,
+            "内部层": self.内部层,
         }
 
 
@@ -112,6 +114,7 @@ def 从字典构建(数据: dict[str, Any], *, 来源路径: str = "") -> 包声
         配置项=数据.get("配置项") or [],
         来源路径=来源路径,
         已废弃=bool(数据.get("已废弃", False)),
+        内部层=bool(数据.get("内部层", False)),
     )
 
 
