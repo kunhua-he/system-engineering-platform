@@ -95,11 +95,23 @@ class 本地网关服务器:
                 self.send_header("Content-Length", str(len(正文)))
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
                 self.end_headers()
                 try:
                     self.wfile.write(正文)
                 except (BrokenPipeError, ConnectionResetError):
                     return
+
+            def do_OPTIONS(self) -> None:
+                """CORS 预检：浏览器跨域直连需要。"""
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+                self.send_header("Access-Control-Max-Age", "86400")
+                self.end_headers()
 
             def _拒绝(self, 状态码: int, 错误码: str, 错误说明: str, 操作: str = "HTTP边界") -> None:
                 网关核心实例.审计.记录(
