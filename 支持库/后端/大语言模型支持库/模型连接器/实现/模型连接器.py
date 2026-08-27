@@ -2,12 +2,12 @@
 
 设计（华哥口径 2026-08-26）：
 1. 连接器 = 创建模型连接，返回六位句柄；其他能力持句柄调用模型。
-2. 本地与云端两类连接：本地（模型路径/启动器），云端（url/api_key/模型/上下文长度）。
-3. 句柄生命周期：默认 300 秒无人使用自动释放（超时回收）；可续租；可显式释放。
+2. 本地与云端两类连接：本地传 GGUF 文件绝对路径，由底座直接调用 llama-server；云端传 url/api_key/模型/上下文长度。
+3. 句柄生命周期：默认 1800 秒（30 分钟）无人使用自动释放（超时回收）；可续租；可显式释放。
 4. 系统内存安全（核心）：连接模型前用 psutil 查系统真实可用内存，
    若「当前占用 + 新模型预计占用」超过安全阈值（默认 80%）→ 拒绝新连接，
    返回 资源不足（内存压力），防止同时启动多个大模型撑爆 96GB 内存。
-5. 真实模型调用由适配层 Provider 注册后生效；未注册时返回 提供者不可用（不模拟成功）。
+5. 真实模型调用由统一 HTTP Provider 承接；本地模型进程由底座启动并绑定句柄，不模拟成功。
 """
 
 from __future__ import annotations
@@ -108,6 +108,9 @@ def _回收过期句柄() -> None:
         空闲 = now - 连接.get("最后活动时间", now)
         if 空闲 > 连接.get("超时秒", 默认超时秒):
             连接表.pop(句柄id, None)
+            for 模型身份, 索引句柄 in list(全局模型索引.items()):
+                if 索引句柄 == 句柄id:
+                    全局模型索引.pop(模型身份, None)
             句柄系统.失效(句柄id, "超时")
             连接.get("释放函数") and 连接["释放函数"](句柄id)
 
@@ -173,7 +176,7 @@ def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = Non
            url: str = None, api_key: str = None, 上下文长度: int = None, 超时秒: int = None) -> 结果:
     """连接大语言模型，返回句柄。缺参时使用 env 统一参数（加载环境配置 后生效）。
 
-    本地：部署形态=本地 + 本地路径/启动器；云端：部署形态=云端 + url/api_key。
+    本地：部署形态=本地+GGUF 文件绝对路径，由底座直接启动 llama-server；云端：部署形态=云端+url/api_key/模型/上下文长度。
     """
     显式 = {"模型": 模型, "提供者": 提供者, "部署形态": 部署形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
@@ -191,6 +194,8 @@ def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = Non
     配置 = {"模型名": 模型, "提供者": 提供者 or "本地", "部署形态": 形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
             "上下文长度": 上下文长度}
+    if 形态 == "本地" and 本地路径:
+        return 启动本地模型(本地路径, 启动器, "LLM", 模型大小字节=模型大小字节, 超时秒=超时秒)
     return _登记连接("LLM", 配置, 超时秒=超时秒)
 
 
@@ -212,6 +217,8 @@ def 连接向量模型(模型: str = None, 提供者: str = None, 部署形态: 
         return _失败("参数不合法", f"部署形态必须是 本地 或 云端: {部署形态}")
     配置 = {"模型名": 模型, "提供者": 提供者 or "本地", "部署形态": 形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key}
+    if 形态 == "本地" and 本地路径:
+        return 启动本地模型(本地路径, 启动器, "向量", 模型大小字节=模型大小字节, 超时秒=超时秒)
     return _登记连接("向量", 配置, 超时秒=超时秒)
 
 
@@ -233,6 +240,8 @@ def 连接重排模型(模型: str = None, 提供者: str = None, 部署形态: 
         return _失败("参数不合法", f"部署形态必须是 本地 或 云端: {部署形态}")
     配置 = {"模型名": 模型, "提供者": 提供者 or "本地", "部署形态": 形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key}
+    if 形态 == "本地" and 本地路径:
+        return 启动本地模型(本地路径, 启动器, "重排", 模型大小字节=模型大小字节, 超时秒=超时秒)
     return _登记连接("重排", 配置, 超时秒=超时秒)
 
 
@@ -339,62 +348,182 @@ def _合入环境参数(连接类型: str, 显式: dict) -> dict:
     return 合并
 
 
-# ── 本地模型启动器（拉起本地模型进程，返回句柄）──────────────
+# ── 本地模型启动器（路径入参，底座负责启动并绑定句柄）────────
 
 本地进程表: dict[str, Any] = {}  # 句柄id → 子进程对象
+全局模型索引: dict[tuple[str, str], str] = {}  # (模型类型, 规范化源路径) → 全局句柄
+本地启动锁 = threading.Lock()  # 防止同一路径并发启动出多个模型进程
 
 
-def 启动本地模型(模型路径: str = None, 启动器: str = None, 模型类型: str = None,
-                端口: int = None, 模型大小字节: int = None, 参数: dict = None, 超时秒: int = None) -> 结果:
-    """拉起本地模型进程（如 llama-server），启动成功后返回句柄。
+def _分配端口(端口: int | None) -> int:
+    if isinstance(端口, int) and 端口 > 0:
+        return 端口
+    import socket
+    with socket.socket() as 套接字:
+        套接字.bind(("127.0.0.1", 0))
+        return int(套接字.getsockname()[1])
 
-    本地模型 = 独立进程组；句柄超时/释放时自动终止进程并清理。
-    启动器 默认 llama-server；模型类型：LLM/向量/重排。
-    模型大小字节 用于内存守卫（不传则按类型默认估算：LLM 8GB/向量 2GB/重排 2GB）。
-    返回 {句柄, 模型类型, 端口, 启动命令, 超时秒}。
-    """
-    if not isinstance(模型路径, str) or not 模型路径.strip():
-        return _失败("参数不合法", "模型路径必须是非空字符串")
-    类型 = (模型类型 or "LLM").upper()
-    类型 = "LLM" if 类型 in ("对话", "LLM", "llm") else "向量" if 类型 in ("嵌入", "向量", "embedding") else "重排" if 类型 in ("排序", "重排", "rerank") else None
+
+def _计算模型大小(模型路径: str) -> int:
+    """计算模型文件总大小，供内存守卫使用；目录读取失败时返回 0。"""
+    from pathlib import Path
+    try:
+        if os.path.isfile(模型路径):
+            return os.path.getsize(模型路径)
+        return sum(文件.stat().st_size for 文件 in Path(模型路径).rglob("*") if 文件.is_file())
+    except OSError:
+        return 0
+
+
+def _识别模型源(模型路径: str) -> tuple[str, str]:
+    """按实体文件判断模型源格式，返回（格式, 规范化绝对路径）。"""
+    from pathlib import Path
+    路径 = Path(模型路径).expanduser().resolve()
+    if 路径.is_file() and 路径.suffix.lower() == ".gguf":
+        return "GGUF", str(路径)
+    if 路径.is_dir() and (路径 / "config.json").is_file():
+        if any(路径.glob("*.safetensors")) or any(路径.glob("*.bin")):
+            return "HuggingFace", str(路径)
+    return "不支持", str(路径)
+
+
+def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: str, 端口: int, 参数: dict) -> list[str]:
+    import shutil
+    from pathlib import Path
+    格式, 规范路径 = _识别模型源(模型路径)
+    if 格式 == "HuggingFace":
+        import sys
+        服务脚本 = Path(__file__).resolve().parents[5] / "支持库" / "适配层" / "模型服务.py"
+        if not 服务脚本.is_file():
+            raise FileNotFoundError(f"底座内部模型加载器不存在: {服务脚本}")
+        return [sys.executable, str(服务脚本), "--model-path", 规范路径, "--model-type", 模型类型, "--port", str(端口)]
+    if 格式 != "GGUF":
+        raise ValueError("底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")
+    候选二进制 = [启动器, os.environ.get("LLAMA_CPP_SERVER_BIN", ""), shutil.which("llama-server")]
+    候选二进制.extend(str(Path.home() / 路径) for 路径 in (
+        "llama.cpp-old/build/bin/llama-server", "llama.cpp-latest/build/bin/llama-server"))
+    二进制 = next((路径 for 路径 in 候选二进制 if 路径 and os.path.isfile(路径) and os.access(路径, os.X_OK)), "")
+    if not 二进制:
+        raise FileNotFoundError("未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
+    命令 = [二进制, "-m", 模型路径, "--port", str(端口), "--sleep-idle-seconds", "300", "-c", "8192", "-ngl", "99"]
+    if 模型类型 == "向量":
+        命令.extend(["--pooling", "cls", "--embeddings"])
+    elif 模型类型 == "重排":
+        命令.append("--rerank")
+    额外参数 = 参数.get("启动参数列表")
+    if isinstance(额外参数, list):
+        命令.extend(str(值) for 值 in 额外参数)
+    return 命令
+
+
+def _等待本地健康(端口: int, 超时秒: int) -> bool:
+    import urllib.request
+    网址 = f"http://127.0.0.1:{端口}/v1/models"
+    截止时间 = time.monotonic() + min(max(10, 超时秒), 900)
+    while time.monotonic() < 截止时间:
+        try:
+            with urllib.request.urlopen(网址, timeout=3) as 响应:
+                if 200 <= 响应.status < 300:
+                    return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def _启动本地模型(模型路径: str | None = None, 启动器: str | None = None, 模型类型: str | None = None,
+                端口: int | None = None, 模型大小字节: int | None = None, 参数: dict | None = None, 超时秒: int | None = None) -> 结果:
+    """由底座按模型绝对路径启动独立进程，并返回已绑定资源的句柄。"""
+    if not isinstance(模型路径, str) or not 模型路径.strip() or not os.path.exists(模型路径):
+        return _失败("参数不合法", "模型路径必须是存在的绝对路径")
+    类型 = (模型类型 or "LLM").lower()
+    类型 = "LLM" if 类型 in ("对话", "llm") else "向量" if 类型 in ("嵌入", "向量", "embedding") else "重排" if 类型 in ("排序", "重排", "rerank") else None
     if 类型 is None:
         return _失败("参数不合法", f"模型类型必须是 LLM/向量/重排: {模型类型}")
-    启动器名 = (启动器 or "llama-server").strip()
+    源格式, 规范路径 = _识别模型源(模型路径)
+    if 源格式 == "不支持":
+        return _失败("参数不合法", "底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")
+    模型身份 = (类型, 规范路径)
+    from pathlib import Path
+    import subprocess
+    with 锁:
+        现有句柄 = 全局模型索引.get(模型身份)
+        现有连接 = 连接表.get(现有句柄) if 现有句柄 else None
+        现有进程 = 本地进程表.get(现有句柄) if 现有句柄 else None
+        if 现有连接 is not None and 现有进程 is not None and 现有进程.poll() is None:
+            现有连接["最后活动时间"] = time.time()
+            return 结果.成功结果({"句柄": 现有句柄, "模型类型": 类型, "模型路径": 规范路径,
+                             "端口": 现有连接["配置"].get("端口"), "全局句柄": True,
+                             "已复用": True,
+                             "超时秒": 现有连接["超时秒"]})
+        if 现有句柄:
+            全局模型索引.pop(模型身份, None)
+            连接表.pop(现有句柄, None)
+            句柄系统.失效(现有句柄, "进程暴毙")
+    端口 = _分配端口(端口)
     启动参数 = dict(参数 or {})
-    启动参数.setdefault("模型", 模型路径)
-    if 端口:
-        启动参数.setdefault("端口", 端口)
-    # 内存守卫：本地大模型按 模型大小 或 类型默认 估算
-    配置 = {"模型名": 模型路径.split("/")[-1], "提供者": "本地", "部署形态": "本地",
-            "本地路径": 模型路径, "启动器": 启动器名, "模型类型": 类型,
-            "模型大小字节": 模型大小字节}
+    启动器名 = str(启动器 or "")
+    if not isinstance(模型大小字节, (int, float)) or 模型大小字节 <= 0:
+        模型大小字节 = _计算模型大小(模型路径) or None
+    配置 = {"模型名": Path(规范路径).name, "提供者": "本地", "部署形态": "本地",
+            "本地路径": 规范路径, "模型源格式": 源格式, "启动器": 启动器名, "模型类型": 类型,
+            "模型大小字节": 模型大小字节, "端口": 端口, "url": f"http://127.0.0.1:{端口}/v1"}
     with 锁:
         _回收过期句柄()
         守卫 = _内存守卫(类型, 配置)
         if 守卫 is not None:
             return 守卫
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"本地模型-{类型}", 所有者="")
-        # 预留连接登记（真实进程拉起由适配层 Provider 完成，这里只登记生命周期）
         有效超时 = 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()
-        连接表[对象.句柄id] = {
-            "类型": 类型, "配置": dict(配置), "创建时间": time.time(),
-            "最后活动时间": time.time(), "超时秒": 有效超时,
-            "释放函数": _终止本地进程,
-        }
-        return 结果.成功结果({"句柄": 对象.句柄id, "模型类型": 类型, "启动器": 启动器名,
-                                "模型路径": 模型路径, "端口": 端口, "超时秒": 有效超时,
-                                "说明": "本地模型已登记生命周期，真实进程由适配层 Provider 拉起"})
+        连接表[对象.句柄id] = {"类型": 类型, "配置": dict(配置), "创建时间": time.time(),
+                         "最后活动时间": time.time(), "超时秒": 有效超时, "释放函数": _终止本地进程,
+                         "全局句柄": True, "模型身份": 模型身份}
+        全局模型索引[模型身份] = 对象.句柄id
+    try:
+        命令 = _构建本地启动命令(规范路径, 类型, 启动器名, 端口, 启动参数)
+        进程 = subprocess.Popen(命令, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        本地进程表[对象.句柄id] = 进程
+        句柄系统.登记资源(对象.句柄id, 资源类型="进程", PID=进程.pid, 端口=端口)
+        if not _等待本地健康(端口, 有效超时):
+            raise TimeoutError(f"本地模型启动后健康检查超时: {模型路径}")
+        return 结果.成功结果({"句柄": 对象.句柄id, "模型类型": 类型, "模型路径": 规范路径,
+                         "端口": 端口, "启动命令": 命令, "全局句柄": True, "超时秒": 有效超时})
+    except Exception as 错误:
+        释放句柄(对象.句柄id)
+        return _失败("提供者不可用", f"本地模型启动失败: {错误}")
+
+
+def 启动本地模型(模型路径: str | None = None, 启动器: str | None = None, 模型类型: str | None = None,
+                端口: int | None = None, 模型大小字节: int | None = None, 参数: dict | None = None, 超时秒: int | None = None) -> 结果:
+    """串行启动本地模型；同一路径的后续请求由内部索引复用全局句柄。"""
+    with 本地启动锁:
+        return _启动本地模型(模型路径, 启动器, 模型类型, 端口, 模型大小字节, 参数, 超时秒)
 
 
 def _终止本地进程(句柄id: str) -> None:
-    """句柄释放时终止对应本地模型进程。资源回收由状态机（句柄体系）失效时统一维护。"""
-    import subprocess as _subprocess
+    """释放句柄时终止整个本地模型进程组。"""
+    import os
+    import signal
+    import subprocess
     进程 = 本地进程表.pop(句柄id, None)
-    if 进程 is not None:
-        try:
-            进程.terminate()
-        except Exception:
-            pass
+    if 进程 is None:
+        return
+    try:
+        if 进程.poll() is None:
+            try:
+                os.killpg(进程.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                进程.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(进程.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                进程.wait(timeout=5)
+    except Exception:
+        pass
 
 
 def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
@@ -465,6 +594,9 @@ def 释放句柄(句柄: str = None) -> 结果:
     with 锁:
         if 句柄 in 连接表:
             连接 = 连接表.pop(句柄)
+            模型身份 = 连接.get("模型身份")
+            if isinstance(模型身份, tuple):
+                全局模型索引.pop(模型身份, None)
             句柄系统.失效(句柄, "释放")
             连接.get("释放函数") and 连接["释放函数"](句柄)
             return 结果.成功结果({"句柄": 句柄, "已释放": True})
@@ -480,7 +612,9 @@ def 查询句柄状态(句柄: str = None) -> 结果:
         return 结果.成功结果({"句柄": 句柄, "状态": "已失效" if not 有效 else "不存在", "连接类型": "", "剩余秒": 0})
     剩余 = max(0, int(连接["超时秒"] - (time.time() - 连接["最后活动时间"])))
     return 结果.成功结果({"句柄": 句柄, "状态": "有效", "连接类型": 连接["类型"],
-                            "模型": 连接["配置"].get("模型名"), "部署形态": 连接["配置"].get("部署形态"), "剩余秒": 剩余})
+                            "模型": 连接["配置"].get("模型名"), "部署形态": 连接["配置"].get("部署形态"),
+                            "全局句柄": bool(连接.get("全局句柄")),
+                            "剩余秒": 剩余})
 
 
 def 资源快照() -> 结果:
@@ -497,6 +631,6 @@ def 资源快照() -> 结果:
 
 
 def 注册调用器(连接类型: str, 部署形态: str, 调用函数: Callable) -> None:
-    """注册真实模型调用器（由适配层 Provider 调用）。键 = 连接类型:部署形态。"""
-    形态 = "云端" if 部署形态 in ("cloud", "api", "云") else "本地"
+    """注册真实模型调用器；统一归一化本地/云端形态。"""
+    形态 = "云端" if 部署形态 in ("cloud", "api", "云", "云端") else "本地"
     调用函数表[f"{连接类型}:{形态}"] = 调用函数

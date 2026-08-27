@@ -22,15 +22,15 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 公共契约.能力契约.契约 import 能力注册表
-from 支持库.适配层.Pillow提供者 import (
+from 支持库.后端.图像处理支持库.图像解码 import (
     解码图像, 像素统计, 生成占位图, 生成缩略图, 图像EXIF转置,
     透明背景合成, 计算感知哈希, 缩放图像, 重编码图像, 注册能力,
 )
-from 支持库.适配层.Pillow提供者.实现 import 提供者 as 提供者模块
+from 支持库.后端.图像处理支持库.图像解码.实现 import 提供者 as 提供者模块
 
 提供者目录 = (
     Path(__file__).resolve().parents[2]
-    / "支持库" / "适配层" / "Pillow提供者"
+    / "支持库" / "后端" / "图像处理支持库" / "图像解码"
 )
 
 最小PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
@@ -137,7 +137,8 @@ class TestPillow提供者(unittest.TestCase):
         全量套件中其他库（如 reportlab 依赖链）可能已加载 PIL，故仅断言
         本提供者自身不导入、本调用不引入，避免测试环境相互污染。
         """
-        实现路径 = Path(__file__).resolve().parent.parent.parent / "支持库" / "适配层" / "Pillow提供者" / "实现" / "提供者.py"
+        实现路径 = (Path(__file__).resolve().parent.parent.parent / "支持库" / "后端"
+                    / "图像处理支持库" / "图像解码" / "实现" / "提供者.py")
         实现源码 = 实现路径.read_text(encoding="utf-8")
         import ast
         导入表 = []
@@ -469,7 +470,8 @@ class TestPillow提供者(unittest.TestCase):
         try:
             环境目录 = 临时 / "平台客户端环境"
             客户端目录 = 环境目录 / "平台客户端"
-            实现目录 = 客户端目录 / "支持库" / "适配层" / "Pillow提供者" / "实现"
+            实现目录 = (客户端目录 / "支持库" / "后端" / "图像处理支持库"
+                        / "图像解码" / "实现")
             实现目录.mkdir(parents=True)
             (客户端目录 / "__init__.py").write_text("", encoding="utf-8")
             (环境目录 / "当前.json").write_text(json.dumps(
@@ -530,7 +532,7 @@ class TestPillow提供者(unittest.TestCase):
 
     def test_完整性摘要一致(self):
         摘要数据 = json.loads((提供者目录 / "完整性摘要.json").read_text(encoding="utf-8"))
-        self.assertEqual(摘要数据["包id"], "支持库.适配层.Pillow提供者")
+        self.assertEqual(摘要数据["包id"], "支持库.后端.图像处理支持库.图像解码")
         self.assertEqual(摘要数据["摘要算法"], "sha256")
         self.assertTrue(摘要数据["文件清单"], "文件清单不得为空")
         清单路径 = {项["路径"] for 项 in 摘要数据["文件清单"]}

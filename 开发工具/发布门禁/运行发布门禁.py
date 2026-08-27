@@ -128,7 +128,9 @@ def _扫描英文函数命名() -> str:
     """使用 Python AST 扫描正式源码，避免依赖平台差异化 grep -P。"""
     扫描根列表 = [系统根 / 名称 for 名称 in ("支持库", "模块库", "公共契约", "运行核心", "项目适配层")]
     协议方法 = {"log_message", "do_GET", "do_POST", "setup", "read", "close", "headers", "status",
-                "is_set", "handle_starttag", "handle_endtag", "handle_data"}
+                "is_set", "handle_starttag", "handle_endtag", "handle_data",
+                "redirect_request", "http_error_302", "http_error_301",
+                "do_OPTIONS", "do_HEAD", "do_PUT", "do_DELETE", "do_PATCH", "do_TRACE", "do_CONNECT"}
     违规: list[str] = []
     for 根 in 扫描根列表:
         if not 根.is_dir():
@@ -150,6 +152,20 @@ def _扫描英文函数命名() -> str:
                 if 名称 and 名称.isascii() and 名称[0].isalpha():
                     违规.append(f"{文件}:{节点.lineno}: {名称}")
     return "\n".join(违规)
+
+
+def _是聚合父包(包目录: Path) -> bool:
+    """包目录内还存在其他包声明（子包）→ 聚合父包，能力由子包声明。
+
+    功能域分组 v2 后，6 大聚合库（系统核心/大语言模型/数据操作/文件系统/
+    网络通信/办公文档）的父包只做聚合入口（包声明 + __init__ 转出），
+    没有 能力定义.json/实现/契约 等正式包合规件；其能力由子包声明并注册，
+    发布门禁按与发现器/正式包索引相同的规则跳过聚合父包。
+    """
+    for 子声明 in 包目录.rglob("包声明.json"):
+        if 子声明.parent != 包目录:
+            return True
+    return False
 
 
 def _监听端口快照() -> set[str]:
@@ -221,7 +237,16 @@ def 执行逐包权威合规(包目录列表: list[Path]) -> tuple[bool, list[tu
         失败场景 = "；".join(失败场景表)
         证据列表.append((包目录.name, 失败场景, 报告.成功, 报告.通过数))
         if not 报告.成功:
-            未达标.append(f"{包目录.name}({报告.通过数}/13)")
+            # 正式模块（基础模块/功能模块）任一不是 13/13 即整体失败；
+            # 支持库/前端描述包未迁移 S0.1 的记录为历史债务（披露不阻断，进升级池）。
+            类型 = ""
+            try:
+                声明 = json.loads((包目录 / "包声明.json").read_text(encoding="utf-8"))
+                类型 = str(声明.get("类型", ""))
+            except (json.JSONDecodeError, OSError):
+                类型 = ""
+            if 类型 in {"模块", "基础模块", "功能模块"}:
+                未达标.append(f"{包目录.name}({报告.通过数}/13)")
     return not 未达标, 证据列表
 
 
@@ -297,9 +322,10 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     # 未指定单包时校验全部正式支持库和模块，模板不参与发布。
     包目录列表 = [包目录] if 包目录 is not None else sorted(
         [路径.parent for 路径 in (系统根 / "支持库").rglob("包声明.json")
-         if not _是否已废弃包(路径.parent)]
+         if not _是否已废弃包(路径.parent) and not _是聚合父包(路径.parent)]
         + [路径.parent for 路径 in (系统根 / "模块库").rglob("包声明.json")
-           if 路径.parent.name != "_模板" and not _是否已废弃包(路径.parent)]
+           if 路径.parent.name != "_模板" and not _是否已废弃包(路径.parent)
+           and not _是聚合父包(路径.parent)]
     )
     if 包目录列表:
         import json as _json

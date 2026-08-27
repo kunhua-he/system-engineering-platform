@@ -95,6 +95,10 @@ class Test跨进程权威状态(unittest.TestCase):
         self.目录 = Path(tempfile.mkdtemp(prefix="第十一阶段跨进程_"))
 
     def tearDown(self):
+        协调 = getattr(self, "协调", None)
+        if 协调 is not None:
+            协调.状态.关闭()
+            self.协调 = None
         shutil.rmtree(self.目录, ignore_errors=True)
 
     def test_两个独立进程同时读取同一快照(self):
@@ -153,9 +157,12 @@ class Test跨进程权威状态(unittest.TestCase):
         time.sleep(0.6)  # 延迟提交 已初始化资源并 sleep（初始化 <0.2s，0.6s 充分）
         进程.kill()
         进程.wait(timeout=5)
+        for 流 in (进程.stdout, 进程.stderr):
+            if 流 is not None:
+                流.close()
         # 重启后：正式资源必须是 初始 完整状态（版本 0）
         from 运行核心.资源协调 import 资源协调器
-        协调 = 资源协调器(self.目录, 项目id="恢复者")
+        协调 = self.协调 = 资源协调器(self.目录, 项目id="恢复者")
         数据, 版本, _ = 协调.读取基础版本("文档")
         self.assertEqual(版本, "0", "强杀后资源必须是完整初始状态（非半成品）")
         self.assertEqual(数据["值"]["内容"], "基线")
@@ -164,14 +171,14 @@ class Test跨进程权威状态(unittest.TestCase):
         码, 输出 = 跑子进程("创建事务不提交", self.目录)
         self.assertEqual(码, 0, 输出)
         from 运行核心.资源协调 import 资源协调器
-        协调 = 资源协调器(self.目录, 项目id="重启者")
+        协调 = self.协调 = 资源协调器(self.目录, 项目id="重启者")
         恢复列表 = 协调.恢复未完成事务()
         self.assertEqual(len(恢复列表), 1, "重启后必须恢复未完成事务")
         self.assertEqual(协调.状态.进行中事务(), [])
 
     def test_活跃进程锁不被其他清理器误删(self):
         from 运行核心.资源协调 import 资源协调器
-        协调 = 资源协调器(self.目录, 项目id="活跃者")
+        协调 = self.协调 = 资源协调器(self.目录, 项目id="活跃者")
         协调.初始化资源("文档", {"内容": "基线"})
         协调.状态.刷新心跳()  # 活跃进程心跳新鲜
         # 持有锁（结构化所有权 + 栅栏令牌签发）
@@ -193,7 +200,7 @@ class Test跨进程权威状态(unittest.TestCase):
         self.assertEqual(码, 0, 输出)
         租约id = json.loads(输出)["租约id"]
         from 运行核心.资源协调 import 资源协调器
-        协调 = 资源协调器(self.目录, 项目id="回收者")
+        协调 = self.协调 = 资源协调器(self.目录, 项目id="回收者")
         协调.状态.刷新心跳()
         # 死亡进程（心跳过期）的租约：精准回收
         过期列表 = 协调.状态.扫描过期租约()

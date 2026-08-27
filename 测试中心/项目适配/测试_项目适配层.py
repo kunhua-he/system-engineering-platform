@@ -49,10 +49,10 @@ class Test项目声明(unittest.TestCase):
         声明 = 加载项目声明(项目根 / "项目声明.json")
         self.assertEqual(声明.项目名称, "声明项目")
         self.assertIn("项目适配", 声明.验证范围)
-        声明.支持库绑定 = [{"包id": "支持库.后端.文件系统支持库.文件操作", "版本约束": ">=1.0.0"}]
+        声明.支持库绑定 = [{"包id": "支持库.后端.文件系统支持库", "版本约束": ">=1.0.0"}]
         写入项目声明(声明, 项目根 / "项目声明.json")
         重读 = 加载项目声明(项目根 / "项目声明.json")
-        self.assertEqual(重读.支持库绑定[0]["包id"], "支持库.后端.文件系统支持库.文件操作")
+        self.assertEqual(重读.支持库绑定[0]["包id"], "支持库.后端.文件系统支持库")
 
     def test_缺失必填字段拒绝(self):
         from 项目适配层.项目声明.项目声明 import 从字典构建
@@ -62,9 +62,9 @@ class Test项目声明(unittest.TestCase):
 
 class Test支持库绑定(unittest.TestCase):
     def test_有效绑定(self):
-        结果 = 校验支持库("支持库.后端.文件系统支持库.文件操作", ">=1.0.0", 系统根 / "支持库")
+        结果 = 校验支持库("支持库.后端.文件系统支持库", ">=1.0.0", 系统根 / "支持库")
         self.assertTrue(结果.成功, str(结果.问题列表))
-        self.assertEqual(结果.绑定版本, "1.0.0")
+        self.assertEqual(结果.绑定版本, "2.0.0")
 
     def test_不存在的支持库失败(self):
         结果 = 校验支持库("支持库.后端.不存在", "", 系统根 / "支持库")
@@ -72,7 +72,7 @@ class Test支持库绑定(unittest.TestCase):
         self.assertIn("不存在", 结果.问题列表[0])
 
     def test_版本不满足失败(self):
-        结果 = 校验支持库("支持库.后端.文件系统支持库.文件操作", ">=2.0.0", 系统根 / "支持库")
+        结果 = 校验支持库("支持库.后端.文件系统支持库", ">=3.0.0", 系统根 / "支持库")
         self.assertFalse(结果.成功)
         self.assertIn("版本不满足", 结果.问题列表[0])
 
@@ -109,8 +109,8 @@ class Test依赖锁定(unittest.TestCase):
         self.assertTrue(结果.成功)
         锁定 = json.loads((self.适配示例目录 / "依赖锁定.json").read_text(encoding="utf-8"))
         包id集合 = {条目["包id"] for 条目 in 锁定["包列表"]}
-        self.assertIn("支持库.后端.文件系统支持库.文件操作", 包id集合)
-        self.assertIn("支持库.后端.数据操作支持库.文本处理", 包id集合)
+        self.assertIn("支持库.后端.文件系统支持库", 包id集合)
+        self.assertIn("支持库.后端.数据操作支持库", 包id集合)
         self.assertIn("模块库.文件管理", 包id集合)
 
     def test_锁定含完整性摘要与依赖顺序(self):

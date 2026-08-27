@@ -31,7 +31,7 @@ def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
     return 结果.失败(错误码, 消息, 来源="PyMuPDF提供者", 可重试=可重试)
 def _启动子进程() -> subprocess.Popen:
     """启动一次性隔离子进程（独立进程组，cwd=平台根）。"""
-    系统根 = 包目录.parents[2]
+    系统根 = 包目录.parents[3]
     return subprocess.Popen(
         [sys.executable, str(子进程入口路径)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

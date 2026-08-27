@@ -143,7 +143,7 @@ class TestOCR模块(unittest.TestCase):
         self.assertTrue(返回值.成功)
         self.assertEqual(返回值.值, {"文本": "中文识别结果"})
         能力id, 请求参数 = 调用器.调用历史[0]
-        self.assertEqual(能力id, "OCR识别.识别图片")
+        self.assertEqual(能力id, "OCR识别支持库.OCR识别.识别图片")
         self.assertEqual(请求参数["图片路径"], self.图片路径)
         self.assertIsNone(请求参数["取消事件"], "取消令牌id 语义下支持库侧不得传 callable")
 
@@ -158,7 +158,7 @@ class TestOCR模块(unittest.TestCase):
         finally:
             注册能力调用器(self.服务)
         能力id, 请求参数 = 调用器.调用历史[0]
-        self.assertEqual(能力id, "OCR识别.识别图片")
+        self.assertEqual(能力id, "OCR识别支持库.OCR识别.识别图片")
         self.assertIsNone(请求参数["取消事件"])
 
     def test_错误码透传(self):
@@ -190,7 +190,7 @@ class TestOCR模块(unittest.TestCase):
         self.assertTrue(检查结果.成功)
         self.assertEqual(检查结果.值["tesseract"], "tesseract")
         调用能力id表 = [历史[0] for 历史 in 调用器.调用历史]
-        self.assertEqual(调用能力id表, ["OCR识别.版本探针", "OCR识别.语言包列表"])
+        self.assertEqual(调用能力id表, ["OCR识别支持库.OCR识别.版本探针", "OCR识别支持库.OCR识别.语言包列表"])
 
     # ── 真实 tesseract 最小调用 ──────────────────────────
 

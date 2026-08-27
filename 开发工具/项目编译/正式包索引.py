@@ -74,10 +74,14 @@ def 构建索引(系统根: Path) -> dict[str, Any]:
     依赖能力所有者: dict[str, str] = {}
     能力排除: dict[str, str] = {}
     能力冲突: dict[str, list[str]] = {}
-    for 包id, (_, 声明) in sorted(所有包.items()):
+    for 包id, (包路径, 声明) in sorted(所有包.items()):
         能力表 = 声明.get("能力", [])
         if not isinstance(能力表, list):
             raise ValueError(f"包 {包id} 的能力必须是列表")
+        # 能力定义.json 是唯一事实源：无能力定义.json 的包是聚合父包，
+        # 其能力声明仅作聚合视图，不参与 owner 冲突检测（能力由子包声明）。
+        if not (包路径 / "能力定义.json").is_file():
+            continue
         for 能力 in 能力表:
             if not isinstance(能力, dict) or not str(能力.get("能力id", "")).strip():
                 raise ValueError(f"包 {包id} 存在无效能力声明")

@@ -38,6 +38,10 @@ from 支持库.后端.大语言模型支持库.流式推理 import 消费事件
 from 支持库.后端.大语言模型支持库.流式推理 import 关闭流
 from 支持库.后端.大语言模型支持库.重排服务 import 重排
 from 支持库.后端.大语言模型支持库.重排服务 import 检查可用性
+from 支持库.适配层.模型HTTP提供者 import 注册模型HTTP提供者
+
+# 模型连接器只保留一套 HTTP Provider，统一覆盖 LLM/向量/重排本地与云端。
+注册模型HTTP提供者()
 
 __all__ = [
     "估算token数",

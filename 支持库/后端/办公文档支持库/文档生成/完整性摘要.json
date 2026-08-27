@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "69ce6c38e149eaec391b7636317d4815ee7b2ab4bc1bac6a1b156c617b2347b9"
+      "sha256": "e598b3bc96985ea426166707a849c870709d20a56327e610fe5b3ab9a14a1b8e"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -13,15 +13,19 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "04c79f76ab8a6aefbf619d262455764a293cd1905624d8a22daffea68aeed693"
+      "sha256": "e71ce9597543bbcd373a9f3f084407c155bb9127732aa0e9f7ecb570cf49ba17"
     },
     {
       "路径": "复用决策.json",
-      "sha256": "93ecad2873998fa326b2cda260d4af3f0693ac7032db4aea519c89182aa86562"
+      "sha256": "203a3297442f16de84c1af2eff506fa7da1c9ef4e4ab336c69c4ab7c3126ef08"
     },
     {
-      "路径": "实现/办公文档支持库.文档生成.py",
-      "sha256": "1612f15b0ce6668d73f6399e0e3c88c660c9378497b93726055590a9f4cfa7db"
+      "路径": "实现/办公文档补充.py",
+      "sha256": "2589cf40f688e9cce5a1025b060a79c723aae8561d299328234967ab6c19ba54"
+    },
+    {
+      "路径": "实现/文档生成.py",
+      "sha256": "a420944efc0a194e6c2e617b673dbf038da1eeb25843cfa8db3c395f7e42dec6"
     },
     {
       "路径": "实现/签名校验.py",
@@ -29,27 +33,27 @@
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "261fedcf52fd184f71f0ea2b3c3f6ff0ed66221dc7a850c889f4dc60b099578c"
+      "sha256": "083c6d4553342bb5b5cdfda1548de676210d7de2e60db780b6081efa6de8555e"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "60572a9137d10f210af52d414191923acaa66c07f223ed6959396c33863a5110"
+      "sha256": "87cee71d38f2b34fe872dc39dcdc201e13b11662f4e0296dd3f48bc2a0358c93"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "18de4d4940efdf0a613d11cb99561b4b8224b0772af039472d56cd92c1169c4c"
+      "sha256": "4c3c2fa98db8f040a496b62ca34e096bb5e7b808d1f98072fa4582fbc92ec5b3"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "3cb81342c47aa121a4a9e89bed4bac990f5e6ed1010a09b53ef33045e11c2600"
+      "sha256": "c192dc61e4d8e77bacbdf21314ed55d37c769b6c3effbee3116c596a684f39fa"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "87bc7723391a38d2c88ea6107bf9ce775440e632d262985437f3b96e9e251fec"
+      "sha256": "a0e4ad8e67e3ac7838b6b3cddb9024399b7247b52e727d5dde4660cedf92acd2"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "a2820550d709ccfee03eb12f7957adfa5d0a6f786ed21d2f02c361bcfe5d0718"
+      "sha256": "ea27485ec80662d87a30c8876241b1cb690a77bd907d828bfc340248341b793f"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -65,7 +69,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "5d9180bbfae83e4b6448a855e5174b7d640ce620c34563c5094e8491850ca73d"
+      "sha256": "5ac80561d41b2e87a46f7074882634dacd4e8b7dcba436d687b4b67d63ea9fad"
     },
     {
       "路径": "默认配置/默认配置.json",

@@ -69,7 +69,7 @@ def 注入平台客户端路径() -> None:
     _环境目录已注入 = True
 
 
-系统根 = Path(__file__).resolve().parents[4]
+系统根 = Path(__file__).resolve().parents[5]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 注入平台客户端路径()

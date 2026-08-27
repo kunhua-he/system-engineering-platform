@@ -9,19 +9,19 @@
     },
     {
       "路径": "依赖契约/依赖契约.json",
-      "sha256": "7d4830b31dc0e2671c4f658bc5375b190497c60b53d6f0e9b0ab5a193ebe7aaa"
+      "sha256": "b129d1dd5232ef3a9b844c8f53155b2c0d4dd77b1d6a0461a1445dd1b8785bbf"
     },
     {
       "路径": "包声明.json",
-      "sha256": "dd92a2f2d58de36cc528d0ff34e105f2f651e9ff3808504ac7bf8888782005d0"
+      "sha256": "4225f50dc9d8d29a4794f29a90506b00442035f527172c8aa721855d59881a24"
     },
     {
       "路径": "复用决策.json",
-      "sha256": "e70db001e9853ae216bb3b1cbadd3caa8d768dbbbc8d64c3a05aa00eecafc7e8"
+      "sha256": "9e7f1a3f7925bdd2f185dae5954c2dadcfda501c9697964fe5c2a472e154bf9d"
     },
     {
       "路径": "实现/文件管理.py",
-      "sha256": "350385a6c68447775fed3c544e05542ab812a3fa1385b8510ae5df5205a2cd01"
+      "sha256": "2fe12f60c84c0c59cc2f3c706d97d21137233a0e77dc586e1ee8505cba931625"
     },
     {
       "路径": "权限契约/权限契约.json",

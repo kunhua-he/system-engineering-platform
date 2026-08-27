@@ -81,7 +81,7 @@ class Test生成模块模板(unittest.TestCase):
         实现文本 = (模块目录 / "实现" / "示例统计.py").read_text(encoding="utf-8")
         self.assertIn("获取能力调用器().调用能力", 实现文本)
         self.assertNotIn("import 支持库", 实现文本)
-        self.assertNotIn("支持库.后端.文件系统支持库.文件操作支持库.文件操作.实现", 实现文本)
+        self.assertNotIn("支持库.后端.文件系统支持库.文件操作.实现", 实现文本)
 
     def test_已存在拒绝覆盖(self):
         结果 = self._生成()

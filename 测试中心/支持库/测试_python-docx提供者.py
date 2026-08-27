@@ -16,8 +16,8 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 支持库.适配层.python_docx提供者 import 生成文字文档, 解析文字文档
-from 支持库.适配层.python_docx提供者.实现 import 文字文档 as 实现模块
+from 支持库.后端.文档转换支持库.python_docx提供者 import 生成文字文档, 解析文字文档
+from 支持库.后端.文档转换支持库.python_docx提供者.实现 import 文字文档 as 实现模块
 
 
 def _生成docx文件(路径: Path, 文本: str = "往返测试内容") -> None:
@@ -108,7 +108,7 @@ class TestPythonDocx提供者(unittest.TestCase):
     def test_注册能力为内部实现且阻断公开owner(self):
         """Provider 只登记内部能力，公开文字文档 owner 不得被其覆盖。"""
         from 公共契约.能力契约.契约 import 能力注册表
-        from 支持库.适配层.python_docx提供者 import 注册能力
+        from 支持库.后端.文档转换支持库.python_docx提供者 import 注册能力
 
         注册表 = 能力注册表()
         注册能力(注册表)

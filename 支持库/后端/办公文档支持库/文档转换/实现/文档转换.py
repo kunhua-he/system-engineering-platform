@@ -1,9 +1,9 @@
 """文档转换原子能力实现：经受管提供者能力调用 textutil / LibreOffice。
 
-- textutil 转换经受管提供者能力 `textutil转换.转换文本文件` 执行；
-- LibreOffice 转换经受管提供者能力 `LibreOffice转换.转换办公文件` 执行；
-- 检查提供者经受管提供者能力 `textutil转换.检查提供者` /
-  `LibreOffice转换.检查提供者` 组合；
+- textutil 转换经受管提供者能力 `文档转换支持库.textutil转换.转换文本文件` 执行；
+- LibreOffice 转换经受管提供者能力 `文档转换支持库.LibreOffice转换.转换办公文件` 执行；
+- 检查提供者经受管提供者能力 `文档转换支持库.textutil转换.检查提供者` /
+  `文档转换支持库.LibreOffice转换.检查提供者` 组合；
 - 本模块绝不直接 import 适配层/启动外部进程；调用器未装配时如实
   返回 提供者不可用，不伪装成功。
 
@@ -23,10 +23,10 @@ from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 
 来源 = "文档转换"
-文本转换能力id = "textutil转换.转换文本文件"
-文本检查能力id = "textutil转换.检查提供者"
-办公转换能力id = "LibreOffice转换.转换办公文件"
-办公检查能力id = "LibreOffice转换.检查提供者"
+文本转换能力id = "文档转换支持库.textutil转换.转换文本文件"
+文本检查能力id = "文档转换支持库.textutil转换.检查提供者"
+办公转换能力id = "文档转换支持库.LibreOffice转换.转换办公文件"
+办公检查能力id = "文档转换支持库.LibreOffice转换.检查提供者"
 
 提供者_文本转换 = "textutil"
 提供者_办公转换 = "libreoffice"

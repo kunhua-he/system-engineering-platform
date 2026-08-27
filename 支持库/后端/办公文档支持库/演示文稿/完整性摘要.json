@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "3a4d480394ee57c08baad59683514ead7ab1f4daea089ad3162b8d3cf1907b20"
+      "sha256": "6bca20d17cd3658af35863a577f0f4286b3d3cc9483cfdb6015f0b1e49b4237c"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -13,35 +13,35 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "df4f9f625fc43427d6d8b858a9c9f1a5bdc767f04d626d9284e97de0526436f6"
+      "sha256": "be1e177cbdd3b7e0e4abe1b6067086153bfa4b2d2fe8a4f73c620793a12700ce"
     },
     {
       "路径": "复用决策.json",
-      "sha256": "5e9107d1f93f785a78c2e37441843d466c454a520fe8e86da5b0911c66c1f19c"
+      "sha256": "b21f135d79abc9b3fb950a1e5a4d49ef388f986af455725125380c37ee3be85d"
     },
     {
-      "路径": "实现/办公文档支持库.演示文稿.py",
-      "sha256": "db78a8d5aa02cf673336c5bfa36395b25f90c80c82b81abefa741f23301db741"
+      "路径": "实现/演示文稿.py",
+      "sha256": "a4e440734256d35bc3a31be79901122b6655b01b95d4394f6723178fc473f38f"
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "c2a82fda0f6601933732ccd5a736aeac596f2ab04ba63ba61ce9012b03086476"
+      "sha256": "4c3a979a7c5cd1be4556aa9625a0ca09d58f0745a83f874474b0fe8b5b4d2d1f"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "32629b6e3b8c1cfc987e9f68f1a64f74b90a7aac1b0f9763ac250a27d1b0d408"
+      "sha256": "055da4aebb62dfbdb94882bd2de778f430fdc50478d761ee2d5e417b7cff3f15"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "979d11afdb5175d447a68e3fd027f0c29009519ece296b446d7365854904e909"
+      "sha256": "9d41c335f20020c283463725a9da7ca9b9e10ed44049cf8ff5975620b4b416a7"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "083a38f27fa68d321be96e9d5bc66553b26281eacddd31869e5e7fca1f33ad5b"
+      "sha256": "8c32479084d16add4d717b78de512084325b2374403b20b0b286ada69c4b87f3"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "6f691fac74c4ffa0c10ea493ee9fb26784fe644f85f9b1337995dc76e9cad279"
+      "sha256": "70aed16b0dbf6562320173029fcfe5dc29093a5d5e77b1840e8624cc223cae23"
     },
     {
       "路径": "说明/使用说明.md",
@@ -61,7 +61,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "4a9eedf8be9b8444c1499da036e5c0b42b187013e13c8a5f631c1f94a6fd24f6"
+      "sha256": "3d4ce75026c9939a7a71a8df9103f2a846058749fe96f416eb68a3295d9a670b"
     },
     {
       "路径": "默认配置/默认配置.json",
