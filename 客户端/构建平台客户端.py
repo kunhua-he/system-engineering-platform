@@ -96,7 +96,11 @@ def 复制非Py文件(源根: Path, 目标根: Path) -> None:
         相对 = 文件.relative_to(源根)
         if "__pycache__" in 相对.parts:
             continue
+        if "工程缓存" in 相对.parts:
+            continue
         if 相对.suffix == ".py":
+            continue
+        if 相对.suffix.lower() in {".db", ".sqlite", ".sqlite3", ".log", ".tmp", ".pyc"}:
             continue
         目标 = 目标根 / 相对
         目标.parent.mkdir(parents=True, exist_ok=True)
@@ -128,9 +132,14 @@ def 计算制品摘要(客户端根: Path) -> str:
     """内容寻址：全部正式文件 sha256 摘要。"""
     哈希 = hashlib.sha256()
     for 文件 in sorted(客户端根.rglob("*")):
-        if 文件.is_dir() or "__pycache__" in 文件.parts:
+        if 文件.is_dir():
             continue
-        哈希.update(str(文件.relative_to(客户端根)).encode("utf-8"))
+        相对 = 文件.relative_to(客户端根)
+        if "__pycache__" in 相对.parts or "工程缓存" in 相对.parts:
+            continue
+        if 相对.suffix.lower() in {".db", ".sqlite", ".sqlite3", ".log", ".tmp", ".pyc"}:
+            continue
+        哈希.update(str(相对).encode("utf-8"))
         哈希.update(文件.read_bytes())
     return 哈希.hexdigest()
 

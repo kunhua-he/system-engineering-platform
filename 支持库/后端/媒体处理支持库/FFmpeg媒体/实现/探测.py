@@ -105,6 +105,8 @@ def 探测元数据(文件路径: str, 超时秒: float = 默认超时秒) -> �
             "高度": 流.get("height"), "采样率": 流.get("sample_rate"),
             "声道数": 流.get("channels"),
         })
+    if not 流列表 and not 格式.get("format_name"):
+        return _失败("损坏媒体", "ffprobe 返回空媒体元数据")
     return 结果.成功结果({
         "时长秒": _转浮点(格式.get("duration")),
         "格式": 格式.get("format_name", ""),

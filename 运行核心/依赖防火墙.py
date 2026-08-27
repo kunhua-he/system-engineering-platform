@@ -138,6 +138,21 @@ def _所在包已废弃(文件: Path) -> bool:
     return False
 
 
+def _所在包是内部层(文件: Path) -> bool:
+    """读取文件所属包声明，判断是否为不对外暴露的内部支持库。"""
+    for 目录 in 文件.parents:
+        声明路径 = 目录 / "包声明.json"
+        if not 声明路径.is_file():
+            continue
+        try:
+            import json
+            声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+            return bool(声明.get("内部层", False))
+        except (OSError, ValueError):
+            return False
+    return False
+
+
 def 审计依赖(目标目录: Path | None = None, *, 返回违规: bool = True) -> 依赖审计结果:
     """AST 依赖审计：逐文件解析导入，按允许方向与强制拒绝规则判定。"""
     实际目录 = Path(目标目录) if 目标目录 is not None else 系统根
@@ -200,7 +215,7 @@ def 审计依赖(目标目录: Path | None = None, *, 返回违规: bool = True)
                 ) or (
                     来源层 == "开发工具" and "发布门禁" in str(文件.relative_to(系统根))
                 )
-                if not 是否提供者文件:
+                if not 是否提供者文件 and not _所在包是内部层(文件):
                     结果.违规列表.append(依赖违规(来源层, 模块名, "第三方直连（一第三方一支持库，仅提供者可导入）", str(文件.relative_to(系统根)), 行号))
                     continue
             # P6 规则 2：适配层提供者只允许支持库层/运行核心/模块库（模块组合提供者）依赖
@@ -210,6 +225,12 @@ def 审计依赖(目标目录: Path | None = None, *, 返回违规: bool = True)
                     continue
             # 允许方向检查（同层内部导入允许；工具层"其他"不受方向限制）
             if 顶层 in 层名称表 and 顶层 != "公共契约" and 顶层 != 来源层:
+                # 网关启动脚本是唯一的启动编排边界：它负责拉起后端核心。
+                # 只放行该文件，禁止把整个运行核心层开放给后端核心。
+                if (来源层 == "运行核心"
+                        and str(文件.relative_to(系统根)) == "运行核心/启动运行核心网关.py"
+                        and 顶层 == "后端核心"):
+                    continue
                 if 来源层 == "其他":
                     continue  # 工具/门禁/验证 文件可依赖任意层
                 允许表 = 允许依赖表.get(来源层, set())

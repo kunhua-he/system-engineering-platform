@@ -9,8 +9,8 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 支持库.适配层.openpyxl提供者 import 生成表格文档, 解析表格文档, 注册能力
-from 支持库.适配层.openpyxl提供者.实现 import 表格文档 as 解析模块
+from 支持库.后端.文档转换支持库.openpyxl提供者 import 生成表格文档, 解析表格文档, 注册能力
+from 支持库.后端.文档转换支持库.openpyxl提供者.实现 import 表格文档 as 解析模块
 
 
 def _造公式文件(路径: Path) -> None:

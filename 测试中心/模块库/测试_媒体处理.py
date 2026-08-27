@@ -57,7 +57,7 @@ class 媒体处理装配(unittest.TestCase):
     def setUp(self):
         from 公共契约.能力契约.契约 import 能力注册表
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.适配层.FFmpeg提供者 import 注册能力 as 注册FFmpeg能力
+        from 支持库.后端.媒体处理支持库.FFmpeg媒体 import 注册能力 as 注册FFmpeg能力
 
         注册表 = 能力注册表()
         注册FFmpeg能力(注册表)
@@ -232,7 +232,7 @@ class Test零残留与注册(unittest.TestCase):
     def test_默认临时文件零残留(self):
         from 公共契约.能力契约.契约 import 能力注册表
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.适配层.FFmpeg提供者 import 注册能力 as 注册FFmpeg能力
+        from 支持库.后端.媒体处理支持库.FFmpeg媒体 import 注册能力 as 注册FFmpeg能力
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
 
         原惰性 = 设置惰性装配函数.__globals__.get("_惰性装配函数")

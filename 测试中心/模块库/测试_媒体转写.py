@@ -75,7 +75,7 @@ class 媒体转写装配(unittest.TestCase):
     def setUp(self):
         from 公共契约.能力契约.契约 import 能力注册表
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.适配层.MLXWhisper提供者 import 注册能力 as 注册转写能力
+        from 支持库.后端.转写支持库.转写 import 注册能力 as 注册转写能力
 
         注册表 = 能力注册表()
         注册转写能力(注册表)

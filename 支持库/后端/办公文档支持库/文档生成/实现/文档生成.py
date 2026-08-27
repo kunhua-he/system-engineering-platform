@@ -6,7 +6,7 @@
 - docx → `内部.文字文档.生成`（python_docx提供者）
 - xlsx → `办公文档支持库.表格文档.生成表格文档`（openpyxl提供者）
 - pptx → `内部.演示文稿.生成`（python_pptx提供者）
-- pdf  → `PDF生成.生成PDF`（reportlab提供者）
+- pdf  → `文档转换支持库.PDF生成.生成PDF`（reportlab提供者）
 调用器未装配时如实返回 提供者不可用。
 
 统一错误码：缺库=提供者不可用；参数非法=参数不合法；生成或签名失败=生成失败。
@@ -30,7 +30,7 @@ from 支持库.后端.办公文档支持库.文档生成.实现.签名校验 imp
     "docx": "内部.文字文档.生成",
     "xlsx": "办公文档支持库.表格文档.生成表格文档",
     "pptx": "内部.演示文稿.生成",
-    "pdf": "PDF生成.生成PDF",
+    "pdf": "文档转换支持库.PDF生成.生成PDF",
 }
 媒体类型表 = {
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

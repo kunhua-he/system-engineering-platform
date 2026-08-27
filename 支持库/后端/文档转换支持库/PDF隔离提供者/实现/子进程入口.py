@@ -16,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-系统根 = Path(__file__).resolve().parents[4]
+系统根 = Path(__file__).resolve().parents[5]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 

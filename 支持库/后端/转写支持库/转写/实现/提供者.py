@@ -50,7 +50,7 @@ def _启动子进程() -> subprocess.Popen:
     """启动一次性隔离子进程（独立进程组，cwd=平台根）。"""
     return subprocess.Popen([sys.executable, str(子进程入口路径)],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            cwd=str(包目录.parents[2]), start_new_session=True, env=dict(os.environ))
+                            cwd=str(包目录.parents[3]), start_new_session=True, env=dict(os.environ))
 
 
 def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:

@@ -36,10 +36,10 @@ class Test生成文档(unittest.TestCase):
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
 
         注册表 = 能力注册表()
-        from 支持库.适配层.python_docx提供者 import 注册能力 as 注册docx
-        from 支持库.适配层.openpyxl提供者 import 注册能力 as 注册xlsx
-        from 支持库.适配层.python_pptx提供者 import 注册能力 as 注册pptx
-        from 支持库.适配层.reportlab提供者 import 注册能力 as 注册pdf
+        from 支持库.后端.文档转换支持库.python_docx提供者 import 注册能力 as 注册docx
+        from 支持库.后端.文档转换支持库.openpyxl提供者 import 注册能力 as 注册xlsx
+        from 支持库.后端.文档转换支持库.python_pptx提供者 import 注册能力 as 注册pptx
+        from 支持库.后端.文档转换支持库.PDF生成 import 注册能力 as 注册pdf
         from 支持库.后端.办公文档支持库.文档生成 import 注册能力 as 注册文档生成
 
         注册docx(注册表)
@@ -103,7 +103,7 @@ class Test生成文档(unittest.TestCase):
 
     def test_缺库提供者不可用(self):
         # 依赖注入：环境变量禁用 python-docx → docx 生成返回 提供者不可用
-        from 支持库.适配层.python_docx提供者.实现 import 文字文档 as docx实现
+        from 支持库.后端.文档转换支持库.python_docx提供者.实现 import 文字文档 as docx实现
         原缓存 = getattr(docx实现, "_提供者缓存", None)
         docx实现._提供者缓存 = None
         try:

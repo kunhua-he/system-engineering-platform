@@ -93,7 +93,7 @@ class 模块合规测试(unittest.TestCase):
 
     def test_实现目录导入检出(self):
         搭建违规模块(self.临时根, "深挖模块",
-                      "from 支持库.后端.文件系统支持库.文件操作支持库.文件操作.实现.文件系统 import 读取文件\n")
+                      "from 支持库.后端.文件系统支持库.文件操作.实现.文件系统 import 读取文件\n")
         结果 = 审计模块边界(self.临时根, "深挖模块")
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["违规列表"][0]["类别"], "实现目录导入")

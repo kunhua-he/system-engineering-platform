@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-提供者目录 = Path(__file__).resolve().parents[2] / "支持库" / "适配层" / "python_pptx提供者"
+提供者目录 = (Path(__file__).resolve().parents[2] / "支持库" / "后端"
+              / "文档转换支持库" / "python_pptx提供者")
 
 
 def 加载模块(名称: str, 相对路径: str):
@@ -15,7 +16,7 @@ def 加载模块(名称: str, 相对路径: str):
     规格.loader.exec_module(模块)
     return 模块
 
-实现模块 = 加载模块("python_pptx提供者_实现", "实现/办公文档支持库.演示文稿.py")
+实现模块 = 加载模块("python_pptx提供者_实现", "实现/演示文稿.py")
 入口模块 = 加载模块("python_pptx提供者_入口", "__init__.py")
 最小PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 

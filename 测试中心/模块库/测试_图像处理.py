@@ -32,7 +32,7 @@ class 图像处理装配(unittest.TestCase):
     def setUp(self):
         from 公共契约.能力契约.契约 import 能力注册表
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.适配层.Pillow提供者 import 注册能力 as 注册图像能力
+        from 支持库.后端.图像处理支持库.图像解码 import 注册能力 as 注册图像能力
         from 支持库.后端.文件系统支持库.文件操作 import 注册能力 as 注册文件系统能力
 
         注册表 = 能力注册表()
