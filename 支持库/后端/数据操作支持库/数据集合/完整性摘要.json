@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "401a0c3abc444742f389f27463e647c6aaa856c501ac74025673942fe1bd6f0b"
+      "sha256": "1f325a6bd78f64b618e0d442273fb2bb8a9707411b406b3d7b981e7f9de26a5d"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -29,11 +29,11 @@
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "2ff9b6e142f065ef761693e9ec427ea85089a7934bf580c13df417884c2d01b8"
+      "sha256": "0f6cd6c51bcfae5f8dd57aa77500879f2b223fb6546c365a4bff7aef75ac7126"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "54edd7b78a97a6df8d61808cf74c6fa04707d315e24e0014f149e6afb77acc1e"
+      "sha256": "d5d49dec4b54ac899b90386f26f165df8f656fcd373d488be08a074bbe6148a7"
     },
     {
       "路径": "能力定义.json",
@@ -45,11 +45,11 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "7914fe89e172637d9d8cf1aec65445b1fbda1bceb31f5eebed3be7cfa3f2beb2"
+      "sha256": "6bad48a4cd14f24ea1a80ca1c2d37eeff74050ff846eecb9ab5051306683ea79"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "f86e15bafba40c60b529d0920b0b54c4caca1812d9fc35c1f937a6be2d9cf217"
+      "sha256": "7f98fc9351bc677ea7464f2a1f698d3fdcc9d1b0c7b5e678ee238134da9fea9d"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -65,7 +65,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "a1f91b2a93f28fac80f8fc5d8926d2dc39b0de75ddf6c6d4808ac3849090c783"
+      "sha256": "be30ac20dfe1a6ec798e92dd6d573082f95cb08efb0f7a0d9297d81b7b595b46"
     },
     {
       "路径": "默认配置/默认配置.json",

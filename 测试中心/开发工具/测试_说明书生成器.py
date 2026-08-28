@@ -54,8 +54,8 @@ class Test说明书生成器(unittest.TestCase):
 
     def test_参数表含必填与默认值(self):
         文本 = 生成说明书文本(Pillow包)
-        self.assertIn("| 字节 | 字节 | 是 | None | 图像字节内容", 文本)
-        self.assertIn("| 超时秒 | 数字 | 否 | 60 | 子进程超时", 文本)
+        self.assertIn("| 字节 | 字节集型 | 是 | None | 图像字节内容", 文本)
+        self.assertIn("| 超时秒 | 双精度数型 | 否 | 60 | 子进程超时", 文本)
 
     def test_骨架示例如实标注(self):
         """能力搜索数据无现成示例时按参数生成骨架并标注需验证。"""

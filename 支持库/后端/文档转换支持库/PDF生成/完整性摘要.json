@@ -57,7 +57,7 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "20c1f79a2df3e9597a9337e5afb0882207b4c7d5580cbd1310a4d3f9a4e61f57"
+      "sha256": "55ed6b1afc04ccf95ffe673ea9693ea258f5a2f7259711d93fc21e07f877cbaa"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -73,7 +73,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "a7e6be55de1eb1d0495a4a9fba3f91345370fcdbd895ced83dfbc98527dda566"
+      "sha256": "a2e7c46d70476fe2c3d823a667d176c807177575b2da03a39cdb56d28d1247fb"
     }
   ]
 }

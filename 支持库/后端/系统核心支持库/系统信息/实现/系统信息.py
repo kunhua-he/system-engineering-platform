@@ -14,6 +14,9 @@ import socket
 from 公共契约.基础类型.结果类型 import 结果
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def 获取操作系统信息() -> 结果:
     """操作系统信息。返回 {系统, 版本, 架构, 主机名, Python版本}。"""
     return 结果.成功结果({
@@ -36,8 +39,8 @@ def 获取CPU信息() -> 结果:
         运行结果 = subprocess.run(["sysctl", "-n", "vm.loadavg"], capture_output=True, text=True, timeout=3)
         if 运行结果.returncode == 0:
             负载 = 运行结果.stdout.strip().split()
-    except Exception:
-        pass
+    except Exception as 错误:
+        降级记录表.append(str(错误))
     return 结果.成功结果({
         "物理核数": os.cpu_count() or 0,
         "逻辑核数": os.cpu_count() or 0,

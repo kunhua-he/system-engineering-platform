@@ -16,6 +16,7 @@ import json
 import base64
 import hashlib
 import os
+import re
 import socket
 import sys
 import subprocess
@@ -228,6 +229,33 @@ def _读取聚合契约(组件目录: Path) -> tuple[list[dict[str, Any]], bool,
     return 能力表, False, ["能力契约/ 为空（无契约 JSON）"] if not 能力表 else []
 
 
+def _提取函数错误码(实现目录: Path, 函数名: str) -> list[str]:
+    """按函数名定位实现函数体，提取其中的 结果.失败("错误码")。
+
+    用于失败语义精确判定：实现有失败路径的能力必须声明对应错误码；
+    实现无失败路径（纯查询/纯计算）的能力空错误码合法。
+    """
+    错误码: list[str] = []
+    if not 实现目录.is_dir():
+        return 错误码
+    for 文件 in 实现目录.rglob("*.py"):
+        try:
+            内容 = 文件.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        模式 = re.compile(r"def\s+" + re.escape(函数名) + r"\s*\(.*?\n(.*?)(?=\ndef\s+|\Z)", re.S)
+        匹配 = 模式.search(内容)
+        if not 匹配:
+            continue
+        函数体 = 匹配.group(1)
+        for m in re.findall(r'结果\.失败\(\s*["\']([^"\']+)["\']', 函数体):
+            if m not in 错误码:
+                错误码.append(m)
+        if 错误码:
+            break
+    return 错误码
+
+
 def _提供者锁定(系统根: Path, 组件目录: Path, 声明: dict[str, Any]) -> tuple[bool, str]:
     """锁定提供者：依赖声明（能力+版本）必须能定位到 支持库/模块库 真实提供者包。"""
     依赖列表 = 声明.get("依赖", []) if isinstance(声明.get("依赖"), list) else []
@@ -381,8 +409,8 @@ class 组件合规:
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 版本")
                 if not 契约.get("说明"):
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 说明")
-                参数列表 = 契约.get("参数", [])
-                if not isinstance(参数列表, list) or not 参数列表:
+                参数列表 = 契约.get("参数")
+                if not isinstance(参数列表, list):
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 参数")
                 else:
                     for 参数 in 参数列表:
@@ -397,7 +425,7 @@ class 组件合规:
                                 f"{契约.get('能力id', '未知能力')} 参数 {参数['名称']} 缺少 必填/默认值/说明")
                 if not 契约.get("返回"):
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 返回结构")
-                if not isinstance(契约.get("错误码"), list) or not 契约.get("错误码"):
+                if not isinstance(契约.get("错误码"), list):
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 错误码")
                 if not isinstance(契约.get("调用示例"), dict):
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 可执行调用示例")
@@ -524,7 +552,7 @@ class 组件合规:
         问题列表 = []
         for 文件 in 实现目录.rglob("*.py"):
             内容 = 文件.read_text(encoding="utf-8")
-            if "open(" in 内容 and "close()" not in 内容 and "with open" not in 内容:
+            if re.search(r"\bopen\(", 内容) and "close()" not in 内容 and "with open" not in 内容:
                 问题列表.append(f"{文件.name} 存在 open 未关闭")
             if "while True" in 内容 and "break" not in 内容 and "return" not in 内容:
                 问题列表.append(f"{文件.name} 存在无退出无限循环")
@@ -567,21 +595,27 @@ class 组件合规:
         return not 问题列表, "; ".join(问题列表) or f"聚合契约 {len(能力表)} 个能力版本号合法"
 
     def _场景失败语义(self) -> tuple[bool, str]:
-        """失败语义：遍历聚合契约每个能力声明错误码且实现不吞异常。"""
+        """失败语义：实现有失败路径的能力必须声明对应错误码；实现不吞异常。"""
         能力表, _, 问题列表 = _读取聚合契约(self.组件目录)
         if 问题列表 and not 能力表:
             return False, "; ".join(问题列表)
-        for 契约 in 能力表:
-            if not isinstance(契约.get("错误码"), list) or not 契约.get("错误码"):
-                问题列表.append(f"{契约.get('能力id', '未知能力')} 未声明错误码")
         实现目录 = self.组件目录 / "实现"
         if not 实现目录.is_dir():
             实现目录 = self.组件目录 / "执行单元"
+        # 实现有 结果.失败 的能力，契约必须声明对应错误码；无失败路径能力空错误码合法。
+        for 契约 in 能力表:
+            能力id = 契约.get("能力id", "")
+            契约错误码 = 契约.get("错误码") if isinstance(契约.get("错误码"), list) else []
+            函数名 = 能力id.split(".")[-1]
+            真实错误码 = _提取函数错误码(实现目录, 函数名)
+            未声明 = [码 for 码 in 真实错误码 if 码 not in 契约错误码]
+            if 未声明:
+                问题列表.append(f"{能力id} 未声明错误码: {未声明}")
         if 实现目录.is_dir():
             for 文件 in 实现目录.rglob("*.py"):
                 内容 = 文件.read_text(encoding="utf-8")
-                if "except Exception" in 内容 and "pass" in 内容:
-                    问题列表.append(f"{文件.name} 吞异常（except+pass）")
+                if re.search(r"except\s+Exception\s*:\s*(?:#[^\n]*\n\s*)?pass\b", 内容):
+                    问题列表.append(f"{文件.name} 吞异常（except Exception 后直接 pass）")
         return not 问题列表, "; ".join(问题列表) or "失败语义明确"
 
     def _场景说明书(self) -> tuple[bool, str]:

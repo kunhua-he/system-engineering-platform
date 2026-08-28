@@ -18,6 +18,9 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 锁 = threading.Lock()
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def _创建(类型: str, 对象: object, 说明: str) -> 结果:
     with 锁:
         句柄 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"并发-{类型}", 所有者="")
@@ -128,12 +131,14 @@ def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: fl
 
 def 释放句柄(句柄: str = None) -> 结果:
     """释放并发资源句柄（幂等，线程池关闭）。"""
+    if not isinstance(句柄, str) or not 句柄.strip():
+        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="并发控制")
     with 锁:
         资源 = 资源表.pop(句柄, None)
         if 资源 and 资源["类型"] == "线程池":
             try:
                 资源["对象"].shutdown(wait=False)
-            except Exception:
-                pass
+            except Exception as 错误:
+                降级记录表.append(str(错误))
         句柄系统.失效(句柄, "释放")
     return 结果.成功结果({"句柄": 句柄, "已释放": True})

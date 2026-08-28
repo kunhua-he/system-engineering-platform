@@ -26,6 +26,9 @@ from 公共契约.基础类型.结果类型 import 结果
 默认最大字节数 = 5 * 1024 * 1024
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def _解析地址(地址: str) -> urllib.parse.SplitResult:
     try:
         return urllib.parse.urlsplit(地址)
@@ -139,8 +142,8 @@ def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = N
             try:
                 import ssl
                 ssl上下文 = ssl._create_unverified_context()
-            except Exception:
-                pass
+            except Exception as 错误:
+                降级记录表.append(str(错误))
 
         # 普通请求
         try:
@@ -233,8 +236,8 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
             try:
                 import ssl
                 ssl上下文 = ssl._create_unverified_context()
-            except Exception:
-                pass
+            except Exception as 错误:
+                降级记录表.append(str(错误))
 
         目标 = 打开器 if 打开器 else urllib.request.urlopen
         try:

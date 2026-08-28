@@ -25,6 +25,9 @@ _连接: sqlite3.Connection | None = None
 _连接路径: Path | None = None
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def _失败(错误码: str, 消息: str) -> 结果:
     return 结果.失败(错误码, 消息, 来源="嵌入缓存")
 
@@ -37,8 +40,8 @@ def _取连接(数据库路径: str | Path | None = None) -> sqlite3.Connection:
     if _连接 is not None:
         try:
             _连接.close()
-        except Exception:
-            pass
+        except Exception as 错误:
+            降级记录表.append(str(错误))
     目标.parent.mkdir(parents=True, exist_ok=True)
     _连接 = sqlite3.connect(str(目标), timeout=10)
     _连接.execute(

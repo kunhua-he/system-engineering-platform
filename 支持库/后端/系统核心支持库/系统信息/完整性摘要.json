@@ -17,19 +17,19 @@
     },
     {
       "路径": "复用决策.json",
-      "sha256": "40a6daafd5fdb787c4d15faf59df45d8a4130ced64d1987f55c27c883dccf507"
+      "sha256": "08196cf8e0dca7c71aa5a7098e65acb2ef89c19bf195e283249e2d92e14df806"
     },
     {
       "路径": "实现/系统信息.py",
-      "sha256": "4f1c718e38f07f72d9ad20a7760e70b69cd3ce930ec8a3261d13fa047e09873b"
+      "sha256": "47236ca992dc98fe8d6de79ab9c0bf569df4a85c4cf12079c495b475acb08b6b"
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      "sha256": "194070957ce89857e28405b9a34e88f31a4e7994c984f08a20f4ca33a27963a5"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "e23552ef47134381fbdcc702cf65a6d878b2d7c04580e4cfa67746aa553bfff7"
+      "sha256": "dfca6933e6450c116a70a388741f9335dcc61369091abb74268a873397ae6d41"
     },
     {
       "路径": "能力定义.json",
@@ -37,19 +37,23 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      "sha256": "8acb62a8005cd7cd85b8429587bd3d51c5f911592645aa16ba32af3598181acd"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "86f6d6a96cc25f7860c446d22dfa49c25eda9a64e9a58128230914a499a99c21"
+      "sha256": "5d806121a0746c6429337681f2ae7f1d1623396e31442c05d43a5fa5485ffea2"
     },
     {
       "路径": "资源预算.json",
       "sha256": "cb9e8e8d6c4650b41e72171a43d76c74cc0f12939d63dbddcfa5731e99794da8"
     },
     {
+      "路径": "配置契约/配置契约.json",
+      "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "4f877d81eaafb29077a97c2cb44a5235aef578d721b5deb6e4085dac86d30e52"
+      "sha256": "2f780ec87ca170461993f9adf94ff1ace1f43107660942e77eea2582141a95f4"
     }
   ]
 }

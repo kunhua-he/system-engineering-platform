@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -213,6 +214,39 @@ class Test发布门禁收敛(unittest.TestCase):
             self.assertEqual(失败场景, "", "通过包失败场景必须为空")
             self.assertEqual(通过标记, True)
             self.assertEqual(通过数, 13)
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+    def test_支持库合规失败必须阻断(self) -> None:
+        """支持库缺少配置契约时，逐包13/13不能只披露后放行。"""
+        临时根, 包目录 = 建临时模块库()
+        try:
+            声明路径 = 包目录 / "包声明.json"
+            声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+            声明["类型"] = "支持库"
+            声明路径.write_text(json.dumps(声明, ensure_ascii=False), encoding="utf-8")
+            shutil.rmtree(包目录 / "配置契约")
+            通过, 证据表 = 执行逐包权威合规([包目录])
+            self.assertFalse(通过, "支持库合规失败不能只披露后返回通过")
+            self.assertLess(证据表[0][3], 13)
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+    def test_当前验证任务目录源码不误判为持久源码(self) -> None:
+        """嵌套门禁执行期间只忽略当前任务目录，其他缓存源码仍须阻断。"""
+        from 开发工具.发布门禁 import 运行发布门禁 as 门禁
+
+        临时根 = Path(tempfile.mkdtemp(prefix="门禁缓存源码_"))
+        try:
+            活动目录 = 临时根 / "工程缓存" / "验证运行" / "任务1" / "已激活"
+            持久目录 = 临时根 / "工程缓存" / "未登记源码"
+            活动目录.mkdir(parents=True)
+            持久目录.mkdir(parents=True)
+            (活动目录 / "主.py").write_text("", encoding="utf-8")
+            (持久目录 / "主.py").write_text("", encoding="utf-8")
+            with patch.object(门禁, "系统根", 临时根), patch.dict(
+                os.environ, {"系统底座_任务id": "任务1"}, clear=False
+            ):
+                结果 = 门禁._扫描工程缓存Python源码()
+            self.assertEqual(结果, ["工程缓存/未登记源码/主.py"])
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 

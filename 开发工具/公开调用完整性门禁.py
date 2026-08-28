@@ -23,9 +23,23 @@ from pathlib import Path
 
 def _是保留目录(路径: Path) -> bool:
     """模板、隐藏目录和缓存目录均不属于正式公开包。"""
-    # 传入的是正式扫描段的直接子目录；只检查目录名，避免用户把仓库放在
-    # ``/_工作区/`` 等父目录时误把整个仓库排除。
     return 路径.name.startswith(("_", "."))
+
+
+def _是聚合父包(包目录: Path) -> bool:
+    """聚合父包：无能力定义.json 且有子目录含包声明.json。
+
+    0342d39 功能域分组后，``支持库/后端`` 直接子目录是聚合入口（如
+    ``系统核心支持库``），能力由子域包（``系统核心支持库/幂等消息``）
+    声明。聚合父包只做聚合视图，不拥有六环，门禁应跳过它，与正式包索引
+    ``无能力定义.json 即聚合父包`` 的 owner 规则一致。
+    """
+    if (包目录 / "能力定义.json").is_file():
+        return False
+    return any(
+        (子 / "包声明.json").is_file()
+        for 子 in 包目录.iterdir() if 子.is_dir()
+    )
 
 
 def 读取json(路径: Path):
@@ -36,23 +50,25 @@ def 读取json(路径: Path):
 
 
 def 找包目录(根: Path) -> list[Path]:
-    """返回正式公开包目录。
+    """返回正式公开包目录（递归到叶子包，跳过聚合父包与保留目录）。
 
-    包必须是正式扫描段的直接子目录；这样 ``模块库/_模板``、工程缓存和
-    ``支持库/适配层/*Provider`` 即使存在完整 ``包声明.json`` 也不会被当作
-    可公开能力或 owner。物理目录层级不是调用契约，但正式包根的边界是门禁
-    的安全边界，不能通过递归扫描悄悄扩大。
+    正式包边界是 ``支持库/后端`` 与 ``模块库``；聚合父包（无能力定义.json
+    且有子域包）与 ``_``/``.`` 开头的保留目录不进入扫描。物理目录层级不是
+    调用契约，但正式包根的边界是门禁的安全边界。
     """
     目录: list[Path] = []
     for 段 in 扫描段:
         扫描根 = 根 / 段
         if not 扫描根.is_dir():
             continue
-        for 子目录 in 扫描根.iterdir():
-            if not 子目录.is_dir() or _是保留目录(子目录):
+        for 声明路径 in sorted(扫描根.rglob("包声明.json")):
+            包目录 = 声明路径.parent
+            相对 = 包目录.relative_to(扫描根)
+            if any(片段.startswith(("_", ".")) for 片段 in 相对.parts):
                 continue
-            if (子目录 / "包声明.json").is_file():
-                目录.append(子目录)
+            if _是聚合父包(包目录):
+                continue
+            目录.append(包目录)
     return sorted(目录)
 
 
@@ -171,16 +187,15 @@ def 检查包(包目录: Path) -> list[dict]:
 
 
 def 检查全局(包能力表: list[tuple[str, str, str]]) -> list[dict]:
-    """跨包检查：同义能力（同名）与重复提供者（同能力id）。"""
+    """跨包检查：只查能力 id 全局唯一，豁免中文名重复。
+
+    华哥裁决（2026-08-27）：能力 id 是全局唯一标识（硬约束），中文名是
+    显示层，模块库门面组合支持库、多后端提供者、通用能力名都可以同名。
+    """
     额外: list[dict] = []
-    名称表: dict[str, set[str]] = {}
     id表: dict[str, set[str]] = {}
     for 包id, 能力id, 名称 in 包能力表:
-        名称表.setdefault(名称, set()).add(包id)
         id表.setdefault(能力id, set()).add(包id)
-    for 名称, 包们 in 名称表.items():
-        if 名称 and len(包们) > 1:
-            额外.append({"能力id": 名称, "包": "、".join(sorted(包们)), "缺口类型": "同义能力-跨包同名", "路径": "跨包"})
     for 能力id, 包们 in id表.items():
         if 能力id and len(包们) > 1:
             额外.append({"能力id": 能力id, "包": "、".join(sorted(包们)), "缺口类型": "重复提供者-同能力id多包", "路径": "跨包"})
@@ -206,7 +221,7 @@ def main() -> int:
     if not 违规:
         print("公开调用完整性门禁通过：六环一致，无违规")
         return 0
-    print(f"公开调用完整性门禁失败：共 {len(违规)} 项违规（六环缺口+同义/重复）")
+    print(f"公开调用完整性门禁失败：共 {len(违规)} 项违规（六环缺口+重复提供者）")
     for 条 in 违规:
         print(f"[{条['缺口类型']}] 能力id={条['能力id']} 包={条['包']} 路径={条['路径']}")
     return 1

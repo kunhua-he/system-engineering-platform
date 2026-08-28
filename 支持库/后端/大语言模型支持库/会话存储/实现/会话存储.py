@@ -25,6 +25,9 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 锁 = threading.Lock()
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def _包申报超时() -> int:
     """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""
     try:
@@ -34,8 +37,8 @@ def _包申报超时() -> int:
             申报 = json.load(f).get("句柄超时秒")
         if isinstance(申报, int) and 申报 > 0:
             return 申报
-    except Exception:
-        pass
+    except Exception as 错误:
+        降级记录表.append(str(错误))
     return 默认超时秒
 
 # 句柄 → 连接信息（库路径等），由 连接会话存储() 登记
@@ -126,8 +129,8 @@ def 连接会话存储(库路径: str = None, 超时秒: int = None) -> 结果:
         try:
             句柄系统.登记资源(对象.句柄id, 资源类型="SQLite连接", 资源路径=路径,
                               清理函数=(lambda 连接对象=连接表[对象.句柄id]: None))
-        except Exception:
-            pass
+        except Exception as 错误:
+            降级记录表.append(str(错误))
     return 结果.成功结果({"句柄": 对象.句柄id, "超时秒": 连接表[对象.句柄id]["超时秒"],
                             "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续约，可显式释放；传 超时秒>0 覆盖"})
 

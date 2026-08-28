@@ -95,6 +95,8 @@ def 出队(句柄: str = None) -> 结果:
 
 def 释放句柄(句柄: str = None) -> 结果:
     """释放结构句柄（幂等）。"""
+    if not isinstance(句柄, str) or not 句柄.strip():
+        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="数据结构")
     with 锁:
         结构表.pop(句柄, None)
         句柄系统.失效(句柄, "释放")

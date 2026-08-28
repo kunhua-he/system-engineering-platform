@@ -24,3 +24,21 @@ __all__ = [
     "注册能力",
 ]
 
+
+def 注册能力(注册表) -> None:
+    """由支持库加载器调用，向能力注册表注册本库全部能力。"""
+    from 公共契约.能力契约.契约 import 能力实现
+    import json
+    from pathlib import Path
+    定义路径 = Path(__file__).resolve().parent / "能力定义.json"
+    定义 = json.loads(定义路径.read_text(encoding="utf-8"))
+    for 能力 in 定义.get("能力列表", []):
+        注册表.注册(能力实现(
+            能力id=能力["能力id"],
+            包id=定义["包id"],
+            实现函数=globals()[能力["能力id"].split(".")[-1]],
+            参数=能力.get("参数", []),
+            返回="结果型",
+            说明=能力.get("说明", ""),
+        ))
+
