@@ -212,7 +212,7 @@ def 执行发布检查() -> dict[str, Any]:
     """执行发布检查（发布门禁，复用同一验证引擎）。"""
     import subprocess
     进程 = subprocess.run(
-        [sys.executable, "-S", str(系统根 / "发布门禁" / "运行发布门禁.py")],
+        [sys.executable, "-S", str(系统根 / "开发工具" / "发布门禁" / "运行发布门禁.py")],
         cwd=str(系统根), capture_output=True, text=True, timeout=300)
     最后行 = [行 for 行 in 进程.stdout.splitlines() if "发布状态" in 行]
     return {"退出码": 进程.returncode, "发布状态": 最后行[-1] if 最后行 else "未知",

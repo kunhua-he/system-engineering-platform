@@ -39,6 +39,9 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def _包申报超时() -> int:
     """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""
     try:
@@ -48,8 +51,8 @@ def _包申报超时() -> int:
             申报 = json.load(f).get("句柄超时秒")
         if isinstance(申报, int) and 申报 > 0:
             return 申报
-    except Exception:
-        pass
+    except Exception as 错误:
+        降级记录表.append(str(错误))
     return 默认超时秒
 
 
@@ -425,8 +428,8 @@ def _等待本地健康(端口: int, 超时秒: int) -> bool:
             with urllib.request.urlopen(网址, timeout=3) as 响应:
                 if 200 <= 响应.status < 300:
                     return True
-        except Exception:
-            pass
+        except Exception as 错误:
+            降级记录表.append(str(错误))
         time.sleep(0.5)
     return False
 
@@ -522,8 +525,8 @@ def _终止本地进程(句柄id: str) -> None:
                 except ProcessLookupError:
                     pass
                 进程.wait(timeout=5)
-    except Exception:
-        pass
+    except Exception as 错误:
+        降级记录表.append(str(错误))
 
 
 def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
@@ -540,8 +543,8 @@ def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
         端口 = 连接.get("配置", {}).get("端口")
         if isinstance(pid, int):
             句柄系统.登记资源(句柄, 资源类型="进程", PID=pid, 端口=端口 if isinstance(端口, int) else None)
-    except Exception:
-        pass
+    except Exception as 错误:
+        降级记录表.append(str(错误))
     return 结果.成功结果({"句柄": 句柄, "已绑定进程": True})
 
 

@@ -19,6 +19,9 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 锁 = threading.Lock()
 
 
+
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+
 def _取进程(句柄: str) -> tuple[subprocess.Popen | None, str]:
     有效, 原因 = 句柄系统.校验(句柄id=句柄)
     if not 有效:
@@ -115,12 +118,14 @@ def 检查命令可用(命令: str = None) -> 结果:
 
 def 释放句柄(句柄: str = None) -> 结果:
     """释放进程句柄（幂等，强制终止残留进程）。"""
+    if not isinstance(句柄, str) or not 句柄.strip():
+        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="进程管理")
     with 锁:
         进程 = 进程表.pop(句柄, None)
         if 进程:
             try:
                 os.killpg(os.getpgid(进程["进程对象"].pid), 9)
-            except Exception:
-                pass
+            except Exception as 错误:
+                降级记录表.append(str(错误))
         句柄系统.失效(句柄, "释放")
     return 结果.成功结果({"句柄": 句柄, "已释放": True})

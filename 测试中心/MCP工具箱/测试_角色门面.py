@@ -87,7 +87,7 @@ class 子代理继承协议测试(unittest.TestCase):
     """子代理继承协议已文档化且要素齐全（文档归属其他维护面，只读断言存在性）。"""
 
     def test_子代理继承协议文档化且要素齐全(self) -> None:
-        文档路径 = 服务模块.项目根目录 / "开发文档" / "项目记忆" / "分层MCP门面与子代理继承协议.md"
+        文档路径 = 服务模块.项目根目录 / "AGENTS.md"
         self.assertTrue(文档路径.is_file(), "子代理继承协议文档缺失")
         文本 = 文档路径.read_text(encoding="utf-8")
         for 要素 in ["project_context", "子代理", "递归继承", "mcp_feedback",

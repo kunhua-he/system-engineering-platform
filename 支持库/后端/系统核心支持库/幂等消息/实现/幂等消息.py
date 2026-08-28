@@ -38,7 +38,7 @@ def 生成id(会话id: str = None, 内容: str = None, 前缀: str = None) -> �
 def 校验id(幂等id: str = None) -> 结果:
     """校验幂等 id 格式（长度 24 或 前缀-24）。返回 {有效=true/false}。"""
     if not isinstance(幂等id, str) or not 幂等id.strip():
-        return 结果.成功结果({"有效": False, "原因": "幂等id为空"})
+        return 结果.失败("参数不合法", "幂等id必须是非空字符串", 来源="幂等消息")
     id值 = 幂等id.strip()
     合法 = bool(re.fullmatch(r"[a-zA-Z0-9_-]{1,16}-[a-f0-9]{24}|[a-f0-9]{24}", id值))
     return 结果.成功结果({"有效": 合法, "原因": "格式合法" if 合法 else "格式非法"})

@@ -41,11 +41,11 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "255c1df7fa73575d254fac965b15d8d7140aa6a6e7acef91e6017cadf0af778f"
+      "sha256": "9b90dff38a3be5ace619edcddd2949c8d7a8f12d4efcf47ba665006365afe803"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "560286ef1d80d1f4629b2c6d11b2e1e3b43e26c9da4ded4485b7c185193ce767"
+      "sha256": "80726014c828c1af0f54caceb9aa83e77641f366cab62c859537af08068064b3"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -61,7 +61,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "62bc43752a34d495ccef19a17e86e2e18bc554c8be509849caef6862551d60ce"
+      "sha256": "8ff5fad0fed9ae72589ebb00cb9f22967effde5d6bec150aca3f721631b06319"
     },
     {
       "路径": "默认配置/默认配置.json",

@@ -187,6 +187,10 @@ def _全部能力(项目根: Path) -> list[dict[str, Any]]:
         包id = str(声明.get("包id", ""))
         if 包id.startswith("支持库.适配层."):
             continue
+        # 聚合父包无能力定义.json，能力由子包声明（与正式包索引的 owner 规则一致）；
+        # 跳过父包，避免父包无错误码/参数的聚合视图遮蔽子包的完整契约。
+        if not (包目录 / "能力定义.json").is_file():
+            continue
         包辅助 = _包辅助数据(包目录)
         结果.extend(_能力记录(声明, 包目录, 包辅助, 验证历史表))
     return sorted(结果, key=lambda 项: (项["能力id"], 项["包id"]))

@@ -17,7 +17,7 @@
     },
     {
       "路径": "复用决策.json",
-      "sha256": "353f7cd744f678d59c5d6c50f982a144eef68d923521bd72c2af6087d2834b20"
+      "sha256": "0589db0368999fd49fccc415c69dc84b16cf58b2967eca4abc2bcb8a51a57cd2"
     },
     {
       "路径": "实现/流式推理.py",
@@ -29,7 +29,7 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "c9a99387dabaf446a820cb0dd9c37d863d0cd1866ff020c0f2b17a246582e30a"
+      "sha256": "10938860f5f757834b9cad4ade690ec6b1c062e37b51392dcd59f16cf9b07753"
     },
     {
       "路径": "能力定义.json",
@@ -37,19 +37,23 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "507b5dee123e6d713c02e569cc841858702e9c59d06c32866d5c67a3e69b7127"
+      "sha256": "1bce094a72f192677cc59351391a397cedfab0eba2ad91e1216272b5ed772df1"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "e2aef8689272a51eff0bdab097fbe2748c36bccafbc39fc9c3e53a0fa449d9fe"
+      "sha256": "71426a4291fd258eb72cd8bc5b0816bd5c05ee8a9616658b8bccf71a722f4ae2"
     },
     {
       "路径": "资源预算.json",
       "sha256": "cb9e8e8d6c4650b41e72171a43d76c74cc0f12939d63dbddcfa5731e99794da8"
     },
     {
+      "路径": "配置契约/配置契约.json",
+      "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "f6cdc93beefd4a0fc5dd9776fc3e0aac4bf2342566895c5009a3b8e89290911d"
+      "sha256": "1bfb8608ad71db8df85b5722d0209b0f1eb6bbae2d6a4c1cb504cdc78fe9e1a3"
     }
   ]
 }

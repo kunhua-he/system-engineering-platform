@@ -215,6 +215,31 @@ def _校验文件清单摘要(包目录: Path) -> tuple[bool, str]:
     return False, "；".join(问题列表[:3])
 
 
+def _扫描工程缓存Python源码() -> list[str]:
+    """扫描非制品工程缓存中的 Python 源码。
+
+    嵌套门禁运行在工作包子进程内时，当前工作包的验证运行目录仍在使用，
+    不能把它误判为持久源码；工作包结束后的最终残留由运行测试统一核对。
+    其他验证运行目录、未登记目录和持久目录仍必须返回并阻断。
+    """
+    缓存目录 = 系统根 / "工程缓存"
+    当前任务id = os.environ.get("系统底座_任务id", "").strip()
+    当前验证根 = None
+    if 当前任务id:
+        当前验证根 = (缓存目录 / "验证运行" / 当前任务id).resolve()
+    源码表: list[str] = []
+    if not 缓存目录.is_dir():
+        return 源码表
+    for 文件 in 缓存目录.rglob("*.py"):
+        if "制品仓库" in 文件.parts or "__pycache__" in 文件.parts \
+                or "提供者运行环境" in 文件.parts:
+            continue
+        if 当前验证根 is not None and 文件.resolve().is_relative_to(当前验证根):
+            continue
+        源码表.append(str(文件.relative_to(系统根)))
+    return sorted(源码表)
+
+
 def 执行逐包权威合规(包目录列表: list[Path]) -> tuple[bool, list[tuple[str, str, bool, int]]]:
     """逐包真实调用唯一权威合规验证器（S0.4），输出每包 13/13 证据。
 
@@ -237,16 +262,7 @@ def 执行逐包权威合规(包目录列表: list[Path]) -> tuple[bool, list[tu
         失败场景 = "；".join(失败场景表)
         证据列表.append((包目录.name, 失败场景, 报告.成功, 报告.通过数))
         if not 报告.成功:
-            # 正式模块（基础模块/功能模块）任一不是 13/13 即整体失败；
-            # 支持库/前端描述包未迁移 S0.1 的记录为历史债务（披露不阻断，进升级池）。
-            类型 = ""
-            try:
-                声明 = json.loads((包目录 / "包声明.json").read_text(encoding="utf-8"))
-                类型 = str(声明.get("类型", ""))
-            except (json.JSONDecodeError, OSError):
-                类型 = ""
-            if 类型 in {"模块", "基础模块", "功能模块"}:
-                未达标.append(f"{包目录.name}({报告.通过数}/13)")
+            未达标.append(f"{包目录.name}({报告.通过数}/13)")
     return not 未达标, 证据列表
 
 
@@ -888,14 +904,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     # 内容寻址制品数据目录，其内文件为构建产物，不属于源码；提供者运行
     # 环境是受管 venv（pip 安装的第三方依赖），不属于正式源码）
     try:
-        缓存目录 = 系统根 / "工程缓存"
-        缓存源码表 = []
-        if 缓存目录.is_dir():
-            for 文件 in 缓存目录.rglob("*.py"):
-                if "制品仓库" in 文件.parts or "__pycache__" in 文件.parts \
-                        or "提供者运行环境" in 文件.parts:
-                    continue
-                缓存源码表.append(str(文件.relative_to(系统根)))
+        缓存源码表 = _扫描工程缓存Python源码()
         检查("工程缓存无Python源码", not 缓存源码表,
              f"工程缓存源码文件数: {len(缓存源码表)}（应为0）{缓存源码表[:3]}")
     except Exception as 错误:

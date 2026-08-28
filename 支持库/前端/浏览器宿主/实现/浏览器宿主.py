@@ -8,7 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
-def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str = "", 调用函数: Callable[[str], Any] | None = None, 端口: int = 45080, 自动打开: bool = True) -> tuple[ThreadingHTTPServer, str]:
+def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str = "", 调用函数: Callable[[str], Any] | None = None, 端口: int = 45080, 自动打开: bool = False) -> tuple[ThreadingHTTPServer, str]:
     """启动网页宿主；返回服务句柄和页面地址，调用方负责 shutdown/server_close。"""
     校验应用监听端口(端口)
     调用函数 = 调用函数 or (lambda 文本: {"成功": True, "值": 文本})

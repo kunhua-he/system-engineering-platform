@@ -28,37 +28,36 @@ class 测试项目编译器(unittest.TestCase):
         self.assertIn(提供者id, 支持库)
 
     def test_OCR模块闭包包含Tesseract(self):
-        self._验证模块Provider闭包("模块库.OCR", "支持库.适配层.Tesseract提供者")
+        self._验证模块Provider闭包("模块库.OCR", "支持库.后端.OCR识别支持库.OCR识别")
 
     def test_图像处理模块闭包包含Pillow(self):
-        self._验证模块Provider闭包("模块库.图像处理", "支持库.适配层.Pillow提供者")
+        self._验证模块Provider闭包("模块库.图像处理", "支持库.后端.图像处理支持库.图像解码")
 
     def test_媒体处理模块闭包包含FFmpeg(self):
-        self._验证模块Provider闭包("模块库.媒体处理", "支持库.适配层.FFmpeg提供者")
+        self._验证模块Provider闭包("模块库.媒体处理", "支持库.后端.媒体处理支持库.FFmpeg媒体")
 
     def test_媒体转写模块闭包包含MLXWhisper(self):
-        self._验证模块Provider闭包("模块库.媒体转写", "支持库.适配层.MLXWhisper提供者")
+        self._验证模块Provider闭包("模块库.媒体转写", "支持库.后端.转写支持库.转写")
 
     def test_文档解析模块闭包包含LibreOffice(self):
-        self._验证模块Provider闭包("模块库.文档解析", "支持库.适配层.LibreOffice提供者")
+        self._验证模块Provider闭包("模块库.文档解析", "支持库.后端.文档转换支持库.LibreOffice转换")
 
     def test_文档生成模块闭包包含PDF隔离(self):
         self._验证模块Provider闭包("模块库.文档生成", "支持库.适配层.PDF隔离提供者")
 
     def test_自修复模块闭包包含Git(self):
-        self._验证模块Provider闭包("模块库.自修复工具", "支持库.适配层.Git提供者")
+        self._验证模块Provider闭包("模块库.自修复工具", "支持库.后端.版本控制支持库.Git操作")
 
     def test_模板不进入正式索引与owner(self):
         索引 = 构建索引(Path.cwd())
         self.assertNotIn("模块库._模板", 索引["模块库"])
-        self.assertIn("模块库._模板", 索引["排除包"])
         self.assertNotIn("_模板.示例能力", 索引["能力所有者"])
         self.assertNotIn("_模板.示例能力", _全局能力所有者())
 
     def test_显式模板包和能力引用_fail_closed(self):
-        with self.assertRaisesRegex(ValueError, "被拒绝"):
+        with self.assertRaisesRegex(ValueError, "正式包不存在"):
             校验显式包引用(Path.cwd(), "模块库._模板")
-        with self.assertRaisesRegex(ValueError, "被拒绝"):
+        with self.assertRaisesRegex(ValueError, "正式能力不存在"):
             校验能力引用(Path.cwd(), "_模板.示例能力")
 
     def test_项目引用模板_fail_closed(self):
@@ -70,7 +69,7 @@ class 测试项目编译器(unittest.TestCase):
         (根 / "后端" / "模块引用.json").write_text(
             json.dumps({"模块id": "模块库._模板"}, ensure_ascii=False), encoding="utf-8"
         )
-        with self.assertRaisesRegex(ValueError, "被拒绝|没有发现能力id"):
+        with self.assertRaisesRegex(ValueError, "正式包不存在|被拒绝|没有发现能力id"):
             编译项目(根, 根 / "制品")
 
     def test_支持库能力依赖递归进入闭包(self):

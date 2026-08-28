@@ -29,7 +29,7 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "a651bbd883d17021acae940f656777b181b441caa788ba6ee67bff97323a19e2"
+      "sha256": "55065ca411b5b197fb4e6c4165aadaf9fe1e94f105dd95540a14623efaba8ed1"
     },
     {
       "路径": "能力定义.json",
@@ -37,19 +37,23 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "3c983175c2161348b706c572a1ef8439ddf17f3a4d25af464865356483b5d6f4"
+      "sha256": "980ffe06d5edcb5fc1033d0640cab74d51a98496049e83b39265f457827d76dc"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "02bc6cc1a37327ba6fdd7d5c43a6933a0d41dddbcc2f0a85deac61e92442c02f"
+      "sha256": "1afd51c6d05439cd4f21eb20b9593b46954f13ed46ccda2fb61d26ff7fab3e7c"
     },
     {
       "路径": "资源预算.json",
       "sha256": "c1cdc60276b113b5e66a87a9fc36d0c1bcd0150e9cf8c009a3fa34b40d223ed3"
     },
     {
+      "路径": "配置契约/配置契约.json",
+      "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "7ba874d2d3884f80134cf1fc4c37eaef4fb2c455eea1c850d7f93542837ef814"
+      "sha256": "78819678009e97ea1d637aeab33d8c28b5e5a55f6f1071536b14b5fb7639222b"
     }
   ]
 }
