@@ -23,7 +23,7 @@ from 支持库.适配层.pg8000提供者.实现 import 提供者 as 模块
     Path(__file__).resolve().parents[2]
     / "支持库" / "适配层" / "pg8000提供者"
 )
-测试连接串 = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+测试连接串 = "postgresql://postgres:postgres@127.0.0.1:54320/postgres"
 无服务连接串 = "postgresql://127.0.0.1:59999/nodb"
 
 
@@ -78,11 +78,11 @@ class Testpg8000提供者(unittest.TestCase):
         for 调用 in (
             连接(""),
             连接("不是URL", 超时秒=2),
-            连接("postgresql://u@127.0.0.1:5432/db", 超时秒=0),
-            查询("postgresql://u@127.0.0.1:5432/db", ""),
-            查询("postgresql://u@127.0.0.1:5432/db", "SELECT 1", 参数="x"),
-            事务执行("postgresql://u@127.0.0.1:5432/db", []),
-            事务执行("postgresql://u@127.0.0.1:5432/db", ["SELECT 1", 3]),
+            连接("postgresql://u@127.0.0.1:54320/db", 超时秒=0),
+            查询("postgresql://u@127.0.0.1:54320/db", ""),
+            查询("postgresql://u@127.0.0.1:54320/db", "SELECT 1", 参数="x"),
+            事务执行("postgresql://u@127.0.0.1:54320/db", []),
+            事务执行("postgresql://u@127.0.0.1:54320/db", ["SELECT 1", 3]),
             关闭(""),
         ):
             self.assertFalse(调用.成功)
@@ -114,7 +114,7 @@ class Testpg8000提供者(unittest.TestCase):
         """连接成功路径：连接对象必然关闭（mock 驱动验证释放）。"""
         with mock.patch.object(模块.pg8000, "connect",
                                return_value=_假连接()) as 假调用:
-            结果 = 连接("postgresql://u@127.0.0.1:5432/db", 超时秒=2)
+            结果 = 连接("postgresql://u@127.0.0.1:54320/db", 超时秒=2)
         self.assertTrue(结果.成功, 结果.错误说明)
         假连接 = 假调用.return_value
         self.assertTrue(假连接.已关闭, "连接对象未关闭（泄漏）")
@@ -124,7 +124,7 @@ class Testpg8000提供者(unittest.TestCase):
         """查询路径：游标与连接对象调用后必然关闭。"""
         with mock.patch.object(模块.pg8000, "connect",
                                return_value=_假连接()) as 假调用:
-            结果 = 查询("postgresql://u@127.0.0.1:5432/db", "SELECT 1", 超时秒=2)
+            结果 = 查询("postgresql://u@127.0.0.1:54320/db", "SELECT 1", 超时秒=2)
         self.assertTrue(结果.成功, 结果.错误说明)
         假连接 = 假调用.return_value
         self.assertTrue(假连接.已关闭, "查询连接未关闭（泄漏）")
@@ -134,7 +134,7 @@ class Testpg8000提供者(unittest.TestCase):
         """事务路径：连接对象调用后关闭且提交路径可达。"""
         with mock.patch.object(模块.pg8000, "connect",
                                return_value=_假连接()) as 假调用:
-            结果 = 事务执行("postgresql://u@127.0.0.1:5432/db",
+            结果 = 事务执行("postgresql://u@127.0.0.1:54320/db",
                            ["SELECT 1"], 超时秒=2)
         self.assertTrue(结果.成功, 结果.错误说明)
         假连接 = 假调用.return_value
