@@ -59,7 +59,7 @@ class PostgreSQL隔离实例:
             raise RuntimeError(f"创建 PostgreSQL 隔离实例失败：{启动结果.stderr.strip()}")
         self.已启动 = True
         atexit.register(self.停止)
-        端口结果 = self._运行(["port", self.容器名, "54320/tcp"])
+        端口结果 = self._运行(["port", self.容器名, "5432/tcp"])
         if 端口结果.returncode != 0 or ":" not in 端口结果.stdout:
             self.停止()
             raise RuntimeError(f"读取 PostgreSQL 隔离端口失败：{端口结果.stderr.strip()}")
