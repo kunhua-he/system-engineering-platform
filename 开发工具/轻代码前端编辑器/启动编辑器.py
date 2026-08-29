@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlsplit
 
 根目录 = Path(__file__).resolve().parents[2]
 默认文件 = 根目录 / "工程缓存" / "轻代码前端编辑器" / "页面.json"
+内部工程请求路径 = "/内部/工程请求"
 if str(根目录) not in sys.path:
     sys.path.insert(0, str(根目录))
 from 开发工具.轻代码前端编辑器.页面模型 import 校验页面
@@ -68,11 +69,11 @@ function 绑定事件(名,id){let x=数据.组件列表[选中];x.事件=x.事�
 function 删除(){if(选中>=0){let id=数据.组件列表[选中].组件id;数据.组件列表=数据.组件列表.filter(x=>x.组件id!==id&&x.父组件id!==id);选中=-1;记录()}}function 新建(){let 工程id=数据.工程id,修订号=Number(数据.修订号||0);数据={工程id,修订号,页面id:'主页',标题:'新页面',路由:'/',项目类型:document.querySelector('#项目类型').value,组件列表:[]};选中=-1;记录();状态.textContent='新建页面'}function 撤销(){if(历史位置>0){历史位置--;数据=JSON.parse(历史[历史位置]);选中=-1;渲染()}}function 重做(){if(历史位置+1<历史.length){历史位置++;数据=JSON.parse(历史[历史位置]);选中=-1;渲染()}}
 function 添加组件(类型,目标=null){let 项=默认组件(类型);if(目标){let 容器=数据.组件列表[Number(目标.dataset.索引)];if(容器?.类型==='容器'){项.父组件id=容器.组件id;项.父对象id=容器.对象id}}数据.组件列表.push(项);选中=数据.组件列表.length-1;记录()}
 function 加载组件目录(目录){let 箱=document.querySelector('#组件箱');箱.innerHTML='';(目录.组件类型||[]).forEach(项=>{组件目录[项.类型]=项;let e=document.createElement('div');e.className='组件';e.draggable=true;e.dataset.类型=项.类型;e.textContent=项.别名||项.类型;e.title='点击添加，或拖动到窗体';e.onclick=()=>添加组件(项.类型);e.ondragstart=x=>x.dataTransfer.setData('类型',项.类型);箱.append(e)})}网格.ondragover=e=>e.preventDefault();网格.ondrop=e=>{e.preventDefault();添加组件(e.dataTransfer.getData('类型'),e.target.closest('.控件'))};网格.onclick=()=>{选中=-1;渲染();页面属性()};document.querySelector('#项目类型').onchange=()=>{数据.项目类型=document.querySelector('#项目类型').value;记录()};
-async function 保存(){if(!脏)return true;if(保存进行中)return 保存进行中;保存进行中=(async()=>{try{let 基准修订号=Number(数据.修订号||0),r=await fetch('/工程/请求',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({操作:'提交变更',工程id:数据.工程id,基准修订号,来源:当前视图==='代码'?'代码视图':当前视图==='模块'?'模块视图':'窗体设计器',请求id:'请求_'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2)),操作列表:[{操作:'替换页面模型',页面:数据}]})}),x=await r.json();if(x.成功){if(x.页面)数据=x.页面;数据.工程id=x.工程id||数据.工程id;数据.修订号=x.新修订号;脏=false;状态.textContent='已自动保存（修订 '+x.新修订号+'）';输出.textContent='页面模型已通过统一工程网关保存。';return true}else if(x.错误码==='编辑冲突'){状态.textContent='编辑冲突：未覆盖他人修改';输出.textContent=x.错误说明;return false}else{状态.textContent='保存失败';输出.textContent=x.错误说明||'保存失败';return false}}catch(e){状态.textContent='保存失败';输出.textContent=String(e);return false}})();try{return await 保存进行中}finally{保存进行中=null}}
+async function 保存(){if(!脏)return true;if(保存进行中)return 保存进行中;保存进行中=(async()=>{try{let 基准修订号=Number(数据.修订号||0),r=await fetch('/内部/工程请求',{method:'POST',headers:{'Content-Type':'application/json','X-Internal-Call':'1'},body:JSON.stringify({操作:'提交变更',工程id:数据.工程id,基准修订号,来源:当前视图==='代码'?'代码视图':当前视图==='模块'?'模块视图':'窗体设计器',请求id:'请求_'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2)),操作列表:[{操作:'替换页面模型',页面:数据}]})}),x=await r.json();if(x.成功){if(x.页面)数据=x.页面;数据.工程id=x.工程id||数据.工程id;数据.修订号=x.新修订号;脏=false;状态.textContent='已自动保存（修订 '+x.新修订号+'）';输出.textContent='页面模型已通过统一工程网关保存。';return true}else if(x.错误码==='编辑冲突'){状态.textContent='编辑冲突：未覆盖他人修改';输出.textContent=x.错误说明;return false}else{状态.textContent='保存失败';输出.textContent=x.错误说明||'保存失败';return false}}catch(e){状态.textContent='保存失败';输出.textContent=String(e);return false}})();try{return await 保存进行中}finally{保存进行中=null}}
 function 导出(){let 文本=JSON.stringify(数据,null,2);document.querySelector('#页面JSON').textContent=文本;navigator.clipboard?.writeText(文本).catch(()=>{});状态.textContent='JSON 已复制'}
 function 预览节点(项){let a=项.属性||{},类='控件';if(项.类型==='容器'){return `<section class="${类} 容器"><strong>${安全文本(a.文本||项.组件id)}</strong>${数据.组件列表.filter(x=>x.父组件id===项.组件id).map(预览节点).join('')}</section>`}if(项.类型==='输入框'){return `<label class="${类}">${安全文本(a.文本||项.组件id)}<input value="${安全文本(a.默认值||'')}" placeholder="${安全文本(a.占位文本||'')}"></label>`}if(项.类型==='按钮'){return `<button class="${类}" type="button">${安全文本(a.文本||项.组件id)}</button>`}return `<div class="${类}">${安全文本(a.文本||项.组件id)}</div>`}
 async function 预览(){let 已保存=await 保存();if(!已保存)return;let 层=document.querySelector('#预览层'),内容=document.querySelector('#预览内容');内容.innerHTML=`<h1>${安全文本(数据.标题)}</h1>`+数据.组件列表.filter(x=>!x.父组件id).map(预览节点).join('');层.classList.remove('隐藏');状态.textContent='预览已打开'}function 关闭预览(){document.querySelector('#预览层').classList.add('隐藏');状态.textContent='窗体设计'}
-async function 编译运行(){let 已保存=await 保存();if(!已保存)return;状态.textContent='正在编译…';try{let r=await fetch('/工程/请求',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({操作:'编译工程',工程id:数据.工程id})}),x=await r.json();if(x.成功){状态.textContent='F5：编译成功';输出.textContent=`编译成功：${x.输出文件}\n能力依赖：${(x.能力依赖||[]).join('、')||'无'}`}else{状态.textContent='F5：编译阻断';输出.textContent=`编译阻断：${x.错误说明||'页面契约不合法'}`}}catch(e){状态.textContent='F5：编译失败';输出.textContent=String(e)}}function 页签(e,id){document.querySelectorAll('.页签 span').forEach(x=>x.classList.remove('选中'));e.classList.add('选中');document.querySelectorAll('.输出').forEach(x=>x.style.display=x.id===id?'block':'none')}
+async function 编译运行(){let 已保存=await 保存();if(!已保存)return;状态.textContent='正在编译…';try{let r=await fetch('/内部/工程请求',{method:'POST',headers:{'Content-Type':'application/json','X-Internal-Call':'1'},body:JSON.stringify({操作:'编译工程',工程id:数据.工程id})}),x=await r.json();if(x.成功){状态.textContent='F5：编译成功';输出.textContent=`编译成功：${x.输出文件}\n能力依赖：${(x.能力依赖||[]).join('、')||'无'}`}else{状态.textContent='F5：编译阻断';输出.textContent=`编译阻断：${x.错误说明||'页面契约不合法'}`}}catch(e){状态.textContent='F5：编译失败';输出.textContent=String(e)}}function 页签(e,id){document.querySelectorAll('.页签 span').forEach(x=>x.classList.remove('选中'));e.classList.add('选中');document.querySelectorAll('.输出').forEach(x=>x.style.display=x.id===id?'block':'none')}
 function 页面属性(){if(选中>=0)return;属性.innerHTML=`<div class="属性行"><label>页面标题</label><input data-k="标题" value="${安全文本(数据.标题)}"></div><div class="属性行"><label>页面路由</label><input data-k="路由" value="${安全文本(数据.路由)}"></div><div style="color:#94a3b8;font-size:12px;margin-top:12px">改动会自动保存，无需点击保存。</div>`;属性.querySelectorAll('input').forEach(i=>i.onchange=()=>{数据[i.dataset.k]=i.value;记录()})}
 fetch('/组件目录').then(r=>r.json()).then(加载组件目录).catch(()=>加载组件目录({组件类型:[{类型:'按钮',别名:'按钮',默认属性:{文本:'按钮'},事件:['点击']},{类型:'编辑框',别名:'编辑框',默认属性:{文本:''},事件:['输入']},{类型:'标签',别名:'标签',默认属性:{文本:'标签'},事件:[]}] }));快照();渲染();页面属性();
 </script>'''
@@ -290,8 +291,11 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
 
         def do_POST(self) -> None:
             路径 = unquote(urlsplit(self.path).path)
-            if 路径 != "/工程/请求":
+            if 路径 != 内部工程请求路径:
                 self.send_error(404)
+                return
+            if self.headers.get("X-Internal-Call", "") != "1":
+                self.send_error(403)
                 return
             try:
                 # 编辑器接口只接受有界 Content-Length；拒绝 chunked/超长/短读，
@@ -311,7 +315,7 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
                 请求 = json.loads(原始字节.decode("utf-8"))
                 if not isinstance(请求, dict):
                     raise ValueError("请求正文必须是 JSON 对象")
-                if 路径 == "/工程/请求":
+                if 路径 == 内部工程请求路径:
                     操作 = str(请求.get("操作", ""))
                     当前 = 规范页面(json.loads(文件.read_text(encoding="utf-8"))) if 文件.is_file() else 规范页面({"工程id": 请求.get("工程id", ""), "修订号": 0, "组件列表": []})
                     当前["后端模型"] = 读取后端模型()

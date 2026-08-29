@@ -817,6 +817,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     try:
         from 前端核心.浏览器交互 import 浏览器交互提供者
         from 支持库.前端.浏览器宿主 import 启动网页服务
+        from urllib.error import HTTPError
         from urllib.request import Request, urlopen
         提供者 = 浏览器交互提供者(网关地址="http://127.0.0.1:0")
         页面 = 提供者.渲染(_浏览器请求())
@@ -826,24 +827,26 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         try:
             服务, 地址 = 启动网页服务(
                 标题="门禁网页", 页面说明="真实 HTTP 交互",
-                调用函数=lambda 文本: {"成功": True, "值": {"回显": 文本}},
+                网关地址="http://127.0.0.1:45082", 能力id="门禁.回显",
                 端口=0, 自动打开=False,
             )
             页面响应 = urlopen(Request(地址, method="GET"), timeout=3).read().decode("utf-8")
-            请求体 = json.dumps({"文本": "门禁"}, ensure_ascii=False).encode("utf-8")
-            调用响应 = json.loads(urlopen(Request(
-                地址 + "/api/%E8%B0%83%E7%94%A8", data=请求体,
-                headers={"Content-Type": "application/json"}, method="POST"), timeout=3
-            ).read().decode("utf-8"))
-            HTTP通过 = "门禁网页" in 页面响应 and 调用响应.get("成功") is True \
-                and 调用响应.get("值", {}).get("回显") == "门禁"
+            旧API请求 = Request(地址 + "/api/%E8%B0%83%E7%94%A8", data=b"{}",
+                               headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                urlopen(旧API请求, timeout=3)
+                旧API状态 = 200
+            except HTTPError as 错误:
+                旧API状态 = 错误.code
+            HTTP通过 = "门禁网页" in 页面响应 and "/网关/调用" in 页面响应 \
+                and "/api/调用" not in 页面响应 and 旧API状态 == 404
         finally:
             if 服务 is not None:
                 服务.shutdown()
                 服务.server_close()
         浏览器通过 = HTML通过 and HTTP通过
         检查("浏览器真实交互", 浏览器通过,
-             f"HTML要素={'通过' if HTML通过 else '失败'}；HTTP GET/POST={'通过' if HTTP通过 else '失败'}")
+             f"HTML要素={'通过' if HTML通过 else '失败'}；旧API 404={'通过' if HTTP通过 else '失败'}")
     except Exception as 错误:
         检查("浏览器真实交互", False, f"异常: {错误}")
 
