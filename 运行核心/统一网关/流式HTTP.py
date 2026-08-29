@@ -266,8 +266,17 @@ class HTTP流式管理器:
                 self.通道表.pop(请求id, None)
 
     def 清理(self, 请求id: str) -> None:
-        with self.锁:
-            self.通道表.pop(请求id, None)
+        """清理通道：走唯一结束收口（断开清理 + 终态回调），不能只 pop。
+
+        直接 pop 会泄漏并发信号量并失去生产线程/超时线程的观察对象；
+        必须设置停止事件、执行一次结束回调（内部 release 信号量并移除
+        通道表），与 断开 保持同一收口路径。
+        """
+        通道 = self.查询(请求id)
+        if 通道 is not None:
+            通道.断开清理()
+            with self.锁:
+                self.通道表.pop(请求id, None)
 
 
 class 流式HTTP服务器:
@@ -476,5 +485,10 @@ class 流式HTTP服务器:
             self.服务器.shutdown()
             self.服务器.server_close()
             self.服务器 = None
+        # 有界 join 服务线程，确认线程已退出才返回，避免停止后生产/
+        # 超时/断开监视线程仍持有生成器、socket 或外部资源。
+        if self.线程 is not None:
+            self.线程.join(timeout=5.0)
+            self.线程 = None
         with self.管理器.锁:
             self.管理器.通道表.clear()
