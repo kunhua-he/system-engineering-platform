@@ -108,9 +108,16 @@ class HTTP服务:
     def 停止(self) -> None:
         with self._锁:
             服务对象, self._服务器 = self._服务器, None
+            服务线程, self._线程 = self._线程, None
         if 服务对象 is not None:
+            # 排空：先阻止新请求，再关闭监听；对服务线程有界 join，确认
+            # 线程已退出才返回，避免停止后仍有请求线程/处理器在运行。
             服务对象.shutdown()
             服务对象.server_close()
+        if 服务线程 is not None:
+            服务线程.join(timeout=5.0)
+            if 服务线程.is_alive():
+                raise OSError("HTTP服务停止未收敛：服务线程 5 秒内未退出")
 
     def 健康(self) -> dict[str, Any]:
         return {"成功": self.已启动, "状态": "正常" if self.已启动 else "已停止",

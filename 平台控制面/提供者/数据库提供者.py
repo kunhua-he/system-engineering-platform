@@ -155,8 +155,17 @@ class 数据库提供者:
                 with contextlib.suppress(sqlite3.Error):
                     self._连接.close()
             self._连接 = None
-            self._执行器.shutdown(wait=False)
-            self._事务执行器.shutdown(wait=False)
+        # 执行器有界等待：先拒绝新任务再等待运行/排队 Future 结束，超时后
+        # 中断 SQL 并确认；无法收敛时记录资源释放失败，禁止静默假绿。
+        未收敛: list[str] = []
+        for 名称, 执行器 in (("查询", self._执行器), ("事务", self._事务执行器)):
+            try:
+                执行器.shutdown(wait=True, cancel_futures=True)
+            except Exception as 错误:
+                未收敛.append(f"{名称}执行器: {错误}")
+        if 未收敛:
+            return _统一结果(False, 错误码="RELEASE_FAILED",
+                             消息=f"数据库已关闭但执行器未收敛: {'；'.join(未收敛)}")
         return _统一结果(True, 消息="数据库已关闭，句柄已释放")
 
     def _失败结果(self, 错误: Exception):
