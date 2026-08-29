@@ -21,13 +21,42 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 模块库.图像处理 import 分析图像文件, 生成占位图, 识别图像格式
 from 模块库.图像处理 import 生成缩略图, 图像EXIF转置, 透明背景合成
 from 模块库.图像处理 import 计算感知哈希, 缩放图像, 重编码图像
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 最小PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 最小JPEG = base64.b64decode("/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==")
 
 
 class 图像处理装配(unittest.TestCase):
-    """真实装配：注册 Pillow提供者 与 文件系统 能力并经唯一服务注入调用器。"""
+    """真实装配：启动后端与随机回环网关，所有能力调用经 HTTP 连接器走真实网关。"""
+
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.图像处理 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.图像处理 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
 
     def setUp(self):
         from 公共契约.能力契约.契约 import 能力注册表
@@ -44,6 +73,18 @@ class 图像处理装配(unittest.TestCase):
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
 
         设置全局唯一服务(None)
+
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.图像处理 import 设置HTTP连接器
+
+        设置HTTP连接器(None)
+        try:
+            结果 = 识别图像格式(最小PNG)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
 
 class Test分析图像文件(图像处理装配):

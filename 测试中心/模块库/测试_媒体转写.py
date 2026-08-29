@@ -1,8 +1,11 @@
-"""模块库.媒体转写 组合能力真实测试：经唯一能力调用服务装配 MLX Whisper 支持库能力。
+"""模块库.媒体转写 组合能力真实测试：经 HTTP 网关调用 MLX Whisper 支持库能力。
 
 覆盖：模型未配置如实返回（不伪造转写）、模型缺失语义、伪脚本模拟子进程
 （崩溃/超时，经支持库真实链）、转写视频文件流程、参数错误（路径/令牌/配置）、
-平台不可用（调用器未装配如实返回 提供者不可用）、注册能力 4 项与四者对称。
+平台不可用（HTTP 连接器未装配如实返回 提供者不可用）、注册能力 4 项与四者对称。
+
+测试装配：setUpClass 启动 后端核心 + 随机回环网关，所有测试请求走 HTTP；
+保留原有 mock/进程内装配用例（惰性装配关闭与全局服务注入仅为旧通道残留，无害）。
 """
 
 from __future__ import annotations
@@ -19,6 +22,10 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 模块库.媒体转写 import 检查可用性, 获取模型版本, 转写音频文件, 转写视频文件
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 环境变量模型路径 = "MLXWhisper提供者_模型路径"
 环境变量模型名 = "MLXWhisper提供者_模型名"
@@ -59,16 +66,34 @@ def 生成测试音频(目录: Path) -> str:
 
 
 class 媒体转写装配(unittest.TestCase):
-    """真实装配：注册 MLX Whisper 提供者能力并经唯一服务注入调用器。"""
+    """真实装配：启动后端核心与本地网关，模块能力经 HTTP 连接器走统一网关。"""
 
     @classmethod
     def setUpClass(cls):
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
         cls.原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
         设置惰性装配函数(None)
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.媒体转写 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
+        from 模块库.媒体转写 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
         设置惰性装配函数(cls.原惰性装配)
 
@@ -200,14 +225,32 @@ class Test参数错误(媒体转写装配):
 
 class Test平台不可用(媒体转写装配):
     def test_调用器未装配如实返回(self):
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
-        设置全局唯一服务(None)
-        结果 = 转写音频文件(self.音频路径)
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "提供者不可用")
-        结果 = 检查可用性()
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "提供者不可用")
+        """平台不可用（HTTP 连接器未装配）如实返回 提供者不可用，不抛异常。"""
+        from 模块库.媒体转写 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        try:
+            结果 = 转写音频文件(self.音频路径)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+            结果 = 检查可用性()
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载 HTTP 连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.媒体转写 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        try:
+            结果 = 获取模型版本()
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+            结果 = 转写视频文件(self.视频路径)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
 
 class Test伪脚本子进程语义(媒体转写装配):
@@ -281,7 +324,7 @@ class Test注册能力(unittest.TestCase):
             "媒体转写.检查可用性",
             "媒体转写.获取模型版本",
         ])
-        self.assertEqual(set(__all__), {id.split(".")[-1] for id in 能力id表})
+        self.assertEqual(set(__all__), {id.split(".")[-1] for id in 能力id表} | {"设置HTTP连接器"})
         for 条目 in 注册表.条目:
             self.assertEqual(条目.包id, "模块库.媒体转写")
 

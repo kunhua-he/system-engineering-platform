@@ -32,12 +32,18 @@ from 公共契约.包声明 import 声明 as 包声明契约
 from 公共契约.能力契约.契约 import 能力注册表
 from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
 from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 _支持库注册表 = 能力注册表()
 安装全部支持库(系统根 / "支持库", _支持库注册表)
 创建并绑定(_支持库注册表)
 
-from 模块库.简单窗口 import 创建窗口, 打开窗口, 关闭窗口, 传递参数, 获取窗口描述
+from 模块库.简单窗口 import (
+    创建窗口, 打开窗口, 关闭窗口, 传递参数, 获取窗口描述, 设置HTTP连接器,
+)
 
 模块目录 = 系统根 / "模块库" / "简单窗口"
 
@@ -104,6 +110,29 @@ class Test简单窗口S0收敛(unittest.TestCase):
 
 
 class Test简单窗口功能(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def setUp(self) -> None:
         from 公共契约.能力契约.调用器 import _全局调用器
         if _全局调用器 is None:
@@ -114,7 +143,7 @@ class Test简单窗口功能(unittest.TestCase):
             安装全部支持库(系统根 / "支持库", self._装配注册表)
             创建并绑定(self._装配注册表)
 
-    """功能真实调用：模块经 获取能力调用器().调用能力 组合支持库能力。"""
+    """功能真实调用：模块经 HTTP 网关调用支持库能力。"""
 
     def test_创建打开传递参数获取描述关闭全流程(self) -> None:
         创建结果 = 创建窗口("测试窗", "测试", 400, 300)
@@ -147,6 +176,14 @@ class Test简单窗口功能(unittest.TestCase):
         结果 = 关闭窗口("状态窗")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误.错误码, "状态流转不合法")
+
+    def test_平台不可用时返回提供者不可用(self) -> None:
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        设置HTTP连接器(None)
+        结果 = 创建窗口("不可用窗", "测试", 400, 300)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
 
 if __name__ == "__main__":

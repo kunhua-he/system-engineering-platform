@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from 模块库.媒体处理.实现.媒体处理 import 检查提供者
+from 模块库.媒体处理.实现.媒体处理 import 设置HTTP连接器
 from 模块库.媒体处理.实现.媒体处理 import 探测媒体
 from 模块库.媒体处理.实现.媒体处理 import 提取音频
 from 模块库.媒体处理.实现.媒体处理 import 转码
@@ -13,6 +14,7 @@ from 模块库.媒体处理.实现.媒体处理 import 抽取帧
 
 __all__ = [
     "检查提供者",
+    "设置HTTP连接器",
     "探测媒体",
     "提取音频",
     "转码",

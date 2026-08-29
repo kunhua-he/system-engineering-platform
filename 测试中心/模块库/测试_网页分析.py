@@ -1,7 +1,7 @@
 """模块库.网页分析 组合能力真实测试。
 
-覆盖：真实装配（注册网页解析支持库能力+注入唯一能力调用服务）下 提取网页信息
-最小样本（标题+正文）；平台不可用（调用器未装配 → 提供者不可用）；参数错误
+覆盖：真实装配（后端核心 + 本地网关 + HTTP连接器）下 提取网页信息
+最小样本（标题+正文）；平台不可用（连接器卸载 → 提供者不可用）；参数错误
 （网页内容非字符串 / 最大长度非整数 → 参数不合法）。
 """
 
@@ -14,10 +14,12 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from unittest import mock
-
 from 公共契约.基础类型.结果类型 import 结果
 from 模块库.网页分析 import 提取网页信息
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 最小样本 = ("<html><head><title>平台示例标题</title></head>"
             "<body><h1>平台标题</h1><p>第一段正文。</p>"
@@ -25,8 +27,33 @@ from 模块库.网页分析 import 提取网页信息
 
 
 class Test网页分析模块(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.网页分析 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.网页分析 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def setUp(self):
-        """真实装配：注册网页解析支持库能力并经 全局唯一服务 注入能力调用器。"""
+        """保留既有进程内装配（注册网页解析支持库能力+注入全局唯一服务）。"""
         from 公共契约.能力契约.契约 import 能力注册表
         from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
         from 支持库.后端.网络通信支持库.网页解析 import 注册能力 as 注册网页解析
@@ -68,16 +95,15 @@ class Test网页分析模块(unittest.TestCase):
                 self.assertFalse(结果.成功)
                 self.assertEqual(结果.错误码, "参数不合法")
 
-    def test_平台不可用返回提供者不可用(self):
-        """能力调用器未装配（模拟平台不可用）→ 提供者不可用，不抛异常。"""
-        with mock.patch(
-            "公共契约.能力契约.调用器.获取能力调用器",
-            side_effect=RuntimeError("能力调用器未注入"),
-        ):
-            调用结果 = 提取网页信息(最小样本)
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.网页分析 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        调用结果 = 提取网页信息(最小样本)
         self.assertFalse(调用结果.成功)
         self.assertEqual(调用结果.错误码, "提供者不可用")
         self.assertIsInstance(调用结果, 结果)
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
     def test_模块注册能力齐全(self):
         class 假注册表:

@@ -2,7 +2,9 @@
 
 覆盖：四格式组合生成（返回统一 生成产物：字节/媒体类型/摘要/诊断）、
 格式归一化、非法格式与不可生成格式（参数不合法）、缺库降级
-（monkeypatch → 提供者不可用）、生成字节为空（生成失败）。
+（monkeypatch → 提供者不可用）、生成字节为空（生成失败）、
+平台不可用降级（提供者不可用）。
+所有能力调用经 后端核心 + 本地网关服务器 + HTTP连接器 真实 HTTP 链路。
 """
 
 from __future__ import annotations
@@ -20,6 +22,10 @@ from unittest import mock
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.文档结构 import 生成产物
 from 模块库.文档生成 import 生成文档
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 四格式参数表 = [
     ("docx", {"内容块列表": [{"类型": "标题", "文本": "模块标题"}, {"类型": "段落", "文本": "模块中文正文"}]}),
@@ -30,6 +36,31 @@ from 模块库.文档生成 import 生成文档
 
 
 class Test生成文档(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.文档生成 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.文档生成 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def setUp(self):
         """真实装配：注册提供者能力并经 装配系统 注入唯一能力调用服务。"""
         from 公共契约.能力契约.契约 import 能力注册表
@@ -150,6 +181,15 @@ class Test生成文档(unittest.TestCase):
         self.assertEqual(len(注册表.条目), 1)
         self.assertEqual(注册表.条目[0].能力id, "办公文档支持库.文档生成.生成文档")
         self.assertEqual(注册表.条目[0].包id, "模块库.文档生成")
+
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.文档生成 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        结果 = 生成文档("docx", {"内容块列表": [{"类型": "段落", "文本": "x"}]})
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
 
 if __name__ == "__main__":

@@ -6,9 +6,9 @@
 
 from __future__ import annotations
 
-from 模块库.文档生成.实现.文档生成 import 生成文档
+from 模块库.文档生成.实现.文档生成 import 生成文档, 设置HTTP连接器
 
-__all__ = ["生成文档"]
+__all__ = ["生成文档", "设置HTTP连接器"]
 
 
 def 注册能力(注册表) -> None:

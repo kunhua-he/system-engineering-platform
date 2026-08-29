@@ -1,7 +1,8 @@
 """文档解析模块真实组合测试（unittest）。
 
 覆盖：七格式真实解析（docx/xlsx/pptx/pdf 原生 + doc/xls/ppt 转换链）、
-格式归一化、非法格式、缺提供者、往返一致性。
+格式归一化、非法格式、缺提供者、往返一致性、平台不可用降级。
+所有能力调用经 后端核心 + 本地网关服务器 + HTTP连接器 真实 HTTP 链路。
 """
 
 from __future__ import annotations
@@ -17,6 +18,10 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 模块库.文档解析 import 解析文档
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 
 def _生成docx(路径: Path) -> None:
@@ -54,6 +59,31 @@ def _生成pdf(路径: Path) -> None:
 
 
 class Test文档解析模块(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.文档解析 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.文档解析 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def setUp(self):
         """真实装配：注册全部解析提供者能力并经 装配系统 注入唯一能力调用服务。"""
         self.临时目录 = tempfile.mkdtemp(prefix="测试_文档解析模块_")
@@ -195,6 +225,15 @@ class Test文档解析模块(unittest.TestCase):
         结果 = 解析文档(str(旧路径), "doc")
         self.assertTrue(结果.成功, f"doc 组合解析失败: {结果.错误说明 if not 结果.成功 else ''}")
         self.assertEqual(结果.值.格式, "docx")
+
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.文档解析 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        结果 = 解析文档("/不存在的路径/测试.docx", "docx")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
 
 if __name__ == "__main__":

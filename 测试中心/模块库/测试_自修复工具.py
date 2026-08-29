@@ -1,9 +1,17 @@
-"""模块库.自修复工具 组合能力真实端到端测试（调用器装配）。
+"""模块库.自修复工具 组合能力真实端到端测试（HTTP 网关装配）。
 
-全部真实 git 调用：worktree 创建→补丁应用→验证→提交→挑拣合入→回滚→
-验证还原；补丁多重匹配/路径逃逸/验证失败不提交/回滚失败中止/未提交修改
-拒绝；平台不可用（未装配调用器如实返回 提供者不可用）；参数错误；
+setUpClass 启动真实后端与本地回环网关并装配 HTTP连接器，模块公开能力
+全部经真实 HTTP 网关调用；保留既有进程内装配用例（注册支持库能力+注入
+全局唯一服务）与真实 git 流程用例。
+
+覆盖：worktree 创建→补丁应用→验证→提交→挑拣合入→回滚→验证还原；
+补丁多重匹配/路径逃逸/验证失败不提交/回滚失败中止/未提交修改拒绝；
+平台不可用（连接器未装配如实返回 提供者不可用）；参数错误；
 获取当前提交哈希；零残留（临时仓库/worktree/进程/登记临时资源全清理）。
+
+注：本地进程适配器属适配层豁免包，装配系统不自动收录
+“本地进程.执行命令受控”，setUpClass 按真实提供者补注册到后端，
+保证 验证修复 的受管验证命令可经 HTTP 网关执行。
 """
 
 from __future__ import annotations
@@ -21,6 +29,10 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 模块库.自修复工具 import 创建修复工作区, 获取当前提交哈希, 回滚修复, 验证修复
 from 支持库.后端.文件系统支持库.文件操作 import 清理全部临时资源
 from 支持库.后端.系统核心支持库.资源管理 import 创建内容摘要
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 
 def 运行命令(命令列表: list[str], 工作目录: str) -> subprocess.CompletedProcess:
@@ -62,6 +74,47 @@ def 卸载能力调用器() -> None:
 
 
 class Test自修复工具(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        # 本地进程适配器属适配层豁免包（无 包声明.json），装配系统不收录其
+        # 能力；按真实提供者补注册，保证 验证修复 的受管验证命令经网关可执行。
+        from 支持库.适配层.本地进程适配器 import 本地进程适配器
+        注册结果 = cls.后端.注册能力(
+            "本地进程.执行命令受控",
+            本地进程适配器().执行命令受控,
+            参数=[{"名称": "命令列表", "类型": "列表"},
+                  {"名称": "超时秒", "类型": "浮点数"},
+                  {"名称": "输出上限字节", "类型": "整数"},
+                  {"名称": "工作目录", "类型": "文本"}],
+            返回="结果",
+            说明="验证命令受管执行（真实子进程）",
+        )
+        if not 注册结果.成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"本地进程能力补注册失败: {注册结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.自修复工具 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.自修复工具 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def setUp(self):
         """真实临时 git 仓库：初始提交含 待修复文件与 重复文本文件。"""
         self.临时根 = Path(tempfile.mkdtemp(prefix="测试_自修复工具_"))
@@ -180,7 +233,7 @@ class Test自修复工具(unittest.TestCase):
         self.assertEqual(结果.错误码, "未提交修改")
 
     def test_获取当前提交哈希(self):
-        """获取当前提交哈希与分支（经调用器 Git操作 能力）。"""
+        """获取当前提交哈希与分支（经 HTTP 网关 Git操作 能力）。"""
         结果 = 获取当前提交哈希(str(self.仓库))
         self.assertTrue(结果.成功, 结果.错误说明)
         实际哈希 = 运行命令(["git", "rev-parse", "HEAD"], str(self.仓库)).stdout.strip()
@@ -188,11 +241,9 @@ class Test自修复工具(unittest.TestCase):
         self.assertEqual(结果.值["分支"], "主干")
 
     def test_平台不可用如实失败(self):
-        """未装配调用器（卸载+清除惰性钩子）→ 返回 提供者不可用，不抛异常。"""
-        import 公共契约.能力契约.调用器 as 调用器
-        原钩子 = 调用器._惰性装配函数
-        卸载能力调用器()
-        调用器._惰性装配函数 = None
+        """未装配 HTTP 连接器 → 返回 提供者不可用，不抛异常。"""
+        from 模块库.自修复工具 import 设置HTTP连接器
+        设置HTTP连接器(None)
         try:
             结果 = 创建修复工作区(
                 str(self.仓库), self.补丁(), self.验证命令(), "不应提交")
@@ -203,8 +254,18 @@ class Test自修复工具(unittest.TestCase):
             self.assertFalse(验证.成功)
             self.assertEqual(验证.错误码, "验证失败")
         finally:
-            调用器._惰性装配函数 = 原钩子
-            装配能力调用器()
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+
+    def test_平台不可用返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.自修复工具 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        try:
+            结果 = 获取当前提交哈希(str(self.仓库))
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
     def test_参数错误(self):
         """提交消息为空/验证命令非列表/操作非法/补丁列表为空 → 参数不合法。"""
