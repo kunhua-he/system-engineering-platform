@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -39,8 +40,11 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
     try:
         cmd = [命令] + (参数 or [])
+        # 独立进程组：POSIX 下 killpg 必须作用在独立组，否则会误杀
+        # 网关/测试进程自身；Windows 走 job 等价策略（terminate/kill）。
         进程 = subprocess.Popen(cmd, cwd=工作目录, env=环境变量,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                start_new_session=(os.name == "posix"))
     except Exception as 错误:
         return 结果.失败("启动失败", str(错误), 来源="进程管理")
     with 锁:
@@ -49,17 +53,47 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
     return 结果.成功结果({"句柄": 对象.句柄id, "PID": 进程.pid, "命令": 命令})
 
 
+def _终止进程组(进程: subprocess.Popen, 强制: bool = True, 宽限秒: float = 2.0) -> None:
+    """进程组终止：TERM→有界等待→KILL→再次等待（POSIX）；Windows 用进程级 terminate/kill。
+
+    先确认进程组归属（进程可能已退出或从未建立独立组），避免误杀无关进程组。
+    """
+    if os.name != "posix":
+        try:
+            if 强制:
+                进程.kill()
+            else:
+                进程.terminate()
+            进程.wait(timeout=宽限秒)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        return
+    try:
+        os.killpg(os.getpgid(进程.pid), signal.SIGTERM if not 强制 else signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        return  # 进程组已不存在
+    try:
+        进程.wait(timeout=宽限秒)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        pass
+    try:
+        进程.wait(timeout=宽限秒)
+    except subprocess.TimeoutExpired:
+        pass
+
+
 def 终止进程(句柄: str = None, 强制: bool = None) -> 结果:
     """终止进程（killpg 进程组）。返回 {已终止, 退出码}。"""
     进程, 原因 = _取进程(句柄)
     if 进程 is None:
         return 结果.失败("句柄失效", 原因, 来源="进程管理")
     try:
-        if 强制:
-            os.killpg(os.getpgid(进程.pid), 9)
-        else:
-            进程.terminate()
-            进程.wait(timeout=5)
+        _终止进程组(进程, 强制=bool(强制))
         return 结果.成功结果({"已终止": True, "退出码": 进程.returncode, "PID": 进程.pid})
     except Exception as 错误:
         return 结果.失败("终止失败", str(错误), 来源="进程管理")
@@ -93,12 +127,27 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
     """执行命令并等待完成。返回 {退出码, 标准输出, 错误输出}。"""
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
+    # shell=True 时无法 killpg 进程组；改用参数列表方式，超时由独立
+    # 进程组统一回收，避免 shell 子孙进程泄漏。
+    import shlex
     try:
-        运行结果 = subprocess.run(命令, shell=True, capture_output=True, text=True,
-                               timeout=超时秒 or 60, cwd=工作目录)
-        return 结果.成功结果({"退出码": 运行结果.returncode, "标准输出": 运行结果.stdout,
-                                "错误输出": 运行结果.stderr})
+        命令表 = shlex.split(命令)
+    except ValueError as 错误:
+        return 结果.失败("参数不合法", f"命令解析失败: {错误}", 来源="进程管理")
+    if not 命令表:
+        return 结果.失败("参数不合法", "命令为空", 来源="进程管理")
+    进程 = None
+    try:
+        进程 = subprocess.Popen(
+            命令表, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            cwd=工作目录, start_new_session=(os.name == "posix"))
+        stdout, stderr = 进程.communicate(timeout=超时秒 or 60)
+        return 结果.成功结果({"退出码": 进程.returncode, "标准输出": stdout,
+                                "错误输出": stderr})
     except subprocess.TimeoutExpired:
+        # 超时后强制回收独立进程组，避免子孙进程残留
+        if 进程 is not None:
+            _终止进程组(进程, 强制=True)
         return 结果.失败("超时", "命令执行超时", 来源="进程管理")
     except Exception as 错误:
         return 结果.失败("执行失败", str(错误), 来源="进程管理")
@@ -123,9 +172,15 @@ def 释放句柄(句柄: str = None) -> 结果:
     with 锁:
         进程 = 进程表.pop(句柄, None)
         if 进程:
-            try:
-                os.killpg(os.getpgid(进程["进程对象"].pid), 9)
-            except Exception as 错误:
-                降级记录表.append(str(错误))
+            # 先确认进程组归属（start_new_session 保证独立组），再锁外终止，
+            # 避免在锁内执行阻塞式 kill/wait 拖住所有句柄操作。
+            进程对象 = 进程.get("进程对象")
+        else:
+            进程对象 = None
         句柄系统.失效(句柄, "释放")
+    if 进程对象 is not None:
+        try:
+            _终止进程组(进程对象, 强制=True)
+        except Exception as 错误:
+            降级记录表.append(str(错误))
     return 结果.成功结果({"句柄": 句柄, "已释放": True})
