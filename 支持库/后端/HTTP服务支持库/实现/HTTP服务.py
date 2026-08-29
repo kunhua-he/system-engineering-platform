@@ -11,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from typing import Any, Callable
 
+内部调用路径 = "/内部/能力调用"
+
 
 class _线程HTTP服务器(ThreadingMixIn, HTTPServer):
     daemon_threads = True
@@ -90,7 +92,7 @@ class HTTP服务:
                         def _方法不允许(self):
                             服务对象._响应(self, 405, {
                                 "成功": False, "错误码": "方法不允许",
-                                "错误说明": "仅支持 GET /健康、POST /调用",
+                                "错误说明": f"仅支持 GET /健康、POST {内部调用路径}",
                             })
                         do_PUT = _方法不允许
                         do_PATCH = _方法不允许
@@ -197,8 +199,10 @@ class HTTP服务:
             路径 = urllib.parse.unquote(请求.path)
             if 路径 == "/健康":
                 self._响应(请求, 200, self.健康()); return
-            if 路径 != "/调用":
+            if 路径 != 内部调用路径:
                 self._响应(请求, 404, {"成功": False, "错误码": "路径不存在", "错误说明": "路径不存在"}); return
+            if 请求.headers.get("X-Internal-Call", "") != "1":
+                self._响应(请求, 403, {"成功": False, "错误码": "内部调用被拒绝", "错误说明": "缺少内部调用标记"}); return
             try:
                 数据 = json.loads(原文.decode("utf-8"))
                 if not isinstance(数据, dict):

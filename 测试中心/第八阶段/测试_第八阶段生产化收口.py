@@ -271,7 +271,7 @@ class TestHTTP流式(unittest.TestCase):
 class Test真实HTTP事件流(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.服务器 = 流式HTTP服务器(端口=0)
+        cls.服务器 = 流式HTTP服务器(端口=0, 要求凭证=False)
         cls.服务器.注册能力("流式.正常", lambda 参数: iter([
             {"片段": 参数.get("前", "甲")}, {"片段": 参数.get("后", "乙")},
         ]))
