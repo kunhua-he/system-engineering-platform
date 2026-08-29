@@ -44,6 +44,17 @@ from 运行核心.运行环境管理器.环境管理器 import 确保环境, 读
 排空滞留预算字节 = 64 * 1024
 
 
+def _进程已结束(进程: Any) -> bool:
+    """进程是否已确认结束：poll()!=None（三管道关闭由独立进程负责）。"""
+    try:
+        底层 = getattr(进程, "进程", None)
+        if 底层 is None:
+            return True  # 无底层进程对象视为已结束
+        return 底层.poll() is not None
+    except (AttributeError, OSError):
+        return False
+
+
 @dataclass
 class 提供者路由:
     """提供者级路由：提供者id → 目录/依赖锁/运行方式（三方对齐事实点）。"""
@@ -394,7 +405,12 @@ class 提供者生命周期管理器:
                         self._终止并重启(提供者id)
                         self._记录日志(提供者id, "调用超时后排空超预算，进程已重置")
                     else:
-                        self._记录日志(提供者id, f"调用超时已排空: {能力id}")
+                        # 排空窗口内无数据即视为已收敛；但无法证明工作器已结束
+                        # 当前能力，若再次请求写入同一管道仍有顺序风险。为满足
+                        # “资源释放无硬截止”审计，超时后进程视为不可复用：重置
+                        # 进程保证后续调用不受旧任务污染。
+                        self._终止并重启(提供者id)
+                        self._记录日志(提供者id, f"调用超时已排空但进程不可复用，已重置: {能力id}")
                 return 结果
             结果盒: list = []
             线程 = threading.Thread(
@@ -461,14 +477,24 @@ class 提供者生命周期管理器:
         return True
 
     def _终止并重启(self, 提供者id: str) -> None:
-        """兜底：终止占用中的进程并自动重启（重启次数有界）。"""
+        """兜底：终止占用中的进程并自动重启（重启次数有界）。
+
+        强杀失败时保留旧进程对象、进入故障态，不启动替代进程（新旧进程
+        并存会破坏唯一权威和资源上限）；只有确认进程组退出才允许重启。
+        """
         进程 = self._进程表.get(提供者id)
         if 进程 is not None:
-            进程.强制终止()
+            成功, 消息 = 进程.强制终止()
             with self._锁:
-                self._进程表.pop(提供者id, None)
-                self._状态表[提供者id] = 进程状态_已停止
-                self._记录日志(提供者id, "取消兜底：进程已终止并自动重启")
+                if _进程已结束(进程):
+                    self._进程表.pop(提供者id, None)
+                    self._状态表[提供者id] = 进程状态_已停止
+                    self._记录日志(提供者id, f"取消兜底：进程已终止并自动重启（{消息}）")
+                else:
+                    self._状态表[提供者id] = 进程状态_故障
+                    self._记录日志(提供者id,
+                                   f"取消兜底：强杀未收敛（{消息}），保留故障记录不重启")
+                    return
         self.启动提供者(提供者id)
 
     # ---------- 资源有界与零残留 ----------
@@ -486,16 +512,35 @@ class 提供者生命周期管理器:
             self._临时目录表.append(Path(路径))
 
     def 清理临时目录(self) -> list[str]:
-        """清理全部登记临时目录并清空登记表。"""
+        """清理全部登记临时目录并清空登记表。
+
+        逐目录删除后检查 exists()；删除失败的目录保留登记并返回失败明细，
+        退出流程不得宣称零残留（权限/占用/LibreOffice 锁文件会导致失败）。
+        """
         with self._锁:
             目录表 = list(self._临时目录表)
             self._临时目录表 = []
+        失败表: list[str] = []
         for 目录 in 目录表:
-            shutil.rmtree(目录, ignore_errors=True)
-        return [str(目录) for 目录 in 目录表]
+            try:
+                shutil.rmtree(目录)
+            except Exception:
+                try:
+                    if Path(目录).exists():
+                        失败表.append(str(目录))
+                        with self._锁:
+                            self._临时目录表.append(Path(目录))
+                except Exception:
+                    pass
+        return 失败表
 
     def 清理全部(self) -> list[str]:
-        """停止全部进程并回收资源（进程/句柄/日志/临时目录）。"""
+        """停止全部进程并回收资源（进程/句柄/日志/临时目录）。
+
+        只有确认进程已结束（poll()!=None）才允许从进程表移除；强杀失败的
+        进程保留为故障记录，不能清空唯一观测引用（否则零残留核对失去观察
+        对象，形成假阴性）。
+        """
         结果列表: list[str] = []
         with self._锁:
             进程表 = dict(self._进程表)
@@ -503,11 +548,18 @@ class 提供者生命周期管理器:
             if 进程.状态 == 进程状态_运行中:
                 _, 消息 = self.停止提供者(提供者id)
                 结果列表.append(f"{提供者id}: {消息}")
+                # 停止提供者内部已按结果决定是否移除；此处只需记录
+                if not _进程已结束(进程):
+                    结果列表.append(f"{提供者id}: 强杀未收敛，保留故障记录")
             else:
                 进程.关闭并清理()
                 结果列表.append(f"{提供者id}: 已清理")
         with self._锁:
+            # 只移除已确认结束的进程；未收敛的保留供零残留核对/重试
+            存活表 = {提供者id: 进程 for 提供者id, 进程 in self._进程表.items()
+                      if not _进程已结束(进程)}
             self._进程表.clear()
+            self._进程表.update(存活表)
             self._状态表.clear()
             self._日志表.clear()
         self.清理临时目录()

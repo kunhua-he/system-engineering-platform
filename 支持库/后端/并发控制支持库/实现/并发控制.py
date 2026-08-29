@@ -86,13 +86,19 @@ def 释放锁(句柄: str = None) -> 结果:
         return 结果.失败("释放锁失败", str(错误), 来源="并发控制")
 
 
-def 获取信号量(句柄: str = None) -> 结果:
-    """获取信号量（计数减1，可能阻塞）。返回 {已获取}。"""
+def 获取信号量(句柄: str = None, 超时秒: float = None) -> 结果:
+    """获取信号量（计数减1；可设超时，超时返回未获取，不永久阻塞）。返回 {已获取}。"""
     对象, 原因 = _取(句柄, "信号量")
     if 对象 is None:
         return 结果.失败("句柄失效", 原因, 来源="并发控制")
-    对象.acquire()
-    return 结果.成功结果({"已获取": True})
+    try:
+        if 超时秒 is None:
+            已获取 = 对象.acquire()
+        else:
+            已获取 = 对象.acquire(timeout=超时秒)
+        return 结果.成功结果({"已获取": bool(已获取)})
+    except Exception as 错误:
+        return 结果.失败("获取信号量失败", str(错误), 来源="并发控制")
 
 
 def 释放信号量(句柄: str = None) -> 结果:
@@ -105,14 +111,17 @@ def 释放信号量(句柄: str = None) -> 结果:
 
 
 def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: float = None) -> 结果:
-    """线程池并发执行任务列表（每个任务 dict {函数, 参数}）。返回 {结果列表, 成功数, 失败数}。"""
+    """线程池并发执行任务列表（每个任务 dict {函数, 参数}）。返回 {结果列表, 成功数, 失败数}。
+
+    先批量 submit 全部合法任务再按原顺序收集 Future 结果，避免逐项
+    submit().result() 把线程池退化成串行；超时/异常按任务收集失败。
+    """
     池, 原因 = _取(句柄, "线程池")
     if 池 is None:
         return 结果.失败("句柄失效", 原因, 来源="并发控制")
     if not isinstance(任务列表, list) or not 任务列表:
         return 结果.失败("参数不合法", "任务列表必须是非空列表", 来源="并发控制")
-    结果列表 = []
-    失败数 = 0
+    提交表: list[tuple[dict, object]] = []  # (原始任务, Future)
     for 任务 in 任务列表:
         if not isinstance(任务, dict):
             continue
@@ -121,7 +130,15 @@ def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: fl
         if not callable(函数):
             continue
         try:
-            值 = 池.submit(函数, **参数).result(timeout=超时秒)
+            未来 = 池.submit(函数, **参数)
+            提交表.append((任务, 未来))
+        except Exception as 错误:
+            提交表.append((任务, 错误))
+    结果列表 = []
+    失败数 = 0
+    for 任务, 未来 in 提交表:
+        try:
+            值 = 未来.result(timeout=超时秒)
             结果列表.append({"成功": True, "值": 值})
         except Exception as 错误:
             失败数 += 1
@@ -130,15 +147,23 @@ def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: fl
 
 
 def 释放句柄(句柄: str = None) -> 结果:
-    """释放并发资源句柄（幂等，线程池关闭）。"""
+    """释放并发资源句柄（幂等，线程池有界等待关闭）。"""
     if not isinstance(句柄, str) or not 句柄.strip():
         return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="并发控制")
     with 锁:
-        资源 = 资源表.pop(句柄, None)
+        资源 = 资源表.get(句柄)
         if 资源 and 资源["类型"] == "线程池":
-            try:
-                资源["对象"].shutdown(wait=False)
-            except Exception as 错误:
-                降级记录表.append(str(错误))
+            池 = 资源["对象"]
+        else:
+            池 = None
+    if 池 is not None:
+        try:
+            # 先拒绝新任务，再有界等待运行/排队任务结束；收敛后才允许删除
+            # 资源表记录，避免后台线程继续访问文件/网络后句柄已消失。
+            池.shutdown(wait=True, cancel_futures=True)
+        except Exception as 错误:
+            降级记录表.append(str(错误))
+    with 锁:
+        资源表.pop(句柄, None)
         句柄系统.失效(句柄, "释放")
     return 结果.成功结果({"句柄": 句柄, "已释放": True})
