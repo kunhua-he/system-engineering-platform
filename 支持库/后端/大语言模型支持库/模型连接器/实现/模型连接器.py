@@ -515,11 +515,16 @@ def 启动本地模型(模型路径: str | None = None, 启动器: str | None = 
 
 
 def _终止本地进程(句柄id: str) -> None:
-    """释放句柄时终止整个本地模型进程组。"""
+    """释放句柄时终止整个本地模型进程组。
+
+    进程表取出与状态迁移在同一锁内完成（防并发释放/过期回收/启动失败
+    回滚重复 kill 或状态不一致）；实际 kill/wait 放锁外执行。
+    """
     import os
     import signal
     import subprocess
-    进程 = 本地进程表.pop(句柄id, None)
+    with 锁:
+        进程 = 本地进程表.pop(句柄id, None)
     if 进程 is None:
         return
     try:

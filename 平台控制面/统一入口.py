@@ -327,17 +327,30 @@ class 统一能力服务:
         if 超时发生 or 输出超限:
             self._终止进程组(进程)
         读线程.join(timeout=6)
+        # 读线程超时仍未退出时显式关闭管道，避免 Popen 管道 FD 依赖
+        # 垃圾回收；禁止 daemon 线程成为正常释放手段。
+        if 读线程.is_alive():
+            for 流 in (进程.stdout, 进程.stderr, 进程.stdin):
+                if 流 is not None:
+                    try:
+                        流.close()
+                    except OSError:
+                        pass
         return 共享["输出"], 超时发生, 输出超限 or 共享["截断"]
 
-    def _终止进程组(self, 进程: subprocess.Popen) -> None:
-        """终止子进程整个进程组（含孙进程），先 SIGTERM 温柔后 SIGKILL 兜底。"""
+    def _终止进程组(self, 进程: subprocess.Popen) -> bool:
+        """终止子进程整个进程组（含孙进程），先 SIGTERM 温柔后 SIGKILL 兜底。
+
+        返回是否确认收敛（进程组已退出）；两次等待仍超时返回 False，
+        调用方不得按“已终止”处理。
+        """
         try:
             os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
         except (OSError, ProcessLookupError):
             pass
         try:
             进程.wait(timeout=5)
-            return
+            return True
         except subprocess.TimeoutExpired:
             pass
         try:
@@ -346,8 +359,9 @@ class 统一能力服务:
             pass
         try:
             进程.wait(timeout=5)
+            return True
         except subprocess.TimeoutExpired:
-            pass
+            return False
 
     def _调用能力(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
         """真实调用：授权 → 契约校验 → 注册表（资源监督+真实执行）→ 证据。"""
