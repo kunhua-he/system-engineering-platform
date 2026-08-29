@@ -42,6 +42,10 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 
 降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
 
+def _句柄键(句柄id: str | int) -> str:
+    """连接表统一使用公开的六位数字字符串键；状态机仍保留整数id。"""
+    return str(句柄id)
+
 def _包申报超时() -> int:
     """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""
     try:
@@ -105,63 +109,85 @@ def _内存守卫(连接类型: str, 配置: dict) -> 结果 | None:
 
 
 def _回收过期句柄() -> None:
-    """回收过期句柄（必须由调用方在 with 锁: 内调用）。
-
-    锁内仅摘除过期记录并收集释放回调，实际释放进程放到锁外执行，
-    避免阻塞式 kill/wait 拖住所有模型连接的注册/续租/查询/释放。
-    """
+    """回收过期句柄：锁内只标记，实际释放和终态收口在锁外完成。"""
     now = time.time()
     待释放: list[tuple[str, Any]] = []
-    for 句柄id, 连接 in list(连接表.items()):
-        空闲 = now - 连接.get("最后活动时间", now)
-        if 空闲 > 连接.get("超时秒", 默认超时秒):
-            连接表.pop(句柄id, None)
+    with 锁:
+        for 句柄id, 连接 in list(连接表.items()):
+            if 连接.get("状态", "有效") != "有效":
+                continue
+            空闲 = now - 连接.get("最后活动时间", now)
+            if 空闲 <= 连接.get("超时秒", 默认超时秒):
+                continue
+            连接["状态"] = "释放中"
             for 模型身份, 索引句柄 in list(全局模型索引.items()):
                 if 索引句柄 == 句柄id:
                     全局模型索引.pop(模型身份, None)
-            句柄系统.失效(句柄id, "超时")
-            if 连接.get("释放函数"):
-                待释放.append((句柄id, 连接["释放函数"]))
+            待释放.append((句柄id, 连接.get("释放函数")))
+    _完成释放(待释放, "超时")
+
+
+def _完成释放(待释放: list[tuple[str, Any]], 原因: str) -> None:
+    """执行释放回调并按真实结果收口；失败时保留连接账本供重试。"""
     for 句柄id, 释放函数 in 待释放:
+        成功 = True
         try:
-            释放函数(句柄id)
+            if 释放函数:
+                返回值 = 释放函数(句柄id)
+                成功 = 返回值 is not False
         except Exception as 错误:
-            降级记录表.append(f"过期句柄 {句柄id} 释放回调失败: {错误}")
+            成功 = False
+            降级记录表.append(f"句柄 {句柄id} {原因}释放回调失败: {错误}")
+        with 锁:
+            连接 = 连接表.get(句柄id)
+            if 成功:
+                连接表.pop(句柄id, None)
+                句柄系统.失效(int(句柄id), 原因)
+            elif 连接 is not None:
+                连接["状态"] = "释放失败"
 
 
 def _登记连接(连接类型: str, 配置: dict, *, 超时秒: int, 所有者: str = "") -> 结果:
     if 连接类型 not in 连接类型表:
         return _失败("参数不合法", f"未知连接类型: {连接类型}")
+    _回收过期句柄()
     with 锁:
-        _回收过期句柄()
         # 系统内存安全守卫：撑爆内存前拒绝
         守卫 = _内存守卫(连接类型, 配置)
         if 守卫 is not None:
             return 守卫
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"模型连接-{连接类型}", 所有者=所有者)
         有效超时 = 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()
-        连接表[对象.句柄id] = {
+        连接键 = _句柄键(对象.句柄id)
+        连接表[连接键] = {
             "类型": 连接类型, "配置": dict(配置), "创建时间": time.time(),
             "最后活动时间": time.time(), "超时秒": 有效超时, "释放函数": None,
+            "状态": "有效",
         }
-        return 结果.成功结果({"句柄": 对象.句柄id, "连接类型": 连接类型,
+        return 结果.成功结果({"句柄": 连接键, "连接类型": 连接类型,
                                 "模型": 配置.get("模型名") or 配置.get("模型"),
                                 "部署形态": 配置.get("部署形态") or "本地", "超时秒": 有效超时,
                                 "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续租，可显式释放"})
 
 
 def _取连接(句柄id: str) -> tuple[dict[str, Any] | None, str]:
-    有效, 原因 = 句柄系统.校验(句柄id)
+    _回收过期句柄()
+    键 = _句柄键(句柄id)
+    try:
+        状态机id = int(键)
+    except ValueError:
+        return None, f"句柄格式不合法: {句柄id}"
+    有效, 原因 = 句柄系统.校验(状态机id)
     if not 有效:
         return None, 原因
-    连接 = 连接表.get(句柄id)
+    连接 = 连接表.get(键)
     if 连接 is None:
         return None, f"句柄 {句柄id} 连接不存在（可能已自动释放）"
+    if 连接.get("状态", "有效") != "有效":
+        return None, f"句柄 {句柄id} 正在释放或释放失败，禁止继续调用"
     now = time.time()
     if now - 连接["最后活动时间"] > 连接["超时秒"]:
-        with 锁:
-            连接表.pop(句柄id, None)
-            句柄系统.失效(句柄id, "超时")
+        _回收过期句柄()
         return None, f"句柄 {句柄id} 已超时自动释放（{连接['超时秒']} 秒无人使用）"
     连接["最后活动时间"] = now
     return 连接, ""
@@ -460,6 +486,7 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
     模型身份 = (类型, 规范路径)
     from pathlib import Path
     import subprocess
+    _回收过期句柄()
     with 锁:
         现有句柄 = 全局模型索引.get(模型身份)
         现有连接 = 连接表.get(现有句柄) if 现有句柄 else None
@@ -473,7 +500,7 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
         if 现有句柄:
             全局模型索引.pop(模型身份, None)
             连接表.pop(现有句柄, None)
-            句柄系统.失效(现有句柄, "进程暴毙")
+            句柄系统.失效(int(现有句柄), "进程暴毙")
     端口 = _分配端口(端口)
     启动参数 = dict(参数 or {})
     启动器名 = str(启动器 or "")
@@ -483,20 +510,20 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
             "本地路径": 规范路径, "模型源格式": 源格式, "启动器": 启动器名, "模型类型": 类型,
             "模型大小字节": 模型大小字节, "端口": 端口, "url": f"http://127.0.0.1:{端口}/v1"}
     with 锁:
-        _回收过期句柄()
         守卫 = _内存守卫(类型, 配置)
         if 守卫 is not None:
             return 守卫
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"本地模型-{类型}", 所有者="")
         有效超时 = 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()
-        连接表[对象.句柄id] = {"类型": 类型, "配置": dict(配置), "创建时间": time.time(),
+        连接键 = _句柄键(对象.句柄id)
+        连接表[连接键] = {"类型": 类型, "配置": dict(配置), "创建时间": time.time(),
                          "最后活动时间": time.time(), "超时秒": 有效超时, "释放函数": _终止本地进程,
                          "全局句柄": True, "模型身份": 模型身份}
-        全局模型索引[模型身份] = 对象.句柄id
+        全局模型索引[模型身份] = 连接键
     try:
         命令 = _构建本地启动命令(规范路径, 类型, 启动器名, 端口, 启动参数)
         进程 = subprocess.Popen(命令, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        本地进程表[对象.句柄id] = 进程
+        本地进程表[连接键] = 进程
         句柄系统.登记资源(对象.句柄id, 资源类型="进程", PID=进程.pid, 端口=端口)
         if not _等待本地健康(端口, 有效超时):
             raise TimeoutError(f"本地模型启动后健康检查超时: {模型路径}")
@@ -514,7 +541,7 @@ def 启动本地模型(模型路径: str | None = None, 启动器: str | None = 
         return _启动本地模型(模型路径, 启动器, 模型类型, 端口, 模型大小字节, 参数, 超时秒)
 
 
-def _终止本地进程(句柄id: str) -> None:
+def _终止本地进程(句柄id: str) -> bool:
     """释放句柄时终止整个本地模型进程组。
 
     进程表取出与状态迁移在同一锁内完成（防并发释放/过期回收/启动失败
@@ -524,9 +551,9 @@ def _终止本地进程(句柄id: str) -> None:
     import signal
     import subprocess
     with 锁:
-        进程 = 本地进程表.pop(句柄id, None)
+        进程 = 本地进程表.get(句柄id)
     if 进程 is None:
-        return
+        return True
     try:
         if 进程.poll() is None:
             try:
@@ -540,9 +567,19 @@ def _终止本地进程(句柄id: str) -> None:
                     os.killpg(进程.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
-                进程.wait(timeout=5)
+                try:
+                    进程.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    降级记录表.append(f"句柄 {句柄id} 本地模型进程强杀后仍未结束")
+                    return False
+        if 进程.poll() is None:
+            return False
+        with 锁:
+            本地进程表.pop(句柄id, None)
+        return True
     except Exception as 错误:
         降级记录表.append(str(错误))
+        return False
 
 
 def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
@@ -558,7 +595,7 @@ def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
         pid = getattr(进程对象, "pid", None)
         端口 = 连接.get("配置", {}).get("端口")
         if isinstance(pid, int):
-            句柄系统.登记资源(句柄, 资源类型="进程", PID=pid, 端口=端口 if isinstance(端口, int) else None)
+            句柄系统.登记资源(int(句柄), 资源类型="进程", PID=pid, 端口=端口 if isinstance(端口, int) else None)
     except Exception as 错误:
         降级记录表.append(str(错误))
     return 结果.成功结果({"句柄": 句柄, "已绑定进程": True})
@@ -611,15 +648,38 @@ def 释放句柄(句柄: str = None) -> 结果:
     if not isinstance(句柄, str) or not 句柄.strip():
         return _失败("参数不合法", "句柄必须是非空字符串")
     with 锁:
-        if 句柄 in 连接表:
-            连接 = 连接表.pop(句柄)
+        连接 = 连接表.get(句柄)
+        if 连接 is not None:
+            if 连接.get("状态", "有效") == "释放中":
+                return 结果.失败("资源释放中", "句柄已有释放请求，等待收敛后重试", 来源="模型连接器")
+            连接["状态"] = "释放中"
             模型身份 = 连接.get("模型身份")
             if isinstance(模型身份, tuple):
                 全局模型索引.pop(模型身份, None)
-            句柄系统.失效(句柄, "释放")
-            连接.get("释放函数") and 连接["释放函数"](句柄)
-            return 结果.成功结果({"句柄": 句柄, "已释放": True})
-    return 结果.成功结果({"句柄": 句柄, "已释放": True, "说明": "句柄不存在或已释放（幂等）"})
+            释放函数 = 连接.get("释放函数")
+        else:
+            释放函数 = None
+    if 连接 is not None:
+        成功 = True
+        try:
+            if 释放函数:
+                成功 = 释放函数(句柄) is not False
+        except Exception as 错误:
+            成功 = False
+            降级记录表.append(f"句柄 {句柄} 显式释放失败: {错误}")
+        with 锁:
+            if 成功:
+                连接表.pop(句柄, None)
+                句柄系统.失效(int(句柄), "释放")
+                return 结果.成功结果({"句柄": 句柄, "状态": "已结束并已释放", "已释放": True})
+            现有 = 连接表.get(句柄)
+            if 现有 is not None:
+                现有["状态"] = "释放失败"
+            return 结果.失败("资源未收敛", "结束请求已发出但未收敛，资源账本已保留供重试",
+                            来源="模型连接器", 可重试=True,
+                            详情={"句柄": 句柄, "状态": "结束请求已发出但未收敛"})
+    return 结果.成功结果({"句柄": 句柄, "状态": "未找到且已幂等", "已释放": True,
+                       "说明": "句柄不存在或已释放（幂等）"})
 
 
 def 查询句柄状态(句柄: str = None) -> 结果:
@@ -627,7 +687,7 @@ def 查询句柄状态(句柄: str = None) -> 结果:
         return _失败("参数不合法", "句柄必须是非空字符串")
     连接 = 连接表.get(句柄)
     if 连接 is None:
-        有效, _ = 句柄系统.校验(句柄)
+        有效, _ = 句柄系统.校验(int(句柄))
         return 结果.成功结果({"句柄": 句柄, "状态": "已失效" if not 有效 else "不存在", "连接类型": "", "剩余秒": 0})
     剩余 = max(0, int(连接["超时秒"] - (time.time() - 连接["最后活动时间"])))
     return 结果.成功结果({"句柄": 句柄, "状态": "有效", "连接类型": 连接["类型"],

@@ -20,21 +20,34 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 
 
 降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+线程池释放等待秒 = 5.0
+
+def _句柄键(句柄: str | int) -> str:
+    """资源表统一使用公开句柄字符串键，状态机仍接收整数id。"""
+    return str(句柄)
 
 def _创建(类型: str, 对象: object, 说明: str) -> 结果:
     with 锁:
         句柄 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id=f"并发-{类型}", 所有者="")
-        资源表[句柄.句柄id] = {"类型": 类型, "对象": 对象}
-    return 结果.成功结果({"句柄": 句柄.句柄id, "类型": 类型, "说明": 说明})
+        句柄键 = _句柄键(句柄.句柄id)
+        资源表[句柄键] = {"类型": 类型, "对象": 对象, "状态": "有效"}
+    return 结果.成功结果({"句柄": 句柄键, "类型": 类型, "说明": 说明})
 
 
 def _取(句柄: str, 类型: str) -> tuple[object | None, str]:
-    有效, 原因 = 句柄系统.校验(句柄id=句柄)
+    键 = _句柄键(句柄)
+    try:
+        状态机id = int(键)
+    except ValueError:
+        return None, f"句柄格式不合法: {句柄}"
+    有效, 原因 = 句柄系统.校验(句柄id=状态机id)
     if not 有效:
         return None, 原因
-    资源 = 资源表.get(句柄)
+    资源 = 资源表.get(键)
     if 资源 is None or 资源["类型"] != 类型:
         return None, f"{类型}句柄不存在"
+    if 资源.get("状态", "有效") != "有效":
+        return None, f"{类型}句柄正在释放或释放失败"
     return 资源["对象"], ""
 
 
@@ -147,23 +160,55 @@ def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: fl
 
 
 def 释放句柄(句柄: str = None) -> 结果:
-    """释放并发资源句柄（幂等，线程池有界等待关闭）。"""
+    """释放并发资源句柄（线程池有界等待，未收敛时保留账本）。"""
     if not isinstance(句柄, str) or not 句柄.strip():
         return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="并发控制")
+    键 = _句柄键(句柄)
     with 锁:
-        资源 = 资源表.get(句柄)
+        资源 = 资源表.get(键)
         if 资源 and 资源["类型"] == "线程池":
             池 = 资源["对象"]
+            if 资源.get("状态") == "释放中":
+                return 结果.失败("资源释放中", "线程池已有释放请求，等待收敛后重试", 来源="并发控制")
+            资源["状态"] = "释放中"
         else:
             池 = None
     if 池 is not None:
+        完成 = threading.Event()
+
+        def 关闭线程池() -> None:
+            try:
+                池.shutdown(wait=True, cancel_futures=True)
+            except Exception as 错误:
+                降级记录表.append(str(错误))
+            finally:
+                完成.set()
+
+        threading.Thread(target=关闭线程池, daemon=True,
+                         name=f"线程池释放-{句柄}").start()
+        if not 完成.wait(线程池释放等待秒):
+            with 锁:
+                if 键 in 资源表:
+                    资源表[键]["状态"] = "释放失败"
+            return 结果.失败(
+                "资源未收敛", "线程池结束请求已发出但未收敛，资源账本已保留供重试",
+                来源="并发控制", 可重试=True,
+                详情={"句柄": 句柄, "状态": "结束请求已发出但未收敛"})
         try:
-            # 先拒绝新任务，再有界等待运行/排队任务结束；收敛后才允许删除
-            # 资源表记录，避免后台线程继续访问文件/网络后句柄已消失。
-            池.shutdown(wait=True, cancel_futures=True)
+            with 锁:
+                资源表.pop(键, None)
+                句柄系统.失效(int(键), "释放")
+            return 结果.成功结果({"句柄": 句柄, "状态": "已结束并已释放", "已释放": True})
         except Exception as 错误:
             降级记录表.append(str(错误))
+            return 结果.失败("资源未收敛", "线程池已结束但句柄收口失败，资源账本已保留供核对",
+                            来源="并发控制", 可重试=True)
     with 锁:
-        资源表.pop(句柄, None)
-        句柄系统.失效(句柄, "释放")
-    return 结果.成功结果({"句柄": 句柄, "已释放": True})
+        资源表.pop(键, None)
+        try:
+            句柄系统.失效(int(键), "释放")
+        except ValueError:
+            pass
+    if 资源 is not None:
+        return 结果.成功结果({"句柄": 句柄, "状态": "已结束并已释放", "已释放": True})
+    return 结果.成功结果({"句柄": 句柄, "状态": "未找到且已幂等", "已释放": True})
