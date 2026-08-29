@@ -9,6 +9,8 @@ import threading
 import time
 import unittest
 import urllib.request
+import urllib.parse
+import urllib.error
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
@@ -200,30 +202,130 @@ class Test本地网关(unittest.TestCase):
         self.assertEqual(数据["值"]["状态"], "健康")
 
     def test_网关能力调用(self):
-        状态码, 响应 = self._发送("/网关/请求", {"操作": "调用能力", "能力id": "示例.加法", "参数": {"甲": 2, "乙": 3}})
+        状态码, 响应 = self._发送("/网关/调用", {"能力id": "示例.加法", "参数": {"甲": 2, "乙": 3}})
         self.assertEqual(状态码, 200)
         self.assertTrue(响应["成功"])
         self.assertEqual(响应["值"]["和"], 5)
         self.assertTrue(响应["请求id"])
 
-    def test_网关最小请求目标参数即可(self):
-        """新公开面只要求目标和参数；旧操作/能力id字段不再是必填。"""
-        状态码, 响应 = self._发送("/网关/请求", {
-            "目标": "示例.加法", "参数": {"甲": 4},
-        })
-        self.assertEqual(状态码, 200)
-        self.assertTrue(响应["成功"])
-        self.assertEqual(响应["值"]["和"], 4)
-        self.assertIn("句柄", 响应)
-        self.assertEqual(响应["句柄"], "")
+    def test_网关缺能力id原地拒绝(self):
+        """调用者只提交能力id和参数，缺能力id必须在 HTTP 边界拒绝。"""
+        状态码, 响应 = self._发送("/网关/调用", {"参数": {"甲": 4}})
+        self.assertEqual(状态码, 400)
+        self.assertFalse(响应["成功"])
+        self.assertEqual(响应["错误码"], "参数不合法")
 
     def test_网关未知能力失败(self):
-        状态码, 响应 = self._发送("/网关/请求", {"操作": "调用能力", "能力id": "不存在.能力"})
+        状态码, 响应 = self._发送("/网关/调用", {"能力id": "不存在.能力", "参数": {}})
         self.assertFalse(响应["成功"])
         self.assertEqual(响应["错误码"], "能力不存在")
 
+    def test_网关缺少声明必填参数原地拒绝(self):
+        """声明必填参数缺失时，不能等实现函数才发现。"""
+        调用记录 = []
+
+        def 必填能力(值):
+            调用记录.append(值)
+            return {"值": 值}
+
+        后端 = 建后端()
+        后端.注册能力(
+            "示例.必填", 必填能力,
+            参数=[{"名称": "值", "类型": "整数型", "必填": True}],
+        )
+        服务器 = 本地网关服务器(
+            网关核心实例=网关核心(后端), 端口=0,
+            配置={"请求超时秒": 3},
+        )
+        成功, 消息 = 服务器.启动()
+        self.assertTrue(成功, 消息)
+        try:
+            地址 = f"http://127.0.0.1:{服务器.端口}"
+            请求 = urllib.request.Request(
+                urllib.parse.quote(地址 + "/网关/调用", safe=":/@._-"),
+                data=json.dumps({"能力id": "示例.必填", "参数": {}}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as 上下文:
+                urllib.request.urlopen(请求, timeout=5)
+            self.assertEqual(上下文.exception.code, 400)
+            响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            self.assertFalse(响应["成功"])
+            self.assertEqual(响应["错误码"], "参数不合法")
+            self.assertIn("缺少必填参数 值", 响应["错误说明"])
+            self.assertEqual(调用记录, [])
+        finally:
+            服务器.优雅停止()
+
+    def test_网关拒绝能力参数基础类型漂移(self):
+        """逻辑/文本/列表/字典参数类型错误时，不能进入能力实现。"""
+        调用记录 = []
+
+        def 文本能力(值):
+            调用记录.append(("文本", 值))
+            return 值
+
+        def 逻辑能力(开启):
+            调用记录.append(("逻辑", 开启))
+            return 开启
+
+        def 列表能力(项目):
+            调用记录.append(("列表", 项目))
+            return 项目
+
+        def 字典能力(配置):
+            调用记录.append(("字典", 配置))
+            return 配置
+
+        后端 = 建后端()
+        for 能力id, 函数, 名称, 类型 in (
+            ("示例.文本类型", 文本能力, "值", "文本型"),
+            ("示例.逻辑类型", 逻辑能力, "开启", "逻辑型"),
+            ("示例.列表类型", 列表能力, "项目", "列表型"),
+            ("示例.字典类型", 字典能力, "配置", "字典型"),
+        ):
+            后端.注册能力(
+                能力id, 函数,
+                参数=[{"名称": 名称, "类型": 类型, "必填": True}],
+            )
+        服务器 = 本地网关服务器(
+            网关核心实例=网关核心(后端), 端口=0,
+            配置={"请求超时秒": 3},
+        )
+        成功, 消息 = 服务器.启动()
+        self.assertTrue(成功, 消息)
+        try:
+            错误请求 = (
+                ("示例.文本类型", {"值": 123}),
+                ("示例.逻辑类型", {"开启": "false"}),
+                ("示例.列表类型", {"项目": {"不是": "列表"}}),
+                ("示例.字典类型", {"配置": ["不是字典"]}),
+            )
+            def 发送(端口: int, 路径: str, 数据: dict) -> tuple[int, dict]:
+                请求 = urllib.request.Request(
+                    urllib.parse.quote(f"http://127.0.0.1:{端口}{路径}", safe=":/@._-"),
+                    data=json.dumps(数据).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                try:
+                    with urllib.request.urlopen(请求, timeout=5) as 响应:
+                        return 响应.status, json.loads(响应.read().decode("utf-8"))
+                except urllib.error.HTTPError as 错误:
+                    return 错误.code, json.loads(错误.read().decode("utf-8"))
+
+            for 能力id, 参数 in 错误请求:
+                状态码, 响应 = 发送(服务器.端口, "/网关/调用", {
+                    "能力id": 能力id, "参数": 参数,
+                })
+                self.assertEqual(状态码, 400, 能力id)
+                self.assertFalse(响应["成功"], 能力id)
+                self.assertEqual(响应["错误码"], "参数不合法", 能力id)
+            self.assertEqual(调用记录, [])
+        finally:
+            服务器.优雅停止()
+
     def test_网关参数错误(self):
-        状态码, 响应 = self._发送("/网关/请求", {"操作": "调用能力", "能力id": ""})
+        状态码, 响应 = self._发送("/网关/调用", {"能力id": "", "参数": {}})
         self.assertFalse(响应["成功"])
         self.assertEqual(响应["错误码"], "参数不合法")
 

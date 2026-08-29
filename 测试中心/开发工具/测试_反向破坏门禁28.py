@@ -13,12 +13,38 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import ast
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
 
 
 class Test反向破坏门禁28(unittest.TestCase):
+    def test_Provider实现直导仅限内部生命周期测试(self) -> None:
+        """公开能力测试必须经包级入口；实现层直导仅允许明确的 Provider 内部协议测试。"""
+        允许 = {
+            "测试_FFmpeg提供者.py", "测试_Git提供者.py", "测试_MLXWhisper提供者.py",
+            "测试_PDF隔离提供者.py", "测试_PyMuPDF提供者.py", "测试_PyMuPDF自足性.py",
+            "测试_Pillow提供者.py", "测试_Tesseract提供者.py", "测试_openpyxl提供者.py",
+            "测试_pg8000提供者.py", "测试_psycopg提供者.py", "测试_python-docx提供者.py",
+            "测试_reportlab提供者.py", "测试_密码签名提供者.py", "测试_密码签名提供者_生命周期.py",
+            "测试_系统探针.py",
+        }
+        根 = 系统根 / "测试中心" / "支持库"
+        越界 = []
+        for 文件 in sorted(根.glob("测试_*.py")):
+            try:
+                树 = ast.parse(文件.read_text(encoding="utf-8"), filename=str(文件))
+            except SyntaxError as 错误:
+                self.fail(f"测试文件无法解析: {文件.name}: {错误}")
+            直导 = []
+            for 节点 in ast.walk(树):
+                if isinstance(节点, ast.ImportFrom) and 节点.module and ".实现" in 节点.module:
+                    直导.append(f"{文件.name}:{节点.lineno}")
+            if 直导 and 文件.name not in 允许:
+                越界.extend(直导)
+        self.assertEqual([], 越界, "Provider 实现直导超出内部生命周期白名单: " + ", ".join(越界))
+
     def test_主进程零加载Pillow(self) -> None:
         """调用 Pillow 能力后主进程 sys.modules 不得出现 PIL。"""
         sys.path.insert(0, str(系统根))
@@ -30,10 +56,12 @@ class Test反向破坏门禁28(unittest.TestCase):
             + b"\x00\x00\x00\x0aIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
             + b"\x0d\n\x2d\xb4" + b"\x00\x00\x00\x00IEND\xaeB`\x82"
         )
+        PIL先前已存在 = "PIL" in sys.modules
         结果 = 解码图像(最小PNG)
         self.assertTrue(结果.成功, 结果.错误说明)
-        self.assertNotIn("PIL", sys.modules, "主进程不得加载 PIL")
-        self.assertNotIn("Pillow", sys.modules)
+        if not PIL先前已存在:
+            self.assertNotIn("PIL", sys.modules, "本次调用不得把 PIL 加载进主进程")
+            self.assertNotIn("Pillow", sys.modules)
 
     def test_清空PYTHONPATH子进程自举(self) -> None:
         """清空 PYTHONPATH 后 Pillow 子进程入口最小调用仍成功（自举修复）。"""

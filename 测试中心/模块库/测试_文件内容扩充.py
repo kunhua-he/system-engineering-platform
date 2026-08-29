@@ -27,39 +27,49 @@ from 模块库.文件管理 import (
     移动文件,
     写入文件,
 )
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 PNG签名 = b"\x89PNG\r\n\x1a\n"
 
 
-def _装配调用器() -> None:
-    """真实装配：注册文件系统与资源管理支持库能力并注入唯一能力调用服务。"""
-    from 公共契约.能力契约.契约 import 能力注册表
-    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-    from 支持库.后端.文件系统支持库.文件操作 import 注册能力 as 注册文件系统
-    from 支持库.后端.系统核心支持库.资源管理 import 注册能力 as 注册资源管理
-
-    注册表 = 能力注册表()
-    注册文件系统(注册表)
-    注册资源管理(注册表)
-    设置全局唯一服务(唯一能力调用服务(注册表))
-
-
-def _卸载调用器() -> None:
-    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
-
-    设置全局唯一服务(None)
-
-
 class 测试_文件内容扩充(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.文件管理 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.文件管理 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def setUp(self):
-        _装配调用器()
         self.临时根 = tempfile.mkdtemp(prefix="测试_文件内容扩充_")
         self.根目录 = Path(self.临时根)
         self.二进制文件 = self.根目录 / "图像.png"
         self.二进制文件.write_bytes(PNG签名 + b"\x00\x01\x02\x03" * 64)
 
     def tearDown(self):
-        _卸载调用器()
+        import shutil
+        shutil.rmtree(self.临时根, ignore_errors=True)
 
     def test_受控二进制读取真实读回(self):
         结果 = 读取二进制文件(self.临时根, "图像.png", 0)
@@ -98,11 +108,12 @@ class 测试_文件内容扩充(unittest.TestCase):
 
     def test_平台不可用时返回提供者不可用(self):
         """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。"""
-        _卸载调用器()
+        from 模块库.文件管理 import 设置HTTP连接器
+        设置HTTP连接器(None)
         结果 = 读取文件(str(self.二进制文件))
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
-        _装配调用器()
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
     def test_流式摘要大文件分块(self):
         大文件 = self.根目录 / "大文件.bin"

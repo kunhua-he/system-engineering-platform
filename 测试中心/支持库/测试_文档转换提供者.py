@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
@@ -38,13 +39,13 @@ class TestLibreOffice提供者(unittest.TestCase):
     """LibreOffice 转换提供者测试。"""
 
     def test_检查提供者(self):
-        from 支持库.适配层.LibreOffice提供者.实现.文档转换 import 检查提供者
+        from 支持库.适配层.LibreOffice提供者 import 检查提供者
         结果 = 检查提供者()
         self.assertTrue(结果.成功)
         self.assertIn("LibreOffice", 结果.值)
 
     def test_参数不合法(self):
-        from 支持库.适配层.LibreOffice提供者.实现.文档转换 import 转换办公文件
+        from 支持库.适配层.LibreOffice提供者 import 转换办公文件
         结果 = 转换办公文件("", "txt")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
@@ -53,19 +54,15 @@ class TestLibreOffice提供者(unittest.TestCase):
 
     def test_缺提供者注入(self):
         """注入 LibreOffice 缺失（环境变量禁用查找路径）→ 提供者不可用。"""
-        from 支持库.适配层.LibreOffice提供者.实现 import 文档转换 as 模块
-        原缓存 = dict(模块._提供者缓存)
-        模块._提供者缓存 = {"soffice": None}
-        try:
-            结果 = 模块.转换办公文件("/tmp/x.docx", "txt")
+        from 支持库.适配层.LibreOffice提供者 import 转换办公文件
+        with mock.patch("支持库.适配层.LibreOffice提供者.实现.文档转换._提供者缓存", {"soffice": None}):
+            结果 = 转换办公文件("/tmp/x.docx", "txt")
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
-        finally:
-            模块._提供者缓存 = 原缓存
 
     def test_doc转txt真实链(self):
         """真实 LibreOffice docx→txt 转换链（缺 LibreOffice 时明确失败）。"""
-        from 支持库.适配层.LibreOffice提供者.实现.文档转换 import 检查提供者, 转换办公文件
+        from 支持库.适配层.LibreOffice提供者 import 检查提供者, 转换办公文件
         检查 = 检查提供者()
         if 检查.值.get("LibreOffice") != "可用":
             self.skipTest("LibreOffice 不可用")
@@ -81,14 +78,14 @@ class TestTextutil提供者(unittest.TestCase):
     """textutil 转换提供者测试。"""
 
     def test_检查提供者(self):
-        from 支持库.适配层.textutil提供者.实现.文本转换 import 检查提供者
+        from 支持库.适配层.textutil提供者 import 检查提供者
         结果 = 检查提供者()
         self.assertTrue(结果.成功)
         self.assertIn("textutil", 结果.值)
 
     def test_rtf转txt真实链(self):
         """真实 textutil rtf→txt 转换链（macOS 自带）。"""
-        from 支持库.适配层.textutil提供者.实现.文本转换 import 检查提供者, 转换文本文件
+        from 支持库.适配层.textutil提供者 import 检查提供者, 转换文本文件
         检查 = 检查提供者()
         if 检查.值.get("textutil") != "可用":
             self.skipTest("textutil 不可用")
@@ -100,7 +97,7 @@ class TestTextutil提供者(unittest.TestCase):
         self.assertIn("文本转换测试内容", 结果.值["文本"])
 
     def test_参数不合法(self):
-        from 支持库.适配层.textutil提供者.实现.文本转换 import 转换文本文件
+        from 支持库.适配层.textutil提供者 import 转换文本文件
         结果 = 转换文本文件("", "txt")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")

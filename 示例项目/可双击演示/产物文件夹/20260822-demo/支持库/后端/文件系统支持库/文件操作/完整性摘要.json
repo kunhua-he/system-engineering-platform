@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "6df6d7de015fc0d5ef1076c30fec65b915d7d911b292e0fbf229ec5221a12eda"
+      "sha256": "b9dbe1d6843a39fb614609dfdd325486ff9a9d95c16b40cab864a04f5854d0d0"
     },
     {
       "路径": "复用决策.json",
@@ -29,11 +29,11 @@
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "6bf8e0a75336af2e78e0a2fb9da5902e99e3950ab106a59aa7fb24379b9aecfe"
+      "sha256": "252ea05bbc34725d4785c5470a3fcd26311fdaf8f584077c0a0f425a90cebded"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "b8755f616fba0d8752aa3c5ad01132ab1e3e792c4e5fb87f9cb2cccfcab9ff35"
+      "sha256": "93063bf8ef3531ded41d389c00029acdd6b1b27a35ab7c1e63b8ee474806fb4c"
     },
     {
       "路径": "能力定义.json",
@@ -45,11 +45,11 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "92b9667b448edb048526e0a157812a885b9a5f9794c106eba338cc7dded92f81"
+      "sha256": "2436a00e337c3848bf419b97719e0c08f12825fb3f6da1692a19b39e59c49bfd"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "89e7077e542fbe7685b3bf9584ebdd71304c6dab0269dba91cbd83e553e39c45"
+      "sha256": "073e07bac9471e612076b87d2ba72cef3e7c9b53c6d17baf168468440f70b911"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -65,7 +65,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "ba82e5fda906ada33aa24d01ba669fc6eb6e90ac8f5e20b0c126bb60c90c9405"
+      "sha256": "b85707c81192d6e8f7da4ce3ae9d5edad25189c05d8a241e76daaf16c43d99de"
     },
     {
       "路径": "默认配置/默认配置.json",

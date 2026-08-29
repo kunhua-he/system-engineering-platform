@@ -32,7 +32,7 @@ class 运行上下文:
     权限范围: list[str] = field(default_factory=list)
     来源地址: str = ""
     操作id: str = ""
-    句柄: str = ""
+    句柄: int | None = None
 
     def __post_init__(self) -> None:
         if not self.请求id:

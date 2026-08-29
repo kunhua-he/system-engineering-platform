@@ -23,9 +23,11 @@ class 安全配置:
     凭证环境变量: str = "系统库网关凭证"
     请求大小上限: int = 1024 * 1024  # 1MB
     监听地址: str = "127.0.0.1"  # 默认只监听本机
-    允许路径表: set[str] = field(default_factory=lambda: {"/健康", "/网关/请求", "/网关/流式"})
+    允许路径表: set[str] = field(default_factory=lambda: {"/健康", "/网关/调用", "/网关/流式"})
     要求凭证: bool = False
     默认权限范围: set[str] = field(default_factory=lambda: {"查询", "调用", "任务"})
+    # 浏览器跨域来源必须显式配置；空集合表示不允许跨域调用。
+    允许来源表: set[str] = field(default_factory=set)
 
 
 class 凭证管理器:
@@ -90,14 +92,15 @@ class 请求限制器:
         return True, ""
 
     def 校验监听地址(self, 地址: str) -> tuple[bool, str]:
-        """禁止默认暴露到全部网卡（0.0.0.0/::）。"""
-        if 地址 == "localhost":
+        """当前服务器实现固定 IPv4；禁止配置无法被实际绑定的 IPv6 地址。"""
+        if 地址 in {"localhost", "127.0.0.1"}:
             return True, ""
         try:
-            if not ipaddress.ip_address(地址).is_loopback:
-                return False, "网关只允许监听本机回环地址"
+            ip = ipaddress.ip_address(地址)
         except ValueError:
             return False, "监听地址不合法或不是本机回环地址"
+        if ip.version != 4 or not ip.is_loopback:
+            return False, "网关当前只允许监听 IPv4 本机回环地址"
         return True, ""
 
     def 校验内容类型(self, 内容类型: str, 长度: int) -> tuple[bool, str]:

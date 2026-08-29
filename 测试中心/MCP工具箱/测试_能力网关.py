@@ -1,4 +1,4 @@
-"""HTTP 能力网关测试：启动临时端口网关，验证 搜索/契约/执行 与错误场景。
+"""HTTP 能力网关测试：启动临时端口网关，验证 搜索/契约 与旧入口拒绝。
 
 网关对外是纯 HTTP（不依赖 MCP 协议）；本测试用标准库 urllib 直接请求，
 模拟任意语言/工具的 HTTP 客户端调用。
@@ -68,6 +68,9 @@ class 能力网关测试(unittest.TestCase):
     def test_搜索能力返回结果(self) -> None:
         数据 = self._GET(self._编码URL("/能力/搜索", {"关键词": "读取文件"}))
         self.assertTrue(数据["成功"])
+        self.assertEqual(数据["错误码"], "")
+        self.assertEqual(数据["错误说明"], "")
+        self.assertEqual(数据["值"], 数据["能力表"])
         self.assertGreater(数据["数量"], 0)
         能力表 = 数据["能力表"]
         self.assertTrue(any("文件系统支持库.文件操作.读取文件" == 能力["能力id"] for 能力 in 能力表))
@@ -82,9 +85,17 @@ class 能力网关测试(unittest.TestCase):
         self.assertTrue(数据["成功"])
         self.assertGreater(数据["数量"], 0)
 
+    def test_搜索限制非法返回参数错误(self) -> None:
+        数据 = self._GET(self._编码URL("/能力/搜索", {"限制": "abc"}))
+        self.assertFalse(数据["成功"])
+        self.assertEqual(数据["错误码"], "参数不合法")
+
     def test_查看契约返回参数与返回(self) -> None:
         数据 = self._GET(self._编码URL("/能力/契约/文件系统支持库.文件操作.读取文件"))
         self.assertTrue(数据["成功"])
+        self.assertEqual(数据["错误码"], "")
+        self.assertEqual(数据["错误说明"], "")
+        self.assertEqual(数据["值"], 数据["契约"])
         契约 = 数据["契约"]
         self.assertTrue(契约["找到"])
         self.assertEqual(契约["能力id"], "文件系统支持库.文件操作.读取文件")
@@ -98,21 +109,19 @@ class 能力网关测试(unittest.TestCase):
         self.assertFalse(数据["成功"])
         self.assertEqual(数据["错误码"], "能力不存在")
 
-    def test_执行能力返回统一结果与证据链(self) -> None:
+    def test_旧执行入口直接拒绝(self) -> None:
         数据 = self._POST({
             "能力id": "文件系统支持库.文件操作.读取文件",
             "参数": {"文件路径": "公共契约/能力契约/契约.py", "编码": "utf-8"},
         })
-        self.assertTrue(数据["成功"])
-        self.assertIn("值", 数据)
-        self.assertIn("证据链", 数据)
-        # 证据链含请求id
-        self.assertIn("请求id", str(数据["证据链"]))
+        self.assertFalse(数据["成功"])
+        self.assertEqual(数据["错误码"], "路由不存在")
+        self.assertIn("/网关/调用", 数据["错误说明"])
 
-    def test_执行缺能力id返回参数不合法(self) -> None:
+    def test_旧执行入口空请求也直接拒绝(self) -> None:
         数据 = self._POST({})
         self.assertFalse(数据["成功"])
-        self.assertEqual(数据["错误码"], "参数不合法")
+        self.assertEqual(数据["错误码"], "路由不存在")
 
     def test_未定义路由返回404(self) -> None:
         数据 = self._GET(self._编码URL("/没有这个路由"))

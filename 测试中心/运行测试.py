@@ -59,12 +59,71 @@ from MCP工具箱 import 测试资源
 验证锁路径 = 系统根 / "工程缓存" / "验证锁.lock"  # 全量互斥 flock 文件锁
 清理失败证据目录 = 系统根 / "工程缓存" / "清理失败证据"
 保留制品目录 = 系统根 / "工程缓存" / "保留制品"
-缓存结构版本 = "2.0.0"  # 缓存结构版本：损坏/缺字段/引擎变化时自动失效
+缓存结构版本 = "3.0.0"  # 缓存结构版本：完整性证明/运行证据变化时整体失效
 运行证据有效秒 = 7 * 24 * 60 * 60
 环境敏感缓存有效秒 = 24 * 60 * 60  # 环境敏感阶段（真实进程/网关/浏览器/发布门禁/慢速层）依赖真实环境，缓存有效期缩短到 1 天
 弱依赖缓存有效秒 = 3600  # 弱依赖文件级缓存有效期：超时后强制失效重跑
 目录摘要上限 = 100  # 扫描目录数超过该值时不记目录摘要表（降级弱依赖，防递归开销爆炸）
 环境敏感阶段 = {"真实进程", "网关", "浏览器", "发布门禁", "慢速层"}
+# 阶段级并行不是“测试越多越快”：阶段进程会共享工程缓存、SQLite、
+# 发布指针和导入状态。只有已审计为纯静态、不会写共享状态的阶段允许同批
+# 启动；其余阶段即使不属于环境敏感阶段，也必须按固定顺序串行。
+阶段安全并行白名单 = {"静态契约", "组件合规"}
+# 仅允许明确证明使用独立临时目录、不会触碰发布指针/固定端口的慢速文件并行。
+# 其余慢速场景继续串行，避免强杀、共享 SQLite 或外部服务相互干扰。
+慢速安全并行文件 = {
+    "测试中心/慢速层/第十三阶段/测试_核心切换恢复.py",
+    "测试中心/慢速层/第十三阶段/测试_资源压力.py",
+    # 以下场景只使用各自的临时目录或纯计算状态；不触碰固定端口、
+    # 发布指针、共享 SQLite、Docker 或强杀目标，可与上面两项并行。
+    "测试中心/慢速层/第十三阶段/测试_会话恢复.py",
+    "测试中心/慢速层/第十三阶段/测试_控制面对账.py",
+    "测试中心/慢速层/第十三阶段/测试_注册表.py",
+    "测试中心/慢速层/第十三阶段/测试_版本兼容.py",
+    "测试中心/慢速层/第十三阶段/测试_超时治理.py",
+    "测试中心/慢速层/第十三阶段/测试_采样器.py",
+    "测试中心/慢速层/第十四阶段/测试_工作包14_直连规则.py",
+    "测试中心/慢速层/第十四阶段/测试_工作包15_密钥提供者.py",
+    "测试中心/慢速层/第十四阶段/测试_工作包17_构建反向审计.py",
+    "测试中心/慢速层/第十四阶段/测试_工作包18_体验面对称审计.py",
+    "测试中心/慢速层/第十四阶段/测试_工作包20_完整示例.py",
+    "测试中心/慢速层/第十四阶段/测试_环境配置句柄.py",
+}
+# 慢速层的其余测试默认按文件串行是过于保守的：很多场景只创建独立
+# 临时目录/子进程，彼此没有共享状态。以下仅列出必须串行的资源族；
+# 通过资源族审计后，其它慢速文件可进入同一批独立工作包并行执行。
+慢速强制串行文件片段 = (
+    "残留审计", "发布强杀", "进程组管理", "资源硬限制", "资源压力",
+    "控制面对账", "数据库提供者", "PostgreSQL提供者", "psycopg提供者",
+    "HTTP提供者", "动态库提供者", "提供者故障", "进程提供者", "注册表",
+    "工作包12", "工作包13", "工作包16", "工作包19", "消费者契约",
+    "平台防火墙",
+)
+
+
+def 慢速可并行文件(文件: Path) -> bool:
+    """判断慢速测试是否可放入独立工作包并行批。
+
+    这里只按已审计的共享资源族阻断；未知文件仍默认并行，但每个文件
+    运行在独立子进程和临时根中，任何异常/清理失败都会让整批失败。
+    """
+    return not any(片段 in 文件.name for 片段 in 慢速强制串行文件片段)
+# 即使所属阶段非环境敏感，也不得并发触碰共享的外部转换器工作目录。
+# 这些文件单独串行，其余同阶段文件仍可并行。
+内部并行排除文件片段 = ("文档转换", "文字文档", "表格文档")
+
+
+def _文件使用共享外部工具(文件: Path) -> bool:
+    """外部工具通常共享 profile/临时目录，按文件内容保守判定互斥。"""
+    if any(片段 in 文件.name for 片段 in 内部并行排除文件片段):
+        return True
+    try:
+        文本 = 文件.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return True
+    return any(标记 in 文本 for 标记 in ("LibreOffice", "soffice", "textutil", "ffmpeg", "tesseract"))
+# 阶段内部仅对白名单中的纯静态测试启用文件级并行；涉及固定端口、
+# SQLite、发布指针或强杀目标的阶段继续由阶段级调度串行执行。
 # 标准验收固定阶段顺序（静态契约→组件合规→结构迁移→权威状态→资源并发→
 # 平台控制面→反向破坏→项目装配→真实进程→网关→浏览器→发布门禁）；
 # 前 8 个非环境敏感阶段允许并行，后 4 个环境敏感阶段永不并行。
@@ -160,11 +219,43 @@ def _文件摘要(文件: Path) -> str:
 
     统一截断 16 位十六进制；git 指纹映射构建失败（非 git 仓库等）时回退现场哈希。
     """
-    _构建git指纹映射()
-    相对路径 = _仓库根相对路径(文件)
-    if 相对路径 and 相对路径 in _git指纹映射 and 相对路径 not in _git脏文件集合 and 文件.is_file():
-        return _git指纹映射[相对路径][:16]
+    # 缓存判定可能与编辑器/其它工作包并行发生；Git 的 blob 与脏集合
+    # 只是在调用开始时的快照，不能作为现场证据。每次都读取当前内容，
+    # 以确保运行期间的修改必然使缓存失效。
     return hashlib.sha256(文件.read_bytes()).hexdigest()[:16]
+
+
+def _缓存完整性摘要(缓存项: dict) -> str:
+    """计算缓存证据的完整性摘要；摘要字段本身不参与计算。"""
+    待摘要 = {键: 值 for 键, 值 in 缓存项.items() if 键 != "完整性摘要"}
+    序列化 = json.dumps(待摘要, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(序列化.encode("utf-8")).hexdigest()
+
+
+def _缓存证据完整(缓存项: dict | None) -> bool:
+    """缓存必须带运行 id、命令/输出证据和不可缺失的完整性摘要。"""
+    if not isinstance(缓存项, dict):
+        return False
+    运行id = str(缓存项.get("运行id", ""))
+    输出摘要 = str(缓存项.get("输出摘要", ""))
+    命令摘要 = str(缓存项.get("执行命令摘要", ""))
+    完整性 = str(缓存项.get("完整性摘要", ""))
+    if not 运行id or not 命令摘要 or len(输出摘要) != 64 or len(完整性) != 64:
+        return False
+    if any(字符 not in "0123456789abcdef" for 字符 in 输出摘要.lower() + 完整性.lower() + 命令摘要.lower()):
+        return False
+    return 完整性 == _缓存完整性摘要(缓存项)
+
+
+def _补齐缓存证据(缓存项: dict, 输出: str = "") -> dict:
+    """为新缓存绑定本次运行、执行命令和实际输出摘要。"""
+    缓存项 = dict(缓存项)
+    缓存项.setdefault("运行id", os.environ.get("系统底座_验证运行id") or uuid.uuid4().hex)
+    命令 = " ".join(sys.argv)
+    缓存项.setdefault("执行命令摘要", hashlib.sha256(命令.encode("utf-8")).hexdigest())
+    缓存项.setdefault("输出摘要", hashlib.sha256(str(输出).encode("utf-8")).hexdigest())
+    缓存项["完整性摘要"] = _缓存完整性摘要(缓存项)
+    return 缓存项
 
 
 def _目录摘要(目录: Path) -> str:
@@ -285,6 +376,11 @@ def 阶段摘要(测试文件列表: list[Path], 依赖目录表: set[str]) -> s
         摘要器.update(_目录摘要(系统根 / 目录名).encode("utf-8"))
     # 验证引擎（运行测试.py 自身 + 验证器/）变化 → 全部阶段缓存失效
     摘要器.update(_文件摘要(Path(__file__)).encode("utf-8"))
+    # 测试装载与资源回收也属于验证引擎；缺失其摘要会在修改后复用旧证据。
+    for 引擎文件 in (系统根 / "测试中心" / "__init__.py", 系统根 / "MCP工具箱" / "测试资源.py"):
+        if 引擎文件.is_file():
+            摘要器.update(str(引擎文件.relative_to(系统根)).encode("utf-8"))
+            摘要器.update(_文件摘要(引擎文件).encode("utf-8"))
     if (系统根 / "验证器").is_dir():
         摘要器.update(_目录摘要(系统根 / "验证器").encode("utf-8"))
     摘要器.update(缓存结构版本.encode("utf-8"))
@@ -330,7 +426,7 @@ def 阶段缓存可复用(
     阶段名: str, 缓存项: dict | None, 摘要: str, 环境摘要: str,
     *, 强制慢速: bool = False, 当前时间: float | None = None,
 ) -> bool:
-    if not 缓存项 or 缓存项.get("摘要") != 摘要 or not 缓存项.get("成功"):
+    if not _缓存证据完整(缓存项) or 缓存项.get("摘要") != 摘要 or not 缓存项.get("成功"):
         return False
     if not 缓存项.get("测试数") or 缓存项.get("结构版本") != 缓存结构版本:
         return False
@@ -346,8 +442,8 @@ def 阶段缓存可复用(
     return True
 
 
-def 常规阶段缓存证据() -> tuple[bool, str]:
-    """在验证锁被外层持有时，重新计算常规阶段缓存是否仍可信。
+def 阶段缓存证据(阶段列表: list[tuple[str, list[str]]], 名称: str) -> tuple[bool, str]:
+    """在验证锁被外层持有时，重新计算指定阶段缓存是否仍可信。
 
     嵌套发布门禁不能再次启动全量测试，但也不能把锁冲突当成成功；
     只有每个常规阶段的源码/依赖/环境摘要和成功证据都匹配，才允许
@@ -356,7 +452,7 @@ def 常规阶段缓存证据() -> tuple[bool, str]:
     缓存 = 读取缓存()
     环境摘要 = 运行环境摘要()
     缺失或失效: list[str] = []
-    for 阶段名, 匹配表 in 常规阶段顺序表:
+    for 阶段名, 匹配表 in 阶段列表:
         测试文件列表 = 收集阶段文件(匹配表)
         if not 测试文件列表:
             缺失或失效.append(f"{阶段名}:未发现测试文件")
@@ -366,8 +462,16 @@ def 常规阶段缓存证据() -> tuple[bool, str]:
         if not 阶段缓存可复用(阶段名, 缓存.get(阶段名), 摘要, 环境摘要):
             缺失或失效.append(阶段名)
     if 缺失或失效:
-        return False, f"常规阶段证据缺失或失效: {', '.join(缺失或失效)}"
-    return True, f"常规阶段 {len(常规阶段顺序表)} 项缓存证据已重新核对"
+        return False, f"{名称}阶段证据缺失或失效: {', '.join(缺失或失效)}"
+    return True, f"{名称}阶段 {len(阶段列表)} 项缓存证据已重新核对"
+
+
+def 常规阶段缓存证据() -> tuple[bool, str]:
+    return 阶段缓存证据(常规阶段顺序表, "常规")
+
+
+def 全部阶段缓存证据() -> tuple[bool, str]:
+    return 阶段缓存证据(常规阶段顺序表 + 慢速阶段顺序表, "全部")
 
 
 def _文件缓存路径(测试文件: Path) -> Path:
@@ -409,7 +513,7 @@ def 文件级缓存可复用(
 
     依赖文件缺失或内容变化 → 不可复用；弱依赖标记缓存有效期 ≤ 弱依赖缓存有效秒。
     """
-    if not 缓存项 or not 缓存项.get("成功"):
+    if not _缓存证据完整(缓存项) or not 缓存项.get("成功"):
         return False
     if 缓存项.get("结构版本") != 缓存结构版本:
         return False
@@ -738,7 +842,13 @@ def _终止进程组(进程: subprocess.Popen) -> None:
             os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
-        进程.wait()
+        # SIGKILL 后也必须有界等待；异常子孙进程可能仍持有 stdout/stderr
+        # 管道，不能让门禁在这里无限阻塞。
+        try:
+            进程.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # 无法回收时交给调用方记录超时/清理失败证据，不再无限等待。
+            pass
 
 
 def _清理工作包临时根(
@@ -756,11 +866,21 @@ def _清理工作包临时根(
             for 行 in 资源清单路径.read_text(encoding="utf-8").splitlines():
                 try:
                     记录 = json.loads(行)
-                except json.JSONDecodeError:
-                    continue
+                except json.JSONDecodeError as 错误:
+                    raise ValueError(f"资源清单包含非法 JSON：{错误}") from 错误
+                if not isinstance(记录, dict):
+                    raise ValueError("资源清单记录必须是对象")
                 if 记录.get("保留"):
+                    if not 记录.get("路径"):
+                        raise ValueError("保留资源记录缺少路径")
                     保留路径表.append(Path(str(记录["路径"])).resolve())
-        测试资源.清理资源(资源清单路径, 临时根目录=工作目录)
+        清理结果 = 测试资源.清理资源(
+            资源清单路径, 临时根目录=工作目录,
+            证据目录=清理失败证据目录, work_id=任务id,
+        )
+        if not isinstance(清理结果, dict) or not 清理结果.get("成功"):
+            失败表 = 清理结果.get("失败表", []) if isinstance(清理结果, dict) else []
+            raise RuntimeError(f"工作包资源清理失败：{失败表[:5]}")
         for 保留路径 in 保留路径表:
             if not 保留路径.exists():
                 continue
@@ -788,6 +908,15 @@ def _运行单文件子进程(
     路径: str, 任务id: str, 序号: int, *, 超时秒: int = 600,
 ) -> dict[str, object]:
     """运行单个工作包子进程；独立临时根目录与 teardown 保证。"""
+    # 发布门禁可通过环境变量收紧默认工作包预算；调用方显式传入的
+    # 超时（例如超时回收自检的 2 秒）必须优先，不能被外层环境覆盖。
+    if 超时秒 == 600:
+        try:
+            超时秒 = max(1, int(os.environ.get("系统底座_工作包超时秒", str(超时秒))))
+        except (TypeError, ValueError):
+            超时秒 = max(1, 超时秒)
+    else:
+        超时秒 = max(1, 超时秒)
     工作区标识 = _生成工作区标识(任务id, 序号)
     工作目录 = 运行根目录 / 任务id / 工作区标识
     工作目录.mkdir(parents=True, exist_ok=True)
@@ -798,6 +927,7 @@ def _运行单文件子进程(
     环境["系统底座_任务id"] = 任务id
     环境["系统底座_工作区标识"] = 工作区标识
     环境["系统底座_资源清单路径"] = str(资源清单路径)
+    环境["系统底座_并行数"] = os.environ.get("系统底座_并行数", "8")
     结果: dict[str, object] = {
         "路径": 路径, "退出码": 2, "标准输出": "", "标准错误": "",
     }
@@ -812,6 +942,16 @@ def _运行单文件子进程(
             标准输出, 标准错误 = 进程.communicate(timeout=超时秒)
         except subprocess.TimeoutExpired as 错误:
             _终止进程组(进程)
+            try:
+                进程.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                # 管道仍被异常后代持有时主动关闭父端，确保工作包返回。
+                for 流 in (进程.stdout, 进程.stderr):
+                    if 流 is not None:
+                        try:
+                            流.close()
+                        except OSError:
+                            pass
             结果 = {
                 "路径": 路径, "退出码": 124,
                 "标准输出": _输出文本(错误.stdout)[-8000:],
@@ -1058,7 +1198,7 @@ def _运行阶段子进程(
     进程: subprocess.Popen | None = None
     try:
         进程 = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "--内部阶段", 阶段名],
+            [sys.executable, "-u", str(Path(__file__).resolve()), "--内部阶段", 阶段名],
             cwd=系统根, env=环境, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, start_new_session=True,
         )
@@ -1136,11 +1276,14 @@ def _并行执行阶段批(
     父级清理失败表: list[str] = []
     失败触发 = False
     try:
+        原并行数 = os.environ.get("系统底座_并行数")
+        os.environ["系统底座_并行数"] = str(并行数)
         with ThreadPoolExecutor(max_workers=实际并行) as 池:
             任务表 = {
                 池.submit(_运行阶段子进程, 阶段名, 任务id, 序号): 阶段名
                 for 序号, (阶段名, _) in enumerate(阶段批)
             }
+            print("阶段并行已启动：" + "、".join(任务表.values()), flush=True)
             for 任务 in as_completed(任务表):
                 try:
                     结果 = 任务.result()
@@ -1159,11 +1302,19 @@ def _并行执行阶段批(
                     for 其他任务 in 任务表:
                         其他任务.cancel()
                 结果按阶段[结果["阶段名"]] = 结果
+                print(
+                    f"阶段并行已完成：{结果['阶段名']}（退出码={结果.get('退出码', 1)}）",
+                    flush=True,
+                )
         # 全部结束：写每阶段独立输出文件 + 按阶段顺序回放
         _回放阶段输出(阶段批, 结果按阶段, 任务id)
     finally:
         # 兜底终止残留阶段进程，再删除运行根目录残留
         _终止全部阶段进程()
+        if 原并行数 is None:
+            os.environ.pop("系统底座_并行数", None)
+        else:
+            os.environ["系统底座_并行数"] = 原并行数
         运行根 = 运行根目录 / 任务id
         if 运行根.exists():
             try:
@@ -1246,7 +1397,10 @@ def _执行单个阶段串行(
     执行数 = 0
     复用数 = 0
     阶段失败 = False
-    for 序号, 测试文件 in enumerate(阶段文件):
+    # 非环境敏感阶段的测试文件彼此使用独立临时根，可并行拉起，避免
+    # 50 个静态契约文件逐个创建 Python 进程。敏感阶段仍严格保持串行。
+    待运行文件: list[Path] = []
+    for 测试文件 in 阶段文件:
         文件缓存 = 读取文件级缓存(测试文件)
         if 文件级缓存可复用(测试文件, 文件缓存, 环境摘要):
             测试数 = int(文件缓存.get("测试数", 0))
@@ -1254,6 +1408,51 @@ def _执行单个阶段串行(
             复用数 += 1
             print(f"--- 测试文件：{测试文件}（缓存命中，复用 {测试数} 个测试）---")
             continue
+        待运行文件.append(测试文件)
+
+    if (阶段名 not in 环境敏感阶段 and len(待运行文件) > 1
+            and int(os.environ.get("系统底座_并行数", "0") or 0) != 1):
+        实际并行 = 计算并行数(
+            len(待运行文件), int(os.environ.get("系统底座_并行数", "0") or 0)
+        )
+        with ThreadPoolExecutor(max_workers=实际并行) as 池:
+            任务表 = {
+                池.submit(_运行单文件子进程, str(文件), 任务id, 序号): 文件
+                for 序号, 文件 in enumerate(待运行文件)
+            }
+            并行结果 = [任务.result() for 任务 in as_completed(任务表)]
+        for 结果 in sorted(并行结果, key=lambda 项: str(项.get("路径", ""))):
+            测试文件 = Path(str(结果["路径"]))
+            输出 = str(结果.get("标准输出", ""))
+            if int(结果.get("退出码", 1)) != 0 or 结果.get("清理失败"):
+                print(f"阶段门禁失败：{阶段名} / {测试文件}")
+                print(输出)
+                if 结果.get("标准错误"):
+                    print(结果["标准错误"], file=sys.stderr)
+                写入断点(范围, 阶段名, 断点阶段顺序表, "测试文件失败")
+                return 1, 0, False, 缓存
+            测试数 = _解析单文件测试数(输出)
+            if 测试数 <= 0:
+                print(f"阶段门禁失败：{测试文件} 未报告有效测试数")
+                写入断点(范围, 阶段名, 断点阶段顺序表, "零测试或输出不完整")
+                return 1, 0, False, 缓存
+            写入文件级缓存(测试文件, 构建文件级缓存项(测试文件, 环境摘要, 测试数))
+            总测试数 += 测试数
+            执行数 += 1
+        依赖目录表 = 阶段依赖目录表(阶段文件)
+        摘要 = 阶段摘要(阶段文件, 依赖目录表)
+        缓存[阶段名] = _补齐缓存证据({
+            "摘要": 摘要, "成功": True, "测试数": 总测试数,
+            "结构版本": 缓存结构版本, "按文件缓存": True,
+            "文件数": len(阶段文件), "执行文件数": 执行数, "复用文件数": 复用数,
+            "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "时间戳": time.time(), "环境摘要": 环境摘要,
+        })
+        写入缓存(缓存)
+        print(f"--- 阶段：{阶段名}（{总测试数} 个测试，文件并行 {实际并行}）---")
+        return 0, 总测试数, bool(执行数 == 0), 缓存
+
+    for 序号, 测试文件 in enumerate(待运行文件):
         结果 = _运行单文件子进程(str(测试文件), 任务id, 序号)
         输出 = str(结果.get("标准输出", ""))
         if int(结果.get("退出码", 1)) != 0 or 结果.get("清理失败"):
@@ -1277,13 +1476,13 @@ def _执行单个阶段串行(
         return 1, 0, False, 缓存
     依赖目录表 = 阶段依赖目录表(阶段文件)
     摘要 = 阶段摘要(阶段文件, 依赖目录表)
-    缓存[阶段名] = {
+    缓存[阶段名] = _补齐缓存证据({
         "摘要": 摘要, "成功": True, "测试数": 总测试数,
         "结构版本": 缓存结构版本, "按文件缓存": True,
         "文件数": len(阶段文件), "执行文件数": 执行数, "复用文件数": 复用数,
         "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
         "时间戳": time.time(), "环境摘要": 环境摘要,
-    }
+    })
     写入缓存(缓存)
     print(f"--- 阶段：{阶段名}（{总测试数} 个测试，执行 {执行数} 个文件，复用 {复用数} 个文件）---")
     return 0, 总测试数, bool(执行数 == 0), 缓存
@@ -1293,7 +1492,7 @@ def 执行内部阶段子进程(阶段名: str) -> int:
     """--内部阶段 入口：子进程内只执行一个阶段（不写断点，只写自己阶段缓存）。"""
     加载器 = unittest.TestLoader()
     匹配表 = None
-    for 名, 表 in 常规阶段顺序表:
+    for 名, 表 in 常规阶段顺序表 + 慢速阶段顺序表:
         if 名 == 阶段名:
             匹配表 = 表
             break
@@ -1316,19 +1515,81 @@ def 执行内部阶段子进程(阶段名: str) -> int:
         )
         print(f"阶段测试数：{缓存项.get('测试数', 0)}")
         return 0
+    # 阶段批并行时，阶段内部也必须并行消费未命中的测试文件；否则最慢
+    # 的一个阶段仍会把整个发布门禁拖成串行。仅对已声明为非环境敏感的
+    # 阶段启用，且每个阶段最多 8 个子进程，避免 8 个阶段叠加后无限扩张。
+    请求并行 = int(os.environ.get("系统底座_并行数", "1") or 1)
+    if 阶段名 not in 环境敏感阶段 and 请求并行 > 1 and len(阶段文件) > 1:
+        并行度 = min(8, 请求并行, len(阶段文件))
+        任务id = _生成任务id()
+        结果表: list[dict[str, object]] = []
+        并行文件 = [文件 for 文件 in 阶段文件 if not _文件使用共享外部工具(文件)]
+        串行文件 = [文件 for 文件 in 阶段文件 if 文件 not in 并行文件]
+        with ThreadPoolExecutor(max_workers=并行度) as 池:
+            任务表 = {
+                池.submit(_运行单文件子进程, str(文件), 任务id, 序号): 文件
+                for 序号, 文件 in enumerate(并行文件)
+            }
+            for 任务 in as_completed(任务表):
+                结果表.append(任务.result())
+        # 外部工具文件在并行批结束后按原阶段顺序执行，保持其进程级互斥。
+        for 序号, 文件 in enumerate(串行文件, start=len(并行文件)):
+            结果表.append(_运行单文件子进程(str(文件), 任务id, 序号))
+        失败结果 = [结果 for 结果 in 结果表
+                    if int(结果.get("退出码", 1)) != 0 or 结果.get("清理失败")]
+        if 失败结果:
+            for 结果 in 失败结果:
+                print(f"阶段门禁失败：{阶段名} / {结果.get('路径')}")
+                print(str(结果.get("标准输出", "")))
+                if 结果.get("标准错误"):
+                    print(str(结果["标准错误"]), file=sys.stderr)
+            print("阶段失败原因：测试文件失败")
+            return 1
+        总测试数 = 0
+        for 结果 in sorted(结果表, key=lambda 项: str(项.get("路径", ""))):
+            文件 = Path(str(结果["路径"]))
+            测试数 = _解析单文件测试数(str(结果.get("标准输出", "")))
+            if 测试数 <= 0:
+                print(f"阶段失败原因：{文件} 未报告有效测试数")
+                return 1
+            写入文件级缓存(文件, 构建文件级缓存项(文件, 环境摘要, 测试数))
+            总测试数 += 测试数
+        缓存项 = _补齐缓存证据({
+            "摘要": 摘要, "成功": True, "测试数": 总测试数,
+            "结构版本": 缓存结构版本, "按文件缓存": True,
+            "文件数": len(阶段文件), "执行文件数": len(结果表), "复用文件数": 0,
+            "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "时间戳": time.time(), "环境摘要": 环境摘要,
+        })
+        写入缓存({阶段名: 缓存项})
+        print(f"--- 阶段：{阶段名}（{总测试数} 个测试，文件进程并行 {并行度}）---")
+        print(f"阶段测试数：{总测试数}")
+        return 0
     阶段套件 = unittest.TestSuite()
     阶段序号_当前 = _阶段序号(阶段名)
-    for 匹配 in 匹配表:
-        for 路径 in sorted(测试中心.测试中心目录.rglob(f"**/{匹配}")):
-            if 路径.is_file() and 路径.suffix == ".py" and 路径.name.startswith("测试_"):
-                模块 = 测试中心.加载测试模块(路径, 阶段序号_当前)
-                if 模块 is not None:
-                    阶段套件.addTests(加载器.loadTestsFromModule(模块))
-            elif 路径.is_dir():
-                for 文件 in sorted(路径.rglob("测试_*.py")):
-                    模块 = 测试中心.加载测试模块(文件, 阶段序号_当前)
-                    if 模块 is not None:
-                        阶段套件.addTests(加载器.loadTestsFromModule(模块))
+    # 慢速“平台治理”阶段使用特殊匹配符收集所有尚未归属常规阶段
+    # 的测试文件。内部阶段入口也必须按同一覆盖口径展开，不能把特殊
+    # 符当作普通目录名导致退出码 2 和静默漏测。
+    if "__未归属测试__" in 匹配表:
+        已明确归属: set[Path] = set()
+        for _, 其他匹配表 in 常规阶段顺序表 + 慢速阶段顺序表:
+            for 其他匹配 in 其他匹配表:
+                if 其他匹配 != "__未归属测试__":
+                    已明确归属.update(收集阶段文件([其他匹配]))
+        展开文件 = sorted(全部测试文件() - 已明确归属)
+        匹配路径表: list[Path] = 展开文件
+    else:
+        匹配路径表 = []
+        for 匹配 in 匹配表:
+            for 路径 in sorted(测试中心.测试中心目录.rglob(f"**/{匹配}")):
+                if 路径.is_file() and 路径.suffix == ".py" and 路径.name.startswith("测试_"):
+                    匹配路径表.append(路径)
+                elif 路径.is_dir():
+                    匹配路径表.extend(路径.rglob("测试_*.py"))
+    for 路径 in sorted(set(匹配路径表)):
+        模块 = 测试中心.加载测试模块(路径, 阶段序号_当前)
+        if 模块 is not None:
+            阶段套件.addTests(加载器.loadTestsFromModule(模块))
     if 判断零测试(阶段套件):
         print(f"阶段门禁失败：{阶段名} 阶段未发现任何测试用例")
         print("阶段失败原因：未发现测试用例")
@@ -1346,12 +1607,12 @@ def 执行内部阶段子进程(阶段名: str) -> int:
         print(f"阶段门禁失败：{阶段名} 阶段{失败原因}")
         print(f"阶段失败原因：{失败原因}")
         return 1
-    缓存项 = {
+    缓存项 = _补齐缓存证据({
         "摘要": 摘要, "成功": True, "测试数": 阶段套件.countTestCases(),
         "结构版本": 缓存结构版本,
         "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
         "时间戳": time.time(), "环境摘要": 环境摘要,
-    }
+    }, 标准输出 if '标准输出' in locals() else "")
     # 只写自己阶段缓存文件，避免与其它并行子进程重写彼此文件
     写入缓存({阶段名: 缓存项})
     print(f"阶段测试数：{阶段套件.countTestCases()}")
@@ -1409,7 +1670,7 @@ def _主函数并行路径(
         )
 
     for 阶段名, 匹配表 in 阶段顺序表:
-        if 阶段名 in 环境敏感阶段:
+        if 阶段名 in 环境敏感阶段 or 阶段名 not in 阶段安全并行白名单:
             执行当前并行批()
             并行批.clear()
             if 真实失败表:
@@ -1454,7 +1715,7 @@ def 主函数(
     套件: unittest.TestSuite | None = None, 范围: str = "常规",
     指定测试文件: list[str] | None = None, 指定阶段: list[str] | None = None,
     并行数: int = 0, 强制慢速: bool = False, 继续运行: bool = False,
-    并行阶段: bool = False,
+    并行阶段: bool = False, 并行慢速: bool = False,
 ) -> int:
     """按固定阶段顺序执行全部测试；前一阶段失败必须停止。"""
     # 验证运行开始前强制刷新 git 指纹映射：工作区可能在上次运行后变化，
@@ -1467,9 +1728,12 @@ def 主函数(
         if 指定测试文件:
             print("用法错误：--并行阶段不能与--测试文件同时使用")
             return 2
-        if 范围 != "常规":
-            print("用法错误：--并行阶段只能用于常规范围")
+        if 范围 not in ("常规", "全部"):
+            print("用法错误：--并行阶段只能用于常规或全部范围")
             return 2
+    if 并行慢速 and 范围 not in ("慢速", "全部"):
+        print("用法错误：--并行慢速只能与--范围 慢速或全部使用")
+        return 2
     if 套件 is not None:
         # 注入套件模式（测试门禁自测用）：单套件执行
         if 判断零测试(套件):
@@ -1577,19 +1841,44 @@ def 主函数(
             print(f"续跑门禁失败：{错误}")
             return 2
         print(f"断点续跑：从 {阶段顺序表[0][0]} 开始，共 {len(阶段顺序表)} 个阶段")
-    # 阶段并行：常规范围默认并行非敏感阶段；--并行阶段 时指定阶段也并行。
+    # 阶段并行：非敏感阶段并行；敏感阶段（真实进程/网关/浏览器/发布门禁/慢速层）保持串行。
     # 断点续跑（--继续）与未显式指定 --并行阶段 的 --阶段 波次保持串行。
     # 默认走逐测试文件缓存路径；阶段级并行会把无关包重新成批拉起，
     # 只有显式 --并行阶段 才允许使用旧的阶段并行调度。
-    允许阶段并行 = (范围 == "常规") and not 继续运行 and 并行阶段
+    允许阶段并行 = (范围 in ("常规", "全部")) and not 继续运行 and 并行阶段
+    # 慢速层按资源族拆分：独立工作包并行，明确触碰共享状态的文件串行。
+    if 并行慢速 and 范围 in ("慢速", "全部") and not 继续运行:
+        慢速全部文件 = sorted(
+            路径 for 路径 in (测试中心.测试中心目录 / "慢速层").rglob("测试_*.py")
+            if 路径.is_file()
+        )
+        安全路径 = [路径 for 路径 in 慢速全部文件 if 慢速可并行文件(路径)]
+        # 旧白名单是经过验证的补充声明；即便文件名命中串行片段，也不
+        # 允许其被带入并行批，确保共享资源族始终串行。
+        安全文件 = [str(路径) for 路径 in 安全路径]
+        if 安全文件:
+            print(f"慢速安全并行：{len(安全文件)} 个文件，并行数 {max(1, 并行数 or 4)}")
+            if 并行执行指定测试文件(安全文件, 并行数 or 4) != 0:
+                return 1
+        # 命中文件级缓存后，剩余共享资源文件仍走原串行路径；不降低
+        # 覆盖率或门禁强度。
+        并行慢速 = False
     if 允许阶段并行 and 阶段顺序表:
         return _主函数并行路径(
             范围, 阶段顺序表, 断点阶段顺序表, 缓存, 环境摘要,
             强制慢速, 并行数,
         )
-    return _执行阶段顺序表串行(
-        范围, 阶段顺序表, 断点阶段顺序表, 缓存, 环境摘要, 强制慢速,
-    )
+    原并行数 = os.environ.get("系统底座_并行数")
+    os.environ["系统底座_并行数"] = str(max(1, 并行数 or 全局并发数()))
+    try:
+        return _执行阶段顺序表串行(
+            范围, 阶段顺序表, 断点阶段顺序表, 缓存, 环境摘要, 强制慢速,
+        )
+    finally:
+        if 原并行数 is None:
+            os.environ.pop("系统底座_并行数", None)
+        else:
+            os.environ["系统底座_并行数"] = 原并行数
 
 
 if __name__ == "__main__":
@@ -1602,7 +1891,8 @@ if __name__ == "__main__":
     参数解析器.add_argument("--并行数", type=int, default=0, help="工作包并行进程数，0为自动")
     参数解析器.add_argument("--强制慢速", action="store_true", help="忽略慢速证据缓存并真实执行")
     参数解析器.add_argument("--继续", dest="继续运行", action="store_true", help="从失败断点继续，证据失效时自动回退")
-    参数解析器.add_argument("--并行阶段", dest="并行阶段", action="store_true", help="指定阶段并行执行（仅限常规非敏感阶段，与--继续/--测试文件互斥）")
+    参数解析器.add_argument("--并行阶段", dest="并行阶段", action="store_true", help="非敏感阶段并行执行（常规/全部；与--继续/--测试文件互斥）")
+    参数解析器.add_argument("--并行慢速", dest="并行慢速", action="store_true", help="仅并行慢速安全文件白名单，其余慢速场景保持串行")
     参数解析器.add_argument("--内部测试文件", help=argparse.SUPPRESS)
     参数解析器.add_argument("--内部阶段", help=argparse.SUPPRESS)
     参数 = 参数解析器.parse_args()
@@ -1625,6 +1915,7 @@ if __name__ == "__main__":
             指定阶段=参数.阶段, 并行数=参数.并行数,
             强制慢速=参数.强制慢速, 继续运行=参数.继续运行,
             并行阶段=参数.并行阶段,
+            并行慢速=参数.并行慢速,
         ))
     finally:
         释放验证锁()

@@ -1,14 +1,14 @@
 """系统工程平台 HTTP 能力网关（对外核心底座）。
 
-面向开发（Agent 开发业务项目、开发者写业务代码）：搜索能力、查看契约、
-执行能力。任何语言、任何工具可直接用 HTTP 调用，不依赖 MCP 协议。
+面向开发（Agent 开发业务项目、开发者写业务代码）：搜索能力、查看契约。
+能力执行统一走运行核心 `/网关/调用`，本服务不保留执行兼容入口。
 
 本地场景：直接把支持库/模块库复制到本地，用本地绝对路径 import，不绕本网关。
 
 接口（全中文，客户端 UTF-8 百分号编码传输）：
 - GET  /能力/搜索?关键词=读取文件&限制=20   搜索能力（使用声明）
 - GET  /能力/契约/{能力id}                   查看能力契约（参数/返回/错误码）
-- POST /能力/执行                            执行能力，body {"能力id","参数"}
+
 
 统一返回格式：{"成功", "值", "错误码", "错误说明"}（执行另附证据链）。
 
@@ -18,8 +18,10 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
+import socket
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,7 +30,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 开发工具.开发入口 import 搜索能力, 查看契约, 真实调用能力
+from 开发工具.开发入口 import 搜索能力, 查看契约
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 
@@ -36,6 +38,11 @@ class 能力网关请求处理器(BaseHTTPRequestHandler):
     """HTTP 能力网关：搜索/契约/执行 三个路由。"""
 
     # ---- 基础 ----
+    def setup(self) -> None:
+        super().setup()
+        # 请求行/请求头阶段也必须有界，避免慢连接长期占用线程和文件描述符。
+        self.connection.settimeout(10.0)
+
     def log_message(self, 格式: str, *参数) -> None:
         sys.stderr.write(f"[能力网关] {self.address_string()} {格式 % 参数}\n")
 
@@ -48,7 +55,10 @@ class 能力网关请求处理器(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
-        self.wfile.write(字节)
+        try:
+            self.wfile.write(字节)
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, OSError):
+            return
 
     # ---- 路由分发 ----
     def _解析URL(self) -> tuple[str, dict[str, list[str]]]:
@@ -72,25 +82,31 @@ class 能力网关请求处理器(BaseHTTPRequestHandler):
                 self._处理契约(能力id)
             else:
                 self._发送JSON(404, {"成功": False, "错误码": "路由不存在", "错误说明": f"未定义路由: {路径}"})
-        except Exception as 异常:
-            self._发送JSON(500, {"成功": False, "错误码": "网关内部错误", "错误说明": f"{type(异常).__name__}: {异常}"})
+        except Exception:
+            # 对外固定脱敏错误；详细异常只应进入服务端诊断日志。
+            self._发送JSON(500, {"成功": False, "值": None,
+                                "错误码": "网关内部错误", "错误说明": "能力查询失败"})
 
     def do_POST(self) -> None:
         路径, _ = self._解析URL()
-        try:
-            if 路径 == "/能力/执行":
-                self._处理执行()
-            else:
-                self._发送JSON(404, {"成功": False, "错误码": "路由不存在", "错误说明": f"未定义路由: {路径}"})
-        except Exception as 异常:
-            self._发送JSON(500, {"成功": False, "错误码": "网关内部错误", "错误说明": f"{type(异常).__name__}: {异常}"})
+        self._发送JSON(404, {"成功": False, "错误码": "路由不存在",
+                            "错误说明": f"执行入口已迁移到 /网关/调用，未定义路由: {路径}"})
 
     # ---- 具体处理 ----
     def _处理搜索(self, 查询: dict) -> None:
         关键词 = (查询.get("关键词") or [""])[0]
-        限制 = int((查询.get("限制") or ["20"])[0])
+        限制原值 = (查询.get("限制") or ["20"])[0]
+        try:
+            限制 = int(限制原值)
+        except (TypeError, ValueError):
+            self._发送JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "限制必须是整数"})
+            return
+        if not 1 <= 限制 <= 100:
+            self._发送JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "限制必须在 1 到 100 之间"})
+            return
         结果表 = 搜索能力(关键词=关键词, 限制=限制)
-        self._发送JSON(200, {"成功": True, "数量": len(结果表), "能力表": 结果表})
+        self._发送JSON(200, {"成功": True, "值": 结果表, "错误码": "", "错误说明": "",
+                            "数量": len(结果表), "能力表": 结果表})
 
     def _处理契约(self, 能力id: str) -> None:
         if not 能力id:
@@ -100,36 +116,26 @@ class 能力网关请求处理器(BaseHTTPRequestHandler):
         if not 契约.get("找到"):
             self._发送JSON(404, {"成功": False, "错误码": "能力不存在", "错误说明": f"未找到能力: {能力id}"})
             return
-        self._发送JSON(200, {"成功": True, "契约": 契约})
+        self._发送JSON(200, {"成功": True, "值": 契约, "错误码": "", "错误说明": "", "契约": 契约})
 
-    def _处理执行(self) -> None:
-        长度 = int(self.headers.get("Content-Length", 0))
-        if 长度 <= 0 or 长度 > 10_000_000:
-            self._发送JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "请求体为空或过大"})
-            return
-        try:
-            body = json.loads(self.rfile.read(长度).decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as 异常:
-            self._发送JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": f"请求体不是合法JSON: {异常}"})
-            return
-        能力id = body.get("能力id")
-        参数 = body.get("参数") or {}
-        if not 能力id:
-            self._发送JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "缺少 能力id"})
-            return
-        if not isinstance(参数, dict):
-            self._发送JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "参数必须是对象"})
-            return
-        结果 = 真实调用能力(能力id, 参数)
-        self._发送JSON(200, 结果)
+
 
 
 def 启动网关(*, 端口: int, 地址: str = "127.0.0.1") -> None:
     """启动 HTTP 能力网关。"""
     校验应用监听端口(端口)
+    try:
+        解析地址 = ipaddress.ip_address(str(地址))
+    except ValueError:
+        try:
+            解析地址 = ipaddress.ip_address(socket.gethostbyname(str(地址)))
+        except (OSError, ValueError) as 错误:
+            raise ValueError("监听地址无法解析") from 错误
+    if not 解析地址.is_loopback:
+        raise ValueError("能力网关仅允许回环监听地址")
     httpd = ThreadingHTTPServer((地址, 端口), 能力网关请求处理器)
     print(f"能力网关已启动: http://{地址}:{端口}")
-    print("接口: GET /能力/搜索  GET /能力/契约/{能力id}  POST /能力/执行")
+    print("接口: GET /能力/搜索  GET /能力/契约/{能力id}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

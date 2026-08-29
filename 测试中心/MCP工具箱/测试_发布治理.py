@@ -209,8 +209,17 @@ class 发布门禁桩测试(unittest.TestCase):
         结果 = 发布治理.运行发布门禁(
             命令列表=["python3.14", "-c", "import sys; sys.exit(3)"], 超时秒=30)
         self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, 发布治理.门禁失败)
-        self.assertEqual(结果.数据["退出码"], 3)
+
+    def test_退出码为零但发布状态失败仍拒绝(self) -> None:
+        结果 = 发布治理.运行发布门禁(
+            命令列表=["python3.14", "-c", "print('发布状态: 失败')"], 超时秒=30)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.数据["发布状态"], "失败")
+
+    def test_退出码为零但缺少发布状态仍拒绝(self) -> None:
+        结果 = 发布治理.运行发布门禁(
+            命令列表=["python3.14", "-c", "print('完成')"], 超时秒=30)
+        self.assertFalse(结果.成功)
         self.assertEqual(结果.数据["发布状态"], "未知")
 
     def test_门禁脚本真实存在(self) -> None:

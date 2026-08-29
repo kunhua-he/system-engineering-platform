@@ -17,7 +17,6 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 公共契约.能力契约.契约 import 能力注册表
 from 支持库.适配层.psycopg2提供者 import 关闭, 连接, 查询, 注册能力, 事务执行
-from 支持库.适配层.psycopg2提供者.实现 import 提供者 as 模块
 
 提供者目录 = (
     Path(__file__).resolve().parents[2]
@@ -90,9 +89,7 @@ class Testpsycopg2提供者(unittest.TestCase):
 
     def test_驱动缺失明确失败(self):
         """缺驱动 → 提供者不可用（不 skip、不假装成功）。"""
-        原可用 = 模块._驱动可用
-        模块._驱动可用 = False
-        try:
+        with mock.patch("支持库.适配层.psycopg2提供者.实现.提供者._驱动可用", False):
             for 调用 in (
                 连接(测试连接串),
                 查询(测试连接串, "SELECT 1"),
@@ -101,8 +98,6 @@ class Testpsycopg2提供者(unittest.TestCase):
             ):
                 self.assertFalse(调用.成功)
                 self.assertEqual(调用.错误码, "提供者不可用")
-        finally:
-            模块._驱动可用 = 原可用
 
     def test_无数据库服务明确失败(self):
         """无服务端口 → 连接失败/超时（绝不假装连接成功）。"""
@@ -112,16 +107,16 @@ class Testpsycopg2提供者(unittest.TestCase):
 
     def test_连接生命周期受管调用后关闭(self):
         """连接成功路径：连接对象必然关闭（mock 驱动验证释放）。"""
-        with mock.patch.object(模块.psycopg2, "connect",
-                               return_value=_假连接()) as 假调用:
+        with mock.patch("支持库.适配层.psycopg2提供者.实现.提供者.psycopg2.connect",
+                        return_value=_假连接()) as 假调用:
             结果 = 连接("postgresql://u@127.0.0.1:54320/db", 超时秒=2)
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertTrue(假调用.return_value.已关闭, "连接对象未关闭（泄漏）")
 
     def test_查询生命周期游标与连接关闭(self):
         """查询路径：游标与连接对象调用后必然关闭。"""
-        with mock.patch.object(模块.psycopg2, "connect",
-                               return_value=_假连接()) as 假调用:
+        with mock.patch("支持库.适配层.psycopg2提供者.实现.提供者.psycopg2.connect",
+                        return_value=_假连接()) as 假调用:
             结果 = 查询("postgresql://u@127.0.0.1:54320/db", "SELECT 1", 超时秒=2)
         self.assertTrue(结果.成功, 结果.错误说明)
         假连接 = 假调用.return_value
@@ -130,8 +125,8 @@ class Testpsycopg2提供者(unittest.TestCase):
 
     def test_事务执行生命周期受管(self):
         """事务路径：连接对象调用后关闭且提交路径可达。"""
-        with mock.patch.object(模块.psycopg2, "connect",
-                               return_value=_假连接()) as 假调用:
+        with mock.patch("支持库.适配层.psycopg2提供者.实现.提供者.psycopg2.connect",
+                        return_value=_假连接()) as 假调用:
             结果 = 事务执行("postgresql://u@127.0.0.1:54320/db",
                            ["SELECT 1"], 超时秒=2)
         self.assertTrue(结果.成功, 结果.错误说明)

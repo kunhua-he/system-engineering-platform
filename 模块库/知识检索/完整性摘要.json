@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/知识检索.py",
-      "sha256": "279eced02049618594b40452743befc46ca573a5aaba4f89b72bba1ed102f6d3"
+      "sha256": "47949c820221b712c883b2b57a3ecb18975e996b78c9e5cefcc3981b85393439"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -29,11 +29,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "ae8f7a09efb8df102fec21a9f7c4695e0d6d45fde802247affd113ee44acaad5"
+      "sha256": "1c4bbadf15867ff81fb62e05476bca4206654afeffa42f37852f40e03d5339ec"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "f18a797c8b810639053b136b0a8410869bb5e29dc771878137915a9f2d2e1469"
+      "sha256": "0d5baa35fbb603d0ea3e788d14e5e1f9377d17cf389afff41cad490d122bf14e"
     },
     {
       "路径": "能力数据/能力搜索数据.json",

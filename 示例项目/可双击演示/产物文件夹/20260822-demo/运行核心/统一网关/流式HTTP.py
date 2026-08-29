@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import inspect
+import ipaddress
 import json
+import select
+import socket
 import threading
 import time
 import uuid
@@ -12,6 +15,14 @@ from typing import Any, Callable, Iterator
 
 from 运行核心.统一网关.流式语义 import 流式管理器
 from 公共契约.运行时.端口策略 import 校验应用监听端口
+
+
+# 流式入口的请求与资源边界。超过边界必须在创建生产线程前拒绝。
+请求体上限字节 = 1024 * 1024
+最大事件数上限 = 10000
+最大持续秒上限 = 3600.0
+最小持续秒下限 = 0.01
+最大并发通道上限 = 256
 
 
 class HTTP流式通道:
@@ -139,22 +150,65 @@ class HTTP流式通道:
 class HTTP流式管理器:
     """创建流式生产线程，并管理取消、超时和断开清理。"""
 
-    def __init__(self, 内部管理器: 流式管理器 | None = None) -> None:
+    def __init__(self, 内部管理器: 流式管理器 | None = None,
+                 最大并发通道数: int = 64) -> None:
         self.内部管理器 = 内部管理器 or 流式管理器()
         self.通道表: dict[str, HTTP流式通道] = {}
         self.锁 = threading.RLock()
+        if (isinstance(最大并发通道数, bool)
+                or not isinstance(最大并发通道数, int)
+                or not 1 <= 最大并发通道数 <= 最大并发通道上限):
+            raise ValueError(
+                f"最大并发通道数必须是 1 到 {最大并发通道上限} 之间的整数"
+            )
+        self.最大并发通道数 = 最大并发通道数
+        self._并发信号量 = threading.BoundedSemaphore(最大并发通道数)
 
     def 开始(self, *, 能力id: str, 事件生成函数: Callable,
              请求id: str = "", 任务id: str = "",
              最大事件数: int = 1000, 最大持续秒: float = 30.0,
              结束回调: Callable[[str], None] | None = None) -> HTTP流式通道:
+        if not isinstance(最大事件数, int) or isinstance(最大事件数, bool):
+            raise ValueError("最大事件数必须是整数")
+        if not 1 <= 最大事件数 <= 最大事件数上限:
+            raise ValueError(f"最大事件数必须在 1 到 {最大事件数上限} 之间")
+        if isinstance(最大持续秒, bool) or not isinstance(最大持续秒, (int, float)):
+            raise ValueError("最大持续秒必须是数值")
+        if not (最小持续秒下限 <= float(最大持续秒) <= 最大持续秒上限):
+            raise ValueError(f"最大持续秒必须在 {最小持续秒下限} 到 {最大持续秒上限} 之间")
+        # 生产、超时检查和断开监视各自占用线程；通道数必须先受有界
+        # 信号量保护，避免高并发请求把网关线程/文件描述符耗尽。
+        if not self._并发信号量.acquire(blocking=False):
+            raise RuntimeError("流式并发已达上限")
         通道 = HTTP流式通道(
             请求id=请求id, 任务id=任务id, 能力id=能力id,
             最大事件数=最大事件数, 最大持续秒=最大持续秒,
             结束回调=结束回调,
         )
-        with self.锁:
-            self.通道表[通道.请求id] = 通道
+        try:
+            with self.锁:
+                # 请求 id 是流式资源的唯一定位；覆盖旧通道会丢失其
+                # 取消/清理引用，造成资源泄漏，故直接拒绝重复 id。
+                if 通道.请求id in self.通道表:
+                    raise ValueError("请求id已存在")
+                self.通道表[通道.请求id] = 通道
+        except Exception:
+            self._并发信号量.release()
+            raise
+        原结束回调 = 结束回调
+
+        def 终态清理(原因: str) -> None:
+            try:
+                if 原结束回调 is not None:
+                    原结束回调(原因)
+            finally:
+                # 终态统一移除注册引用。消费端仍可持有返回的通道对象读取
+                # 已排队事件；管理器不应因等待断开请求而累积完成态通道。
+                with self.锁:
+                    self.通道表.pop(通道.请求id, None)
+                self._并发信号量.release()
+
+        通道.结束回调 = 终态清理
         通道.首次事件()
 
         def 执行() -> None:
@@ -239,6 +293,11 @@ class 流式HTTP服务器:
             校验应用监听端口(self.端口)
         except (TypeError, ValueError) as 错误:
             return False, str(错误)
+        try:
+            if not ipaddress.ip_address(str(self.地址)).is_loopback:
+                return False, "流式服务仅允许回环监听地址"
+        except ValueError:
+            return False, "流式服务监听地址不合法"
 
         class 处理器(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -246,15 +305,48 @@ class 流式HTTP服务器:
             def log_message(self, 格式: str, *参数: Any) -> None:
                 return
 
-            def _读取(self) -> dict[str, Any]:
+            def _读取(self) -> tuple[dict[str, Any] | None, str | None]:
+                内容类型 = self.headers.get("Content-Type", "")
+                if not 内容类型.lower().split(";", 1)[0].strip() == "application/json":
+                    return None, "请求必须使用 application/json"
+                if self.headers.get("Transfer-Encoding", "").strip():
+                    return None, "暂不支持分块传输"
                 try:
                     长度 = int(self.headers.get("Content-Length", "0"))
-                    return json.loads(self.rfile.read(长度).decode("utf-8")) if 长度 else {}
-                except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
-                    return {}
+                    if 长度 < 0 or 长度 > 请求体上限字节:
+                        return None, f"请求体超过上限 {请求体上限字节} 字节"
+                    if not 长度:
+                        return {}, None
+                    原文 = self.rfile.read(长度).decode("utf-8")
+                    def 拒绝非有限数(_文本: str):
+                        raise ValueError("JSON 不允许 NaN 或 Infinity")
+                    数据 = json.loads(原文, parse_constant=拒绝非有限数)
+                    if not isinstance(数据, dict):
+                        return None, "请求体必须是 JSON 对象"
+                    return 数据, None
+                except (ValueError, json.JSONDecodeError, UnicodeDecodeError, TimeoutError):
+                    return None, "请求体 JSON 无效"
+
+            def _读取并校验(self) -> dict[str, Any] | None:
+                self.connection.settimeout(10.0)
+                数据, 错误 = self._读取()
+                if 错误:
+                    self._写JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": 错误})
+                    return None
+                return 数据
 
             def _写JSON(self, 状态码: int, 数据: dict[str, Any]) -> None:
-                正文 = json.dumps(数据, ensure_ascii=False).encode("utf-8")
+                try:
+                    正文 = json.dumps(
+                        数据, ensure_ascii=False, allow_nan=False,
+                    ).encode("utf-8")
+                except (TypeError, ValueError):
+                    状态码 = 500
+                    正文 = json.dumps({
+                        "成功": False, "值": None,
+                        "错误码": "返回结果不符合契约",
+                        "错误说明": "网关响应包含不可传输的数据类型",
+                    }, ensure_ascii=False).encode("utf-8")
                 self.send_response(状态码)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(正文)))
@@ -264,7 +356,9 @@ class 流式HTTP服务器:
             def do_POST(self) -> None:
                 from urllib.parse import unquote
                 路径 = unquote(self.path)
-                数据 = self._读取()
+                数据 = self._读取并校验()
+                if 数据 is None:
+                    return
                 if 路径 == "/网关/流式/取消":
                     请求id = str(数据.get("请求id", ""))
                     self._写JSON(200, {"成功": 管理器.取消(请求id), "请求id": 请求id})
@@ -287,19 +381,59 @@ class 流式HTTP服务器:
                         return 能力(参数)
                     return 能力()
 
-                通道 = 管理器.开始(
-                    能力id=能力id, 事件生成函数=生产,
-                    请求id=str(数据.get("请求id", "")),
-                    任务id=str(数据.get("任务id", "")),
-                    最大事件数=int(数据.get("最大事件数", 1000)),
-                    最大持续秒=float(数据.get("最大持续秒", 30.0)),
-                )
+                try:
+                    最大事件数 = 数据.get("最大事件数", 1000)
+                    最大持续秒 = 数据.get("最大持续秒", 30.0)
+                    通道 = 管理器.开始(
+                        能力id=能力id, 事件生成函数=生产,
+                        请求id=str(数据.get("请求id", "")),
+                        任务id=str(数据.get("任务id", "")),
+                        最大事件数=最大事件数,
+                        最大持续秒=最大持续秒,
+                    )
+                except RuntimeError as 错误:
+                    self._写JSON(429, {
+                        "成功": False, "错误码": "限流", "错误说明": str(错误),
+                    })
+                    return
+                except (TypeError, ValueError) as 错误:
+                    状态码 = 409 if "请求id已存在" in str(错误) else 400
+                    错误码 = "幂等键冲突" if 状态码 == 409 else "参数不合法"
+                    self._写JSON(状态码, {
+                        "成功": False, "错误码": 错误码, "错误说明": str(错误),
+                    })
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache, no-transform")
                 self.send_header("Connection", "close")
                 self.send_header("X-Accel-Buffering", "no")
                 self.end_headers()
+                # 生成器可能长时间没有新事件，单靠下一次 wfile.write 无法发现
+                # 客户端已断开。独立监视连接 EOF，统一走管理器断开清理路径。
+                断开监视停止 = threading.Event()
+
+                def 监视客户端断开() -> None:
+                    while not 断开监视停止.is_set() and not 通道.停止事件.is_set():
+                        try:
+                            可读, _, _ = select.select([self.connection], [], [], 0.1)
+                            if not 可读:
+                                continue
+                            数据 = self.connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT)
+                            if not 数据:
+                                管理器.断开(通道.请求id)
+                                return
+                        except (BlockingIOError, InterruptedError):
+                            continue
+                        except (OSError, ValueError):
+                            管理器.断开(通道.请求id)
+                            return
+
+                threading.Thread(
+                    target=监视客户端断开,
+                    name=f"流式断开监视-{通道.请求id}",
+                    daemon=True,
+                ).start()
                 try:
                     for 事件 in 通道.迭代事件():
                         self.wfile.write(通道.格式事件行(事件))
@@ -307,8 +441,21 @@ class 流式HTTP服务器:
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     管理器.断开(通道.请求id)
                 finally:
+                    断开监视停止.set()
                     管理器.清理(通道.请求id)
                     self.close_connection = True
+
+            def _方法不允许(self) -> None:
+                self._写JSON(405, {"成功": False, "错误码": "方法不允许", "错误说明": "流式入口仅支持 POST"})
+
+            def do_GET(self) -> None:
+                self._方法不允许()
+
+            do_PUT = do_GET
+            do_PATCH = do_GET
+            do_DELETE = do_GET
+            do_HEAD = do_GET
+            do_OPTIONS = do_GET
 
         try:
             self.服务器 = ThreadingHTTPServer((self.地址, self.端口), 处理器)

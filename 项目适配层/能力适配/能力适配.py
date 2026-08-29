@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
+
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 
 @dataclass
@@ -50,13 +53,28 @@ def 从项目声明构建映射(项目声明数据: dict, 声明列表) -> 能�
     for 声明 in 模块声明:
         for 能力 in 声明.能力:
             短名 = 能力.能力id.split(".")[-1]
-            try:
-                映射.添加映射(短名, 能力.能力id)
-            except ValueError:
-                continue
+            # 短名歧义不能静默丢弃；否则项目装配表看似成功，运行时才变成
+            # “能力不存在”，并且行为受声明遍历顺序影响。调用方必须显式
+            # 使用完整能力 id 或在项目声明中提供唯一别名。
+            映射.添加映射(短名, 能力.能力id)
     for 声明 in 支持库声明:
         for 能力 in 声明.能力:
             短名 = 能力.能力id.split(".")[-1]
             if 映射.解析(短名) is None:
                 映射.添加映射(短名, 能力.能力id)
     return 映射
+
+
+def 获取HTTP连接器(配置: dict | None = None) -> HTTP连接器:
+    """按项目适配配置创建统一网关连接器，不在模块内绑定地址。"""
+    配置 = dict(配置 or {})
+    地址 = str(配置.get("网关地址") or os.environ.get("系统工程平台网关地址", "127.0.0.1"))
+    try:
+        端口 = int(配置.get("网关端口") or os.environ.get("系统工程平台网关端口", "40007"))
+    except (TypeError, ValueError):
+        端口 = 40007
+    try:
+        超时 = float(配置.get("默认超时秒") or os.environ.get("系统工程平台网关超时秒", "30"))
+    except (TypeError, ValueError):
+        超时 = 30.0
+    return HTTP连接器(网关地址=地址, 网关端口=端口, 默认超时秒=超时)

@@ -43,19 +43,32 @@ def 检索知识(查询: str = None, 知识库: str = None, 模型名: str = Non
         return 结果.失败("参数不合法", "知识库路径不能为空", 来源="知识检索")
     文档列表 = []
     r2 = _调用支持库("文件系统支持库.文件操作.列出目录", {"目录路径": 知识库})
-    if r2.成功 and r2.值:
-        for 条目 in (r2.值.get("项目") or r2.值.get("列表") or r2.值 if isinstance(r2.值, list) else []):
-            路径 = 条目 if isinstance(条目, str) else (条目.get("路径") or 条目.get("名称") or "")
-            if 路径:
-                r3 = _调用支持库("文件系统支持库.文件操作.读取文件", {"文件路径": 路径, "编码": "utf-8"})
-                if r3.成功 and r3.值:
-                    文档列表.append({"路径": 路径, "文本": r3.值.get("值") or str(r3.值)})
+    if not r2.成功:
+        return r2
+    条目列表 = (r2.值.get("项目") or r2.值.get("列表")
+                if isinstance(r2.值, dict) else r2.值)
+    if not isinstance(条目列表, list):
+        return 结果.失败("返回结果不符合契约", "列出目录返回值不是列表", 来源="知识检索")
+    for 条目 in 条目列表:
+        路径 = 条目 if isinstance(条目, str) else (条目.get("路径") or 条目.get("名称") or "")
+        if not 路径:
+            return 结果.失败("返回结果不符合契约", "目录条目缺少路径", 来源="知识检索")
+        r3 = _调用支持库("文件系统支持库.文件操作.读取文件", {"文件路径": 路径, "编码": "utf-8"})
+        if not r3.成功:
+            return r3
+        if not isinstance(r3.值, dict):
+            return 结果.失败("返回结果不符合契约", "读取文件返回值不是对象", 来源="知识检索")
+        文档列表.append({"路径": 路径, "文本": r3.值.get("值") or str(r3.值)})
 
     # 3. 重排
     if not 文档列表:
         return 结果.成功结果({"来源": 知识库, "相关文档": [], "重排结果": [], "缓存命中": 缓存命中, "总数": 0})
     r4 = _调用支持库("大语言模型支持库.重排服务.重排", {"查询": 查询, "文档列表": 文档列表, "顶部数量": 顶数})
-    重排结果 = r4.值.get("重排结果") if r4.成功 else []
+    if not r4.成功:
+        return r4
+    if not isinstance(r4.值, dict) or "重排结果" not in r4.值:
+        return 结果.失败("返回结果不符合契约", "重排服务返回值缺少重排结果", 来源="知识检索")
+    重排结果 = r4.值["重排结果"]
 
     return 结果.成功结果({
         "来源": 知识库,

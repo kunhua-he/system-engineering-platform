@@ -215,7 +215,7 @@ def 运行门禁(根: Path) -> list[dict]:
     return 违规
 
 
-def main() -> int:
+def 主程序() -> int:
     根 = Path(sys.argv[1]) if len(sys.argv) > 1 else 仓库根
     违规 = 运行门禁(根)
     if not 违规:
@@ -228,4 +228,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(主程序())

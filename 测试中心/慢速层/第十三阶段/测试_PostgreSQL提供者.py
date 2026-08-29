@@ -53,7 +53,8 @@ class PostgreSQL隔离实例:
             "--label", "system-library-test=postgresql",
             "-e", f"POSTGRES_PASSWORD={测试密码}",
             "-e", f"POSTGRES_DB={测试库名}",
-            "-p", "127.0.0.1::54320", 测试镜像,
+            # 宿主端口随机分配，避免与 FlyEnv 或其他测试并发冲突。
+            "-p", "127.0.0.1::5432", 测试镜像,
         ], 超时秒=30.0)
         if 启动结果.returncode != 0:
             raise RuntimeError(f"创建 PostgreSQL 隔离实例失败：{启动结果.stderr.strip()}")

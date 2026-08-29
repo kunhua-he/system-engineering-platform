@@ -35,14 +35,14 @@ def 构造缓存项(
     时间戳: float = 1000.0,
 ) -> dict:
     """构造一个完整的缓存项（未指定结构版本时使用当前缓存结构版本）。"""
-    return {
+    return 运行测试._补齐缓存证据({
         "摘要": 摘要,
         "成功": 成功,
         "测试数": 测试数,
         "结构版本": 结构版本 if 结构版本 is not None else 运行测试.缓存结构版本,
         "环境摘要": 环境摘要,
         "时间戳": 时间戳,
-    }
+    })
 
 
 class Test读取缓存(unittest.TestCase):
@@ -208,6 +208,16 @@ class Test阶段缓存可复用(unittest.TestCase):
             "静态契约", {}, "源码摘要", "环境摘要",
         ))
 
+    def test_可编辑字段伪造的缓存必须拒绝(self) -> None:
+        """仅填成功/测试数/摘要的旧式缓存不能冒充真实执行证据。"""
+        伪造 = {
+            "摘要": "源码摘要", "成功": True, "测试数": 999999,
+            "结构版本": 运行测试.缓存结构版本, "环境摘要": "环境摘要",
+        }
+        self.assertFalse(运行测试.阶段缓存可复用(
+            "静态契约", 伪造, "源码摘要", "环境摘要",
+        ))
+
 
 class Test摘要git指纹复用(unittest.TestCase):
     """_文件摘要/_目录摘要 的 git 指纹复用：干净文件免读盘，dirty/untracked 现场哈希。"""
@@ -223,11 +233,10 @@ class Test摘要git指纹复用(unittest.TestCase):
         self.assertNotIn(相对路径, 运行测试._git脏文件集合)
         self.assertEqual(运行测试._文件摘要(干净文件), 运行测试._文件摘要(干净文件))
 
-    def test_干净文件摘要等于git指纹截断16位(self) -> None:
-        """干净文件直接返回 git blob hash 截断 16 位，不读盘。"""
+    def test_干净文件摘要使用现场内容哈希(self) -> None:
+        """即使文件干净也使用现场内容，避免并行修改期间复用陈旧 Git 快照。"""
         干净文件 = 系统根 / ".gitignore"
-        相对路径 = 运行测试._仓库根相对路径(干净文件)
-        期望 = 运行测试._git指纹映射[相对路径][:16]
+        期望 = hashlib.sha256(干净文件.read_bytes()).hexdigest()[:16]
         self.assertEqual(运行测试._文件摘要(干净文件), 期望)
 
     def test_dirty文件摘要随内容变化(self) -> None:
@@ -310,7 +319,7 @@ class Test文件级缓存(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.临时根, ignore_errors=True)
 
     def 写入缓存(self, *, 含目录: bool = True) -> None:
-        缓存项 = {
+        缓存项 = 运行测试._补齐缓存证据({
             "成功": True,
             "测试数": 2,
             "测试文件摘要": 运行测试.文件级摘要(self.测试文件),
@@ -325,7 +334,7 @@ class Test文件级缓存(unittest.TestCase):
             ),
             "弱依赖标记": False,
             "时间戳": time.time(),
-        }
+        })
         运行测试.写入文件级缓存(self.测试文件, 缓存项)
 
     def test_命中条件全部满足时复用(self) -> None:

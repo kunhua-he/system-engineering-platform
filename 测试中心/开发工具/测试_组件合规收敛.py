@@ -21,36 +21,36 @@ if str(系统根) not in sys.path:
 from 开发工具.组件合规.合规测试包 import 组件合规, 合规场景表
 from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
 
-能力甲 = {
-    "能力id": "合规.能力甲", "版本": "1.0.0", "说明": "合规测试能力甲",
+能力1 = {
+    "能力id": "合规.能力1", "版本": "1.0.0", "说明": "合规测试能力1",
     "参数": [{"名称": "文本", "类型": "文本", "必填": True,
               "默认值": None, "说明": "待处理文本"}],
     "返回": {"类型": "结果", "值结构": {"长度": "整数"}},
     "错误码": ["参数不合法", "内部错误"],
-    "调用示例": {"能力id": "合规.能力甲", "参数": {"文本": "示例"}},
+    "调用示例": {"能力id": "合规.能力1", "参数": {"文本": "示例"}},
 }
-能力乙 = {
-    "能力id": "合规.能力乙", "版本": "1.0.0", "说明": "合规测试能力乙",
+能力2 = {
+    "能力id": "合规.能力2", "版本": "1.0.0", "说明": "合规测试能力2",
     "参数": [{"名称": "路径", "类型": "文本", "必填": True,
               "默认值": None, "说明": "目标路径"}],
     "返回": {"类型": "结果", "值结构": {"路径": "文本"}},
     "错误码": ["参数不合法", "路径不存在"],
-    "调用示例": {"能力id": "合规.能力乙", "参数": {"路径": "/tmp/x"}},
+    "调用示例": {"能力id": "合规.能力2", "参数": {"路径": "/tmp/x"}},
 }
 
 入口源码 = '''"""合规收敛组件包级中文入口。"""
 from __future__ import annotations
 
-from 实现.实现 import 能力甲, 能力乙
+from 实现.实现 import 能力1, 能力2
 
-__all__ = ["能力甲", "能力乙"]
+__all__ = ["能力1", "能力2"]
 
 
 def 注册能力(注册表) -> None:
     """由模块加载器调用。"""
     from 公共契约.能力契约.契约 import 能力实现
 
-    for 能力id, 函数 in [("合规.能力甲", 能力甲), ("合规.能力乙", 能力乙)]:
+    for 能力id, 函数 in [("合规.能力1", 能力1), ("合规.能力2", 能力2)]:
         注册表.注册(能力实现(
             能力id=能力id, 包id="合规.收敛组件", 实现函数=函数,
             参数=[{"名称": "文本", "类型": "文本"}, {"名称": "路径", "类型": "文本"}],
@@ -62,13 +62,13 @@ def 注册能力(注册表) -> None:
 from __future__ import annotations
 
 
-def 能力甲(文本: str) -> dict:
+def 能力1(文本: str) -> dict:
     if not 文本:
         return {"成功": False, "错误码": "参数不合法"}
     return {"成功": True, "值": {"长度": len(文本)}}
 
 
-def 能力乙(路径: str) -> dict:
+def 能力2(路径: str) -> dict:
     if not 路径:
         return {"成功": False, "错误码": "参数不合法"}
     return {"成功": True, "值": {"路径": 路径}}
@@ -81,7 +81,7 @@ def 建收敛组件() -> Path:
     for 子目录 in ("能力契约", "依赖契约", "配置契约", "权限契约", "实现", "说明"):
         (目录 / 子目录).mkdir()
     (目录 / "能力契约" / "参数契约.json").write_text(
-        json.dumps({"契约版本": "1.0.0", "能力契约": [能力甲, 能力乙]},
+        json.dumps({"契约版本": "1.0.0", "能力契约": [能力1, 能力2]},
                    ensure_ascii=False, indent=2), encoding="utf-8")
     (目录 / "依赖契约" / "依赖契约.json").write_text(
         json.dumps({"依赖": []}, ensure_ascii=False), encoding="utf-8")
@@ -89,8 +89,8 @@ def 建收敛组件() -> Path:
         json.dumps({"默认编码": "utf-8", "默认超时秒": 10}, ensure_ascii=False),
         encoding="utf-8")
     (目录 / "权限契约" / "权限契约.json").write_text(
-        json.dumps({"合规.能力甲": {"允许用户": ["*"]},
-                    "合规.能力乙": {"允许用户": ["*"]}}, ensure_ascii=False),
+        json.dumps({"合规.能力1": {"允许用户": ["*"]},
+                    "合规.能力2": {"允许用户": ["*"]}}, ensure_ascii=False),
         encoding="utf-8")
     (目录 / "资源预算.json").write_text(
         json.dumps({"内存上限": 50, "线程上限": 2, "子进程上限": 1,
@@ -113,7 +113,7 @@ def 建收敛组件() -> Path:
     (目录 / "__init__.py").write_text(入口源码, encoding="utf-8")
     (目录 / "实现" / "实现.py").write_text(实现源码, encoding="utf-8")
     (目录 / "说明" / "使用说明.md").write_text(
-        "# 收敛组件说明书\n\n能力甲/能力乙，错误码：参数不合法/内部错误/路径不存在。\n",
+        "# 收敛组件说明书\n\n能力1/能力2，错误码：参数不合法/内部错误/路径不存在。\n",
         encoding="utf-8")
     摘要 = 生成完整性摘要(目录, 包id="合规.收敛组件", 版本="1.0.0")
     (目录 / "完整性摘要.json").write_text(
@@ -143,7 +143,7 @@ class Test组件合规收敛(unittest.TestCase):
             shutil.rmtree(组件目录, ignore_errors=True)
 
     def test_聚合契约逐能力遍历_缺一能力错误码检出(self) -> None:
-        """契约场景必须逐能力遍历：能力乙缺错误码 → 检出（禁整文件当一个能力）。"""
+        """契约场景必须逐能力遍历：能力2缺错误码 → 检出（禁整文件当一个能力）。"""
         组件目录 = 建收敛组件()
         try:
             契约路径 = 组件目录 / "能力契约" / "参数契约.json"
@@ -151,8 +151,8 @@ class Test组件合规收敛(unittest.TestCase):
             契约数据["能力契约"][1]["错误码"] = []
             契约路径.write_text(json.dumps(契约数据, ensure_ascii=False), encoding="utf-8")
             场景表 = _场景通过表(组件目录)
-            self.assertFalse(场景表["契约"], "能力乙缺错误码必须被契约场景检出")
-            self.assertFalse(场景表["失败语义"], "能力乙缺错误码必须被失败语义场景检出")
+            self.assertFalse(场景表["契约"], "能力2缺错误码必须被契约场景检出")
+            self.assertFalse(场景表["失败语义"], "能力2缺错误码必须被失败语义场景检出")
         finally:
             shutil.rmtree(组件目录, ignore_errors=True)
 
@@ -160,10 +160,10 @@ class Test组件合规收敛(unittest.TestCase):
         组件目录 = 建收敛组件()
         try:
             (组件目录 / "权限契约" / "权限契约.json").write_text(
-                json.dumps({"合规.能力甲": {"允许用户": ["*"]}}, ensure_ascii=False),
+                json.dumps({"合规.能力1": {"允许用户": ["*"]}}, ensure_ascii=False),
                 encoding="utf-8")
             场景表 = _场景通过表(组件目录)
-            self.assertFalse(场景表["权限"], "能力乙无权限声明必须被检出")
+            self.assertFalse(场景表["权限"], "能力2无权限声明必须被检出")
         finally:
             shutil.rmtree(组件目录, ignore_errors=True)
 
@@ -191,7 +191,7 @@ class Test组件合规收敛(unittest.TestCase):
         组件目录 = 建收敛组件()
         try:
             (组件目录 / "__init__.py").write_text(
-                '"""无注册能力入口。"""\nfrom 实现.实现 import 能力甲\n__all__ = ["能力甲"]\n',
+                '"""无注册能力入口。"""\nfrom 实现.实现 import 能力1\n__all__ = ["能力1"]\n',
                 encoding="utf-8")
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["公共入口"], "缺 注册能力 必须被公共入口场景检出")
@@ -202,7 +202,7 @@ class Test组件合规收敛(unittest.TestCase):
         组件目录 = 建收敛组件()
         try:
             (组件目录 / "__init__.py").write_text(
-                '"""无 __all__ 入口。"""\nfrom 实现.实现 import 能力甲\n\n\ndef 注册能力(注册表):\n    return None\n',
+                '"""无 __all__ 入口。"""\nfrom 实现.实现 import 能力1\n\n\ndef 注册能力(注册表):\n    return None\n',
                 encoding="utf-8")
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["公共入口"], "缺 __all__ 必须被公共入口场景检出")

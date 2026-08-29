@@ -71,6 +71,17 @@ except ModuleNotFoundError:
 当前开工id = ""
 
 
+def _保留输出(文本: str, 上限: int) -> str:
+    """保留输出首尾，避免错误/零测试标记位于截断中段而被判定器漏掉。"""
+    文本 = str(文本 or "")
+    上限 = max(2000, int(上限))
+    if len(文本) <= 上限:
+        return 文本
+    首部 = 上限 // 2
+    尾部 = 上限 - 首部
+    return 文本[:首部] + "\n...[输出中段已省略]...\n" + 文本[-尾部:]
+
+
 def _执行(
     命令: list[str], 超时秒数: int = 30, 输出上限: int = 12000,
 ) -> dict[str, Any]:
@@ -81,8 +92,8 @@ def _执行(
         )
         return {
             "退出码": 结果.returncode,
-            "标准输出": 结果.stdout[-输出上限:],
-            "标准错误": 结果.stderr[-4000:],
+            "标准输出": _保留输出(结果.stdout, 输出上限),
+            "标准错误": _保留输出(结果.stderr, 4000),
         }
     except (OSError, subprocess.TimeoutExpired) as 异常:
         return {"退出码": 124, "标准输出": "", "标准错误": str(异常)}
@@ -230,7 +241,16 @@ def _运行验证(名称: str, 命令: list[str], 超时秒数: int, *, 开工id
         "工作区指纹": 工作区指纹, "输出末尾": 结果["标准输出"][-2000:],
         "错误末尾": 结果["标准错误"][-1000:],
     }
-    if 结果["退出码"] == 0:
+    # 退出码为 0 只代表进程正常结束，不能证明测试真的通过；统一判定器
+    # 还会拒绝零测试、导入失败、未解释跳过和门禁失败。只有两者同时成立
+    # 才能写入可复用的成功验证证据，避免账本被“正常退出但实际失败”污染。
+    判定 = 判定验证结果(
+        int(结果["退出码"]),
+        str(结果.get("标准输出", "")),
+        str(结果.get("标准错误", "")),
+    )
+    记录["判定"] = 判定
+    if 结果["退出码"] == 0 and 判定.get("成功") is True:
         证据路径.parent.mkdir(parents=True, exist_ok=True)
         with 证据路径.open("a", encoding="utf-8") as 文件:
             文件.write(json.dumps(记录, ensure_ascii=False) + "\n")

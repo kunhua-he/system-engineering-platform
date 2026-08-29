@@ -139,10 +139,10 @@ async function 调用网关(按钮id) {
   let 已超时 = false;
   const 超时器 = setTimeout(() => { 已超时 = true; if (活动请求) 活动请求.abort(); }, 页面配置.请求超时毫秒);
   try {
-    const 响应 = await fetch(页面配置.网关地址 + "/网关/请求", {
+    const 响应 = await fetch(页面配置.网关地址 + "/网关/调用", {
       method: "POST", headers: {"Content-Type":"application/json"},
       signal: 活动请求.signal,
-      body: JSON.stringify({操作:"调用能力", 能力id:按钮.能力id,
+      body: JSON.stringify({能力id:按钮.能力id,
         参数:收集参数(按钮.参数), 项目id:页面配置.项目id, 用户id:页面配置.用户id})
     });
     const 数据 = await 响应.json().catch(() => ({成功:false,错误码:`HTTP ${响应.status}`,错误说明:"网关响应格式错误"}));

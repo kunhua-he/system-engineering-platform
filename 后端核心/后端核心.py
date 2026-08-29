@@ -52,16 +52,16 @@ class 后端核心:
         self.停止标记 = False
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
-        self.资源句柄服务 = 资源句柄服务()
+        self.资源句柄服务 = 资源句柄服务(self.系统根目录 / "工程缓存" / "权威状态")
 
-    def 资源状态(self, 句柄: str, *, 项目id: str = "", 所有者: str = "") -> dict | None:
+    def 资源状态(self, 句柄: int, *, 项目id: str = "", 所有者: str = "") -> dict | None:
         return self.资源句柄服务.状态(句柄, 项目id=项目id, 所有者=所有者)
 
-    def 资源续租(self, 句柄: str, *, 租约秒: float = 300,
+    def 资源续租(self, 句柄: int, *, 租约秒: float = 300,
                  项目id: str = "", 所有者: str = "") -> dict:
         return self.资源句柄服务.续租(句柄, 租约秒=租约秒, 项目id=项目id, 所有者=所有者)
 
-    def 资源关闭(self, 句柄: str, *, 项目id: str = "", 所有者: str = "") -> dict:
+    def 资源关闭(self, 句柄: int, *, 项目id: str = "", 所有者: str = "") -> dict:
         return self.资源句柄服务.关闭(句柄, 项目id=项目id, 所有者=所有者)
 
     def 启用自动排空(self, 排空超时秒: float = 3.0) -> None:
@@ -166,6 +166,10 @@ class 后端核心:
                         返回结果 = 调用结果 if isinstance(调用结果, 结果) else 结果.成功结果(调用结果)
                     except TypeError as 错误:
                         返回结果 = 结果.失败("参数不合法", f"调用参数错误: {错误}", 来源="后端核心")
+                    except FileNotFoundError as 错误:
+                        # 文件/资源能力的标准缺失语义必须跨 HTTP 保留，
+                        # 不能被通用异常转换成无法定位的“内部错误”。
+                        返回结果 = 结果.失败("文件不存在", str(错误), 来源="后端核心")
                     except Exception as 错误:  # noqa: BLE001 - 能力边界统一转换外部实现异常
                         返回结果 = 结果.失败("内部错误", f"调用异常: {错误}", 来源="后端核心")
             if not 返回结果.成功:
