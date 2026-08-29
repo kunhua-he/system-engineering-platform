@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
+import dataclasses
 import json
 import math
+import os
 import socket
 import threading
-import base64
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -120,6 +122,13 @@ class 本地网关服务器:
                             "类型": "字节集型",
                             "base64": base64.b64encode(bytes(值)).decode("ascii"),
                         }
+                    # dataclass（如 通用文档）经 asdict 展开为 JSON 对象，否则
+                    # HTTP 黑盒调用无法传输支持库返回的结构化对象。
+                    if dataclasses.is_dataclass(值) and not isinstance(值, type):
+                        return dataclasses.asdict(值)
+                    # Path 统一转字符串（如 创建唯一运行目录 返回 Path）。
+                    if isinstance(值, os.PathLike):
+                        return str(值)
                     raise TypeError(f"响应值包含不可序列化类型: {type(值).__name__}")
                 try:
                     正文 = json.dumps(
