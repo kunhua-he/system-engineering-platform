@@ -476,7 +476,11 @@ class 流式HTTP服务器:
         self.线程.start()
         return True, f"流式服务已启动 http://{self.地址}:{self.端口}"
 
-    def 优雅停止(self) -> None:
+    def 优雅停止(self) -> bool:
+        """停止流式服务；返回是否确认收敛（服务线程已退出、通道已清空）。
+
+        线程 join 超时或通道仍残留时返回 False，调用方不得按“已停止”处理。
+        """
         with self.管理器.锁:
             活动通道 = list(self.管理器.通道表.values())
         for 通道 in 活动通道:
@@ -487,8 +491,12 @@ class 流式HTTP服务器:
             self.服务器 = None
         # 有界 join 服务线程，确认线程已退出才返回，避免停止后生产/
         # 超时/断开监视线程仍持有生成器、socket 或外部资源。
+        收敛 = True
         if self.线程 is not None:
             self.线程.join(timeout=5.0)
+            if self.线程.is_alive():
+                收敛 = False
             self.线程 = None
         with self.管理器.锁:
             self.管理器.通道表.clear()
+        return 收敛
