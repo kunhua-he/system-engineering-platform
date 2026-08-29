@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTML 黑盒验证器 · 编译产物功能验证</title>
+<style>
+:root {
+  --bg: #f5f6f8; --card: #ffffff; --border: #e2e5ea; --text: #1f2937;
+  --muted: #6b7280; --green: #16a34a; --red: #dc2626; --amber: #d97706;
+  --blue: #2563eb;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, "PingFang SC", sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
+h1 { font-size: 22px; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+label { font-size: 13px; color: var(--muted); }
+input[type=text], input[type=number] { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 14px; min-width: 260px; }
+button { border: none; border-radius: 6px; padding: 9px 18px; font-size: 14px; cursor: pointer; font-weight: 600; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.summary { display: flex; gap: 24px; margin: 16px 0; }
+.summary .num { font-size: 30px; font-weight: 700; }
+.summary .lbl { font-size: 13px; color: var(--muted); }
+.summary .total .num { color: var(--text); }
+.summary .pass .num { color: var(--green); }
+.summary .fail .num { color: var(--red); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; background: #fafbfc; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge.pass { background: #dcfce7; color: var(--green); }
+.badge.fail { background: #fee2e2; color: var(--red); }
+.detail { color: var(--muted); font-size: 12px; }
+.err { color: var(--red); }
+.log { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 14px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow: auto; }
+.flow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: #f0f4ff; border: 1px solid #dbe6ff; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-size: 13px; }
+.flow .step { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+.flow .arrow { color: var(--blue); font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>HTML 黑盒验证器 ★</h1>
+<div class="sub">只对编译产物发真实 HTTP GET/POST，只看状态码 + 返回值判定功能。编译器禁跑全量，HTML 可全量并发。</div>
+
+<div class="flow">
+  <span class="step">编译产物</span><span class="arrow">→</span>
+  <span class="step">启动器启动</span><span class="arrow">→</span>
+  <span class="step">GET / 健康</span><span class="arrow">→</span>
+  <span class="step">POST /网关/调用</span><span class="arrow">→</span>
+  <span class="step">看返回值</span><span class="arrow">→</span>
+  <span class="step">绿 / 红</span>
+</div>
+
+<div class="card">
+  <div class="row">
+    <label>制品地址</label>
+    <input type="text" id="制品地址" placeholder="http://127.0.0.1:45080" value="http://127.0.0.1:45080">
+    <button class="btn-primary" id="连接">连接并读取能力</button>
+    <label>并发</label>
+    <input type="number" id="并发" value="8" min="1" max="1000" style="min-width:70px;width:70px">
+    <button class="btn-primary" id="跑全量">跑全量验证</button>
+    <button id="清空">清空结果</button>
+  </div>
+  <div class="summary">
+    <div class="total"><div class="num" id="总数">0</div><div class="lbl">场景</div></div>
+    <div class="pass"><div class="num" id="通过数">0</div><div class="lbl">通过</div></div>
+    <div class="fail"><div class="num" id="失败数">0</div><div class="lbl">失败</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="font-size:15px;margin-bottom:10px">验证结果</h3>
+  <table>
+    <thead><tr><th>场景id</th><th>能力id</th><th>结果</th><th>状态码</th><th>耗时</th><th>失败原因 / 定位</th></tr></thead>
+    <tbody id="结果表"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="font-size:15px;margin-bottom:10px">请求日志</h3>
+  <div class="log" id="日志">等待操作…</div>
+</div>
+
+<script>
+const 结果表 = document.getElementById('结果表');
+const 日志 = document.getElementById('日志');
+const 场景表 = [];
+
+function 记日志(行) {
+  日志.textContent = (日志.textContent === '等待操作…' ? '' : 日志.textContent + '\n') + new Date().toLocaleTimeString() + ' ' + 行;
+  日志.scrollTop = 日志.scrollHeight;
+}
+
+function 汇总() {
+  const 行们 = [...结果表.querySelectorAll('tr[data-场景]')];
+  const 通过 = 行们.filter(r => r.dataset.结果 === '通过').length;
+  const 失败 = 行们.filter(r => r.dataset.结果 === '失败').length;
+  document.getElementById('总数').textContent = 行们.length;
+  document.getElementById('通过数').textContent = 通过;
+  document.getElementById('失败数').textContent = 失败;
+}
+
+function 加一行(场景, 结果, 状态码, 耗时, 原因, 线索) {
+  const 行 = document.createElement('tr');
+  行.dataset.场景 = 场景;
+  行.dataset.结果 = 结果;
+  const 徽章 = `<span class="badge ${结果 === '通过' ? 'pass' : 'fail'}">${结果}</span>`;
+  行.innerHTML = `<td>${场景}</td><td>${场景.能力id || '-'}</td><td>${徽章}</td><td>${状态码}</td><td>${耗时}ms</td><td class="${结果 === '通过' ? 'detail' : 'err'}">${原因 || '符合预期'}${线索 ? '（' + 线索 + '）' : ''}</td>`;
+  结果表.appendChild(行);
+  汇总();
+}
+
+async function 请求(方法, 路径, 数据) {
+  // 统一走相对路径代理（/代理/...），由验证器服务模式转发到制品（同源，无跨域）。
+  const 选项 = { method: 方法, headers: { 'Content-Type': 'application/json' } };
+  if (数据) 选项.body = JSON.stringify(数据);
+  let 目标 = 路径;
+  if (路径.startsWith('/网关/') || 路径 === '/' || 路径.startsWith('/能力/') || 路径.startsWith('/健康')) {
+    目标 = '/代理' + 路径;
+  }
+  const 响应 = await fetch(目标, 选项);
+  // 健康检查（GET /）返回 HTML 页面：只认状态码，不解析 JSON
+  if (方法 === 'GET' && 路径 === '/') {
+    return { 状态码: 响应.status, 正文: {} };
+  }
+  let 正文 = {};
+  try { 正文 = await 响应.json(); } catch (e) {
+    // 非 JSON（如 HTML 页面）：只取文本，不阻塞
+    try { 正文 = { 成功: false, 错误码: '返回非JSON', 错误说明: (await 响应.text()).slice(0, 100) }; }
+    catch (e2) { 正文 = { 成功: false, 错误码: '返回非JSON', 错误说明: '无法读取响应' }; }
+  }
+  return { 状态码: 响应.status, 正文 };
+}
+
+document.getElementById('连接').onclick = async () => {
+  const 地址 = document.getElementById('制品地址').value.replace(/\/$/, '');
+  记日志('连接 ' + 地址 + '（经本地代理）');
+  try {
+    const 健康 = await 请求('GET', '/');
+    记日志('GET / → ' + 健康.状态码 + (健康.状态码 === 200 ? '（页面可访问）' : '（异常）'));
+    // 页面宿主只服务 / 和 /网关/调用；能力清单从 /验证场景.json 读取
+    const 场景响应 = await fetch('/验证场景.json');
+    if (场景响应.ok) {
+      const 场景数据 = await 场景响应.json();
+      const 场景表 = 场景数据?.验证场景 || [];
+      记日志('验证场景.json → ' + 场景表.length + ' 个场景');
+    } else {
+      记日志('验证场景.json → 不可用');
+    }
+  } catch (e) {
+    记日志('连接失败: ' + e.message);
+  }
+};
+
+document.getElementById('跑全量').onclick = async () => {
+  const 并发 = parseInt(document.getElementById('并发').value) || 8;
+  记日志(`跑全量验证：并发 ${并发}，先 GET / 健康检查`);
+  const 健康 = await 请求('GET', '/');
+  if (健康.状态码 !== 200) { 记日志('✗ 制品页面不可访问'); return; }
+  记日志('✓ 制品页面可访问，开始加载验证场景…');
+  // 从 /验证场景.json 读取场景（服务模式提供）
+  let 场景表 = [];
+  try {
+    const 场景响应 = await fetch('/验证场景.json');
+    if (场景响应.ok) {
+      场景表 = (await 场景响应.json())?.验证场景 || [];
+    }
+  } catch (e) { /* 忽略 */ }
+  if (!场景表.length) {
+    // 兜底：从能力契约扫描（服务模式提供 /验证场景.json 时不会走到这）
+    记日志('✗ 验证场景.json 不可用，无法跑全量');
+    return;
+  }
+  记日志(`发现 ${场景表.length} 个验证场景，开始并发验证…`);
+  const 结果 = await Promise.allSettled(场景表.map(场景 => 验证一个(场景)));
+  记日志(`全量验证完成：${结果.filter(r => r.status === 'fulfilled' && r.value).length}/${场景表.length}`);
+};
+
+async function 验证一个(场景) {
+  const 能力id = 场景.能力id || 场景.场景id || '';
+  const 预期错误码 = 场景.预期错误码 || '';
+  const 场景参数 = 场景.参数 || {};
+  const 开始 = performance.now();
+  try {
+    const { 状态码, 正文 } = await 请求('POST', '/网关/调用', { 能力id, 参数: 场景参数 });
+    const 耗时 = Math.round(performance.now() - 开始);
+    let 通过, 原因, 线索;
+    if (预期错误码) {
+      // 预期失败场景：命中预期错误码 = 通过（验证参数校验本身）
+      通过 = 正文.错误码 === 预期错误码;
+      原因 = 通过 ? '' : `错误码 ${正文.错误码} != 预期 ${预期错误码}`;
+      线索 = 通过 ? '' : 正文.错误码;
+    } else {
+      // 预期成功场景
+      通过 = 状态码 === 200 && 正文.成功;
+      原因 = 通过 ? '' : `${正文.错误码}: ${正文.错误说明}`;
+      线索 = 通过 ? '' : 正文.错误码;
+    }
+    加一行({ 场景id: '能力.' + 能力id, 能力id }, 通过 ? '通过' : '失败', 状态码, 耗时, 原因, 线索);
+    记日志(`${通过 ? '✓' : '✗'} ${能力id} → ${状态码} ${通过 ? (预期错误码 ? '符合预期' : '成功') : 正文.错误码} ${耗时}ms`);
+  } catch (e) {
+    const 耗时 = Math.round(performance.now() - 开始);
+    加一行({ 场景id: '能力.' + 能力id, 能力id }, '失败', 0, 耗时, '网关断开: ' + e.message, '网关');
+    记日志(`✗ ${能力id} → 网关断开: ${e.message}`);
+    return false;
+  }
+  return 通过;
+}
+
+document.getElementById('清空').onclick = () => {
+  结果表.innerHTML = '';
+  document.getElementById('总数').textContent = '0';
+  document.getElementById('通过数').textContent = '0';
+  document.getElementById('失败数').textContent = '0';
+};
+</script>
+</body>
+</html>

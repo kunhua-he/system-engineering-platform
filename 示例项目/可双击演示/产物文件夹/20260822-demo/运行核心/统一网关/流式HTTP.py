@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Iterator
 
 from 运行核心.统一网关.流式语义 import 流式管理器
+from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 
@@ -280,16 +281,23 @@ class HTTP流式管理器:
 
 
 class 流式HTTP服务器:
-    """标准库本地 SSE 服务，能力生产器由调用方注册。"""
+    """标准库本地 SSE 服务；创建/取消统一凭证、审计和请求边界。"""
 
     def __init__(self, *, 地址: str = "127.0.0.1", 端口: int = 0,
-                 管理器: HTTP流式管理器 | None = None) -> None:
+                 管理器: HTTP流式管理器 | None = None,
+                 凭证环境变量: str = "系统库网关凭证",
+                 要求凭证: bool = True) -> None:
         self.地址 = 地址
         self.端口 = 端口
         self.管理器 = 管理器 or HTTP流式管理器()
         self.能力表: dict[str, Callable] = {}
         self.服务器: ThreadingHTTPServer | None = None
         self.线程: threading.Thread | None = None
+        self.安全配置 = 安全配置(凭证环境变量=凭证环境变量,
+                              要求凭证=bool(要求凭证))
+        self.凭证管理器 = 凭证管理器(凭证环境变量)
+        self.审计记录表: list[dict[str, Any]] = []
+        self.审计锁 = threading.Lock()
 
     def 注册能力(self, 能力id: str, 事件生成函数: Callable) -> None:
         self.能力表[能力id] = 事件生成函数
@@ -297,6 +305,7 @@ class 流式HTTP服务器:
     def 启动(self) -> tuple[bool, str]:
         能力表 = self.能力表
         管理器 = self.管理器
+        服务器 = self
 
         try:
             校验应用监听端口(self.端口)
@@ -307,6 +316,10 @@ class 流式HTTP服务器:
                 return False, "流式服务仅允许回环监听地址"
         except ValueError:
             return False, "流式服务监听地址不合法"
+        if self.安全配置.要求凭证:
+            已加载, 加载说明 = self.凭证管理器.加载()
+            if not 已加载:
+                return False, f"流式服务启动拒绝：{加载说明}"
 
         class 处理器(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -362,22 +375,41 @@ class 流式HTTP服务器:
                 self.end_headers()
                 self.wfile.write(正文)
 
+            def _校验凭证(self) -> bool:
+                if not 服务器.安全配置.要求凭证:
+                    return True
+                凭证 = 提取访问凭证(self.headers)
+                通过, _ = 服务器.凭证管理器.校验(凭证)
+                if 通过:
+                    return True
+                服务器.记录审计(self.path, "", "", False, "权限不足")
+                self._写JSON(401, {"成功": False, "错误码": "权限不足",
+                                   "错误说明": "访问凭证缺失或无效"})
+                return False
+
             def do_POST(self) -> None:
                 from urllib.parse import unquote
                 路径 = unquote(self.path)
+                if 路径 not in ("/网关/流式", "/网关/流式/取消"):
+                    self._写JSON(404, {"成功": False, "错误码": "未知路径"})
+                    return
+                if not self._校验凭证():
+                    return
                 数据 = self._读取并校验()
                 if 数据 is None:
                     return
                 if 路径 == "/网关/流式/取消":
                     请求id = str(数据.get("请求id", ""))
-                    self._写JSON(200, {"成功": 管理器.取消(请求id), "请求id": 请求id})
-                    return
-                if 路径 != "/网关/流式":
-                    self._写JSON(404, {"成功": False, "错误码": "未知路径"})
+                    成功 = 管理器.取消(请求id)
+                    服务器.记录审计(路径, 请求id, "", 成功,
+                                  "" if 成功 else "请求不存在或已结束")
+                    self._写JSON(200, {"成功": 成功, "请求id": 请求id})
                     return
                 能力id = str(数据.get("能力id", ""))
                 能力 = 能力表.get(能力id)
                 if 能力 is None:
+                    服务器.记录审计(路径, str(数据.get("请求id", "")), 能力id,
+                                  False, "能力不存在")
                     self._写JSON(404, {"成功": False, "错误码": "能力不存在"})
                     return
                 参数 = 数据.get("参数") if isinstance(数据.get("参数"), dict) else {}
@@ -412,6 +444,7 @@ class 流式HTTP服务器:
                         "成功": False, "错误码": 错误码, "错误说明": str(错误),
                     })
                     return
+                服务器.记录审计(路径, 通道.请求id, 能力id, True, "")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache, no-transform")
@@ -475,6 +508,21 @@ class 流式HTTP服务器:
         self.线程 = threading.Thread(target=self.服务器.serve_forever, daemon=True)
         self.线程.start()
         return True, f"流式服务已启动 http://{self.地址}:{self.端口}"
+
+    def 记录审计(self, 路径: str, 请求id: str, 能力id: str,
+                成功: bool, 错误码: str) -> None:
+        """记录有限审计摘要，不保存凭证、参数和响应内容。"""
+        with self.审计锁:
+            self.审计记录表.append({"路径": str(路径), "请求id": str(请求id)[:64],
+                                  "能力id": str(能力id)[:128], "成功": bool(成功),
+                                  "错误码": str(错误码)[:64]})
+            if len(self.审计记录表) > 1000:
+                del self.审计记录表[:-1000]
+
+    def 审计快照(self) -> list[dict[str, Any]]:
+        """返回审计摘要副本，供状态检查使用。"""
+        with self.审计锁:
+            return [dict(记录) for 记录 in self.审计记录表]
 
     def 优雅停止(self) -> bool:
         """停止流式服务；返回是否确认收敛（服务线程已退出、通道已清空）。

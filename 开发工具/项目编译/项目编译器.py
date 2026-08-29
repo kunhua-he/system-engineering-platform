@@ -194,7 +194,7 @@ import os, sys
 sys.dont_write_bytecode = True
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
 import argparse, json, threading, urllib.error, urllib.request, webbrowser
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 根 = Path(__file__).resolve().parents[1]
@@ -212,11 +212,21 @@ def 主函数(端口=45080, 自动打开=True):
     页面 = (根 / "前端" / "编译页面" / "index.html").read_bytes(); 网关地址 = f"http://127.0.0.1:{{网关.端口}}"
     class 处理器(BaseHTTPRequestHandler):
         def log_message(self, 格式, *参数): return
+        def _CORS头(self):
+            # 允许本地验证页/HTML 黑盒验证器跨域直连（file:// 来源为 null，
+            # 本地 HTTP 服务来源为 http://127.0.0.1:*）。黑盒验证必须走浏览器真实路径。
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        def do_OPTIONS(self):
+            self.send_response(204); self._CORS头(); self.end_headers()
         def do_GET(self):
             if self.path != "/": self.send_error(404); return
-            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(页面))); self.end_headers(); self.wfile.write(页面)
+            self.send_response(200); self._CORS头(); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(页面))); self.end_headers(); self.wfile.write(页面)
         def do_POST(self):
-            if self.path != "/网关/调用": self.send_error(404); return
+            # 浏览器/curl 会把中文路径编码（/网关/调用 → /%E7%BD%91...），
+            # 必须 unquote 后再比较，否则收到编码路径直接 404。
+            if unquote(self.path) != "/网关/调用": self.send_error(404); return
             try:
                 长度 = int(self.headers.get("Content-Length", "-1"))
                 if 长度 < 0 or 长度 > 1024 * 1024: raise ValueError("请求体超过上限")
@@ -226,7 +236,9 @@ def 主函数(端口=45080, 自动打开=True):
                 请求正文 = json.dumps(请求数据, ensure_ascii=False).encode("utf-8")
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as 错误:
                 正文 = json.dumps({{"成功":False,"错误码":"参数不合法","错误说明":str(错误)}}, ensure_ascii=False).encode()
-                self.send_response(400); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文); return
+                self.send_response(400); self._CORS头(); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文); return
+            # urllib 不能直接发原始中文路径（UnicodeEncodeError），必须 quote 编码；
+            # quote 输出的 %XX 是合法 ASCII，urllib 不会二次转义（实测 200 成功）。
             请求 = urllib.request.Request(网关地址 + quote("/网关/调用"), data=请求正文, headers={{"Content-Type":"application/json"}})
             try:
                 with urllib.request.urlopen(请求, timeout=10) as 响应: 状态码, 正文 = 响应.status, 响应.read()
@@ -234,7 +246,7 @@ def 主函数(端口=45080, 自动打开=True):
                 状态码, 正文 = 错误.code, 错误.read()
             except (urllib.error.URLError, TimeoutError, OSError):
                 状态码 = 502; 正文 = json.dumps({{"成功":False,"错误码":"网关断开","错误说明":"网关不可访问"}}, ensure_ascii=False).encode()
-            self.send_response(状态码); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文)
+            self.send_response(状态码); self._CORS头(); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文)
     服务 = ThreadingHTTPServer(("127.0.0.1", 端口), 处理器); 地址 = f"http://127.0.0.1:{{服务.server_port}}"
     try:
         threading.Thread(target=服务.serve_forever, daemon=True).start(); print(f"独立项目已启动: {{地址}}")
