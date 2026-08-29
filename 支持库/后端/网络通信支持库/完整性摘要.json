@@ -93,7 +93,7 @@
     },
     {
       "路径": "请求/实现/网络请求.py",
-      "sha256": "7a0eebe09e0b24b7e89e0377ffebb73244f36b447ff6f6960dbbb510ece556b6"
+      "sha256": "21f813ebaddc2db89632e2abe1448da0234f74986cfd8f8ea4330a9fa08b5351"
     },
     {
       "路径": "请求/权限契约/权限契约.json",
@@ -101,11 +101,11 @@
     },
     {
       "路径": "请求/能力契约/参数契约.json",
-      "sha256": "24d3ecb0623d06f0fa1fe650adba5c622a8fbb625cce002dd494ec815cb49e26"
+      "sha256": "07310c72f03ddd4be8e1a6fe768b37252002b911aa741d13957f6e91c623dfa8"
     },
     {
       "路径": "请求/能力定义.json",
-      "sha256": "02fb74afb319111bbf92503e8d3d9e75da822f9522baee7cc53b71a762756eb3"
+      "sha256": "2830c2cdc03331774c40f36b54b696010c3a504f4851fea0f491a9ebf97a5a5c"
     },
     {
       "路径": "请求/能力数据/Agent查询数据.json",

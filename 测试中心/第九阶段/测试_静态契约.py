@@ -55,7 +55,7 @@ class Test契约编译(unittest.TestCase):
 
     def test_生成前端调用入口(self):
         产物 = 生成前端调用入口(self.契约)
-        self.assertIn("/网关/请求", 产物)
+        self.assertIn("/网关/调用", 产物)
         self.assertIn("示例.分割", 产物)
 
     def test_生成网关参数校验(self):

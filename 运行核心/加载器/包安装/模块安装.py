@@ -25,9 +25,17 @@ def 加载入口模块(声明: 包声明) -> Any:
         if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
             系统根 = _祖先
             break
-    入口路径 = Path(声明.来源路径).parent / 声明.入口
-    if not 入口路径.is_file():
-        入口路径 = 系统根 / 声明.入口
+    相对入口 = Path(声明.入口)
+    if 相对入口.is_absolute() or ".." in 相对入口.parts:
+        raise ValueError(f"模块入口路径越界: {声明.入口}")
+    包根 = Path(声明.来源路径).parent.resolve()
+    入口路径 = (包根 / 相对入口).resolve()
+    使用系统根回退 = False
+    if not 入口路径.is_file() or not 入口路径.is_relative_to(包根):
+        入口路径 = (系统根 / 相对入口).resolve()
+        使用系统根回退 = True
+    if 使用系统根回退 and not 入口路径.is_relative_to(系统根.resolve()):
+        raise ValueError(f"模块入口路径越界: {声明.入口}")
     if not 入口路径.is_file():
         raise FileNotFoundError(f"模块 {声明.包id} 缺少入口文件: {声明.入口}")
     模块名 = f"模块运行时_{声明.包id.replace('.', '_')}"

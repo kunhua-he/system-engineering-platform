@@ -161,8 +161,13 @@ def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = N
                 return 结果.成功结果({"状态码": 状态码, "响应头": 响应头,
                                         "响应文本": 响应文本, "错误信息": ""})
         except HTTPError as 错误:
-            return 结果.成功结果({"状态码": 错误.code, "响应头": {}, "响应文本": "",
-                                    "错误信息": f"网络失败: {错误.reason}"})
+            # HTTP 4xx/5xx 是远端请求失败，不能包装成成功结果；否则模块
+            # 会把服务端拒绝、鉴权失败或网关错误误判为业务成功。
+            return 结果.失败(
+                "HTTP错误", f"HTTP {错误.code}: {错误.reason}",
+                来源="网络请求", 可重试=错误.code >= 500,
+                详情={"状态码": 错误.code},
+            )
         except TimeoutError:
             return 结果.失败("网络超时", "网络请求超时", 来源="网络请求")
         except URLError as 错误:
@@ -212,13 +217,16 @@ def 上传文件(*, 地址: str = None, 文件路径: str = None, 字段名: str
 
 def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dict = None,
              超时秒: float = 默认超时秒, 允许回环: bool = False,
-             代理: str = None, SSL验证: bool = None) -> 结果:
+             代理: str = None, SSL验证: bool = None,
+             最大字节数: int = 默认最大字节数) -> 结果:
     """从 URL 下载文件（流式写入，适配大文件）。返回 {状态码, 文件路径, 字节数}。"""
     try:
         if not isinstance(地址, str) or 地址.strip() == "":
             return 结果.失败("参数不合法", "地址为空", 来源="网络请求")
         if not isinstance(保存路径, str) or not 保存路径.strip():
             return 结果.失败("参数不合法", "保存路径为空", 来源="网络请求")
+        if isinstance(最大字节数, bool) or not isinstance(最大字节数, int) or 最大字节数 <= 0:
+            return 结果.失败("参数不合法", "最大字节数必须是正整数", 来源="网络请求")
         地址 = 编码中文地址(地址)
         _校验协议与SSRF(地址, 允许回环)
 
@@ -253,8 +261,19 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
                         块 = 响应.read(65536)
                         if not 块:
                             break
-                        f.write(块)
                         字节数 += len(块)
+                        if 字节数 > 最大字节数:
+                            # 超限时删除截断文件，避免调用方误把部分内容当成
+                            # 成功制品继续处理。
+                            try:
+                                os.unlink(保存路径)
+                            except OSError:
+                                pass
+                            return 结果.失败(
+                                "响应超限", f"下载内容超过上限 {最大字节数} 字节",
+                                来源="网络请求",
+                            )
+                        f.write(块)
                 return 结果.成功结果({"状态码": 状态码, "文件路径": 保存路径, "字节数": 字节数,
                                         "错误信息": ""})
         except HTTPError as 错误:

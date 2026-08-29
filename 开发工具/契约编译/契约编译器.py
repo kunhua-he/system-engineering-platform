@@ -99,10 +99,10 @@ def 生成前端调用入口(契约: dict[str, Any]) -> str:
     return f'''// {生成标记}
 // 契约编译产物：{能力id} 前端调用入口（浏览器交互提供者使用）
 async function 调用{能力id.split(".")[-1]}({参数对象行}) {{
-    const 响应 = await fetch(网关地址 + "/网关/请求", {{
+    const 响应 = await fetch(网关地址 + "/网关/调用", {{
         method: "POST",
         headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify({{ 操作: "调用能力", 能力id: "{能力id}", 参数: {{ {参数对象行} }} }})
+        body: JSON.stringify({{ 能力id: "{能力id}", 参数: {{ {参数对象行} }} }})
     }});
     return 响应.json();
 }}

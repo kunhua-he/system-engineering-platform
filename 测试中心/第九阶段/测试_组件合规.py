@@ -36,7 +36,7 @@ def 建合规组件() -> Path:
         "返回": "普通返回", "错误码": ["参数不合法", "内部错误"],
     }, ensure_ascii=False), encoding="utf-8")
     (目录 / "依赖契约" / "依赖契约.json").write_text(
-        json.dumps({"依赖": [{"包id": "支持库.后端.文件系统支持库", "版本": "1.0.0"}]}, ensure_ascii=False), encoding="utf-8")
+        json.dumps({"依赖": [{"包id": "支持库.后端.文件系统支持库.文件操作", "版本": "1.0.0"}]}, ensure_ascii=False), encoding="utf-8")
     (目录 / "配置契约" / "配置契约.json").write_text(
         json.dumps({"默认编码": "utf-8"}, ensure_ascii=False), encoding="utf-8")
     (目录 / "权限契约" / "权限契约.json").write_text(

@@ -164,11 +164,11 @@ class 搜索14字段测试(unittest.TestCase):
     def test_真实Pillow契约字段完整(self):
         结果 = 搜索公开能力(项目根, "解码图像", 10)
         目标 = next((能力 for 能力 in 结果
-                     if 能力["能力id"] == "图像解码.解码图像"), None)
+                     if 能力["能力id"] == "图像处理支持库.图像解码.解码图像"), None)
         self.assertIsNotNone(目标)
         self.assertEqual("1.0.0", 目标["版本"])
         self.assertIn("格式未知", 目标["错误码"])
-        self.assertIn("图像解码.解码图像", 目标["调用示例"])
+        self.assertIn("图像处理支持库.图像解码.解码图像", 目标["调用示例"])
         参数字典 = {参数["名称"]: 参数 for 参数 in 目标["参数类型"]}
         self.assertEqual("字节集型", 参数字典["字节"]["类型"])
         self.assertEqual(60, 参数字典["超时秒"]["默认值"])

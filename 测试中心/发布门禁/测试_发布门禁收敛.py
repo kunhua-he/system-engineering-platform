@@ -250,6 +250,21 @@ class Test发布门禁收敛(unittest.TestCase):
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 
+    def test_英文命名扫描覆盖全部正式目录(self) -> None:
+        """漏扫的正式层放入英文函数时必须被门禁发现。"""
+        from 开发工具.发布门禁 import 运行发布门禁 as 门禁
+        临时根 = Path(tempfile.mkdtemp(prefix="门禁英文边界_"))
+        try:
+            (临时根 / "启动监督器").mkdir()
+            (临时根 / "启动监督器" / "越界.py").write_text(
+                "def main():\n    return 1\n", encoding="utf-8")
+            with patch.object(门禁, "系统根", 临时根):
+                结果 = 门禁._扫描英文函数命名()
+            self.assertIn("越界.py", 结果)
+            self.assertIn("main", 结果)
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

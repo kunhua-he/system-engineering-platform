@@ -29,6 +29,8 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
 
     def setup(self):
         super().setup()
+        # 在解析请求头和读取正文前即设置硬截止，防止慢请求头耗尽线程/FD。
+        self.connection.settimeout(10.0)
         with type(self).连接锁:
             type(self).活动连接数 += 1
 

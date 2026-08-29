@@ -18,7 +18,6 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 支持库.适配层.pdfplumber提供者 import 解析PDF, 提取表格
-from 支持库.适配层.pdfplumber提供者.实现 import PDF文本表格 as 实现模块
 
 
 def _生成文本PDF(路径: Path, 页数: int = 2) -> Path:
@@ -120,7 +119,7 @@ class Testpdfplumber提供者(unittest.TestCase):
     def test_提供者禁用返回提供者不可用(self):
         with mock.patch.dict(sys.modules, {"pdfplumber": None}), \
                 mock.patch.dict("os.environ", {"pdfplumber提供者_禁用库": "pdfplumber"}), \
-                mock.patch.object(实现模块, "_提供者缓存", None):
+                mock.patch("支持库.适配层.pdfplumber提供者.实现.PDF文本表格._提供者缓存", None):
             结果 = 解析PDF(str(self.文本PDF))
         self.assertEqual(结果.错误码, "提供者不可用")
         self.assertTrue(结果.可重试)
@@ -131,7 +130,7 @@ class Testpdfplumber提供者(unittest.TestCase):
             import time
             time.sleep(30)
             return {"块列表": []}
-        with mock.patch.object(实现模块, "_解析为字典", side_effect=挂起解析):
+        with mock.patch("支持库.适配层.pdfplumber提供者.实现.PDF文本表格._解析为字典", side_effect=挂起解析):
             结果 = 解析PDF(str(self.文本PDF), 超时秒=0.2)
         self.assertEqual(结果.错误码, "超时")
         self.assertTrue(结果.可重试)

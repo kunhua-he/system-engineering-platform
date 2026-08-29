@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -71,6 +72,9 @@ class 独立进程:
         self.退出码: int | None = None
         self.日志列表: list[str] = []
         self._读取缓冲 = b""  # os.read 直读内核的行缓冲（绕开 TextIOWrapper 预读）
+        # JSON 行协议是一问一答；同一 Provider 进程不能让多个线程交叉
+        # 写 stdin/读 stdout，否则迟到响应会被下一请求消费。
+        self._通信锁 = threading.RLock()
 
     def _确定解释器(self) -> str:
         """确定子进程解释器；声明提供者环境时失败必须阻断，禁止回退。"""
@@ -176,12 +180,13 @@ class 独立进程:
         return False, f"启动超时（> {self.启动超时秒} 秒）"
 
     def _发送请求(self, 请求: dict) -> dict:
-        if self.进程 is None or self.进程.poll() is not None:
-            raise ConnectionError("进程未运行")
-        self.进程.stdin.write(json.dumps(请求, ensure_ascii=False) + "\n")
-        self.进程.stdin.flush()
-        行 = self._读取一行(self.调用超时秒)
-        return json.loads(行)
+        with self._通信锁:
+            if self.进程 is None or self.进程.poll() is not None:
+                raise ConnectionError("进程未运行")
+            self.进程.stdin.write(json.dumps(请求, ensure_ascii=False) + "\n")
+            self.进程.stdin.flush()
+            行 = self._读取一行(self.调用超时秒)
+            return json.loads(行)
 
     def 调用(self, *, 能力id: str, 参数: dict | None = None,
              契约版本: str = "1.0.0") -> 进程调用结果:

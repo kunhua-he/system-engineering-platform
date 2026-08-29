@@ -1,7 +1,7 @@
 """psycopg/psycopg2 数据库提供者测试。
 
 覆盖：缺驱动 → 提供者不可用；连接串非法 → 参数不合法；超时非法 → 参数不合法；
-有真实 PostgreSQL（环境变量 PG测试连接串 或本机 5432）时验证 连接/查询/事务。
+有真实 PostgreSQL（环境变量 PG测试连接串 或本机 54320）时验证 连接/查询/事务。
 驱动缺失必须明确失败（不 skip）；真实连接用例用 skipUnless。
 """
 
@@ -15,7 +15,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[3]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-测试连接串 = os.environ.get("PG测试连接串") or "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+测试连接串 = os.environ.get("PG测试连接串") or "postgresql://postgres:postgres@127.0.0.1:54320/postgres"
 
 
 def _驱动可用(模块名: str) -> bool:
@@ -37,13 +37,13 @@ class Testpsycopg提供者(unittest.TestCase):
 
     def test_超时非法(self):
         from 支持库.适配层.psycopg提供者.实现.提供者 import 连接
-        结果 = 连接("postgresql://u@127.0.0.1:5432/db", 超时秒=0)
+        结果 = 连接("postgresql://u@127.0.0.1:54320/db", 超时秒=0)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_SQL非法(self):
         from 支持库.适配层.psycopg提供者.实现.提供者 import 查询
-        结果 = 查询("postgresql://u@127.0.0.1:5432/db", "")
+        结果 = 查询("postgresql://u@127.0.0.1:54320/db", "")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
@@ -53,7 +53,7 @@ class Testpsycopg提供者(unittest.TestCase):
         原可用 = 模块._驱动可用
         模块._驱动可用 = False
         try:
-            结果 = 模块.连接("postgresql://u@127.0.0.1:5432/db")
+            结果 = 模块.连接("postgresql://u@127.0.0.1:54320/db")
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
         finally:
@@ -86,7 +86,7 @@ class Testpsycopg2提供者(unittest.TestCase):
         原可用 = 模块._驱动可用
         模块._驱动可用 = False
         try:
-            结果 = 模块.连接("postgresql://u@127.0.0.1:5432/db")
+            结果 = 模块.连接("postgresql://u@127.0.0.1:54320/db")
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
         finally:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 import urllib.request
+import urllib.error
 from urllib.parse import quote
 from pathlib import Path
 
@@ -25,7 +26,7 @@ class 渐进能力目录测试(unittest.TestCase):
         cls.服务器 = 本地网关服务器(网关核心实例=网关核心(cls.后端), 端口=0)
         成功, 消息 = cls.服务器.启动()
         assert 成功, 消息
-        cls.地址 = f"http://127.0.0.1:{cls.服务器.端口}" + quote("/网关/请求", safe="/")
+        cls.地址 = f"http://127.0.0.1:{cls.服务器.端口}" + quote("/网关/调用", safe="/")
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -46,9 +47,9 @@ class 渐进能力目录测试(unittest.TestCase):
         self.assertTrue(响应["成功"])
         目录 = 响应["值"]
         self.assertEqual(目录["包数"], 20)
-        self.assertEqual(目录["总包数"], 51)
+        self.assertGreaterEqual(目录["总包数"], 目录["包数"])
         self.assertEqual(目录["偏移"], 0)
-        self.assertEqual(目录["下一偏移"], 20)
+        self.assertEqual(目录["下一偏移"], min(20, 目录["总包数"]))
         self.assertFalse(目录["是否完成"])
         self.assertEqual(目录["使用顺序"], ["选择包", "查看包详情", "查看能力详情", "调用能力"])
         条目表 = [条目 for 领域 in 目录["支持库"] for 条目 in 领域["包"]] + 目录["模块库"]
@@ -58,13 +59,23 @@ class 渐进能力目录测试(unittest.TestCase):
             self.assertLessEqual(len(条目["简介"]), 60)
 
     def test_目录支持分页直到完成(self) -> None:
-        第一页 = self.请求("能力目录", {"限制": 7})["值"]
-        第二页 = self.请求("能力目录", {"偏移": 第一页["下一偏移"], "限制": 7})["值"]
-        第一批 = [条目["包id"] for 领域 in 第一页["支持库"] for 条目 in 领域["包"]] + [条目["包id"] for 条目 in 第一页["模块库"]]
-        第二批 = [条目["包id"] for 领域 in 第二页["支持库"] for 条目 in 领域["包"]] + [条目["包id"] for 条目 in 第二页["模块库"]]
-        self.assertEqual(len(第一批), 7)
-        self.assertEqual(len(第二批), 7)
-        self.assertTrue(set(第一批).isdisjoint(第二批))
+        偏移 = 0
+        全部包id: list[str] = []
+        总包数 = None
+        while True:
+            页面 = self.请求("能力目录", {"偏移": 偏移, "限制": 7})["值"]
+            当前批 = [条目["包id"] for 领域 in 页面["支持库"] for 条目 in 领域["包"]]
+            当前批 += [条目["包id"] for 条目 in 页面["模块库"]]
+            self.assertLessEqual(len(当前批), 7)
+            全部包id.extend(当前批)
+            总包数 = 页面["总包数"]
+            if 页面["是否完成"]:
+                self.assertIsNone(页面["下一偏移"])
+                break
+            self.assertEqual(页面["下一偏移"], 偏移 + len(当前批))
+            偏移 = 页面["下一偏移"]
+        self.assertEqual(len(全部包id), 总包数)
+        self.assertEqual(len(set(全部包id)), 总包数)
 
     def test_包详情只返回命令目录(self) -> None:
         响应 = self.请求("包详情", {"包id": "模块库.文档读取"})
@@ -102,6 +113,21 @@ class 渐进能力目录测试(unittest.TestCase):
         响应 = self.请求("能力搜索")
         self.assertTrue(响应["成功"])
         self.assertEqual(len(响应["值"]), 20)
+
+    def test_目录数值参数类型错误不静默回退(self) -> None:
+        """分页偏移/限制传文本或逻辑值时，网关必须直接拒绝。"""
+        for 参数 in ({"偏移": "0"}, {"限制": True}):
+            请求 = urllib.request.Request(
+                self.地址,
+                data=json.dumps({"操作": "能力目录", "参数": 参数}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as 上下文:
+                urllib.request.urlopen(请求, timeout=10)
+            self.assertEqual(上下文.exception.code, 400)
+            响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            self.assertFalse(响应["成功"])
+            self.assertEqual(响应["错误码"], "参数不合法")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import os
 import socket
 import sys
@@ -89,7 +90,7 @@ def 任务主动崩溃(参数: dict) -> None:
 
 def 发送网关请求(地址: str, 数据: dict) -> tuple[int, dict]:
     请求 = urllib.request.Request(
-        地址 + "/%E7%BD%91%E5%85%B3/%E8%AF%B7%E6%B1%82",
+        地址 + "/%E7%BD%91%E5%85%B3/%E8%B0%83%E7%94%A8",
         data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
@@ -230,6 +231,7 @@ class TestHTTP流式(unittest.TestCase):
         self.assertTrue(等待条件(lambda: 通道.结束, 0.5), "流式调用未进入完成终态")
         self.assertEqual([项["事件类型"] for 项 in 通道.事件队列],
                          ["首个事件", "中间事件", "中间事件", "完成事件"])
+        self.assertTrue(等待条件(lambda: not 管理器.通道表), "终态通道未自动清理注册引用")
 
     def test_生成器异常产生失败终态(self):
         def 坏生成器():
@@ -239,6 +241,15 @@ class TestHTTP流式(unittest.TestCase):
         通道 = HTTP流式管理器().开始(能力id="流式.失败", 事件生成函数=坏生成器)
         self.assertTrue(等待条件(lambda: 通道.结束, 0.5), "异常流未进入失败终态")
         self.assertEqual(通道.事件队列[-1]["事件类型"], "失败事件")
+
+    def test_结束回调异常仍自动清理通道(self):
+        def 坏回调(_原因):
+            raise RuntimeError("回调故障")
+
+        管理器 = HTTP流式管理器()
+        通道 = 管理器.开始(能力id="流式.回调故障", 事件生成函数=lambda: iter(()), 结束回调=坏回调)
+        self.assertTrue(等待条件(lambda: 通道.结束, 0.5))
+        self.assertTrue(等待条件(lambda: not 管理器.通道表), "结束回调异常导致通道残留")
 
     def test_客户端断开清除队列与注册引用(self):
         管理器 = HTTP流式管理器()
@@ -320,6 +331,68 @@ class Test真实HTTP事件流(unittest.TestCase):
         self.assertEqual(事件列表[-1]["事件类型"], "完成事件")
         self.assertTrue(等待条件(lambda: not self.服务器.管理器.通道表),
                         "HTTP 响应完成后服务端仍残留流式通道")
+
+    def _原始请求(self, 方法, 路径, 正文, 类型="application/json"):
+        请求 = urllib.request.Request(
+            self.地址 + 路径, data=正文, method=方法,
+            headers={"Content-Type": 类型},
+        )
+        try:
+            with urllib.request.urlopen(请求, timeout=2) as 响应:
+                return 响应.status, 响应.headers.get_content_type(), json.loads(响应.read())
+        except urllib.error.HTTPError as 错误:
+            with 错误:
+                return 错误.code, 错误.headers.get_content_type(), json.loads(错误.read())
+
+    def test_畸形JSON拒绝且不启动能力(self):
+        状态码, 类型, 数据 = self._原始请求("POST", "/%E7%BD%91%E5%85%B3/%E6%B5%81%E5%BC%8F", "{坏".encode())
+        self.assertEqual((状态码, 类型), (400, "application/json"))
+        self.assertEqual(数据["错误码"], "参数不合法")
+        self.assertFalse(self.服务器.管理器.通道表)
+
+    def test_非有限数和超大配额拒绝(self):
+        路径 = "/%E7%BD%91%E5%85%B3/%E6%B5%81%E5%BC%8F"
+        for 字段值 in ("NaN", "Infinity", "-Infinity"):
+            正文 = (f'{{"能力id":"流式.正常","最大持续秒":{字段值}}}').encode()
+            状态码, _, 数据 = self._原始请求("POST", 路径, 正文)
+            self.assertEqual(状态码, 400)
+            self.assertEqual(数据["错误码"], "参数不合法")
+        状态码, _, 数据 = self._原始请求(
+            "POST", 路径, '{"能力id":"流式.正常","最大事件数":10001}'.encode())
+        self.assertEqual((状态码, 数据["错误码"]), (400, "参数不合法"))
+
+    def test_GET返回JSON方法错误而非HTML(self):
+        状态码, 类型, 数据 = self._原始请求("GET", "/%E7%BD%91%E5%85%B3/%E6%B5%81%E5%BC%8F", None)
+        self.assertEqual((状态码, 类型), (405, "application/json"))
+        self.assertEqual(数据["错误码"], "方法不允许")
+
+    def test_真实客户端断开在无新事件时也清理通道(self):
+        门 = threading.Event()
+
+        def 长时间等待生成器(_参数):
+            yield {"片段": "首事件"}
+            门.wait(5)
+
+        能力id = "流式.真实断开清理"
+        self.服务器.注册能力(能力id, 长时间等待生成器)
+        请求id = "真实断开请求"
+        正文 = json.dumps({"能力id": 能力id, "请求id": 请求id}).encode("utf-8")
+        套接字 = socket.create_connection(("127.0.0.1", self.服务器.端口), timeout=2)
+        套接字.sendall(
+            b"POST /%E7%BD%91%E5%85%B3/%E6%B5%81%E5%BC%8F HTTP/1.1\r\n"
+            b"Host: 127.0.0.1\r\nContent-Type: application/json\r\n"
+            b"Connection: close\r\nContent-Length: " + str(len(正文)).encode() + b"\r\n\r\n" + 正文
+        )
+        套接字.recv(4096)  # 读取响应头及首事件（首事件可能与响应头合并返回）
+        套接字.shutdown(socket.SHUT_RDWR)
+        套接字.close()
+        try:
+            self.assertTrue(
+                等待条件(lambda: self.服务器.管理器.查询(请求id) is None, 1.0),
+                "客户端断开后无新事件时通道仍残留",
+            )
+        finally:
+            门.set()
 
 
 class Test独立任务进程(unittest.TestCase):

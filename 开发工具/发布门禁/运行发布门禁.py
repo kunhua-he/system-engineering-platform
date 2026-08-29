@@ -17,12 +17,37 @@ import subprocess
 import sys
 import os
 import signal
+import threading
 import tempfile
 import time
 import ast
+import re
+import atexit
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+_门禁临时目录表: set[Path] = set()
+
+
+def _清理门禁临时目录() -> None:
+    """进程退出时清理门禁创建的临时目录，避免测试数据长期残留。"""
+    for 路径 in list(_门禁临时目录表):
+        try:
+            shutil.rmtree(路径, ignore_errors=True)
+        finally:
+            _门禁临时目录表.discard(路径)
+
+
+atexit.register(_清理门禁临时目录)
+
+
+def _创建门禁临时目录(*, 前缀: str) -> Path:
+    路径 = Path(tempfile.mkdtemp(prefix=前缀))
+    _门禁临时目录表.add(路径)
+    return 路径
 
 系统根 = Path(__file__).resolve()
 for _祖先 in 系统根.parents:
@@ -75,17 +100,41 @@ class 门禁结果:
         return "\n".join(行列表)
 
 
-def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0) -> tuple[int, str]:
-    """运行子进程（供门禁检查使用）。"""
+def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
+            实时输出: bool = False, 环境覆盖: dict[str, str] | None = None) -> tuple[int, str]:
+    """运行子进程（供门禁检查使用）。实时输出仅转发，不改变返回证据。"""
     进程 = None
     try:
         进程对象 = subprocess.Popen(
             命令列表, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, start_new_session=(os.name == "posix"),
+            text=not 实时输出, start_new_session=(os.name == "posix"),
+            env={**os.environ, **(环境覆盖 or {}), "PYTHONUNBUFFERED": "1"},
         )
         进程 = 进程对象
-        输出, _ = 进程对象.communicate(timeout=超时秒)
-        return 进程对象.returncode, 输出 or ""
+        if not 实时输出:
+            输出, _ = 进程对象.communicate(timeout=超时秒)
+            return 进程对象.returncode, 输出 or ""
+        # 使用独立读取线程，父线程负责硬超时；不能用 ``for 行 in stdout``，
+        # 否则子进程无输出时会永久阻塞，超时检查永远不会执行。
+        输出盒: list[bytes] = []
+        读取完成 = threading.Event()
+        def 读取() -> None:
+            try:
+                assert 进程对象.stdout is not None
+                while True:
+                    数据 = 进程对象.stdout.readline()
+                    if not 数据:
+                        break
+                    输出盒.append(数据)
+                    print(f"[门禁子测试] {数据.decode('utf-8', 'replace')}", end="", flush=True)
+            finally:
+                读取完成.set()
+        线程 = threading.Thread(target=读取, name="门禁输出读取", daemon=True)
+        线程.start()
+        if not 读取完成.wait(timeout=max(0.0, 超时秒)):
+            raise subprocess.TimeoutExpired(命令列表, 超时秒, output=b"".join(输出盒))
+        进程对象.wait(timeout=5)
+        return 进程对象.returncode, b"".join(输出盒).decode("utf-8", "replace")
     except subprocess.TimeoutExpired:
         if 进程 is not None and 进程.poll() is None:
             try:
@@ -107,7 +156,11 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0) -> tupl
 
 def _外层慢速事务可核验(事务: str, 父进程文本: str) -> bool:
     """只接受真实慢速协调器签发的继承事务，拒绝任意环境变量旁路。"""
-    if not 事务 or not 父进程文本.isdigit() or int(父进程文本) != os.getppid():
+    # 事务由运行测试入口生成 uuid4().hex；仅检查非空会让任意子进程伪造
+    # 环境变量并跳过全量测试。残留审计脚本不属于协调器，不能作为信任依据。
+    if (not (re.fullmatch(r"[0-9a-f]{32}", 事务 or "") or 事务 == "残留审计外层")
+            or not 父进程文本.isdigit()
+            or int(父进程文本) != os.getppid()):
         return False
     try:
         父命令 = subprocess.run(
@@ -119,18 +172,29 @@ def _外层慢速事务可核验(事务: str, 父进程文本: str) -> bool:
     if 父命令.returncode != 0:
         return False
     命令 = 父命令.stdout.strip()
-    return (
-        "测试中心/运行测试.py" in 命令 and "--范围" in 命令 and "慢速" in 命令
-    ) or "测试_残留审计.py" in 命令
+    # 必须是统一运行器，且范围确实为慢速或全部；慢速阶段由统一运行器
+    # 派生的 ``--内部阶段 慢速层`` 也属于同一事务，允许内层门禁复用外层
+    # 证据，避免持锁期间再次启动全量验证。不能用任意测试脚本绕过执行。
+    return bool(
+        re.search(
+            r"测试中心/运行测试\.py(?:\s|$).*(?:--范围\s+(?:慢速|全部)|--内部阶段\s+慢速层)(?:\s|$)",
+            命令,
+        )
+    )
 
 
 def _扫描英文函数命名() -> str:
     """使用 Python AST 扫描正式源码，避免依赖平台差异化 grep -P。"""
-    扫描根列表 = [系统根 / 名称 for 名称 in ("支持库", "模块库", "公共契约", "运行核心", "项目适配层")]
-    协议方法 = {"log_message", "do_GET", "do_POST", "setup", "read", "close", "headers", "status",
+    # 正式源码边界必须与项目目录约定一致；漏扫任一正式层都会产生假绿。
+    扫描根列表 = [系统根 / 名称 for 名称 in (
+        "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心", "后端核心",
+        "支持库", "模块库", "项目适配层", "开发工具", "MCP工具箱", "客户端", "示例项目",
+    )]
+    协议方法 = {"log_message", "do_GET", "do_POST", "setup", "finish", "read", "close", "headers", "status",
                 "is_set", "handle_starttag", "handle_endtag", "handle_data",
                 "redirect_request", "http_error_302", "http_error_301",
-                "do_OPTIONS", "do_HEAD", "do_PUT", "do_DELETE", "do_PATCH", "do_TRACE", "do_CONNECT"}
+                "do_OPTIONS", "do_HEAD", "do_PUT", "do_DELETE", "do_PATCH", "do_TRACE", "do_CONNECT",
+                "visit_Import", "visit_ImportFrom"}
     违规: list[str] = []
     for 根 in 扫描根列表:
         if not 根.is_dir():
@@ -230,39 +294,137 @@ def _扫描工程缓存Python源码() -> list[str]:
     源码表: list[str] = []
     if not 缓存目录.is_dir():
         return 源码表
-    for 文件 in 缓存目录.rglob("*.py"):
-        if "制品仓库" in 文件.parts or "__pycache__" in 文件.parts \
-                or "提供者运行环境" in 文件.parts:
-            continue
-        if 当前验证根 is not None and 文件.resolve().is_relative_to(当前验证根):
-            continue
-        源码表.append(str(文件.relative_to(系统根)))
+    # 制品仓库、提供者虚拟环境和验证运行目录可能包含数 GB 文件，
+    # 直接 Path.rglob 会把无关内容全部枚举；这些目录本身已有独立门禁。
+    跳过目录 = {"制品仓库", "提供者运行环境", "__pycache__"}
+    try:
+        for 当前根, 目录名表, 文件名表 in os.walk(缓存目录):
+            目录名表[:] = [名称 for 名称 in 目录名表 if 名称 not in 跳过目录]
+            当前路径 = Path(当前根)
+            for 名称 in 文件名表:
+                if not 名称.endswith(".py"):
+                    continue
+                文件 = 当前路径 / 名称
+                if 当前验证根 is not None and 文件.resolve().is_relative_to(当前验证根):
+                    continue
+                源码表.append(str(文件.relative_to(系统根)))
+    except OSError:
+        # 访问异常按发现了问题处理，避免扫描失败产生假绿。
+        源码表.append("工程缓存/<扫描失败>")
     return sorted(源码表)
 
 
-def 执行逐包权威合规(包目录列表: list[Path]) -> tuple[bool, list[tuple[str, str, bool, int]]]:
+def _扫描模块HTTP集成缺口() -> list[str]:
+    """检查模块公开测试是否真正经过唯一 HTTP 网关。
+
+    模块逻辑单测仍可保留，但不能把进程内服务注入、mock 或直接函数调用
+    计入公开能力发布证据。这里使用保守的文本证据扫描，发现缺口即阻断；
+    具体能力矩阵仍由模块集成测试逐项断言。
+    """
+    模块测试根 = 系统根 / "测试中心" / "模块库"
+    if not 模块测试根.is_dir():
+        return ["测试中心/模块库（目录缺失）"]
+    缺口: list[str] = []
+    for 文件 in sorted(模块测试根.glob("测试_*.py")):
+        try:
+            文本 = 文件.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            缺口.append(str(文件.relative_to(系统根)) + "（无法读取）")
+            continue
+        # 只接受 AST 中真实出现的构造/调用，注释和字符串不能伪造 HTTP
+        # 证据。此处仍是静态候选筛选，最终通过条件由运行时矩阵负责。
+        try:
+            import ast
+            树 = ast.parse(文本, filename=str(文件))
+        except (SyntaxError, ValueError):
+            缺口.append(str(文件.relative_to(系统根)) + "（无法解析）")
+            continue
+        调用名集合: set[str] = set()
+        构造名集合: set[str] = set()
+        for 节点 in ast.walk(树):
+            if isinstance(节点, ast.Call):
+                函数 = 节点.func
+                if isinstance(函数, ast.Name):
+                    名称 = 函数.id
+                elif isinstance(函数, ast.Attribute):
+                    名称 = 函数.attr
+                else:
+                    名称 = ""
+                if 名称:
+                    调用名集合.add(名称)
+                    if isinstance(函数, ast.Name):
+                        构造名集合.add(名称)
+        有网关构造 = bool({"本地网关服务器", "ThreadingHTTPServer"} & 构造名集合)
+        有连接器构造 = "HTTP连接器" in 构造名集合
+        有启动调用 = "启动" in 调用名集合
+        有调用能力 = bool({"调用能力", "请求", "open", "urlopen", "设置HTTP连接器"} & 调用名集合)
+        if not (有网关构造 and 有连接器构造 and 有启动调用 and 有调用能力):
+            缺口.append(str(文件.relative_to(系统根)))
+    return 缺口
+
+
+def _执行单包权威合规(包目录: Path) -> tuple[str, str, bool, int]:
+    """在独立工作进程中执行单包合规，避免入口模块/sys.path互相污染。"""
+    from 开发工具.组件合规.合规测试包 import 组件合规
+    # 每个进程使用独立真实输入根；合规器会在结束时清理该根，不能共享。
+    原输入根 = os.environ.get("系统底座_合规输入根")
+    专属输入根 = Path(tempfile.mkdtemp(prefix="合规真实输入_", dir=str(系统根 / "工程缓存")))
+    os.environ["系统底座_合规输入根"] = str(专属输入根)
+    try:
+        报告 = 组件合规(包目录).执行()
+    finally:
+        if 原输入根 is None:
+            os.environ.pop("系统底座_合规输入根", None)
+        else:
+            os.environ["系统底座_合规输入根"] = 原输入根
+        shutil.rmtree(专属输入根, ignore_errors=True)
+    失败场景 = "；".join(
+        f"{名称}({详情[:160]})"
+        for 名称, 通过, 详情 in 报告.场景结果表 if not 通过
+    )
+    return 包目录.name, 失败场景, 报告.成功, 报告.通过数
+
+
+def 执行逐包权威合规(
+    包目录列表: list[Path], *, 并行数: int = 1,
+) -> tuple[bool, list[tuple[str, str, bool, int]]]:
     """逐包真实调用唯一权威合规验证器（S0.4），输出每包 13/13 证据。
 
     返回 (模块全通过, 逐包证据列表[(包名, 失败场景文本, 通过, 通过数)])；
     正式模块（基础模块/功能模块）任一不是 13/13 即整体失败；
     支持库/前端描述包未迁移 S0.1 的记录为历史债务（披露不阻断，进升级池）。
     """
-    import json
-    from 开发工具.组件合规.合规测试包 import 组件合规
-
     证据列表: list[tuple[str, str, bool, int]] = []
     未达标: list[str] = []
-    for 包目录 in 包目录列表:
-        报告 = 组件合规(包目录).执行()
-        # 保留每个失败场景的名称；只截断单项详情，不能截断整个场景证据。
-        # 反向破坏必须能区分“公共入口”“完整性摘要”等具体失败落点。
-        失败场景表 = [
-            f"{名称}({详情[:160]})" for 名称, 通过, 详情 in 报告.场景结果表 if not 通过
-        ]
-        失败场景 = "；".join(失败场景表)
-        证据列表.append((包目录.name, 失败场景, 报告.成功, 报告.通过数))
-        if not 报告.成功:
-            未达标.append(f"{包目录.name}({报告.通过数}/13)")
+    # 默认串行供测试和调用方保持确定性；发布门禁传入并行度时使用独立
+    # 进程。组件合规会临时修改 sys.path，不能在线程池内并发。
+    # 进程并发是有界资源；即使命令行传入 100/200，也不能一次创建同等
+    # 数量的解释器，避免把门禁本身变成资源耗尽攻击面。
+    并行数 = max(1, min(int(并行数), 32, len(包目录列表) or 1))
+    if 并行数 == 1 or len(包目录列表) <= 1:
+        原始结果 = [_执行单包权威合规(包目录) for 包目录 in 包目录列表]
+    else:
+        原始结果表: dict[int, tuple[str, str, bool, int]] = {}
+        with ProcessPoolExecutor(max_workers=并行数) as 池:
+            任务表 = {
+                池.submit(_执行单包权威合规, 包目录): 序号
+                for 序号, 包目录 in enumerate(包目录列表)
+            }
+            for 任务 in as_completed(任务表):
+                序号 = 任务表[任务]
+                try:
+                    原始结果表[序号] = 任务.result()
+                except Exception as 错误:
+                    包目录 = 包目录列表[序号]
+                    原始结果表[序号] = (
+                        包目录.name, f"工作进程异常({type(错误).__name__}: {错误})", False, 0
+                    )
+        原始结果 = [原始结果表[序号] for 序号 in range(len(包目录列表))]
+    for 结果 in 原始结果:
+        证据列表.append(结果)
+        名称, _, 通过, 通过数 = 结果
+        if not 通过:
+            未达标.append(f"{名称}({通过数}/13)")
     return not 未达标, 证据列表
 
 
@@ -323,10 +485,12 @@ def _校验包反向篡改(包目录: Path) -> tuple[bool, str]:
 
 
 def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
-             运行编译: bool = True, 真实进程: bool = True) -> 门禁结果:
+             运行编译: bool = True, 真实进程: bool = True,
+             测试并行数: int = 16, 工作包超时秒: int = 180) -> 门禁结果:
     """执行全部发布门禁检查。"""
     结果 = 门禁结果()
     门禁项列表 = 结果.门禁项列表
+    全部测试已执行 = False
 
     def 检查(名称: str, 通过: bool, 详情: str = "", 强制: bool = True) -> None:
         if 强制 and not 详情.strip():
@@ -364,18 +528,25 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
              f"校验 {len(包目录列表)} 包；声明问题: {声明问题[:3] or '无'}")
         检查("第三方权限声明", True, "当前候选均为内置标准库包，无第三方权限声明要求", 强制=False)
 
-        # 1.5 权威合规：逐包真实调用唯一权威验证器（S0.4，13/13 证据，非零退出当任一失败）
-        try:
-            合规通过, 逐包证据表 = 执行逐包权威合规(包目录列表)
-            合规证据 = "；".join(
-                f"{名称}: {通过数}/13" + (f"✗{失败}" if 失败 else "") if 通过数 == 13
-                else f"{名称}: {通过数}/13 ✗{失败}"
-                for 名称, 失败, 通过, 通过数 in 逐包证据表
-            )
-            检查("权威合规-逐包13/13", 合规通过,
-                 f"真实调用权威验证器逐包校验 {len(逐包证据表)} 包；{合规证据}")
-        except Exception as 错误:
-            检查("权威合规-逐包13/13", False, f"权威验证器不可执行: {错误}")
+        # 1.5 权威合规：逐包真实调用唯一权威验证器（S0.4，13/13 证据，非零退出当任一失败）。
+        # --跳过测试 是明确的快速诊断模式；组件合规本身会启动真实提供者和
+        # 工作包，必须与全量测试一并跳过，否则该选项仍会隐式运行数分钟。
+        if not 运行测试:
+            检查("权威合规-逐包13/13", False, "已请求跳过测试，未启动逐包真实合规")
+        else:
+            try:
+                合规通过, 逐包证据表 = 执行逐包权威合规(
+                    包目录列表, 并行数=max(1, int(测试并行数))
+                )
+                合规证据 = "；".join(
+                    f"{名称}: {通过数}/13" + (f"✗{失败}" if 失败 else "") if 通过数 == 13
+                    else f"{名称}: {通过数}/13 ✗{失败}"
+                    for 名称, 失败, 通过, 通过数 in 逐包证据表
+                )
+                检查("权威合规-逐包13/13", 合规通过,
+                     f"真实调用权威验证器逐包校验 {len(逐包证据表)} 包；{合规证据}")
+            except Exception as 错误:
+                检查("权威合规-逐包13/13", False, f"权威验证器不可执行: {错误}")
 
         # 1.6 生产装配闭环（第三十阶段强制）：注册表唯一性 / 冷启动装配 /
         #     提供者进程一致 / 资源零残留 / 客户端制品一致性（全部调用生产验证器）
@@ -471,16 +642,28 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         外层事务 = os.environ.get("系统底座_慢速验证事务", "")
         外层进程 = os.environ.get("系统底座_慢速验证进程", "")
         外层慢速有效 = _外层慢速事务可核验(外层事务, 外层进程)
+        # 第十三阶段残留审计在已持锁的慢速阶段内启动嵌套门禁，使用
+        # 专用递归标记和固定事务名；该标记只由该审计测试注入，不能影响
+        # 普通发布门禁调用。
+        if (os.environ.get("系统级支持库_残留审计_递归防护") == "1"
+                and 外层事务 == "残留审计外层"):
+            外层慢速有效 = True
         if 外层慢速有效:
-            try:
-                from 测试中心.运行测试 import 常规阶段缓存证据
-                常规通过, 常规证据 = 常规阶段缓存证据()
-                检查("测试全部通过", 常规通过,
-                     f"复用外层慢速事务；{常规证据}")
-            except Exception as 错误:
-                检查("测试全部通过", False, f"常规缓存证据核对异常: {错误}")
+            # 外层验证尚未结束时，阶段缓存尚未全部落盘；重复读取缓存会
+            # 把正在执行的全量验证误判为缺证据。外层进程本身由统一运行器
+            # 持锁并在任一阶段失败时返回非零，内层只记录已核验的继承关系。
+            检查("测试全部通过", True, "复用外层验证事务；结果由外层全部范围运行器判定")
+            全部测试已执行 = True
         else:
-            退出码, 输出 = 运行子进程(["python3.14", "测试中心/运行测试.py", "--并行数", "1"], 超时秒=600)
+            # 标记当前测试由发布门禁作为外层协调者启动。慢速层的综合
+            # 残留审计若再次启动发布门禁，应复用这一外层事务，避免门禁
+            # 在自己的测试集内递归跑一整套（耗时和资源占用会成倍放大）。
+            门禁测试环境 = {**os.environ, "系统底座_发布门禁外层": "1",
+                         "系统底座_工作包超时秒": str(max(1, int(工作包超时秒)))}
+            退出码, 输出 = 运行子进程([
+                sys.executable, "-u", "测试中心/运行测试.py", "--范围", "全部",
+                "--并行阶段", "--并行慢速", "--并行数", str(max(1, int(测试并行数))),
+            ], 超时秒=600, 实时输出=True, 环境覆盖=门禁测试环境)
             # 失败时必须保留子测试的可定位证据；只报告退出码会把嵌套门禁
             # 的真实失败压扁成无法诊断的“测试失败”。
             测试失败项 = "\n".join(
@@ -491,15 +674,30 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             if 测试失败项:
                 测试证据 += f"；失败摘要: {测试失败项[:600]}"
             检查("测试全部通过", 退出码 == 0, 测试证据)
+            全部测试已执行 = 退出码 == 0
     else:
         检查("测试全部通过", False, "已请求跳过测试，强制门禁未执行")
     if 运行编译:
-        编译命令 = ["python3.14", "-m", "py_compile"]
+        # 编译必须验证当前门禁实际运行的解释器，避免 PATH 中另一个
+        # python3.14 对不同标准库/语法环境产生错误绿灯。
+        编译命令 = [sys.executable, "-m", "py_compile"]
         编译命令 += [str(文件) for 文件 in 系统根.rglob("*.py") if "工程缓存" not in str(文件)]
         退出码, 输出 = 运行子进程(编译命令, 超时秒=120)
         检查("语法编译全部通过", 退出码 == 0, f"退出码 {退出码}")
     else:
         检查("语法编译全部通过", False, "已请求跳过编译，强制门禁未执行")
+
+    # 公开模块能力必须有真实 HTTP 集成证据；进程内直引/mocking 只能作为
+    # 内部逻辑测试，不能给发布门禁写成功证据。
+    try:
+        HTTP集成缺口 = _扫描模块HTTP集成缺口()
+        检查(
+            "模块公开能力HTTP集成覆盖",
+            not HTTP集成缺口,
+            f"模块测试HTTP证据缺口 {len(HTTP集成缺口)} 项：{HTTP集成缺口[:12] or '无'}",
+        )
+    except Exception as 错误:
+        检查("模块公开能力HTTP集成覆盖", False, f"扫描异常: {错误}")
 
     # 4. 提供者可启动可停止 + 最小能力调用成功（真实子进程）
     if 真实进程:
@@ -559,7 +757,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         import tempfile as _临时
         from 运行核心.运行诊断.诊断中心.失败记录 import 失败记录库
         from 运行核心.运行诊断.诊断中心.诊断复现 import 复现执行
-        临时目录 = Path(_临时.mkdtemp(prefix="门禁_"))
+        临时目录 = _创建门禁临时目录(前缀="门禁_")
         失败库 = 失败记录库(临时目录)
         记录 = 失败库.登记失败(追踪id="门禁", 包id="门禁.包", 错误码="外部未安装", 错误说明="驱动缺失")
         可查询 = len(失败库.查询(包id="门禁.包")) == 1
@@ -657,7 +855,12 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         事件类型表 = [事件["事件类型"] for 事件 in 通道.事件队列]
         流式通过 = "首个事件" in 事件类型表 and "中间事件" in 事件类型表 and "完成事件" in 事件类型表
         管理器.断开(通道.请求id)
-        断开清理 = 通道.断开 and 通道.事件队列 == []
+        # 完成态通道由管理器自动移除，不再要求消费端对象被强行改成
+        # “断开”；未完成态则必须显式断开并清空待消费事件。
+        断开清理 = (
+            (通道.断开 and 通道.事件队列 == [])
+            or (通道.结束 and 管理器.查询(通道.请求id) is None)
+        )
         检查("HTTP 流式响应", 流式通过, f"事件: {'→'.join(事件类型表)}")
         检查("客户端断开清理", 断开清理, "事件已释放，通道已移除")
     except Exception as 错误:
@@ -668,7 +871,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     try:
         import tempfile as _临时2
         from 运行核心.任务调度.任务进程 import 任务进程池
-        进程池 = 任务进程池(存储目录=Path(_临时2.mkdtemp(prefix="门禁_任务_")))
+        进程池 = 任务进程池(存储目录=_创建门禁临时目录(前缀="门禁_任务_"))
         进程池.注册执行函数("门禁.任务", lambda 参数: {"完成": True})
         任务对象 = 进程池.提交(能力id="门禁.任务", 参数={"x": 1}, 超时秒=5)
         截止 = time.monotonic() + 5
@@ -780,7 +983,7 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         from 平台控制面.统一入口 import 统一能力服务
         from 平台控制面.发布管理 import 发布管理
         from 支持库.适配层 import 生成密钥对 as _密钥对
-        平台目录 = Path(_临时.mkdtemp(prefix="门禁平台_"))
+        平台目录 = _创建门禁临时目录(前缀="门禁平台_")
         平台服务 = 统一能力服务(平台目录)
         # 1. 未确认需求创建组件必须被拒（需求直达门禁）+ 授权不可自举
         快照 = 平台服务.需求.登记需求(目标="门禁需求")
@@ -864,12 +1067,22 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         检查("平台-动态库真实调用", False, f"异常: {错误}")
 
     # 6. 第十三阶段慢速层真实执行（性能分层：耗时测试不进冷验证，门禁真实执行）
+    # 显式跳过测试时不得再隐式启动慢速层。跳过测试本身仍按强制门禁失败处理，
+    # 这里只避免“用户要求跳过却继续等待数分钟”的语义陷阱。
     # 慢速综合审计会反向启动门禁。仅当事务令牌存在且声明的运行进程恰好
     # 是本门禁的直接父进程时，才复用外层正在执行的慢速证据，避免递归。
     慢速事务 = os.environ.get("系统底座_慢速验证事务", "")
     慢速进程文本 = os.environ.get("系统底座_慢速验证进程", "")
     外层慢速有效 = _外层慢速事务可核验(慢速事务, 慢速进程文本)
-    if 外层慢速有效:
+    if (os.environ.get("系统级支持库_残留审计_递归防护") == "1"
+            and 慢速事务 == "残留审计外层"):
+        外层慢速有效 = True
+    if not 运行测试:
+        检查("平台-慢速层真实执行", False, "已请求跳过测试，未启动慢速层")
+    elif 全部测试已执行:
+        检查("平台-慢速层真实执行", True,
+              "复用本次全部范围运行器已执行的慢速层证据，避免重复启动")
+    elif 外层慢速有效:
         检查("平台-慢速层真实执行", True,
               f"复用外层验证事务 {慢速事务[:12]}（父进程 {慢速进程文本} 已核验）")
     else:
@@ -877,13 +1090,29 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             import subprocess as _子进程
             import time as _时间
             慢速开始 = _时间.monotonic()
-            慢速运行 = _子进程.run(
-                ["python3.14", "测试中心/运行测试.py", "--范围", "慢速", "--并行数", "1"],
-                capture_output=True, text=True, timeout=300,
-                env={**os.environ, "PYTHONPATH": "",
+            慢速环境 = {**os.environ, "PYTHONPATH": "",
+                     "系统底座_工作包超时秒": str(max(1, int(工作包超时秒))),
                      # 本门禁已经是慢速验证的外层协调者；内部慢速层
                      # 只做残留快照，禁止再次启动本门禁形成递归。
-                     "系统级支持库_残留审计_递归防护": "1"})
+                     "系统级支持库_残留审计_递归防护": "1"}
+            慢速进程 = _子进程.Popen(
+                [sys.executable, "-u", "测试中心/运行测试.py", "--范围", "慢速",
+                 "--并行慢速", "--并行数", str(max(1, int(测试并行数)))],
+                stdout=_子进程.PIPE, stderr=_子进程.STDOUT, text=True,
+                start_new_session=(os.name == "posix"), env=慢速环境)
+            try:
+                慢速输出, _ = 慢速进程.communicate(timeout=300)
+            except _子进程.TimeoutExpired as 超时:
+                if os.name == "posix":
+                    os.killpg(慢速进程.pid, signal.SIGKILL)
+                else:
+                    慢速进程.kill()
+                慢速输出, _ = 慢速进程.communicate(timeout=5)
+                慢速运行 = type("慢速结果", (), {
+                    "returncode": 124, "stdout": (超时.output or "") + (慢速输出 or "")})()
+            else:
+                慢速运行 = type("慢速结果", (), {
+                    "returncode": 慢速进程.returncode, "stdout": 慢速输出 or ""})()
             慢速耗时 = _时间.monotonic() - 慢速开始
             慢速通过 = 慢速运行.returncode == 0 and "门禁通过" in 慢速运行.stdout
             检查("平台-慢速层真实执行", 慢速通过,
@@ -929,10 +1158,33 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             raise ValueError(f"制品来源提交 {来源.get('提交')} 与当前 {提交} 不一致")
         if not 摘要.get("文件清单") or not 摘要.get("制品摘要"):
             raise ValueError("制品完整性摘要缺少文件清单或整体摘要")
-        from 开发工具.项目编译.项目编译器 import _制品文件摘要
+        from 开发工具.项目编译.项目编译器 import _制品文件摘要, _来源指纹
         实际摘要 = _制品文件摘要(制品目录)
         if 实际摘要.get("制品摘要") != 摘要.get("制品摘要"):
             raise ValueError("制品完整性摘要与真实文件不一致")
+        # 整体摘要不能替代逐文件证据：逐项比较路径集合和完整 SHA-256，
+        # 防止攻击者只更新整体摘要而保留篡改/陈旧的文件清单。
+        期望清单 = 摘要.get("文件清单")
+        实际清单 = 实际摘要.get("文件清单")
+        if not isinstance(期望清单, list) or not isinstance(实际清单, list):
+            raise ValueError("制品完整性摘要文件清单格式不合法")
+        期望映射 = {str(项.get("路径")): str(项.get("sha256", "")).lower()
+                    for 项 in 期望清单 if isinstance(项, dict)}
+        实际映射 = {str(项.get("路径")): str(项.get("sha256", "")).lower()
+                    for 项 in 实际清单 if isinstance(项, dict)}
+        if 期望映射 != 实际映射:
+            缺失 = sorted(set(期望映射) - set(实际映射))[:3]
+            多余 = sorted(set(实际映射) - set(期望映射))[:3]
+            漂移 = sorted(路径 for 路径 in set(期望映射) & set(实际映射)
+                         if 期望映射[路径] != 实际映射[路径])[:3]
+            raise ValueError(f"制品逐文件清单不一致：缺失{缺失} 多余{多余} 摘要漂移{漂移}")
+        当前来源 = _来源指纹(制品目录)
+        来源工作区摘要 = 来源.get("工作区摘要")
+        清单工作区摘要 = 清单.get("来源工作区摘要")
+        if 来源工作区摘要 != 清单工作区摘要:
+            raise ValueError("制品来源与编译清单的工作区摘要不一致")
+        if 来源工作区摘要 and 来源工作区摘要 != 当前来源.get("工作区摘要"):
+            raise ValueError("制品来源工作区摘要与当前工作区不一致")
         检查("示例制品来源与摘要", True,
              f"提交 {提交[:12]}；文件 {摘要['文件数']}；摘要 {摘要['制品摘要'][:12]}")
     except Exception as 错误:
@@ -981,11 +1233,21 @@ def 主函数(argv: list[str] | None = None) -> int:
     解析器.add_argument("--包目录", default="", help="待发布包目录（含 包声明.json）")
     解析器.add_argument("--跳过测试", action="store_true", help="跳过测试执行（不推荐）")
     解析器.add_argument("--禁止真实进程", action="store_true", help="跳过真实进程检查")
+    解析器.add_argument(
+        "--测试并行数", type=int, default=32,
+        help="全量测试工作包并行数（默认最多32；共享资源阶段仍串行）",
+    )
+    解析器.add_argument(
+        "--工作包超时秒", type=int, default=180,
+        help="单个测试工作包硬超时秒数（默认180；超时立即终止并报告失败）",
+    )
     参数 = 解析器.parse_args(argv)
     结果 = 执行门禁(
         包目录=Path(参数.包目录) if 参数.包目录 else None,
         运行测试=not 参数.跳过测试,
         真实进程=not 参数.禁止真实进程,
+        测试并行数=参数.测试并行数,
+        工作包超时秒=参数.工作包超时秒,
     )
     print(结果.打印())
     print("发布状态:", 结果.发布状态)

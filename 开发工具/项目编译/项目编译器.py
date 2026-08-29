@@ -26,7 +26,7 @@ from 开发工具.项目编译.正式包索引 import 构建索引, 校验显式
 编译器版本 = "1.2.0"
 
 
-def _来源指纹() -> dict[str, str]:
+def _来源指纹(排除目录: Path | None = None) -> dict[str, str]:
     """记录编译输入对应的 Git 提交和工作区指纹，避免旧制品冒充当前源码。"""
     def 执行(命令: list[str]) -> str:
         try:
@@ -39,6 +39,19 @@ def _来源指纹() -> dict[str, str]:
 
     提交 = 执行(["git", "rev-parse", "HEAD"])
     状态 = 执行(["git", "status", "--porcelain=v1", "-z"])
+    if 排除目录 is not None:
+        try:
+            排除相对 = 排除目录.resolve().relative_to(系统根.resolve()).as_posix().rstrip("/") + "/"
+            条目 = []
+            for 项 in 状态.split("\0"):
+                if not 项:
+                    continue
+                路径 = 项[3:] if len(项) >= 4 and 项[2] == " " else 项
+                if not 路径.startswith(排除相对):
+                    条目.append(项)
+            状态 = "\0".join(条目)
+        except ValueError:
+            pass
     return {
         "提交": 提交 or "未知",
         "工作区摘要": hashlib.sha256(状态.encode("utf-8")).hexdigest(),
@@ -125,6 +138,12 @@ def _引用能力(项目目录: Path) -> tuple[set[str], set[str]]:
 
 
 def _复制目录(源: Path, 目标: Path) -> None:
+    # 编译输入必须闭合在源目录内；拒绝符号链接，避免 copytree 跟随链接
+    # 把源目录外的文件带入独立制品。
+    符号链接 = [路径 for 路径 in 源.rglob("*") if 路径.is_symlink()]
+    if 符号链接:
+        相对 = 符号链接[0].relative_to(源).as_posix()
+        raise ValueError(f"编译输入包含不允许的符号链接: {相对}")
     if 目标.exists(): shutil.rmtree(目标)
     shutil.copytree(源, 目标, ignore=shutil.ignore_patterns(*忽略目录, "*.pyc"))
 
@@ -161,7 +180,7 @@ def _生成HTML(页面: dict[str, Any]) -> str:
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title><style>body{{font-family:system-ui;max-width:900px;margin:24px auto;padding:0 20px;color:#1f2937}}.组件{{box-sizing:border-box;margin:8px;padding:8px;border:1px solid #d1d5db;border-radius:6px}}.容器{{min-height:80px;background:#f8fafc}}textarea{{padding:8px}}button{{padding:8px 18px;cursor:pointer}}pre{{white-space:pre-wrap;background:#f3f4f6;padding:10px;min-height:32px}}</style></head><body><h1 id="标题"></h1><main id="页面"></main><script>
 const 页面={数据},节点=new Map();document.title=页面.标题||'';document.querySelector('#标题').textContent=页面.标题||'';
 function 取值(v){{return typeof v==='string'&&v.startsWith('$')?(document.getElementById('输入-'+v.slice(1))||{{}}).value||'':v}}
-async function 调用(c,e,o){{const 能力id=e.能力id||c.属性?.能力id||'';if(!能力id){{o.textContent='未绑定能力';return}}const 参数={{}};for(const[k,v]of Object.entries(e.参数模板||c.属性?.参数模板||{{}}))参数[k]=取值(v);o.textContent='调用中...';try{{const r=await fetch('/api/call',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{能力id,参数}})}}),d=await r.json();o.textContent=d.成功?JSON.stringify(d.值,null,2):`${{d.错误码}}: ${{d.错误说明}}`;const id=c.属性?.结果组件id;if(d.成功&&id&&节点.get(id))节点.get(id).textContent=JSON.stringify(d.值)}}catch(x){{o.textContent='网关断开: '+x}}}}
+async function 调用(c,e,o){{const 能力id=e.能力id||c.属性?.能力id||'';if(!能力id){{o.textContent='未绑定能力';return}}const 参数={{}};for(const[k,v]of Object.entries(e.参数模板||c.属性?.参数模板||{{}}))参数[k]=取值(v);o.textContent='调用中...';try{{const r=await fetch('/网关/调用',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{能力id,参数}})}}),d=await r.json();o.textContent=d.成功?JSON.stringify(d.值,null,2):`${{d.错误码}}: ${{d.错误说明}}`;const id=c.属性?.结果组件id;if(d.成功&&id&&节点.get(id))节点.get(id).textContent=JSON.stringify(d.值)}}catch(x){{o.textContent='网关断开: '+x}}}}
 function 创建(c){{const a=c.属性||{{}},x=document.createElement('section');x.className='组件 '+(c.类型||'');x.dataset.组件id=c.组件id;x.style.marginLeft=(Number(a.左||0))+'px';x.style.marginTop=(Number(a.上||0))+'px';if(a.宽度)x.style.width=a.宽度+'px';if(a.高度)x.style.minHeight=a.高度+'px';let o=document.createElement('pre');o.textContent=String(a.文本||c.显示名称||c.组件id);if(c.类型==='编辑框'||c.类型==='输入框'){{x.textContent='';let i=document.createElement('textarea');i.id='输入-'+c.组件id;i.value=String(a.文本||'');i.placeholder=String(a.占位文本||'');x.append(i)}}else if(c.类型==='按钮'){{x.textContent='';let b=document.createElement('button');b.textContent=String(a.文本||c.显示名称||c.组件id);x.append(b,o);for(const e of c.事件||[])if(e.名称==='点击')b.onclick=()=>调用(c,e,o)}}else if(c.类型==='容器'){{x.textContent='';x.classList.add('容器')}}else x.append(o);节点.set(c.组件id,o);return x}}
 function 挂载(c,p){{const x=创建(c);p.append(x);for(const y of 页面.组件列表||[])if(y.父组件id===c.组件id)挂载(y,x)}}for(const c of 页面.组件列表||[])if(!c.父组件id)挂载(c,document.querySelector('#页面'));
 </script></body></html>'''
@@ -174,7 +193,7 @@ from __future__ import annotations
 import os, sys
 sys.dont_write_bytecode = True
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
-import argparse, json, threading, urllib.request, webbrowser
+import argparse, json, threading, urllib.error, urllib.request, webbrowser
 from urllib.parse import quote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -197,21 +216,25 @@ def 主函数(端口=45080, 自动打开=True):
             if self.path != "/": self.send_error(404); return
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(页面))); self.end_headers(); self.wfile.write(页面)
         def do_POST(self):
-            if self.path != "/api/call": self.send_error(404); return
-            长度 = min(int(self.headers.get("Content-Length", "0")), 1024 * 1024)
+            if self.path != "/网关/调用": self.send_error(404); return
             try:
+                长度 = int(self.headers.get("Content-Length", "-1"))
+                if 长度 < 0 or 长度 > 1024 * 1024: raise ValueError("请求体超过上限")
+                if "application/json" not in self.headers.get("Content-Type", "").lower(): raise ValueError("请求正文必须使用 JSON")
                 请求数据 = json.loads(self.rfile.read(长度).decode("utf-8"))
                 if not isinstance(请求数据, dict): raise ValueError("请求必须是对象")
-                请求数据.setdefault("操作", "调用能力")
                 请求正文 = json.dumps(请求数据, ensure_ascii=False).encode("utf-8")
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as 错误:
                 正文 = json.dumps({{"成功":False,"错误码":"参数不合法","错误说明":str(错误)}}, ensure_ascii=False).encode()
                 self.send_response(400); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文); return
-            请求 = urllib.request.Request(网关地址 + quote("/网关/请求"), data=请求正文, headers={{"Content-Type":"application/json"}})
+            请求 = urllib.request.Request(网关地址 + quote("/网关/调用"), data=请求正文, headers={{"Content-Type":"application/json"}})
             try:
-                with urllib.request.urlopen(请求, timeout=10) as 响应: 正文 = 响应.read()
-            except Exception as 错误: 正文 = json.dumps({{"成功":False,"错误码":"网关断开","错误说明":str(错误)}}, ensure_ascii=False).encode()
-            self.send_response(200); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文)
+                with urllib.request.urlopen(请求, timeout=10) as 响应: 状态码, 正文 = 响应.status, 响应.read()
+            except urllib.error.HTTPError as 错误:
+                状态码, 正文 = 错误.code, 错误.read()
+            except (urllib.error.URLError, TimeoutError, OSError):
+                状态码 = 502; 正文 = json.dumps({{"成功":False,"错误码":"网关断开","错误说明":"网关不可访问"}}, ensure_ascii=False).encode()
+            self.send_response(状态码); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文)
     服务 = ThreadingHTTPServer(("127.0.0.1", 端口), 处理器); 地址 = f"http://127.0.0.1:{{服务.server_port}}"
     try:
         threading.Thread(target=服务.serve_forever, daemon=True).start(); print(f"独立项目已启动: {{地址}}")
@@ -333,7 +356,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     )
     (启动器目录 / "__init__.py").write_text('"""独立项目运行入口。"""\n', encoding="utf-8")
     (启动器目录 / "启动网页.command").chmod(0o755)
-    来源 = _来源指纹()
+    来源 = _来源指纹(输出目录)
     清单 = {"制品类型": "独立项目", "编译器版本": 编译器版本, "项目id": 声明["项目id"],
            "来源目录": "编译输入项目", "能力引用": sorted(能力集合), "模块引用": sorted(选中模块),
            "支持库引用": sorted(选中支持库), "开发网关": "不包含",

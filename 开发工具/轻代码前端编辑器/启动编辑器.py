@@ -294,7 +294,23 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
                 self.send_error(404)
                 return
             try:
-                请求 = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 4 * 1024 * 1024)).decode("utf-8"))
+                # 编辑器接口只接受有界 Content-Length；拒绝 chunked/超长/短读，
+                # 避免请求错位和慢体连接长期占用线程。
+                if self.headers.get("Transfer-Encoding", "").strip():
+                    raise ValueError("暂不支持分块传输")
+                长度文本 = self.headers.get("Content-Length")
+                if 长度文本 is None:
+                    raise ValueError("缺少 Content-Length")
+                长度 = int(长度文本)
+                if not 0 <= 长度 <= 4 * 1024 * 1024:
+                    raise ValueError("请求体超过 4194304 字节上限")
+                self.connection.settimeout(10.0)
+                原始字节 = self.rfile.read(长度)
+                if len(原始字节) != 长度:
+                    raise ValueError("请求正文长度不足")
+                请求 = json.loads(原始字节.decode("utf-8"))
+                if not isinstance(请求, dict):
+                    raise ValueError("请求正文必须是 JSON 对象")
                 if 路径 == "/工程/请求":
                     操作 = str(请求.get("操作", ""))
                     当前 = 规范页面(json.loads(文件.read_text(encoding="utf-8"))) if 文件.is_file() else 规范页面({"工程id": 请求.get("工程id", ""), "修订号": 0, "组件列表": []})
@@ -372,7 +388,7 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
             except (ValueError, OSError, UnicodeDecodeError) as 错误:
                 响应 = {"成功": False, "错误码": "保存失败", "错误说明": str(错误)}
             正文 = json.dumps(响应, ensure_ascii=False).encode("utf-8")
-            self.send_response(200)
+            self.send_response(200 if 响应.get("成功") else 400)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(正文)))
             self.end_headers()

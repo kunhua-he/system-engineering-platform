@@ -348,7 +348,7 @@ class 权威状态:
                          (self.身份.最后心跳, self.身份.身份键()))
 
     # ---- 句柄 ----
-    def 保存句柄(self, *, 句柄id: str, 句柄类型: str, 资源id: str,
+    def 保存句柄(self, *, 句柄id: int, 句柄类型: str, 资源id: str,
                  项目id: str, 所有者: str, 状态: str, 版本: str,
                  进程身份键: str = "") -> None:
         连接 = self._连接()
@@ -361,7 +361,7 @@ class 权威状态:
                 (句柄id, 句柄类型, 资源id, 项目id, 所有者, 状态, 版本,
                  time.strftime("%Y-%m-%d %H:%M:%S"), "", "", 进程身份键))
 
-    def 读取句柄(self, 句柄id: str) -> dict[str, Any] | None:
+    def 读取句柄(self, 句柄id: int) -> dict[str, Any] | None:
         连接 = self._连接()
         行 = 连接.execute(
             "SELECT 句柄id, 句柄类型, 资源id, 项目id, 所有者, 状态, 版本, 创建时间, 失效时间, 失效原因, 进程身份键 "
@@ -374,7 +374,22 @@ class 权威状态:
             "失效时间": 行[8], "失效原因": 行[9], "进程身份键": 行[10],
         }
 
-    def 失效句柄(self, 句柄id: str, 原因: str) -> bool:
+    def 全部句柄(self, *, 仅有效: bool = False) -> list[dict[str, Any]]:
+        """读取句柄账本快照，供服务重启恢复；默认包含已失效记录。"""
+        连接 = self._连接()
+        条件 = " WHERE 状态='有效'" if 仅有效 else ""
+        结果 = []
+        for 行 in 连接.execute(
+            "SELECT 句柄id, 句柄类型, 资源id, 项目id, 所有者, 状态, 版本, 创建时间, 失效时间, 失效原因, 进程身份键 "
+            f"FROM 句柄{条件} ORDER BY 句柄id"
+        ):
+            结果.append({"句柄id": 行[0], "句柄类型": 行[1], "资源id": 行[2],
+                         "项目id": 行[3], "所有者": 行[4], "状态": 行[5],
+                         "版本": 行[6], "创建时间": 行[7], "失效时间": 行[8],
+                         "失效原因": 行[9], "进程身份键": 行[10]})
+        return 结果
+
+    def 失效句柄(self, 句柄id: int, 原因: str) -> bool:
         连接 = self._连接()
         with 连接:
             游标 = 连接.execute(
@@ -382,13 +397,30 @@ class 权威状态:
                 (time.strftime("%Y-%m-%d %H:%M:%S"), 原因, 句柄id))
             return 游标.rowcount > 0
 
+    def 失效句柄并记录证据(self, *, 句柄id: int, 资源id: str,
+                         类型: str, 原因: str, 版本: str) -> bool:
+        """在同一 SQLite 事务内更新句柄终态并写入回收证据。"""
+        连接 = self._连接()
+        时间 = time.strftime("%Y-%m-%d %H:%M:%S")
+        with 连接:
+            游标 = 连接.execute(
+                "UPDATE 句柄 SET 状态='已失效', 失效时间=?, 失效原因=? "
+                "WHERE 句柄id=? AND 状态='有效'", (时间, 原因, 句柄id))
+            if 游标.rowcount == 0:
+                return False
+            连接.execute(
+                "INSERT INTO 回收证据(证据id, 句柄id, 资源id, 类型, 失效原因, 时间, 版本) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex[:16], 句柄id, 资源id, 类型, 原因, 时间, 版本))
+            return True
+
     def 活跃句柄数(self) -> int:
         连接 = self._连接()
         return 连接.execute("SELECT COUNT(*) FROM 句柄 WHERE 状态='有效'").fetchone()[0]
 
     # ---- 租约 ----
     def 保存租约(self, *, 租约id: str, 资源id: str, 项目id: str, 所有者: str,
-                 句柄id: str, 空闲超时秒: float, 硬截止时间: float, 最后心跳: float,
+                 句柄id: int, 空闲超时秒: float, 硬截止时间: float, 最后心跳: float,
                  进程身份键: str = "") -> None:
         连接 = self._连接()
         with 连接:
@@ -406,16 +438,62 @@ class 权威状态:
                 "UPDATE 租约 SET 最后心跳=? WHERE 租约id=? AND 已回收=0", (心跳时间, 租约id))
             return 游标.rowcount > 0
 
+    def 读取租约(self, 句柄id: int) -> dict[str, Any] | None:
+        """读取句柄对应的未回收租约，供句柄服务跨进程恢复。"""
+        连接 = self._连接()
+        行 = 连接.execute(
+            "SELECT 租约id, 资源id, 项目id, 所有者, 句柄id, 空闲超时秒, 硬截止时间, 最后心跳, 已回收, 进程身份键 "
+            "FROM 租约 WHERE 句柄id=? ORDER BY 最后心跳 DESC LIMIT 1", (句柄id,)
+        ).fetchone()
+        if 行 is None:
+            return None
+        return {"租约id": 行[0], "资源id": 行[1], "项目id": 行[2], "所有者": 行[3],
+                "句柄id": 行[4], "空闲超时秒": 行[5], "硬截止时间": 行[6],
+                "最后心跳": 行[7], "已回收": bool(行[8]), "进程身份键": 行[9]}
+
+    def 续租租约(self, 租约id: str, *, 硬截止时间: float, 最后心跳: float,
+                 当前时间: float | None = None) -> bool:
+        """原子续租；已回收或已过硬截止的租约不可复活。"""
+        当前时间 = time.time() if 当前时间 is None else 当前时间
+        连接 = self._连接()
+        with 连接:
+            游标 = 连接.execute(
+                "UPDATE 租约 SET 硬截止时间=?, 最后心跳=? "
+                "WHERE 租约id=? AND 已回收=0 AND 硬截止时间>?",
+                (硬截止时间, 最后心跳, 租约id, 当前时间),
+            )
+            return 游标.rowcount > 0
+
     def 回收租约(self, 租约id: str, 原因: str) -> bool:
         连接 = self._连接()
+        时间 = time.strftime("%Y-%m-%d %H:%M:%S")
         with 连接:
             游标 = 连接.execute(
                 "UPDATE 租约 SET 已回收=1 WHERE 租约id=? AND 已回收=0", (租约id,))
             if 游标.rowcount == 0:
                 return False
-            行 = 连接.execute("SELECT 句柄id FROM 租约 WHERE 租约id=?", (租约id,)).fetchone()
+            行 = 连接.execute(
+                "SELECT 句柄id, 资源id FROM 租约 WHERE 租约id=?", (租约id,)
+            ).fetchone()
             if 行 and 行[0]:
-                self.失效句柄(行[0], 原因)
+                # 必须复用当前连接完成句柄终态和回收证据写入；调用
+                # 失效句柄() 会打开第二个连接，破坏租约事务原子性。
+                句柄游标 = 连接.execute(
+                    "UPDATE 句柄 SET 状态='已失效', 失效时间=?, 失效原因=? "
+                    "WHERE 句柄id=? AND 状态='有效'",
+                    (时间, 原因, 行[0]),
+                )
+                if 句柄游标.rowcount:
+                    句柄行 = 连接.execute(
+                        "SELECT 句柄类型, 版本 FROM 句柄 WHERE 句柄id=?", (行[0],)
+                    ).fetchone()
+                    连接.execute(
+                        "INSERT INTO 回收证据(证据id, 句柄id, 资源id, 类型, 失效原因, 时间, 版本) "
+                        "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                        (uuid.uuid4().hex[:16], 行[0], 行[1],
+                         句柄行[0] if 句柄行 else "", 原因, 时间,
+                         句柄行[1] if 句柄行 else ""),
+                    )
             return True
 
     def 扫描过期租约(self) -> list[str]:
@@ -618,7 +696,7 @@ class 权威状态:
                 "所有者": 行[4], "栅栏令牌": 行[5], "获取时间": 行[6], "租约截止": 行[7]}
 
     # ---- 回收证据 ----
-    def 记录回收证据(self, *, 句柄id: str, 资源id: str, 类型: str, 原因: str, 版本: str) -> None:
+    def 记录回收证据(self, *, 句柄id: int, 资源id: str, 类型: str, 原因: str, 版本: str) -> None:
         连接 = self._连接()
         with 连接:
             连接.execute(

@@ -165,7 +165,9 @@ class 统一能力服务:
         if not 能力id:
             return {"成功": False, "错误码": "CAPABILITY_REQUIRED", "消息": "能力id不能为空"}
         记录 = self.状态.读取记录("能力条目", "能力id", 能力id)
-        return {"成功": 记录 is not None, "能力": 记录 or None}
+        if 记录 is None:
+            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": f"能力未登记: {能力id}", "能力": None}
+        return {"成功": True, "错误码": "", "消息": "能力已找到", "能力": 记录}
 
     def _装配计划(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
         """自动生成装配计划：扫描能力目录 → 候选 → 契约指纹 → DAG → 拓扑波次。"""
@@ -240,19 +242,28 @@ class 统一能力服务:
             return {"成功": False, "错误码": "NO_COMPONENT_DECLARATION", "消息": "必须提供组件声明"}
         能力id = 参数.get("能力id", "")
         # 真实能力占用租约（申请失败即创建失败）
+        本次租约id = ""
         if 能力id:
             成功, 消息, 租约id = self.目录.申请占用(
                 能力id=能力id, 领域=参数.get("领域", ""), 契约指纹=参数.get("契约指纹", ""),
                 任务=f"组件:{能力id}", 所有者=会话["身份id"])
             if not 成功:
                 return {"成功": False, "错误码": "OCCUPANCY_DENIED", "消息": 消息}
-        决定 = self.策略.判定(类型="复用", 主题=能力id or "新能力",
-                            请求={"调用者": 会话["身份id"], "角色": 会话["角色"]})
-        if not 决定["允许"]:
-            return {"成功": False, "错误码": "REUSE_DENIED", "消息": 决定["理由"]}
-        self.状态.追加证据(类型="组件", 主题=能力id or "新组件",
-                          内容={"创建": True, "复用决策": 复用决策, "需求id": 需求id},
-                          调用者=会话["身份id"], 角色=会话["角色"], 结果="创建")
+            本次租约id = 租约id
+        try:
+            决定 = self.策略.判定(类型="复用", 主题=能力id or "新能力",
+                                请求={"调用者": 会话["身份id"], "角色": 会话["角色"]})
+            if not 决定["允许"]:
+                if 本次租约id:
+                    self.目录.释放占用(本次租约id, 证据="创建组件失败:REUSE_DENIED")
+                return {"成功": False, "错误码": "REUSE_DENIED", "消息": 决定["理由"]}
+            self.状态.追加证据(类型="组件", 主题=能力id or "新组件",
+                              内容={"创建": True, "复用决策": 复用决策, "需求id": 需求id},
+                              调用者=会话["身份id"], 角色=会话["角色"], 结果="创建")
+        except Exception as 错误:
+            if 本次租约id:
+                self.目录.释放占用(本次租约id, 证据="创建组件失败:COMPONENT_CREATE_FAILED")
+            return {"成功": False, "错误码": "COMPONENT_CREATE_FAILED", "消息": str(错误)[:200]}
         return {"成功": True, "消息": f"组件已创建: {能力id or '新组件'}", "能力id": 能力id}
 
     def _验证组件(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:

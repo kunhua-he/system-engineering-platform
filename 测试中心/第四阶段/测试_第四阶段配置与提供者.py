@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
@@ -20,6 +22,7 @@ from 项目适配层.配置适配.配置合并 import 合并配置, 解析环境
 from 项目适配层.配置适配.配置读取 import 读取JSON配置
 from 项目适配层.配置适配.配置校验 import 校验配置
 from 项目适配层.运行入口.项目入口 import 项目入口
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 
 def 临时项目配置() -> tuple[Path, dict]:
@@ -202,11 +205,39 @@ class Test提供者闭环(unittest.TestCase):
 class Test卸载流程(unittest.TestCase):
     """场景13-17：停止/卸载/幂等/卸载后调用失败/资源释放。"""
 
+    @classmethod
+    def setUpClass(cls):
+        class 处理器(BaseHTTPRequestHandler):
+            def do_POST(self):
+                长度 = int(self.headers.get("Content-Length", "0"))
+                请求 = json.loads(self.rfile.read(长度).decode("utf-8")) if 长度 else {}
+                正文 = json.dumps({
+                    "请求id": 请求.get("请求id", ""), "操作": "调用能力", "成功": True,
+                    "值": None, "错误码": "", "错误说明": "", "句柄": None, "耗时毫秒": 0,
+                }, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(正文)))
+                self.end_headers()
+                self.wfile.write(正文)
+            def log_message(self, *参数):
+                return
+        cls.服务器 = ThreadingHTTPServer(("127.0.0.1", 0), 处理器)
+        cls.线程 = threading.Thread(target=cls.服务器.serve_forever, daemon=True)
+        cls.线程.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.服务器.shutdown()
+        cls.服务器.server_close()
+        cls.线程.join(timeout=2)
+
     def setUp(self):
         self.注册表 = 能力注册表()
         self.装配 = 装配系统(系统根 / "支持库", 系统根 / "模块库", self.注册表)
         self.assertTrue(self.装配.成功, str(self.装配.问题列表))
-        self.入口 = 项目入口(self.注册表)
+        self.连接器 = HTTP连接器(网关端口=self.服务器.server_address[1])
+        self.入口 = 项目入口(self.注册表, 连接器=self.连接器)
 
     def test_可运行后停止(self):
         结果 = 停止系统(系统根 / "支持库", 系统根 / "模块库", self.注册表)

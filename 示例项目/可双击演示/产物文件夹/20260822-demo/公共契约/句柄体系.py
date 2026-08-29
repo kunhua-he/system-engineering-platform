@@ -28,18 +28,20 @@ from typing import Any
 句柄位数 = 6
 
 
-def 是合法句柄id(句柄id: str) -> bool:
-    """公共对外句柄格式：固定六位数字字符串，允许前导零。"""
-    return isinstance(句柄id, str) and len(句柄id) == 句柄位数 and 句柄id.isascii() and 句柄id.isdecimal()
+def 是合法句柄id(句柄id: str | int) -> bool:
+    """公共对外句柄格式：固定六位数字字符串（兼容历史整数调用）。"""
+    if isinstance(句柄id, str):
+        return len(句柄id) == 句柄位数 and 句柄id.isascii() and 句柄id.isdecimal()
+    return isinstance(句柄id, int) and not isinstance(句柄id, bool) and 1 <= 句柄id <= 999999
 
 
-def 生成句柄id() -> str:
-    """生成固定六位数字 ID；资源表负责校验活动句柄冲突。"""
-    return f"{secrets.randbelow(1000000):06d}"
+def 生成句柄id() -> int:
+    """生成 1 到 999999 的整数句柄；资源表负责校验活动句柄冲突。"""
+    return secrets.randbelow(999999) + 1
 
 @dataclass
 class 句柄:
-    句柄id: str = ""
+    句柄id: int = 0
     句柄类型: str = 句柄类型_资源
     资源id: str = ""
     项目id: str = ""
@@ -62,7 +64,7 @@ class 句柄:
 
 class 句柄体系:
     def __init__(self) -> None:
-        self.句柄表: dict[str, 句柄] = {}
+        self.句柄表: dict[int, 句柄] = {}
         self.回收证据表: list[dict[str, Any]] = []
         self._锁 = threading.Lock()
 
@@ -77,7 +79,22 @@ class 句柄体系:
                     return 对象
         raise RuntimeError("六位句柄已耗尽")
 
-    def 校验(self, 句柄id: str, *, 项目id: str = "", 所有者: str = "") -> tuple[bool, str]:
+    def 恢复句柄(self, 对象: 句柄) -> 句柄:
+        """从权威账本恢复句柄；禁止覆盖本进程已存在的不同对象。"""
+        if not 是合法句柄id(对象.句柄id):
+            raise ValueError("恢复句柄id不合法")
+        if 对象.状态 not in (状态_已创建, 状态_有效, 状态_已失效):
+            raise ValueError("恢复句柄状态不合法")
+        with self._锁:
+            已有 = self.句柄表.get(对象.句柄id)
+            if 已有 is not None:
+                if 已有.资源id != 对象.资源id or 已有.项目id != 对象.项目id or 已有.所有者 != 对象.所有者:
+                    raise RuntimeError("句柄账本与内存对象冲突")
+                return 已有
+            self.句柄表[对象.句柄id] = 对象
+            return 对象
+
+    def 校验(self, 句柄id: int, *, 项目id: str = "", 所有者: str = "") -> tuple[bool, str]:
         对象 = self.句柄表.get(句柄id)
         if 对象 is None: return False, f"句柄不存在: {句柄id}"
         if 对象.状态 != 状态_有效: return False, f"句柄已失效（{对象.失效原因}），不能自动复活"
@@ -87,7 +104,7 @@ class 句柄体系:
 
     # ── 资源登记（状态机内置，华哥口径）────────────────
 
-    def 登记资源(self, 句柄id: str, *, 资源类型: str, PID: int = None, 端口: int = None,
+    def 登记资源(self, 句柄id: int, *, 资源类型: str, PID: int = None, 端口: int = None,
                  资源路径: str = None, 清理函数: Any = None) -> tuple[bool, str]:
         """把资源绑定到句柄，由状态机统一监控/回收。资源类型：进程/端口/连接/临时文件。"""
         with self._锁:
@@ -100,7 +117,7 @@ class 句柄体系:
             })
             return True, "资源已绑定句柄"
 
-    def 查询资源(self, 句柄id: str) -> list[dict[str, Any]]:
+    def 查询资源(self, 句柄id: int) -> list[dict[str, Any]]:
         """查询句柄绑定的资源（审计）。"""
         with self._锁:
             对象 = self.句柄表.get(句柄id)
@@ -197,7 +214,7 @@ class 句柄体系:
                   or "已清理" in 说明 or "已终止" in 说明 or "已调用清理函数" in 说明)
         return 已回收, 说明
 
-    def 核查回收(self, 句柄id: str) -> dict[str, Any]:
+    def 核查回收(self, 句柄id: int) -> dict[str, Any]:
         """句柄失效时核查所有绑定资源，未回收的补回收一趟（幂等）。状态机统一维护。"""
         with self._锁:
             对象 = self.句柄表.get(句柄id)
@@ -211,13 +228,15 @@ class 句柄体系:
                     已回收数 += 1
                     continue
                 已回收, 说明 = self._回收单个资源(资源)
-                资源["已回收"] = True
+                # 只有确认清理成功才进入终态；失败必须保留待回收状态，
+                # 让后续有界重试或诊断流程仍能再次执行清理。
+                资源["已回收"] = 已回收
                 资源["回收说明"] = 说明
                 回收清单.append({"资源类型": 资源["资源类型"], "已回收": 已回收, "说明": 说明})
                 已回收数 += 1 if 已回收 else 0
             return {"句柄": 句柄id, "已回收数": 已回收数, "资源总数": len(对象.绑定资源), "回收清单": 回收清单}
 
-    def 失效(self, 句柄id: str, 原因: str) -> tuple[bool, str]:
+    def 失效(self, 句柄id: int, 原因: str) -> tuple[bool, str]:
         对象 = self.句柄表.get(句柄id)
         if 对象 is None: return False, f"句柄不存在: {句柄id}"
         if 对象.状态 == 状态_已失效: return True, "句柄已失效（幂等）"
@@ -225,9 +244,11 @@ class 句柄体系:
         self.回收证据表.append({"句柄id": 句柄id, "资源id": 对象.资源id, "类型": 对象.句柄类型, "失效原因": 原因, "时间": 对象.失效时间, "版本": 对象.版本})
         # 失效即统一核查回收绑定资源（状态机维护，不旁路）
         try:
-            self.核查回收(句柄id)
-        except Exception:
-            pass
+            回收结果 = self.核查回收(句柄id)
+        except Exception as 错误:
+            return False, f"句柄已失效但资源回收异常: {type(错误).__name__}"
+        if 回收结果["已回收数"] != 回收结果["资源总数"]:
+            return False, f"句柄已失效但资源未全部回收（{回收结果['已回收数']}/{回收结果['资源总数']}）"
         return True, f"句柄已失效（{原因}）"
 
     def 查询回收证据(self, *, 资源id: str = "") -> list[dict[str, Any]]:

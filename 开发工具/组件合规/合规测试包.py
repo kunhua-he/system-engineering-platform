@@ -40,6 +40,12 @@ from typing import Any
 禁止参数类型 = {"任意", ""}
 
 
+def _合规真实输入根(根目录: Path) -> Path:
+    """返回当前合规工作单元专属输入根，避免并发包互删文件。"""
+    覆盖 = os.environ.get("系统底座_合规输入根", "").strip()
+    return Path(覆盖) if 覆盖 else 根目录 / "工程缓存" / "合规真实输入"
+
+
 def _空闲端口() -> int:
     """取得当前进程可用的回环端口；不占用固定代理端口。"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as 套接字:
@@ -59,7 +65,7 @@ def _参数最小值(能力id: str, 参数: dict[str, Any], 根目录: Path) -> 
     """按公开参数契约生成最小合法值，不把占位字符串冒充真实输入。"""
     名称 = str(参数.get("名称", ""))
     类型 = str(参数.get("类型", ""))
-    能力输入根 = 根目录 / "工程缓存" / "合规真实输入" / hashlib.sha1(
+    能力输入根 = _合规真实输入根(根目录) / hashlib.sha1(
         能力id.encode("utf-8")).hexdigest()[:10]
     if 名称 in {"端口", "监听端口"}:
         return _空闲端口()
@@ -230,7 +236,7 @@ def _读取聚合契约(组件目录: Path) -> tuple[list[dict[str, Any]], bool,
 
 
 def _提取函数错误码(实现目录: Path, 函数名: str) -> list[str]:
-    """按函数名定位实现函数体，提取其中的 结果.失败("错误码")。
+    """按函数名定位实现函数体，提取统一失败结果中的错误码。
 
     用于失败语义精确判定：实现有失败路径的能力必须声明对应错误码；
     实现无失败路径（纯查询/纯计算）的能力空错误码合法。
@@ -251,6 +257,12 @@ def _提取函数错误码(实现目录: Path, 函数名: str) -> list[str]:
         for m in re.findall(r'结果\.失败\(\s*["\']([^"\']+)["\']', 函数体):
             if m not in 错误码:
                 错误码.append(m)
+        # 兼容统一结果的字典返回写法：
+        # {"成功": False, "错误码": "参数不合法"}。
+        if re.search(r'["\']成功["\']\s*:\s*False', 函数体):
+            for m in re.findall(r'["\']错误码["\']\s*:\s*["\']([^"\']+)["\']', 函数体):
+                if m not in 错误码:
+                    错误码.append(m)
         if 错误码:
             break
     return 错误码
@@ -401,6 +413,9 @@ class 组件合规:
         能力表, 是否聚合, 问题列表 = _读取聚合契约(self.组件目录)
         if 问题列表 and not 能力表:
             return False, "; ".join(问题列表)
+        实现目录 = self.组件目录 / "实现"
+        if not 实现目录.is_dir():
+            实现目录 = self.组件目录 / "执行单元"
         for 契约 in 能力表:
             if 是否聚合:
                 if not 契约.get("能力id"):
@@ -429,6 +444,14 @@ class 组件合规:
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 错误码")
                 if not isinstance(契约.get("调用示例"), dict):
                     问题列表.append(f"{契约.get('能力id', '未知能力')} 缺少 可执行调用示例")
+                能力id = 契约.get("能力id", "")
+                真实错误码 = _提取函数错误码(实现目录, 能力id.split(".")[-1])
+                契约错误码 = 契约.get("错误码")
+                if not isinstance(契约错误码, list):
+                    契约错误码 = []
+                未声明 = [码 for 码 in 真实错误码 if 码 not in 契约错误码]
+                if 未声明:
+                    问题列表.append(f"{能力id} 未声明错误码: {未声明}")
                 问题列表.extend(校验契约结构(契约))
             else:
                 问题列表.extend(校验契约结构(契约))
@@ -770,7 +793,7 @@ class 组件合规:
             契约.get("能力id", ""): (契约.get("调用示例") or {}).get("参数", {})
             for 契约 in 能力表 if isinstance(契约.get("调用示例"), dict)
         }
-        真实输入根 = self._系统根 / "工程缓存" / "合规真实输入"
+        真实输入根 = _合规真实输入根(self._系统根)
         try:
             for 能力id in 注册表.能力id列表:
                 实现对象 = 注册表.获取(能力id)

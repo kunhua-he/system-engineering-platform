@@ -91,15 +91,35 @@ class 资源协调器:
             句柄id=句柄id, 句柄类型="读取句柄", 资源id=资源id,
             项目id=项目id, 所有者=所有者, 状态="有效", 版本=版本,
             进程身份键=self.状态.身份.身份键())
-        self._发布快照(资源id, 版本, 数据.get("值"))
-        # 引用计数 +1（引用归零才清理旧快照）
-        self.状态.增加引用(包id=资源id, 版本=版本)
+        try:
+            self._发布快照(资源id, 版本, 数据.get("值"))
+            # 引用计数 +1（引用归零才清理旧快照）
+            self.状态.增加引用(包id=资源id, 版本=版本)
+        except Exception:
+            # 句柄已落账但后续快照/引用失败时必须回滚句柄，不能留下
+            # 永久有效句柄和悬挂引用。
+            self.状态.失效句柄(句柄id, "读取句柄打开失败")
+            raise
         return {"句柄id": 句柄id, "版本": 版本, "值": 数据.get("值")}, 句柄id
 
-    def 关闭读取句柄(self, *, 句柄id: str, 资源id: str, 版本: str) -> None:
+    def 关闭读取句柄(self, *, 句柄id: str, 资源id: str, 版本: str,
+                    项目id: str = "", 所有者: str = "") -> None:
         """关闭读取句柄：失效句柄 + 引用归零（幂等）。"""
-        self.状态.失效句柄(句柄id, "读取完成")
-        self.状态.减少引用(包id=self._资源id(资源id), 版本=版本)
+        资源id = self._资源id(资源id)
+        句柄 = self.状态.读取句柄(句柄id)
+        if 句柄 is None:
+            raise KeyError("句柄不存在")
+        if 句柄["句柄类型"] != "读取句柄" or 句柄["资源id"] != 资源id or str(句柄["版本"]) != str(版本):
+            raise PermissionError("句柄与资源/版本不匹配")
+        if 项目id and 句柄["项目id"] and 句柄["项目id"] != 项目id:
+            raise PermissionError("句柄所属项目不匹配")
+        if 所有者 and 句柄["所有者"] and 句柄["所有者"] != 所有者:
+            raise PermissionError("句柄所属所有者不匹配")
+        if 句柄["状态"] == "已失效":
+            return
+        if not self.状态.失效句柄(句柄id, "读取完成"):
+            return
+        self.状态.减少引用(包id=资源id, 版本=版本)
 
     def _发布快照(self, 资源id: str, 版本: str, 值: Any) -> None:
         """发布快照：唯一临时目录写入 + fsync + 原子改名；已发布只读不可覆盖。"""
@@ -232,14 +252,30 @@ class 资源协调器:
         return self.事务证据表.get(事务id)
 
     def 恢复未完成事务(self) -> list[str]:
-        """重启后恢复未完成事务：进行中事务回滚（句柄失效 + 工作副本清理）。"""
+        """重启后恢复未完成事务。
+
+        资源 CAS 提交与快照发布之间存在进程崩溃窗口：若权威版本已经
+        前进，事务不能再被标记为失败，必须先重建对应快照再完成事务；
+        只有权威版本仍停留在基础版本时才执行回滚。
+        """
         恢复列表 = []
         for 事务 in self.状态.进行中事务():
             事务id = 事务["事务id"]
+            当前 = self.状态.读取资源(事务["资源id"])
+            基础版本 = str(事务.get("基础版本", ""))
+            工作数据路径 = self.工作目录 / f"{事务id}.json"
+            if 当前 is not None and str(当前.get("版本", "")) != 基础版本:
+                新版本 = str(当前["版本"])
+                self._发布快照(事务["资源id"], 新版本, 当前.get("值"))
+                self.状态.完成事务(事务id=事务id, 成功=True, 新版本=新版本)
+                self.状态.失效句柄(事务["句柄id"], "崩溃后快照恢复")
+                工作数据路径.unlink(missing_ok=True)
+                恢复列表.append(f"{事务id}:已提交快照恢复")
+                continue
             self.状态.完成事务(事务id=事务id, 成功=False)
             self.状态.失效句柄(事务["句柄id"], "事务未完成回滚")
-            self.工作目录.joinpath(f"{事务id}.json").unlink(missing_ok=True)
-            恢复列表.append(事务id)
+            工作数据路径.unlink(missing_ok=True)
+            恢复列表.append(f"{事务id}:未提交回滚")
         return 恢复列表
 
     def 清理死亡进程资源(self) -> list[str]:
