@@ -1,8 +1,11 @@
-"""模块库.媒体处理 组合能力真实测试：经唯一能力调用服务装配 FFmpeg 支持库能力。
+"""模块库.媒体处理 组合能力真实测试：经真实 HTTP 网关调用 FFmpeg 支持库能力。
 
 覆盖：真实 ffmpeg 最小调用（检查提供者/探测媒体/提取音频/转码/抽取帧）、
 损坏媒体/无音轨/超长媒体/超出限制等错误码透传、参数错误、平台不可用
-（调用器未装配如实返回 提供者不可用）、临时文件零残留、注册能力 5 项。
+（HTTP 连接器未装配如实返回 提供者不可用）、临时文件零残留、注册能力 5 项。
+
+所有模块公开能力经 设置HTTP连接器 装配的 HTTP 连接器走 后端核心+本地网关，
+不再走进程内唯一能力调用服务。
 """
 
 from __future__ import annotations
@@ -20,6 +23,10 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 模块库.媒体处理 import 检查提供者, 探测媒体, 提取音频, 转码, 抽取帧
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 临时根 = Path(tempfile.gettempdir())
 
@@ -41,27 +48,38 @@ def 临时前缀集() -> set:
 
 
 class 媒体处理装配(unittest.TestCase):
-    """真实装配：注册 FFmpeg 提供者能力并经唯一服务注入调用器。"""
+    """真实装配：启动 后端核心 + 本地网关，模块经 HTTP 连接器调用能力。"""
 
     @classmethod
     def setUpClass(cls):
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
         cls.原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
         设置惰性装配函数(None)
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.媒体处理 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
+        from 模块库.媒体处理 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
         设置惰性装配函数(cls.原惰性装配)
 
     def setUp(self):
-        from 公共契约.能力契约.契约 import 能力注册表
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.后端.媒体处理支持库.FFmpeg媒体 import 注册能力 as 注册FFmpeg能力
-
-        注册表 = 能力注册表()
-        注册FFmpeg能力(注册表)
-        设置全局唯一服务(唯一能力调用服务(注册表))
         self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_媒体处理_"))
         self.可用 = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
         if self.可用:
@@ -72,8 +90,6 @@ class 媒体处理装配(unittest.TestCase):
             self.缺失路径 = str(self.临时目录 / "不存在.mp4")
 
     def tearDown(self):
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
-        设置全局唯一服务(None)
         shutil.rmtree(self.临时目录, ignore_errors=True)
 
 
@@ -90,11 +106,22 @@ class Test检查提供者(媒体处理装配):
             self.assertEqual(结果.错误码, "参数不合法")
 
     def test_平台不可用如实返回(self):
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
-        设置全局唯一服务(None)
+        """卸载 HTTP 连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.媒体处理 import 设置HTTP连接器
+        设置HTTP连接器(None)
         结果 = 检查提供者()
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常（样板命名）。"""
+        from 模块库.媒体处理 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        结果 = 检查提供者()
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "提供者不可用")
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
 
 class Test探测媒体(媒体处理装配):
@@ -185,7 +212,7 @@ class Test转码(媒体处理装配):
 
     def test_真实成功且编码选项透传(self):
         结果 = 转码(str(self.带音频), 输出格式="mkv",
-                  编码选项={"分辨率": "32x32", "帧率": "5"})
+                 编码选项={"分辨率": "32x32", "帧率": "5"})
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["格式"], "mkv")
         self.assertGreater(结果.值["字节数"], 0)
@@ -229,17 +256,37 @@ class Test抽取帧(媒体处理装配):
 
 
 class Test零残留与注册(unittest.TestCase):
+    """独立网关装配：残留测试与注册测试不依赖 媒体处理装配 的视频夹具。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.媒体处理 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
+
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.媒体处理 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
     def test_默认临时文件零残留(self):
-        from 公共契约.能力契约.契约 import 能力注册表
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.后端.媒体处理支持库.FFmpeg媒体 import 注册能力 as 注册FFmpeg能力
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
 
         原惰性 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
         设置惰性装配函数(None)
-        注册表 = 能力注册表()
-        注册FFmpeg能力(注册表)
-        设置全局唯一服务(唯一能力调用服务(注册表))
         try:
             if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
                 self.skipTest("ffmpeg/ffprobe 未配置（如实标记，不伪装可用）")
@@ -254,7 +301,6 @@ class Test零残留与注册(unittest.TestCase):
             finally:
                 shutil.rmtree(临时目录, ignore_errors=True)
         finally:
-            设置全局唯一服务(None)
             设置惰性装配函数(原惰性)
 
     def test_模块注册五个能力(self):

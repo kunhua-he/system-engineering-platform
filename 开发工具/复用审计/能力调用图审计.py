@@ -96,7 +96,7 @@ def _入口能力(包目录: Path) -> tuple[set[str], set[str]]:
         return 注册集, 导出集
     for 节点 in ast.walk(树):
         if isinstance(节点, ast.Assign) and any(isinstance(目标, ast.Name) and 目标.id == "__all__" for 目标 in 节点.targets):
-            导出集 = {元素.value for 元素 in 节点.value.elts if isinstance(元素, ast.Constant) and 元素.value != "注册能力"}
+            导出集 = {元素.value for 元素 in 节点.value.elts if isinstance(元素, ast.Constant) and 元素.value not in {"注册能力", "设置HTTP连接器"}}
         elif isinstance(节点, ast.For) and isinstance(节点.iter, ast.List) and 节点.target:
             目标 = 节点.target
             变量名 = 目标.id if isinstance(目标, ast.Name) else (目标.elts[0].id if isinstance(目标, ast.Tuple) and 目标.elts and isinstance(目标.elts[0], ast.Name) else None)

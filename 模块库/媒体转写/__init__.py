@@ -1,4 +1,8 @@
-"""媒体转写模块包级中文入口（功能模块）：组合 MLX Whisper 支持库公开能力。"""
+"""媒体转写模块包级中文入口（功能模块）：组合 MLX Whisper 支持库公开能力。
+
+对外能力经项目适配层装配的 HTTP连接器调用统一网关，
+不直接导入支持库/提供者实现。
+"""
 
 from __future__ import annotations
 
@@ -7,10 +11,12 @@ from pathlib import Path
 
 from 模块库.媒体转写.实现.媒体转写 import 检查可用性
 from 模块库.媒体转写.实现.媒体转写 import 获取模型版本
+from 模块库.媒体转写.实现.媒体转写 import 设置HTTP连接器
 from 模块库.媒体转写.实现.媒体转写 import 转写音频文件
 from 模块库.媒体转写.实现.媒体转写 import 转写视频文件
 
 __all__ = [
+    "设置HTTP连接器",
     "检查可用性",
     "获取模型版本",
     "转写音频文件",

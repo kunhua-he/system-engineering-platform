@@ -1,8 +1,10 @@
 """OCR 模块迁移测试（unittest）。
 
-setUpClass 装配全局能力调用器（安装支持库 + 创建并绑定唯一能力调用服务），
+setUpClass 启动真实后端与本地回环网关并装配 HTTP连接器，模块公开能力
+全部经真实 HTTP 网关调用；保留模块层参数校验、连接器级透传/错误码语义、
+平台不可用降级与真实 tesseract 最小调用等既有用例。
 覆盖：公开入口/注册对称、参数错误（模块层校验）、平台不可用（提供者不可用）、
-中文结果对称与调用器边界（取消令牌id 语义下支持库侧不传 callable）、
+中文结果对称与调用边界（取消令牌id 语义下支持库侧不传 callable）、
 错误码透传、可用性检查组合、真实 tesseract 最小调用。
 """
 
@@ -25,6 +27,10 @@ from 模块库.OCR import 注册能力
 from 模块库.OCR import 可用性检查
 from 模块库.OCR import 识别图片文件
 from 模块库.OCR import 识别图片文字
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 测试文本 = "OCR 12345"
 
@@ -34,8 +40,8 @@ def _工具可用() -> bool:
     return 壳工具.which("tesseract") is not None
 
 
-class 假调用器:
-    """测试注入的假能力调用器：记录调用并返回预设结果。"""
+class 假连接器:
+    """测试注入的假 HTTP 连接器：记录调用并返回预设结果。"""
 
     def __init__(self, 预设结果):
         self.预设结果 = 预设结果
@@ -45,31 +51,34 @@ class 假调用器:
         self.调用历史.append((能力id, dict(参数 or {})))
         return self.预设结果
 
-    def 幂等重放(self, 能力id, 参数):
-        return False
-
-    def 查询调用历史(self, 上限=50):
-        return []
-
-    def 最近失败(self, 上限=10):
-        return []
-
-    def 回答九问(self, 能力id, 错误码):
-        return {}
-
 
 class TestOCR模块(unittest.TestCase):
-    """OCR 模块迁移测试：装配调用器后经调用边界验证。"""
+    """OCR 模块迁移测试：装配 HTTP连接器后经真实网关调用边界验证。"""
 
     @classmethod
     def setUpClass(cls):
-        from 公共契约.能力契约.契约 import 能力注册表
-        from 运行核心.能力调用.唯一能力调用 import 创建并绑定
-        from 运行核心.加载器.包安装.支持库安装 import 安装全部支持库
+        """启动真实后端与随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.OCR import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
-        cls.注册表 = 能力注册表()
-        安装全部支持库(系统根 / "支持库", cls.注册表)
-        cls.服务 = 创建并绑定(cls.注册表)
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.OCR import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
 
     def setUp(self):
         from 支持库.适配层.Pillow提供者 import 生成占位图
@@ -117,82 +126,90 @@ class TestOCR模块(unittest.TestCase):
     # ── 平台不可用 ──────────────────────────────────────
 
     def test_平台不可用提供者不可用(self):
-        import 公共契约.能力契约.调用器 as 调用器契约
+        from 模块库.OCR.实现 import OCR as 模块实现
 
-        with mock.patch.object(
-            调用器契约, "获取能力调用器",
-            side_effect=RuntimeError("能力调用器未注入"),
-        ):
+        with mock.patch.object(模块实现, "_获取连接器", return_value=None):
             结果 = 识别图片文字(图片路径=self.图片路径)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
 
-    # ── 中文结果对称与调用器边界 ─────────────────────────
+    def test_平台不可用时返回提供者不可用(self):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.OCR import 设置HTTP连接器
+        设置HTTP连接器(None)
+        try:
+            结果 = 识别图片文字(图片路径=self.图片路径)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
 
-    def test_中文结果对称经调用器透传(self):
-        from 公共契约.能力契约.调用器 import 注册能力调用器
+    # ── 中文结果对称与调用边界 ─────────────────────────
+
+    def test_中文结果对称经连接器透传(self):
+        from 模块库.OCR import 设置HTTP连接器
         from 模块库.OCR.实现 import OCR as 模块实现
 
         中文结果 = 结果.成功结果({"文本": "中文识别结果"})
-        调用器 = 假调用器(中文结果)
-        注册能力调用器(调用器)
+        连接器 = 假连接器(中文结果)
+        设置HTTP连接器(连接器)
         try:
             返回值 = 模块实现.识别图片文字(图片路径=self.图片路径)
         finally:
-            注册能力调用器(self.服务)
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
         self.assertTrue(返回值.成功)
         self.assertEqual(返回值.值, {"文本": "中文识别结果"})
-        能力id, 请求参数 = 调用器.调用历史[0]
+        能力id, 请求参数 = 连接器.调用历史[0]
         self.assertEqual(能力id, "OCR识别支持库.OCR识别.识别图片")
         self.assertEqual(请求参数["图片路径"], self.图片路径)
         self.assertIsNone(请求参数["取消事件"], "取消令牌id 语义下支持库侧不得传 callable")
 
     def test_取消令牌id透传且支持库侧无callable(self):
-        from 公共契约.能力契约.调用器 import 注册能力调用器
+        from 模块库.OCR import 设置HTTP连接器
         from 模块库.OCR.实现 import OCR as 模块实现
 
-        调用器 = 假调用器(结果.成功结果({"文本": "识别结果"}))
-        注册能力调用器(调用器)
+        连接器 = 假连接器(结果.成功结果({"文本": "识别结果"}))
+        设置HTTP连接器(连接器)
         try:
             模块实现.识别图片文字(图片路径=self.图片路径, 取消令牌id="令牌甲")
         finally:
-            注册能力调用器(self.服务)
-        能力id, 请求参数 = 调用器.调用历史[0]
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+        能力id, 请求参数 = 连接器.调用历史[0]
         self.assertEqual(能力id, "OCR识别支持库.OCR识别.识别图片")
         self.assertIsNone(请求参数["取消事件"])
 
     def test_错误码透传(self):
-        from 公共契约.能力契约.调用器 import 注册能力调用器
+        from 模块库.OCR import 设置HTTP连接器
         from 模块库.OCR.实现 import OCR as 模块实现
 
-        调用器 = 假调用器(结果.失败("超时", "执行超时", 可重试=True))
-        注册能力调用器(调用器)
+        连接器 = 假连接器(结果.失败("超时", "执行超时", 可重试=True))
+        设置HTTP连接器(连接器)
         try:
             调用结果 = 模块实现.识别图片文字(图片路径=self.图片路径)
         finally:
-            注册能力调用器(self.服务)
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
         self.assertFalse(调用结果.成功)
         self.assertEqual(调用结果.错误码, "超时")
         self.assertTrue(调用结果.可重试)
 
     def test_可用性检查组合两个支持库能力(self):
-        from 公共契约.能力契约.调用器 import 注册能力调用器
+        from 模块库.OCR import 设置HTTP连接器
         from 模块库.OCR.实现 import OCR as 模块实现
 
-        调用器 = 假调用器(结果.成功结果({
+        连接器 = 假连接器(结果.成功结果({
             "tesseract": "tesseract", "版本": "5.3.0", "满足最低版本": True,
         }))
-        注册能力调用器(调用器)
+        设置HTTP连接器(连接器)
         try:
             检查结果 = 模块实现.可用性检查()
         finally:
-            注册能力调用器(self.服务)
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
         self.assertTrue(检查结果.成功)
         self.assertEqual(检查结果.值["tesseract"], "tesseract")
-        调用能力id表 = [历史[0] for 历史 in 调用器.调用历史]
+        调用能力id表 = [历史[0] for 历史 in 连接器.调用历史]
         self.assertEqual(调用能力id表, ["OCR识别支持库.OCR识别.版本探针", "OCR识别支持库.OCR识别.语言包列表"])
 
-    # ── 真实 tesseract 最小调用 ──────────────────────────
+    # ── 真实 tesseract 最小调用（经 HTTP 网关）───────────
 
     @unittest.skipUnless(_工具可用(), "本机未配置 tesseract，如实跳过")
     def test_真实识别路径入口(self):

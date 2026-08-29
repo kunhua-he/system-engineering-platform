@@ -1,7 +1,7 @@
 """模块库.文档读取 组合能力真实测试。
 
-覆盖：真实装配（注册支持库能力+注入唯一能力调用服务）下 结构化读取/
-读取正文/提取标题/计算段落数 最小样本；平台不可用（调用器未装配 →
+覆盖：真实网关装配（后端核心 + 本地网关服务器 + HTTP连接器）下 结构化读取/
+读取正文/提取标题/计算段落数 最小样本；平台不可用（连接器未装配 →
 提供者不可用）；参数错误（文件路径非文本 → 参数不合法）；文件不存在透传。
 """
 
@@ -16,38 +16,48 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from unittest import mock
-
 from 公共契约.基础类型.结果类型 import 结果
 from 模块库.文档读取 import 读取正文, 提取标题, 计算段落数, 结构化读取
+from 后端核心.后端核心 import 后端核心
+from 运行核心.统一网关.网关核心 import 网关核心
+from 运行核心.统一网关.本地网关 import 本地网关服务器
+from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
 样本内容 = "第一行标题\n\n第二行正文\n第三行正文\n"
 
 
 class Test文档读取模块(unittest.TestCase):
-    def setUp(self):
-        """真实装配：注册支持库能力并经 全局唯一服务 注入能力调用器。"""
-        from 公共契约.能力契约.契约 import 能力注册表
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-        from 支持库.后端.文件系统支持库.文件操作 import 注册能力 as 注册文件系统
-        from 支持库.后端.数据操作支持库.文本处理 import 注册能力 as 注册文本处理
-        from 支持库.后端.数据操作支持库.数据交换 import 注册能力 as 注册数据交换
+    @classmethod
+    def setUpClass(cls):
+        """启动真实后端和随机回环网关，所有测试请求走 HTTP。"""
+        cls.后端 = 后端核心()
+        启动结果 = cls.后端.启动()
+        if not 启动结果.成功:
+            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+        cls.网关 = 本地网关服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
+            配置={"请求超时秒": 10},
+        )
+        成功, 说明 = cls.网关.启动()
+        if not 成功:
+            cls.后端.优雅关闭()
+            raise RuntimeError(f"网关启动失败: {说明}")
+        from 模块库.文档读取 import 设置HTTP连接器
+        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
-        注册表 = 能力注册表()
-        注册文件系统(注册表)
-        注册文本处理(注册表)
-        注册数据交换(注册表)
-        设置全局唯一服务(唯一能力调用服务(注册表))
-        self.addCleanup(self._卸载)
+    @classmethod
+    def tearDownClass(cls):
+        from 模块库.文档读取 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        cls.网关.优雅停止()
+        cls.后端.优雅关闭()
+
+    def setUp(self):
+        """每个用例使用独立临时目录与样本文件。"""
         临时目录 = tempfile.mkdtemp(prefix="测试_文档读取_")
         self.addCleanup(shutil.rmtree, 临时目录, ignore_errors=True)
         self.样本路径 = Path(临时目录) / "样本.txt"
         self.样本路径.write_text(样本内容, encoding="utf-8")
-
-    @staticmethod
-    def _卸载():
-        from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
-        设置全局唯一服务(None)
 
     def test_结构化读取最小样本(self):
         结果 = 结构化读取(str(self.样本路径))
@@ -93,12 +103,13 @@ class Test文档读取模块(unittest.TestCase):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_平台不可用返回提供者不可用(self):
-        """能力调用器未装配（模拟平台不可用）→ 提供者不可用，不抛异常。"""
-        with mock.patch(
-            "公共契约.能力契约.调用器.获取能力调用器",
-            side_effect=RuntimeError("能力调用器未注入"),
-        ):
+        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        from 模块库.文档读取 import 设置HTTP连接器
+        设置HTTP连接器(None)
+        try:
             调用结果 = 结构化读取(str(self.样本路径))
+        finally:
+            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
         self.assertFalse(调用结果.成功)
         self.assertEqual(调用结果.错误码, "提供者不可用")
         self.assertIsInstance(调用结果, 结果)

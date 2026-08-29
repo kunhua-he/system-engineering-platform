@@ -6,6 +6,7 @@ import base64
 import dataclasses
 import json
 import math
+import os
 import socket
 import threading
 import time
@@ -125,6 +126,9 @@ class 本地网关服务器:
                     # HTTP 黑盒调用无法传输支持库返回的结构化对象。
                     if dataclasses.is_dataclass(值) and not isinstance(值, type):
                         return dataclasses.asdict(值)
+                    # Path 统一转字符串（如 创建唯一运行目录 返回 Path）。
+                    if isinstance(值, os.PathLike):
+                        return str(值)
                     raise TypeError(f"响应值包含不可序列化类型: {type(值).__name__}")
                 try:
                     正文 = json.dumps(
