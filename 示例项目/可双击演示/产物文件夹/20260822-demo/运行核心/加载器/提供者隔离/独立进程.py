@@ -159,6 +159,15 @@ class 独立进程:
         except OSError as 错误:
             self.状态 = 进程状态_故障
             return False, f"启动失败: {错误}"
+        except RuntimeError as 错误:
+            # 解释器解析/环境构建异常（如提供者隔离环境不可用）：状态置故障，
+            # 清空句柄并统一返回失败结果，避免卡在“启动中”且进程表未登记。
+            self.状态 = 进程状态_故障
+            try:
+                self._关闭管道()
+            except Exception:
+                pass
+            return False, f"启动失败: {错误}"
         开始 = time.monotonic()
         while time.monotonic() - 开始 < self.启动超时秒:
             if self.进程.poll() is not None:
@@ -236,9 +245,14 @@ class 独立进程:
         if self.重启次数 < self.最大重启次数:
             self.重启次数 += 1
             self._记录日志(f"自动重启（第 {self.重启次数} 次）")
+            # 重启前必须显式关闭旧管道并重置读缓冲，避免旧 Popen 管道
+            # 依赖垃圾回收、新进程继承旧半行/迟到响应造成协议串读。
+            self._关闭管道()
+            self._读取缓冲 = b""
             成功, 消息 = self.启动()
             if 成功:
                 return False  # 已重启恢复
+            self._记录日志(f"自动重启失败: {消息}")
         return True  # 崩溃且未恢复
 
     def 优雅停止(self) -> tuple[bool, str]:
