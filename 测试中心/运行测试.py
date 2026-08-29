@@ -1415,12 +1415,23 @@ def _执行单个阶段串行(
         实际并行 = 计算并行数(
             len(待运行文件), int(os.environ.get("系统底座_并行数", "0") or 0)
         )
-        with ThreadPoolExecutor(max_workers=实际并行) as 池:
-            任务表 = {
-                池.submit(_运行单文件子进程, str(文件), 任务id, 序号): 文件
-                for 序号, 文件 in enumerate(待运行文件)
-            }
-            并行结果 = [任务.result() for 任务 in as_completed(任务表)]
+        # 共享外部工具（LibreOffice/FFmpeg/Tesseract/textutil 等）的文件必须
+        # 进程级互斥：同一外部工具共享 profile/临时目录，并发会互相锁死
+        # （如 LibreOffice 并发 --convert-to 出现静默退出但不出文件）。
+        # 与 _执行内部阶段子进程 保持同一调度逻辑。
+        并行文件 = [文件 for 文件 in 待运行文件 if not _文件使用共享外部工具(文件)]
+        串行文件 = [文件 for 文件 in 待运行文件 if 文件 not in 并行文件]
+        并行结果: list[dict[str, object]] = []
+        if 并行文件:
+            with ThreadPoolExecutor(max_workers=实际并行) as 池:
+                任务表 = {
+                    池.submit(_运行单文件子进程, str(文件), 任务id, 序号): 文件
+                    for 序号, 文件 in enumerate(并行文件)
+                }
+                并行结果 = [任务.result() for 任务 in as_completed(任务表)]
+        # 外部工具文件在并行批结束后按原顺序执行，保持其进程级互斥。
+        for 序号, 文件 in enumerate(串行文件, start=len(并行文件)):
+            并行结果.append(_运行单文件子进程(str(文件), 任务id, 序号))
         for 结果 in sorted(并行结果, key=lambda 项: str(项.get("路径", ""))):
             测试文件 = Path(str(结果["路径"]))
             输出 = str(结果.get("标准输出", ""))
