@@ -33,6 +33,7 @@ def 建制品(根: Path, 能力表: list[tuple[str, dict]], 场景表: list[dict
     契约能力 = [{"能力id": 能力id, "参数": 参数, "返回": {"类型": "结果型"}}
             for 能力id, 参数 in 能力表]
     写JSON(包 / "包声明.json", {"包id": "模块库.样例包", "能力": 声明能力})
+    写JSON(包 / "能力定义.json", {"能力列表": 声明能力})
     写JSON(包 / "能力契约" / "参数契约.json", {"契约版本": "1.0.0", "能力契约": 契约能力})
     if 场景表 is not None:
         写JSON(包 / "验证场景引用.json", {"验证场景引用": 场景表})
@@ -68,6 +69,28 @@ def 绑定场景(场景, 制品: Path):
 
 
 class Test场景事实源与阻断(unittest.TestCase):
+    def test_聚合父包声明不重复占用子包能力owner(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建制品(Path(临时), [("样例.相加", {})], [成功场景()])
+            写JSON(
+                制品 / "模块库" / "聚合父包" / "包声明.json",
+                {"包id": "模块库.聚合父包", "能力": [{"能力id": "样例.相加"}]},
+            )
+            场景 = 验证器._加载场景(制品, None)
+            self.assertEqual([项.能力id for 项 in 场景], ["样例.相加"])
+
+    def test_平台客户端嵌套制品仍使用同一公开能力扫描链(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = Path(临时)
+            嵌套根 = 制品 / "平台客户端"
+            建制品(嵌套根, [("样例.相加", {"甲": {"必填": True}})], [成功场景()])
+            场景 = 验证器._加载场景(制品, None)
+            self.assertEqual([项.能力id for 项 in 场景], ["样例.相加"])
+            self.assertEqual(
+                场景[0].制品摘要,
+                验证器._制品全文件摘要(制品)["制品摘要"],
+            )
+
     def test_包级引用提供真实成功参数且不从契约猜输入(self):
         with tempfile.TemporaryDirectory() as 临时:
             制品 = 建制品(Path(临时), [("样例.相加", {"甲": {"必填": True}})], [成功场景()])
