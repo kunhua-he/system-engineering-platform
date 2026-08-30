@@ -8,6 +8,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 系统根 = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(系统根))
@@ -200,6 +201,85 @@ class 测试SQLite并发与收敛(unittest.TestCase):
         finally:
             释放.set()
             调用线程.join(2)
+
+    def test_未收敛任务时关闭不得进入可能阻塞的连接释放(self):
+        self.提供者 = 数据库提供者(
+            self.库路径, 查询超时秒=5, 关闭硬截止秒=0.1)
+        提供者 = self.提供者
+        self._建表()
+        已进入 = threading.Event()
+        释放任务 = threading.Event()
+
+        def 卡住任务():
+            已进入.set()
+            释放任务.wait(2)
+
+        调用线程 = threading.Thread(target=lambda: 提供者.事务(卡住任务))
+        调用线程.start()
+        self.assertTrue(已进入.wait(1))
+        try:
+            with mock.patch.object(
+                提供者, "_释放全部连接",
+                side_effect=lambda: time.sleep(1),
+            ) as 释放调用:
+                开始 = time.monotonic()
+                关闭结果 = 提供者.关闭()
+                耗时 = time.monotonic() - 开始
+            self.assertFalse(关闭结果["成功"])
+            self.assertEqual(关闭结果["错误码"], "RESOURCE_NOT_CONVERGED")
+            self.assertLess(耗时, 0.4, "关闭硬截止后不得继续进入阻塞释放")
+            释放调用.assert_not_called()
+        finally:
+            释放任务.set()
+            调用线程.join(2)
+
+    def test_任务提交到账本登记期间关闭不得提前返回成功(self):
+        self.提供者 = 数据库提供者(self.库路径, 查询超时秒=2)
+        提供者 = self.提供者
+        self._建表()
+        已提交 = threading.Event()
+        允许登记 = threading.Event()
+        原提交 = 提供者._执行器.submit
+
+        def 延迟提交(*参数, **关键字):
+            未来 = 原提交(*参数, **关键字)
+            已提交.set()
+            self.assertTrue(允许登记.wait(2))
+            return 未来
+
+        查询线程 = threading.Thread(target=lambda: 提供者.查询("SELECT 1"))
+        with mock.patch.object(提供者._执行器, "submit", side_effect=延迟提交):
+            查询线程.start()
+            self.assertTrue(已提交.wait(1))
+            关闭结果表 = []
+            关闭线程 = threading.Thread(target=lambda: 关闭结果表.append(提供者.关闭()))
+            关闭线程.start()
+            time.sleep(0.1)
+            提前返回 = not 关闭线程.is_alive()
+            允许登记.set()
+            查询线程.join(2)
+            关闭线程.join(2)
+        self.assertFalse(提前返回, "关闭不得越过已提交但尚未登记账本的任务")
+        self.assertTrue(关闭结果表)
+
+    def test_WITH写入不得走只读路径且必须真实提交(self):
+        self.提供者 = 数据库提供者(self.库路径)
+        self._建表()
+        sql = (
+            "WITH 新记录(编号, 内容) AS (VALUES(7, 'CTE写入')) "
+            "INSERT INTO 记录 SELECT 编号, 内容 FROM 新记录"
+        )
+        self.assertFalse(self.提供者._是只读SQL(sql), "WITH写入不能归入只读路径")
+        结果 = self.提供者.查询(sql)
+        self.assertTrue(结果["成功"], 结果["消息"])
+        外部连接 = sqlite3.connect(self.库路径)
+        try:
+            数量 = 外部连接.execute(
+                "SELECT COUNT(*) FROM 记录 WHERE 编号=7 AND 内容='CTE写入'"
+            ).fetchone()[0]
+        finally:
+            外部连接.close()
+        self.assertEqual(数量, 1, "WITH写入必须经过写锁并提交")
 
     def test_重复连接替换前回滚关闭旧连接(self):
         self.提供者 = 数据库提供者(self.库路径)
