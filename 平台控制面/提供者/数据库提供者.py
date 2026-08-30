@@ -230,22 +230,25 @@ class 数据库提供者:
                 self._线程上下文.任务id = ""
 
         try:
-            未来 = self._执行器.submit(包装)
+            # submit 与账本登记必须和关闭互斥；关闭不能越过“已提交未登记”窗口。
+            with self._状态锁:
+                self._确保可提交()
+                未来 = self._执行器.submit(包装)
+                with self._任务锁:
+                    self._任务账本[任务id] = {
+                        "名称": 名称, "状态": "运行中", "连接": None,
+                        "未来": 未来, "开始时间": time.monotonic(), "保留": False}
+                    # 账本有界：只裁掉已完成旧项，运行中/未收敛项绝不丢失。
+                    if len(self._任务账本) > 256:
+                        for 旧id, 旧记录 in sorted(
+                                self._任务账本.items(), key=lambda 项: 项[1]["开始时间"]):
+                            if 旧记录["未来"].done() and 旧id != 任务id:
+                                del self._任务账本[旧id]
+                            if len(self._任务账本) <= 256:
+                                break
         except Exception:
             self._任务槽.release()
             raise RuntimeError("数据库已关闭，执行器拒绝新任务") from None
-        with self._任务锁:
-            self._任务账本[任务id] = {
-                "名称": 名称, "状态": "运行中", "连接": None,
-                "未来": 未来, "开始时间": time.monotonic(), "保留": False}
-            # 账本有界：只裁掉已完成旧项，运行中/未收敛项绝不丢失。
-            if len(self._任务账本) > 256:
-                for 旧id, 旧记录 in sorted(
-                        self._任务账本.items(), key=lambda 项: 项[1]["开始时间"]):
-                    if 旧记录["未来"].done() and 旧id != 任务id:
-                        del self._任务账本[旧id]
-                    if len(self._任务账本) <= 256:
-                        break
         开始门.set()
 
         def 完成(完成未来: Future):
@@ -327,7 +330,9 @@ class 数据库提供者:
     @staticmethod
     def _是只读SQL(sql: str) -> bool:
         首词 = sql.lstrip().split(None, 1)[0].upper() if sql.strip() else ""
-        return 首词 in {"SELECT", "PRAGMA", "EXPLAIN", "WITH"}
+        # WITH 可包裹 INSERT/UPDATE/DELETE，PRAGMA 也可能修改连接/数据库状态；
+        # 无完整 SQL 解析器时保守走写资源键，禁止把写语句误判为只读。
+        return 首词 in {"SELECT", "EXPLAIN"}
 
     def _写工作(self, sql: str, 参数: tuple | list) -> dict[str, Any]:
         事务连接 = self._事务内连接()
@@ -426,11 +431,6 @@ class 数据库提供者:
             _, 未收敛 = wait(未完成, timeout=self.关闭硬截止秒)
         else:
             未收敛 = set()
-        释放错误 = ""
-        try:
-            self._释放全部连接()
-        except _重连释放失败 as 错误:
-            释放错误 = str(错误)
         if 未收敛:
             for 记录 in 记录表:
                 if not 记录["未来"].done():
@@ -438,6 +438,11 @@ class 数据库提供者:
             return _统一结果(False, 错误码="RESOURCE_NOT_CONVERGED",
                              消息=f"关闭硬截止 {self.关闭硬截止秒} 秒到期，"
                                 f"仍有 {len(未收敛)} 个任务未收敛，账本已保留")
+        释放错误 = ""
+        try:
+            self._释放全部连接()
+        except _重连释放失败 as 错误:
+            释放错误 = str(错误)
         if 释放错误:
             return _统一结果(False, 错误码="RELEASE_FAILED",
                              消息=f"数据库关闭时资源释放失败: {释放错误}")
