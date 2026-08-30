@@ -20,6 +20,10 @@
       "sha256": "491ae01dca0a8bbb91a992cef61226b0ccb0e4d1febce56a1f5ba06ab2bb9597"
     },
     {
+      "路径": "夹具/短驻留进程.py",
+      "sha256": "de26e1045c91837d99a86896ec504c9abb190d26ca93f6e673174bde3b7aeec6"
+    },
+    {
       "路径": "实现/进程管理.py",
       "sha256": "c307d788fcc8bd4de17c336bfd41d7c142382859acc0bb6e4ff83ab927514866"
     },
@@ -52,8 +56,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "11683dedd00059441c68402df7c49076e9d59de628ddc0a780b3af3d03065b33"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "8fcb0846b391649d20ddee2a31c0b1f3b0e36acd04cbce616a0280da7dd2bd36"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }

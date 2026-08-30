@@ -20,6 +20,14 @@
       "sha256": "17858a1aa61d499e526a88af18916bdec293c720c12d3ec633c0ee1b81054f1f"
     },
     {
+      "路径": "夹具/上传样本.txt",
+      "sha256": "6bd333596e80ffa4dcbb6ea4c598c17333535c9ba4c3c1f930c5b5a5a7494315"
+    },
+    {
+      "路径": "夹具/本地HTTP服务.py",
+      "sha256": "398754b81f80aaa215c70b6ab6c7c6fff20f5bdd9526169e2b12161f3f14e7d0"
+    },
+    {
       "路径": "实现/网络请求.py",
       "sha256": "21f813ebaddc2db89632e2abe1448da0234f74986cfd8f8ea4330a9fa08b5351"
     },
@@ -60,8 +68,12 @@
       "sha256": "1beecb4433c8783d40f5295b95173010293c2db589d4ddd0ed2eff5251ccee70"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "5d6d3a2808ae3e500a79944d8f70baf5ff7fe79e704be1278372b51c66ea23d7"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "8843707ce916aa544f0ce7f3000a15c96ecbb35988da9f58933efa4c97fec57a"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }
