@@ -9,6 +9,7 @@ import unittest
 from 支持库.后端.大语言模型支持库.模型连接器 import (
     连接LLM, 连接向量模型, 连接重排模型,
     生成对话, 生成嵌入, 执行重排, 释放句柄,
+    资源快照,
 )
 from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型连接器 as 实现
 
@@ -31,6 +32,13 @@ class 处理器(BaseHTTPRequestHandler):
 
 
 class 测试模型连接器HTTP(unittest.TestCase):
+    def test_资源快照不得在同一锁上死锁(self) -> None:
+        完成 = []
+        线程 = threading.Thread(target=lambda: 完成.append(资源快照()), daemon=True)
+        线程.start(); 线程.join(timeout=1)
+        self.assertFalse(线程.is_alive(), "资源快照发生锁重入死锁")
+        self.assertTrue(完成[0].成功)
+
     def test_三种URL连接均有默认真实HTTP调用器(self) -> None:
         服务 = ThreadingHTTPServer(("127.0.0.1", 0), 处理器)
         线程 = threading.Thread(target=服务.serve_forever, daemon=True); 线程.start()

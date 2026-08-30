@@ -54,6 +54,9 @@ def 注入平台客户端路径() -> str | None:
     global _平台客户端路径已注入
     if _平台客户端路径已注入:
         return None
+    if 系统根.name == "平台客户端" and (系统根 / "__init__.py").is_file():
+        _平台客户端路径已注入 = True
+        return None
     环境目录 = 平台客户端环境目录()
     指针文件 = 环境目录 / 激活指针文件名
     if not 指针文件.is_file():
