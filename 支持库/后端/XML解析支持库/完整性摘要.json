@@ -20,6 +20,10 @@
       "sha256": "2bdd48a28723b49a06e0632a9198ba24705b2c40edd0a886044da8a1d5539dac"
     },
     {
+      "路径": "夹具/最小目录.xml",
+      "sha256": "3300d448234f50c0b345565dcbadfb00280d94ac25f3e7a03d77a44a5755fdf3"
+    },
+    {
       "路径": "实现/XML解析.py",
       "sha256": "b1678b544c27f9e1f1de3d9c1fc636dd29d7256304386b82ec6b94a8307c3998"
     },
@@ -52,8 +56,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "ee618aa820b31c27fcd1f1cb024999758c9aa2ab71dd6edeb1be7b4daf8a2d31"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "09a036491b5f734aa3f3e9bf4c18ee5120472260049288c646b755e56fba054d"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }

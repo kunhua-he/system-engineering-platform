@@ -20,6 +20,10 @@
       "sha256": "fd5cc6821a805231b9559c9dc32aecd0ecfd7e94164824ce1417b1a07dd3af05"
     },
     {
+      "路径": "夹具/最小模板.txt",
+      "sha256": "2833067c6ea85c1090ca2f32e4b3d59bb23e8377f1d60a51b01159c5852cd138"
+    },
+    {
       "路径": "实现/模板渲染.py",
       "sha256": "c5e7edcc873dde6e442eae1d32e5b0c0757c2af72837d64b7b3b6e65424f017d"
     },
@@ -52,8 +56,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "2bf4ca6c97899701fdfd0b891f87f9a40454f5542d3955a4556ded4a4c8fca1a"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "ed3ba69b5477b2319c6329983830a83a14280fb093890d709b7dfbcef07c7aa6"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }
