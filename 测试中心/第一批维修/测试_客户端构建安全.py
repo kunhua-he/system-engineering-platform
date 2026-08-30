@@ -162,6 +162,17 @@ class 测试客户端构建安全(unittest.TestCase):
         self.断言失败含路径(
             lambda: 构建模块.计算制品摘要(self.源根), 链接)
 
+    def test_数据库只允许作为包内验证夹具进入制品(self) -> None:
+        夹具 = self.源根 / "验证夹具" / "空状态.sqlite3"
+        夹具.parent.mkdir(parents=True)
+        夹具.write_bytes(b"SQLite format 3\x00")
+        运行库 = self.源根 / "工程缓存" / "运行状态.sqlite3"
+        运行库.parent.mkdir(parents=True)
+        运行库.write_bytes("运行数据".encode("utf-8"))
+        构建模块.复制非Py文件(self.源根, self.目标根)
+        self.assertTrue((self.目标根 / "验证夹具" / "空状态.sqlite3").is_file())
+        self.assertFalse((self.目标根 / "工程缓存" / "运行状态.sqlite3").exists())
+
     def test_正式构建前拒绝符号链接稳定指针且不覆盖外部(self) -> None:
         临时系统根 = self.临时根 / "临时系统"
         源码包 = 临时系统根 / "测试包"

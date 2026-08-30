@@ -362,7 +362,10 @@ def 复制非Py文件(源根: Path, 目标根: Path) -> None:
                 continue
             if 相对.suffix == ".py":
                 continue
-            if 相对.suffix.lower() in {".db", ".sqlite", ".sqlite3", ".log", ".tmp", ".pyc"}:
+            是夹具 = any(部分 in {"夹具", "验证夹具"} for 部分 in 相对.parts)
+            if 相对.suffix.lower() in {".db", ".sqlite", ".sqlite3"} and not 是夹具:
+                continue
+            if 相对.suffix.lower() in {".log", ".tmp", ".pyc"}:
                 continue
             _解析受控源文件(文件, 源根, 真实源根)
             _受控目标路径(目标根, 真实目标根, 相对)
@@ -435,7 +438,10 @@ def 计算制品摘要(客户端根: Path) -> str:
             相对 = 文件.relative_to(客户端根)
             if "__pycache__" in 相对.parts or "工程缓存" in 相对.parts:
                 continue
-            if 相对.suffix.lower() in {".db", ".sqlite", ".sqlite3", ".log", ".tmp", ".pyc"}:
+            是夹具 = any(部分 in {"夹具", "验证夹具"} for 部分 in 相对.parts)
+            if 相对.suffix.lower() in {".db", ".sqlite", ".sqlite3"} and not 是夹具:
+                continue
+            if 相对.suffix.lower() in {".log", ".tmp", ".pyc"}:
                 continue
             _解析受控源文件(文件, 客户端根, 真实根)
             数据, _ = _读取受控文件(根描述符, 客户端根, 相对)

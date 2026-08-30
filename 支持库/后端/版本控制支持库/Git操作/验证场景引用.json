@@ -20,105 +20,105 @@
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/HEAD",
+                          "来源": "验证夹具/临时仓库模板/git目录/HEAD",
                           "目标": "仓库/.git/HEAD"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/config",
+                          "来源": "验证夹具/临时仓库模板/git目录/config",
                           "目标": "仓库/.git/config"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/index",
+                          "来源": "验证夹具/临时仓库模板/git目录/index",
                           "目标": "仓库/.git/index"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/1a/d50e82db36b2a74974fa9be90ec0c91198ac2f",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/1a/d50e82db36b2a74974fa9be90ec0c91198ac2f",
                           "目标": "仓库/.git/objects/1a/d50e82db36b2a74974fa9be90ec0c91198ac2f"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/5d/7422a8c2cf6f278780c8eb322774994e2c3666",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/5d/7422a8c2cf6f278780c8eb322774994e2c3666",
                           "目标": "仓库/.git/objects/5d/7422a8c2cf6f278780c8eb322774994e2c3666"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/5f/7c5209972fdb8db1d665895a432e8f733c79bc",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/5f/7c5209972fdb8db1d665895a432e8f733c79bc",
                           "目标": "仓库/.git/objects/5f/7c5209972fdb8db1d665895a432e8f733c79bc"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/69/d5734cf5c27737b05ac0eebf1bcaa85b7479ea",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/69/d5734cf5c27737b05ac0eebf1bcaa85b7479ea",
                           "目标": "仓库/.git/objects/69/d5734cf5c27737b05ac0eebf1bcaa85b7479ea"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/83/c5cad1948203cd1592b4912373d6b7b82cfa2a",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/83/c5cad1948203cd1592b4912373d6b7b82cfa2a",
                           "目标": "仓库/.git/objects/83/c5cad1948203cd1592b4912373d6b7b82cfa2a"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/b2/57e476f6a74693017b01db252becc7261e0634",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/b2/57e476f6a74693017b01db252becc7261e0634",
                           "目标": "仓库/.git/objects/b2/57e476f6a74693017b01db252becc7261e0634"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/c5/425b365a3afd57786529b5ddd2232b93557789",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/c5/425b365a3afd57786529b5ddd2232b93557789",
                           "目标": "仓库/.git/objects/c5/425b365a3afd57786529b5ddd2232b93557789"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/cc/b714e4318b49c07aa1034f35e679294ebd878b",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/cc/b714e4318b49c07aa1034f35e679294ebd878b",
                           "目标": "仓库/.git/objects/cc/b714e4318b49c07aa1034f35e679294ebd878b"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/objects/dc/b02404414dd03ce213c1343ad30e863d6e58a9",
+                          "来源": "验证夹具/临时仓库模板/git目录/objects/dc/b02404414dd03ce213c1343ad30e863d6e58a9",
                           "目标": "仓库/.git/objects/dc/b02404414dd03ce213c1343ad30e863d6e58a9"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/refs/heads/main",
+                          "来源": "验证夹具/临时仓库模板/git目录/refs/heads/main",
                           "目标": "仓库/.git/refs/heads/main"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/git目录/refs/heads/source",
+                          "来源": "验证夹具/临时仓库模板/git目录/refs/heads/source",
                           "目标": "仓库/.git/refs/heads/source"
                         }
                       ],
                       [
                         {
                           "$动态": "夹具文件复制",
-                          "来源": "临时仓库模板/工作区/基线.txt",
+                          "来源": "验证夹具/临时仓库模板/工作区/基线.txt",
                           "目标": "仓库/基线.txt"
                         }
                       ]
