@@ -330,9 +330,11 @@ function 挂载(c,p){{const x=创建(c);p.append(x);for(const y of 页面.组件
 </script></body></html>'''
 
 
-def _生成启动器(项目id: str) -> str:
-    """生成独立 HTML 启动器，源码只依赖制品目录内的运行核心。"""
+def _生成启动器(项目id: str, 包前缀: str = "") -> str:
+    """生成唯一独立启动器模板；包前缀只改变装配根，不复制启动逻辑。"""
     项目id字面量 = json.dumps(校验项目id(项目id), ensure_ascii=False)
+    包前缀字面量 = json.dumps(包前缀, ensure_ascii=False)
+    导入前缀 = f"{包前缀}." if 包前缀 else ""
     return f'''"""独立 HTML 启动器；不依赖开发网关。"""
 from __future__ import annotations
 import os, sys
@@ -343,15 +345,17 @@ from urllib.parse import quote, unquote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 项目id = {项目id字面量}
+包前缀 = {包前缀字面量}
 根 = Path(__file__).resolve().parents[1]
 if str(根) not in sys.path: sys.path.insert(0, str(根))
-from 后端核心.后端核心 import 后端核心
-from 运行核心.统一网关.网关核心 import 网关核心
-from 运行核心.统一网关.本地网关 import 本地网关服务器
+源码根 = 根 / 包前缀 if 包前缀 else 根
+from {导入前缀}后端核心.后端核心 import 后端核心
+from {导入前缀}运行核心.统一网关.网关核心 import 网关核心
+from {导入前缀}运行核心.统一网关.本地网关 import 本地网关服务器
 def 主函数(端口=45080, 自动打开=True):
-    from 公共契约.运行时.端口策略 import 校验应用监听端口
+    from {导入前缀}公共契约.运行时.端口策略 import 校验应用监听端口
     校验应用监听端口(端口)
-    后端 = 后端核心(系统根目录=根); 启动 = 后端.启动()
+    后端 = 后端核心(系统根目录=源码根); 启动 = 后端.启动()
     if not 启动.成功: raise RuntimeError(f"独立运行时装配失败: {{启动.错误说明}}")
     网关 = 本地网关服务器(网关核心实例=网关核心(后端), 端口=0); 成功, 说明 = 网关.启动()
     if not 成功: 后端.优雅关闭(); raise RuntimeError(说明)
@@ -397,11 +401,15 @@ def 主函数(端口=45080, 自动打开=True):
                 self.send_response(400); self._CORS头(); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文); return
             # urllib 不能直接发原始中文路径（UnicodeEncodeError），必须 quote 编码；
             # quote 输出的 %XX 是合法 ASCII，urllib 不会二次转义（实测 200 成功）。
-            请求 = urllib.request.Request(网关地址 + quote("/网关/调用"), data=请求正文, headers={{"Content-Type":"application/json"}})
+            请求头 = {{"Content-Type":"application/json"}}
+            凭证 = os.environ.get("系统库网关凭证", "")
+            if 凭证: 请求头["Authorization"] = f"Bearer {{凭证}}"
+            请求 = urllib.request.Request(网关地址 + quote("/网关/调用"), data=请求正文, headers=请求头)
             try:
                 with urllib.request.urlopen(请求, timeout=10) as 响应: 状态码, 正文 = 响应.status, 响应.read()
             except urllib.error.HTTPError as 错误:
-                状态码, 正文 = 错误.code, 错误.read()
+                try: 状态码, 正文 = 错误.code, 错误.read()
+                finally: 错误.close()
             except (urllib.error.URLError, TimeoutError, OSError):
                 状态码 = 502; 正文 = json.dumps({{"成功":False,"错误码":"网关断开","错误说明":"网关不可访问"}}, ensure_ascii=False).encode()
             self.send_response(状态码); self._CORS头(); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文)

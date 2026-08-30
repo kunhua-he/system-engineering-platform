@@ -280,52 +280,70 @@ def _读取JSON严格(路径: Path, 名称: str) -> Any:
 
 
 def _扫描公开能力(制品目录: Path) -> tuple[set[str], list[Path]]:
-    """严格对账包声明与能力契约，任何坏文件、缺 id、重复或差集都阻断。"""
-    声明集合: set[str] = set()
-    契约集合: set[str] = set()
-    包目录表: list[Path] = []
-    for 类型目录 in ("模块库", "支持库"):
-        根 = 制品目录 / 类型目录
-        if not 根.is_dir():
-            continue
-        for 声明路径 in sorted(根.rglob("包声明.json")):
-            包目录 = 声明路径.parent
-            包目录表.append(包目录)
-            声明 = _读取JSON严格(声明路径, "包声明")
-            if not isinstance(声明, dict) or not isinstance(声明.get("能力"), list):
-                raise ValueError(f"包声明契约不合法: {声明路径}")
-            本包声明: set[str] = set()
-            for 条目 in 声明["能力"]:
-                if not isinstance(条目, dict) or not isinstance(条目.get("能力id"), str) or not 条目["能力id"].strip():
-                    raise ValueError(f"包声明缺能力id: {声明路径}")
-                能力id = 条目["能力id"].strip()
-                if 能力id in 本包声明 or 能力id in 声明集合:
-                    raise ValueError(f"重复公开能力id: {能力id}")
-                本包声明.add(能力id)
-                声明集合.add(能力id)
-            契约路径 = 包目录 / "能力契约" / "参数契约.json"
-            契约 = _读取JSON严格(契约路径, "能力契约")
-            if not isinstance(契约, dict) or not isinstance(契约.get("能力契约"), list):
-                raise ValueError(f"能力契约结构不合法: {契约路径}")
-            本包契约: set[str] = set()
-            for 条目 in 契约["能力契约"]:
-                if not isinstance(条目, dict) or not isinstance(条目.get("能力id"), str) or not 条目["能力id"].strip():
-                    raise ValueError(f"能力契约缺能力id: {契约路径}")
-                能力id = 条目["能力id"].strip()
-                if 能力id in 本包契约 or 能力id in 契约集合:
-                    raise ValueError(f"重复能力契约id: {能力id}")
-                本包契约.add(能力id)
-                契约集合.add(能力id)
-            if 本包声明 != 本包契约:
-                raise ValueError(
-                    f"包声明与能力契约差集: {包目录}; "
-                    f"仅声明={sorted(本包声明 - 本包契约)} 仅契约={sorted(本包契约 - 本包声明)}"
-                )
-    if not 包目录表 or not 声明集合:
+    """只消费统一正式包索引，再严格对账 owner 包的声明与能力契约。"""
+    from 开发工具.项目编译.正式包索引 import 构建索引
+
+    制品目录 = Path(制品目录)
+    直接能力根 = any((制品目录 / 名称).is_dir() for 名称 in ("模块库", "支持库"))
+    平台客户端根 = 制品目录 / "平台客户端"
+    嵌套能力根 = any((平台客户端根 / 名称).is_dir() for 名称 in ("模块库", "支持库"))
+    if 直接能力根 and 嵌套能力根:
+        raise ValueError("制品同时存在顶层与平台客户端嵌套能力根，拒绝双事实源")
+    扫描根 = 平台客户端根 if 嵌套能力根 else 制品目录
+    索引 = 构建索引(扫描根)
+    if 索引["能力冲突"]:
+        raise ValueError(f"公开能力 owner 冲突: {索引['能力冲突']}")
+    能力所有者: dict[str, str] = dict(索引["能力所有者"])
+    if not 能力所有者:
         raise ValueError("制品无任何公开能力契约")
-    if 声明集合 != 契约集合:
-        raise ValueError("制品公开能力与契约全集不一致")
-    return 声明集合, 包目录表
+    全部包 = {**索引["支持库"], **索引["模块库"]}
+    owner包id表 = sorted(set(能力所有者.values()))
+    包目录表: list[Path] = []
+    契约全集: set[str] = set()
+    for 包id in owner包id表:
+        if 包id.startswith("冲突:") or 包id not in 全部包:
+            raise ValueError(f"公开能力 owner 不合法: {包id}")
+        包目录, 声明 = 全部包[包id]
+        包目录表.append(包目录)
+        声明路径 = 包目录 / "包声明.json"
+        if not isinstance(声明, dict) or not isinstance(声明.get("能力"), list):
+            raise ValueError(f"包声明契约不合法: {声明路径}")
+        本包声明: set[str] = set()
+        for 条目 in 声明["能力"]:
+            if not isinstance(条目, dict) or not isinstance(条目.get("能力id"), str) or not 条目["能力id"].strip():
+                raise ValueError(f"包声明缺能力id: {声明路径}")
+            能力id = 条目["能力id"].strip()
+            if 能力id in 本包声明:
+                raise ValueError(f"包内重复公开能力id: {能力id}")
+            本包声明.add(能力id)
+        owner能力 = {能力id for 能力id, owner in 能力所有者.items() if owner == 包id}
+        if 本包声明 != owner能力:
+            raise ValueError(
+                f"包声明与统一 owner 索引差集: {包目录}; "
+                f"仅声明={sorted(本包声明 - owner能力)} 仅owner={sorted(owner能力 - 本包声明)}"
+            )
+        契约路径 = 包目录 / "能力契约" / "参数契约.json"
+        契约 = _读取JSON严格(契约路径, "能力契约")
+        if not isinstance(契约, dict) or not isinstance(契约.get("能力契约"), list):
+            raise ValueError(f"能力契约结构不合法: {契约路径}")
+        本包契约: set[str] = set()
+        for 条目 in 契约["能力契约"]:
+            if not isinstance(条目, dict) or not isinstance(条目.get("能力id"), str) or not 条目["能力id"].strip():
+                raise ValueError(f"能力契约缺能力id: {契约路径}")
+            能力id = 条目["能力id"].strip()
+            if 能力id in 本包契约 or 能力id in 契约全集:
+                raise ValueError(f"重复能力契约id: {能力id}")
+            本包契约.add(能力id)
+            契约全集.add(能力id)
+        if 本包声明 != 本包契约:
+            raise ValueError(
+                f"包声明与能力契约差集: {包目录}; "
+                f"仅声明={sorted(本包声明 - 本包契约)} 仅契约={sorted(本包契约 - 本包声明)}"
+            )
+    公开能力 = set(能力所有者)
+    if 公开能力 != 契约全集:
+        raise ValueError("统一正式包索引与能力契约全集不一致")
+    return 公开能力, 包目录表
 
 
 def _解析场景引用(包目录: Path) -> list[dict[str, Any]]:

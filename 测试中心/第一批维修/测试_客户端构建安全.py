@@ -213,6 +213,18 @@ class 测试客户端构建安全(unittest.TestCase):
         假安装.assert_not_called()
         self.assertFalse(临时制品目录.exists(), "安装环境含链接时必须在产生制品前阻断")
 
+    def test_平台客户端制品壳复用统一启动器模板(self) -> None:
+        构建模块.生成可运行制品壳(self.目标根)
+        启动器 = self.目标根 / "运行入口" / "启动.py"
+        页面 = self.目标根 / "前端" / "编译页面" / "index.html"
+        路由 = self.目标根 / "前端" / "编译页面" / "路由表.json"
+        self.assertTrue(启动器.is_file())
+        self.assertTrue(页面.is_file())
+        self.assertTrue(路由.is_file())
+        源码 = 启动器.read_text(encoding="utf-8")
+        self.assertIn("from 平台客户端.后端核心.后端核心 import 后端核心", 源码)
+        self.assertNotIn("from 后端核心.后端核心 import 后端核心", 源码)
+
 
     def test_安装链无论成功都关闭制品接入状态库(self) -> None:
         class 假接入:

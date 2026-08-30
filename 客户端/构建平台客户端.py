@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import hashlib
 import os
 import shutil
@@ -402,6 +403,22 @@ def 生成入口(客户端根: Path) -> None:
         os.close(根描述符)
 
 
+def 生成可运行制品壳(制品根: Path) -> None:
+    """调用统一编译器模板生成平台客户端页面与运行入口。"""
+    from 开发工具.项目编译.项目编译器 import _生成HTML, _生成启动器, _写入并编译Python
+    页面目录 = 制品根 / "前端" / "编译页面"
+    页面目录.mkdir(parents=True, exist_ok=True)
+    页面 = {"页面id": "主页", "标题": "系统工程平台客户端", "路由": "/", "组件列表": []}
+    (页面目录 / "index.html").write_text(_生成HTML(页面), encoding="utf-8")
+    (页面目录 / "路由表.json").write_text(
+        json.dumps({"/": "index.html"}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    入口目录 = 制品根 / "运行入口"
+    入口目录.mkdir(parents=True, exist_ok=True)
+    _写入并编译Python(
+        入口目录 / "启动.py", _生成启动器("系统工程平台客户端", 包前缀=客户端前缀))
+    (入口目录 / "__init__.py").write_text('"""平台客户端运行入口。"""\n', encoding="utf-8")
+
+
 def 计算制品摘要(客户端根: Path) -> str:
     """内容寻址：拒绝链接后对全部正式普通文件计算 sha256 摘要。"""
     客户端根 = Path(客户端根)
@@ -462,6 +479,7 @@ def 构建(安装: bool = False) -> Path:
         shutil.rmtree(制品根)
     制品根.mkdir(parents=True)
     _安全复制目录树(客户端根, 制品根 / 客户端前缀)
+    生成可运行制品壳(制品根)
     _拒绝符号链接(制品根, "临时制品复制后检查")
     # 摘要口径=制品根内容（含 平台客户端 包层）；安全摘要逐文件无跟随读取。
     摘要 = 计算制品摘要(制品根)[:16]
