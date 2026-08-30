@@ -217,10 +217,13 @@ class HTTP连接器:
                 return 响应.status, json.loads(响应.read().decode("utf-8")), ""
         except urllib.error.HTTPError as 错误:
             try:
-                数据 = json.loads(错误.read().decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError, OSError):
-                数据 = None
-            return 错误.code, 数据, f"HTTP {错误.code}"
+                try:
+                    数据 = json.loads(错误.read().decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+                    数据 = None
+                return 错误.code, 数据, f"HTTP {错误.code}"
+            finally:
+                错误.close()
         except (http.client.RemoteDisconnected, http.client.IncompleteRead) as 错误:
             return 200, None, f"响应不完整：{错误}"
         except (urllib.error.URLError, TimeoutError, OSError) as 错误:
