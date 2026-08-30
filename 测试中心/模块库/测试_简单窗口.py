@@ -42,7 +42,7 @@ _支持库注册表 = 能力注册表()
 创建并绑定(_支持库注册表)
 
 from 模块库.简单窗口 import (
-    创建窗口, 打开窗口, 关闭窗口, 传递参数, 获取窗口描述, 设置HTTP连接器,
+    创建窗口, 打开窗口, 关闭窗口, 传递参数, 获取窗口描述, 释放窗口, 设置HTTP连接器,
 )
 
 模块目录 = 系统根 / "模块库" / "简单窗口"
@@ -61,9 +61,9 @@ class Test简单窗口S0收敛(unittest.TestCase):
             (模块目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
         self.assertEqual(契约["契约版本"], "1.0.0")
         能力表 = 契约["能力契约"]
-        self.assertEqual(len(能力表), 5)
+        self.assertEqual(len(能力表), 6)
         预期能力 = {"简单窗口.创建窗口", "简单窗口.打开窗口", "简单窗口.关闭窗口",
-                    "简单窗口.传递参数", "简单窗口.获取窗口描述"}
+                    "简单窗口.传递参数", "简单窗口.获取窗口描述", "简单窗口.释放窗口"}
         for 能力 in 能力表:
             self.assertIn(能力["能力id"], 预期能力)
             self.assertIn(".", 能力["版本"])
@@ -86,7 +86,7 @@ class Test简单窗口S0收敛(unittest.TestCase):
         声明集 = {能力["能力id"] for 能力 in 声明["能力"]}
         契约集 = {能力["能力id"] for 能力 in 契约["能力契约"]}
         self.assertEqual(声明集, 契约集)
-        self.assertEqual(len(声明集), 5)
+        self.assertEqual(len(声明集), 6)
 
     def test_完整性摘要校验通过(self) -> None:
         from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
@@ -117,10 +117,8 @@ class Test简单窗口功能(unittest.TestCase):
         启动结果 = cls.后端.启动()
         if not 启动结果.成功:
             raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
-        cls.网关 = 本地网关服务器(
-            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
-            配置={"请求超时秒": 10},
-        )
+        cls.网关 = 本地网关服务器.创建测试服务器(
+            网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0)
         成功, 说明 = cls.网关.启动()
         if not 成功:
             cls.后端.优雅关闭()
@@ -149,15 +147,16 @@ class Test简单窗口功能(unittest.TestCase):
         创建结果 = 创建窗口("测试窗", "测试", 400, 300)
         self.assertTrue(创建结果.成功)
         self.assertEqual(创建结果.值["标题"], "测试")
-        打开结果 = 打开窗口("测试窗")
+        句柄 = 创建结果.值["句柄"]
+        打开结果 = 打开窗口(句柄)
         self.assertTrue(打开结果.成功)
         self.assertEqual(打开结果.值["状态"], "打开")
-        参数结果 = 传递参数("测试窗", {"来源": "测试"})
+        参数结果 = 传递参数(句柄, {"来源": "测试"})
         self.assertEqual(参数结果.值["参数"]["来源"], "测试")
-        描述结果 = 获取窗口描述("测试窗")
+        描述结果 = 获取窗口描述(句柄)
         self.assertEqual(描述结果.值["标题"], "测试")
         self.assertEqual(描述结果.值["状态"], "打开")
-        关闭结果 = 关闭窗口("测试窗")
+        关闭结果 = 关闭窗口(句柄)
         self.assertTrue(关闭结果.成功)
         self.assertEqual(关闭结果.值["状态"], "关闭")
 
@@ -167,13 +166,13 @@ class Test简单窗口功能(unittest.TestCase):
         self.assertEqual(结果.错误.错误码, "参数不合法")
 
     def test_窗口不存在失败(self) -> None:
-        结果 = 获取窗口描述("不存在的窗")
+        结果 = 获取窗口描述(999999)
         self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误.错误码, "窗口不存在")
+        self.assertEqual(结果.错误.错误码, "句柄无效")
 
     def test_非法状态流转失败(self) -> None:
-        创建窗口("状态窗", "状态", 100, 100)
-        结果 = 关闭窗口("状态窗")
+        创建 = 创建窗口("状态窗", "状态", 100, 100)
+        结果 = 关闭窗口(创建.值["句柄"])
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误.错误码, "状态流转不合法")
 
