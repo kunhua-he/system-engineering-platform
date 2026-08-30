@@ -349,13 +349,17 @@ from pathlib import Path
 根 = Path(__file__).resolve().parents[1]
 if str(根) not in sys.path: sys.path.insert(0, str(根))
 源码根 = 根 / 包前缀 if 包前缀 else 根
+from {导入前缀}公共契约.运行时.运行缓存 import 解析运行缓存根
+运行缓存根 = 解析运行缓存根(源码根, 制品运行=True)
+os.environ["系统底座_工程缓存根"] = str(运行缓存根)
+os.environ.setdefault("系统底座_环境阶段输出", "1")
 from {导入前缀}后端核心.后端核心 import 后端核心
 from {导入前缀}运行核心.统一网关.网关核心 import 网关核心
 from {导入前缀}运行核心.统一网关.本地网关 import 本地网关服务器
 def 主函数(端口=45080, 自动打开=True):
     from {导入前缀}公共契约.运行时.端口策略 import 校验应用监听端口
     校验应用监听端口(端口)
-    后端 = 后端核心(系统根目录=源码根); 启动 = 后端.启动()
+    后端 = 后端核心(系统根目录=源码根, 运行缓存根目录=运行缓存根); 启动 = 后端.启动()
     if not 启动.成功: raise RuntimeError(f"独立运行时装配失败: {{启动.错误说明}}")
     网关 = 本地网关服务器(网关核心实例=网关核心(后端), 端口=0); 成功, 说明 = 网关.启动()
     if not 成功: 后端.优雅关闭(); raise RuntimeError(说明)

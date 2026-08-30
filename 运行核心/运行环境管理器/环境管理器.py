@@ -31,7 +31,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 工程缓存目录名 = "工程缓存"
 提供者环境根名 = "提供者运行环境"
@@ -52,6 +54,7 @@ _提供者锁表: dict[str, threading.Lock] = {}
 _制品锁表: dict[str, threading.Lock] = {}
 # 缓存证据追加写锁（多线程安全）
 _证据锁 = threading.Lock()
+_标准venv模块 = venv
 
 
 @dataclass
@@ -106,10 +109,22 @@ def _定位系统根(提供者目录: Path) -> Path:
     return 系统根
 
 
+def _运行缓存根(提供者目录: Path) -> Path:
+    """提供者环境、证据和镜像配置统一使用同一个运行缓存根解析器。"""
+    return 解析运行缓存根(_定位系统根(提供者目录))
+
+
+def _报告阶段(进度回调: Callable[[str], None] | None, 阶段: str) -> None:
+    """报告有界构建阶段；生成启动器会开启标准输出，库调用方也可传回调。"""
+    if 进度回调 is not None:
+        进度回调(阶段)
+    elif os.environ.get("系统底座_环境阶段输出") == "1":
+        print(f"[提供者环境] {阶段}", flush=True)
+
+
 def 环境目录(提供者目录: Path, 摘要: str) -> Path:
     """计算环境目录：工程缓存/提供者运行环境/<提供者id>/<摘要>/。"""
-    系统根 = _定位系统根(提供者目录)
-    return 系统根 / 工程缓存目录名 / 提供者环境根名 / 提供者目录.name / 摘要
+    return _运行缓存根(提供者目录) / 提供者环境根名 / 提供者目录.name / 摘要
 
 
 def _输入哈希(提供者目录: Path) -> str:
@@ -166,7 +181,6 @@ def _记录证据(提供者目录: Path, 类型: str, 摘要: str, 输入哈希:
 
     类型：命中（复用现有环境/系统解释器回退）、重建（真实构建）、失败（构建失败）。
     """
-    系统根 = _定位系统根(提供者目录)
     记录 = {
         "时间": datetime.now().isoformat(timespec="seconds"),
         "提供者id": Path(提供者目录).name,
@@ -178,7 +192,7 @@ def _记录证据(提供者目录: Path, 类型: str, 摘要: str, 输入哈希:
         "错误说明": 错误说明,
     }
     with _证据锁:
-        证据文件 = 系统根 / 工程缓存目录名 / 提供者环境根名 / 缓存证据文件名
+        证据文件 = _运行缓存根(提供者目录) / 提供者环境根名 / 缓存证据文件名
         证据文件.parent.mkdir(parents=True, exist_ok=True)
         锁文件 = 证据文件.with_suffix(".lock")
         with 锁文件.open("a+", encoding="utf-8") as 锁句柄:
@@ -216,7 +230,8 @@ def _制品仓库锁(标识: str) -> threading.Lock:
 
 
 def 确保环境(提供者目录: Path, *, 超时秒: int = 300,
-            远程镜像: 远程镜像配置 | None = None) -> 环境结果:
+            远程镜像: 远程镜像配置 | None = None,
+            进度回调: Callable[[str], None] | None = None) -> 环境结果:
     """确保提供者环境存在且有效；缺失/损坏则构建。
 
     缺少依赖锁 → 视为未声明第三方依赖，返回系统解释器；显式空锁仍然
@@ -227,6 +242,9 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300,
     现有本地缓存路径（行为零变化）；启用后本地损坏/缺失时先尝试
     镜像恢复，镜像任一失败 → 记录失败证据并明确回退本地构建。
     """
+    if isinstance(超时秒, bool) or not isinstance(超时秒, int) or not 1 <= 超时秒 <= 3600:
+        return 环境结果(False, 错误码="参数不合法", 错误说明="环境构建超时秒必须在 1 到 3600 之间")
+    _报告阶段(进度回调, "检查缓存")
     依赖锁 = 读取依赖锁(提供者目录)
     输入哈希 = _输入哈希(提供者目录)
     提供者id = 提供者目录.name
@@ -235,6 +253,7 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300,
     # 支持库误判为损坏环境。
     if not (提供者目录 / "依赖锁.json").is_file():
         _记录证据(提供者目录, "命中", "", 输入哈希)
+        _报告阶段(进度回调, "环境就绪")
         return 环境结果(True, 解释器路径=sys.executable,
                          错误说明="无第三方依赖，使用系统解释器")
     if not isinstance(依赖锁, dict):
@@ -260,24 +279,32 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300,
     校验结果 = 校验环境(解释器, 依赖锁)
     if 校验结果:
         _记录证据(提供者目录, "命中", 摘要, 输入哈希)
+        _报告阶段(进度回调, "环境就绪")
         return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
     # 损坏/缺失 → 可选远程镜像恢复；镜像命中即返回，失败则明确回退本地构建
     镜像配置 = 远程镜像
     if 镜像配置 is None:
-        系统根 = _定位系统根(提供者目录)
-        镜像配置 = 读取远程镜像配置(系统根 / 工程缓存目录名 / 远程镜像配置文件名)
+        镜像配置 = 读取远程镜像配置(_运行缓存根(提供者目录) / 远程镜像配置文件名)
+    _报告阶段(进度回调, "检查远程镜像")
     镜像结果 = _尝试镜像命中(提供者目录, 依赖锁, 目标, 解释器, 摘要, 镜像配置)
     if 镜像结果 is not None:
         if 镜像结果.成功:
             return 镜像结果
         # 镜像尝试失败（证据已记录）→ 明确回退本地构建
     # 临时构建 → 原子改名
-    结果 = _构建环境(提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒)
+    if 进度回调 is None:
+        # 保持既有私有构建器替换点的六参数调用契约。
+        结果 = _构建环境(提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒)
+    else:
+        结果 = _构建环境(
+            提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒, 进度回调=进度回调)
     if 结果.成功:
         _记录证据(提供者目录, "重建", 摘要, 输入哈希)
+        _报告阶段(进度回调, "环境就绪")
     else:
         _记录证据(提供者目录, "失败", 摘要, 输入哈希,
                    错误码=结果.错误码, 错误说明=结果.错误说明)
+        _报告阶段(进度回调, f"构建失败: {结果.错误说明}")
     return 结果
 
 
@@ -411,18 +438,38 @@ def _是pip包(包: dict) -> bool:
 
 
 def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
-              解释器: Path, 摘要: str, 超时秒: int) -> 环境结果:
-    """临时目录构建 venv → 安装依赖 → 校验 → 原子改名。"""
+              解释器: Path, 摘要: str, 超时秒: int,
+              *, 进度回调: Callable[[str], None] | None = None) -> 环境结果:
+    """按有界阶段执行：创建 venv → 安装依赖 → 校验 → 原子改名。"""
     目标.parent.mkdir(parents=True, exist_ok=True)
     临时目录 = 目标.parent / f".构建中_{摘要[:8]}"
     if 临时目录.exists():
         shutil.rmtree(临时目录, ignore_errors=True)
+    当前阶段 = "创建虚拟环境"
     try:
-        venv.create(临时目录, with_pip=True)
-        临时解释器 = 临时目录 / "bin" / "python3"
+        _报告阶段(进度回调, 当前阶段)
         环境变量 = {**os.environ, "PYTHONNOUSERSITE": "1"}
+        if venv is not _标准venv模块:
+            # 兼容显式注入的环境创建器；正式标准库路径始终走下方有界子进程。
+            venv.create(临时目录, with_pip=True)
+            创建结果 = None
+        else:
+            创建结果 = subprocess.run(
+                [sys.executable, "-m", "venv", str(临时目录)],
+                capture_output=True, timeout=超时秒, env=环境变量,
+            )
+        if 创建结果 is not None and 创建结果.returncode != 0:
+            shutil.rmtree(临时目录, ignore_errors=True)
+            详情 = 创建结果.stderr.decode("utf-8", "ignore")[-300:]
+            return 环境结果(
+                False, 错误码="提供者不可用",
+                错误说明=f"创建虚拟环境失败（退出码 {创建结果.returncode}）: {详情}",
+            )
+        临时解释器 = 临时目录 / "bin" / "python3"
         包表 = [包 for 包 in 依赖锁.get("包", []) if _是pip包(包)]
-        for 包 in 包表:
+        for 序号, 包 in enumerate(包表, start=1):
+            当前阶段 = f"安装依赖 {序号}/{len(包表)}: {包['名称']}=={包['版本']}"
+            _报告阶段(进度回调, 当前阶段)
             安装参数 = [
                 str(临时解释器), "-m", "pip", "install", "--quiet",
                 "--disable-pip-version-check",
@@ -437,19 +484,29 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
                 shutil.rmtree(临时目录, ignore_errors=True)
                 return 环境结果(
                     False, 错误码="提供者不可用",
-                    错误说明=f"依赖安装失败: {包['名称']}=={包['版本']}: {结果.stderr.decode('utf-8', 'ignore')[-300:]}",
+                    错误说明=f"{当前阶段}失败: {结果.stderr.decode('utf-8', 'ignore')[-300:]}",
                 )
-        # 完整校验后原子改名
+        当前阶段 = "校验环境"
+        _报告阶段(进度回调, 当前阶段)
         if not 校验环境(临时解释器, 依赖锁):
             shutil.rmtree(临时目录, ignore_errors=True)
-            return 环境结果(False, 错误码="提供者不可用", 错误说明="环境校验失败")
+            return 环境结果(False, 错误码="提供者不可用", 错误说明="校验环境失败")
+        当前阶段 = "提交环境缓存"
+        _报告阶段(进度回调, 当前阶段)
         if 目标.exists():
             shutil.rmtree(目标, ignore_errors=True)
         os.replace(临时目录, 目标)
         return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
-    except (subprocess.TimeoutExpired, OSError) as 错误:
+    except subprocess.TimeoutExpired:
         shutil.rmtree(临时目录, ignore_errors=True)
-        return 环境结果(False, 错误码="提供者不可用", 错误说明=f"环境构建失败: {错误}")
+        return 环境结果(
+            False, 错误码="提供者不可用",
+            错误说明=f"{当前阶段}超时（阶段上限 {超时秒} 秒）",
+        )
+    except OSError as 错误:
+        shutil.rmtree(临时目录, ignore_errors=True)
+        return 环境结果(
+            False, 错误码="提供者不可用", 错误说明=f"{当前阶段}失败: {错误}")
 
 
 def 废弃环境(提供者目录: Path) -> 环境结果:

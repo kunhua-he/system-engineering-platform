@@ -46,7 +46,7 @@ class 进程内连接器:
             结果 = 服务.调用能力(
                 能力id, 参数 or {}, 调用方="进程内连接器",
                 项目id=项目id, 超时秒=超时秒 if 超时秒 is not None else self.默认超时秒,
-                句柄=str(句柄) if 句柄 is not None else "",
+                句柄=句柄,
             )
         except Exception as 错误:
             return self._失败("调用失败", f"{能力id} 调用异常: {错误}", 请求id, 开始)
