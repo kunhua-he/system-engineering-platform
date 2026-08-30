@@ -214,5 +214,39 @@ class 测试客户端构建安全(unittest.TestCase):
         self.assertFalse(临时制品目录.exists(), "安装环境含链接时必须在产生制品前阻断")
 
 
+    def test_安装链无论成功都关闭制品接入状态库(self) -> None:
+        class 假接入:
+            最后实例 = None
+
+            def __init__(self):
+                type(self).最后实例 = self
+                self.已关闭 = False
+
+            @staticmethod
+            def 生成或读取密钥():
+                return b"private-key", b"public-key"
+
+            def 入库(self, **_参数):
+                return True, "入库成功", "a" * 32
+
+            def 安装到环境(self, _摘要):
+                return True, "安装成功", self.目标
+
+            def 校验稳定路径(self):
+                return True, "校验成功", {}
+
+            def 关闭(self):
+                self.已关闭 = True
+
+        假接入.目标 = self.临时根 / "已安装"
+        with mock.patch(
+            "平台控制面.包仓库.平台客户端制品.平台客户端制品接入", 假接入
+        ):
+            结果 = 构建模块.安装到环境(self.源根)
+        self.assertEqual(结果, 假接入.目标)
+        self.assertIsNotNone(假接入.最后实例)
+        self.assertTrue(假接入.最后实例.已关闭, "安装完成后必须关闭状态数据库")
+
+
 if __name__ == "__main__":
     unittest.main()
