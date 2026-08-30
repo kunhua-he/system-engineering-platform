@@ -100,21 +100,16 @@ def 查看依赖关系(包id: str = "") -> dict[str, Any]:
     }
 
 
-def 查看验证状态(组件id: str = "") -> dict[str, Any]:
-    """查看验证状态（组件合规）。"""
-    from 开发工具.组件合规.合规测试包 import 组件合规
-    组件目录 = 系统根 / "支持库"
-    目标目录 = None
-    for 目录 in (系统根 / "支持库").rglob("包声明.json"):
-        数据 = json.loads(目录.read_text(encoding="utf-8"))
-        if not 组件id or 组件id == 数据.get("包id") or 组件id == 数据.get("名称"):
-            目标目录 = 目录.parent
-            break
-    if 目标目录 is None:
-        return {"组件": 组件id or "全部", "状态": "未找到"}
-    报告 = 组件合规(目标目录).执行()
-    return {"组件": 目标目录.name, "通过数": 报告.通过数,
-            "场景数": len(报告.场景结果表), "成功": 报告.成功}
+def 查看验证状态(组件id: str = "", *, 证据目录参数: str | Path | None = None,
+             提交: str = "", 工作区指纹: str = "") -> dict[str, Any]:
+    """只读正式发布证据；不执行测试，且不以组件工作包结果代替发布结论。"""
+    from MCP工具箱.发布治理 import 读取正式发布状态
+    状态 = 读取正式发布状态(
+        证据目录=证据目录参数, 提交=提交, 工作区指纹=工作区指纹)
+    return {
+        "成功": 状态.成功, "错误码": 状态.错误码,
+        "说明": 状态.消息, "数据": 状态.数据,
+    }
 
 
 def 查看已知失败(能力id: str = "") -> list[dict[str, Any]]:
@@ -208,15 +203,16 @@ def 生成说明书(组件目录: Path) -> str:
     return f"说明书已生成: {输出}"
 
 
-def 执行发布检查() -> dict[str, Any]:
-    """执行发布检查（发布门禁，复用同一验证引擎）。"""
-    import subprocess
-    进程 = subprocess.run(
-        [sys.executable, "-S", str(系统根 / "开发工具" / "发布门禁" / "运行发布门禁.py")],
-        cwd=str(系统根), capture_output=True, text=True, timeout=300)
-    最后行 = [行 for 行 in 进程.stdout.splitlines() if "发布状态" in 行]
-    return {"退出码": 进程.returncode, "发布状态": 最后行[-1] if 最后行 else "未知",
-            "输出尾部": 进程.stdout.strip()[-200:]}
+def 执行发布检查(*, 命令列表: list[str] | None = None) -> dict[str, Any]:
+    """复用发布治理唯一门禁判定，并原样透传退出码和明确状态。"""
+    from MCP工具箱.发布治理 import 运行发布门禁
+    门禁 = 运行发布门禁(命令列表=命令列表)
+    return {
+        "成功": 门禁.成功, "错误码": 门禁.错误码, "说明": 门禁.消息,
+        "退出码": 门禁.数据.get("退出码", -1),
+        "发布状态": 门禁.数据.get("发布状态", "未知"),
+        "输出尾部": 门禁.数据.get("输出尾部", ""),
+    }
 
 
 _操作表 = [
@@ -242,7 +238,9 @@ def 执行操作(操作: str, 参数: dict[str, Any] | None = None) -> dict[str,
         if 操作 == "查看依赖关系":
             return {"成功": True, "数据": 查看依赖关系(参数.get("包id", ""))}
         if 操作 == "查看验证状态":
-            return {"成功": True, "数据": 查看验证状态(参数.get("组件id", ""))}
+            return 查看验证状态(
+                参数.get("组件id", ""), 证据目录参数=参数.get("证据目录"),
+                提交=参数.get("提交", ""), 工作区指纹=参数.get("工作区指纹", ""))
         if 操作 == "查看已知失败":
             return {"成功": True, "数据": 查看已知失败(参数.get("能力id", ""))}
         if 操作 == "真实调用能力":
@@ -268,7 +266,7 @@ def 执行操作(操作: str, 参数: dict[str, Any] | None = None) -> dict[str,
         if 操作 == "生成说明书":
             return {"成功": True, "数据": 生成说明书(Path(参数["组件目录"]))}
         if 操作 == "执行发布检查":
-            return {"成功": True, "数据": 执行发布检查()}
+            return 执行发布检查()
         return {"成功": False, "错误码": "参数不合法", "说明": f"未知操作: {操作}"}
     except KeyError as 错误:
         return {"成功": False, "错误码": "参数不合法", "说明": f"缺少参数: {错误}"}
