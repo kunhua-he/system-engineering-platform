@@ -31,7 +31,10 @@ class Test流式HTTPS安全(unittest.TestCase):
             with urllib.request.urlopen(请求, timeout=3) as 响应:
                 return 响应.status, 响应.read().decode("utf-8")
         except urllib.error.HTTPError as 错误:
-            return 错误.code, 错误.read().decode("utf-8")
+            try:
+                return 错误.code, 错误.read().decode("utf-8")
+            finally:
+                错误.close()
 
     def test_生产默认缺凭证时启动阻断(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

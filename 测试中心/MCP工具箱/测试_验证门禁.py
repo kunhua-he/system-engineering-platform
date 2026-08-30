@@ -24,69 +24,42 @@ from 使用反馈 import 写入反馈  # noqa: E402
 class 命令白名单测试(unittest.TestCase):
     """校验验证命令：白名单判定。"""
 
-    def test_运行测试形态合法命令通过(self) -> None:
-        结果 = 门禁模块.校验验证命令([
-            "python3.14", "测试中心/运行测试.py",
-            "--测试文件", "测试中心/MCP工具箱/测试_验证门禁.py", "--并行数", "0",
-        ])
+    def test_精确unittest模块命令通过(self) -> None:
+        结果 = 门禁模块.校验验证命令(
+            ["python3.14", "-m", "测试中心.MCP工具箱.测试_验证门禁"],
+            工作根=系统根,
+        )
         self.assertTrue(结果["成功"], 结果["消息"])
         self.assertEqual(结果["错误码"], "")
 
-    def test_运行测试形态多文件通过(self) -> None:
-        结果 = 门禁模块.校验验证命令([
-            "python3.14", "测试中心/运行测试.py",
-            "--测试文件", "测试中心/MCP工具箱/测试_验证门禁.py",
-            "测试中心/MCP工具箱/测试_项目服务.py", "--并行数", "2",
-        ])
-        self.assertTrue(结果["成功"], 结果["消息"])
-
-    def test_pytest形态合法命令通过(self) -> None:
-        结果 = 门禁模块.校验验证命令([
-            "python3.14", "-m", "pytest",
-            "测试中心/MCP工具箱/测试_验证门禁.py", "-q", "--timeout=60",
-        ])
-        self.assertTrue(结果["成功"], 结果["消息"])
-        self.assertEqual(结果["错误码"], "")
-
-    def test_工作根校验文件存在性(self) -> None:
-        结果 = 门禁模块.校验验证命令([
-            "python3.14", "-m", "pytest",
-            "测试中心/不存在_测试.py", "-q", "--timeout=60",
-        ], 工作根=系统根)
+    def test_工作根校验模块存在性(self) -> None:
+        结果 = 门禁模块.校验验证命令(
+            ["python3.14", "-m", "测试中心.MCP工具箱.测试_不存在"],
+            工作根=系统根,
+        )
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "命令拒绝")
         self.assertIn("不存在", 结果["消息"])
 
-    def test_绝对路径拒绝(self) -> None:
-        for 命令 in [
-            ["python3.14", "测试中心/运行测试.py", "--测试文件",
-             "/Users/某人/测试_越权.py", "--并行数", "0"],
-            ["python3.14", "/Users/某人/运行测试.py", "--测试文件",
-             "测试中心/x.py", "--并行数", "0"],
-            ["python3.14", "-m", "pytest", "/Users/某人/x.py", "-q", "--timeout=60"],
-        ]:
-            结果 = 门禁模块.校验验证命令(命令)
-            self.assertFalse(结果["成功"], 命令)
-            self.assertEqual(结果["错误码"], "命令拒绝")
-            self.assertIn("绝对路径", 结果["消息"])
+    def test_旧运行器与pytest旁路拒绝(self) -> None:
+        for 命令 in (
+            ["python3.14", "测试中心/运行测试.py"],
+            ["python3.14", "-m", "pytest"],
+        ):
+            self.assertFalse(门禁模块.校验验证命令(命令)["成功"], 命令)
 
-    def test_路径逃逸拒绝(self) -> None:
-        for 文件 in ["测试中心/../MCP工具箱/项目服务.py", "../测试_逃逸.py"]:
-            结果 = 门禁模块.校验验证命令([
-                "python3.14", "测试中心/运行测试.py",
-                "--测试文件", 文件, "--并行数", "0",
-            ])
-            self.assertFalse(结果["成功"], 文件)
-            self.assertEqual(结果["错误码"], "命令拒绝")
+    def test_单命令多模块或额外参数拒绝(self) -> None:
+        for 命令 in (
+            ["python3.14", "-m", "测试中心.MCP工具箱.测试_验证门禁",
+             "测试中心.MCP工具箱.测试_项目服务"],
+            ["python3.14", "-m", "测试中心.MCP工具箱.测试_验证门禁", "--任意"],
+        ):
+            self.assertFalse(门禁模块.校验验证命令(命令)["成功"], 命令)
 
     def test_shell元字符拒绝(self) -> None:
         非法命令表 = [
-            ["python3.14", "测试中心/运行测试.py", "--测试文件",
-             "测试中心/x.py; rm -rf /", "--并行数", "0"],
-            ["python3.14", "-m", "pytest", "测试中心/x.py", "-q",
-             "--timeout=60 | cat"],
-            ["python3.14", "-m", "pytest", "$(echo 危险)", "-q", "--timeout=60"],
-            ["python3.14", "-m", "pytest", "测试中心/x.py", "-q", "--timeout=60`id`"],
+            ["python3.14", "-m", "测试中心.模块库.测试_x;rm"],
+            ["python3.14", "-m", "$(echo 危险)"],
+            ["python3.14", "-m", "测试中心.模块库.测试_x`id`"],
         ]
         for 命令 in 非法命令表:
             结果 = 门禁模块.校验验证命令(命令)
@@ -94,27 +67,20 @@ class 命令白名单测试(unittest.TestCase):
             self.assertEqual(结果["错误码"], "命令拒绝")
             self.assertIn("shell 元字符", 结果["消息"])
 
-    def test_shell参数拒绝(self) -> None:
-        结果 = 门禁模块.校验验证命令([
-            "python3.14", "-m", "pytest", "测试中心/x.py", "-q", "shell=True",
-        ])
+    def test_绝对路径与shell参数拒绝(self) -> None:
+        结果 = 门禁模块.校验验证命令(
+            ["python3.14", "-m", "/Users/某人/测试_越权"])
+        self.assertFalse(结果["成功"])
+        self.assertIn("绝对路径", 结果["消息"])
+        结果 = 门禁模块.校验验证命令(
+            ["python3.14", "-m", "测试中心.模块库.测试_x", "shell=True"])
         self.assertFalse(结果["成功"])
         self.assertIn("shell=", 结果["消息"])
-
-    def test_超时超限拒绝(self) -> None:
-        for 超时 in ["1801", "0", "abc", "60.5"]:
-            结果 = 门禁模块.校验验证命令([
-                "python3.14", "-m", "pytest", "测试中心/x.py", "-q",
-                f"--timeout={超时}",
-            ])
-            self.assertFalse(结果["成功"], 超时)
-            self.assertEqual(结果["错误码"], "命令拒绝")
 
     def test_未知可执行拒绝(self) -> None:
         for 命令 in [
             ["bash", "-c", "echo 危险"],
-            ["python3", "测试中心/运行测试.py", "--测试文件",
-             "测试中心/x.py", "--并行数", "0"],
+            ["python3", "-m", "测试中心.模块库.测试_x"],
             ["rm", "-rf", "测试中心"],
         ]:
             结果 = 门禁模块.校验验证命令(命令)
@@ -126,10 +92,7 @@ class 命令白名单测试(unittest.TestCase):
             ["python3.14", "-c", "print(1)"],
             ["python3.14", "MCP工具箱/项目服务.py"],
             ["python3.14", "测试中心/运行测试.py"],
-            ["python3.14", "测试中心/运行测试.py", "--测试文件",
-             "测试中心/x.py"],
-            ["python3.14", "测试中心/运行测试.py", "--测试文件",
-             "测试中心/x.py", "--并行数", "0", "多余参数"],
+            ["python3.14", "-m", "非测试中心.测试_x"],
         ]:
             结果 = 门禁模块.校验验证命令(命令)
             self.assertFalse(结果["成功"], 命令)
@@ -286,21 +249,26 @@ class 反馈门禁测试(unittest.TestCase):
         self.assertEqual(结果["错误码"], "未反馈阻断")
 
 
-class 真实pytest最小调用测试(unittest.TestCase):
-    """真实 pytest 最小调用：构造临时测试文件跑通通过路径。"""
+class 真实unittest最小调用测试(unittest.TestCase):
+    """真实 unittest 最小调用：构造临时精确模块跑通通过路径。"""
 
-    def test_临时测试文件跑通通过路径(self) -> None:
+    def test_临时测试模块跑通通过路径(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             工作根 = Path(临时目录)
-            测试文件 = 工作根 / "测试中心" / "test_临时通过.py"
-            测试文件.parent.mkdir(parents=True)
+            测试目录 = 工作根 / "测试中心"
+            测试目录.mkdir(parents=True)
+            (测试目录 / "__init__.py").write_text("", encoding="utf-8")
+            测试文件 = 测试目录 / "测试_临时通过.py"
             测试文件.write_text(
-                "def test_通过():\n    assert 1 + 1 == 2\n", encoding="utf-8",
+                "import unittest\n\n"
+                "class 测试临时通过(unittest.TestCase):\n"
+                "    def test_通过(self):\n"
+                "        self.assertEqual(1 + 1, 2)\n\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main()\n",
+                encoding="utf-8",
             )
-            命令 = [
-                "python3.14", "-m", "pytest",
-                "测试中心/test_临时通过.py", "-q", "--timeout=60",
-            ]
+            命令 = ["python3.14", "-m", "测试中心.测试_临时通过"]
             校验结果 = 门禁模块.校验验证命令(命令, 工作根=工作根)
             self.assertTrue(校验结果["成功"], 校验结果["消息"])
             执行结果 = subprocess.run(

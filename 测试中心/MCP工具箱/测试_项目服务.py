@@ -55,12 +55,17 @@ class 项目服务测试(unittest.TestCase):
         )
         self.assertEqual(计划["受影响测试目录"], ["测试中心/运行核心"])
         self.assertFalse(计划["是否需要全量"])
-        self.assertIn("--测试文件", 计划["建议命令"][0])
+        self.assertEqual(计划["建议命令"][0][:2], ["python3.14", "-m"])
+        self.assertTrue(计划["建议命令"][0][2].startswith("测试中心.运行核心.测试_"))
 
-    def test_阶段收口验证计划才建议全量(self) -> None:
-        计划 = 服务模块._验证计划(["运行核心/能力调用"], "阶段收口")
-        self.assertTrue(计划["是否需要全量"])
-        self.assertEqual(计划["建议命令"], [["python3.14", "测试中心/运行测试.py"]])
+    def test_阶段收口只验证指定编译制品(self) -> None:
+        制品 = "工程缓存/编译制品/候选甲"
+        计划 = 服务模块._验证计划(["运行核心/能力调用"], "阶段收口", 制品=制品)
+        self.assertFalse(计划["是否需要全量"])
+        self.assertEqual(计划["建议命令"], [[
+            "python3.14", "开发工具/HTML验证/验证器.py",
+            "--制品", 制品, "--并发", "8",
+        ]])
 
     def test_统一开发入口一次返回上下文和计划(self) -> None:
         结果 = 服务模块._统一开发入口(
@@ -138,8 +143,7 @@ class 项目服务测试(unittest.TestCase):
                 )
                 结果 = asyncio.run(服务模块.调用工具("verify_and_record", {
                     "work_id": "child-evidence", "name": "子任务验证",
-                    "command": ["python3.14", "-m", "pytest",
-                                "测试中心/模块库/测试_OCR.py", "-q", "--timeout=600"],
+                    "command": ["python3.14", "-m", "测试中心.公共契约.测试_数值类型契约"],
                 }))
                 self.assertIn('"开工id": "child-evidence"', 结果[0].text)
                 self.assertIn('"开工id": "child-evidence"', 服务模块.证据路径.read_text(encoding="utf-8"))
