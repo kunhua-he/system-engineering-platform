@@ -31,9 +31,15 @@ try:
     from MCP工具箱.支持库协作 import 登记需求, 复用搜索, 登记能力占用
     from MCP工具箱.模块合规 import 校验模块合规
     from MCP工具箱.核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
-    from MCP工具箱.发布治理 import 运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决
+    from MCP工具箱.发布治理 import (
+        运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决,
+        读取正式发布状态, 正式发布证据类型,
+    )
     from MCP工具箱.协作状态 import 登记任务, 查询协作状态, 收口登记
-    from MCP工具箱.验证门禁 import 校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁
+    from MCP工具箱.验证门禁 import (
+        校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
+        正式发布命令表, 唯一发布命令, 判定正式发布结果,
+    )
     from MCP工具箱.角色权限 import (
         获取角色指南, 网关实例名, 网关角色名, 网关说明,
     )
@@ -48,9 +54,15 @@ except ModuleNotFoundError:
     from 支持库协作 import 登记需求, 复用搜索, 登记能力占用
     from 模块合规 import 校验模块合规
     from 核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
-    from 发布治理 import 运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决
+    from 发布治理 import (
+        运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决,
+        读取正式发布状态, 正式发布证据类型,
+    )
     from 协作状态 import 登记任务, 查询协作状态, 收口登记
-    from 验证门禁 import 校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁
+    from 验证门禁 import (
+        校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
+        正式发布命令表, 唯一发布命令, 判定正式发布结果,
+    )
     from 角色权限 import (
         获取角色指南, 网关实例名, 网关角色名, 网关说明,
     )
@@ -244,7 +256,8 @@ def _运行验证(名称: str, 命令: list[str], 超时秒数: int, *, 开工id
     # 退出码为 0 只代表进程正常结束，不能证明测试真的通过；统一判定器
     # 还会拒绝零测试、导入失败、未解释跳过和门禁失败。只有两者同时成立
     # 才能写入可复用的成功验证证据，避免账本被“正常退出但实际失败”污染。
-    判定 = 判定验证结果(
+    判定器 = 判定正式发布结果 if tuple(命令) == 唯一发布命令 else 判定验证结果
+    判定 = 判定器(
         int(结果["退出码"]),
         str(结果.get("标准输出", "")),
         str(结果.get("标准错误", "")),
@@ -309,8 +322,8 @@ def _探索代码(查询: str) -> dict[str, Any]:
     }
 
 
-def _验证计划(修改路径: list[str], 级别: str = "工作包") -> dict[str, Any]:
-    """按修改范围给出定向验证建议；只规划，不执行测试。"""
+def _验证计划(修改路径: list[str], 级别: str = "工作包", *, 制品: str = "") -> dict[str, Any]:
+    """按修改范围给出定向验证建议；正式发布命令与白名单、证据同源。"""
     目录表 = {
         "项目适配层": "测试中心/项目适配",
         "运行核心/运行环境": "测试中心/运行核心",
@@ -368,10 +381,7 @@ def _验证计划(修改路径: list[str], 级别: str = "工作包") -> dict[st
     if 级别 == "阶段收口":
         测试命令 = [["python3.14", "测试中心/运行测试.py"]]
     elif 级别 == "正式发布":
-        测试命令 = [
-            ["python3.14", "测试中心/运行测试.py", "--范围", "全部"],
-            ["python3.14", "开发工具/发布门禁/运行发布门禁.py"],
-        ]
+        测试命令 = 正式发布命令表(制品)
     return {
         "修改路径": 修改路径,
         "验证级别": 级别,
@@ -384,14 +394,14 @@ def _验证计划(修改路径: list[str], 级别: str = "工作包") -> dict[st
 
 
 def _统一开发入口(
-    任务: str, 修改路径: list[str], 级别: str, 历史数量: int,
+    任务: str, 修改路径: list[str], 级别: str, 历史数量: int, 制品: str = "",
 ) -> dict[str, Any]:
     """一次返回开工上下文和验证计划，避免Agent重复调用元工具。"""
     上下文 = _开工上下文(任务, 历史数量)
     清理过期上下文(临时上下文目录)
     任务开始(观测路径, 任务id=上下文["项目"]["开工id"],
             开工id=上下文["项目"]["开工id"], 角色=网关角色名)
-    计划 = _验证计划(修改路径, 级别)
+    计划 = _验证计划(修改路径, 级别, 制品=制品)
     return {
         "开工上下文": 上下文,
         "验证计划": 计划,
@@ -423,9 +433,9 @@ _工具定义列表 = [
         Tool(name="codegraph_explore", description="在系统工程平台自己的代码地图中探索符号、源码和调用链。", inputSchema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}),
         Tool(name="memory_search", description="搜索系统工程平台自己的项目记忆。", inputSchema={"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}),
         Tool(name="memory_write", description="写入系统工程平台自己的长期项目记忆。", inputSchema={"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}, "labels": {"type": "array", "items": {"type": "string"}}}, "required": ["title", "body"]}),
-        Tool(name="verify_and_record", description="不经shell运行验证；仅退出码为0时按开工id记入成功证据。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, "required": ["name", "command"]}),
-        Tool(name="verification_plan", description="按修改路径生成定向验证计划；只规划不执行，避免每次重复跑全量。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}}, "required": ["modified_paths"]}),
-        Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
+        Tool(name="verify_and_record", description="不经shell运行受控验证；唯一发布入口还会生成专用正式发布证据。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "name": {"type": "string"}, "command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}, "artifact_digest": {"type": "string"}, "source_fingerprint": {"type": "string"}, "capability_coverage": {"type": "array", "items": {"type": "string"}}, "scenario_coverage": {"type": "object"}, "real_result": {"type": "object"}}, "required": ["name", "command"]}),
+        Tool(name="verification_plan", description="按修改路径生成验证计划；正式发布仅含受控HTML和唯一发布入口。", inputSchema={"type": "object", "properties": {"modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "artifact": {"type": "string"}}, "required": ["modified_paths"]}),
+        Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "artifact": {"type": "string"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
         Tool(name="temporary_context", description="读取、写入、核对或清理子任务临时上下文。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "核对范围", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "actual_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
         Tool(name="task_observation", description="被动记录任务、阶段与工具耗时，并生成效率报告；不记录提示词或源码。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["开始", "结束", "查询", "阶段开始", "阶段结束", "报告"]}, "task_id": {"type": "string"}, "work_id": {"type": "string"}, "parent_task_id": {"type": "string"}, "success": {"type": "boolean"}, "error_code": {"type": "string"}, "child_count": {"type": "integer"}, "phase": {"type": "string", "enum": ["探索", "开发", "子代理", "测试", "等待", "合并", "收口"]}, "phase_id": {"type": "string"}, "note": {"type": "string"}}, "required": ["operation", "task_id"]}),
         Tool(name="workspace", description="创建、查询、提交、合并和关闭隔离Git worktree。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "提交", "合并", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "target_branch": {"type": "string"}, "source_branch": {"type": "string"}, "message": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "force": {"type": "boolean"}}, "required": ["operation"]}),
@@ -440,9 +450,9 @@ _工具定义列表 = [
         Tool(name="compatibility_check", description="兼容性检查：对比当前与快照的兼容性：漂移与资源预算（行数上限）。", inputSchema={"type": "object", "properties": {"快照标识": {"type": "string"}}, "required": ["快照标识"]}),
         Tool(name="rollback_gate", description="回滚门禁：校验快照完整性并原子切换激活指针回滚（不覆盖源码）。", inputSchema={"type": "object", "properties": {"快照标识": {"type": "string"}, "执行回滚": {"type": "boolean"}}, "required": ["快照标识"]}),
         Tool(name="run_release_gate", description="运行发布门禁：真实运行平台发布门禁（运行发布门禁.py）。", inputSchema={"type": "object", "properties": {"包目录": {"type": "string"}}}),
-        Tool(name="check_release_evidence", description="检查发布证据：检查提交在验证历史中的成功证据。", inputSchema={"type": "object", "properties": {"提交": {"type": "string"}}, "required": ["提交"]}),
-        Tool(name="generate_release_evidence", description="生成发布证据：写入发布证据到工程缓存/发布证据/{提交}.json。", inputSchema={"type": "object", "properties": {"提交": {"type": "string"}, "名称": {"type": "string"}, "退出码": {"type": "integer"}, "指纹": {"type": "string"}}, "required": ["提交", "名称", "退出码"]}),
-        Tool(name="switch_active_pointer", description="切换激活指针：CAS 切换平台客户端激活指针（旧令牌不匹配拒绝）。", inputSchema={"type": "object", "properties": {"目标摘要": {"type": "string"}, "旧令牌": {"type": "string"}, "提交": {"type": "string"}}, "required": ["目标摘要", "旧令牌"]}),
+        Tool(name="check_release_evidence", description="只读正式发布唯一事实源，返回制品、覆盖、真实结果、提交和工作区指纹。", inputSchema={"type": "object", "properties": {"提交": {"type": "string"}, "工作区指纹": {"type": "string"}}}),
+        Tool(name="generate_release_evidence", description="禁止独立伪造正式发布证据；必须改用 verify_and_record 真实执行唯一发布命令。", inputSchema={"type": "object", "properties": {"提交": {"type": "string"}, "名称": {"type": "string"}, "退出码": {"type": "integer"}, "指纹": {"type": "string"}, "制品摘要": {"type": "string"}, "来源指纹": {"type": "string"}, "能力覆盖": {"type": "array", "items": {"type": "string"}}, "场景覆盖": {"type": "object"}, "真实结果": {"type": "object"}, "状态": {"type": "string"}}, "required": ["提交", "名称", "退出码", "指纹", "制品摘要", "来源指纹", "能力覆盖", "场景覆盖", "真实结果", "状态"]}),
+        Tool(name="switch_active_pointer", description="完成制品、清单、签名、信任、正式证据和来源校验后 CAS 切换。", inputSchema={"type": "object", "properties": {"目标摘要": {"type": "string"}, "旧令牌": {"type": "string"}, "提交": {"type": "string"}, "来源指纹": {"type": "string"}, "工作区指纹": {"type": "string"}}, "required": ["目标摘要", "旧令牌", "提交", "来源指纹"]}),
         Tool(name="dependency_arbitration", description="依赖裁决：校验包声明依赖闭包（缺项/多余/版本漂移/循环）。", inputSchema={"type": "object", "properties": {"包id": {"type": "string"}}, "required": ["包id"]}),
         Tool(name="register_task", description="登记任务：登记主/子任务协作状态（parent/child 映射）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}, "角色": {"type": "string"}, "worktree路径": {"type": "string"}, "允许路径": {"type": "array", "items": {"type": "string"}}, "基线提交": {"type": "string"}, "parent_work_id": {"type": "string"}}, "required": ["work_id", "任务"]}),
         Tool(name="collaboration_status", description="协作状态：按开工id或任务查询协作状态（子任务/反馈/证据/阻断标记）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}}}),
@@ -595,12 +605,16 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             数据 = _写入记忆(str(参数["title"]), str(参数["body"]), list(参数.get("labels", [])))
         elif 名称 == "verification_plan":
             修改路径 = list(参数.get("modified_paths", []))
-            数据 = _验证计划(修改路径, str(参数.get("level", "工作包")))
+            数据 = _验证计划(
+                修改路径, str(参数.get("level", "工作包")),
+                制品=str(参数.get("artifact", "")),
+            )
         elif 名称 == "development_start":
             修改路径 = list(参数.get("modified_paths", []))
             数据 = _统一开发入口(
                 str(参数.get("task", "")), 修改路径,
                 str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
+                str(参数.get("artifact", "")),
             )
         elif 名称 == "temporary_context":
             操作 = str(参数["operation"])
@@ -714,14 +728,20 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "run_release_gate":
             数据 = _结果转字典(运行发布门禁(str(参数.get("包目录", "")) or None))
         elif 名称 == "check_release_evidence":
-            数据 = _结果转字典(检查发布证据(str(参数["提交"])))
-        elif 名称 == "generate_release_evidence":
-            数据 = _结果转字典(生成发布证据(
-                str(参数["提交"]), str(参数["名称"]), int(参数["退出码"]), str(参数.get("指纹", "")),
+            数据 = _结果转字典(读取正式发布状态(
+                提交=str(参数.get("提交", "")),
+                工作区指纹=str(参数.get("工作区指纹", "")),
             ))
+        elif 名称 == "generate_release_evidence":
+            数据 = {
+                "成功": False, "错误码": "命令拒绝",
+                "错误说明": "正式发布证据只能由 verify_and_record 真实执行唯一发布命令后生成",
+            }
         elif 名称 == "switch_active_pointer":
             数据 = _结果转字典(切换激活指针(
-                str(参数["目标摘要"]), str(参数["旧令牌"]), 提交=str(参数.get("提交", "")),
+                str(参数["目标摘要"]), int(参数["旧令牌"]),
+                提交=str(参数["提交"]), 来源指纹=str(参数["来源指纹"]),
+                工作区指纹=str(参数.get("工作区指纹", "")),
             ))
         elif 名称 == "dependency_arbitration":
             数据 = _结果转字典(依赖裁决(str(参数["包id"])))
@@ -751,8 +771,26 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                 str(参数["name"]), 命令, int(参数.get("timeout_seconds", 300)),
                 开工id=证据开工id,
             )
-            判定 = 判定验证结果(int(数据.get("退出码", -1)), str(数据.get("输出末尾", "")))
-            if not 判定["成功"]:
+            判定 = dict(数据.get("判定", {}))
+            if tuple(命令) == 唯一发布命令 and 判定.get("成功") is True:
+                发布证据结果 = 生成发布证据(
+                    str(数据.get("提交", "")), str(参数["name"]),
+                    int(数据.get("退出码", -1)), str(数据.get("工作区指纹", "")),
+                    证据类型=正式发布证据类型, 命令=命令,
+                    制品摘要=str(参数.get("artifact_digest", "")),
+                    来源指纹=str(参数.get("source_fingerprint", "")),
+                    能力覆盖=list(参数.get("capability_coverage", [])),
+                    场景覆盖=dict(参数.get("scenario_coverage", {})),
+                    真实结果=dict(参数.get("real_result", {})), 状态="通过",
+                    核验工作区指纹=str(数据.get("工作区指纹", "")),
+                )
+                数据["发布证据"] = _结果转字典(发布证据结果)
+                if not 发布证据结果.成功:
+                    数据["判定"] = {
+                        "成功": False, "错误码": 发布证据结果.错误码,
+                        "消息": 发布证据结果.消息,
+                    }
+            elif not 判定.get("成功"):
                 数据["判定"] = 判定
         else:
             raise ValueError(f"未知工具：{名称}")

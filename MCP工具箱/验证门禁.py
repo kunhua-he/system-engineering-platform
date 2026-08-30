@@ -32,6 +32,9 @@ from 使用反馈 import 查询反馈状态
 允许可执行 = {"python3.14"}
 运行测试入口 = "测试中心/运行测试.py"
 测试目录前缀 = "测试中心/"
+HTML验证入口 = "开发工具/HTML验证/验证器.py"
+唯一发布入口 = "开发工具/发布门禁/运行发布门禁.py"
+唯一发布命令 = ("python3.14", 唯一发布入口)
 最大超时秒 = 1800
 shell元字符表 = set(";|&`$(){}<>")
 
@@ -159,19 +162,48 @@ def _校验pytest形态(命令: list[str], 工作根: Path | None) -> dict[str, 
     return None
 
 
+def 正式发布命令表(制品: str) -> list[list[str]]:
+    """正式发布计划、白名单和证据共同使用的唯一命令源。"""
+    return [
+        ["python3.14", HTML验证入口, "--制品", str(制品), "--并发", "8"],
+        list(唯一发布命令),
+    ]
+
+
+def _校验HTML形态(命令: list[str], 工作根: Path | None) -> dict[str, Any] | None:
+    """只允许对根内相对制品执行 HTML 黑盒验证，禁止服务、直连和生成模式。"""
+    if len(命令) != 6 or 命令[2] != "--制品" or 命令[4] != "--并发":
+        return _拒绝("HTML 验证只允许 --制品 <相对目录> --并发 <整数>")
+    制品 = 命令[3].replace("\\", "/")
+    if not 制品 or 制品.startswith(("/", "~")) or ".." in 制品:
+        return _拒绝(f"HTML 制品路径必须是根内相对目录: {命令[3]!r}")
+    if not 命令[5].isdigit() or not 1 <= int(命令[5]) <= 64:
+        return _拒绝("HTML 验证并发数必须在 1..64")
+    if 工作根 is not None:
+        解析 = (工作根 / 制品).resolve()
+        if not 解析.is_dir() or not 解析.is_relative_to(工作根.resolve()):
+            return _拒绝(f"HTML 制品目录不存在或逃逸工作根: {命令[3]!r}")
+    return None
+
+
 def 校验验证命令(命令: list[str], 工作根: Path | None = None) -> dict[str, Any]:
-    """白名单判定：允许受控 运行测试.py 与 pytest 定向入口，否则返回 命令拒绝。"""
+    """白名单判定：开发验证及正式发布的两条受控命令，其他命令一律拒绝。"""
     基础原因 = _基础校验(命令)
     if 基础原因 is not None:
         return _拒绝(基础原因)
     if 命令[0] not in 允许可执行:
         return _拒绝(f"可执行程序不在白名单: {命令[0]!r}")
-    if 命令[1:3] == ["-m", "pytest"]:
+    if tuple(命令) == 唯一发布命令:
+        结果 = None
+    elif len(命令) > 1 and 命令[1] == HTML验证入口:
+        结果 = _校验HTML形态(命令, 工作根)
+    elif 命令[1:3] == ["-m", "pytest"]:
         结果 = _校验pytest形态(命令, 工作根)
-    elif 命令[1] == 运行测试入口:
+    elif len(命令) > 1 and 命令[1] == 运行测试入口:
         结果 = _校验运行测试形态(命令, 工作根)
     else:
-        return _拒绝(f"验证入口不在白名单: {命令[1]!r}")
+        入口 = 命令[1] if len(命令) > 1 else "<缺失>"
+        return _拒绝(f"验证入口不在白名单: {入口!r}")
     if 结果 is not None:
         return 结果
     return _结果(True, "", f"命令通过白名单校验: {' '.join(命令)}")
@@ -214,6 +246,19 @@ def 判定验证结果(退出码: int, 标准输出: str, 标准错误: str = ""
     if _检出未解释跳过(文本):
         return _结果(False, 错误码_未解释跳过, "存在无标记说明的跳过（SKIPPED/skip 无原因）")
     return _结果(True, "", "验证结果判定通过")
+
+
+def 判定正式发布结果(退出码: int, 标准输出: str, 标准错误: str = "") -> dict[str, Any]:
+    """唯一发布入口只有退出码为零且最后状态明确为“通过”才成功。"""
+    基础 = 判定验证结果(退出码, 标准输出, 标准错误)
+    if not 基础["成功"]:
+        return 基础
+    文本 = f"{标准输出 or ''}\n{标准错误 or ''}"
+    状态表 = re.findall(r"发布状态[:：]\s*(通过|失败|阻断)", 文本)
+    状态 = 状态表[-1] if 状态表 else "未知"
+    if 状态 != "通过":
+        return _结果(False, 错误码_验证失败, f"发布状态不是明确通过: {状态}")
+    return _结果(True, "", "正式发布结果判定通过")
 
 
 def 反馈门禁(开工id: str, 反馈路径: Path | None = None) -> dict[str, Any]:
