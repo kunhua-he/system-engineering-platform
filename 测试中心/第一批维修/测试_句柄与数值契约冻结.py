@@ -16,8 +16,9 @@ class 测试句柄与数值契约冻结(unittest.TestCase):
                 数据 = json.loads(文件.read_text(encoding="utf-8"))
                 for 能力 in 数据.get("能力契约", []):
                     for 参数 in 能力.get("参数", []):
-                        if 参数.get("名称") in {"句柄", "句柄id"} and 参数.get("类型") != "整数型":
-                            违规.append((能力.get("能力id"), 参数.get("名称"), 参数.get("类型")))
+                        名称 = str(参数.get("名称") or "")
+                        if (名称.endswith("句柄") or 名称.endswith("句柄id")) and 参数.get("类型") != "整数型":
+                            违规.append((能力.get("能力id"), 名称, 参数.get("类型")))
         self.assertEqual(违规, [])
 
     def test_浮点参数场景字面量不能写成整数(self) -> None:
