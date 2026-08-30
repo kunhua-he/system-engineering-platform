@@ -60,8 +60,16 @@
       "sha256": "d3e85ec91277ac4948258e922e236c0d7bb040f7f7dfa2f8c71615b94d21c2a3"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "db8b1622919d2f31e62f8ac0ada99cc41f2d67e9c75a40f56d0133751aa82c87"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "275022677c45c80c157669f669e9fe0f2b8346ea726891eb2c7e0f6f53ef9cbe"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
+    },
+    {
+      "路径": "验证夹具/最小Git仓库.zip",
+      "sha256": "9b930e236e428d2803571397eb601b765a6acbe3db36456e67c418cddcff7244"
     }
   ]
 }
