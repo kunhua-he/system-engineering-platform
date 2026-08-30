@@ -145,22 +145,25 @@ class 网关核心:
         响应.错误说明 = 公开错误说明表.get(错误码, "请求处理失败")
 
     def _设置后端字典结果(self, 响应: 网关响应, 值: Any) -> None:
-        """适配控制面后端结果，禁止把业务失败嵌入值后仍返回外层成功。"""
-        if not isinstance(值, dict) or "成功" not in 值:
+        """后端字典必须完整满足统一结果契约，禁止缺字段字典伪装成功。"""
+        if not isinstance(值, dict):
             响应.值 = 值
             return
+        必填字段 = {"成功", "值", "错误码", "错误说明"}
+        if not 必填字段.issubset(值):
+            self._设置失败(响应, "返回结果不符合契约")
+            return
         成功 = 值.get("成功")
-        if not isinstance(成功, bool):
+        if (not isinstance(成功, bool)
+                or not isinstance(值.get("错误码"), str)
+                or not isinstance(值.get("错误说明"), str)):
             self._设置失败(响应, "返回结果不符合契约")
             return
         if not 成功:
-            错误码 = 值.get("错误码")
-            self._设置失败(响应, 错误码 if isinstance(错误码, str) and 错误码 else "内部错误")
-            错误说明 = 值.get("错误说明") or 值.get("消息")
-            if isinstance(错误说明, str):
-                响应.错误说明 = 脱敏错误信息(错误说明)
+            self._设置失败(响应, 值["错误码"] or "内部错误")
+            响应.错误说明 = 脱敏错误信息(值["错误说明"])
             return
-        响应.值 = 值
+        响应.值 = 值["值"]
 
     @staticmethod
     def _能力结果类型合法(结果对象: Any) -> bool:
@@ -472,8 +475,11 @@ class 网关核心:
                 raise ValueError("缺少任务id")
             成功, 消息 = self.任务系统.取消(任务id)
             self._设置后端字典结果(
-                响应, {"成功": 成功, "错误码": "" if 成功 else "调用已取消",
-                       "消息": 脱敏错误信息(str(消息))},
+                响应, {
+                    "成功": 成功, "值": str(消息) if 成功 else None,
+                    "错误码": "" if 成功 else "调用已取消",
+                    "错误说明": "" if 成功 else 脱敏错误信息(str(消息)),
+                },
             )
         elif 请求.操作 in ("版本查询", "诊断查询", "激活版本查询"):
             if self.版本查询 is None:
