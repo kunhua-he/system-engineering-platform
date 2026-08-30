@@ -257,6 +257,7 @@ class LibreOffice受管池:
         作业临时目录 = Path(tempfile.mkdtemp(prefix="转换_", dir=self._作业根))
         输出根 = 作业.输出目录 or (作业临时目录 / "输出")
         输出根.mkdir(parents=True, exist_ok=True)
+        进程: subprocess.Popen | None = None
         try:
             命令 = [
                 self.soffice路径,
@@ -307,6 +308,13 @@ class LibreOffice受管池:
         finally:
             with 作业.进程锁:
                 作业.进程 = None
+            if 进程 is not None:
+                for 管道 in (进程.stdin, 进程.stdout, 进程.stderr):
+                    if 管道 is not None:
+                        try:
+                            管道.close()
+                        except OSError:
+                            pass
             shutil.rmtree(作业临时目录, ignore_errors=True)
 
     def 关闭(self) -> None:
