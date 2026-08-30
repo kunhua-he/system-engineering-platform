@@ -52,8 +52,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "5b210abc625378283ec63eaf075a6a0f9cc06bd40a0aa3ef2a89904df15e9a43"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "94a5beb72744242830dac0a56285e5050aeebd91c29129e6e32e369203c85cb8"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }
