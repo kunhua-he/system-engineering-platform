@@ -21,11 +21,11 @@
     },
     {
       "路径": "复用决策.json",
-      "sha256": "f5ea3770527e470a6dafa46cc5849464af87bab6909323813abd852dc0b8019a"
+      "sha256": "8c982ffef91c4618184e308027fa5bcf67e5dd4c98206aec81b41c4edcf50f64"
     },
     {
       "路径": "实现/文档转换.py",
-      "sha256": "d2605ce82b194cac74a262d7983a43315c35e33c39e6ebc3f8baf219b8763afa"
+      "sha256": "ce3e482f5ec70052556f2c54e1248a7bfdf238e2badbe56939808de43b44d7c7"
     },
     {
       "路径": "权限契约/权限契约.json",
