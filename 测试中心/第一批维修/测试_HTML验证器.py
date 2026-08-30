@@ -537,11 +537,11 @@ class Test直连异常与证据(unittest.TestCase):
 
     def test_工作区指纹复用编译控制面实现(self):
         with mock.patch.object(验证器, "_编译来源指纹", return_value={
-            "提交": "abc", "工作区摘要": "def", "工作区状态": "干净",
+            "提交": "abc", "工作区字节指纹": "def", "工作区状态": "干净",
         }) as 公共实现:
             指纹 = 验证器._工作区指纹()
         公共实现.assert_called_once_with(None)
-        self.assertEqual(指纹["工作区摘要"], "def")
+        self.assertEqual(指纹["工作区字节指纹"], "def")
 
     def test_自启动后总流程异常仍由finally回收进程(self):
         with tempfile.TemporaryDirectory() as 临时:
@@ -568,6 +568,9 @@ class Test直连异常与证据(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "进程组回收仅在 POSIX 验证")
 class Test进程生命周期(unittest.TestCase):
+    def test_首次提供者环境安装有足够启动预算(self):
+        self.assertGreaterEqual(验证器.默认启动超时秒, 120)
+
     def test_自启动独立进程组且子进程一并回收(self):
         with tempfile.TemporaryDirectory() as 临时:
             根 = Path(临时)

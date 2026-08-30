@@ -1,6 +1,7 @@
 """P0-17/P1-24：平台客户端构建失败即阻断与路径边界回归测试。"""
 from __future__ import annotations
 
+import json
 import shutil
 import sys
 import tempfile
@@ -172,6 +173,19 @@ class 测试客户端构建安全(unittest.TestCase):
         构建模块.复制非Py文件(self.源根, self.目标根)
         self.assertTrue((self.目标根 / "验证夹具" / "空状态.sqlite3").is_file())
         self.assertFalse((self.目标根 / "工程缓存" / "运行状态.sqlite3").exists())
+
+    def test_平台客户端生成来源绑定三件套(self) -> None:
+        from 开发工具.项目编译 import 项目编译器
+        制品 = self.临时根 / "来源制品"
+        制品.mkdir()
+        (制品 / "正式.txt").write_text("正式内容", encoding="utf-8")
+        指纹 = {"提交": "a" * 40, "工作区字节指纹": "b" * 64, "工作区状态": "干净"}
+        with mock.patch.object(项目编译器, "读取工作区字节指纹", return_value=指纹):
+            构建模块.生成来源元数据(制品)
+        for 名称 in ("制品来源.json", "编译清单.json", "制品完整性摘要.json"):
+            self.assertTrue((制品 / 名称).is_file())
+        摘要 = json.loads((制品 / "制品完整性摘要.json").read_text(encoding="utf-8"))
+        self.assertEqual(摘要, 项目编译器._制品文件摘要(制品))
 
     def test_子进程入口同时兼容源码根和平台客户端导入根(self) -> None:
         入口表 = list((系统根 / "支持库").rglob("子进程入口.py"))

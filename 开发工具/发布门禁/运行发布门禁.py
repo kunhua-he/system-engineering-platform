@@ -174,9 +174,11 @@ def _扫描英文函数命名() -> str:
     # 正式源码边界必须与项目目录约定一致；漏扫任一正式层都会产生假绿。
     扫描根列表 = [系统根 / 名称 for 名称 in 正式源码目录名表]
     协议方法 = {"log_message", "do_GET", "do_POST", "setup", "finish", "read", "close", "headers", "status",
+                "handle_error",
                 "is_set", "handle_starttag", "handle_endtag", "handle_data",
                 "redirect_request", "http_error_302", "http_error_301",
                 "do_OPTIONS", "do_HEAD", "do_PUT", "do_DELETE", "do_PATCH", "do_TRACE", "do_CONNECT",
+                "process_request", "process_request_thread",
                 "visit_Import", "visit_ImportFrom"}
     违规: list[str] = []
     for 根 in 扫描根列表:

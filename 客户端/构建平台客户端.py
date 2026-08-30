@@ -453,6 +453,25 @@ def 计算制品摘要(客户端根: Path) -> str:
     return 哈希.hexdigest()
 
 
+def 生成来源元数据(制品根: Path) -> None:
+    """生成发布门禁消费的唯一来源绑定、编译清单与全文件摘要。"""
+    from 开发工具.项目编译.项目编译器 import 读取工作区字节指纹, _制品文件摘要
+    来源 = 读取工作区字节指纹()
+    (制品根 / "制品来源.json").write_text(json.dumps({
+        "格式": "平台客户端制品来源绑定", "编译器版本": "平台客户端构建器/1.0.0",
+        "项目id": "平台客户端", **来源,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (制品根 / "编译清单.json").write_text(json.dumps({
+        "制品类型": "平台客户端", "编译器版本": "平台客户端构建器/1.0.0",
+        "项目id": "平台客户端", "来源提交": 来源["提交"],
+        "来源工作区字节指纹": 来源["工作区字节指纹"],
+        "来源工作区状态": 来源["工作区状态"],
+        "来源绑定文件": "制品来源.json", "制品摘要文件": "制品完整性摘要.json",
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (制品根 / "制品完整性摘要.json").write_text(
+        json.dumps(_制品文件摘要(制品根), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def 构建(安装: bool = False) -> Path:
     """构建平台客户端制品目录；构建前后都拒绝任何符号链接。"""
     源根列表: list[tuple[str, Path]] = []
@@ -508,6 +527,7 @@ def 构建(安装: bool = False) -> Path:
             制品根描述符, 制品根, Path("制品摘要.json"), 摘要内容)
     finally:
         os.close(制品根描述符)
+    生成来源元数据(制品根)
     _拒绝符号链接(制品根, "构建完成检查")
     # 稳定指针：最新制品
     指针 = 制品目录 / "当前.json"
