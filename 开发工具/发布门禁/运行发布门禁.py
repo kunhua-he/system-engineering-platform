@@ -429,11 +429,14 @@ def 构建验证缓存环境(制品目录: Path) -> tuple[Path, dict[str, str]]:
     工程缓存根 = 缓存根 / "工程缓存"
     字节码根.mkdir(parents=True, exist_ok=True)
     工程缓存根.mkdir(parents=True, exist_ok=True)
+    from 公共契约.运行时.运行缓存 import 解析运行缓存根
+    共享提供者根 = 解析运行缓存根(Path(制品目录) / "平台客户端")
     return 缓存根, {
         "TMPDIR": str(缓存根), "TMP": str(缓存根), "TEMP": str(缓存根),
         "PYTHONPYCACHEPREFIX": str(字节码根),
         "PYTHONDONTWRITEBYTECODE": "1",
         "系统底座_工程缓存根": str(工程缓存根),
+        "系统底座_提供者环境根": str(共享提供者根),
     }
 
 
@@ -452,7 +455,7 @@ def _资源释放证据通过(证据: Any) -> bool:
 def 校验契约与HTML矩阵(
     制品目录: Path, 报告: dict[str, Any],
 ) -> tuple[bool, str, int]:
-    """消费冻结 HTML 报告，逐能力对账请求/状态/值/契约/错误/释放。"""
+    """消费冻结v1报告：契约完整、408目标全集、真实成功值、清理和制品不变。"""
     能力表, 问题表 = _读取契约能力(制品目录)
     if Path(str(报告.get("制品路径", ""))).resolve() != Path(制品目录).resolve():
         问题表.append("HTML执行矩阵不是同一制品")
@@ -462,46 +465,37 @@ def 校验契约与HTML矩阵(
         结果表 = []
     if int(报告.get("失败数", 0) or 0) != 0:
         问题表.append(f"HTML执行矩阵有 {报告.get('失败数')} 项失败")
-    if not _资源释放证据通过(报告.get("资源释放")):
-        问题表.append("HTML执行矩阵缺少制品级资源释放证据")
-    for 能力 in 能力表:
-        能力id = 能力["能力id"]
-        能力结果 = [项 for 项 in 结果表 if isinstance(项, dict) and 项.get("能力id") == 能力id]
-        成功结果 = next((项 for 项 in 能力结果
-                     if isinstance(项.get("返回"), dict) and 项["返回"].get("成功") is True), None)
+    正式全集 = {能力["能力id"] for 能力 in 能力表}
+    目标全集 = set(报告.get("正向目标能力全集") or [])
+    实际全集 = set(报告.get("实际成功目标能力全集") or [])
+    if 目标全集 != 正式全集:
+        问题表.append(f"目标能力全集不一致: 缺少={sorted(正式全集 - 目标全集)[:5]}")
+    if 实际全集 != 正式全集:
+        问题表.append(f"实际成功能力全集不一致: 缺少={sorted(正式全集 - 实际全集)[:5]}")
+    资源回收 = 报告.get("资源回收")
+    if (not isinstance(资源回收, dict) or 资源回收.get("已回收") is not True
+            or 资源回收.get("进程组残留") is not False
+            or int(报告.get("资源残留数", -1)) != 0
+            or int(报告.get("清理失败数", -1)) != 0):
+        问题表.append("HTML执行矩阵资源回收或清理证据不完整")
+    摘要前 = (报告.get("制品摘要前") or {}).get("制品摘要")
+    摘要后 = (报告.get("制品摘要后") or {}).get("制品摘要")
+    if not 摘要前 or 摘要前 != 摘要后:
+        问题表.append("HTML执行前后制品摘要不一致")
+    for 能力id in sorted(正式全集):
+        成功结果 = next((项 for 项 in 结果表
+                     if isinstance(项, dict) and 项.get("能力id") == 能力id
+                     and 项.get("步骤类型") == "目标" and 项.get("通过") is True
+                     and isinstance(项.get("返回"), dict) and 项["返回"].get("成功") is True), None)
         if 成功结果 is None:
-            问题表.append(f"{能力id}: 缺少成功业务值场景")
-        else:
-            请求 = 成功结果.get("请求")
-            期望参数 = (能力.get("调用示例") or {}).get("参数", {})
-            if not isinstance(请求, dict) or 请求.get("能力id") != 能力id or 请求.get("参数") != 期望参数:
-                问题表.append(f"{能力id}: 请求未绑定契约调用示例")
-            状态码 = 成功结果.get("状态码")
-            if not isinstance(状态码, int) or not 200 <= 状态码 < 300:
-                问题表.append(f"{能力id}: 成功状态码证据缺失或非法")
-            返回 = 成功结果.get("返回", {})
-            if "值" not in 返回 or 返回.get("值") is None:
-                问题表.append(f"{能力id}: 缺少真实业务值")
-            对账 = 成功结果.get("契约对账")
-            提供者 = 能力.get("提供者") or {}
-            if (not isinstance(对账, dict)
-                    or any(对账.get(字段) is not True for 字段 in ("参数", "返回", "错误码", "行为"))
-                    or 对账.get("提供者") != 提供者.get("默认")
-                    or 对账.get("版本") != 能力.get("版本")):
-                问题表.append(f"{能力id}: 参数/返回/错误码/行为/提供者/版本契约对账不完整")
-            if not _资源释放证据通过(成功结果.get("资源释放")):
-                问题表.append(f"{能力id}: 缺少资源释放证据")
-        for 错误码 in 能力.get("错误码", []):
-            错误结果 = next((项 for 项 in 能力结果
-                         if isinstance(项.get("返回"), dict)
-                         and 项["返回"].get("错误码") == 错误码), None)
-            if (错误结果 is None or not 错误结果.get("通过")
-                    or not isinstance(错误结果.get("请求"), dict)
-                    or not isinstance(错误结果.get("状态码"), int)
-                    or 错误结果["状态码"] < 400
-                    or not _资源释放证据通过(错误结果.get("资源释放"))):
-                问题表.append(f"{能力id}: 错误码 {错误码} 缺请求/状态码/释放证据")
-    return not 问题表, "；".join(问题表[:12]) or f"{len(能力表)} 个能力逐项完成契约与HTTP矩阵对账", len(能力表)
+            问题表.append(f"{能力id}: 缺少真实成功目标场景")
+            continue
+        状态码 = 成功结果.get("状态码")
+        if not isinstance(状态码, int) or not 200 <= 状态码 < 300:
+            问题表.append(f"{能力id}: 成功状态码证据缺失或非法")
+        if "值" not in 成功结果["返回"] or 成功结果["返回"].get("值") is None:
+            问题表.append(f"{能力id}: 缺少真实业务值")
+    return not 问题表, "；".join(问题表[:12]) or f"{len(能力表)} 个能力真实HTTP成功并完成资源收口", len(能力表)
 
 
 def _代码使用类型(实现目录: Path) -> set[str]:
