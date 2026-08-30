@@ -1,19 +1,64 @@
 {
- "验证场景引用": [
-  {
-   "场景id": "支持库.资产验证",
-   "目标": "支持库.适配层.PDF隔离提供者",
-   "范围": "资产（测试中心/支持库/测试_PDF隔离提供者.py）"
-  },
-  {
-   "场景id": "支持库.能力契约验证",
-   "目标": "支持库.适配层.PDF隔离提供者",
-   "范围": "契约（测试中心/支持库/测试_PDF隔离提供者.py）"
-  },
-  {
-   "场景id": "支持库.真实调用验证",
-   "目标": "支持库.适配层.PDF隔离提供者",
-   "范围": "真实调用（测试中心/支持库/测试_PDF隔离提供者.py）"
-  }
- ]
+  "契约版本": "验证场景/v1",
+  "验证场景引用": [
+    {
+      "场景": {
+        "场景id": "PDF隔离提供者.真实小PDF正向HTTP链",
+        "前置步骤": [],
+        "目标步骤": [
+          {
+            "步骤id": "检查PDF隔离库版本",
+            "能力id": "PDF隔离提供者.检查提供者",
+            "参数": {
+              "超时秒": 30
+            },
+            "预期": {
+              "成功": true,
+              "状态码": 200,
+              "返回断言": {
+                "值类型": "字典型"
+              }
+            }
+          },
+          {
+            "步骤id": "解析真实最小PDF",
+            "能力id": "PDF隔离提供者.解析PDF",
+            "参数": {
+              "文件路径": {
+                "$动态": "夹具文件复制",
+                "来源": "验证夹具/最小.pdf",
+                "目标": "PDF/最小.pdf"
+              },
+              "最大页数": 10,
+              "最大字节数": 1048576,
+              "超时秒": 60
+            },
+            "预期": {
+              "成功": true,
+              "状态码": 200,
+              "返回断言": {
+                "值类型": "字典型"
+              }
+            }
+          },
+          {
+            "步骤id": "校验真实最小PDF",
+            "能力id": "PDF隔离提供者.校验PDF",
+            "参数": {
+              "字节": "JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSIC9GMiAzIDAgUgo+PgplbmRvYmoKMiAwIG9iago8PAovQmFzZUZvbnQgL0hlbHZldGljYSAvRW5jb2RpbmcgL1dpbkFuc2lFbmNvZGluZyAvTmFtZSAvRjEgL1N1YnR5cGUgL1R5cGUxIC9UeXBlIC9Gb250Cj4+CmVuZG9iagozIDAgb2JqCjw8Ci9CYXNlRm9udCAvWmFwZkRpbmdiYXRzIC9OYW1lIC9GMiAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjQgMCBvYmoKPDwKL0NvbnRlbnRzIDggMCBSIC9NZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgNyAwIFIgL1Jlc291cmNlcyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRvYmoKNSAwIG9iago8PAovUGFnZU1vZGUgL1VzZU5vbmUgL1BhZ2VzIDcgMCBSIC9UeXBlIC9DYXRhbG9nCj4+CmVuZG9iago2IDAgb2JqCjw8Ci9BdXRob3IgKGFub255bW91cykgL0NyZWF0aW9uRGF0ZSAoRDoyMDI2MDgwNDE4NTA1MSswOCcwMCcpIC9DcmVhdG9yIChhbm9ueW1vdXMpIC9LZXl3b3JkcyAoKSAvTW9kRGF0ZSAoRDoyMDI2MDgwNDE4NTA1MSswOCcwMCcpIC9Qcm9kdWNlciAoUmVwb3J0TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0ICh1bnNwZWNpZmllZCkgL1RpdGxlICh1bnRpdGxlZCkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9Db3VudCAxIC9LaWRzIFsgNCAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjggMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggMTUwCj4+CnN0cmVhbQpHYXBRaDBFPUYsMFVcSDNUXHBOWVReUUtrP3RjPklQLDtXI1UxXjIzaWhQRU1fP0NXNEtJU2k6OmJYZ146XkcwQ2NqNFQxO29nTjhjVWZcMGJnMDM5Lio9M2Q5TSRnNi1yLnU8YUBYb10jZyNzTWRERkNNQWNeSmJtcS41Yk8lKC9uSjk+PF4iKElQdChCPiRHLmo0fj5lbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA5CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDA2MSAwMDAwMCBuIAowMDAwMDAwMTAyIDAwMDAwIG4gCjAwMDAwMDAyMDkgMDAwMDAgbiAKMDAwMDAwMDI5MiAwMDAwMCBuIAowMDAwMDAwNDk1IDAwMDAwIG4gCjAwMDAwMDA1NjMgMDAwMDAgbiAKMDAwMDAwMDgyNCAwMDAwMCBuIAowMDAwMDAwODgzIDAwMDAwIG4gCnRyYWlsZXIKPDwKL0lEIApbPDdkMWFmMWRmZTQ1Mzk2OThlZjk2MWY5N2M3OGZiNjU2Pjw3ZDFhZjFkZmU0NTM5Njk4ZWY5NjFmOTdjNzhmYjY1Nj5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQgLS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gNiAwIFIKL1Jvb3QgNSAwIFIKL1NpemUgOQo+PgpzdGFydHhyZWYKMTEyMwolJUVPRgo=",
+              "超时秒": 30
+            },
+            "预期": {
+              "成功": true,
+              "状态码": 200,
+              "返回断言": {
+                "值类型": "字典型"
+              }
+            }
+          }
+        ],
+        "清理步骤": []
+      }
+    }
+  ]
 }
