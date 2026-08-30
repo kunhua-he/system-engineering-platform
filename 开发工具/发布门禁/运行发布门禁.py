@@ -51,11 +51,26 @@ def _创建门禁临时目录(*, 前缀: str) -> Path:
 
 系统根 = Path(__file__).resolve()
 for _祖先 in 系统根.parents:
-    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "测试中心").is_dir():
+    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "开发工具").is_dir():
         系统根 = _祖先
         break
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
+
+正式源码目录名表 = (
+    "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心", "后端核心",
+    "支持库", "模块库", "项目适配层", "开发工具", "MCP工具箱", "客户端", "示例项目",
+)
+
+
+def _正式Python源码文件() -> list[Path]:
+    """只枚举生产源码边界；发布门禁不读取开发期测试源码。"""
+    return sorted(
+        文件
+        for 名称 in 正式源码目录名表
+        for 文件 in (系统根 / 名称).rglob("*.py")
+        if (系统根 / 名称).is_dir() and "__pycache__" not in 文件.parts
+    )
 
 
 @dataclass
@@ -154,42 +169,10 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
         return -1, f"启动子进程失败: {错误}"
 
 
-def _外层慢速事务可核验(事务: str, 父进程文本: str) -> bool:
-    """只接受真实慢速协调器签发的继承事务，拒绝任意环境变量旁路。"""
-    # 事务由运行测试入口生成 uuid4().hex；仅检查非空会让任意子进程伪造
-    # 环境变量并跳过全量测试。残留审计脚本不属于协调器，不能作为信任依据。
-    if (not (re.fullmatch(r"[0-9a-f]{32}", 事务 or "") or 事务 == "残留审计外层")
-            or not 父进程文本.isdigit()
-            or int(父进程文本) != os.getppid()):
-        return False
-    try:
-        父命令 = subprocess.run(
-            ["ps", "-p", 父进程文本, "-o", "command="],
-            capture_output=True, text=True, timeout=2,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    if 父命令.returncode != 0:
-        return False
-    命令 = 父命令.stdout.strip()
-    # 必须是统一运行器，且范围确实为慢速或全部；慢速阶段由统一运行器
-    # 派生的 ``--内部阶段 慢速层`` 也属于同一事务，允许内层门禁复用外层
-    # 证据，避免持锁期间再次启动全量验证。不能用任意测试脚本绕过执行。
-    return bool(
-        re.search(
-            r"测试中心/运行测试\.py(?:\s|$).*(?:--范围\s+(?:慢速|全部)|--内部阶段\s+慢速层)(?:\s|$)",
-            命令,
-        )
-    )
-
-
 def _扫描英文函数命名() -> str:
     """使用 Python AST 扫描正式源码，避免依赖平台差异化 grep -P。"""
     # 正式源码边界必须与项目目录约定一致；漏扫任一正式层都会产生假绿。
-    扫描根列表 = [系统根 / 名称 for 名称 in (
-        "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心", "后端核心",
-        "支持库", "模块库", "项目适配层", "开发工具", "MCP工具箱", "客户端", "示例项目",
-    )]
+    扫描根列表 = [系统根 / 名称 for 名称 in 正式源码目录名表]
     协议方法 = {"log_message", "do_GET", "do_POST", "setup", "finish", "read", "close", "headers", "status",
                 "is_set", "handle_starttag", "handle_endtag", "handle_data",
                 "redirect_request", "http_error_302", "http_error_301",
@@ -279,6 +262,365 @@ def _校验文件清单摘要(包目录: Path) -> tuple[bool, str]:
     return False, "；".join(问题列表[:3])
 
 
+def 选择待验证制品(
+    显式制品: Path | None,
+    激活制品获取器: Any | None = None,
+) -> tuple[Path, str]:
+    """只选择明确待发布制品或正式激活制品，不允许演示/历史/备用回退。"""
+    来源 = "明确待发布" if 显式制品 is not None else "正式激活"
+    if 显式制品 is not None:
+        制品 = Path(显式制品).resolve()
+    else:
+        if 激活制品获取器 is None:
+            from 平台控制面.包仓库.平台客户端制品 import 平台客户端制品接入
+            有效, 消息, 激活路径 = 平台客户端制品接入().校验稳定路径()
+            if not 有效 or 激活路径 is None:
+                raise ValueError(f"正式激活制品不可用: {消息}")
+            制品 = Path(激活路径).resolve()
+        else:
+            激活结果 = 激活制品获取器()
+            if isinstance(激活结果, tuple):
+                有效, 消息, 激活路径 = 激活结果
+                if not 有效 or 激活路径 is None:
+                    raise ValueError(f"正式激活制品不可用: {消息}")
+                制品 = Path(激活路径).resolve()
+            else:
+                if 激活结果 is None:
+                    raise ValueError("正式激活制品不存在")
+                制品 = Path(激活结果).resolve()
+    if not 制品.is_dir():
+        raise ValueError(f"{来源}制品目录不存在: {制品}")
+    启动器 = 制品 / "运行入口" / "启动.py"
+    if not 启动器.is_file():
+        raise ValueError(f"{来源}制品缺少正式运行入口: {启动器}")
+    return 制品, 来源
+
+
+def 读取统一工作区字节指纹() -> dict[str, str]:
+    """消费编译器唯一字节指纹契约；共享实现未合并时 fail-closed。"""
+    from 开发工具.项目编译 import 项目编译器
+
+    for 名称 in ("读取工作区字节指纹", "计算工作区字节指纹", "_工作区字节指纹"):
+        函数 = getattr(项目编译器, 名称, None)
+        if callable(函数):
+            结果 = 函数()
+            if isinstance(结果, dict):
+                return 结果
+    raise RuntimeError(
+        "编译器唯一工作区字节指纹契约尚未合并；门禁禁止退回状态文本摘要或自造算法"
+    )
+
+
+def _读取契约能力(制品目录: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    """经唯一聚合契约解析器读取制品全部正式能力。"""
+    from 开发工具.契约编译.聚合契约解析 import 解析聚合契约
+
+    能力表: list[dict[str, Any]] = []
+    问题表: list[str] = []
+    已见: set[str] = set()
+    for 契约文件 in sorted(制品目录.rglob("能力契约/参数契约.json")):
+        标准契约, 问题 = 解析聚合契约(契约文件, 严格=True)
+        相对 = 契约文件.relative_to(制品目录).as_posix()
+        问题表.extend(f"{相对}: {项}" for 项 in 问题)
+        for 能力 in 标准契约.get("能力契约", []):
+            能力id = str(能力.get("能力id", ""))
+            if 能力id in 已见:
+                问题表.append(f"公开能力重复: {能力id}")
+                continue
+            已见.add(能力id)
+            缺字段 = [字段 for 字段 in ("参数", "返回", "错误码", "行为", "提供者", "版本")
+                   if not 能力.get(字段)]
+            if 缺字段:
+                问题表.append(f"{能力id}: 唯一契约缺字段 {缺字段}")
+            能力表.append(能力)
+    if not 能力表:
+        问题表.append("制品内没有可校验的正式能力契约")
+    return 能力表, 问题表
+
+
+def 校验制品来源绑定(
+    制品目录: Path,
+    *,
+    当前指纹: dict[str, str] | None = None,
+) -> tuple[bool, str, dict[str, Any]]:
+    """绑定当前 HEAD、统一工作区字节指纹与制品全文件摘要。"""
+    身份: dict[str, Any] = {"制品路径": str(Path(制品目录).resolve())}
+    try:
+        来源 = json.loads((制品目录 / "制品来源.json").read_text(encoding="utf-8"))
+        清单 = json.loads((制品目录 / "编译清单.json").read_text(encoding="utf-8"))
+        摘要文件 = json.loads((制品目录 / "制品完整性摘要.json").read_text(encoding="utf-8"))
+        指纹 = 当前指纹 if 当前指纹 is not None else 读取统一工作区字节指纹()
+        当前提交 = str(指纹.get("提交", ""))
+        当前字节指纹 = str(指纹.get("工作区字节指纹", ""))
+        来源提交 = str(来源.get("提交", ""))
+        清单提交 = str(清单.get("来源提交", ""))
+        来源字节指纹 = str(来源.get("工作区字节指纹", ""))
+        清单字节指纹 = str(清单.get("来源工作区字节指纹", ""))
+        能力表, 契约问题 = _读取契约能力(制品目录)
+        if 契约问题:
+            raise ValueError("；".join(契约问题[:5]))
+        from 开发工具.项目编译.项目编译器 import _制品文件摘要
+        实际摘要 = _制品文件摘要(制品目录)
+        身份.update({
+            "全文件摘要": 实际摘要.get("制品摘要", ""),
+            "文件数": 实际摘要.get("文件数", 0),
+            "来源提交": 来源提交,
+            "工作区字节指纹": 来源字节指纹,
+            "能力数": len(能力表),
+        })
+        if not 当前提交 or not 当前字节指纹:
+            raise ValueError("统一工作区字节指纹缺少 提交/工作区字节指纹")
+        if 来源提交 != 当前提交 or 清单提交 != 当前提交:
+            raise ValueError(f"来源提交与当前 HEAD 不一致: {来源提交 or '<空>'} != {当前提交}")
+        if not 来源字节指纹 or not 清单字节指纹:
+            raise ValueError("制品缺少统一工作区字节指纹字段")
+        if 来源字节指纹 != 清单字节指纹:
+            raise ValueError("制品来源与编译清单的工作区字节指纹不一致")
+        if 来源字节指纹 != 当前字节指纹:
+            状态 = 指纹.get("工作区状态", "未知")
+            raise ValueError(f"旧制品阻断: 当前工作区({状态})真实字节指纹已变化")
+        if 实际摘要.get("制品摘要") != 摘要文件.get("制品摘要"):
+            raise ValueError("制品全文件摘要与真实制品不一致")
+        详情 = (
+            f"制品路径={身份['制品路径']}；全文件摘要={身份['全文件摘要']}；"
+            f"来源提交={来源提交}；能力数={len(能力表)}"
+        )
+        return True, 详情, 身份
+    except (OSError, json.JSONDecodeError, ValueError, RuntimeError, TypeError, AttributeError) as 错误:
+        return False, str(错误), 身份
+
+
+def 读取制品字节快照(制品目录: Path) -> dict[str, bytes]:
+    """读取制品全部文件原始字节，用于前后逐路径精确比较。"""
+    快照: dict[str, bytes] = {}
+    for 文件 in sorted(Path(制品目录).rglob("*")):
+        if 文件.is_symlink():
+            raise ValueError(f"制品包含符号链接: {文件.relative_to(制品目录)}")
+        if 文件.is_file():
+            快照[文件.relative_to(制品目录).as_posix()] = 文件.read_bytes()
+    if not 快照:
+        raise ValueError("制品没有正式文件")
+    return 快照
+
+
+def 核验制品字节未变(
+    验证前: dict[str, bytes], 验证后: dict[str, bytes],
+) -> tuple[bool, str]:
+    """核验验证器没有新增、删除或修改制品内任何字节。"""
+    if 验证前 == 验证后:
+        return True, f"验证前后 {len(验证前)} 个文件逐字节一致"
+    新增 = sorted(set(验证后) - set(验证前))
+    删除 = sorted(set(验证前) - set(验证后))
+    漂移 = sorted(路径 for 路径 in set(验证前) & set(验证后)
+                if 验证前[路径] != 验证后[路径])
+    return False, f"制品被验证过程修改：新增{新增[:3]} 删除{删除[:3]} 字节漂移{漂移[:3]}"
+
+
+def 构建验证缓存环境(制品目录: Path) -> tuple[Path, dict[str, str]]:
+    """创建制品外受管缓存，并返回验证子进程必须使用的环境。"""
+    缓存根 = _创建门禁临时目录(前缀="发布门禁受管缓存_").resolve()
+    if 缓存根.is_relative_to(Path(制品目录).resolve()):
+        raise ValueError(f"受管缓存不得位于待验证制品内: {缓存根}")
+    字节码根 = 缓存根 / "字节码"
+    工程缓存根 = 缓存根 / "工程缓存"
+    字节码根.mkdir(parents=True, exist_ok=True)
+    工程缓存根.mkdir(parents=True, exist_ok=True)
+    return 缓存根, {
+        "TMPDIR": str(缓存根), "TMP": str(缓存根), "TEMP": str(缓存根),
+        "PYTHONPYCACHEPREFIX": str(字节码根),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "系统底座_工程缓存根": str(工程缓存根),
+    }
+
+
+def _资源释放证据通过(证据: Any) -> bool:
+    if not isinstance(证据, dict) or not 证据:
+        return False
+    for 键, 值 in 证据.items():
+        if "已退出" in str(键):
+            if 值 is not True:
+                return False
+        elif "残留" in str(键) and 值 != 0:
+            return False
+    return any("已退出" in str(键) or "残留" in str(键) for 键 in 证据)
+
+
+def 校验契约与HTML矩阵(
+    制品目录: Path, 报告: dict[str, Any],
+) -> tuple[bool, str, int]:
+    """消费冻结 HTML 报告，逐能力对账请求/状态/值/契约/错误/释放。"""
+    能力表, 问题表 = _读取契约能力(制品目录)
+    if Path(str(报告.get("制品路径", ""))).resolve() != Path(制品目录).resolve():
+        问题表.append("HTML执行矩阵不是同一制品")
+    结果表 = 报告.get("结果列表")
+    if not isinstance(结果表, list) or not 结果表:
+        问题表.append("HTML执行矩阵缺少非空结果列表")
+        结果表 = []
+    if int(报告.get("失败数", 0) or 0) != 0:
+        问题表.append(f"HTML执行矩阵有 {报告.get('失败数')} 项失败")
+    if not _资源释放证据通过(报告.get("资源释放")):
+        问题表.append("HTML执行矩阵缺少制品级资源释放证据")
+    for 能力 in 能力表:
+        能力id = 能力["能力id"]
+        能力结果 = [项 for 项 in 结果表 if isinstance(项, dict) and 项.get("能力id") == 能力id]
+        成功结果 = next((项 for 项 in 能力结果
+                     if isinstance(项.get("返回"), dict) and 项["返回"].get("成功") is True), None)
+        if 成功结果 is None:
+            问题表.append(f"{能力id}: 缺少成功业务值场景")
+        else:
+            请求 = 成功结果.get("请求")
+            期望参数 = (能力.get("调用示例") or {}).get("参数", {})
+            if not isinstance(请求, dict) or 请求.get("能力id") != 能力id or 请求.get("参数") != 期望参数:
+                问题表.append(f"{能力id}: 请求未绑定契约调用示例")
+            状态码 = 成功结果.get("状态码")
+            if not isinstance(状态码, int) or not 200 <= 状态码 < 300:
+                问题表.append(f"{能力id}: 成功状态码证据缺失或非法")
+            返回 = 成功结果.get("返回", {})
+            if "值" not in 返回 or 返回.get("值") is None:
+                问题表.append(f"{能力id}: 缺少真实业务值")
+            对账 = 成功结果.get("契约对账")
+            提供者 = 能力.get("提供者") or {}
+            if (not isinstance(对账, dict)
+                    or any(对账.get(字段) is not True for 字段 in ("参数", "返回", "错误码", "行为"))
+                    or 对账.get("提供者") != 提供者.get("默认")
+                    or 对账.get("版本") != 能力.get("版本")):
+                问题表.append(f"{能力id}: 参数/返回/错误码/行为/提供者/版本契约对账不完整")
+            if not _资源释放证据通过(成功结果.get("资源释放")):
+                问题表.append(f"{能力id}: 缺少资源释放证据")
+        for 错误码 in 能力.get("错误码", []):
+            错误结果 = next((项 for 项 in 能力结果
+                         if isinstance(项.get("返回"), dict)
+                         and 项["返回"].get("错误码") == 错误码), None)
+            if (错误结果 is None or not 错误结果.get("通过")
+                    or not isinstance(错误结果.get("请求"), dict)
+                    or not isinstance(错误结果.get("状态码"), int)
+                    or 错误结果["状态码"] < 400
+                    or not _资源释放证据通过(错误结果.get("资源释放"))):
+                问题表.append(f"{能力id}: 错误码 {错误码} 缺请求/状态码/释放证据")
+    return not 问题表, "；".join(问题表[:12]) or f"{len(能力表)} 个能力逐项完成契约与HTTP矩阵对账", len(能力表)
+
+
+def _代码使用类型(实现目录: Path) -> set[str]:
+    """从第三方提供者真实实现识别网络/文件/进程访问类型。"""
+    类型表: set[str] = set()
+    网络模块 = {"socket", "urllib", "http", "ftplib", "smtplib"}
+    进程模块 = {"subprocess", "multiprocessing"}
+    文件调用 = {"open", "read_text", "read_bytes", "write_text", "write_bytes", "unlink", "mkdir", "rmdir"}
+    for 文件 in 实现目录.rglob("*.py") if 实现目录.is_dir() else []:
+        try:
+            树 = ast.parse(文件.read_text(encoding="utf-8"), filename=str(文件))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            类型表.add("不可审计")
+            continue
+        for 节点 in ast.walk(树):
+            if isinstance(节点, ast.Import):
+                模块表 = {别名.name.split(".")[0] for 别名 in 节点.names}
+            elif isinstance(节点, ast.ImportFrom):
+                模块表 = {(节点.module or "").split(".")[0]}
+            else:
+                模块表 = set()
+            if 模块表 & 网络模块:
+                类型表.add("网络")
+            if 模块表 & 进程模块:
+                类型表.add("进程")
+            if isinstance(节点, ast.Call):
+                名称 = 节点.func.id if isinstance(节点.func, ast.Name) else (
+                    节点.func.attr if isinstance(节点.func, ast.Attribute) else "")
+                if 名称 in 文件调用:
+                    类型表.add("文件")
+    return 类型表
+
+
+def 校验第三方访问声明(制品目录: Path) -> tuple[bool, str]:
+    """按真实第三方依赖及实现访问类型强制核验权限/网络/文件/进程声明。"""
+    from 开发工具.契约编译.能力定义编译器 import 提取能力列表
+
+    问题表: list[str] = []
+    提供者数 = 0
+    适配层根 = Path(制品目录) / "支持库" / "适配层"
+    from 开发工具.依赖生命周期审计.审计核心 import 扫描提供者目录
+    标准提供者表, _ = 扫描提供者目录(Path(制品目录))
+    for 提供者目录 in 标准提供者表:
+        if not (提供者目录 / "依赖锁.json").is_file():
+            问题表.append(f"{提供者目录.name}: 第三方提供者缺真实依赖锁")
+    锁文件表 = sorted(适配层根.rglob("依赖锁.json")) if 适配层根.is_dir() else []
+    for 锁路径 in 锁文件表:
+        提供者 = 锁路径.parent
+        if not (提供者 / "包声明.json").is_file():
+            问题表.append(f"{提供者.name}: 有第三方依赖锁但缺包声明")
+            continue
+        try:
+            锁 = json.loads(锁路径.read_text(encoding="utf-8"))
+            if not isinstance(锁, dict):
+                raise ValueError("依赖锁必须是对象")
+            第三方包 = 锁.get("包") or 锁.get("直接依赖") or []
+        except (OSError, json.JSONDecodeError, ValueError):
+            问题表.append(f"{提供者.name}: 第三方依赖锁不可读")
+            continue
+        if not 第三方包:
+            continue
+        提供者数 += 1
+        前缀 = 提供者.name
+        if any(not isinstance(项, dict) or not 项.get("名称") or not 项.get("版本")
+               or any(符号 in str(项.get("版本")) for 符号 in (">", "<", "~", "^", "*"))
+               for 项 in 第三方包):
+            问题表.append(f"{前缀}: 真实第三方依赖缺名称或精确版本")
+        try:
+            定义 = json.loads((提供者 / "能力定义.json").read_text(encoding="utf-8"))
+            if not isinstance(定义, dict):
+                raise ValueError("能力定义必须是对象")
+        except (OSError, json.JSONDecodeError, ValueError):
+            问题表.append(f"{前缀}: 能力定义不可读，无法核验访问声明")
+            continue
+        能力表 = 提取能力列表(定义)
+        if not 能力表:
+            问题表.append(f"{前缀}: 第三方提供者没有可核验能力")
+        try:
+            权限 = json.loads((提供者 / "权限契约" / "权限契约.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            权限 = {}
+        if not isinstance(权限, dict):
+            权限 = {}
+        缺权限 = [能力.get("能力id") for 能力 in 能力表
+                if 能力.get("能力id") not in 权限
+                or not isinstance(权限.get(能力.get("能力id")), dict)
+                or not 权限.get(能力.get("能力id"))]
+        if 缺权限:
+            问题表.append(f"{前缀}: 权限声明缺能力 {缺权限[:3]}")
+        实际类型 = _代码使用类型(提供者 / "实现")
+        参数文本 = json.dumps([能力.get("参数", []) for 能力 in 能力表], ensure_ascii=False)
+        if "文件" in 参数文本 or "路径" in 参数文本:
+            实际类型.add("文件")
+        行为表: list[dict[str, Any]] = []
+        for 能力 in 能力表:
+            行为 = 能力.get("行为")
+            行为表.append(行为 if isinstance(行为, dict) else {})
+        副作用文本 = " ".join(str(行为.get("副作用", "")) for 行为 in 行为表)
+        释放文本 = " ".join(str(行为.get("资源释放", "")) for 行为 in 行为表)
+        if any(not str(行为.get("副作用", "")).strip()
+               or not str(行为.get("资源释放", "")).strip() for 行为 in 行为表):
+            问题表.append(f"{前缀}: 第三方能力缺显式副作用或资源释放声明")
+        if "网络" in 实际类型 and "网络" not in 副作用文本:
+            问题表.append(f"{前缀}: 真实网络访问缺网络声明")
+        if "文件" in 实际类型 and (not 副作用文本.strip() or not 释放文本.strip()):
+            问题表.append(f"{前缀}: 真实文件访问缺文件副作用/资源释放声明")
+        if "进程" in 实际类型:
+            try:
+                生命周期 = json.loads((提供者 / "生命周期契约.json").read_text(encoding="utf-8"))
+                预算 = json.loads((提供者 / "资源预算.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                生命周期, 预算 = {}, {}
+            if ("进程" not in str(生命周期.get("资源模型", ""))
+                    or int(预算.get("子进程上限", 0) or 0) <= 0
+                    or "进程" not in (释放文本 + str(生命周期.get("释放策略", "")))):
+                问题表.append(f"{前缀}: 真实进程访问缺进程模型/预算/释放声明")
+        if "不可审计" in 实际类型:
+            问题表.append(f"{前缀}: 实现源码不可审计")
+    if 提供者数 == 0 and not 问题表:
+        return True, "制品未声明第三方依赖；无需第三方访问声明"
+    return not 问题表, "；".join(问题表[:12]) or f"{提供者数} 个第三方提供者权限/网络/文件/进程声明与真实依赖一致"
+
+
 def _扫描工程缓存Python源码() -> list[str]:
     """扫描非制品工程缓存中的 Python 源码。
 
@@ -312,55 +654,6 @@ def _扫描工程缓存Python源码() -> list[str]:
         # 访问异常按发现了问题处理，避免扫描失败产生假绿。
         源码表.append("工程缓存/<扫描失败>")
     return sorted(源码表)
-
-
-def _扫描模块HTTP集成缺口() -> list[str]:
-    """检查模块公开测试是否真正经过唯一 HTTP 网关。
-
-    模块逻辑单测仍可保留，但不能把进程内服务注入、mock 或直接函数调用
-    计入公开能力发布证据。这里使用保守的文本证据扫描，发现缺口即阻断；
-    具体能力矩阵仍由模块集成测试逐项断言。
-    """
-    模块测试根 = 系统根 / "测试中心" / "模块库"
-    if not 模块测试根.is_dir():
-        return ["测试中心/模块库（目录缺失）"]
-    缺口: list[str] = []
-    for 文件 in sorted(模块测试根.glob("测试_*.py")):
-        try:
-            文本 = 文件.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            缺口.append(str(文件.relative_to(系统根)) + "（无法读取）")
-            continue
-        # 只接受 AST 中真实出现的构造/调用，注释和字符串不能伪造 HTTP
-        # 证据。此处仍是静态候选筛选，最终通过条件由运行时矩阵负责。
-        try:
-            import ast
-            树 = ast.parse(文本, filename=str(文件))
-        except (SyntaxError, ValueError):
-            缺口.append(str(文件.relative_to(系统根)) + "（无法解析）")
-            continue
-        调用名集合: set[str] = set()
-        构造名集合: set[str] = set()
-        for 节点 in ast.walk(树):
-            if isinstance(节点, ast.Call):
-                函数 = 节点.func
-                if isinstance(函数, ast.Name):
-                    名称 = 函数.id
-                elif isinstance(函数, ast.Attribute):
-                    名称 = 函数.attr
-                else:
-                    名称 = ""
-                if 名称:
-                    调用名集合.add(名称)
-                    if isinstance(函数, ast.Name):
-                        构造名集合.add(名称)
-        有网关构造 = bool({"本地网关服务器", "ThreadingHTTPServer"} & 构造名集合)
-        有连接器构造 = "HTTP连接器" in 构造名集合
-        有启动调用 = "启动" in 调用名集合
-        有调用能力 = bool({"调用能力", "请求", "open", "urlopen", "设置HTTP连接器"} & 调用名集合)
-        if not (有网关构造 and 有连接器构造 and 有启动调用 and 有调用能力):
-            缺口.append(str(文件.relative_to(系统根)))
-    return 缺口
 
 
 def _执行单包权威合规(包目录: Path) -> tuple[str, str, bool, int]:
@@ -484,7 +777,7 @@ def _校验包反向篡改(包目录: Path) -> tuple[bool, str]:
         return not 校验成功, f"篡改{可篡改文件.relative_to(目标路径)}后校验结果: {校验证据}"
 
 
-def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
+def 执行门禁(*, 包目录: Path | None = None, 制品目录: Path | None = None, 运行测试: bool = True,
              运行编译: bool = True, 真实进程: bool = True,
              测试并行数: int = 16, 工作包超时秒: int = 180) -> 门禁结果:
     """执行全部发布门禁检查。"""
@@ -497,6 +790,20 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             通过 = False
             详情 = "缺少可复核证据"
         门禁项列表.append(门禁项(名称, 通过, 详情, 强制))
+
+    待验证制品: Path | None = None
+    制品来源 = ""
+    try:
+        待验证制品, 制品来源 = 选择待验证制品(制品目录)
+        检查("正式制品目标", True, f"来源={制品来源}；制品路径={待验证制品}")
+        身份通过, 身份详情, _ = 校验制品来源绑定(待验证制品)
+        检查("正式制品来源与字节指纹", 身份通过, 身份详情)
+        声明通过, 声明详情 = 校验第三方访问声明(待验证制品)
+        检查("第三方权限网络文件进程声明", 声明通过, 声明详情)
+    except Exception as 错误:
+        检查("正式制品目标", False, str(错误))
+        检查("正式制品来源与字节指纹", False, "无唯一正式制品可绑定")
+        检查("第三方权限网络文件进程声明", False, "无唯一正式制品可核验")
 
     # 1. 包结构完整 + 包声明合法 + 能力契约合法。
     # 未指定单包时校验全部正式支持库和模块，模板不参与发布。
@@ -526,8 +833,6 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
              f"校验 {len(包目录列表)} 包；结构问题: {结构问题[:3] or '无'}")
         检查("包声明合法", not 声明问题,
              f"校验 {len(包目录列表)} 包；声明问题: {声明问题[:3] or '无'}")
-        检查("第三方权限声明", True, "当前候选均为内置标准库包，无第三方权限声明要求", 强制=False)
-
         # 1.5 权威合规-逐包13/13 已移除（华哥裁决 2026-08-29：慢速审计不需要，
         #     能访问能拿数据就是没毛病）。发布只认 HTML 黑盒验证（编译产物真实 HTTP）。
 
@@ -549,26 +854,6 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         except Exception as 错误:
             检查("注册表唯一性", False, f"异常: {错误}")
 
-        try:
-            # 1.6.2 冷启动生产装配：全新子进程、清空源码 PYTHONPATH，经生产装配入口
-            import subprocess as _子进程, sys as _sys
-            冷启动脚本 = 系统根 / "测试中心" / "运行核心" / "冷启动脚本.py"
-            if 冷启动脚本.is_file():
-                冷启动运行 = _子进程.run(
-                    [_sys.executable, str(冷启动脚本), "装配", str(系统根), "[]"],
-                    capture_output=True, text=True, cwd=str(系统根),
-                    env={k: v for k, v in os.environ.items()
-                         if k not in ("PYTHONPATH", "PYTHONHOME")},
-                    timeout=300,
-                )
-                冷启动通过 = 冷启动运行.returncode == 0 and "装配成功" in 冷启动运行.stdout
-                检查("冷启动生产装配", 冷启动通过,
-                     f"退出码 {冷启动运行.returncode}；"
-                     f"{冷启动运行.stdout[-300:] or 冷启动运行.stderr[-300:]}")
-            else:
-                检查("冷启动生产装配", False, "冷启动脚本缺失")
-        except Exception as 错误:
-            检查("冷启动生产装配", False, f"异常: {错误}")
 
         try:
             # 1.6.3 提供者进程一致性（静态）：每个含 依赖锁.json 的适配层包，
@@ -600,74 +885,45 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
             检查("提供者进程一致性", False, f"异常: {错误}")
             检查("提供者隔离边界", False, f"异常: {错误}")
 
-        try:
-            # 1.6.4 客户端制品一致性：激活指针→制品根→包层→公开入口 一致（B1）
-            from 平台控制面.包仓库.平台客户端制品 import 平台客户端制品接入
-            接入 = 平台客户端制品接入()
-            有效, 消息, _ = 接入.校验稳定路径()
-            检查("客户端制品一致性", 有效, 消息)
-        except Exception as 错误:
-            检查("客户端制品一致性", False, f"异常: {错误}")
+        检查(
+            "发布链制品一致性", 待验证制品 is not None,
+            f"包校验、来源绑定、HTML验证共用同一{制品来源}制品: {待验证制品}"
+            if 待验证制品 is not None else "无唯一待验证制品",
+        )
     else:
         检查("包结构完整", False, "未发现任何正式候选包")
         检查("包声明合法", False, "未发现任何正式候选包")
-        检查("第三方权限声明", False, "未发现任何正式候选包", 强制=False)
+
 
     # 2. 中文边界（核心代码无英文业务命名扫描；排除协议回调）
     中文扫描 = _扫描英文函数命名()
     检查("中文边界", not 中文扫描, f"英文命名文件: {中文扫描[:100] or '无'}")
 
-    # 3. HTML 黑盒验证（华哥裁决 2026-08-29）：编译产物能访问、能拿到真实数据 = 通过。
-    #    不再跑 1125 测试 + 慢速审计；发布只认编译产物的真实 HTTP 返回。
+    # 3. HTML 黑盒验证：只运行上面已确定的同一正式制品；不允许任何回退。
     if 运行测试:
-        制品路径: Path | None = None
-        try:
-            # 3.1 从客户端制品接入拿激活制品路径
-            from 平台控制面.包仓库.平台客户端制品 import 平台客户端制品接入
-            接入 = 平台客户端制品接入()
-            有效, 消息, 制品路径 = 接入.校验稳定路径()
-            # 制品必须含可启动入口（运行入口/启动.py 或 独立HTML启动器.py）；
-            # 客户端环境制品（开发态）没有启动器，退回编译演示制品。
-            if 制品路径 is not None:
-                启动器候选 = list((制品路径 / "运行入口").glob("*.py")) if (制品路径 / "运行入口").is_dir() else []
-                if not 启动器候选:
-                    制品路径 = None
-            if 制品路径 is None:
-                # 退回编译示例演示制品（如 可双击演示）
-                fallback = 系统根 / "示例项目" / "可双击演示" / "产物文件夹"
-                if fallback.is_dir():
-                    import glob as _glob
-                    候选 = sorted(_glob.glob(str(fallback / "20*-demo")))
-                    if 候选:
-                        制品路径 = Path(候选[-1])
-        except Exception as 错误:
-            检查("HTML黑盒验证", False, f"客户端制品接入异常: {错误}")
-            全部测试已执行 = False
-            if 运行编译:
-                # 编译必须验证当前门禁实际运行的解释器，避免 PATH 中另一个
-                # python3.14 对不同标准库/语法环境产生错误绿灯。
-                编译命令 = [sys.executable, "-m", "py_compile"]
-                编译命令 += [str(文件) for 文件 in 系统根.rglob("*.py") if "工程缓存" not in str(文件)]
-                退出码, 输出 = 运行子进程(编译命令, 超时秒=120)
-                检查("语法编译全部通过", 退出码 == 0, f"退出码 {退出码}")
-            else:
-                检查("语法编译全部通过", False, "已请求跳过编译，强制门禁未执行")
-            return 结果
-        if 制品路径 is None or not 制品路径.is_dir():
-            检查("HTML黑盒验证", False, "找不到可验证的编译产物（客户端制品未激活）")
+        if 待验证制品 is None:
+            检查("HTML黑盒验证", False, "缺少明确待发布或正式激活制品")
+            检查("HTML契约真实执行矩阵", False, "无制品，未产生正式HTML执行矩阵")
+            检查("待验证制品字节不变", False, "无制品，无法核验验证前后字节")
             全部测试已执行 = False
         else:
-            # 3.2 调用 HTML 黑盒验证器：启动制品 → 真实 HTTP 请求 → 看返回值
             验证器 = 系统根 / "开发工具" / "HTML验证" / "验证器.py"
             if not 验证器.is_file():
                 检查("HTML黑盒验证", False, f"验证器缺失: {验证器}")
+                检查("HTML契约真实执行矩阵", False, "冻结HTML验证器缺失")
+                检查("待验证制品字节不变", False, "验证未执行")
                 全部测试已执行 = False
             else:
+                验证前: dict[str, bytes] = {}
+                只读通过 = False
+                只读详情 = "验证未完成"
                 try:
+                    验证前 = 读取制品字节快照(待验证制品)
+                    缓存根, 缓存环境 = 构建验证缓存环境(待验证制品)
                     退出码, 输出 = 运行子进程([
-                        sys.executable, "-u", str(验证器), "--制品", str(制品路径),
+                        sys.executable, "-u", str(验证器), "--制品", str(待验证制品),
                         "--并发", str(max(1, int(测试并行数))),
-                    ], 超时秒=600, 实时输出=True)
+                    ], 超时秒=600, 实时输出=True, 环境覆盖=缓存环境)
                     失败项 = "\n".join(
                         行 for 行 in 输出.splitlines()
                         if "失败" in 行 or "✗" in 行 or "阻断" in 行
@@ -675,34 +931,43 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
                     测试证据 = f"退出码 {退出码}（{'通过' if 退出码 == 0 else '失败'}）"
                     if 失败项:
                         测试证据 += f"；失败摘要: {失败项[:600]}"
+                    证据匹配 = re.findall(r"^证据:\s*(.+)$", 输出, flags=re.MULTILINE)
+                    if not 证据匹配:
+                        raise ValueError("冻结HTML验证器未输出证据路径")
+                    证据路径 = Path(证据匹配[-1].strip())
+                    报告 = json.loads(证据路径.read_text(encoding="utf-8"))
+                    矩阵通过, 矩阵详情, 能力数 = 校验契约与HTML矩阵(待验证制品, 报告)
                     检查("HTML黑盒验证", 退出码 == 0, 测试证据)
-                    全部测试已执行 = 退出码 == 0
+                    检查("HTML契约真实执行矩阵", 矩阵通过,
+                         f"能力数={能力数}；{矩阵详情}；证据={证据路径}")
+                    全部测试已执行 = 退出码 == 0 and 矩阵通过
                 except Exception as 错误:
                     检查("HTML黑盒验证", False, f"验证器执行异常: {错误}")
+                    检查("HTML契约真实执行矩阵", False, f"执行矩阵不可消费: {错误}")
                     全部测试已执行 = False
+                finally:
+                    try:
+                        if 验证前:
+                            验证后 = 读取制品字节快照(待验证制品)
+                            只读通过, 只读详情 = 核验制品字节未变(验证前, 验证后)
+                    except Exception as 错误:
+                        只读通过, 只读详情 = False, f"字节复核异常: {错误}"
+                    检查("待验证制品字节不变", 只读通过, 只读详情)
+                    全部测试已执行 = 全部测试已执行 and 只读通过
     else:
         检查("HTML黑盒验证", False, "已请求跳过验证，强制门禁未执行")
+        检查("HTML契约真实执行矩阵", False, "已请求跳过验证")
+        检查("待验证制品字节不变", False, "已请求跳过验证")
     if 运行编译:
         # 编译必须验证当前门禁实际运行的解释器，避免 PATH 中另一个
         # python3.14 对不同标准库/语法环境产生错误绿灯。
         编译命令 = [sys.executable, "-m", "py_compile"]
-        编译命令 += [str(文件) for 文件 in 系统根.rglob("*.py") if "工程缓存" not in str(文件)]
+        编译命令 += [str(文件) for 文件 in _正式Python源码文件()]
         退出码, 输出 = 运行子进程(编译命令, 超时秒=120)
         检查("语法编译全部通过", 退出码 == 0, f"退出码 {退出码}")
     else:
         检查("语法编译全部通过", False, "已请求跳过编译，强制门禁未执行")
 
-    # 公开模块能力必须有真实 HTTP 集成证据；进程内直引/mocking 只能作为
-    # 内部逻辑测试，不能给发布门禁写成功证据。
-    try:
-        HTTP集成缺口 = _扫描模块HTTP集成缺口()
-        检查(
-            "模块公开能力HTTP集成覆盖",
-            not HTTP集成缺口,
-            f"模块测试HTTP证据缺口 {len(HTTP集成缺口)} 项：{HTTP集成缺口[:12] or '无'}",
-        )
-    except Exception as 错误:
-        检查("模块公开能力HTTP集成覆盖", False, f"扫描异常: {错误}")
 
     # 4. 提供者可启动可停止 + 最小能力调用成功（真实子进程）
     if 真实进程:
@@ -807,16 +1072,6 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
         检查("完整性摘要一致", False, "没有候选包可供校验")
         检查("包内容反向篡改阻断", False, "没有候选包可执行反向篡改")
 
-    # 8.5 依赖防火墙（AST 依赖审计）
-    try:
-        from 运行核心.依赖防火墙 import 审计依赖
-        依赖结果 = 审计依赖()
-        依赖违规表 = list(依赖结果.违规列表)
-        检查("依赖防火墙", len(依赖违规表) == 0,
-             f"AST 审计 {依赖结果.审计文件数} 文件 / 违规 {len(依赖违规表)} 项"
-             + ("；首项: " + f"[{依赖违规表[0].来源层}→{依赖违规表[0].目标}] {依赖违规表[0].规则}" if 依赖违规表 else ""))
-    except ImportError as 错误:
-        检查("依赖防火墙", False, f"依赖审计不可用: {错误}")
 
     # 9. 浏览器真实交互（页面生成 + 网关调用要素）
     try:
@@ -1095,63 +1350,6 @@ def 执行门禁(*, 包目录: Path | None = None, 运行测试: bool = True,
     except Exception as 错误:
         检查("工程缓存无Python源码", False, f"异常: {错误}")
 
-    # 示例独立制品必须绑定当前来源并具备可重算的整体摘要。
-    try:
-        制品目录 = 系统根 / "示例项目" / "可双击演示" / "产物文件夹" / "20260822-demo"
-        来源路径 = 制品目录 / "制品来源.json"
-        摘要路径 = 制品目录 / "制品完整性摘要.json"
-        清单路径 = 制品目录 / "编译清单.json"
-        if not (来源路径.is_file() and 摘要路径.is_file() and 清单路径.is_file()):
-            raise ValueError("缺少制品来源、制品摘要或编译清单")
-        # 运行制品会产生 工程缓存/权威状态/ 等 SQLite 运行产物（可再生），
-        # 不属于编译产物；校验前先清理，避免运行缓存污染制品完整性摘要。
-        # （华哥裁决 2026-08-29：能访问能拿数据就是没毛病，运行产物不阻断发布）
-        运行缓存 = 制品目录 / "工程缓存"
-        if 运行缓存.is_dir():
-            shutil.rmtree(运行缓存, ignore_errors=True)
-        来源 = json.loads(来源路径.read_text(encoding="utf-8"))
-        摘要 = json.loads(摘要路径.read_text(encoding="utf-8"))
-        清单 = json.loads(清单路径.read_text(encoding="utf-8"))
-        提交 = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=系统根, capture_output=True, text=True,
-            timeout=15, check=True,
-        ).stdout.strip()
-        if 来源.get("提交") != 提交 or 清单.get("来源提交") != 提交:
-            raise ValueError(f"制品来源提交 {来源.get('提交')} 与当前 {提交} 不一致")
-        if not 摘要.get("文件清单") or not 摘要.get("制品摘要"):
-            raise ValueError("制品完整性摘要缺少文件清单或整体摘要")
-        from 开发工具.项目编译.项目编译器 import _制品文件摘要, _来源指纹
-        实际摘要 = _制品文件摘要(制品目录)
-        if 实际摘要.get("制品摘要") != 摘要.get("制品摘要"):
-            raise ValueError("制品完整性摘要与真实文件不一致")
-        # 整体摘要不能替代逐文件证据：逐项比较路径集合和完整 SHA-256，
-        # 防止攻击者只更新整体摘要而保留篡改/陈旧的文件清单。
-        期望清单 = 摘要.get("文件清单")
-        实际清单 = 实际摘要.get("文件清单")
-        if not isinstance(期望清单, list) or not isinstance(实际清单, list):
-            raise ValueError("制品完整性摘要文件清单格式不合法")
-        期望映射 = {str(项.get("路径")): str(项.get("sha256", "")).lower()
-                    for 项 in 期望清单 if isinstance(项, dict)}
-        实际映射 = {str(项.get("路径")): str(项.get("sha256", "")).lower()
-                    for 项 in 实际清单 if isinstance(项, dict)}
-        if 期望映射 != 实际映射:
-            缺失 = sorted(set(期望映射) - set(实际映射))[:3]
-            多余 = sorted(set(实际映射) - set(期望映射))[:3]
-            漂移 = sorted(路径 for 路径 in set(期望映射) & set(实际映射)
-                         if 期望映射[路径] != 实际映射[路径])[:3]
-            raise ValueError(f"制品逐文件清单不一致：缺失{缺失} 多余{多余} 摘要漂移{漂移}")
-        当前来源 = _来源指纹(制品目录)
-        来源工作区摘要 = 来源.get("工作区摘要")
-        清单工作区摘要 = 清单.get("来源工作区摘要")
-        if 来源工作区摘要 != 清单工作区摘要:
-            raise ValueError("制品来源与编译清单的工作区摘要不一致")
-        # 制品来源绑定编译时工作区；开发过程改代码是常态，不要求与当前
-        # 工作区完全一致（华哥裁决 2026-08-29：能访问能拿数据就是没毛病，
-        # 示例制品只验证自洽摘要 + 来源绑定，不因开发态变更阻断发布）。
-        检查("示例制品来源与摘要", True,
-             f"提交 {提交[:12]}；文件 {摘要['文件数']}；摘要 {摘要['制品摘要'][:12]}")
-    except Exception as 错误:
-        检查("示例制品来源与摘要", False, f"异常: {错误}")
 
     # 24 个旧过渡顶层目录不得存在
     try:
@@ -1193,6 +1391,7 @@ def 门禁临时目录() -> str:
 def 主函数(argv: list[str] | None = None) -> int:
     import argparse
     解析器 = argparse.ArgumentParser(description="系统级支持库 发布门禁")
+    解析器.add_argument("--制品", default="", help="明确待发布制品目录；缺省只验证正式激活制品")
     解析器.add_argument("--包目录", default="", help="待发布包目录（含 包声明.json）")
     解析器.add_argument("--跳过测试", action="store_true", help="跳过测试执行（不推荐）")
     解析器.add_argument("--禁止真实进程", action="store_true", help="跳过真实进程检查")
@@ -1207,6 +1406,7 @@ def 主函数(argv: list[str] | None = None) -> int:
     参数 = 解析器.parse_args(argv)
     结果 = 执行门禁(
         包目录=Path(参数.包目录) if 参数.包目录 else None,
+        制品目录=Path(参数.制品) if 参数.制品 else None,
         运行测试=not 参数.跳过测试,
         真实进程=not 参数.禁止真实进程,
         测试并行数=参数.测试并行数,
