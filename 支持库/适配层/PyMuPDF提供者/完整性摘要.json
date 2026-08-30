@@ -80,8 +80,16 @@
       "sha256": "8fe765e79d4bbe3bb43b81f5604f5009d143ae83b8f730b1b98b366e0da3248c"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "b5c4cd09456254ae50138c3890fb6908c234faf22aaedec5089d39f6380b79df"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "a571aab1bf42990ec2637a31d5b2ee61dc8cc670c92f3247770ed091821100d3"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
+    },
+    {
+      "路径": "验证夹具/最小含图PDF.pdf",
+      "sha256": "72c5f0ffcd99f8451bb4164c3892af38b5d122fb06444f4fbd8b0f1c1c9d72b0"
     }
   ]
 }

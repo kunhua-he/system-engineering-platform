@@ -1,0 +1,105 @@
+{
+  "契约版本": "验证场景/v1",
+  "验证场景": [
+    {
+      "场景id": "PyMuPDF提供者.真实最小含图PDF链",
+      "前置步骤": [],
+      "目标步骤": [
+        {
+          "步骤id": "检测真实PDF加密与页数",
+          "能力id": "PDF渲染.检测加密页数",
+          "参数": {
+            "文件路径": {
+              "$动态": "夹具文件复制",
+              "来源": "验证夹具/最小含图PDF.pdf",
+              "目标": "PDF/检测.pdf"
+            },
+            "超时秒": 30
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "关键值": {
+                "已加密": false,
+                "页数": 1
+              },
+              "值类型": "字典型"
+            }
+          }
+        },
+        {
+          "步骤id": "渲染真实PDF整页",
+          "能力id": "PDF渲染.渲染整页",
+          "参数": {
+            "文件路径": {
+              "$动态": "夹具文件复制",
+              "来源": "验证夹具/最小含图PDF.pdf",
+              "目标": "PDF/渲染.pdf"
+            },
+            "页序号": 1,
+            "超时秒": 30
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值类型": "文本型"
+            }
+          }
+        },
+        {
+          "步骤id": "提取真实PDF内嵌图像",
+          "能力id": "PDF渲染.提取图像",
+          "参数": {
+            "文件路径": {
+              "$动态": "夹具文件复制",
+              "来源": "验证夹具/最小含图PDF.pdf",
+              "目标": "PDF/提图.pdf"
+            },
+            "页序号": 1,
+            "超时秒": 30
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "关键值": {
+                "0.尺寸.宽度": 2,
+                "0.尺寸.高度": 1
+              },
+              "必需字段": [
+                "0.xref",
+                "0.字节b64"
+              ],
+              "字段类型": {
+                "0.xref": "整数型",
+                "0.字节b64": "文本型"
+              }
+            }
+          }
+        },
+        {
+          "步骤id": "校验真实PDF字节",
+          "能力id": "PDF渲染.校验PDF",
+          "参数": {
+            "字节": "JVBERi0xLjQKJeLjz9MKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAyMDAgMjAwXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiAvWE9iamVjdCA8PCAvSW0xIDUgMCBSID4+ID4+IC9Db250ZW50cyA2IDAgUiA+PgplbmRvYmoKNCAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL1hPYmplY3QgL1N1YnR5cGUgL0ltYWdlIC9XaWR0aCAyIC9IZWlnaHQgMSAvQ29sb3JTcGFjZSAvRGV2aWNlUkdCIC9CaXRzUGVyQ29tcG9uZW50IDggL0ZpbHRlciAvRmxhdGVEZWNvZGUgL0xlbmd0aCAxMiA+PgpzdHJlYW0KeJz7zwAE/wEG/wH/CmVuZHN0cmVhbQplbmRvYmoKNiAwIG9iago8PCAvTGVuZ3RoIDgwID4+CnN0cmVhbQpCVCAvRjEgMTIgVGYgMjAgMTcwIFRkIChIVFRQIFBERiBmaXh0dXJlKSBUaiBFVApxIDQwIDAgMCAyMCAyMCAxMjAgY20gL0ltMSBEbyBRCmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDcKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAwNjQgMDAwMDAgbiAKMDAwMDAwMDEyMSAwMDAwMCBuIAowMDAwMDAwMjczIDAwMDAwIG4gCjAwMDAwMDAzNDMgMDAwMDAgbiAKMDAwMDAwMDUxOSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDcgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjY0OAolJUVPRgo=",
+            "超时秒": 30
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "关键值": {
+                "页数": 1,
+                "提供者": "fitz"
+              },
+              "值类型": "字典型"
+            }
+          }
+        }
+      ],
+      "清理步骤": []
+    }
+  ]
+}
