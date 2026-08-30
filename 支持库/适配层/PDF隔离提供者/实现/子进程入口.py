@@ -17,8 +17,9 @@ import sys
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[4]
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
+导入根 = 系统根.parent if 系统根.name == "平台客户端" else 系统根
+if str(导入根) not in sys.path:
+    sys.path.insert(0, str(导入根))
 
 from 支持库.适配层.PDF隔离提供者.实现.子进程解析 import (  # noqa: E402
     解析PDF为字典,

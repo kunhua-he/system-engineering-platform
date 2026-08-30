@@ -25,8 +25,9 @@ import sys
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[4]
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
+导入根 = 系统根.parent if 系统根.name == "平台客户端" else 系统根
+if str(导入根) not in sys.path:
+    sys.path.insert(0, str(导入根))
 
 客户端环境目录名 = "工程缓存/制品仓库/平台客户端环境"
 激活指针文件名 = "当前.json"

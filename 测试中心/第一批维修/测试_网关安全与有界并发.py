@@ -55,6 +55,12 @@ class 可控后端:
         return 结果.成功结果({"能力id": 能力id, "参数": 参数})
 
 
+class 失败后端(可控后端):
+    def 调用(self, 能力id, 参数, **_关键字):
+        self.调用次数 += 1
+        return 结果.失败("能力失败", "具体能力失败说明", 来源="测试能力")
+
+
 class 网关用例(unittest.TestCase):
     def setUp(self) -> None:
         self.待停止: list[object] = []
@@ -113,6 +119,21 @@ class 网关用例(unittest.TestCase):
         测试服务 = 创建测试服务器(网关核心实例=网关核心(可控后端()), 端口=0)
         self.assertTrue(测试服务.启动()[0])
         self.待停止.append(测试服务)
+
+    def test_能力失败保留脱敏后的明确错误说明(self):
+        with patch.dict(os.environ, {测试凭证变量: 测试凭证}, clear=False):
+            服务, _ = self._启动主网关(失败后端())
+            状态码, 数据, _ = self._请求(
+                服务, "POST", "/网关/调用",
+                数据={"能力id": "测试.失败能力", "参数": {}},
+                请求头={"Authorization": f"Bearer {测试凭证}"},
+            )
+        self.assertEqual(状态码, 500)
+        self.assertIsInstance(数据, dict)
+        assert isinstance(数据, dict)
+        self.assertFalse(数据["成功"])
+        self.assertEqual(数据["错误码"], "能力失败")
+        self.assertEqual(数据["错误说明"], "具体能力失败说明")
 
     def test_OPTIONS按来源和凭证策略返回204或403(self):
         with patch.dict(os.environ, {测试凭证变量: 测试凭证}, clear=False):
