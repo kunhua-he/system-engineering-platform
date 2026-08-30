@@ -7,15 +7,14 @@
     命令拒绝 / 验证失败 / 零测试 / 未解释跳过 / 未反馈阻断
 
 安全原则（冻结契约）：
-- verify_and_record 只允许受控 Python/pytest 定向入口，禁止任意 shell 字符串
+- verify_and_record 只允许精确 unittest 模块、HTML 黑盒和唯一发布入口
 - 禁止 shell=True、绝对路径、../ 路径逃逸、shell 元字符、无限超时
 - 退出码非零 / 收集错误 / 零测试 / 无反馈 / 未解释跳过一律失败
 
 允许形态：
-1. ["python3.14", "测试中心/运行测试.py", "--测试文件", "测试中心/…相对路径", "--并行数", "N"]
-2. ["python3.14", "测试中心/运行测试.py", "--范围", "常规|慢速|全部", "--并行阶段", "--并行数", "N"]
-   可选 `--并行慢速`、`--强制慢速`；范围模式由运行器自行按资源族调度。
-3. ["python3.14", "-m", "pytest", "测试中心/…相对路径", "-q", "--timeout=N"]（N ≤ 1800）
+1. ["python3.14", "-m", "测试中心.目录.测试_文件"]（开发期精确回归）
+2. ["python3.14", "开发工具/HTML验证/验证器.py", "--制品", 相对目录, "--并发", N]
+3. ["python3.14", "开发工具/发布门禁/运行发布门禁.py"]
 """
 
 from __future__ import annotations
@@ -30,8 +29,7 @@ from 使用反馈 import 查询反馈状态
 默认反馈路径 = 项目根目录 / "开发文档" / "项目证据" / "MCP使用反馈.jsonl"
 
 允许可执行 = {"python3.14"}
-运行测试入口 = "测试中心/运行测试.py"
-测试目录前缀 = "测试中心/"
+测试模块前缀 = "测试中心."
 HTML验证入口 = "开发工具/HTML验证/验证器.py"
 唯一发布入口 = "开发工具/发布门禁/运行发布门禁.py"
 唯一发布命令 = ("python3.14", 唯一发布入口)
@@ -75,90 +73,22 @@ def _基础校验(命令: list[str]) -> str | None:
     return None
 
 
-def _校验测试文件(文件: str, 工作根: Path | None) -> str | None:
-    """测试文件必须是 测试中心 下的相对 .py 路径；工作根提供时校验存在性与根内包含。"""
-    规范 = 文件.replace("\\", "/")
-    if not 规范.startswith(测试目录前缀):
-        return f"测试文件必须位于 {测试目录前缀} 下: {文件!r}"
-    if not 规范.endswith(".py"):
-        return f"测试文件必须是 .py 后缀: {文件!r}"
-    if ".." in 规范 or 规范.startswith(("/", "~")):
-        return f"非法测试文件路径: {文件!r}"
+def _校验unittest模块形态(命令: list[str], 工作根: Path | None) -> dict[str, Any] | None:
+    """只允许一个测试中心内的精确 unittest 模块，不接受额外参数。"""
+    if len(命令) != 3 or 命令[1] != "-m":
+        return _拒绝("开发期回归只允许 python3.14 -m 测试中心.<精确模块>")
+    模块 = 命令[2]
+    段表 = 模块.split(".")
+    if not 模块.startswith(测试模块前缀) or len(段表) < 2:
+        return _拒绝(f"测试模块必须位于 {测试模块前缀} 下: {模块!r}")
+    if any(not 段.isidentifier() for 段 in 段表):
+        return _拒绝(f"测试模块包含非法标识符: {模块!r}")
+    if not 段表[-1].startswith("测试_"):
+        return _拒绝(f"只允许精确测试模块，末段必须以 测试_ 开头: {模块!r}")
     if 工作根 is not None:
-        解析 = (工作根 / 规范).resolve()
-        if not 解析.is_file():
-            return f"测试文件不存在: {文件!r}"
-        if not 解析.is_relative_to(工作根.resolve()):
-            return f"测试文件逃逸工作根: {文件!r}"
-    return None
-
-
-def _校验运行测试形态(命令: list[str], 工作根: Path | None) -> dict[str, Any] | None:
-    """校验工作包文件形态或官方范围调度形态。"""
-    尾部 = 命令[2:]
-    if not 尾部:
-        return _拒绝("运行测试.py 必须显式指定 --测试文件 或 --范围")
-    if 尾部[0] == "--范围":
-        if len(尾部) < 2 or 尾部[1] not in {"常规", "慢速", "全部"}:
-            return _拒绝("--范围 必须是 常规、慢速 或 全部")
-        允许选项 = {"--并行阶段", "--并行慢速", "--强制慢速", "--并行数"}
-        序号 = 2
-        while 序号 < len(尾部):
-            选项 = 尾部[序号]
-            if 选项 not in 允许选项:
-                return _拒绝(f"范围验证不允许参数: {选项!r}")
-            if 选项 == "--并行数":
-                if 序号 + 1 >= len(尾部) or not 尾部[序号 + 1].isdigit():
-                    return _拒绝("--并行数 后必须是非负整数")
-                序号 += 2
-            else:
-                序号 += 1
-        return None
-    if 尾部[0] != "--测试文件":
-        return _拒绝("运行测试.py 形态必须以 --测试文件 或 --范围 开头")
-    文件区: list[str] = []
-    序号 = 1
-    while 序号 < len(尾部) and not 尾部[序号].startswith("--"):
-        文件区.append(尾部[序号])
-        序号 += 1
-    if not 文件区:
-        return _拒绝("--测试文件 后必须至少一个测试文件")
-    for 文件 in 文件区:
-        原因 = _校验测试文件(文件, 工作根)
-        if 原因 is not None:
-            return _拒绝(原因)
-    if 序号 >= len(尾部):
-        return _拒绝("运行测试.py 形态缺少 --并行数")
-    if 尾部[序号] != "--并行数":
-        return _拒绝(f"运行测试.py 形态只允许 --并行数 选项，发现 {尾部[序号]!r}")
-    if 序号 + 2 != len(尾部):
-        return _拒绝("--并行数 后必须恰好一个整数")
-    并行值 = 尾部[序号 + 1]
-    if not 并行值.isdigit():
-        return _拒绝(f"--并行数 必须是整数，发现 {并行值!r}")
-    return None
-
-
-def _校验pytest形态(命令: list[str], 工作根: Path | None) -> dict[str, Any] | None:
-    """形态2：["python3.14", "-m", "pytest", 文件*, "-q", "--timeout=N"]（N ≤ 1800）。"""
-    尾部 = 命令[3:]
-    if len(尾部) < 3:
-        return _拒绝("pytest 形态至少需要 测试文件、-q 与 --timeout")
-    超时令牌 = 尾部[-1]
-    if 尾部[-2] != "-q":
-        return _拒绝("pytest 形态必须包含 -q（位于 --timeout 之前）")
-    if not 超时令牌.startswith("--timeout="):
-        return _拒绝("pytest 形态必须以 --timeout=N 结尾")
-    超时值 = 超时令牌.split("=", 1)[1]
-    if not 超时值.isdigit() or not 1 <= int(超时值) <= 最大超时秒:
-        return _拒绝(f"超时必须在 1..{最大超时秒} 秒，发现 {超时令牌!r}")
-    文件区 = 尾部[:-2]
-    if not 文件区:
-        return _拒绝("pytest 形态缺少测试文件")
-    for 文件 in 文件区:
-        原因 = _校验测试文件(文件, 工作根)
-        if 原因 is not None:
-            return _拒绝(原因)
+        解析 = (工作根 / Path(*段表)).with_suffix(".py").resolve()
+        if not 解析.is_file() or not 解析.is_relative_to(工作根.resolve()):
+            return _拒绝(f"测试模块不存在或逃逸工作根: {模块!r}")
     return None
 
 
@@ -197,10 +127,8 @@ def 校验验证命令(命令: list[str], 工作根: Path | None = None) -> dict
         结果 = None
     elif len(命令) > 1 and 命令[1] == HTML验证入口:
         结果 = _校验HTML形态(命令, 工作根)
-    elif 命令[1:3] == ["-m", "pytest"]:
-        结果 = _校验pytest形态(命令, 工作根)
-    elif len(命令) > 1 and 命令[1] == 运行测试入口:
-        结果 = _校验运行测试形态(命令, 工作根)
+    elif len(命令) > 1 and 命令[1] == "-m":
+        结果 = _校验unittest模块形态(命令, 工作根)
     else:
         入口 = 命令[1] if len(命令) > 1 else "<缺失>"
         return _拒绝(f"验证入口不在白名单: {入口!r}")

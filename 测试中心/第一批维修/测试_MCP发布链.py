@@ -48,6 +48,24 @@ class 开发入口发布门禁透传测试(unittest.TestCase):
 
 
 class 正式发布命令同源测试(unittest.TestCase):
+    def test_工作包计划只生成精确unittest模块命令(self) -> None:
+        计划 = 项目服务._验证计划(["MCP工具箱/项目服务.py"], "工作包")
+        self.assertTrue(计划["建议命令"], 计划)
+        for 命令 in 计划["建议命令"]:
+            self.assertEqual(命令[:2], ["python3.14", "-m"])
+            self.assertTrue(命令[2].startswith("测试中心."), 命令)
+            self.assertNotIn("测试中心/运行测试.py", 命令)
+            self.assertTrue(验证门禁.校验验证命令(命令)["成功"], 命令)
+
+    def test_阶段收口只验证已编译制品不跑旧全量(self) -> None:
+        制品 = "工程缓存/编译制品/候选甲"
+        计划 = 项目服务._验证计划(["运行核心"], "阶段收口", 制品=制品)
+        self.assertEqual(计划["建议命令"], [[
+            "python3.14", "开发工具/HTML验证/验证器.py",
+            "--制品", 制品, "--并发", "8",
+        ]])
+        self.assertFalse(计划["是否需要全量"])
+
     def test_计划与白名单使用同一正式发布命令源(self) -> None:
         制品 = "工程缓存/编译制品/候选甲"
         期望命令 = 验证门禁.正式发布命令表(制品)
