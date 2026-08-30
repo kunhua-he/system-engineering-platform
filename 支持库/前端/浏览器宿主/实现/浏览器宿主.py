@@ -6,6 +6,7 @@ import json
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -14,7 +15,8 @@ from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str = "",
                网关地址: str = "", 能力id: str = "", 端口: int = 45080,
-               自动打开: bool = False) -> tuple[ThreadingHTTPServer, str]:
+               自动打开: bool = False, 受管验证: bool = False,
+               状态目录: str = "") -> tuple[ThreadingHTTPServer, str] | dict[str, Any]:
     """启动静态浏览器宿主；页面调用只能转发 POST /网关/调用。"""
     校验应用监听端口(端口)
     标题文本 = html.escape(str(标题), quote=True)
@@ -52,6 +54,17 @@ def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str 
     服务.daemon_threads = True
     threading.Thread(target=服务.serve_forever, daemon=True).start()
     地址 = f"http://127.0.0.1:{服务.server_port}"
+    if 受管验证:
+        实际端口 = 服务.server_port
+        服务.shutdown()
+        服务.server_close()
+        状态根 = Path(状态目录).resolve()
+        状态根.mkdir(parents=True, exist_ok=True)
+        状态文件 = 状态根 / "浏览器宿主状态.json"
+        状态文件.write_text(json.dumps({
+            "地址": 地址, "端口": 实际端口, "状态": "已回收",
+        }, ensure_ascii=False), encoding="utf-8")
+        return {"地址": 地址, "端口": 实际端口, "状态": "已回收", "状态文件": str(状态文件)}
     if 自动打开:
         webbrowser.open_new_tab(地址)
     return 服务, 地址
