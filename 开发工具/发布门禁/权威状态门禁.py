@@ -12,7 +12,7 @@ from typing import Callable
 
 系统根 = Path(__file__).resolve()
 for _祖先 in 系统根.parents:
-    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "测试中心").is_dir():
+    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "开发工具").is_dir():
         系统根 = _祖先
         break
 
