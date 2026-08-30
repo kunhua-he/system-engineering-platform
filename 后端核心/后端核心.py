@@ -21,6 +21,7 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
+from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析运行缓存根
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
 from 运行核心.资源协调 import 资源句柄服务
 
@@ -43,8 +44,16 @@ class 后端状态:
 class 后端核心:
     """后端核心宿主：装配、注册、调用、任务、生命周期。"""
 
-    def __init__(self, 系统根目录: Path | None = None) -> None:
+    def __init__(self, 系统根目录: Path | None = None, *,
+                 运行缓存根目录: Path | None = None) -> None:
         self.系统根目录 = 系统根目录 or Path(后端核心.默认系统根())
+        if 运行缓存根目录 is None:
+            self.运行缓存根目录 = 解析运行缓存根(self.系统根目录)
+        else:
+            self.运行缓存根目录 = 解析运行缓存根(
+                self.系统根目录,
+                环境={运行缓存环境变量: str(Path(运行缓存根目录).resolve())},
+            )
         self.注册表 = 能力注册表()
         self.状态 = 后端状态()
         self.权限表: dict[str, set[str]] = {}  # 能力id → 允许用户id集合
@@ -52,7 +61,7 @@ class 后端核心:
         self.停止标记 = False
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
-        self.资源句柄服务 = 资源句柄服务(self.系统根目录 / "工程缓存" / "权威状态")
+        self.资源句柄服务 = 资源句柄服务(self.运行缓存根目录 / "权威状态")
         from 支持库.后端.系统核心支持库.资源管理 import 设置受管状态服务
         设置受管状态服务(self.资源句柄服务)
 
