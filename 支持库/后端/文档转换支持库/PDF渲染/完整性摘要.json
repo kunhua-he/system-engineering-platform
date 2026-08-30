@@ -81,7 +81,15 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "4e795a4bcfa0a417bfbb8df241b71743bd5f1c93d93cc0cf3265acf764e19095"
+      "sha256": "0163ac324a35825dac35d25be2f2ccbd840aae6cdf63dc2db4802b2c0bf45ff7"
+    },
+    {
+      "路径": "验证夹具/像素.png",
+      "sha256": "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77"
+    },
+    {
+      "路径": "验证夹具/来源.docx",
+      "sha256": "1b45a9df8603e2c1a39097a6d628a8d15e65c1bdc3f77b0e65589dea95343fef"
     }
   ]
 }

@@ -65,7 +65,11 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "65ba5ec8e5ebd8f2fe39193811924397d1343e6cc7f8cff96fbd0dc029d119bc"
+      "sha256": "dca942bf171537132bd6f36cdbe3dd5d9b452315cae2e195307c5f0d812cdcf8"
+    },
+    {
+      "路径": "验证夹具/来源.docx",
+      "sha256": "6f3dce866b0f872cfeab8ab1c84618403f3a30527db2a3c1f919aa4ee08d269f"
     }
   ]
 }
