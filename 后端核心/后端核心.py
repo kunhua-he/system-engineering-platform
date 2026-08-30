@@ -53,6 +53,8 @@ class 后端核心:
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
         self.资源句柄服务 = 资源句柄服务(self.系统根目录 / "工程缓存" / "权威状态")
+        from 支持库.后端.系统核心支持库.资源管理 import 设置受管状态服务
+        设置受管状态服务(self.资源句柄服务)
 
     def 资源状态(self, 句柄: int, *, 项目id: str = "", 所有者: str = "") -> dict | None:
         return self.资源句柄服务.状态(句柄, 项目id=项目id, 所有者=所有者)
