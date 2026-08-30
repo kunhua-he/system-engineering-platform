@@ -64,8 +64,12 @@
       "sha256": "7393d2cbb2e3e8ce247ddab4c9ccf791133af4228ffdc90de86b07f8ded05952"
     },
     {
+      "路径": "验证场景.json",
+      "sha256": "f48704d583a3e27bf780b4d9eb91b92a59d71cfca57cdf0db63d7a3f671f00b2"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "be30ac20dfe1a6ec798e92dd6d573082f95cb08efb0f7a0d9297d81b7b595b46"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     },
     {
       "路径": "默认配置/默认配置.json",
