@@ -133,6 +133,7 @@ class 正式发布证据与只读状态测试(unittest.TestCase):
 class 激活指针前置校验测试(unittest.TestCase):
     def setUp(self) -> None:
         self.临时 = tempfile.TemporaryDirectory()
+        self.接入列表 = []
         self.根 = Path(self.临时.name)
         self.制品根 = self.根 / "制品仓库"
         self.状态目录 = self.根 / "状态"
@@ -161,6 +162,8 @@ class 激活指针前置校验测试(unittest.TestCase):
         self.assertTrue(正式.成功, 正式)
 
     def tearDown(self) -> None:
+        for 接入 in self.接入列表:
+            接入.关闭()
         self.临时.cleanup()
 
     def _建真实签名制品(self) -> str:
@@ -176,6 +179,7 @@ class 激活指针前置校验测试(unittest.TestCase):
             客户端制品目录=self.根 / "客户端制品", 环境目录=self.环境目录,
             信任目录=self.信任目录,
         )
+        self.接入列表.append(接入)
         私钥, 公钥 = 接入.生成或读取密钥(self.根 / "密钥")
         成功, 消息, 摘要 = 接入.入库(
             制品目录=正式候选,
