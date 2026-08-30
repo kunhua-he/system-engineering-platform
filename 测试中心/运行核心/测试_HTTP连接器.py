@@ -26,6 +26,13 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 运行核心.能力调用.HTTP连接器 import HTTP连接器
+
+
+def _读取HTTP错误JSON(错误: urllib.error.HTTPError) -> dict:
+    try:
+        return json.loads(错误.read().decode("utf-8"))
+    finally:
+        错误.close()
 from 运行核心.统一网关.网关核心 import 网关核心
 from 运行核心.统一网关.本地网关 import 本地网关服务器
 from 公共契约.基础类型.结果类型 import 结果
@@ -43,6 +50,12 @@ class _测试处理器(BaseHTTPRequestHandler):
 
     def log_message(self, 格式: str, *参数) -> None:
         return
+
+    def _安全写(self, 正文: bytes) -> None:
+        try:
+            self.wfile.write(正文)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_POST(self) -> None:
         长度 = int(self.headers.get("Content-Length", "0"))
@@ -64,7 +77,7 @@ class _测试处理器(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Length", str(len(正文)))
             self.end_headers()
-            self.wfile.write(正文)
+            self._安全写(正文)
             return
         返回数据 = dict(type(self).返回数据)
         返回数据.setdefault("请求id", type(self).请求体.get("请求id", "响应请求"))
@@ -75,7 +88,7 @@ class _测试处理器(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(正文)))
         self.end_headers()
-        self.wfile.write(正文)
+        self._安全写(正文)
 
 
 class 测试HTTP连接器(unittest.TestCase):
@@ -247,7 +260,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         _假后端.资源句柄服务 = 资源句柄服务(Path(cls.临时目录.name) / "状态")
         cls.后端 = _假后端()
         核心 = 网关核心(cls.后端)
-        cls.网关 = 本地网关服务器(网关核心实例=核心, 端口=0)
+        cls.网关 = 本地网关服务器.创建测试服务器(网关核心实例=核心, 端口=0)
         成功, 说明 = cls.网关.启动()
         if not 成功:
             raise RuntimeError(说明)
@@ -256,6 +269,8 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls.网关.优雅停止()
+        assert _假后端.资源句柄服务 is not None
+        _假后端.资源句柄服务.关闭服务()
         cls.临时目录.cleanup()
 
     def test_二进制参数按字节集契约往返(self) -> None:
@@ -301,7 +316,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as 上下文:
             urllib.request.urlopen(请求, timeout=2)
         self.assertEqual(上下文.exception.code, 400)
-        响应 = json.loads(上下文.exception.read().decode("utf-8"))
+        响应 = _读取HTTP错误JSON(上下文.exception)
         self.assertFalse(响应["成功"])
         self.assertEqual(响应["错误码"], "参数不合法")
 
@@ -316,7 +331,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as 上下文:
             urllib.request.urlopen(请求, timeout=2)
         self.assertEqual(上下文.exception.code, 405)
-        响应 = json.loads(上下文.exception.read().decode("utf-8"))
+        响应 = _读取HTTP错误JSON(上下文.exception)
         self.assertFalse(响应["成功"])
         self.assertEqual(响应["错误码"], "方法不允许")
 
@@ -329,7 +344,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         )
         with self.assertRaises(urllib.error.HTTPError) as 上下文:
             urllib.request.urlopen(请求, timeout=2)
-        响应 = json.loads(上下文.exception.read().decode("utf-8"))
+        响应 = _读取HTTP错误JSON(上下文.exception)
         self.assertEqual(上下文.exception.code, 400)
         self.assertEqual(
             set(("请求id", "操作", "成功", "值", "错误码", "错误说明", "句柄", "耗时毫秒")),
@@ -357,7 +372,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as 上下文:
                 urllib.request.urlopen(请求, timeout=2)
             self.assertEqual(上下文.exception.code, 400, 字段)
-            响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            响应 = _读取HTTP错误JSON(上下文.exception)
             self.assertEqual(响应["错误码"], "参数不合法", 字段)
 
     def test_网关拒绝数值字段文本和逻辑值漂移(self) -> None:
@@ -374,7 +389,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as 上下文:
                 urllib.request.urlopen(请求, timeout=2)
             self.assertEqual(上下文.exception.code, 400)
-            响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            响应 = _读取HTTP错误JSON(上下文.exception)
             self.assertFalse(响应["成功"])
             self.assertEqual(响应["错误码"], "参数不合法")
 
@@ -432,7 +447,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as 上下文:
             urllib.request.urlopen(请求, timeout=2)
         self.assertEqual(上下文.exception.code, 400)
-        响应 = json.loads(上下文.exception.read().decode("utf-8"))
+        响应 = _读取HTTP错误JSON(上下文.exception)
         self.assertFalse(响应["成功"])
         self.assertEqual(响应["错误码"], "参数不合法")
 
@@ -528,6 +543,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as 上下文:
             urllib.request.urlopen(请求, timeout=2)
         self.assertEqual(上下文.exception.code, 404)
+        上下文.exception.close()
 
     def test_非有限数与超长请求id在HTTP边界拒绝(self) -> None:
         地址 = f"http://127.0.0.1:{self.网关.端口}/网关/调用"
@@ -542,7 +558,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as 上下文:
                 urllib.request.urlopen(请求, timeout=2)
             self.assertEqual(上下文.exception.code, 400)
-            响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            响应 = _读取HTTP错误JSON(上下文.exception)
             self.assertFalse(响应["成功"])
             self.assertEqual(响应["错误码"], "参数不合法")
 

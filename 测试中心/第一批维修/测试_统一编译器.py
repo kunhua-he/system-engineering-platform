@@ -172,9 +172,11 @@ class 启动器页面路由测试(unittest.TestCase):
                 "页面id": "关于", "标题": "第二页面", "路由": "/关于", "组件列表": [],
             }, ensure_ascii=False), encoding="utf-8")
             编译项目(项目, 输出, 变更单元={"文件": 项目 / "项目声明.json"})
+            环境 = dict(os.environ)
+            环境["系统库网关凭证"] = "编译器黑盒测试凭证"
             进程 = subprocess.Popen(
                 ["python3.14", "-u", "-B", "运行入口/启动.py", "--端口", "0", "--不自动打开"],
-                cwd=输出, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                cwd=输出, env=环境, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 start_new_session=True,
             )
             try:
