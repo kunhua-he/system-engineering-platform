@@ -130,82 +130,6 @@ function 加一行(场景, 结果, 状态码, 耗时, 原因, 线索) {
   汇总();
 }
 
-function 类型匹配(值, 类型) {
-  if (类型 === '字典型' || 类型 === '对象型') return 值 !== null && typeof 值 === 'object' && !Array.isArray(值);
-  if (类型 === '列表型') return Array.isArray(值);
-  if (类型 === '文本型' || 类型 === '字符串型') return typeof 值 === 'string';
-  if (类型 === '整数型') return Number.isInteger(值);
-  if (类型 === '数值型') return typeof 值 === 'number' && Number.isFinite(值);
-  if (类型 === '逻辑型' || 类型 === '布尔型') return typeof 值 === 'boolean';
-  return false;
-}
-
-function 取路径(值, 路径) {
-  let 当前 = 值;
-  for (const 段 of String(路径).replace(/^\$\.?/, '').split('.').filter(Boolean)) {
-    if (当前 === null || typeof 当前 !== 'object' || !(段 in 当前)) return undefined;
-    当前 = 当前[段];
-  }
-  return 当前;
-}
-
-function 校验返回(场景, 状态码, 正文) {
-  const 必需 = ['成功', '值', '错误码', '错误说明', '请求id', '耗时毫秒'];
-  const 缺失 = 必需.filter(字段 => !(字段 in 正文));
-  if (缺失.length) return [false, '统一返回缺字段: ' + 缺失.join(','), '返回契约'];
-  if (typeof 正文.成功 !== 'boolean' ||
-      ('可重试' in 正文 && typeof 正文.可重试 !== 'boolean') ||
-      typeof 正文.错误码 !== 'string' || typeof 正文.错误说明 !== 'string' ||
-      typeof 正文.请求id !== 'string' || !正文.请求id ||
-      typeof 正文.耗时毫秒 !== 'number' || 正文.耗时毫秒 < 0) {
-    return [false, '统一返回字段类型不合法', '返回契约'];
-  }
-  if (正文.成功 && (正文.值 === null || 正文.错误码 || 正文.错误说明))
-    return [false, '成功值为空或成功/错误字段未互斥', '返回契约'];
-  if (!正文.成功 && (正文.值 !== null || !正文.错误码 || !正文.错误说明))
-    return [false, '错误值或错误字段不合法', '返回契约'];
-  const 预期 = 场景.预期 || {};
-  if (预期.状态码 && 状态码 !== 预期.状态码) return [false, `状态码 ${状态码} != ${预期.状态码}`, '网关'];
-  if (正文.成功 !== 预期.成功) return [false, `成功=${正文.成功} != ${预期.成功}`, '能力'];
-  if (!预期.成功) return [正文.错误码 === 预期.错误码,
-    正文.错误码 === 预期.错误码 ? '' : `错误码 ${正文.错误码} != ${预期.错误码}`, '能力'];
-  if (预期.值类型 && !类型匹配(正文.值, 预期.值类型)) return [false, '值类型不符合 ' + 预期.值类型, '值'];
-  for (const [路径, 预期值] of Object.entries(预期.关键值 || {})) {
-    if (JSON.stringify(取路径(正文.值, 路径)) !== JSON.stringify(预期值))
-      return [false, '关键值不符合: ' + 路径, '值'];
-  }
-  const 返回契约 = 预期.返回契约 || {};
-  for (const 路径 of (返回契约.必需字段 || [])) {
-    if (取路径(正文.值, 路径) === undefined) return [false, '返回值缺少必需字段: ' + 路径, '返回契约'];
-  }
-  for (const [路径, 类型] of Object.entries(返回契约.字段类型 || {})) {
-    if (!类型匹配(取路径(正文.值, 路径), 类型)) return [false, '返回字段类型不符合: ' + 路径, '返回契约'];
-  }
-  if (Object.prototype.hasOwnProperty.call(预期, '值') &&
-      JSON.stringify(正文.值) !== JSON.stringify(预期.值))
-    return [false, '完整值不符合预期', '值'];
-  return [true, '', ''];
-}
-
-async function 运行有界并发池(任务表, 上限, 执行) {
-  let 下标 = 0, 活跃 = 0, 峰值 = 0;
-  const 结果 = new Array(任务表.length);
-  async function 工作者() {
-    while (true) {
-      const 当前 = 下标++;
-      if (当前 >= 任务表.length) return;
-      活跃 += 1;
-      峰值 = Math.max(峰值, 活跃);
-      document.getElementById('并发峰值').textContent = String(峰值);
-      try { 结果[当前] = await 执行(任务表[当前]); }
-      catch (错误) { 结果[当前] = false; }
-      finally { 活跃 -= 1; }
-    }
-  }
-  const 工作者数 = Math.min(Math.max(1, 上限), 任务表.length);
-  await Promise.all(Array.from({ length: 工作者数 }, () => 工作者()));
-  return { 结果, 峰值 };
-}
 
 async function 请求(方法, 路径, 数据) {
   // 统一走相对路径代理（/代理/...），由验证器服务模式转发到制品（同源，无跨域）。
@@ -250,47 +174,21 @@ document.getElementById('连接').onclick = async () => {
 };
 
 document.getElementById('跑全量').onclick = async () => {
-  const 并发 = parseInt(document.getElementById('并发').value) || 8;
-  记日志(`跑全量验证：并发 ${并发}，先 GET / 健康检查`);
-  const 健康 = await 请求('GET', '/');
-  if (健康.状态码 !== 200) { 记日志('✗ 制品页面不可访问'); return; }
-  记日志('✓ 制品页面可访问，开始加载验证场景…');
-  // 从 /验证场景.json 读取场景（服务模式提供）
-  let 场景表 = [];
+  记日志('提交服务端唯一场景执行器；页面只展示服务端报告');
   try {
-    const 场景响应 = await fetch('/验证场景.json');
-    if (场景响应.ok) {
-      场景表 = (await 场景响应.json())?.验证场景 || [];
+    const 响应 = await fetch('/执行验证', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const 报告 = await 响应.json();
+    结果表.replaceChildren();
+    for (const 结果 of (报告.结果列表 || [])) {
+      加一行(结果, 结果.通过 ? '通过' : '失败', 结果.状态码 || 0,
+            Math.round(结果.耗时毫秒 || 0), 结果.失败原因 || '', 结果.定位线索 || '');
     }
-  } catch (e) { /* 忽略 */ }
-  if (!场景表.length) {
-    // 兜底：从能力契约扫描（服务模式提供 /验证场景.json 时不会走到这）
-    记日志('✗ 验证场景.json 不可用，无法跑全量');
-    return;
-  }
-  记日志(`发现 ${场景表.length} 个验证场景，开始并发验证…`);
-  const 池结果 = await 运行有界并发池(场景表, 并发, 验证一个);
-  记日志(`全量验证完成：${池结果.结果.filter(Boolean).length}/${场景表.length}，并发峰值 ${池结果.峰值}`);
-};
-
-async function 验证一个(场景) {
-  const 能力id = 场景.能力id || 场景.场景id || '';
-  const 场景参数 = 场景.参数 || {};
-  const 开始 = performance.now();
-  try {
-    const { 状态码, 正文 } = await 请求('POST', '/网关/调用', { 能力id, 参数: 场景参数 });
-    const 耗时 = Math.round(performance.now() - 开始);
-    const [通过, 原因, 线索] = 校验返回(场景, 状态码, 正文);
-    加一行(场景, 通过 ? '通过' : '失败', 状态码, 耗时, 原因, 线索);
-    记日志(`${通过 ? '✓' : '✗'} ${能力id} → ${状态码} ${通过 ? '符合预期' : 原因} ${耗时}ms`);
+    document.getElementById('并发峰值').textContent = String(报告.并发峰值 || 1);
+    记日志(`服务端验证完成：目标能力 ${报告.目标能力数 || 0}，失败 ${报告.失败数 || 0}，清理失败 ${报告.清理失败数 || 0}`);
   } catch (e) {
-    const 耗时 = Math.round(performance.now() - 开始);
-    加一行(场景, '失败', 0, 耗时, '网关断开: ' + e.message, '网关');
-    记日志(`✗ ${能力id} → 网关断开: ${e.message}`);
-    return false;
+    记日志('✗ 服务端执行失败: ' + e.message);
   }
-  return 通过;
-}
+};
 
 document.getElementById('清空').onclick = () => {
   结果表.replaceChildren();

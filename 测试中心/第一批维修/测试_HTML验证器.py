@@ -36,7 +36,24 @@ def 建制品(根: Path, 能力表: list[tuple[str, dict]], 场景表: list[dict
     写JSON(包 / "能力定义.json", {"能力列表": 声明能力})
     写JSON(包 / "能力契约" / "参数契约.json", {"契约版本": "1.0.0", "能力契约": 契约能力})
     if 场景表 is not None:
-        写JSON(包 / "验证场景引用.json", {"验证场景引用": 场景表})
+        新格式 = []
+        for 场景 in 场景表:
+            预期 = 场景.get("预期", {})
+            断言 = {键: 预期[键] for 键 in ("错误码", "包含", "值类型", "关键值", "值") if 键 in 预期}
+            if not 断言:
+                断言 = {"值类型": "字典型"} if 预期.get("成功") else {"错误码": "参数不合法"}
+            新格式.append({"场景": {
+                "场景id": 场景.get("场景id", "场景"), "前置步骤": [], "清理步骤": [],
+                "目标步骤": [{
+                    "步骤id": 场景.get("场景id", "步骤"), "能力id": 场景.get("能力id", ""),
+                    "参数": 场景.get("参数", {}),
+                    "预期": {"成功": bool(预期.get("成功")),
+                             "状态码": 200 if 预期.get("成功") else 400, "返回断言": 断言},
+                }],
+            }})
+        写JSON(包 / "验证场景引用.json", {
+            "契约版本": "验证场景/v1", "验证场景引用": 新格式,
+        })
     return 根
 
 
@@ -108,7 +125,7 @@ class Test场景事实源与阻断(unittest.TestCase):
                 "预期": {"成功": False, "错误码": "参数不合法"},
             }
             制品 = 建制品(Path(临时), [("样例.相加", {})], [负向])
-            with self.assertRaisesRegex(ValueError, "真实成功场景"):
+            with self.assertRaisesRegex(ValueError, "真实成功场景|正向目标步骤能力全集"):
                 验证器._加载场景(制品, None)
 
     def test_零场景空文件和全无效均阻断(self):
@@ -155,6 +172,214 @@ class Test场景事实源与阻断(unittest.TestCase):
             })
             with self.assertRaisesRegex(ValueError, "制品摘要"):
                 验证器._加载场景(制品, 场景束)
+
+
+def 新步骤(步骤id: str, 能力id: str, 参数=None, 成功=True, 状态码=200, 返回断言=None) -> dict:
+    return {
+        "步骤id": 步骤id,
+        "能力id": 能力id,
+        "参数": {} if 参数 is None else 参数,
+        "预期": {
+            "成功": 成功,
+            "状态码": 状态码,
+            "返回断言": 返回断言 or ({"值类型": "字典型"} if 成功 else {"错误码": "预期失败"}),
+        },
+    }
+
+
+def 新场景(场景id: str, 目标步骤: list[dict], 前置步骤=None, 清理步骤=None) -> dict:
+    return {
+        "场景id": 场景id,
+        "前置步骤": 前置步骤 or [],
+        "目标步骤": 目标步骤,
+        "清理步骤": 清理步骤 or [],
+    }
+
+
+def 建新制品(根: Path, 能力ids: list[str], 场景表: list[dict], 引用文件=False) -> Path:
+    制品 = 建制品(根, [(能力id, {}) for 能力id in 能力ids], None)
+    包 = 制品 / "模块库" / "样例包"
+    if 引用文件:
+        写JSON(包 / "验证场景" / "场景.json", {
+            "契约版本": "验证场景/v1", "验证场景": 场景表,
+        })
+        引用 = [{"场景文件": "验证场景/场景.json"}]
+    else:
+        引用 = [{"场景": 场景} for 场景 in 场景表]
+    写JSON(包 / "验证场景引用.json", {
+        "契约版本": "验证场景/v1", "验证场景引用": 引用,
+    })
+    return 制品
+
+
+class TestP020多步骤场景契约(unittest.TestCase):
+    def _执行(self, 制品: Path, 返回函数):
+        场景束 = 验证器._加载场景(制品, None)
+        with mock.patch.object(验证器, "_发送请求", side_effect=返回函数):
+            return 验证器._执行场景束(制品, 场景束, "http://127.0.0.1:45080", 超时秒=1)
+
+    def test_静态成功与引用场景文件消费同一契约(self):
+        for 引用文件 in (False, True):
+            with self.subTest(引用文件=引用文件), tempfile.TemporaryDirectory() as 临时:
+                制品 = 建新制品(Path(临时), ["样例.相加"], [
+                    新场景("静态", [新步骤("相加", "样例.相加", {"甲": 1, "乙": 2}, 返回断言={"关键值": {"和": 3}})])
+                ], 引用文件=引用文件)
+                场景束 = 验证器._加载场景(制品, None)
+                self.assertEqual(场景束.目标能力全集, {"样例.相加"})
+                self.assertEqual(场景束.步骤总数, 1)
+
+    def test_正式验证入口消费同一场景束执行器(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.相加"], [
+                新场景("静态", [新步骤("相加", "样例.相加", 返回断言={"关键值": {"和": 3}})])
+            ])
+            场景束 = 验证器._加载场景(制品, None)
+            def 返回(_地址, 请求场景, _超时):
+                if 请求场景.能力id == "制品.健康":
+                    return 200, {}, 1
+                return 200, 统一成功返回({"和": 3}), 1
+            with mock.patch.object(验证器, "_发送请求", side_effect=返回):
+                报告, _, 进程 = 验证器.验证全部(
+                    制品, 场景束, 直连地址="http://127.0.0.1:45080")
+            self.assertIsNone(进程)
+            self.assertEqual(报告.失败数, 0)
+            self.assertEqual(报告.实际成功目标能力全集, ["样例.相加"])
+
+    def test_多步骤句柄和任意JSON路径传递(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.创建", "样例.读取"], [
+                新场景("句柄链", [新步骤("读取", "样例.读取", {
+                    "句柄": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.值.资源.句柄"},
+                }, 返回断言={"关键值": {"内容": "已读取"}})], 前置步骤=[
+                    新步骤("创建", "样例.创建", 返回断言={"关键值": {"资源.句柄": "句柄-1"}}),
+                ], 清理步骤=[新步骤("释放", "样例.创建", {
+                    "句柄": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.值.资源.句柄"},
+                })]),
+                新场景("创建覆盖", [新步骤("创建能力目标", "样例.创建")]),
+            ])
+            收到 = []
+            def 返回(地址, 步骤, 超时):
+                收到.append((步骤.步骤id, 步骤.参数))
+                值 = ({"资源": {"句柄": "句柄-1"}} if 步骤.步骤id == "创建"
+                     else {"内容": "已读取"} if 步骤.步骤id == "读取" else {"已释放": True})
+                return 200, 统一成功返回(值), 1
+            报告 = self._执行(制品, 返回)
+            self.assertEqual(dict(收到)["读取"]["句柄"], "句柄-1")
+            self.assertEqual(dict(收到)["释放"]["句柄"], "句柄-1")
+            self.assertEqual(报告.失败数, 0)
+
+    def test_文件夹具复制与动态路径均限制在允许根(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.读文件", "样例.删除"], [
+                新场景("文件", [新步骤("读取", "样例.读文件", {
+                    "输入": {"$动态": "夹具文件复制", "来源": "夹具/输入.txt", "目标": "工作/输入.txt"},
+                    "夹具": {"$动态": "制品根", "相对路径": "模块库/样例包/夹具/输入.txt"},
+                    "目录": {"$动态": "受管临时目录", "相对路径": "工作"},
+                }, 返回断言={"关键值": {"内容": "夹具内容"}})], 清理步骤=[
+                    新步骤("删除", "样例.删除", {"路径": {"$动态": "受管临时目录", "相对路径": "工作/输入.txt"}}),
+                ]),
+                新场景("删除覆盖", [新步骤("删除能力目标", "样例.删除", {
+                    "路径": {"$动态": "夹具文件复制", "来源": "夹具/输入.txt", "目标": "删除/输入.txt"},
+                })]),
+            ])
+            夹具 = 制品 / "模块库" / "样例包" / "夹具" / "输入.txt"
+            夹具.parent.mkdir(parents=True)
+            夹具.write_text("夹具内容", encoding="utf-8")
+            def 返回(地址, 步骤, 超时):
+                if 步骤.步骤id == "读取":
+                    self.assertEqual(Path(步骤.参数["输入"]).read_text(encoding="utf-8"), "夹具内容")
+                    self.assertEqual(Path(步骤.参数["夹具"]).read_text(encoding="utf-8"), "夹具内容")
+                    self.assertTrue(Path(步骤.参数["目录"]).is_dir())
+                    return 200, 统一成功返回({"内容": "夹具内容"}), 1
+                if "路径" in 步骤.参数:
+                    Path(步骤.参数["路径"]).unlink()
+                return 200, 统一成功返回({"已删除": True}), 1
+            报告 = self._执行(制品, 返回)
+            self.assertEqual(报告.资源残留数, 0)
+            self.assertEqual(报告.制品摘要前["制品摘要"], 报告.制品摘要后["制品摘要"])
+
+    def test_目标步骤失败仍执行finally清理(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.目标", "样例.清理"], [
+                新场景("失败清理", [新步骤("目标", "样例.目标")], 清理步骤=[新步骤("清理", "样例.清理")]),
+                新场景("清理覆盖", [新步骤("清理能力目标", "样例.清理")]),
+            ])
+            已清理 = []
+            def 返回(地址, 步骤, 超时):
+                if 步骤.步骤id == "目标":
+                    return 500, {**统一成功返回(), "成功": False, "值": None, "错误码": "失败", "错误说明": "目标失败"}, 1
+                已清理.append(True)
+                return 200, 统一成功返回({"已清理": True}), 1
+            报告 = self._执行(制品, 返回)
+            self.assertTrue(已清理)
+            self.assertGreater(报告.失败数, 0)
+
+    def test_清理失败单独计数并阻断(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.目标", "样例.清理"], [
+                新场景("清理失败", [新步骤("目标", "样例.目标")], 清理步骤=[新步骤("清理", "样例.清理")]),
+                新场景("清理覆盖", [新步骤("清理能力目标", "样例.清理")]),
+            ])
+            def 返回(地址, 步骤, 超时):
+                if 步骤.步骤id == "清理":
+                    return 500, {**统一成功返回(), "成功": False, "值": None, "错误码": "清理失败", "错误说明": "未释放"}, 1
+                return 200, 统一成功返回({"完成": True}), 1
+            报告 = self._执行(制品, 返回)
+            self.assertEqual(报告.清理失败数, 1)
+            self.assertGreater(报告.失败数, 0)
+
+    def test_引用和动态路径逃逸均阻断(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.目标"], [新场景("正常", [新步骤("目标", "样例.目标")])])
+            包 = 制品 / "模块库" / "样例包"
+            写JSON(包 / "验证场景引用.json", {
+                "契约版本": "验证场景/v1", "验证场景引用": [{"场景文件": "../逃逸.json"}],
+            })
+            with self.assertRaisesRegex(ValueError, "越出包目录"):
+                验证器._加载场景(制品, None)
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.目标"], [
+                新场景("逃逸", [新步骤("目标", "样例.目标", {
+                    "路径": {"$动态": "受管临时目录", "相对路径": "../逃逸"},
+                })])
+            ])
+            报告 = self._执行(制品, lambda *参数: self.fail("动态路径非法时不得发请求"))
+            self.assertGreater(报告.失败数, 0)
+
+    def test_前置和清理步骤不能冒充目标覆盖(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.甲", "样例.乙"], [
+                新场景("伪覆盖", [新步骤("甲", "样例.甲")], 前置步骤=[新步骤("乙前置", "样例.乙")],
+                    清理步骤=[新步骤("乙清理", "样例.乙")]),
+            ])
+            with self.assertRaisesRegex(ValueError, "正向目标步骤能力全集"):
+                验证器._加载场景(制品, None)
+
+    def test_每能力缺正向目标步骤阻断(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.甲"], [
+                新场景("只有负向", [新步骤("甲失败", "样例.甲", 成功=False, 状态码=400,
+                    返回断言={"错误码": "预期失败"})]),
+            ])
+            with self.assertRaisesRegex(ValueError, "正向目标步骤能力全集"):
+                验证器._加载场景(制品, None)
+
+    def test_动态引用缺失和旧格式均阻断(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.目标"], [
+                新场景("缺引用", [新步骤("目标", "样例.目标", {
+                    "句柄": {"$动态": "步骤返回", "步骤id": "不存在", "JSON路径": "$.值"},
+                })]),
+            ])
+            with self.assertRaisesRegex(ValueError, "动态引用缺失"):
+                验证器._加载场景(制品, None)
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建制品(Path(临时), [("样例.相加", {})], None)
+            写JSON(制品 / "模块库" / "样例包" / "验证场景引用.json", {
+                "验证场景引用": [成功场景()],
+            })
+            with self.assertRaisesRegex(ValueError, "旧格式|契约版本"):
+                验证器._加载场景(制品, None)
 
 
 class Test返回契约(unittest.TestCase):
@@ -360,14 +585,12 @@ class Test验证页安全与并发(unittest.TestCase):
         self.assertNotIn(".innerHTML", self.HTML)
         self.assertIn("Content-Security-Policy", 验证器路径.read_text(encoding="utf-8"))
 
-    def test_页面使用真实有界并发池并显示峰值(self):
+    def test_页面只展示服务端唯一执行器报告(self):
         self.assertIn("并发峰值", self.HTML)
-        self.assertIn("运行有界并发池", self.HTML)
-        self.assertNotIn("Promise.allSettled(场景表.map", self.HTML)
-
-    def test_页面与核心同样校验完整值和返回契约(self):
-        self.assertIn("预期.返回契约", self.HTML)
-        self.assertIn("Object.prototype.hasOwnProperty.call(预期, '值')", self.HTML)
+        self.assertIn("fetch('/执行验证'", self.HTML)
+        self.assertIn("服务端唯一场景执行器", self.HTML)
+        for 旁路实现 in ("运行有界并发池", "验证一个(场景)", "function 校验返回", "预期.返回契约"):
+            self.assertNotIn(旁路实现, self.HTML)
 
 
 if __name__ == "__main__":

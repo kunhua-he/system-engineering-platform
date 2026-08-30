@@ -2,23 +2,26 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import ipaddress
 import json
 import os
 import queue
 import re
+import shutil
 import signal
 import subprocess
 import sys
 import threading
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +32,8 @@ if str(系统根) not in sys.path:
 # P1-37：工作区指纹只消费编译控制面的单一实现，不在本验证器复制算法。
 from 开发工具.项目编译.项目编译器 import _来源指纹 as _编译来源指纹
 
-验证版本 = "2.0.0"
+验证版本 = "3.0.0"
+场景契约版本 = "验证场景/v1"
 默认并发 = 8
 默认超时秒 = 15
 默认启动超时秒 = 20
@@ -61,6 +65,7 @@ class 验证场景:
     校验完整值: bool = False
     说明: str = ""
     制品摘要: str = ""
+    步骤id: str = ""
 
     def 转字典(self) -> dict[str, Any]:
         预期: dict[str, Any] = {
@@ -147,6 +152,141 @@ class 验证场景:
 
 
 @dataclass
+class 验证步骤:
+    """一个严格绑定真实能力调用、预期状态和返回断言的有序步骤。"""
+
+    步骤id: str
+    能力id: str
+    参数: dict[str, Any] = field(default_factory=dict)
+    预期状态码: int = 200
+    预期成功: bool = True
+    预期错误码: str = ""
+    预期包含: str = ""
+    预期值类型: str = ""
+    预期关键值: dict[str, Any] = field(default_factory=dict)
+    预期返回契约: dict[str, Any] = field(default_factory=dict)
+    预期值: Any = None
+    校验完整值: bool = False
+    制品摘要: str = ""
+
+    def 转字典(self) -> dict[str, Any]:
+        断言: dict[str, Any] = {}
+        if self.预期错误码:
+            断言["错误码"] = self.预期错误码
+        if self.预期包含:
+            断言["包含"] = self.预期包含
+        if self.预期值类型:
+            断言["值类型"] = self.预期值类型
+        if self.预期关键值:
+            断言["关键值"] = self.预期关键值
+        if self.预期返回契约:
+            断言.update(self.预期返回契约)
+        if self.校验完整值:
+            断言["值"] = self.预期值
+        return {
+            "步骤id": self.步骤id,
+            "能力id": self.能力id,
+            "参数": self.参数,
+            "预期": {"成功": self.预期成功, "状态码": self.预期状态码, "返回断言": 断言},
+        }
+
+    @classmethod
+    def 从字典(cls, 数据: Any, 场景id: str) -> 验证步骤:
+        if not isinstance(数据, dict):
+            raise ValueError(f"场景 {场景id} 的步骤必须是对象")
+        多余 = set(数据) - {"步骤id", "能力id", "参数", "预期"}
+        if 多余:
+            raise ValueError(f"场景 {场景id} 步骤含未授权字段: {sorted(多余)}")
+        步骤id = 数据.get("步骤id")
+        能力id = 数据.get("能力id")
+        参数 = 数据.get("参数", {})
+        预期 = 数据.get("预期")
+        if not isinstance(步骤id, str) or not 步骤id.strip():
+            raise ValueError(f"场景 {场景id} 的步骤缺少步骤id")
+        if not isinstance(能力id, str) or not 能力id.strip():
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 缺少真实能力id")
+        if not isinstance(参数, dict):
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 参数必须是对象")
+        if not isinstance(预期, dict) or set(预期) != {"成功", "状态码", "返回断言"}:
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 必须声明预期成功/状态码/返回断言")
+        if type(预期["成功"]) is not bool:
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 预期成功必须是布尔值")
+        if type(预期["状态码"]) is not int or not 100 <= 预期["状态码"] <= 599:
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 状态码不合法")
+        断言 = 预期["返回断言"]
+        if not isinstance(断言, dict) or not 断言:
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 返回断言不可为空")
+        允许断言 = {"错误码", "包含", "值类型", "关键值", "必需字段", "字段类型", "值"}
+        if set(断言) - 允许断言:
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 返回断言含未知字段")
+        关键值 = 断言.get("关键值", {})
+        必需字段 = 断言.get("必需字段", [])
+        字段类型 = 断言.get("字段类型", {})
+        if not isinstance(关键值, dict) or not isinstance(必需字段, list) or not isinstance(字段类型, dict):
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 返回断言结构不合法")
+        错误码 = 断言.get("错误码", "")
+        if not isinstance(错误码, str) or (not 预期["成功"] and not 错误码):
+            raise ValueError(f"场景 {场景id} 步骤 {步骤id} 负向断言必须声明错误码")
+        返回契约 = {}
+        if "必需字段" in 断言:
+            返回契约["必需字段"] = 必需字段
+        if "字段类型" in 断言:
+            返回契约["字段类型"] = 字段类型
+        return cls(
+            步骤id=步骤id.strip(), 能力id=能力id.strip(), 参数=copy.deepcopy(参数),
+            预期状态码=预期["状态码"], 预期成功=预期["成功"], 预期错误码=错误码,
+            预期包含=str(断言.get("包含", "")), 预期值类型=str(断言.get("值类型", "")),
+            预期关键值=copy.deepcopy(关键值), 预期返回契约=返回契约,
+            预期值=copy.deepcopy(断言.get("值")), 校验完整值="值" in 断言,
+        )
+
+
+@dataclass
+class 多步骤验证场景:
+    场景id: str
+    包目录: Path
+    前置步骤: list[验证步骤] = field(default_factory=list)
+    目标步骤: list[验证步骤] = field(default_factory=list)
+    清理步骤: list[验证步骤] = field(default_factory=list)
+
+    @property
+    def 步骤总数(self) -> int:
+        return len(self.前置步骤) + len(self.目标步骤) + len(self.清理步骤)
+
+    def 转字典(self, 制品目录: Path | None = None) -> dict[str, Any]:
+        数据 = {
+            "场景id": self.场景id,
+            "前置步骤": [步骤.转字典() for 步骤 in self.前置步骤],
+            "目标步骤": [步骤.转字典() for 步骤 in self.目标步骤],
+            "清理步骤": [步骤.转字典() for 步骤 in self.清理步骤],
+        }
+        if 制品目录 is not None:
+            数据["包相对目录"] = self.包目录.resolve().relative_to(制品目录.resolve()).as_posix()
+        return 数据
+
+
+@dataclass
+class 验证场景束:
+    场景列表: list[多步骤验证场景]
+    目标能力全集: set[str]
+    制品摘要: str
+
+    @property
+    def 步骤总数(self) -> int:
+        return sum(场景.步骤总数 for 场景 in self.场景列表)
+
+    def __len__(self) -> int:
+        return sum(len(场景.目标步骤) for 场景 in self.场景列表)
+
+    def __iter__(self):
+        for 场景 in self.场景列表:
+            yield from 场景.目标步骤
+
+    def __getitem__(self, 索引: int) -> 验证步骤:
+        return list(iter(self))[索引]
+
+
+@dataclass
 class 验证结果:
     场景id: str
     能力id: str
@@ -156,6 +296,8 @@ class 验证结果:
     耗时毫秒: float = 0
     失败原因: str = ""
     定位线索: str = ""
+    步骤id: str = ""
+    步骤类型: str = ""
 
     def 转字典(self) -> dict[str, Any]:
         return {
@@ -167,6 +309,8 @@ class 验证结果:
             "耗时毫秒": self.耗时毫秒,
             "失败原因": self.失败原因,
             "定位线索": self.定位线索,
+            "步骤id": self.步骤id,
+            "步骤类型": self.步骤类型,
         }
 
 
@@ -186,6 +330,14 @@ class 验证报告:
     场景制品摘要: str = ""
     时间: str = ""
     证据绑定: dict[str, Any] = field(default_factory=dict)
+    目标能力数: int = 0
+    步骤总数: int = 0
+    清理失败数: int = 0
+    资源残留数: int = 0
+    资源残留: list[str] = field(default_factory=list)
+    目标能力全集: list[str] = field(default_factory=list)
+    正向目标能力全集: list[str] = field(default_factory=list)
+    实际成功目标能力全集: list[str] = field(default_factory=list)
 
     @property
     def 制品指纹(self) -> dict[str, Any]:
@@ -208,14 +360,24 @@ class 验证报告:
             "场景制品摘要": self.场景制品摘要,
             "时间": self.时间,
             "证据绑定": self.证据绑定,
+            "目标能力数": self.目标能力数,
+            "步骤总数": self.步骤总数,
+            "清理失败数": self.清理失败数,
+            "资源残留数": self.资源残留数,
+            "资源残留": self.资源残留,
+            "目标能力全集": self.目标能力全集,
+            "正向目标能力全集": self.正向目标能力全集,
+            "实际成功目标能力全集": self.实际成功目标能力全集,
         }
 
     def 汇总(self) -> str:
         if self.场景总数 <= 0:
             return "阻断: 无任何有效验证场景（禁止零验证成功）"
         if self.失败数:
-            return f"失败: {self.失败数} 项未通过；正向 {self.正向成功数}，负向 {self.负向校验数}"
-        return f"通过: {self.通过数}/{self.场景总数}；正向 {self.正向成功数}，负向 {self.负向校验数}"
+            return (f"失败: {self.失败数} 项未通过；目标能力 {self.目标能力数}，步骤 {self.步骤总数}，"
+                    f"清理失败 {self.清理失败数}，资源残留 {self.资源残留数}")
+        return (f"通过: 目标能力 {self.目标能力数}，步骤 {self.步骤总数}；"
+                f"清理失败 {self.清理失败数}，资源残留 {self.资源残留数}")
 
 
 def _工作区指纹(排除目录: Path | None = None) -> dict[str, str]:
@@ -346,64 +508,147 @@ def _扫描公开能力(制品目录: Path) -> tuple[set[str], list[Path]]:
     return 公开能力, 包目录表
 
 
-def _解析场景引用(包目录: Path) -> list[dict[str, Any]]:
+def _解析场景引用(包目录: Path) -> list[tuple[dict[str, Any], Path]]:
+    """读取唯一 v1 契约；旧的一请求一场景格式直接阻断。"""
     引用路径 = 包目录 / "验证场景引用.json"
     数据 = _读取JSON严格(引用路径, "验证场景引用")
-    if not isinstance(数据, dict) or not isinstance(数据.get("验证场景引用"), list):
+    if not isinstance(数据, dict) or 数据.get("契约版本") != 场景契约版本:
+        raise ValueError(f"验证场景引用契约版本不合法或为旧格式: {引用路径}")
+    if set(数据) != {"契约版本", "验证场景引用"} or not isinstance(数据.get("验证场景引用"), list):
         raise ValueError(f"验证场景引用契约不合法: {引用路径}")
     原始列表 = 数据["验证场景引用"]
     if not 原始列表:
         raise ValueError(f"验证场景引用为空: {引用路径}")
-    场景表: list[dict[str, Any]] = []
+    场景表: list[tuple[dict[str, Any], Path]] = []
     for 序号, 引用 in enumerate(原始列表):
-        if not isinstance(引用, dict):
-            raise ValueError(f"无效验证场景引用: {引用路径}#{序号}")
-        if "场景文件" not in 引用:
-            场景表.append(引用)
+        if not isinstance(引用, dict) or not ({"场景"} <= set(引用) or {"场景文件"} <= set(引用)):
+            raise ValueError(f"无效或旧格式验证场景引用: {引用路径}#{序号}")
+        if "场景" in 引用:
+            if set(引用) != {"场景"} or not isinstance(引用["场景"], dict):
+                raise ValueError(f"内联场景引用不合法: {引用路径}#{序号}")
+            场景表.append((引用["场景"], 包目录))
             continue
+        if set(引用) - {"场景文件", "场景id"}:
+            raise ValueError(f"场景文件引用含未知字段: {引用路径}#{序号}")
         相对 = 引用.get("场景文件")
         if not isinstance(相对, str) or not 相对:
             raise ValueError(f"场景文件引用不合法: {引用路径}#{序号}")
-        文件 = (包目录 / 相对).resolve()
-        try:
-            文件.relative_to(包目录.resolve())
-        except ValueError as 错误:
-            raise ValueError(f"场景文件越出包目录: {相对}") from 错误
+        文件 = _安全合并路径(包目录, 相对, "场景文件")
         场景数据 = _读取JSON严格(文件, "验证场景")
-        列表 = 场景数据.get("验证场景") if isinstance(场景数据, dict) else 场景数据
-        if not isinstance(列表, list):
-            raise ValueError(f"验证场景文件契约不合法: {文件}")
+        if (not isinstance(场景数据, dict) or 场景数据.get("契约版本") != 场景契约版本
+                or set(场景数据) != {"契约版本", "验证场景"}
+                or not isinstance(场景数据.get("验证场景"), list)):
+            raise ValueError(f"验证场景文件契约不合法或为旧格式: {文件}")
         引用id = 引用.get("场景id")
-        命中 = [项 for 项 in 列表 if isinstance(项, dict) and (not 引用id or 项.get("场景id") == 引用id)]
+        命中 = [项 for 项 in 场景数据["验证场景"]
+              if isinstance(项, dict) and (not 引用id or 项.get("场景id") == 引用id)]
         if not 命中:
             raise ValueError(f"场景文件没有命中引用: {文件}#{引用id}")
-        场景表.extend(命中)
+        场景表.extend((项, 包目录) for 项 in 命中)
     return 场景表
 
 
-def _校验场景全集(公开能力: set[str], 场景原始表: list[dict[str, Any]], 制品摘要: str) -> list[验证场景]:
+def _安全合并路径(根: Path, 相对: str, 名称: str) -> Path:
+    if not isinstance(相对, str) or not 相对 or Path(相对).is_absolute() or re.match(r"^[A-Za-z]:[\\/]", 相对):
+        raise ValueError(f"{名称}路径不合法: {相对!r}")
+    路径 = (根 / 相对).resolve()
+    try:
+        路径.relative_to(根.resolve())
+    except ValueError as 错误:
+        raise ValueError(f"{名称}越出包目录或受管目录: {相对}") from 错误
+    return 路径
+
+
+def _校验动态声明(值: Any, 场景id: str, 已出现步骤: set[str]) -> None:
+    if isinstance(值, list):
+        for 项 in 值:
+            _校验动态声明(项, 场景id, 已出现步骤)
+        return
+    if not isinstance(值, dict):
+        if isinstance(值, str) and (Path(值).is_absolute() or ".." in Path(值).parts
+                                  or re.match(r"^[A-Za-z]:[\\/]", 值)):
+            raise ValueError(f"场景 {场景id} 禁止静态绝对路径或路径逃逸")
+        return
+    if "$动态" not in 值:
+        for 项 in 值.values():
+            _校验动态声明(项, 场景id, 已出现步骤)
+        return
+    类型 = 值.get("$动态")
+    允许字段 = {
+        "制品根": {"$动态", "相对路径"},
+        "受管临时目录": {"$动态", "相对路径"},
+        "夹具文件复制": {"$动态", "来源", "目标"},
+        "步骤返回": {"$动态", "步骤id", "JSON路径"},
+    }
+    if 类型 not in 允许字段 or set(值) != 允许字段[类型]:
+        raise ValueError(f"场景 {场景id} 动态值声明不合法: {类型!r}")
+    if 类型 == "步骤返回":
+        if 值.get("步骤id") not in 已出现步骤 or not isinstance(值.get("JSON路径"), str):
+            raise ValueError(f"场景 {场景id} 动态引用缺失或不是前序步骤: {值.get('步骤id')}")
+    else:
+        for 字段 in 允许字段[类型] - {"$动态"}:
+            if not isinstance(值.get(字段), str) or not 值[字段]:
+                raise ValueError(f"场景 {场景id} 动态路径字段不合法: {字段}")
+
+
+def _解析多步骤场景(原始: Any, 包目录: Path, 制品摘要: str) -> 多步骤验证场景:
+    if not isinstance(原始, dict):
+        raise ValueError("验证场景必须是对象")
+    if set(原始) != {"场景id", "前置步骤", "目标步骤", "清理步骤"}:
+        raise ValueError("验证场景字段不完整或为旧格式")
+    场景id = 原始.get("场景id")
+    if not isinstance(场景id, str) or not 场景id.strip():
+        raise ValueError("验证场景缺少场景id")
+    for 阶段 in ("前置步骤", "目标步骤", "清理步骤"):
+        if not isinstance(原始[阶段], list):
+            raise ValueError(f"场景 {场景id} 的{阶段}必须是列表")
+    if not 原始["目标步骤"]:
+        raise ValueError(f"场景 {场景id} 必须至少有一个目标步骤")
+    已出现: set[str] = set()
+    分段: dict[str, list[验证步骤]] = {}
+    for 阶段 in ("前置步骤", "目标步骤", "清理步骤"):
+        步骤表: list[验证步骤] = []
+        for 步骤原始 in 原始[阶段]:
+            步骤 = 验证步骤.从字典(步骤原始, 场景id)
+            if 步骤.步骤id in 已出现:
+                raise ValueError(f"场景 {场景id} 重复步骤id: {步骤.步骤id}")
+            _校验动态声明(步骤.参数, 场景id, 已出现)
+            步骤.制品摘要 = 制品摘要
+            步骤表.append(步骤)
+            已出现.add(步骤.步骤id)
+        分段[阶段] = 步骤表
+    return 多步骤验证场景(
+        场景id.strip(), 包目录.resolve(), 分段["前置步骤"], 分段["目标步骤"], 分段["清理步骤"],
+    )
+
+
+def _校验场景全集(
+    公开能力: set[str], 场景原始表: list[tuple[dict[str, Any], Path]], 制品摘要: str,
+) -> 验证场景束:
     if not 场景原始表:
         raise ValueError("无任何有效验证场景")
-    结果: list[验证场景] = []
+    场景列表: list[多步骤验证场景] = []
     场景id集合: set[str] = set()
-    for 原始 in 场景原始表:
-        场景 = 验证场景.从字典(原始)
+    全步骤能力: set[str] = set()
+    for 原始, 包目录 in 场景原始表:
+        场景 = _解析多步骤场景(原始, 包目录, 制品摘要)
         if 场景.场景id in 场景id集合:
             raise ValueError(f"重复场景id: {场景.场景id}")
         场景id集合.add(场景.场景id)
-        场景.制品摘要 = 制品摘要
-        结果.append(场景)
-    场景能力 = {场景.能力id for 场景 in 结果}
-    if 场景能力 != 公开能力:
+        场景列表.append(场景)
+        全步骤能力.update(步骤.能力id for 阶段 in (场景.前置步骤, 场景.目标步骤, 场景.清理步骤) for 步骤 in 阶段)
+    未公开 = 全步骤能力 - 公开能力
+    if 未公开:
+        raise ValueError(f"步骤绑定了非正式公开能力: {sorted(未公开)}")
+    正向目标能力 = {
+        步骤.能力id for 场景 in 场景列表 for 步骤 in 场景.目标步骤 if 步骤.预期成功
+    }
+    if 正向目标能力 != 公开能力:
         raise ValueError(
-            f"契约与场景能力差集: 缺场景={sorted(公开能力 - 场景能力)} "
-            f"多场景={sorted(场景能力 - 公开能力)}"
+            "正式公开能力全集 != 正向目标步骤能力全集: "
+            f"缺目标={sorted(公开能力 - 正向目标能力)} 多目标={sorted(正向目标能力 - 公开能力)}"
         )
-    缺正向 = sorted(能力id for 能力id in 公开能力
-                   if not any(场景.能力id == 能力id and 场景.预期成功 for 场景 in 结果))
-    if 缺正向:
-        raise ValueError(f"每个公开能力必须有真实成功场景，缺少: {缺正向}")
-    return 结果
+    return 验证场景束(场景列表, set(公开能力), 制品摘要)
 
 
 def _扫描能力契约(制品目录: Path) -> list[dict[str, Any]]:
@@ -412,25 +657,32 @@ def _扫描能力契约(制品目录: Path) -> list[dict[str, Any]]:
     return [{"能力id": 能力id} for 能力id in sorted(能力)]
 
 
-def _加载场景(制品目录: Path, 场景路径: Path | None) -> list[验证场景]:
+def _加载场景(制品目录: Path, 场景路径: Path | None) -> 验证场景束:
     公开能力, 包目录表 = _扫描公开能力(制品目录)
     摘要 = _制品全文件摘要(制品目录)["制品摘要"]
     if 场景路径 is None:
-        原始表 = [场景 for 包目录 in 包目录表 for 场景 in _解析场景引用(包目录)]
+        原始表 = [条目 for 包目录 in 包目录表 for 条目 in _解析场景引用(包目录)]
     else:
         束 = _读取JSON严格(场景路径, "外部验证场景束")
         if not isinstance(束, dict) or 束.get("来源") != "包级验证场景引用":
             raise ValueError("外部场景束来源必须是包级验证场景引用")
         if 束.get("制品摘要") != 摘要:
             raise ValueError(f"外部场景束制品摘要不匹配: {束.get('制品摘要')} != {摘要}")
-        原始表 = 束.get("验证场景")
-        if not isinstance(原始表, list):
-            raise ValueError("外部场景束验证场景必须是列表")
+        if 束.get("契约版本") != 场景契约版本 or not isinstance(束.get("验证场景"), list):
+            raise ValueError("外部场景束契约版本不合法或为旧格式")
+        原始表 = []
+        for 原始 in 束["验证场景"]:
+            if not isinstance(原始, dict) or not isinstance(原始.get("包相对目录"), str):
+                raise ValueError("外部场景束缺包相对目录")
+            包目录 = _安全合并路径(制品目录, 原始["包相对目录"], "包相对目录")
+            场景数据 = {键: 值 for 键, 值 in 原始.items() if 键 != "包相对目录"}
+            原始表.append((场景数据, 包目录))
     return _校验场景全集(公开能力, 原始表, 摘要)
 
 
 def _扫描制品能力(制品目录: Path) -> list[dict[str, Any]]:
-    return [场景.转字典() for 场景 in _加载场景(制品目录, None)]
+    场景束 = _加载场景(制品目录, None)
+    return [场景.转字典(制品目录) for 场景 in 场景束.场景列表]
 
 
 def _校验直连地址(地址: str) -> str:
@@ -780,6 +1032,137 @@ def 验证单个(地址: str, 场景: 验证场景, 超时秒: float = 默认超
     return 结果
 
 
+def _展开动态值(
+    值: Any, *, 制品目录: Path, 包目录: Path, 临时目录: Path,
+    步骤返回表: dict[str, dict[str, Any]],
+) -> Any:
+    """只展开冻结的四类动态值；文件写入只能落受管临时目录。"""
+    if isinstance(值, list):
+        return [_展开动态值(项, 制品目录=制品目录, 包目录=包目录,
+                           临时目录=临时目录, 步骤返回表=步骤返回表) for 项 in 值]
+    if not isinstance(值, dict):
+        return 值
+    if "$动态" not in 值:
+        return {键: _展开动态值(项, 制品目录=制品目录, 包目录=包目录,
+                              临时目录=临时目录, 步骤返回表=步骤返回表)
+                for 键, 项 in 值.items()}
+    类型 = 值["$动态"]
+    if 类型 == "制品根":
+        return str(_安全合并路径(制品目录, 值["相对路径"], "制品动态路径"))
+    if 类型 == "受管临时目录":
+        路径 = _安全合并路径(临时目录, 值["相对路径"], "临时动态路径")
+        路径.mkdir(parents=True, exist_ok=True)
+        return str(路径)
+    if 类型 == "夹具文件复制":
+        来源 = _安全合并路径(包目录, 值["来源"], "夹具来源")
+        if not 来源.is_file():
+            raise ValueError(f"夹具文件不存在: {来源}")
+        目标 = _安全合并路径(临时目录, 值["目标"], "夹具目标")
+        目标.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(来源, 目标)
+        return str(目标)
+    if 类型 == "步骤返回":
+        步骤id = 值["步骤id"]
+        if 步骤id not in 步骤返回表:
+            raise ValueError(f"动态引用缺失: {步骤id}")
+        结果值 = _取路径(步骤返回表[步骤id], 值["JSON路径"])
+        if 结果值 is 未指定:
+            raise ValueError(f"动态JSON路径不存在: {步骤id} {值['JSON路径']}")
+        return copy.deepcopy(结果值)
+    raise ValueError(f"未知动态值类型: {类型}")
+
+
+def _执行场景束(
+    制品目录: Path, 场景束: 验证场景束, 地址: str, *, 超时秒: float = 默认超时秒,
+) -> 验证报告:
+    """按场景执行前置→目标并finally清理；每个能力步骤只经正式HTTP通道。"""
+    制品目录 = Path(制品目录).resolve()
+    报告 = 验证报告(
+        制品路径=str(制品目录), 场景总数=len(场景束),
+        目标能力数=len(场景束.目标能力全集), 步骤总数=场景束.步骤总数,
+        目标能力全集=sorted(场景束.目标能力全集), 场景制品摘要=场景束.制品摘要,
+    )
+    报告.制品摘要前 = _制品全文件摘要(制品目录)
+    实际成功目标: set[str] = set()
+
+    def 执行步骤(场景: 多步骤验证场景, 步骤: 验证步骤, 步骤类型: str,
+                 临时根: Path, 返回表: dict[str, dict[str, Any]]) -> 验证结果:
+        结果 = 验证结果(场景.场景id, 步骤.能力id, 步骤id=步骤.步骤id, 步骤类型=步骤类型)
+        try:
+            参数 = _展开动态值(
+                步骤.参数, 制品目录=制品目录, 包目录=场景.包目录,
+                临时目录=临时根, 步骤返回表=返回表,
+            )
+            请求场景 = 验证场景(
+                场景id=f"{场景.场景id}.{步骤.步骤id}", 能力id=步骤.能力id,
+                参数=参数, 预期状态码=步骤.预期状态码, 预期成功=步骤.预期成功,
+                预期错误码=步骤.预期错误码, 预期包含=步骤.预期包含,
+                预期值类型=步骤.预期值类型, 预期关键值=步骤.预期关键值,
+                预期返回契约=步骤.预期返回契约, 预期值=步骤.预期值,
+                校验完整值=步骤.校验完整值, 制品摘要=场景束.制品摘要,
+                步骤id=步骤.步骤id,
+            )
+            状态码, 返回, 耗时 = _发送请求(地址, 请求场景, 超时秒)
+            返回表[步骤.步骤id] = copy.deepcopy(返回)
+            结果.状态码, 结果.返回, 结果.耗时毫秒 = 状态码, 返回, 耗时
+            结果.通过, 结果.失败原因, 结果.定位线索 = _判定(请求场景, 状态码, 返回)
+        except BaseException as 错误:
+            结果.失败原因 = f"步骤执行异常: {type(错误).__name__}: {错误}"
+            结果.定位线索 = "场景执行器"
+        return 结果
+
+    for 场景 in 场景束.场景列表:
+        临时对象 = tempfile.TemporaryDirectory(prefix="HTML黑盒场景_")
+        临时根 = Path(临时对象.name).resolve()
+        返回表: dict[str, dict[str, Any]] = {}
+        前置通过 = True
+        try:
+            for 步骤 in 场景.前置步骤:
+                结果 = 执行步骤(场景, 步骤, "前置", 临时根, 返回表)
+                报告.结果列表.append(结果)
+                if not 结果.通过:
+                    前置通过 = False
+                    break
+            if 前置通过:
+                for 步骤 in 场景.目标步骤:
+                    结果 = 执行步骤(场景, 步骤, "目标", 临时根, 返回表)
+                    报告.结果列表.append(结果)
+                    if 结果.通过 and 步骤.预期成功:
+                        实际成功目标.add(步骤.能力id)
+        finally:
+            for 步骤 in 场景.清理步骤:
+                结果 = 执行步骤(场景, 步骤, "清理", 临时根, 返回表)
+                报告.结果列表.append(结果)
+                if not 结果.通过:
+                    报告.清理失败数 += 1
+            临时对象.cleanup()
+            if 临时根.exists():
+                报告.资源残留.append(str(临时根))
+    报告.资源残留数 = len(报告.资源残留)
+    报告.实际成功目标能力全集 = sorted(实际成功目标)
+    报告.正向目标能力全集 = sorted(场景束.目标能力全集)
+    报告.通过数 = sum(结果.通过 for 结果 in 报告.结果列表)
+    报告.失败数 = sum(not 结果.通过 for 结果 in 报告.结果列表)
+    报告.正向成功数 = sum(
+        结果.通过 and 结果.步骤类型 == "目标" for 结果 in 报告.结果列表
+    )
+    报告.负向校验数 = sum(
+        结果.通过 and 结果.步骤类型 != "目标" for 结果 in 报告.结果列表
+    )
+    if 实际成功目标 != 场景束.目标能力全集:
+        报告.结果列表.append(验证结果(
+            "场景.实际覆盖", "", False,
+            失败原因=f"实际成功目标能力全集不一致: 缺少={sorted(场景束.目标能力全集 - 实际成功目标)}",
+            定位线索="覆盖对账",
+        ))
+        报告.失败数 += 1
+    if 报告.资源残留数:
+        报告.失败数 += 报告.资源残留数
+    报告.制品摘要后 = _制品全文件摘要(制品目录)
+    _校验制品前后绑定(报告)
+    return 报告
+
+
 def _校验制品前后绑定(报告: 验证报告) -> None:
     前 = 报告.制品摘要前.get("制品摘要")
     后 = 报告.制品摘要后.get("制品摘要")
@@ -798,7 +1181,7 @@ def _校验制品前后绑定(报告: 验证报告) -> None:
 
 def 验证全部(
     制品目录: Path,
-    场景列表: list[验证场景],
+    场景列表: list[验证场景] | 验证场景束,
     并发: int = 默认并发,
     超时秒: float = 默认超时秒,
     端口: int = 固定端口,
@@ -814,7 +1197,8 @@ def 验证全部(
     报告 = 验证报告(制品路径=str(制品目录), 场景总数=len(场景列表))
     报告.制品摘要前 = _制品全文件摘要(制品目录)
     当前摘要 = 报告.制品摘要前["制品摘要"]
-    场景摘要集合 = {场景.制品摘要 for 场景 in 场景列表}
+    场景摘要集合 = ({场景列表.制品摘要} if isinstance(场景列表, 验证场景束)
+                  else {场景.制品摘要 for 场景 in 场景列表})
     if 场景摘要集合 != {当前摘要}:
         报告.失败数 = 1
         报告.结果列表.append(验证结果(
@@ -864,6 +1248,13 @@ def 验证全部(
             报告.制品摘要后 = _制品全文件摘要(制品目录)
             _校验制品前后绑定(报告)
         return 报告, 实际端口, 进程
+
+    if isinstance(场景列表, 验证场景束):
+        场景报告 = _执行场景束(制品目录, 场景列表, 地址, 超时秒=超时秒)
+        场景报告.并发峰值 = 1
+        if 直连地址:
+            场景报告.资源回收 = {"已回收": True, "模式": "直连"}
+        return 场景报告, 实际端口, 进程
 
     活跃 = 0
     峰值 = 0
@@ -946,14 +1337,15 @@ def 保存证据(报告: 验证报告, 制品目录: Path, 输出目录: Path | 
 
 
 def 生成场景文件(制品目录: Path, 输出: Path | None = None) -> Path:
-    场景表 = _加载场景(制品目录, None)
+    场景束 = _加载场景(制品目录, None)
     摘要 = _制品全文件摘要(制品目录)["制品摘要"]
     输出路径 = 输出 or (_证据根目录(制品目录) / 摘要 / 场景文件名)
     输出路径.parent.mkdir(parents=True, exist_ok=True)
     数据 = {
         "来源": "包级验证场景引用",
+        "契约版本": 场景契约版本,
         "制品摘要": 摘要,
-        "验证场景": [场景.转字典() for 场景 in 场景表],
+        "验证场景": [场景.转字典(制品目录) for 场景 in 场景束.场景列表],
     }
     输出路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 输出路径
@@ -965,9 +1357,12 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
     制品地址 = _校验直连地址(制品地址)
     页面字节 = (Path(__file__).resolve().parent / "验证页.html").read_bytes()
     场景字节 = json.dumps({"来源": "包级验证场景引用", "验证场景": []}, ensure_ascii=False).encode()
+    场景束: 验证场景束 | None = None
     if 制品目录 is not None:
+        场景束 = _加载场景(制品目录, None)
         场景路径 = 生成场景文件(制品目录)
         场景字节 = 场景路径.read_bytes()
+    执行锁 = threading.Lock()
     CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
     class 处理器(BaseHTTPRequestHandler):
@@ -996,25 +1391,28 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
                 self.end_headers()
                 self.wfile.write(场景字节)
                 return
-            if 解码路径.startswith("/代理/"):
-                self._转发("GET", 制品地址 + 解码路径[len("/代理"):])
+            if 解码路径 == "/代理/":
+                self._转发("GET", 制品地址 + "/")
                 return
             self.send_error(404)
 
         def do_POST(self) -> None:
             解码路径 = urllib.parse.unquote(self.path)
-            if not 解码路径.startswith("/代理/"):
-                self.send_error(404)
+            if 解码路径 == "/执行验证":
+                if 制品目录 is None or 场景束 is None:
+                    self.send_error(409, "服务未绑定制品场景")
+                    return
+                with 执行锁:
+                    报告 = _执行场景束(制品目录, 场景束, 制品地址)
+                返回 = json.dumps(报告.转字典(), ensure_ascii=False).encode("utf-8")
+                self.send_response(200 if 报告.失败数 == 0 else 409)
+                self._公共头()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(返回)))
+                self.end_headers()
+                self.wfile.write(返回)
                 return
-            try:
-                长度 = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                self.send_error(400)
-                return
-            if 长度 < 0 or 长度 > 请求上限字节:
-                self.send_error(413)
-                return
-            self._转发("POST", 制品地址 + 解码路径[len("/代理"):], self.rfile.read(长度))
+            self.send_error(404)
 
         def _转发(self, 方法: str, 目标: str, 正文: bytes = b"") -> None:
             拆分 = urllib.parse.urlsplit(目标)
