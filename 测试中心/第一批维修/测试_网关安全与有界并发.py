@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import email.message
 import http.client
 import inspect
 import io
@@ -15,8 +16,9 @@ import threading
 import time
 import unittest
 import urllib.parse
+import urllib.error
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 系统根 = Path(__file__).resolve().parents[2]
 if str(系统根) not in sys.path:
@@ -283,6 +285,24 @@ class 流式网关用例(unittest.TestCase):
 
 
 class 契约用例(unittest.TestCase):
+    def test_HTTP错误响应读取后必须显式关闭(self):
+        响应流 = io.BytesIO(json.dumps({
+            "成功": False, "值": None, "错误码": "提供者不可用",
+            "错误说明": "故意失败", "句柄": None, "请求id": "请求一", "耗时毫秒": 1,
+        }, ensure_ascii=False).encode("utf-8"))
+        错误响应 = urllib.error.HTTPError(
+            "http://127.0.0.1/网关/调用", 503, "Service Unavailable",
+            email.message.Message(), 响应流)
+        开放器 = Mock()
+        开放器.open.side_effect = 错误响应
+        with patch("urllib.request.build_opener", return_value=开放器):
+            状态码, 数据, _ = HTTP连接器()._请求({"请求id": "请求一"})
+        self.assertEqual(状态码, 503)
+        self.assertIsNotNone(数据)
+        assert 数据 is not None
+        self.assertEqual(数据["错误码"], "提供者不可用")
+        self.assertTrue(响应流.closed, "HTTPError响应流必须在返回前关闭")
+
     def test_缺统一结果字段的字典绝不包装成功(self):
         结果对象 = 唯一能力调用服务._规范化结果({"状态": "看似成功"})
         self.assertFalse(结果对象.成功)
