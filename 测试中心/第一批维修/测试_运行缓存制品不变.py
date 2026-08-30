@@ -80,6 +80,18 @@ class 测试统一运行缓存根(unittest.TestCase):
             (源码根 / "工程缓存").resolve(),
         )
 
+    def test_提供者环境根可与本轮运行状态缓存分离(self) -> None:
+        制品, 提供者 = self._建制品("平台客户端制品-分离缓存")
+        运行状态根 = self.临时根 / "本轮运行状态"
+        共享环境根 = self.临时根 / "共享提供者缓存"
+        with mock.patch.dict(os.environ, {
+            运行缓存环境变量: str(运行状态根),
+            "系统底座_提供者环境根": str(共享环境根),
+        }, clear=False):
+            环境路径 = 环境模块.环境目录(提供者, "摘要")
+            self.assertTrue(环境路径.is_relative_to(共享环境根.resolve()))
+            self.assertEqual(解析运行缓存根(制品 / "平台客户端"), 运行状态根.resolve())
+
     def test_后端状态库与提供者环境缓存都走外部缓存根(self) -> None:
         制品, 提供者 = self._建制品("平台客户端制品-状态")
         系统包根 = 制品 / "平台客户端"
