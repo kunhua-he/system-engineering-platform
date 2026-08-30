@@ -185,6 +185,22 @@ class 测试客户端构建安全(unittest.TestCase):
                 源码, str(入口),
             )
 
+    def test_PyMuPDF制品内自举不依赖另一份激活指针(self) -> None:
+        from 支持库.适配层.PyMuPDF提供者.实现 import 子进程入口
+        原系统根 = 子进程入口.系统根
+        原状态 = 子进程入口._平台客户端路径已注入
+        try:
+            with tempfile.TemporaryDirectory() as 临时:
+                制品包 = Path(临时) / "平台客户端"
+                制品包.mkdir()
+                (制品包 / "__init__.py").write_text("", encoding="utf-8")
+                子进程入口.系统根 = 制品包
+                子进程入口._平台客户端路径已注入 = False
+                self.assertIsNone(子进程入口.注入平台客户端路径())
+        finally:
+            子进程入口.系统根 = 原系统根
+            子进程入口._平台客户端路径已注入 = 原状态
+
     def test_正式构建前拒绝符号链接稳定指针且不覆盖外部(self) -> None:
         临时系统根 = self.临时根 / "临时系统"
         源码包 = 临时系统根 / "测试包"

@@ -17,7 +17,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "ef492c94b875a4029246e21d64c486625776622d03bb0db25ca2325738286ff2"
+      "sha256": "c1705619f211ca918dc4409cf6d1c48e12c3ec8e848a21a13305f528b245eac6"
     },
     {
       "路径": "复用决策.json",
@@ -41,11 +41,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "d10c9aee203d11f80e7498a3bf981c41a136860c0140eebcae9d8e06eb5f2bf1"
+      "sha256": "9f8214ea88f0ef8a5d677e7ddba7cc57b9443c1ff0aed3aabbfbe999c666b50a"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "286ae211a83118cf3fe8c35b782062b07cc13333c1627e69c56eb7dda0f6dc35"
+      "sha256": "f67a4bfce2a7c2f784f0fd3944381b5d109b7003db44a17f259adf0cac45445c"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -73,7 +73,7 @@
     },
     {
       "路径": "验证场景/正向HTTP场景.json",
-      "sha256": "f9695b6f9a6af945fded1742b536c9dfcf1aa5fae47108f2e76ffbcbc7ad24f1"
+      "sha256": "bf9223c5812c6d1f2c7632d45db8416c57697df76802c5614e7dd33b3db0deb2"
     },
     {
       "路径": "验证场景引用.json",

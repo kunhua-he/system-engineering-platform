@@ -43,7 +43,7 @@ def _包申报超时() -> int:
 
 # 句柄 → 连接信息（库路径等），由 连接会话存储() 登记
 句柄系统 = 句柄体系()
-连接表: dict[str, dict] = {}
+连接表: dict[int, dict] = {}
 
 _建表语句 = """
 CREATE TABLE IF NOT EXISTS 会话表(
@@ -93,7 +93,7 @@ def _当前时间() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _校验句柄(句柄: str) -> tuple[bool, str]:
+def _校验句柄(句柄: int) -> tuple[bool, str]:
     有效, 原因 = 句柄系统.校验(句柄)
     if not 有效:
         return False, 原因
@@ -102,7 +102,7 @@ def _校验句柄(句柄: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _取库路径(句柄: str) -> str:
+def _取库路径(句柄: int) -> str:
     return 连接表.get(句柄, {}).get("库路径") or 默认库路径
 
 
@@ -135,20 +135,20 @@ def 连接会话存储(库路径: str = None, 超时秒: int = None) -> 结果:
                             "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续约，可显式释放；传 超时秒>0 覆盖"})
 
 
-def 释放句柄(句柄: str = None) -> 结果:
+def 释放句柄(句柄: int = None) -> 结果:
     """释放句柄（幂等）。失效由状态机统一处理（含资源核查回收）。"""
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     with 锁:
         连接表.pop(句柄, None)
         句柄系统.失效(句柄, "释放")
     return 结果.成功结果({"句柄": 句柄, "已释放": True})
 
 
-def 续约句柄(句柄: str = None, 租约秒: int = None) -> 结果:
+def 续约句柄(句柄: int = None, 租约秒: int = None) -> 结果:
     """续约句柄：重置最后活动时间（续租），可选覆盖超时秒。"""
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -171,7 +171,7 @@ def _回收过期句柄() -> None:
             句柄系统.失效(句柄id, "超时")
 
 
-def _更新活动(句柄: str) -> None:
+def _更新活动(句柄: int) -> None:
     with 锁:
         连接 = 连接表.get(句柄)
         if 连接:
@@ -180,9 +180,9 @@ def _更新活动(句柄: str) -> None:
 
 # ── 持句柄操作 ───────────────────────────────────
 
-def 创建会话(句柄: str = None, 用户id: str = None, 模型名: str = None, 标题: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 创建会话(句柄: int = None, 用户id: str = None, 模型名: str = None, 标题: str = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -200,9 +200,9 @@ def 创建会话(句柄: str = None, 用户id: str = None, 模型名: str = None
         return 结果.失败("创建会话失败", str(错误), 来源="会话存储")
 
 
-def 追加消息(句柄: str = None, 会话id: str = None, 角色: str = None, 内容: dict = None, 来源: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 追加消息(句柄: int = None, 会话id: str = None, 角色: str = None, 内容: dict = None, 来源: str = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -226,9 +226,9 @@ def 追加消息(句柄: str = None, 会话id: str = None, 角色: str = None, �
         return 结果.失败("追加消息失败", str(错误), 来源="会话存储")
 
 
-def 读取历史(句柄: str = None, 会话id: str = None, 上限: int = None, 偏移: int = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 读取历史(句柄: int = None, 会话id: str = None, 上限: int = None, 偏移: int = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -249,9 +249,9 @@ def 读取历史(句柄: str = None, 会话id: str = None, 上限: int = None, �
         return 结果.失败("读取历史失败", str(错误), 来源="会话存储")
 
 
-def 受理输入(句柄: str = None, 会话id: str = None, 内容: dict = None, 交付模式: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 受理输入(句柄: int = None, 会话id: str = None, 内容: dict = None, 交付模式: str = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -273,9 +273,9 @@ def 受理输入(句柄: str = None, 会话id: str = None, 内容: dict = None, 
         return 结果.失败("受理输入失败", str(错误), 来源="会话存储")
 
 
-def 提升消息(句柄: str = None, 会话id: str = None, 输入id: str = None, 响应内容: dict = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 提升消息(句柄: int = None, 会话id: str = None, 输入id: str = None, 响应内容: dict = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -306,9 +306,9 @@ def 提升消息(句柄: str = None, 会话id: str = None, 输入id: str = None,
         return 结果.失败("提升消息失败", str(错误), 来源="会话存储")
 
 
-def 写入压缩结果(句柄: str = None, 会话id: str = None, 压缩后消息列表: list = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 写入压缩结果(句柄: int = None, 会话id: str = None, 压缩后消息列表: list = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")
@@ -338,9 +338,9 @@ def 写入压缩结果(句柄: str = None, 会话id: str = None, 压缩后消息
         return 结果.失败("写入压缩结果失败", str(错误), 来源="会话存储")
 
 
-def 查询会话(句柄: str = None, 会话id: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="会话存储")
+def 查询会话(句柄: int = None, 会话id: str = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
     if not 有效:
         return 结果.失败("句柄失效", 原因, 来源="会话存储")

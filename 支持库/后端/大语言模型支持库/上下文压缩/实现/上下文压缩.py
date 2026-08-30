@@ -117,8 +117,8 @@ def 压缩会话(句柄: str = None, 会话id: str = None, 压缩阈值: int = N
     超阈值才压；未超返回原样（不写回）。写回后 压缩次数 递增。
     返回 {已压缩, 压缩前token, 压缩后token, 压缩次数, 说明}。
     """
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="上下文压缩")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="上下文压缩")
     if not isinstance(会话id, str) or not 会话id.strip():
         return 结果.失败("参数不合法", "会话id必须是非空字符串", 来源="上下文压缩")
     # 1. 从会话存储读

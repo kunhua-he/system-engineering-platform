@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -16,14 +17,16 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 
 句柄系统 = 句柄体系()
-进程表: dict[str, dict] = {}
+进程表: dict[int, dict] = {}
 锁 = threading.Lock()
 
 
 
 降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
 
-def _取进程(句柄: str) -> tuple[subprocess.Popen | None, str]:
+def _取进程(句柄: int | None) -> tuple[subprocess.Popen | None, str]:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return None, "句柄必须是1到999999的整数"
     有效, 原因 = 句柄系统.校验(句柄id=句柄)
     if not 有效:
         return None, 原因
@@ -34,7 +37,8 @@ def _取进程(句柄: str) -> tuple[subprocess.Popen | None, str]:
 
 
 def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = None,
-             环境变量: dict = None, 超时秒: int = None) -> 结果:
+             环境变量: dict = None, 超时秒: int = None,
+             就绪地址: str = None, 就绪超时秒: float = None) -> 结果:
     """启动外部进程。返回 {句柄, PID}。"""
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
@@ -47,6 +51,26 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
                                 start_new_session=(os.name == "posix"))
     except Exception as 错误:
         return 结果.失败("启动失败", str(错误), 来源="进程管理")
+    if 就绪地址:
+        try:
+            主机, 端口文本 = 就绪地址.rsplit(":", 1)
+            端口 = int(端口文本)
+            截止 = time.monotonic() + (float(就绪超时秒) if 就绪超时秒 else 5.0)
+            while time.monotonic() < 截止:
+                if 进程.poll() is not None:
+                    错误输出 = (进程.stderr.read() if 进程.stderr else b"")[:2000]
+                    return 结果.失败("启动失败", f"进程在就绪前退出: {错误输出.decode('utf-8', 'replace')}", 来源="进程管理")
+                try:
+                    with socket.create_connection((主机, 端口), timeout=0.1):
+                        break
+                except OSError:
+                    time.sleep(0.02)
+            else:
+                _终止进程组(进程)
+                return 结果.失败("启动超时", f"就绪地址未监听: {就绪地址}", 来源="进程管理")
+        except (TypeError, ValueError) as 错误:
+            _终止进程组(进程)
+            return 结果.失败("参数不合法", f"就绪地址必须是 主机:端口: {错误}", 来源="进程管理")
     with 锁:
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id="进程", 所有者="")
         进程表[对象.句柄id] = {"进程对象": 进程, "PID": 进程.pid, "命令": 命令}
@@ -87,7 +111,7 @@ def _终止进程组(进程: subprocess.Popen, 强制: bool = True, 宽限秒: f
         pass
 
 
-def 终止进程(句柄: str = None, 强制: bool = None) -> 结果:
+def 终止进程(句柄: int | None = None, 强制: bool = None) -> 结果:
     """终止进程（killpg 进程组）。返回 {已终止, 退出码}。"""
     进程, 原因 = _取进程(句柄)
     if 进程 is None:
@@ -99,7 +123,7 @@ def 终止进程(句柄: str = None, 强制: bool = None) -> 结果:
         return 结果.失败("终止失败", str(错误), 来源="进程管理")
 
 
-def 查询进程状态(句柄: str = None) -> 结果:
+def 查询进程状态(句柄: int | None = None) -> 结果:
     """查询进程状态。返回 {运行中, 退出码, PID}。"""
     进程, 原因 = _取进程(句柄)
     if 进程 is None:
@@ -109,7 +133,7 @@ def 查询进程状态(句柄: str = None) -> 结果:
                             "退出码": 进程.returncode, "PID": 进程.pid})
 
 
-def 等待进程结束(句柄: str = None, 超时秒: float = None) -> 结果:
+def 等待进程结束(句柄: int | None = None, 超时秒: float = None) -> 结果:
     """等待进程结束。返回 {退出码, 标准输出, 错误输出}。"""
     进程, 原因 = _取进程(句柄)
     if 进程 is None:
@@ -165,10 +189,10 @@ def 检查命令可用(命令: str = None) -> 结果:
         return 结果.失败("检查失败", str(错误), 来源="进程管理")
 
 
-def 释放句柄(句柄: str = None) -> 结果:
+def 释放句柄(句柄: int | None = None) -> 结果:
     """释放进程句柄（幂等，强制终止残留进程）。"""
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="进程管理")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="进程管理")
     with 锁:
         进程 = 进程表.pop(句柄, None)
         if 进程:
@@ -183,4 +207,8 @@ def 释放句柄(句柄: str = None) -> 结果:
             _终止进程组(进程对象, 强制=True)
         except Exception as 错误:
             降级记录表.append(str(错误))
+        finally:
+            for 管道 in (进程对象.stdout, 进程对象.stderr, 进程对象.stdin):
+                if 管道 is not None:
+                    管道.close()
     return 结果.成功结果({"句柄": 句柄, "已释放": True})
