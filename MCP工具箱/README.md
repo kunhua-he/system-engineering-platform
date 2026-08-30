@@ -93,5 +93,5 @@ Python/curl 示例和浏览器代理边界见
 ```bash
 python3.14 -m py_compile MCP工具箱/项目服务.py MCP工具箱/角色权限.py
 ./MCP工具箱/启动HTTP服务.sh 8766   # 启动后 curl POST /mcp/ initialize 验证
-python3.14 测试中心/运行测试.py --测试文件 测试中心/MCP工具箱/…
+python3.14 测试中心/MCP工具箱/测试_项目服务.py  # 开发期定向回归，不是正式发布证据
 ```
