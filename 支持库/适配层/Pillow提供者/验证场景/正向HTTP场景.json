@@ -10,7 +10,7 @@
           "能力id": "图像解码.解码图像",
           "参数": {
             "字节": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP4z8DQwMDw/z8ADX4DfpfxiD8AAAAASUVORK5CYII=",
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -31,7 +31,7 @@
           "能力id": "图像解码.像素统计",
           "参数": {
             "字节": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP4z8DQwMDw/z8ADX4DfpfxiD8AAAAASUVORK5CYII=",
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -61,7 +61,7 @@
             "背景颜色": "#123456",
             "前景颜色": "#FFFFFF",
             "文本": "HTTP",
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -91,7 +91,7 @@
               "JSON路径": "$.值.图像b64"
             },
             "最大边长": 8,
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -116,7 +116,7 @@
           "能力id": "图像解码.图像EXIF转置",
           "参数": {
             "字节": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP4z8DQwMDw/z8ADX4DfpfxiD8AAAAASUVORK5CYII=",
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -142,7 +142,7 @@
           "参数": {
             "字节": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP4z8DQwMDw/z8ADX4DfpfxiD8AAAAASUVORK5CYII=",
             "背景颜色": "#FFFFFF",
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -168,7 +168,7 @@
           "参数": {
             "字节": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mP4z8DQwMDw/z8ADX4DfpfxiD8AAAAASUVORK5CYII=",
             "哈希类型": "aHash",
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -196,7 +196,7 @@
               "JSON路径": "$.值.图像b64"
             },
             "宽度": 10,
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,
@@ -227,7 +227,7 @@
             },
             "格式": "JPEG",
             "质量": 90,
-            "超时秒": 30
+            "超时秒": 30.0
           },
           "预期": {
             "成功": true,

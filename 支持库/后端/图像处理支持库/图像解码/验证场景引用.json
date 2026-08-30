@@ -14,7 +14,7 @@
                 "类型": "字节集型",
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg=="
               },
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -44,7 +44,7 @@
                 "类型": "字节集型",
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg=="
               },
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -75,7 +75,7 @@
               "背景颜色": "#FF0000",
               "前景颜色": "#000000",
               "文本": "",
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -102,7 +102,7 @@
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg=="
               },
               "最大边长": 1,
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -128,7 +128,7 @@
                 "类型": "字节集型",
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg=="
               },
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -155,7 +155,7 @@
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABpfZFQAAAAABJRU5ErkJggg=="
               },
               "背景颜色": "#FFFFFF",
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -182,7 +182,7 @@
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DA8J+BkYHh////DAAe9gT9Ce00PgAAAABJRU5ErkJggg=="
               },
               "哈希类型": "aHash",
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -208,7 +208,7 @@
                 "base64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg=="
               },
               "宽度": 1,
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,
@@ -236,7 +236,7 @@
               },
               "格式": "JPEG",
               "质量": 90,
-              "超时秒": 60
+              "超时秒": 60.0
             },
             "预期": {
               "成功": true,

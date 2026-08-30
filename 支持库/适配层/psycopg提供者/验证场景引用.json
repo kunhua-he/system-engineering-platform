@@ -11,7 +11,7 @@
             "能力id": "psycopg数据库.连接",
             "参数": {
               "连接串": "postgresql://hekunhua@127.0.0.1:5432/postgres",
-              "超时秒": 5
+              "超时秒": 5.0
             },
             "预期": {
               "成功": true,
@@ -35,7 +35,7 @@
               "连接串": "postgresql://hekunhua@127.0.0.1:5432/postgres",
               "SQL": "SELECT 1 AS 值",
               "参数": [],
-              "超时秒": 5
+              "超时秒": 5.0
             },
             "预期": {
               "成功": true,
@@ -61,7 +61,7 @@
                 "CREATE TEMP TABLE 验证场景_psycopg(id INTEGER)",
                 "INSERT INTO 验证场景_psycopg(id) VALUES (1)"
               ],
-              "超时秒": 5
+              "超时秒": 5.0
             },
             "预期": {
               "成功": true,
@@ -82,7 +82,7 @@
             "能力id": "psycopg数据库.关闭",
             "参数": {
               "连接串": "postgresql://hekunhua@127.0.0.1:5432/postgres",
-              "超时秒": 5
+              "超时秒": 5.0
             },
             "预期": {
               "成功": true,
