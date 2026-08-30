@@ -24,6 +24,18 @@
       "sha256": "797dc674a2c5ff64f7626ba7a8cddd045ea7975d4a495c6b166dd40d659dd398"
     },
     {
+      "路径": "夹具/全透明1x1.png",
+      "sha256": "c2153f77e11087fcb078ae38527fa83bef29791e3700e30cc87fec4405a66d0f"
+    },
+    {
+      "路径": "夹具/彩色2x2.png",
+      "sha256": "36f1626eebe1985b0ac4bb691f40ebe586a47c5a1c442d2cfe12e8e4c8bfa3b3"
+    },
+    {
+      "路径": "夹具/纯红2x2.png",
+      "sha256": "de33ddc09a0ba9b83128b6b59461e3be59299575eb68ccf2c03984b504f9fa9c"
+    },
+    {
       "路径": "实现/子进程入口.py",
       "sha256": "19407ad6fc460b2d2d1c5e3d0e46d9de0781dd99e0d52859c6f9ad95f18a481a"
     },
@@ -77,7 +89,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "3aab105518566cbf9e9fbf21c72f19f6916960b44398cf21dd819082ef34797f"
+      "sha256": "a32d16e3d0b75c66157235a708ff94e8879dc416986a724d67e245d3a4ae736b"
     }
   ]
 }
