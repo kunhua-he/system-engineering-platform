@@ -20,6 +20,10 @@
       "sha256": "3eb4855b06b73d253b75107239ff6c7354ab12c60946d8c9b8da4f1c0c325949"
     },
     {
+      "路径": "夹具/最小文字文档.docx",
+      "sha256": "037ca1790caa437d5f3ea820a58c852db78d7c3a2586606c1fad56954d1c87d0"
+    },
+    {
       "路径": "实现/文字文档.py",
       "sha256": "cf6d1b17f2de6f4aa3a187b91aaa0f02b48aa70219f1e7d2a00f887a371dfed7"
     },
@@ -60,8 +64,12 @@
       "sha256": "d1c84559c1fad6f8f3b113cc8e9352facb686dcd60e090c60c01e4bc8ac3f4bc"
     },
     {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "8b056c70e1f5c704f647e1e59d162c6ac8f4387a198aada0d445194a295455ab"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "74c2c1ff8ed4bbb85a785e9de433bd4a73365bf98abd04b89303d4d1c46fb076"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "默认配置/默认配置.json",
