@@ -61,7 +61,11 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "d9d33c1748b8d2e1ca162dab48088b6d9018748ba0f0cbb0a57df81b17077699"
+      "sha256": "480562a6403beaddba1cdf9449612d5399478bf6c2bb9be9ca3f8cc4cd10e086"
+    },
+    {
+      "路径": "验证夹具/HELLO_123.png",
+      "sha256": "2b72cd09b95b8a4d109f1d4e6329cae2a7064038d848f690aa7e739f98ccfbf0"
     }
   ]
 }
