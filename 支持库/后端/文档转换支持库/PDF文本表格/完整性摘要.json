@@ -73,7 +73,11 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "61a4270c8482dfcedef62ec3c40287d3b6fae450ae6600bc13726a4b258f698d"
+      "sha256": "84642d3900e7830aeff27b6d492e20285b5c1f9debf0aeae4061deb3b728498e"
+    },
+    {
+      "路径": "验证夹具/来源.docx",
+      "sha256": "2ce73ed8ec2966d14869475db94f3d43187031bdac0ccf94fe4d9bc9bf7c759f"
     }
   ]
 }
