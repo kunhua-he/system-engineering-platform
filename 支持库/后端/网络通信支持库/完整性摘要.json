@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "3cb97e23269eca15a2492b2bb5158257eeb81b564d4470fd72ae93c7bb3c88e9"
+      "sha256": "1a120fae6c001339aba950f61ca5d7e999a49342da5e0274c11e533e782dc63d"
     },
     {
       "路径": "网页解析/__init__.py",
@@ -68,8 +68,12 @@
       "sha256": "2c643319efcebefeda68428a9dafd3e95b30231773293dcdb744b5ec8abf9780"
     },
     {
+      "路径": "网页解析/验证场景/正向HTTP场景.json",
+      "sha256": "51256675a8663aa4efd17ca73d6874448df7c11ecdb32605fff190ec285e9c63"
+    },
+    {
       "路径": "网页解析/验证场景引用.json",
-      "sha256": "c6095d72d8f2a51bb26771c21a6a32e34c6d7954b9d2ab627f9b6b3c3228401e"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "网页解析/默认配置/默认配置.json",
@@ -77,7 +81,7 @@
     },
     {
       "路径": "请求/__init__.py",
-      "sha256": "a44dd72e2b867fd00770daaec59c4d927ec690077e08ffe895ff1fc8a05eadf5"
+      "sha256": "39eae791714de7a6b747cbe3250d2f1acf0c2c26c5f0e2deeb0737eb0bd0bb5d"
     },
     {
       "路径": "请求/依赖契约/依赖契约.json",
@@ -85,11 +89,19 @@
     },
     {
       "路径": "请求/包声明.json",
-      "sha256": "7d5204d3dc1e1758f692781e5dcd2e102d201fe17f15ed10f682e7dc77760d6c"
+      "sha256": "cbe1bd83ce3a581d1b1dc3d7114951622ae90e4f818ca70349717d87a3edcfa2"
     },
     {
       "路径": "请求/复用决策.json",
       "sha256": "17858a1aa61d499e526a88af18916bdec293c720c12d3ec633c0ee1b81054f1f"
+    },
+    {
+      "路径": "请求/夹具/上传样本.txt",
+      "sha256": "6bd333596e80ffa4dcbb6ea4c598c17333535c9ba4c3c1f930c5b5a5a7494315"
+    },
+    {
+      "路径": "请求/夹具/本地HTTP服务.py",
+      "sha256": "398754b81f80aaa215c70b6ab6c7c6fff20f5bdd9526169e2b12161f3f14e7d0"
     },
     {
       "路径": "请求/实现/网络请求.py",
@@ -101,11 +113,11 @@
     },
     {
       "路径": "请求/能力契约/参数契约.json",
-      "sha256": "07310c72f03ddd4be8e1a6fe768b37252002b911aa741d13957f6e91c623dfa8"
+      "sha256": "bd69cba6869b5b2be9484850e4eec461058d345115c5026b3a1d194fc9481350"
     },
     {
       "路径": "请求/能力定义.json",
-      "sha256": "2830c2cdc03331774c40f36b54b696010c3a504f4851fea0f491a9ebf97a5a5c"
+      "sha256": "4e4d7293bb7eb4fe1c40689046da1ebb352e788f3d9f75ebcf0e98af0242dcfe"
     },
     {
       "路径": "请求/能力数据/Agent查询数据.json",
@@ -132,8 +144,12 @@
       "sha256": "1beecb4433c8783d40f5295b95173010293c2db589d4ddd0ed2eff5251ccee70"
     },
     {
+      "路径": "请求/验证场景/正向HTTP场景.json",
+      "sha256": "d0a2a1aadb6c21ee9a49b5bf4cd2643a8723b221869c125db482d80443e4afb6"
+    },
+    {
       "路径": "请求/验证场景引用.json",
-      "sha256": "8843707ce916aa544f0ce7f3000a15c96ecbb35988da9f58933efa4c97fec57a"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }

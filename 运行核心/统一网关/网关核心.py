@@ -54,6 +54,14 @@ from 公共契约.基础类型.数值类型 import 校验数值类型
 }
 
 
+def _是JSON值(值: Any) -> bool:
+    try:
+        json.dumps(值, ensure_ascii=False, allow_nan=False)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 @dataclass
 class 网关请求:
     """已完成 HTTP 边界校验的网关请求。"""
@@ -208,14 +216,14 @@ class 网关核心:
                 "文本": "文本型", "整数": "整数型", "长整数": "长整数型",
                 "单精度数": "单精度数型", "双精度数": "双精度数型",
                 "浮点数": "双精度数型", "逻辑": "逻辑型", "布尔": "逻辑型",
-                "列表": "列表型", "字典": "字典型", "映射": "映射型",
+                "列表": "列表型", "字典": "字典型", "映射": "字典型",
             }.get(类型, 类型)
             类型匹配 = {
                 "逻辑型": lambda 值: isinstance(值, bool),
                 "文本型": lambda 值: isinstance(值, str),
                 "列表型": lambda 值: isinstance(值, list),
                 "字典型": lambda 值: isinstance(值, dict),
-                "映射型": lambda 值: isinstance(值, dict),
+                "JSON值型": _是JSON值,
             }.get(类型)
             if 类型 in ("整数型", "长整数型", "单精度数型", "双精度数型"):
                 try:
