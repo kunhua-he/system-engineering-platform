@@ -20,6 +20,10 @@
       "sha256": "40ecda71609c9503f23292b69868f73b8db128ebf1949becc950075a5a84f55a"
     },
     {
+      "路径": "夹具/真实最小RGBA.png",
+      "sha256": "66eae0f7d14f08a8cf83944980cd02d4d11bc8dd954f124a8e0b99582a5b0ff0"
+    },
+    {
       "路径": "实现/图像处理.py",
       "sha256": "365cc8f490253669081fb952e45b2877e8110d821b7b7df6c73718dc963af32d"
     },
@@ -60,8 +64,12 @@
       "sha256": "581612d2535695b3dfd3e5378f4363db24f8b8399e838737faa6436938b73ca2"
     },
     {
+      "路径": "验证场景/正向场景.json",
+      "sha256": "10dce948a6e4cbaf9beff6439b4764f2c883a5db115abc019ecd19275246fa30"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "17626b78d95ddf233662be8557ef25aaaeae8d12baaf548df6cff13f8cdff275"
+      "sha256": "b9f13e219bcf66c6d7f6e99560a9c50eae9d42f1b41f2124fb95b86d5e50c453"
     }
   ]
 }

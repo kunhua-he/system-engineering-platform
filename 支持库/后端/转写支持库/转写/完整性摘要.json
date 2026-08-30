@@ -24,6 +24,10 @@
       "sha256": "0c14e1167417f0fddaa0bcc12ef4511e666b579f845a64d34892bc9b78f920d1"
     },
     {
+      "路径": "夹具/转写成功.wav",
+      "sha256": "ddbdc71f848efdf90a62f399a4123df2dd6d3262b2221f8512a15c0aad7ce9de"
+    },
+    {
       "路径": "实现/子进程入口.py",
       "sha256": "fa1e46f64dc5a5140b2b80fdb96e19d909a6c5dfab55e0cc1657b6110a7ce9be"
     },
@@ -72,8 +76,12 @@
       "sha256": "bd171b768a7b14fd50770e0efda586190ba6983815d978b48e77f683de886c71"
     },
     {
+      "路径": "验证场景/真实正向.json",
+      "sha256": "8ca30bd55b6dd1dd43b8288fb4a003d1d5e19f1cd129b1fc1b43a8e2212dc37a"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "5a51aa198162d861bcdc3c0518503ee1477062357d4b925ddf1025dabe73ed86"
+      "sha256": "02b2ced1575e38321eb799ef5bea84ad8bf5758340441676eebe14dfecbb9ce0"
     }
   ]
 }
