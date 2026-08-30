@@ -77,7 +77,71 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "094b79ac89a725078211bd60be4eb079b492551f80079ff0dfc82c938d18eca2"
+      "sha256": "0ff26f9239f2429e4f081a1f647997717f311a532b32d394a90ff6850fd8996d"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/HEAD",
+      "sha256": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/config",
+      "sha256": "80d4c0e6baebdd4753ea20fde06933bc4b6d415e1dd202d935a818782bfbc33f"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/index",
+      "sha256": "810b8c5b475c63b5302b215e1f00e74f6d7ad05661d3fe639340b5dae3c7dac7"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/1a/d50e82db36b2a74974fa9be90ec0c91198ac2f",
+      "sha256": "43b474bb3502b3ba0ca109f940df7198a846a68f75e56485501c8616f50fcd77"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/5d/7422a8c2cf6f278780c8eb322774994e2c3666",
+      "sha256": "4fb5ae4d095110c2d693ceee170de97a5d95bcefc4a187fdecc4c19be83af5c2"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/5f/7c5209972fdb8db1d665895a432e8f733c79bc",
+      "sha256": "acd78fff8fbbe9d746565107d607b96ab75bdbde6bcf1d05223847489694cbcf"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/69/d5734cf5c27737b05ac0eebf1bcaa85b7479ea",
+      "sha256": "6664816241db1697f563f6c01ca9988a93f26f3c95759d8573d91cb178dd7df2"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/83/c5cad1948203cd1592b4912373d6b7b82cfa2a",
+      "sha256": "7faf96ae91f488bb24a6a8be8965ac38cf4d83576cc47d7b33bd944027cd7de1"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/b2/57e476f6a74693017b01db252becc7261e0634",
+      "sha256": "eab9b7db45ad8158d7cdab4edd25ab338fb6edeb9f8b5ba87dbbce7b08fbc631"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/c5/425b365a3afd57786529b5ddd2232b93557789",
+      "sha256": "941622973f6666befa48228c14198d2753ff9288467ef5bb19fef6234a7857c9"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/cc/b714e4318b49c07aa1034f35e679294ebd878b",
+      "sha256": "c0437fae28ba02afc08fa27cc4c3d05fe465bf85be358afe5074afd75d8ab381"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/objects/dc/b02404414dd03ce213c1343ad30e863d6e58a9",
+      "sha256": "7bb31170af70486db7921f95ac0fd46ca168678df4e39d26345564a5fc302d95"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/refs/heads/main",
+      "sha256": "72f6db12cf66715cadea78236a3084f3da60376b55a0943e1c760f4f4da17249"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/git目录/refs/heads/source",
+      "sha256": "a77c840fcf15f9a989af4f850075c1d12db3e86e10d9f8e969add6bf9b50db9c"
+    },
+    {
+      "路径": "验证夹具/临时仓库模板/工作区/基线.txt",
+      "sha256": "a5de2203f29c80796bbf4f47469de41c24b92891a2e770f9112db89db9f81e9d"
+    },
+    {
+      "路径": "验证夹具/新增.txt",
+      "sha256": "74bb1f5cacd3c282abcb42ce4f2a99ed4d8e9e5dc25c08e824578acce6e5e551"
     }
   ]
 }
