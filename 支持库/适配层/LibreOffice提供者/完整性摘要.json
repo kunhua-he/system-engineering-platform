@@ -25,7 +25,7 @@
     },
     {
       "路径": "实现/文档转换.py",
-      "sha256": "ece113139e35df294c7ed220ae818ac0232080f988d439f5518d9bb8e36774a2"
+      "sha256": "d2605ce82b194cac74a262d7983a43315c35e33c39e6ebc3f8baf219b8763afa"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -33,7 +33,7 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "ef21c1691e2b38a23428df9d27dd09a3a3f015734c06132c64b5334affad628e"
+      "sha256": "8515423a338ca6d44b3257db71147a8b20fb7946e27516b4b82568fa5e412a4e"
     },
     {
       "路径": "能力定义.json",
@@ -57,11 +57,11 @@
     },
     {
       "路径": "资源预算.json",
-      "sha256": "a2a6572a5627430dabbc8fa70272ce8d7192df12ce60332b4ace71d2ebfa9490"
+      "sha256": "8360e4e5629c39fcd8015afe8c049ebf662e71eb78458ccc3eeea0fb7a1780f5"
     },
     {
       "路径": "配置契约/配置契约.json",
-      "sha256": "a203befc12d1c689b347a89a6b56affafe5fed01be2660cdfa0553205db06308"
+      "sha256": "55d4e900c5091b5d871e9c68d73dcc4b266c495c1eaad3ade84f49acd909de79"
     },
     {
       "路径": "验证场景引用.json",
