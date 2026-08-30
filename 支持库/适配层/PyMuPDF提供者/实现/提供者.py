@@ -128,13 +128,19 @@ def 提取图像(文件路径: str, 页序号: int, 超时秒: float = 默认超
     if 错误:
         return 错误
     return 执行任务({"操作": "提取图像", "文件路径": 文件路径, "页序号": 页序号}, 超时秒=超时秒)
-def 校验PDF(字节: bytes, 超时秒: float = 30.0) -> 结果:
+def 校验PDF(字节, 超时秒: float = 30.0) -> 结果:
     """隔离重新打开 PDF 返回页数（成功值 {页数}，签名校验用）。"""
-    if not isinstance(字节, bytes) or not 字节:
-        return _失败("参数不合法", "字节必须为非空二进制")
+    if isinstance(字节, bytes) and 字节:
+        字节b64 = base64.b64encode(字节).decode("ascii")
+    elif isinstance(字节, str) and 字节:
+        字节b64 = 字节
+    elif isinstance(字节, dict) and isinstance(字节.get("base64"), str):
+        字节b64 = 字节["base64"]
+    else:
+        return _失败("参数不合法", "字节必须为非空字节集或Base64文本")
     return 执行任务({
         "操作": "校验PDF",
-        "字节b64": base64.b64encode(字节).decode("ascii"),
+        "字节b64": 字节b64,
     }, 超时秒=超时秒)
 def 等待并收集(进程列表: list[subprocess.Popen], 超时秒: float = 10.0) -> None:
     """批量等待并强制清理子进程（测试与收口用）。"""
