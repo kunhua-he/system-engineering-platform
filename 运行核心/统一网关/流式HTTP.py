@@ -10,11 +10,12 @@ import socket
 import threading
 import time
 import uuid
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from typing import Any, Callable, Iterator
 
 from 运行核心.统一网关.流式语义 import 流式管理器
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
+from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 
@@ -286,18 +287,36 @@ class 流式HTTP服务器:
     def __init__(self, *, 地址: str = "127.0.0.1", 端口: int = 0,
                  管理器: HTTP流式管理器 | None = None,
                  凭证环境变量: str = "系统库网关凭证",
-                 要求凭证: bool = True) -> None:
+                 要求凭证: bool = True,
+                 允许来源表: set[str] | None = None,
+                 并发上限: int = 64) -> None:
         self.地址 = 地址
         self.端口 = 端口
         self.管理器 = 管理器 or HTTP流式管理器()
         self.能力表: dict[str, Callable] = {}
-        self.服务器: ThreadingHTTPServer | None = None
+        self.服务器: 有界线程HTTP服务器 | None = None
         self.线程: threading.Thread | None = None
+        if (isinstance(并发上限, bool) or not isinstance(并发上限, int)
+                or not 1 <= 并发上限 <= 256):
+            raise ValueError("并发上限必须是 1 到 256 之间的整数")
+        self.并发上限 = 并发上限
         self.安全配置 = 安全配置(凭证环境变量=凭证环境变量,
-                              要求凭证=bool(要求凭证))
+                              要求凭证=bool(要求凭证),
+                              允许来源表=set(允许来源表 or set()))
         self.凭证管理器 = 凭证管理器(凭证环境变量)
         self.审计记录表: list[dict[str, Any]] = []
         self.审计锁 = threading.Lock()
+
+    @classmethod
+    def 创建测试服务器(cls, *, 地址: str = "127.0.0.1", 端口: int = 0,
+                 管理器: HTTP流式管理器 | None = None,
+                 允许来源表: set[str] | None = None,
+                 并发上限: int = 64) -> "流式HTTP服务器":
+        """测试/演示显式免凭证构造器。"""
+        return cls(
+            地址=地址, 端口=端口, 管理器=管理器, 要求凭证=False,
+            允许来源表=允许来源表, 并发上限=并发上限,
+        )
 
     def 注册能力(self, 能力id: str, 事件生成函数: Callable) -> None:
         self.能力表[能力id] = 事件生成函数
@@ -369,11 +388,22 @@ class 流式HTTP服务器:
                         "错误码": "返回结果不符合契约",
                         "错误说明": "网关响应包含不可传输的数据类型",
                     }, ensure_ascii=False).encode("utf-8")
-                self.send_response(状态码)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(正文)))
-                self.end_headers()
-                self.wfile.write(正文)
+                try:
+                    self.send_response(状态码)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(正文)))
+                    来源 = self.headers.get("Origin", "")
+                    if 来源 and 来源 in 服务器.安全配置.允许来源表:
+                        self.send_header("Access-Control-Allow-Origin", 来源)
+                        self.send_header("Vary", "Origin")
+                        if 服务器.安全配置.要求凭证:
+                            self.send_header("Access-Control-Allow-Credentials", "true")
+                    self.end_headers()
+                    self.wfile.write(正文)
+                except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+                    if isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断("流式JSON写回断开", 错误)
+                    self.close_connection = True
 
             def _校验凭证(self) -> bool:
                 if not 服务器.安全配置.要求凭证:
@@ -445,12 +475,6 @@ class 流式HTTP服务器:
                     })
                     return
                 服务器.记录审计(路径, 通道.请求id, 能力id, True, "")
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-                self.send_header("Cache-Control", "no-cache, no-transform")
-                self.send_header("Connection", "close")
-                self.send_header("X-Accel-Buffering", "no")
-                self.end_headers()
                 # 生成器可能长时间没有新事件，单靠下一次 wfile.write 无法发现
                 # 客户端已断开。独立监视连接 EOF，统一走管理器断开清理路径。
                 断开监视停止 = threading.Event()
@@ -477,14 +501,66 @@ class 流式HTTP服务器:
                     daemon=True,
                 ).start()
                 try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                    self.send_header("Cache-Control", "no-cache, no-transform")
+                    self.send_header("Connection", "close")
+                    self.send_header("X-Accel-Buffering", "no")
+                    来源 = self.headers.get("Origin", "")
+                    if 来源 and 来源 in 服务器.安全配置.允许来源表:
+                        self.send_header("Access-Control-Allow-Origin", 来源)
+                        self.send_header("Vary", "Origin")
+                        if 服务器.安全配置.要求凭证:
+                            self.send_header("Access-Control-Allow-Credentials", "true")
+                    self.end_headers()
                     for 事件 in 通道.迭代事件():
                         self.wfile.write(通道.格式事件行(事件))
                         self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError, OSError):
+                except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+                    if isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断("流式写回断开", 错误)
                     管理器.断开(通道.请求id)
                 finally:
                     断开监视停止.set()
                     管理器.清理(通道.请求id)
+                    self.close_connection = True
+
+            def do_OPTIONS(self) -> None:
+                from urllib.parse import unquote
+                路径 = unquote(self.path)
+                来源 = self.headers.get("Origin", "")
+                if (路径 not in ("/网关/流式", "/网关/流式/取消")
+                        or not 来源 or 来源 not in 服务器.安全配置.允许来源表):
+                    self._写JSON(403, {
+                        "成功": False, "值": None, "错误码": "权限不足",
+                        "错误说明": "跨域来源未授权",
+                    })
+                    return
+                请求头表 = {
+                    项.strip().lower()
+                    for 项 in self.headers.get("Access-Control-Request-Headers", "").split(",")
+                    if 项.strip()
+                }
+                if (服务器.安全配置.要求凭证
+                        and not ({"authorization", "x-system-credential"} & 请求头表)):
+                    self._写JSON(403, {
+                        "成功": False, "值": None, "错误码": "权限不足",
+                        "错误说明": "预检未声明受支持的凭证请求头",
+                    })
+                    return
+                try:
+                    self.send_response(204)
+                    self.send_header("Access-Control-Allow-Origin", 来源)
+                    self.send_header("Vary", "Origin")
+                    self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                    self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-System-Credential, X-Request-ID")
+                    if 服务器.安全配置.要求凭证:
+                        self.send_header("Access-Control-Allow-Credentials", "true")
+                    self.send_header("Access-Control-Max-Age", "86400")
+                    self.end_headers()
+                except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+                    if isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断("流式预检写回断开", 错误)
                     self.close_connection = True
 
             def _方法不允许(self) -> None:
@@ -497,17 +573,21 @@ class 流式HTTP服务器:
             do_PATCH = do_GET
             do_DELETE = do_GET
             do_HEAD = do_GET
-            do_OPTIONS = do_GET
 
         try:
-            self.服务器 = ThreadingHTTPServer((self.地址, self.端口), 处理器)
-            self.服务器.daemon_threads = True
-        except OSError as 错误:
+            self.服务器 = 有界线程HTTP服务器(
+                (self.地址, self.端口), 处理器, 最大工作线程=self.并发上限,
+            )
+        except (OSError, ValueError) as 错误:
             return False, f"流式服务启动失败: {错误}"
         self.端口 = int(self.服务器.server_address[1])
         self.线程 = threading.Thread(target=self.服务器.serve_forever, daemon=True)
         self.线程.start()
         return True, f"流式服务已启动 http://{self.地址}:{self.端口}"
+
+    def 连接诊断快照(self) -> list[dict[str, Any]]:
+        服务器 = self.服务器
+        return 服务器.连接诊断快照() if 服务器 is not None else []
 
     def 记录审计(self, 路径: str, 请求id: str, 能力id: str,
                 成功: bool, 错误码: str) -> None:

@@ -8,6 +8,7 @@ import json
 import math
 import os
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -18,6 +19,88 @@ from urllib.parse import unquote, urlsplit
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 请求限制器, 提取访问凭证
 from 运行核心.统一网关.网关核心 import 网关核心, 网关请求
 from 公共契约.运行时.端口策略 import 校验应用监听端口
+
+
+class 有界线程HTTP服务器(ThreadingHTTPServer):
+    """在线程创建前执行预算；满载时同步返回结构化 429。"""
+
+    daemon_threads = True
+    block_on_close = True
+
+    def __init__(self, 地址, 处理器类, *, 最大工作线程: int = 64) -> None:
+        if (isinstance(最大工作线程, bool) or not isinstance(最大工作线程, int)
+                or not 1 <= 最大工作线程 <= 256):
+            raise ValueError("最大工作线程必须是 1 到 256 之间的整数")
+        self.最大工作线程 = 最大工作线程
+        self.request_queue_size = min(128, 最大工作线程)
+        self._工作线程信号量 = threading.BoundedSemaphore(最大工作线程)
+        self._计数锁 = threading.Lock()
+        self.活动工作线程数 = 0
+        self.拒绝请求数 = 0
+        self._连接诊断: list[dict[str, Any]] = []
+        super().__init__(地址, 处理器类)
+
+    def process_request(self, request, client_address) -> None:
+        if not self._工作线程信号量.acquire(blocking=False):
+            with self._计数锁:
+                self.拒绝请求数 += 1
+            self._写限流响应(request)
+            self.shutdown_request(request)
+            return
+        with self._计数锁:
+            self.活动工作线程数 += 1
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._归还线程预算()
+            raise
+
+    def process_request_thread(self, request, client_address) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._归还线程预算()
+
+    def _归还线程预算(self) -> None:
+        with self._计数锁:
+            self.活动工作线程数 = max(0, self.活动工作线程数 - 1)
+        self._工作线程信号量.release()
+
+    def _写限流响应(self, request) -> None:
+        正文 = json.dumps({
+            "请求id": "", "操作": "HTTP边界", "成功": False, "值": None,
+            "错误码": "限流", "错误说明": "网关工作线程已达上限",
+            "句柄": None, "耗时毫秒": 0.0,
+        }, ensure_ascii=False).encode("utf-8")
+        响应头 = (
+            "HTTP/1.1 429 Too Many Requests\r\n"
+            "Content-Type: application/json; charset=utf-8\r\n"
+            f"Content-Length: {len(正文)}\r\n"
+            "Cache-Control: no-store\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii")
+        try:
+            request.sendall(响应头 + 正文)
+        except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+            self.记录连接诊断("限流响应断开", 错误)
+
+    def 记录连接诊断(self, 类型: str, 错误: BaseException | str = "") -> None:
+        with self._计数锁:
+            self._连接诊断.append({
+                "类型": str(类型)[:32],
+                "异常类型": type(错误).__name__ if isinstance(错误, BaseException) else "",
+            })
+            if len(self._连接诊断) > 100:
+                del self._连接诊断[:-100]
+
+    def 连接诊断快照(self) -> list[dict[str, Any]]:
+        with self._计数锁:
+            return [dict(项) for 项 in self._连接诊断]
+
+    def handle_error(self, request, client_address) -> None:
+        """连接断开和处理器异常只留有限分类，不向标准错误打印堆栈。"""
+        错误 = sys.exc_info()[1]
+        self.记录连接诊断("请求处理异常", 错误 or "未知异常")
 
 
 class 本地网关服务器:
@@ -31,12 +114,14 @@ class 本地网关服务器:
         self.端口 = int(self.配置.get("网关端口", 端口))
         self.请求超时秒 = float(self.配置.get("请求超时秒", 10))
         self.请求体读取超时秒 = min(10.0, max(1.0, float(self.配置.get("请求体读取超时秒", 10))))
-        self.并发上限 = max(1, int(self.配置.get("并发上限", 64)))
+        self.并发上限 = int(self.配置.get("并发上限", 64))
+        if not 1 <= self.并发上限 <= 256:
+            raise ValueError("并发上限必须在 1 到 256 之间")
         # 客户端提交的项目/用户/会话/任务字段不能作为身份来源；只有
         # 经过受信服务端上下文注入的身份才可进入核心。兼容旧测试或
         # 专用内部夹具时，必须显式传入 False，不能依赖默认放行。
         self.禁止客户端身份 = bool(self.配置.get("禁止客户端身份", True))
-        要求凭证 = bool(self.配置.get("要求凭证", bool(self.配置.get("凭证环境变量"))))
+        要求凭证 = bool(self.配置.get("要求凭证", True))
         self.安全配置 = 安全配置(
             凭证环境变量=str(self.配置.get("凭证环境变量", "系统库网关凭证")),
             请求大小上限=int(self.配置.get("请求大小上限", 1024 * 1024)),
@@ -45,11 +130,21 @@ class 本地网关服务器:
             要求凭证=要求凭证,
             默认权限范围=set(self.配置.get("默认权限范围", {"查询", "调用", "任务"})),
             允许来源表=set(self.配置.get("允许来源表", set())),
+            允许本地不验证SSL=bool(self.配置.get("允许本地不验证SSL", False)),
         )
         self.请求限制器 = 请求限制器(self.安全配置)
         self.凭证管理器 = 凭证管理器(self.安全配置.凭证环境变量)
-        self.服务器: ThreadingHTTPServer | None = None
+        self.服务器: 有界线程HTTP服务器 | None = None
         self.线程: threading.Thread | None = None
+
+    @classmethod
+    def 创建测试服务器(cls, *, 网关核心实例: 网关核心,
+                 地址: str = "127.0.0.1", 端口: int = 0,
+                 配置: dict[str, Any] | None = None) -> "本地网关服务器":
+        """测试/演示专用显式构造器；生产构造器不得隐式免凭证。"""
+        测试配置 = dict(配置 or {})
+        测试配置["要求凭证"] = False
+        return cls(网关核心实例=网关核心实例, 地址=地址, 端口=端口, 配置=测试配置)
 
     def 启动(self) -> tuple[bool, str]:
         地址通过, 地址消息 = self.请求限制器.校验监听地址(self.地址)
@@ -64,9 +159,11 @@ class 本地网关服务器:
         except (TypeError, ValueError) as 错误:
             return False, str(错误)
         try:
-            self.服务器 = ThreadingHTTPServer((self.地址, self.端口), self._构造处理类())
-            self.服务器.daemon_threads = True
-        except OSError:
+            self.服务器 = 有界线程HTTP服务器(
+                (self.地址, self.端口), self._构造处理类(),
+                最大工作线程=self.并发上限,
+            )
+        except (OSError, ValueError):
             return False, "端口占用或监听地址不可用"
         self.端口 = int(self.服务器.server_address[1])
         self.线程 = threading.Thread(target=self.服务器.serve_forever, daemon=True)
@@ -90,7 +187,7 @@ class 本地网关服务器:
         网关核心实例 = self.网关核心实例
         请求超时秒 = self.请求超时秒
         请求体读取超时秒 = self.请求体读取超时秒
-        并发信号量 = threading.BoundedSemaphore(self.并发上限)
+
         禁止客户端身份 = self.禁止客户端身份
         请求限制器实例 = self.请求限制器
         凭证管理器实例 = self.凭证管理器
@@ -100,15 +197,6 @@ class 本地网关服务器:
             def setup(self) -> None:
                 super().setup()
                 self.connection.settimeout(请求超时秒)
-                self._占用并发 = 并发信号量.acquire(blocking=False)
-
-            def finish(self) -> None:
-                try:
-                    super().finish()
-                finally:
-                    if getattr(self, "_占用并发", False):
-                        self._占用并发 = False
-                        并发信号量.release()
 
             def log_message(self, 格式: str, *参数: Any) -> None:
                 return
@@ -142,36 +230,58 @@ class 本地网关服务器:
                         "成功": False, "值": None, "错误码": "返回结果不符合契约",
                         "错误说明": "网关响应包含不可传输的数据类型",
                     }, ensure_ascii=False).encode("utf-8")
-                self.send_response(状态码)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(正文)))
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                来源 = self.headers.get("Origin", "")
-                if 来源 and 来源 in 安全配置实例.允许来源表:
-                    self.send_header("Access-Control-Allow-Origin", 来源)
-                    self.send_header("Vary", "Origin")
-                    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                    self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-系统凭证, X-请求-id")
-                self.end_headers()
                 try:
+                    self.send_response(状态码)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(正文)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    来源 = self.headers.get("Origin", "")
+                    if 来源 and 来源 in 安全配置实例.允许来源表:
+                        self.send_header("Access-Control-Allow-Origin", 来源)
+                        self.send_header("Vary", "Origin")
+                        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-System-Credential, X-Request-ID")
+                        if 安全配置实例.要求凭证:
+                            self.send_header("Access-Control-Allow-Credentials", "true")
+                    self.end_headers()
                     self.wfile.write(正文)
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+                    if isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断("响应写回断开", 错误)
+                    self.close_connection = True
                     return
 
             def do_OPTIONS(self) -> None:
                 """CORS 预检：浏览器跨域直连需要。"""
                 来源 = self.headers.get("Origin", "")
-                if not 来源 or 来源 not in 安全配置实例.允许来源表:
+                路径通过, _ = 请求限制器实例.校验路径(self._规范路径())
+                if not 路径通过 or not 来源 or 来源 not in 安全配置实例.允许来源表:
                     self._拒绝(403, "权限不足", "跨域来源未授权")
                     return
-                self.send_response(204)
-                self.send_header("Access-Control-Allow-Origin", 来源)
-                self.send_header("Vary", "Origin")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-系统凭证, X-请求-id")
-                self.send_header("Access-Control-Max-Age", "86400")
-                self.end_headers()
+                请求头表 = {
+                    项.strip().lower()
+                    for 项 in self.headers.get("Access-Control-Request-Headers", "").split(",")
+                    if 项.strip()
+                }
+                if (安全配置实例.要求凭证
+                        and not ({"authorization", "x-system-credential"} & 请求头表)):
+                    self._拒绝(403, "权限不足", "预检未声明受支持的凭证请求头")
+                    return
+                try:
+                    self.send_response(204)
+                    self.send_header("Access-Control-Allow-Origin", 来源)
+                    self.send_header("Vary", "Origin")
+                    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                    self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-System-Credential, X-Request-ID")
+                    if 安全配置实例.要求凭证:
+                        self.send_header("Access-Control-Allow-Credentials", "true")
+                    self.send_header("Access-Control-Max-Age", "86400")
+                    self.end_headers()
+                except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+                    if isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断("预检写回断开", 错误)
+                    self.close_connection = True
 
             def _拒绝(self, 状态码: int, 错误码: str, 错误说明: str, 操作: str = "HTTP边界") -> None:
                 # HTTP 头字段名必须是 ASCII；中文请求 id 仍放在 JSON 正文中。
@@ -201,9 +311,6 @@ class 本地网关服务器:
                 return unquote(urlsplit(self.path).path)
 
             def _校验边界(self, 路径: str) -> bool:
-                if not getattr(self, "_占用并发", False):
-                    self._拒绝(429, "限流", "网关并发已达上限")
-                    return False
                 路径通过, 路径消息 = 请求限制器实例.校验路径(路径)
                 if not 路径通过:
                     self._拒绝(404, "未知路径", 路径消息)
@@ -368,6 +475,10 @@ class 本地网关服务器:
                 if not isinstance(参数, dict):
                     self._拒绝(400, "参数不合法", "参数必须是对象", 操作)
                     return
+                SSL通过, SSL说明 = 请求限制器实例.校验SSL策略(参数)
+                if not SSL通过:
+                    self._拒绝(403, "权限不足", SSL说明, 操作)
+                    return
                 try:
                     超时原值 = 请求数据.get("超时秒", 请求超时秒)
                     if isinstance(超时原值, bool) or not isinstance(超时原值, (int, float)):
@@ -428,6 +539,10 @@ class 本地网关服务器:
                 self._写JSON(状态码, 响应.转字典())
 
         return 处理类
+
+    def 连接诊断快照(self) -> list[dict[str, Any]]:
+        服务器 = self.服务器
+        return 服务器.连接诊断快照() if 服务器 is not None else []
 
 
 def 检查端口可用(端口: int) -> bool:
