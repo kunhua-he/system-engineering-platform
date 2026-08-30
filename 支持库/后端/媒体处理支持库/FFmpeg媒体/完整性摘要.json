@@ -73,7 +73,11 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "cbd1f0ce4c5a9b963c4447ef47b54a8285e894ad71bf50a38079b651eb7a938d"
+      "sha256": "c2b6887476f3b31780c89bb2e72ad7f2784b972c8b7d581ab7997d59fb101aa1"
+    },
+    {
+      "路径": "验证夹具/带音频视频.mp4",
+      "sha256": "b6f8b7d6b04e0c49181aaaea1abdf4b688edf79b1775bdfd5aef2aefeb8d31c2"
     }
   ]
 }
