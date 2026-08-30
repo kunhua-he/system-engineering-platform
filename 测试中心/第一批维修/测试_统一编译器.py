@@ -235,7 +235,7 @@ class 工作区字节指纹测试(unittest.TestCase):
             第一次 = 计算工作区字节指纹(根)
             文件.write_text("值 = '第二次'\n", encoding="utf-8")
             第二次 = 计算工作区字节指纹(根)
-            self.assertNotEqual(第一次["工作区摘要"], 第二次["工作区摘要"])
+            self.assertNotEqual(第一次["工作区字节指纹"], 第二次["工作区字节指纹"])
             self.assertEqual(第一次["语义"], "HEAD+暂存区差异字节+未暂存正式文件字节+未跟踪正式文件字节")
             self.assertEqual(第一次["排除目录"], 第二次["排除目录"])
 
@@ -254,11 +254,11 @@ class 工作区字节指纹测试(unittest.TestCase):
             self._git(根, "add", "正式.py")
             暂存 = 计算工作区字节指纹(根)
             self.assertGreater(int(暂存["暂存差异字节数"]), 0)
-            self.assertNotEqual(干净["工作区摘要"], 暂存["工作区摘要"])
+            self.assertNotEqual(干净["工作区字节指纹"], 暂存["工作区字节指纹"])
             (根 / "新增.py").write_text("新增 = True\n", encoding="utf-8")
             未跟踪 = 计算工作区字节指纹(根)
             self.assertEqual(未跟踪["未跟踪正式文件数"], 1)
-            self.assertNotEqual(暂存["工作区摘要"], 未跟踪["工作区摘要"])
+            self.assertNotEqual(暂存["工作区字节指纹"], 未跟踪["工作区字节指纹"])
 
 
 if __name__ == "__main__":

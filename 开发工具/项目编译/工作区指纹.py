@@ -109,7 +109,7 @@ def 计算工作区字节指纹(仓库根: Path) -> dict[str, Any]:
     有变更 = bool(暂存差异 or 未暂存数 or 未跟踪数)
     return {
         "提交": 提交字节.decode("ascii", errors="replace"),
-        "工作区摘要": 哈希.hexdigest(),
+        "工作区字节指纹": 哈希.hexdigest(),
         "工作区状态": "含未提交变更" if 有变更 else "干净",
         "语义": 指纹语义,
         "排除目录": list(固定排除目录),
