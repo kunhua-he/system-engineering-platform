@@ -199,6 +199,7 @@ class 启动器页面路由测试(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as 捕获:
                     urllib.request.urlopen(地址 + "/not-found", timeout=10)
                 self.assertEqual(捕获.exception.code, 404)
+                捕获.exception.close()
             finally:
                 if 进程.poll() is None:
                     os.killpg(进程.pid, signal.SIGINT)
@@ -207,6 +208,10 @@ class 启动器页面路由测试(unittest.TestCase):
                     except subprocess.TimeoutExpired:
                         os.killpg(进程.pid, signal.SIGKILL)
                         进程.wait(timeout=5)
+                if 进程.stdout is not None:
+                    进程.stdout.close()
+                if 进程.stderr is not None:
+                    进程.stderr.close()
 
 
 class 工作区字节指纹测试(unittest.TestCase):
