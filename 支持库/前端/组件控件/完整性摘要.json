@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "071b2e20ff519ae0a938de90b8ba2ea460c1a81e8c546f79144403fab2e4c304"
+      "sha256": "4606365cca04a70193bdaa2a84aebd48b35ecaee9550bf47a8e85ace8dea04b1"
     },
     {
       "路径": "复用决策.json",
@@ -37,7 +37,7 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "d1f590f3f8c9224986ad4ce0edc4c25eb3268c90fc95fef1a42f895a887e1e8f"
+      "sha256": "4a71251c2c7ade0980eb9a727c303f1e05618c6803d1e231172812ce84affcd0"
     },
     {
       "路径": "说明/使用说明.md",

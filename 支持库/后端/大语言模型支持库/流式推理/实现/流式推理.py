@@ -19,10 +19,10 @@ from 公共契约.基础类型.结果类型 import 结果
 锁 = threading.Lock()
 
 
-def 提交流式请求(模型连接句柄: str = None, 消息列表: list = None, 系统提示词: str = None) -> 结果:
+def 提交流式请求(模型连接句柄: int | None = None, 消息列表: list = None, 系统提示词: str = None) -> 结果:
     """提交流式推理请求，返回 流id（句柄时效内可消费事件）。"""
-    if not isinstance(模型连接句柄, str) or not 模型连接句柄.strip():
-        return 结果.失败("参数不合法", "模型连接句柄必须是非空字符串", 来源="流式推理")
+    if isinstance(模型连接句柄, bool) or not isinstance(模型连接句柄, int) or not 1 <= 模型连接句柄 <= 999999:
+        return 结果.失败("参数不合法", "模型连接句柄必须是1到999999的整数", 来源="流式推理")
     if not isinstance(消息列表, list) or not 消息列表:
         return 结果.失败("参数不合法", "消息列表必须是非空列表", 来源="流式推理")
     流id = uuid.uuid4().hex[:16]
