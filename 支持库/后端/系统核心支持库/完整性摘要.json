@@ -57,11 +57,11 @@
     },
     {
       "路径": "删除守卫/验证场景引用.json",
-      "sha256": "78819678009e97ea1d637aeab33d8c28b5e5a55f6f1071536b14b5fb7639222b"
+      "sha256": "6d9b65090dcf986cab28c95333f0390a4dc0fec48634ff6b4ddabfe245a2ce47"
     },
     {
       "路径": "包声明.json",
-      "sha256": "d440704295b7b2c7dcc9435333b0027cdd33417cf041bda64bf20dc802999b5f"
+      "sha256": "5a84a7c635bb6e9ee24bdc3fcc7d7e5739baf77f064cd001a2d8064b6c00398c"
     },
     {
       "路径": "协议白名单/__init__.py",
@@ -112,8 +112,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "协议白名单/验证场景/正向HTTP场景.json",
+      "sha256": "0ec2285a434140d9925ebdbed402046eeb026c60048516dd4d2d471bf45a1c04"
+    },
+    {
       "路径": "协议白名单/验证场景引用.json",
-      "sha256": "f600ffca754a0f3134749c055753aba67f2778532ec408e7d2181e8d5da7f861"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "工具执行/__init__.py",
@@ -164,8 +168,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "工具执行/验证场景/正向HTTP场景.json",
+      "sha256": "5f75cdb0141df0beb77ab079de47409e1ecd892a73ce7493a64eae04043e9c08"
+    },
+    {
       "路径": "工具执行/验证场景引用.json",
-      "sha256": "b4f8fcc70e13910c52718d50c07fc7785841ce94783b8a74a43118e1ea732540"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "幂等消息/__init__.py",
@@ -216,8 +224,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "幂等消息/验证场景/正向HTTP场景.json",
+      "sha256": "8316e679e1b70a263aa0f4c2f7c9ad9372e22ccbe6b3df0077384323d0490525"
+    },
+    {
       "路径": "幂等消息/验证场景引用.json",
-      "sha256": "4ac3e7506ad1c7df626e09730b656ce7edd2ab4444f44c81ef9faae457b606ef"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "权限审批/__init__.py",
@@ -268,12 +280,16 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "权限审批/验证场景/正向HTTP场景.json",
+      "sha256": "eac454e1190e8bcd6bed8bf979ffc016ed28fe5026b0dcc40c869a6229109451"
+    },
+    {
       "路径": "权限审批/验证场景引用.json",
-      "sha256": "95ab33cecbd7b901aa1fd38913892bfe9210ffd6a96a2bb230a8e562067f3420"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "检查点恢复/__init__.py",
-      "sha256": "9de83e196fd94bd224c77910cef53a213a7c8150bc8b133756def58037ae4b1e"
+      "sha256": "149b86a9f37bd36a37f32910da483b1e8e99439b7df5b1b679c0104e49d7837c"
     },
     {
       "路径": "检查点恢复/依赖契约/依赖契约.json",
@@ -281,15 +297,19 @@
     },
     {
       "路径": "检查点恢复/包声明.json",
-      "sha256": "dad58a8d7d15a9c39b3434a3ecc5bb518cbb5d9a7d34fe459be9a15f01cc6c5f"
+      "sha256": "3f84b26d24a764ec1f72d4da4279092df5953c4a8fb84e87f92710e14da385a7"
     },
     {
       "路径": "检查点恢复/复用决策.json",
       "sha256": "57833b2b353d3bde0b614ae4cf22ad3d9ee59cf3d8b39d05894fb611da62e229"
     },
     {
+      "路径": "检查点恢复/夹具/空检查点.db",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "路径": "检查点恢复/实现/检查点恢复.py",
-      "sha256": "e7b5117feabc37cebf77157b8aaf97cdf1b372248b497c0e1c74597c6dd66fb2"
+      "sha256": "88dca8fd89a318c3ce6d4952ddff9a23e34724350c9330a3953e1809a4af25a1"
     },
     {
       "路径": "检查点恢复/权限契约/权限契约.json",
@@ -297,11 +317,11 @@
     },
     {
       "路径": "检查点恢复/能力契约/参数契约.json",
-      "sha256": "c4764c2aefff859c6b373610eb1a580479864847954a780ced3bfc8db4928974"
+      "sha256": "df95ebf46227fd716dce24aea8bf2c090c4e492c485cb8e575fb69b6e627f19c"
     },
     {
       "路径": "检查点恢复/能力定义.json",
-      "sha256": "0e60964ab679609a45da32d75011175598597190ae318084fbcca03cd1ea99ce"
+      "sha256": "ccd007f112ae72ece04d7fdd93ad31a98116e12009baac1a5b962036cc719272"
     },
     {
       "路径": "检查点恢复/能力数据/能力搜索数据.json",
@@ -320,8 +340,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "检查点恢复/验证场景/正向HTTP场景.json",
+      "sha256": "37ed0708873ae53b551de9b1950173f5aec08085016805ba9def7266f93fe0f8"
+    },
+    {
       "路径": "检查点恢复/验证场景引用.json",
-      "sha256": "8eb2c736dcaf2d3effe59e37cbf25ec96c373c9b7dc00876190c804c383c166c"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "环境变量/__init__.py",
@@ -372,8 +396,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "环境变量/验证场景/正向HTTP场景.json",
+      "sha256": "d0059f22e7f223e23cd197adaecf4e6188c959bc57e1abfde8d148f0d866188e"
+    },
+    {
       "路径": "环境变量/验证场景引用.json",
-      "sha256": "99b723e1e4b089d41d9f0548970e3b7897255b5b044bc98f8ed0109bfae62414"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "系统信息/__init__.py",
@@ -424,12 +452,16 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "系统信息/验证场景/正向HTTP场景.json",
+      "sha256": "9366b783073a48ce6c3c6669fae2d654716bb417f586e4a8ac995fcbcf2c113e"
+    },
+    {
       "路径": "系统信息/验证场景引用.json",
-      "sha256": "2f780ec87ca170461993f9adf94ff1ace1f43107660942e77eea2582141a95f4"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "资源管理/__init__.py",
-      "sha256": "a4fe7a1fdd75c12cfb1e6db4a9f4a8131114c91cc0cbaf2129c82c4052569d13"
+      "sha256": "6930bd633c807107902af93f1d9b2c0af0fe3613b45de06a5ec033d4c5211e7f"
     },
     {
       "路径": "资源管理/依赖契约/依赖契约.json",
@@ -437,7 +469,7 @@
     },
     {
       "路径": "资源管理/包声明.json",
-      "sha256": "cb4ac63dcfef916bf3c97d853f38670e73f72076b2ffacdbe3ecbb888e95f91d"
+      "sha256": "4cdff164d48e78be9c8f6d4e9f963ffa6943de81a9ed013105720d25e1a63abe"
     },
     {
       "路径": "资源管理/复用决策.json",
@@ -445,27 +477,27 @@
     },
     {
       "路径": "资源管理/实现/资源管理.py",
-      "sha256": "922f2781d73d3562491d579cf401be28ebc9b3368562427fb9228a22b993dd93"
+      "sha256": "aa7f6e448b0731006e6e58ae5cae7a19afba8f28c456ef2b0b4b790fe587e7c9"
     },
     {
       "路径": "资源管理/权限契约/权限契约.json",
-      "sha256": "4ff13b9ec92b585e238fdd2474fc4778ff6fd9bd5d7374abfc833d4e5e1ae8b6"
+      "sha256": "db374a9722c2d2c2fff68f7d124afcf7592b9b7e7137784ca1e9fe08b97cde20"
     },
     {
       "路径": "资源管理/能力契约/参数契约.json",
-      "sha256": "8ef81231f40786906e0c8e9cd32cf9832b62b5e9449b60b5fed04ee117be2509"
+      "sha256": "be7e1512703c66ac6f01f4fb5ed1a532d0f992d8b80440b3e290a61864890dcd"
     },
     {
       "路径": "资源管理/能力定义.json",
-      "sha256": "3871511318575217811292aaf102de4608fab9c5b984abff0ad6faf8fd8e11b5"
+      "sha256": "98ace8e9e4144ad7fd0fbdfecfe99a9c2c020aea0e01303292525d695ce0837a"
     },
     {
       "路径": "资源管理/能力数据/Agent查询数据.json",
-      "sha256": "d559bbd88829f57b0eddac610333087d9197c6b6f018fd1770acc939ebbd6fcc"
+      "sha256": "09878f7e8be331e060db14f191bb06cfee9bc609774990f3b40f608e6338be25"
     },
     {
       "路径": "资源管理/能力数据/能力搜索数据.json",
-      "sha256": "2503a40d37e7e685db08242b96bdafa32c67077adf541e5abbd3befaed18fe60"
+      "sha256": "4e6cec70ea6faab2f5283b35a2e05d9cf19572f0ca5abfafa8cb9e64ff27d495"
     },
     {
       "路径": "资源管理/说明/使用说明.md",
@@ -488,8 +520,12 @@
       "sha256": "bf969ede7a6912258be5841de0f99a95396e0bde06ecad14f7e69a6316dfb190"
     },
     {
+      "路径": "资源管理/验证场景/正向HTTP场景.json",
+      "sha256": "d8a41cb2dd6661850fbf0483f35300ed96a04b7a1bbb36e05371aefdc0e93bb6"
+    },
+    {
       "路径": "资源管理/验证场景引用.json",
-      "sha256": "5d114a3e4b57b7347b40506026c82a0dbff7d91c91490cbb99b4866c51876c03"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "资源管理/默认配置/默认配置.json",
@@ -544,12 +580,16 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "路径安全/验证场景/正向HTTP场景.json",
+      "sha256": "5b210abc625378283ec63eaf075a6a0f9cc06bd40a0aa3ef2a89904df15e9a43"
+    },
+    {
       "路径": "路径安全/验证场景引用.json",
-      "sha256": "94a5beb72744242830dac0a56285e5050aeebd91c29129e6e32e369203c85cb8"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "进程管理/__init__.py",
-      "sha256": "fa06414ec4c87b45a30e772e6bc3b5a6eda2c5ed98a277bb24591cb8095ec87a"
+      "sha256": "ea1ef96d3bd0e0d02511c558def86d2b81723b57e89caf88c90cea54c012f277"
     },
     {
       "路径": "进程管理/依赖契约/依赖契约.json",
@@ -557,15 +597,19 @@
     },
     {
       "路径": "进程管理/包声明.json",
-      "sha256": "01217fb0f8cdb21719ffabc67f7797ec49fafb70aff88026fdc26477b36b3f6f"
+      "sha256": "9917c5ea364316a46eecb1e3851eff9a47762d96a1e70462a3e70a1aaa22b9ac"
     },
     {
       "路径": "进程管理/复用决策.json",
       "sha256": "491ae01dca0a8bbb91a992cef61226b0ccb0e4d1febce56a1f5ba06ab2bb9597"
     },
     {
+      "路径": "进程管理/夹具/短驻留进程.py",
+      "sha256": "de26e1045c91837d99a86896ec504c9abb190d26ca93f6e673174bde3b7aeec6"
+    },
+    {
       "路径": "进程管理/实现/进程管理.py",
-      "sha256": "c307d788fcc8bd4de17c336bfd41d7c142382859acc0bb6e4ff83ab927514866"
+      "sha256": "a52162c8546d61f094db77a09e7d014590ece9714fdca9ca7257cadbfb589370"
     },
     {
       "路径": "进程管理/权限契约/权限契约.json",
@@ -573,15 +617,15 @@
     },
     {
       "路径": "进程管理/能力契约/参数契约.json",
-      "sha256": "4929b6de20cc2db99158e1f38bf3b6fba8b02d19e14625782c0799bb1496a166"
+      "sha256": "a84a90be04361a7bdfef6093482b8bc5881d014022009e5f9698afbcf218b91d"
     },
     {
       "路径": "进程管理/能力定义.json",
-      "sha256": "6b568b848a2d36fe43e2a7c3b05858a434e8e5d30d422a4a31cbbca4c7afcbc0"
+      "sha256": "206f6e1813fc8c88cbf534225735d8c8b641c8dfa10136c0b0aa529e2eabf9ed"
     },
     {
       "路径": "进程管理/能力数据/能力搜索数据.json",
-      "sha256": "1ea5c495e8f06fd05903e1bd3dcc035493d601a419e5f8cf0521e3aa813db632"
+      "sha256": "ad572bd2c275f1972cea013f3fad464177a6dd0278881dc10d8166a11d802325"
     },
     {
       "路径": "进程管理/说明/使用说明.md",
@@ -596,8 +640,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "进程管理/验证场景/正向HTTP场景.json",
+      "sha256": "e93918be5c98098ae0e06ba25ce37ce5339cc12f632673f3a0669b5b5a6a6737"
+    },
+    {
       "路径": "进程管理/验证场景引用.json",
-      "sha256": "8fcb0846b391649d20ddee2a31c0b1f3b0e36acd04cbce616a0280da7dd2bd36"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     },
     {
       "路径": "额度控制/__init__.py",
@@ -648,8 +696,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "额度控制/验证场景/正向HTTP场景.json",
+      "sha256": "369f150459d21b135bde20b4c5bc51420a0f5a2333b2ee1c287f803fbc8f6b26"
+    },
+    {
       "路径": "额度控制/验证场景引用.json",
-      "sha256": "4f30e442d8d18969ad3d0e41c0d1de6933fb8f91f5f2891eede2e1887cafd729"
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
     }
   ]
 }

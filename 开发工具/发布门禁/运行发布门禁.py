@@ -330,8 +330,10 @@ def _读取契约能力(制品目录: Path) -> tuple[list[dict[str, Any]], list[
                 问题表.append(f"公开能力重复: {能力id}")
                 continue
             已见.add(能力id)
-            缺字段 = [字段 for 字段 in ("参数", "返回", "错误码", "行为", "提供者", "版本")
+            缺字段 = [字段 for 字段 in ("返回", "错误码", "行为", "提供者", "版本")
                    if not 能力.get(字段)]
+            if "参数" not in 能力 or not isinstance(能力.get("参数"), list):
+                缺字段.insert(0, "参数")
             if 缺字段:
                 问题表.append(f"{能力id}: 唯一契约缺字段 {缺字段}")
             能力表.append(能力)
