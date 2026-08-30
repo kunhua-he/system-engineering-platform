@@ -30,7 +30,7 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 # ── 句柄与连接管理 ──────────────────────────────
 
 句柄系统 = 句柄体系()
-连接表: dict[str, dict[str, Any]] = {}          # 句柄id → 连接信息
+连接表: dict[int, dict[str, Any]] = {}          # 句柄id → 连接信息
 调用函数表: dict[str, Callable] = {}             # 连接类型+本地/云端 → 真实调用函数
 锁 = threading.Lock()
 
@@ -42,9 +42,9 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 
 降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
 
-def _句柄键(句柄id: str | int) -> str:
-    """连接表统一使用公开的六位数字字符串键；状态机仍保留整数id。"""
-    return str(句柄id)
+def _句柄键(句柄id: str | int) -> int:
+    """连接表与公开网关统一使用整数句柄。"""
+    return int(句柄id)
 
 def _包申报超时() -> int:
     """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""
@@ -111,7 +111,7 @@ def _内存守卫(连接类型: str, 配置: dict) -> 结果 | None:
 def _回收过期句柄() -> None:
     """回收过期句柄：锁内只标记，实际释放和终态收口在锁外完成。"""
     now = time.time()
-    待释放: list[tuple[str, Any]] = []
+    待释放: list[tuple[int, Any]] = []
     with 锁:
         for 句柄id, 连接 in list(连接表.items()):
             if 连接.get("状态", "有效") != "有效":
@@ -127,7 +127,7 @@ def _回收过期句柄() -> None:
     _完成释放(待释放, "超时")
 
 
-def _完成释放(待释放: list[tuple[str, Any]], 原因: str) -> None:
+def _完成释放(待释放: list[tuple[int, Any]], 原因: str) -> None:
     """执行释放回调并按真实结果收口；失败时保留连接账本供重试。"""
     for 句柄id, 释放函数 in 待释放:
         成功 = True
@@ -170,7 +170,7 @@ def _登记连接(连接类型: str, 配置: dict, *, 超时秒: int, 所有者:
                                 "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续租，可显式释放"})
 
 
-def _取连接(句柄id: str) -> tuple[dict[str, Any] | None, str]:
+def _取连接(句柄id: int) -> tuple[dict[str, Any] | None, str]:
     _回收过期句柄()
     键 = _句柄键(句柄id)
     try:
@@ -193,7 +193,45 @@ def _取连接(句柄id: str) -> tuple[dict[str, Any] | None, str]:
     return 连接, ""
 
 
-def _调用模型(句柄id: str, 连接类型: str, 参数: dict) -> 结果:
+def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
+    """URL连接的默认 OpenAI 兼容调用器，不依赖包外注册副作用。"""
+    import json
+    import urllib.error
+    import urllib.request
+    基址 = str(配置.get("url") or "").rstrip("/")
+    if not 基址:
+        return _失败("提供者不可用", f"{连接类型}连接未配置url")
+    模型 = 配置.get("模型名") or 配置.get("模型")
+    if 连接类型 == "LLM":
+        消息 = list(参数.get("消息列表") or [])
+        if 参数.get("系统提示词"):
+            消息.insert(0, {"role": "system", "content": 参数["系统提示词"]})
+        路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息}
+    elif 连接类型 == "向量":
+        路径, 请求体 = "/embeddings", {"model": 模型, "input": 参数.get("文本")}
+    else:
+        路径, 请求体 = "/rerank", {"model": 模型, "query": 参数.get("查询"), "documents": 参数.get("文档列表")}
+    请求 = urllib.request.Request(
+        基址 + 路径, data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"), method="POST",
+        headers={"Content-Type": "application/json", **(
+            {"Authorization": f"Bearer {配置['api_key']}"} if 配置.get("api_key") else {})},
+    )
+    try:
+        with urllib.request.urlopen(请求, timeout=30) as 响应:
+            数据 = json.loads(响应.read().decode("utf-8"))
+        if 连接类型 == "LLM":
+            return 结果.成功结果({"回复": 数据["choices"][0]["message"]["content"], "用量": 数据.get("usage", {})})
+        if 连接类型 == "向量":
+            向量 = 数据["data"][0]["embedding"]
+            return 结果.成功结果({"向量": 向量, "维度": len(向量)})
+        原始 = 数据.get("results") or 数据.get("data") or []
+        重排结果 = [{"索引": 项.get("index"), "分数": 项.get("relevance_score", 项.get("score"))} for 项 in 原始]
+        return 结果.成功结果({"重排结果": 重排结果})
+    except (OSError, ValueError, KeyError, IndexError, TypeError, urllib.error.HTTPError) as 错误:
+        return _失败("模型调用失败", f"{连接类型} HTTP调用失败: {错误}")
+
+
+def _调用模型(句柄id: int, 连接类型: str, 参数: dict) -> 结果:
     连接, 原因 = _取连接(句柄id)
     if 连接 is None:
         return _失败("句柄失效", 原因)
@@ -202,7 +240,7 @@ def _调用模型(句柄id: str, 连接类型: str, 参数: dict) -> 结果:
     部署形态 = 连接["配置"].get("部署形态") or "本地"
     调用函数 = 调用函数表.get(f"{连接类型}:{部署形态}")
     if 调用函数 is None:
-        return _失败("提供者不可用", f"{连接类型}({部署形态}) 模型调用器未注册（当前无真实 Provider，不模拟成功）")
+        return _HTTP调用模型(连接类型, 连接["配置"], 参数)
     try:
         return 调用函数(配置=连接["配置"], **参数)
     except Exception as 错误:
@@ -390,8 +428,8 @@ def _合入环境参数(连接类型: str, 显式: dict) -> dict:
 
 # ── 本地模型启动器（路径入参，底座负责启动并绑定句柄）────────
 
-本地进程表: dict[str, Any] = {}  # 句柄id → 子进程对象
-全局模型索引: dict[tuple[str, str], str] = {}  # (模型类型, 规范化源路径) → 全局句柄
+本地进程表: dict[int, Any] = {}  # 句柄id → 子进程对象
+全局模型索引: dict[tuple[str, str], int] = {}  # (模型类型, 规范化源路径) → 全局句柄
 本地启动锁 = threading.Lock()  # 防止同一路径并发启动出多个模型进程
 
 
@@ -541,7 +579,7 @@ def 启动本地模型(模型路径: str | None = None, 启动器: str | None = 
         return _启动本地模型(模型路径, 启动器, 模型类型, 端口, 模型大小字节, 参数, 超时秒)
 
 
-def _终止本地进程(句柄id: str) -> bool:
+def _终止本地进程(句柄id: int) -> bool:
     """释放句柄时终止整个本地模型进程组。
 
     进程表取出与状态迁移在同一锁内完成（防并发释放/过期回收/启动失败
@@ -582,13 +620,17 @@ def _终止本地进程(句柄id: str) -> bool:
         return False
 
 
-def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
+def 注册本地进程(句柄: int | None = None, 进程对象: Any = None) -> 结果:
     """把真实拉起的子进程绑定到句柄，并登记到状态机统一回收（由适配层 Provider 调用）。"""
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     连接 = 连接表.get(句柄)
     if 连接 is None:
         return _失败("句柄失效", f"句柄 {句柄} 不存在")
+    if 进程对象 is None:
+        if 本地进程表.get(句柄) is None:
+            return _失败("进程未绑定", f"句柄 {句柄} 尚未绑定本地进程")
+        return 结果.成功结果({"句柄": 句柄, "已绑定进程": True})
     本地进程表[句柄] = 进程对象
     # 登记到状态机（句柄体系）：进程资源，失效时统一回收
     try:
@@ -603,25 +645,25 @@ def 注册本地进程(句柄: str = None, 进程对象: Any = None) -> 结果:
 
 # ── 句柄调用（持句柄使用模型）────────────────────────
 
-def 生成对话(句柄: str = None, 消息列表: list = None, 系统提示词: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+def 生成对话(句柄: int | None = None, 消息列表: list = None, 系统提示词: str = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
     return _调用模型(句柄, "LLM", {"消息列表": 消息列表, "系统提示词": 系统提示词})
 
 
-def 生成嵌入(句柄: str = None, 文本: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+def 生成嵌入(句柄: int | None = None, 文本: str = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     if not isinstance(文本, str) or not 文本.strip():
         return _失败("参数不合法", "文本必须是非空字符串")
     return _调用模型(句柄, "向量", {"文本": 文本})
 
 
-def 执行重排(句柄: str = None, 查询: str = None, 文档列表: list = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+def 执行重排(句柄: int | None = None, 查询: str = None, 文档列表: list = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     if not isinstance(查询, str) or not 查询.strip():
         return _失败("参数不合法", "查询必须是非空字符串")
     if not isinstance(文档列表, list) or not 文档列表:
@@ -631,9 +673,9 @@ def 执行重排(句柄: str = None, 查询: str = None, 文档列表: list = No
 
 # ── 句柄生命周期 ──────────────────────────────────
 
-def 续租句柄(句柄: str = None, 租约秒: int = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+def 续租句柄(句柄: int | None = None, 租约秒: int = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     连接, 原因 = _取连接(句柄)
     if 连接 is None:
         return _失败("句柄失效", 原因)
@@ -644,9 +686,9 @@ def 续租句柄(句柄: str = None, 租约秒: int = None) -> 结果:
     return 结果.成功结果({"句柄": 句柄, "已续租": True, "超时秒": 连接["超时秒"]})
 
 
-def 释放句柄(句柄: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+def 释放句柄(句柄: int | None = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     with 锁:
         连接 = 连接表.get(句柄)
         if 连接 is not None:
@@ -682,9 +724,9 @@ def 释放句柄(句柄: str = None) -> 结果:
                        "说明": "句柄不存在或已释放（幂等）"})
 
 
-def 查询句柄状态(句柄: str = None) -> 结果:
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return _失败("参数不合法", "句柄必须是非空字符串")
+def 查询句柄状态(句柄: int | None = None) -> 结果:
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return _失败("参数不合法", "句柄必须是1到999999的整数")
     连接 = 连接表.get(句柄)
     if 连接 is None:
         有效, _ = 句柄系统.校验(int(句柄))

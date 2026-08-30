@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "1f4bf31bd2f325d62b537a36a1b067b0b846cd5f29d091957a8b827aff3fe43c"
+      "sha256": "7b45eb358dc85aeae7ba603da5f302ae6bdd48e841a7af78adc34d195a814e86"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "1d74ad38b50bdd477b2d6894625d9440cc6b30876824879266d12f56d3851b7d"
+      "sha256": "cadd33910bd42804a91b96169b850fde2a85442716dbed0e38c8eaa7b31632a8"
     },
     {
       "路径": "复用决策.json",
@@ -21,11 +21,11 @@
     },
     {
       "路径": "夹具/本机受管模型.env",
-      "sha256": "79e282117796108c4c53d6e13ca03ddb2e5d5775381c02e36bcd342dc44e1605"
+      "sha256": "1d5e5a6a4fda43eaf847b3e97283925b6e7bcce1e939af14f44218ea273e4e7d"
     },
     {
       "路径": "实现/模型连接器.py",
-      "sha256": "b4bd2f4243a86ebff758a2a90c31256bbdfec7efc15df1e0e6d9354f58376515"
+      "sha256": "b3fbbda160245e073ac6467433d3cffdce67413a8aeffb96ed0ecff859028bfd"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -33,11 +33,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "cb4b26285d63edb47a3fbeefc0a96463d1ec31a04abb52097e80995938064a15"
+      "sha256": "ae62e3f4e8742904161d45fd2bebf274f302edb984a027de73490373085265ef"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "d44662355fc08ad76d3b4755c015b21f8a9c1e2609ac891871a63704f2feff50"
+      "sha256": "31adbf840aa5072f23c2b97317ded7a3143806bf2437fb5321ab56876ed723be"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
@@ -57,7 +57,19 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "568f38e4d68a71a0842a896bf07d8d93438f5a9c547c464c70558dabe7c191e5"
+      "sha256": "07b4eb7a6f5e82f0e14e22a7393d1707f6bc6a93a81a8010b16e555e81f64cf4"
+    },
+    {
+      "路径": "验证夹具/llama-server",
+      "sha256": "f8f746f722ac37fe654b38fc34070aab825dad77c6bc6d913b46950a8a55325f"
+    },
+    {
+      "路径": "验证夹具/模型HTTP服务.py",
+      "sha256": "05915ae59e60bd852d8d81bf2a08accd9f373b7124193998f854ec3e981de166"
+    },
+    {
+      "路径": "验证夹具/验证模型.gguf",
+      "sha256": "7df2ecad67187bfee033eb36dad4eb7684346252691f297811bc0dc67e0db995"
     }
   ]
 }

@@ -14,7 +14,7 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 
 句柄系统 = 句柄体系()
-结构表: dict[str, dict] = {}   # 句柄 → {类型, 容器}
+结构表: dict[int, dict] = {}   # 句柄 → {类型, 容器}
 锁 = threading.Lock()
 
 
@@ -25,7 +25,7 @@ def _创建结构(类型: str, 超时秒: int = None) -> 结果:
     return 结果.成功结果({"句柄": 对象.句柄id, "类型": 类型,
                             "说明": f"{类型}已创建，持句柄操作；默认30分钟超时可续约"})
 
-def _取结构(句柄: str) -> tuple[dict | None, str]:
+def _取结构(句柄: int) -> tuple[dict | None, str]:
     有效, 原因 = 句柄系统.校验(句柄id=句柄)
     if not 有效:
         return None, 原因
@@ -45,7 +45,7 @@ def 创建队列(超时秒: int = None) -> 结果:
     return _创建结构("队列", 超时秒)
 
 
-def 压栈(句柄: str = None, 值: object = None) -> 结果:
+def 压栈(句柄: int = None, 值: object = None) -> 结果:
     """入栈。返回 {大小}。"""
     结构, 原因 = _取结构(句柄)
     if 结构 is None:
@@ -56,7 +56,7 @@ def 压栈(句柄: str = None, 值: object = None) -> 结果:
     return 结果.成功结果({"大小": len(结构["容器"])})
 
 
-def 出栈(句柄: str = None) -> 结果:
+def 出栈(句柄: int = None) -> 结果:
     """出栈。返回 {值, 大小}。"""
     结构, 原因 = _取结构(句柄)
     if 结构 is None:
@@ -69,7 +69,7 @@ def 出栈(句柄: str = None) -> 结果:
     return 结果.成功结果({"值": 值, "大小": len(结构["容器"])})
 
 
-def 入队(句柄: str = None, 值: object = None) -> 结果:
+def 入队(句柄: int = None, 值: object = None) -> 结果:
     """入队。返回 {大小}。"""
     结构, 原因 = _取结构(句柄)
     if 结构 is None:
@@ -80,7 +80,7 @@ def 入队(句柄: str = None, 值: object = None) -> 结果:
     return 结果.成功结果({"大小": len(结构["容器"])})
 
 
-def 出队(句柄: str = None) -> 结果:
+def 出队(句柄: int = None) -> 结果:
     """出队。返回 {值, 大小}。"""
     结构, 原因 = _取结构(句柄)
     if 结构 is None:
@@ -93,10 +93,10 @@ def 出队(句柄: str = None) -> 结果:
     return 结果.成功结果({"值": 值, "大小": len(结构["容器"])})
 
 
-def 释放句柄(句柄: str = None) -> 结果:
+def 释放句柄(句柄: int = None) -> 结果:
     """释放结构句柄（幂等）。"""
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="数据结构")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="数据结构")
     with 锁:
         结构表.pop(句柄, None)
         句柄系统.失效(句柄, "释放")

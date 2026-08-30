@@ -14,7 +14,7 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 
 句柄系统 = 句柄体系()
-资源表: dict[str, dict] = {}
+资源表: dict[int, dict] = {}
 锁 = threading.Lock()
 
 
@@ -22,9 +22,9 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
 线程池释放等待秒 = 5.0
 
-def _句柄键(句柄: str | int) -> str:
-    """资源表统一使用公开句柄字符串键，状态机仍接收整数id。"""
-    return str(句柄)
+def _句柄键(句柄: str | int) -> int:
+    """资源表与公开网关统一使用整数句柄。"""
+    return int(句柄)
 
 def _创建(类型: str, 对象: object, 说明: str) -> 结果:
     with 锁:
@@ -161,8 +161,8 @@ def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: fl
 
 def 释放句柄(句柄: str = None) -> 结果:
     """释放并发资源句柄（线程池有界等待，未收敛时保留账本）。"""
-    if not isinstance(句柄, str) or not 句柄.strip():
-        return 结果.失败("参数不合法", "句柄必须是非空字符串", 来源="并发控制")
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="并发控制")
     键 = _句柄键(句柄)
     with 锁:
         资源 = 资源表.get(键)

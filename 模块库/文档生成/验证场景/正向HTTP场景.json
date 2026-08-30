@@ -33,13 +33,14 @@
                 "媒体类型": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               },
               "必需字段": [
-                "字节b64",
+                "字节",
                 "摘要",
                 "诊断",
                 "附加"
               ],
               "字段类型": {
-                "字节b64": "文本型",
+                "字节": "字典型",
+                "字节.base64": "文本型",
                 "摘要": "文本型",
                 "诊断": "列表型",
                 "附加": "字典型"

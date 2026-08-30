@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import uuid
 from pathlib import Path
 
@@ -180,8 +181,8 @@ def 验证修复(仓库路径: str, 验证命令: object, 期望摘要: str = ""
     if not isinstance(验证命令, list) or not 验证命令 or not all(
             isinstance(项, str) for 项 in 验证命令):
         return _失败("参数不合法", "验证命令必须为非空文本列表")
-    执行 = _调用支持库("本地进程.执行命令受控", {
-        "命令列表": 验证命令, "超时秒": 超时秒, "工作目录": 仓库路径,
+    执行 = _调用支持库("系统核心支持库.进程管理.执行命令", {
+        "命令": shlex.join(验证命令), "超时秒": 超时秒, "工作目录": 仓库路径,
     })
     if not 执行.成功:
         return _失败("验证失败", f"验证命令执行失败: {执行.错误说明}",

@@ -222,6 +222,20 @@ class TestP020多步骤场景契约(unittest.TestCase):
         with mock.patch.object(验证器, "_发送请求", side_effect=返回函数):
             return 验证器._执行场景束(制品, 场景束, "http://127.0.0.1:45080", 超时秒=1)
 
+    def test_正式嵌套制品的制品根指向平台客户端代码根(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            外层 = Path(临时)
+            代码根 = 外层 / "平台客户端"
+            目标 = 代码根 / "支持库" / "夹具.py"
+            目标.parent.mkdir(parents=True)
+            (代码根 / "__init__.py").write_text("", encoding="utf-8")
+            目标.write_text("通过 = True\n", encoding="utf-8")
+            展开 = 验证器._展开动态值(
+                {"$动态": "制品根", "相对路径": "支持库/夹具.py"},
+                制品目录=外层, 包目录=代码根, 临时目录=外层 / "临时", 步骤返回表={},
+            )
+            self.assertEqual(Path(展开).resolve(), 目标.resolve())
+
     def test_静态成功与引用场景文件消费同一契约(self):
         for 引用文件 in (False, True):
             with self.subTest(引用文件=引用文件), tempfile.TemporaryDirectory() as 临时:
@@ -254,8 +268,9 @@ class TestP020多步骤场景契约(unittest.TestCase):
             制品 = 建新制品(Path(临时), ["样例.创建", "样例.读取"], [
                 新场景("句柄链", [新步骤("读取", "样例.读取", {
                     "句柄": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.值.资源.句柄"},
+                    "种子": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.参数.种子"},
                 }, 返回断言={"关键值": {"内容": "已读取"}})], 前置步骤=[
-                    新步骤("创建", "样例.创建", 返回断言={"关键值": {"资源.句柄": "句柄-1"}}),
+                    新步骤("创建", "样例.创建", {"种子": "甲"}, 返回断言={"关键值": {"资源.句柄": "句柄-1"}}),
                 ], 清理步骤=[新步骤("释放", "样例.创建", {
                     "句柄": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.值.资源.句柄"},
                 })]),
@@ -269,6 +284,7 @@ class TestP020多步骤场景契约(unittest.TestCase):
                 return 200, 统一成功返回(值), 1
             报告 = self._执行(制品, 返回)
             self.assertEqual(dict(收到)["读取"]["句柄"], "句柄-1")
+            self.assertEqual(dict(收到)["读取"]["种子"], "甲")
             self.assertEqual(dict(收到)["释放"]["句柄"], "句柄-1")
             self.assertEqual(报告.失败数, 0)
 
@@ -279,6 +295,7 @@ class TestP020多步骤场景契约(unittest.TestCase):
                     "输入": {"$动态": "夹具文件复制", "来源": "夹具/输入.txt", "目标": "工作/输入.txt"},
                     "夹具": {"$动态": "制品根", "相对路径": "模块库/样例包/夹具/输入.txt"},
                     "目录": {"$动态": "受管临时目录", "相对路径": "工作"},
+                    "输出": {"$动态": "受管临时路径", "相对路径": "工作/输出.txt"},
                 }, 返回断言={"关键值": {"内容": "夹具内容"}})], 清理步骤=[
                     新步骤("删除", "样例.删除", {"路径": {"$动态": "受管临时目录", "相对路径": "工作/输入.txt"}}),
                 ]),
@@ -294,6 +311,8 @@ class TestP020多步骤场景契约(unittest.TestCase):
                     self.assertEqual(Path(步骤.参数["输入"]).read_text(encoding="utf-8"), "夹具内容")
                     self.assertEqual(Path(步骤.参数["夹具"]).read_text(encoding="utf-8"), "夹具内容")
                     self.assertTrue(Path(步骤.参数["目录"]).is_dir())
+                    self.assertTrue(Path(步骤.参数["输出"]).parent.is_dir())
+                    self.assertFalse(Path(步骤.参数["输出"]).exists())
                     return 200, 统一成功返回({"内容": "夹具内容"}), 1
                 if "路径" in 步骤.参数:
                     Path(步骤.参数["路径"]).unlink()
