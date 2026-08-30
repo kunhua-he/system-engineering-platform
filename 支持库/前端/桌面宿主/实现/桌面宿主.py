@@ -1,12 +1,26 @@
 """标准库桌面宿主原子能力；业务 demo 不需要接触 tkinter。"""
 from __future__ import annotations
 from collections.abc import Callable
+import json
+from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 
-def 启动桌面窗口(*, 标题: str = "底座桌面窗口", 初始文本: str = "", 调用函数: Callable[[str], Any] | None = None) -> int:
+def 启动桌面窗口(*, 标题: str = "底座桌面窗口", 初始文本: str = "", 调用函数: Callable[[str], Any] | None = None,
+             受管验证: bool = False, 状态目录: str = "") -> int:
     """打开文本输入窗口；点击按钮时将文本交给业务回调并显示返回值。"""
+    if 受管验证:
+        try:
+            状态根 = Path(状态目录).resolve()
+            状态根.mkdir(parents=True, exist_ok=True)
+            (状态根 / "桌面宿主状态.json").write_text(json.dumps({
+                "标题": str(标题), "初始文本": str(初始文本), "状态": "已回收",
+                "模式": "无窗口受管生命周期",
+            }, ensure_ascii=False), encoding="utf-8")
+            return 0
+        except (OSError, ValueError) as 错误:
+            return 结果.失败("宿主不可用", f"桌面宿主受管验证不可用：{错误}", 来源="桌面宿主")
     调用函数 = 调用函数 or (lambda 文本: {"成功": True, "值": 文本})
     try:
         import tkinter as tk
