@@ -173,6 +173,18 @@ class 测试客户端构建安全(unittest.TestCase):
         self.assertTrue((self.目标根 / "验证夹具" / "空状态.sqlite3").is_file())
         self.assertFalse((self.目标根 / "工程缓存" / "运行状态.sqlite3").exists())
 
+    def test_子进程入口同时兼容源码根和平台客户端导入根(self) -> None:
+        入口表 = list((系统根 / "支持库").rglob("子进程入口.py"))
+        self.assertGreaterEqual(len(入口表), 8)
+        for 入口 in 入口表:
+            源码 = 入口.read_text(encoding="utf-8")
+            if "系统根 = Path(__file__).resolve().parents[" not in 源码:
+                continue
+            self.assertIn(
+                '导入根 = 系统根.parent if 系统根.name == "平台客户端" else 系统根',
+                源码, str(入口),
+            )
+
     def test_正式构建前拒绝符号链接稳定指针且不覆盖外部(self) -> None:
         临时系统根 = self.临时根 / "临时系统"
         源码包 = 临时系统根 / "测试包"

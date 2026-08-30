@@ -70,8 +70,9 @@ def 注入平台客户端路径() -> None:
 
 
 系统根 = Path(__file__).resolve().parents[5]
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
+导入根 = 系统根.parent if 系统根.name == "平台客户端" else 系统根
+if str(导入根) not in sys.path:
+    sys.path.insert(0, str(导入根))
 注入平台客户端路径()
 
 from 支持库.后端.图像处理支持库.图像解码.实现.子进程解析 import (  # noqa: E402
