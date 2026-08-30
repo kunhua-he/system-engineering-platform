@@ -49,7 +49,10 @@ def 保存检查点(会话id: str = None, 状态快照: dict = None, 版本: str
             连接.execute("INSERT INTO 检查点 VALUES (?,?,?,?,?)",
                          (检查点id, 会话id, 快照文本, 版本 or "1.0.0",
                           time.strftime("%Y-%m-%d %H:%M:%S")))
-        return 结果.成功结果({"检查点id": 检查点id, "会话id": 会话id, "版本": 版本 or "1.0.0"})
+        返回值 = {"检查点id": 检查点id, "会话id": 会话id, "版本": 版本 or "1.0.0"}
+        if 库路径:
+            返回值["库路径"] = 路径
+        return 结果.成功结果(返回值)
     except Exception as 错误:
         return 结果.失败("保存检查点失败", str(错误), 来源="检查点恢复")
 
