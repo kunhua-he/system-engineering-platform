@@ -1,29 +1,14 @@
-"""HTML 黑盒验证器：对编译产物发真实 HTTP GET/POST，只看返回值判断功能。
-
-职责（华哥裁决 2026-08-29）：
-- 启动编译产物（独立 HTML 启动器），得到真实 HTTP 地址
-- 按验证场景对产物发 GET / POST 请求
-- 只看 HTTP 状态码 + 返回的 成功/值/错误码/错误说明/请求id/耗时
-- 功能正常/异常直接判定；异常按 编译/路由/参数/能力/Provider 定位线索输出
-- 每次验证落证据（请求、返回、状态、耗时、资源释放），绑定工作区指纹
-
-本验证器不导入源码、不调用内部实现、不猜后端状态；后端怎么实现它不需要知道。
-编译器只编译小单元 + 检查合规，禁止跑全量；HTML 验证器可以全量、多线程并发。
-
-用法：
-    python3.14 开发工具/HTML验证/验证器.py --制品 示例项目/可双击演示/产物文件夹/20260822-demo
-    python3.14 开发工具/HTML验证/验证器.py --制品 <路径> --场景 验证场景.json
-    python3.14 开发工具/HTML验证/验证器.py --制品 <路径> --并发 32
-    python3.14 开发工具/HTML验证/验证器.py --制品 <路径> --只生成场景   # 只生成场景不验证
-"""
-
+"""HTML 黑盒验证器：只经 HTTP 验证编译制品的包级真实场景。"""
 from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
+import queue
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -31,6 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,57 +26,128 @@ from typing import Any
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-验证版本 = "1.0.0"
+# P1-37：工作区指纹只消费编译控制面的单一实现，不在本验证器复制算法。
+from 开发工具.项目编译.项目编译器 import _来源指纹 as _编译来源指纹
+
+验证版本 = "2.0.0"
 默认并发 = 8
 默认超时秒 = 15
-固定端口 = 45080  # 华哥裁决：HTML 黑盒验证器固定端口，不静默换随机端口
+默认启动超时秒 = 20
+固定端口 = 45080
 请求上限字节 = 1024 * 1024
-证据目录名 = "验证证据"
+输出上限字节 = 64 * 1024
 场景文件名 = "验证场景.json"
+统一返回字段 = ("成功", "值", "错误码", "错误说明", "请求id", "耗时毫秒")
+未指定 = object()
 
-
-# ---------- 数据结构 ----------
 
 @dataclass
 class 验证场景:
-    """一个能力的验证场景：怎么请求、预期什么。"""
+    """由正式包的验证场景引用声明的一次真实请求及其断言。"""
 
     场景id: str
-    能力id: str = ""
-    方法: str = "POST"  # GET / POST
+    能力id: str
+    方法: str = "POST"
     路径: str = "/网关/调用"
     参数: dict[str, Any] = field(default_factory=dict)
     预期状态码: int = 200
-    预期错误码: str = ""  # 空 = 期望成功；非空 = 期望该错误码
-    预期包含: str = ""  # 返回正文应包含的子串
+    预期成功: bool = True
+    预期错误码: str = ""
+    预期包含: str = ""
+    预期值类型: str = ""
+    预期关键值: dict[str, Any] = field(default_factory=dict)
+    预期返回契约: dict[str, Any] = field(default_factory=dict)
+    预期值: Any = None
+    校验完整值: bool = False
     说明: str = ""
+    制品摘要: str = ""
 
     def 转字典(self) -> dict[str, Any]:
+        预期: dict[str, Any] = {
+            "成功": self.预期成功,
+            "状态码": self.预期状态码,
+        }
+        if self.预期错误码:
+            预期["错误码"] = self.预期错误码
+        if self.预期包含:
+            预期["包含"] = self.预期包含
+        if self.预期值类型:
+            预期["值类型"] = self.预期值类型
+        if self.预期关键值:
+            预期["关键值"] = self.预期关键值
+        if self.预期返回契约:
+            预期["返回契约"] = self.预期返回契约
+        if self.校验完整值:
+            预期["值"] = self.预期值
         return {
-            "场景id": self.场景id, "能力id": self.能力id, "方法": self.方法,
-            "路径": self.路径, "参数": self.参数, "预期状态码": self.预期状态码,
-            "预期错误码": self.预期错误码, "预期包含": self.预期包含, "说明": self.说明,
+            "场景id": self.场景id,
+            "能力id": self.能力id,
+            "方法": self.方法,
+            "路径": self.路径,
+            "参数": self.参数,
+            "预期": 预期,
+            "说明": self.说明,
+            "制品摘要": self.制品摘要,
         }
 
     @classmethod
-    def 从字典(cls, 数据: dict[str, Any]) -> "验证场景":
+    def 从字典(cls, 数据: dict[str, Any]) -> 验证场景:
+        if not isinstance(数据, dict):
+            raise ValueError("验证场景必须是对象")
+        场景id = 数据.get("场景id")
+        能力id = 数据.get("能力id")
+        if not isinstance(场景id, str) or not 场景id.strip():
+            raise ValueError("验证场景缺少场景id")
+        if not isinstance(能力id, str) or not 能力id.strip():
+            raise ValueError(f"验证场景 {场景id} 缺少能力id")
+        方法 = 数据.get("方法", "POST")
+        路径 = 数据.get("路径", "/网关/调用")
+        参数 = 数据.get("参数", {})
+        预期 = 数据.get("预期")
+        if not isinstance(方法, str) or 方法.upper() not in {"GET", "POST"}:
+            raise ValueError(f"验证场景 {场景id} 方法不合法")
+        if not isinstance(路径, str) or not 路径.startswith("/"):
+            raise ValueError(f"验证场景 {场景id} 路径不合法")
+        if not isinstance(参数, dict):
+            raise ValueError(f"验证场景 {场景id} 参数必须是对象")
+        if not isinstance(预期, dict) or type(预期.get("成功")) is not bool:
+            raise ValueError(f"验证场景 {场景id} 必须声明预期.成功布尔值")
+        预期成功 = 预期["成功"]
+        预期状态码 = 预期.get("状态码", 200 if 预期成功 else 0)
+        if type(预期状态码) is not int or not 0 <= 预期状态码 <= 599:
+            raise ValueError(f"验证场景 {场景id} 预期状态码不合法")
+        错误码 = 预期.get("错误码", "")
+        if not isinstance(错误码, str) or (not 预期成功 and not 错误码):
+            raise ValueError(f"验证场景 {场景id} 负向场景必须声明错误码")
+        关键值 = 预期.get("关键值", {})
+        返回契约 = 预期.get("返回契约", {})
+        if not isinstance(关键值, dict) or not isinstance(返回契约, dict):
+            raise ValueError(f"验证场景 {场景id} 关键值/返回契约必须是对象")
+        有业务断言 = any(("值" in 预期, bool(预期.get("值类型")), bool(关键值), bool(返回契约)))
+        if 预期成功 and not 有业务断言:
+            raise ValueError(f"验证场景 {场景id} 的真实成功场景缺少值/类型/关键值断言")
         return cls(
-            场景id=str(数据.get("场景id", "")),
-            能力id=str(数据.get("能力id", "")),
-            方法=str(数据.get("方法", "POST")).upper(),
-            路径=str(数据.get("路径", "/网关/调用")),
-            参数=数据.get("参数", {}) or {},
-            预期状态码=int(数据.get("预期状态码", 200)),
-            预期错误码=str(数据.get("预期错误码", "")),
-            预期包含=str(数据.get("预期包含", "")),
+            场景id=场景id.strip(),
+            能力id=能力id.strip(),
+            方法=方法.upper(),
+            路径=路径,
+            参数=参数,
+            预期状态码=预期状态码,
+            预期成功=预期成功,
+            预期错误码=错误码,
+            预期包含=str(预期.get("包含", "")),
+            预期值类型=str(预期.get("值类型", "")),
+            预期关键值=关键值,
+            预期返回契约=返回契约,
+            预期值=预期.get("值"),
+            校验完整值="值" in 预期,
             说明=str(数据.get("说明", "")),
+            制品摘要=str(数据.get("制品摘要", "")),
         )
 
 
 @dataclass
 class 验证结果:
-    """一次验证的结果。"""
-
     场景id: str
     能力id: str
     通过: bool = False
@@ -98,85 +155,105 @@ class 验证结果:
     返回: dict[str, Any] = field(default_factory=dict)
     耗时毫秒: float = 0
     失败原因: str = ""
-    定位线索: str = ""  # 编译/路由/参数/能力/Provider
+    定位线索: str = ""
 
     def 转字典(self) -> dict[str, Any]:
         return {
-            "场景id": self.场景id, "能力id": self.能力id, "通过": self.通过,
-            "状态码": self.状态码, "返回": self.返回, "耗时毫秒": self.耗时毫秒,
-            "失败原因": self.失败原因, "定位线索": self.定位线索,
+            "场景id": self.场景id,
+            "能力id": self.能力id,
+            "通过": self.通过,
+            "状态码": self.状态码,
+            "返回": self.返回,
+            "耗时毫秒": self.耗时毫秒,
+            "失败原因": self.失败原因,
+            "定位线索": self.定位线索,
         }
 
 
 @dataclass
 class 验证报告:
-    """一次验证运行的完整报告。"""
-
     制品路径: str = ""
-    制品指纹: dict[str, str] = field(default_factory=dict)
+    制品摘要前: dict[str, Any] = field(default_factory=dict)
+    制品摘要后: dict[str, Any] = field(default_factory=dict)
     场景总数: int = 0
     通过数: int = 0
     失败数: int = 0
+    正向成功数: int = 0
+    负向校验数: int = 0
+    并发峰值: int = 0
     结果列表: list[验证结果] = field(default_factory=list)
+    资源回收: dict[str, Any] = field(default_factory=dict)
+    场景制品摘要: str = ""
     时间: str = ""
+    证据绑定: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def 制品指纹(self) -> dict[str, Any]:
+        """兼容旧调用方；新证据以全文件摘要前后为准。"""
+        return self.制品摘要前
 
     def 转字典(self) -> dict[str, Any]:
         return {
-            "制品路径": self.制品路径, "制品指纹": self.制品指纹,
-            "场景总数": self.场景总数, "通过数": self.通过数, "失败数": self.失败数,
-            "结果列表": [项.转字典() for 项 in self.结果列表], "时间": self.时间,
+            "制品路径": self.制品路径,
+            "制品摘要前": self.制品摘要前,
+            "制品摘要后": self.制品摘要后,
+            "场景总数": self.场景总数,
+            "通过数": self.通过数,
+            "失败数": self.失败数,
+            "正向成功数": self.正向成功数,
+            "负向校验数": self.负向校验数,
+            "并发峰值": self.并发峰值,
+            "结果列表": [结果.转字典() for 结果 in self.结果列表],
+            "资源回收": self.资源回收,
+            "场景制品摘要": self.场景制品摘要,
+            "时间": self.时间,
+            "证据绑定": self.证据绑定,
         }
 
     def 汇总(self) -> str:
-        self.时间 = time.strftime("%Y-%m-%d %H:%M:%S")
-        if self.场景总数 == 0:
-            return "阻断: 无任何验证场景（禁止零验证成功）"
-        if self.失败数 > 0:
-            return f"失败: {self.失败数}/{self.场景总数} 个场景未通过"
-        return f"通过: {self.通过数}/{self.场景总数} 个场景全部通过"
+        if self.场景总数 <= 0:
+            return "阻断: 无任何有效验证场景（禁止零验证成功）"
+        if self.失败数:
+            return f"失败: {self.失败数} 项未通过；正向 {self.正向成功数}，负向 {self.负向校验数}"
+        return f"通过: {self.通过数}/{self.场景总数}；正向 {self.正向成功数}，负向 {self.负向校验数}"
 
-
-# ---------- 工作区指纹 ----------
 
 def _工作区指纹(排除目录: Path | None = None) -> dict[str, str]:
-    """记录验证输入的 Git 提交和工作区指纹，避免旧证据冒充当前源码。"""
+    """复用项目编译控制面的唯一来源指纹实现。"""
+    结果 = dict(_编译来源指纹(排除目录))
+    结果["验证器版本"] = 验证版本
+    结果["指纹实现"] = "开发工具.项目编译.项目编译器._来源指纹"
+    return 结果
 
-    def 执行(命令: list[str]) -> str:
-        try:
-            结果 = subprocess.run(
-                命令, cwd=系统根, capture_output=True, text=True, timeout=15, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return ""
-        return 结果.stdout.strip() if 结果.returncode == 0 else ""
 
-    提交 = 执行(["git", "rev-parse", "HEAD"])
-    状态 = 执行(["git", "status", "--porcelain=v1", "-z"])
-    if 排除目录 is not None:
-        try:
-            排除相对 = 排除目录.resolve().relative_to(系统根.resolve()).as_posix().rstrip("/") + "/"
-            条目 = []
-            for 项 in 状态.split("\0"):
-                if not 项:
-                    continue
-                路径 = 项[3:] if len(项) >= 4 and 项[2] == " " else 项
-                if not 路径.startswith(排除相对):
-                    条目.append(项)
-            状态 = "\0".join(条目)
-        except ValueError:
-            pass
+def _制品全文件摘要(制品目录: Path) -> dict[str, Any]:
+    """摘要制品目录内全部普通文件，路径、类型和内容共同参与绑定。"""
+    if not 制品目录.is_dir():
+        raise ValueError(f"制品目录不存在: {制品目录}")
+    文件清单: list[dict[str, Any]] = []
+    汇总 = hashlib.sha256()
+    for 文件 in sorted(制品目录.rglob("*"), key=lambda 路径: 路径.relative_to(制品目录).as_posix()):
+        if not 文件.is_file():
+            continue
+        相对 = 文件.relative_to(制品目录).as_posix()
+        内容摘要 = hashlib.sha256(文件.read_bytes()).hexdigest()
+        项 = {"路径": 相对, "字节数": 文件.stat().st_size, "sha256": 内容摘要}
+        文件清单.append(项)
+        汇总.update(相对.encode("utf-8"))
+        汇总.update(b"\0")
+        汇总.update(str(项["字节数"]).encode("ascii"))
+        汇总.update(b"\0")
+        汇总.update(内容摘要.encode("ascii"))
+        汇总.update(b"\0")
     return {
-        "提交": 提交 or "未知",
-        "工作区摘要": hashlib.sha256(状态.encode("utf-8")).hexdigest(),
-        "工作区状态": "干净" if not 状态 else "含未提交变更",
-        "验证器版本": 验证版本,
+        "摘要算法": "sha256-全文件-v1",
+        "文件数": len(文件清单),
+        "文件清单": 文件清单,
+        "制品摘要": 汇总.hexdigest(),
     }
 
 
-# ---------- 制品发现 ----------
-
 def _找启动器(制品目录: Path) -> Path:
-    """在制品目录里找独立启动器（运行入口/启动.py 或 独立HTML启动器.py）。"""
     候选 = [
         制品目录 / "运行入口" / "启动.py",
         制品目录 / "运行入口" / "独立HTML启动器.py",
@@ -185,112 +262,183 @@ def _找启动器(制品目录: Path) -> Path:
     for 路径 in 候选:
         if 路径.is_file():
             return 路径
-    # 兜底：递归找 运行入口 下的 py
-    for 路径 in sorted((制品目录 / "运行入口").rglob("*.py")):
-        if "启动" in 路径.name or "入口" in 路径.name:
-            return 路径
+    入口目录 = 制品目录 / "运行入口"
+    if 入口目录.is_dir():
+        for 路径 in sorted(入口目录.rglob("*.py")):
+            if "启动" in 路径.name or "入口" in 路径.name:
+                return 路径
     raise FileNotFoundError(f"制品目录找不到启动器: {制品目录}")
 
 
-def _制品指纹(制品目录: Path) -> dict[str, str]:
-    """对制品关键元数据做摘要：来源、完整性、编译清单。"""
-    指纹: dict[str, str] = {}
-    for 文件名 in ("制品来源.json", "制品完整性摘要.json", "编译清单.json", "依赖锁.json"):
-        路径 = 制品目录 / 文件名
-        if 路径.is_file():
-            指纹[文件名] = hashlib.sha256(路径.read_bytes()).hexdigest()[:16]
-    return 指纹
+def _读取JSON严格(路径: Path, 名称: str) -> Any:
+    try:
+        return json.loads(路径.read_text(encoding="utf-8"))
+    except FileNotFoundError as 错误:
+        raise ValueError(f"缺少{名称}: {路径}") from 错误
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as 错误:
+        raise ValueError(f"{名称}JSON不合法: {路径}: {错误}") from 错误
+
+
+def _扫描公开能力(制品目录: Path) -> tuple[set[str], list[Path]]:
+    """严格对账包声明与能力契约，任何坏文件、缺 id、重复或差集都阻断。"""
+    声明集合: set[str] = set()
+    契约集合: set[str] = set()
+    包目录表: list[Path] = []
+    for 类型目录 in ("模块库", "支持库"):
+        根 = 制品目录 / 类型目录
+        if not 根.is_dir():
+            continue
+        for 声明路径 in sorted(根.rglob("包声明.json")):
+            包目录 = 声明路径.parent
+            包目录表.append(包目录)
+            声明 = _读取JSON严格(声明路径, "包声明")
+            if not isinstance(声明, dict) or not isinstance(声明.get("能力"), list):
+                raise ValueError(f"包声明契约不合法: {声明路径}")
+            本包声明: set[str] = set()
+            for 条目 in 声明["能力"]:
+                if not isinstance(条目, dict) or not isinstance(条目.get("能力id"), str) or not 条目["能力id"].strip():
+                    raise ValueError(f"包声明缺能力id: {声明路径}")
+                能力id = 条目["能力id"].strip()
+                if 能力id in 本包声明 or 能力id in 声明集合:
+                    raise ValueError(f"重复公开能力id: {能力id}")
+                本包声明.add(能力id)
+                声明集合.add(能力id)
+            契约路径 = 包目录 / "能力契约" / "参数契约.json"
+            契约 = _读取JSON严格(契约路径, "能力契约")
+            if not isinstance(契约, dict) or not isinstance(契约.get("能力契约"), list):
+                raise ValueError(f"能力契约结构不合法: {契约路径}")
+            本包契约: set[str] = set()
+            for 条目 in 契约["能力契约"]:
+                if not isinstance(条目, dict) or not isinstance(条目.get("能力id"), str) or not 条目["能力id"].strip():
+                    raise ValueError(f"能力契约缺能力id: {契约路径}")
+                能力id = 条目["能力id"].strip()
+                if 能力id in 本包契约 or 能力id in 契约集合:
+                    raise ValueError(f"重复能力契约id: {能力id}")
+                本包契约.add(能力id)
+                契约集合.add(能力id)
+            if 本包声明 != 本包契约:
+                raise ValueError(
+                    f"包声明与能力契约差集: {包目录}; "
+                    f"仅声明={sorted(本包声明 - 本包契约)} 仅契约={sorted(本包契约 - 本包声明)}"
+                )
+    if not 包目录表 or not 声明集合:
+        raise ValueError("制品无任何公开能力契约")
+    if 声明集合 != 契约集合:
+        raise ValueError("制品公开能力与契约全集不一致")
+    return 声明集合, 包目录表
+
+
+def _解析场景引用(包目录: Path) -> list[dict[str, Any]]:
+    引用路径 = 包目录 / "验证场景引用.json"
+    数据 = _读取JSON严格(引用路径, "验证场景引用")
+    if not isinstance(数据, dict) or not isinstance(数据.get("验证场景引用"), list):
+        raise ValueError(f"验证场景引用契约不合法: {引用路径}")
+    原始列表 = 数据["验证场景引用"]
+    if not 原始列表:
+        raise ValueError(f"验证场景引用为空: {引用路径}")
+    场景表: list[dict[str, Any]] = []
+    for 序号, 引用 in enumerate(原始列表):
+        if not isinstance(引用, dict):
+            raise ValueError(f"无效验证场景引用: {引用路径}#{序号}")
+        if "场景文件" not in 引用:
+            场景表.append(引用)
+            continue
+        相对 = 引用.get("场景文件")
+        if not isinstance(相对, str) or not 相对:
+            raise ValueError(f"场景文件引用不合法: {引用路径}#{序号}")
+        文件 = (包目录 / 相对).resolve()
+        try:
+            文件.relative_to(包目录.resolve())
+        except ValueError as 错误:
+            raise ValueError(f"场景文件越出包目录: {相对}") from 错误
+        场景数据 = _读取JSON严格(文件, "验证场景")
+        列表 = 场景数据.get("验证场景") if isinstance(场景数据, dict) else 场景数据
+        if not isinstance(列表, list):
+            raise ValueError(f"验证场景文件契约不合法: {文件}")
+        引用id = 引用.get("场景id")
+        命中 = [项 for 项 in 列表 if isinstance(项, dict) and (not 引用id or 项.get("场景id") == 引用id)]
+        if not 命中:
+            raise ValueError(f"场景文件没有命中引用: {文件}#{引用id}")
+        场景表.extend(命中)
+    return 场景表
+
+
+def _校验场景全集(公开能力: set[str], 场景原始表: list[dict[str, Any]], 制品摘要: str) -> list[验证场景]:
+    if not 场景原始表:
+        raise ValueError("无任何有效验证场景")
+    结果: list[验证场景] = []
+    场景id集合: set[str] = set()
+    for 原始 in 场景原始表:
+        场景 = 验证场景.从字典(原始)
+        if 场景.场景id in 场景id集合:
+            raise ValueError(f"重复场景id: {场景.场景id}")
+        场景id集合.add(场景.场景id)
+        场景.制品摘要 = 制品摘要
+        结果.append(场景)
+    场景能力 = {场景.能力id for 场景 in 结果}
+    if 场景能力 != 公开能力:
+        raise ValueError(
+            f"契约与场景能力差集: 缺场景={sorted(公开能力 - 场景能力)} "
+            f"多场景={sorted(场景能力 - 公开能力)}"
+        )
+    缺正向 = sorted(能力id for 能力id in 公开能力
+                   if not any(场景.能力id == 能力id and 场景.预期成功 for 场景 in 结果))
+    if 缺正向:
+        raise ValueError(f"每个公开能力必须有真实成功场景，缺少: {缺正向}")
+    return 结果
 
 
 def _扫描能力契约(制品目录: Path) -> list[dict[str, Any]]:
-    """扫描制品内 模块库/ 与 支持库/ 的 能力契约/参数契约.json，生成真实场景。
-
-    规则：每个能力契约条目生成一个 POST /网关/调用 场景；
-    参数用契约里的 默认值/调用示例/示例 填充；无法填满必填参数的场景标为
-    「缺参数」预期错误码（验证参数校验本身），不再凭空造值。
-    """
-    场景列表: list[dict[str, Any]] = []
-    候选目录 = [
-        制品目录 / "模块库",
-        制品目录 / "支持库",
-    ]
-    for 根目录 in 候选目录:
-        if not 根目录.is_dir():
-            continue
-        for 契约路径 in sorted(根目录.rglob("能力契约")):
-            if not 契约路径.is_dir():
-                continue
-            for 参数文件 in sorted(契约路径.rglob("参数契约.json")):
-                try:
-                    数据 = json.loads(参数文件.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                能力列表 = 数据.get("能力契约", []) if isinstance(数据, dict) else []
-                for 条目 in 能力列表:
-                    if not isinstance(条目, dict):
-                        continue
-                    能力id = str(条目.get("能力id") or "").strip()
-                    if not 能力id:
-                        continue
-                    参数声明 = 条目.get("参数", []) or []
-                    示例参数: dict[str, Any] = {}
-                    缺失必填: list[str] = []
-                    for 声明 in 参数声明:
-                        if not isinstance(声明, dict):
-                            continue
-                        名称 = str(声明.get("名称") or "").strip()
-                        if not 名称:
-                            continue
-                        默认值 = 声明.get("默认值")
-                        示例值 = 声明.get("示例")
-                        if 示例值 is not None:
-                            示例参数[名称] = 示例值
-                        elif 默认值 is not None:
-                            示例参数[名称] = 默认值
-                        elif 声明.get("必填"):
-                            缺失必填.append(名称)
-                    # 调用示例 兜底
-                    调用示例 = 条目.get("调用示例") or {}
-                    if isinstance(调用示例, dict) and isinstance(调用示例.get("参数"), dict):
-                        for 键, 值 in 调用示例["参数"].items():
-                            if 键 not in 示例参数:
-                                示例参数[键] = 值
-                    场景列表.append({
-                        "场景id": f"能力.{能力id}", "能力id": 能力id, "方法": "POST",
-                        "路径": "/网关/调用", "参数": 示例参数,
-                        "预期状态码": 200,
-                        # 缺必填参数且无默认值/示例值时，验证器无法凭空构造参数；
-                        # 该场景验证「参数校验」本身：期望网关返回 参数不合法。
-                        "预期错误码": "参数不合法" if 缺失必填 else "",
-                        "预期包含": "", "说明": f"由能力契约自动生成（缺必填: {','.join(缺失必填)}，参数校验场景）"
-                        if 缺失必填 else "由能力契约自动生成",
-                    })
-    return 场景列表
-
-
-def _扫描制品能力(制品目录: Path) -> list[dict[str, Any]]:
-    """兼容旧名：扫描制品生成场景。"""
-    return _扫描能力契约(制品目录)
+    """兼容查询入口：返回严格校验后的公开能力 id。"""
+    能力, _ = _扫描公开能力(制品目录)
+    return [{"能力id": 能力id} for 能力id in sorted(能力)]
 
 
 def _加载场景(制品目录: Path, 场景路径: Path | None) -> list[验证场景]:
-    """加载验证场景：优先显式场景文件，否则扫描制品自动生成。"""
-    if 场景路径 is not None and 场景路径.is_file():
-        数据 = json.loads(场景路径.read_text(encoding="utf-8"))
-        列表 = 数据.get("验证场景", []) if isinstance(数据, dict) else 数据
-        return [验证场景.从字典(项) for 项 in 列表 if isinstance(项, dict) and 项.get("场景id")]
-    自动场景 = _扫描制品能力(制品目录)
-    if not 自动场景:
-        raise ValueError(f"找不到验证场景: {场景路径} 且制品内无可自动生成场景")
-    return [验证场景.从字典(项) for 项 in 自动场景]
+    公开能力, 包目录表 = _扫描公开能力(制品目录)
+    摘要 = _制品全文件摘要(制品目录)["制品摘要"]
+    if 场景路径 is None:
+        原始表 = [场景 for 包目录 in 包目录表 for 场景 in _解析场景引用(包目录)]
+    else:
+        束 = _读取JSON严格(场景路径, "外部验证场景束")
+        if not isinstance(束, dict) or 束.get("来源") != "包级验证场景引用":
+            raise ValueError("外部场景束来源必须是包级验证场景引用")
+        if 束.get("制品摘要") != 摘要:
+            raise ValueError(f"外部场景束制品摘要不匹配: {束.get('制品摘要')} != {摘要}")
+        原始表 = 束.get("验证场景")
+        if not isinstance(原始表, list):
+            raise ValueError("外部场景束验证场景必须是列表")
+    return _校验场景全集(公开能力, 原始表, 摘要)
 
 
-# ---------- 验证执行 ----------
+def _扫描制品能力(制品目录: Path) -> list[dict[str, Any]]:
+    return [场景.转字典() for 场景 in _加载场景(制品目录, None)]
+
+
+def _校验直连地址(地址: str) -> str:
+    if not isinstance(地址, str) or not 地址:
+        raise ValueError("直连地址不能为空")
+    try:
+        拆分 = urllib.parse.urlsplit(地址)
+        主机 = 拆分.hostname
+        端口 = 拆分.port
+    except ValueError as 错误:
+        raise ValueError(f"直连地址不合法: {地址}") from 错误
+    if 拆分.scheme != "http" or not 主机 or 端口 is None:
+        raise ValueError("直连地址必须是带显式端口的 HTTP 回环 URL")
+    try:
+        if not ipaddress.ip_address(主机).is_loopback:
+            raise ValueError("直连地址必须使用 IP 回环地址")
+    except ValueError as 错误:
+        raise ValueError("直连地址必须使用 IP 回环地址，不能使用主机名") from 错误
+    if 拆分.username or 拆分.password or 拆分.path not in {"", "/"} or 拆分.query or 拆分.fragment:
+        raise ValueError("直连地址不得包含凭据、业务路径、查询或片段")
+    return 地址.rstrip("/")
+
 
 def _检查端口可用(端口: int) -> tuple[bool, str]:
-    """探测端口是否可监听（固定端口策略：冲突明确报错，不静默换随机端口）。"""
-    import socket as _套接字
-    测试 = _套接字.socket(_套接字.AF_INET, _套接字.SOCK_STREAM)
+    import socket
+    测试 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         测试.bind(("127.0.0.1", 端口))
         return True, ""
@@ -300,100 +448,334 @@ def _检查端口可用(端口: int) -> tuple[bool, str]:
         测试.close()
 
 
-def _发送请求(地址: str, 场景: 验证场景, 超时秒: float) -> tuple[int, dict, float]:
-    """发送真实 HTTP 请求，返回 (状态码, JSON, 耗时毫秒)。
+class _有界输出:
+    def __init__(self, 上限字节: int) -> None:
+        self.上限 = max(128, int(上限字节))
+        self.内容 = bytearray()
+        self.锁 = threading.Lock()
 
-    只通过 HTTP 访问编译产物，不导入任何源码。
-    路径必须 quote 成 ASCII（urllib 的 putrequest 要求 ASCII，中文路径直接报错）。
-    quote 输出的 %XX 不会二次转义（urllib 只对未编码的非 ASCII 做 quote）。
-    """
+    def 追加(self, 数据: bytes) -> None:
+        with self.锁:
+            self.内容.extend(数据)
+            if len(self.内容) > self.上限:
+                del self.内容[:len(self.内容) - self.上限]
+
+    def 文本(self) -> str:
+        with self.锁:
+            return bytes(self.内容).decode("utf-8", errors="replace")
+
+
+def _读取管道(管道: Any, 缓冲: _有界输出, 事件: queue.Queue[None]) -> None:
+    try:
+        while True:
+            数据 = os.read(管道.fileno(), 4096)
+            if not 数据:
+                break
+            缓冲.追加(数据)
+            try:
+                事件.put_nowait(None)
+            except queue.Full:
+                pass
+    except (OSError, ValueError):
+        pass
+
+
+def _进程组活跃(进程组id: int) -> bool:
+    if os.name != "posix":
+        return False
+    try:
+        结果 = subprocess.run(
+            ["ps", "-axo", "pgid=,stat="], capture_output=True, text=True, timeout=2, check=False,
+        )
+        for 行 in 结果.stdout.splitlines():
+            部分 = 行.strip().split(None, 1)
+            if len(部分) == 2 and int(部分[0]) == 进程组id and not 部分[1].startswith("Z"):
+                return True
+        return False
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(进程组id, 0)
+            return True
+        except (ProcessLookupError, PermissionError):
+            return False
+
+
+def _回收进程组(进程: subprocess.Popen[Any] | None) -> dict[str, Any]:
+    if 进程 is None:
+        return {"已回收": True, "模式": "直连", "进程组残留": False}
+    进程组id: int | None = None
+    if os.name == "posix":
+        try:
+            进程组id = os.getpgid(进程.pid)
+        except ProcessLookupError:
+            pass
+    if 进程.poll() is None or (进程组id is not None and _进程组活跃(进程组id)):
+        try:
+            if 进程组id is not None:
+                os.killpg(进程组id, signal.SIGTERM)
+            else:
+                进程.terminate()
+        except ProcessLookupError:
+            pass
+        截止 = time.monotonic() + 2
+        while time.monotonic() < 截止:
+            if 进程.poll() is not None and (进程组id is None or not _进程组活跃(进程组id)):
+                break
+            time.sleep(0.03)
+        if 进程.poll() is None or (进程组id is not None and _进程组活跃(进程组id)):
+            try:
+                if 进程组id is not None:
+                    os.killpg(进程组id, signal.SIGKILL)
+                else:
+                    进程.kill()
+            except ProcessLookupError:
+                pass
+    try:
+        进程.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        try:
+            进程.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            进程.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+    残留 = bool(进程组id is not None and _进程组活跃(进程组id))
+    for 管道 in (进程.stdin, 进程.stdout, 进程.stderr):
+        if 管道 is not None and not 管道.closed:
+            try:
+                管道.close()
+            except (OSError, ValueError):
+                pass
+    return {
+        "已回收": 进程.poll() is not None and not 残留,
+        "模式": "独立进程组" if 进程组id is not None else "单进程",
+        "pid": 进程.pid,
+        "进程组id": 进程组id,
+        "退出码": 进程.poll(),
+        "进程组残留": 残留,
+    }
+
+
+def _启动制品(
+    启动器: Path,
+    制品目录: Path,
+    端口: int,
+    启动超时秒: float = 默认启动超时秒,
+    上限字节: int = 输出上限字节,
+) -> tuple[subprocess.Popen[Any], int, dict[str, str]]:
+    进程 = subprocess.Popen(
+        [sys.executable, "-u", str(启动器), "--端口", str(端口), "--不自动打开"],
+        cwd=str(制品目录),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=os.name == "posix",
+    )
+    标准输出 = _有界输出(上限字节)
+    标准错误 = _有界输出(上限字节)
+    事件: queue.Queue[None] = queue.Queue(maxsize=1)
+    线程表 = [
+        threading.Thread(target=_读取管道, args=(进程.stdout, 标准输出, 事件), daemon=True),
+        threading.Thread(target=_读取管道, args=(进程.stderr, 标准错误, 事件), daemon=True),
+    ]
+    for 线程 in 线程表:
+        线程.start()
+    截止 = time.monotonic() + max(0.05, 启动超时秒)
+    try:
+        while time.monotonic() < 截止:
+            文本 = 标准输出.文本()
+            匹配 = re.search(r"127\.0\.0\.1:(\d+)", 文本)
+            if 匹配 and ("已启动" in 文本 or "启动" in 文本):
+                return 进程, int(匹配.group(1)), {"stdout": 文本, "stderr": 标准错误.文本()}
+            if 进程.poll() is not None:
+                raise RuntimeError(
+                    f"制品启动失败(退出码={进程.returncode}): stdout={文本!r} stderr={标准错误.文本()!r}"
+                )
+            try:
+                事件.get(timeout=min(0.05, max(0.001, 截止 - time.monotonic())))
+            except queue.Empty:
+                pass
+        raise RuntimeError(
+            f"制品启动超时({启动超时秒}s): stdout={标准输出.文本()!r} stderr={标准错误.文本()!r}"
+        )
+    except BaseException:
+        _回收进程组(进程)
+        raise
+
+
+def _发送请求(地址: str, 场景: 验证场景, 超时秒: float) -> tuple[int, dict[str, Any], float]:
     开始 = time.monotonic()
-    # 只编码路径部分，保留协议+主机+端口前缀原样（urlsplit 正确拆分，不能用 partition）
     拆分 = urllib.parse.urlsplit(地址)
-    完整地址 = f"{拆分.scheme}://{拆分.netloc}"
-    场景路径 = 场景.路径
-    if not 场景路径.startswith("/"):
-        场景路径 = "/" + 场景路径
+    基址 = f"{拆分.scheme}://{拆分.netloc}"
+    路径 = 场景.路径 if 场景.路径.startswith("/") else "/" + 场景.路径
+    目标 = 基址 + urllib.parse.quote(路径, safe="/:@._-")
     if 场景.方法 == "GET":
-        请求 = urllib.request.Request(完整地址 + urllib.parse.quote(场景路径, safe="/:@._-"), method="GET")
+        请求 = urllib.request.Request(目标, method="GET")
     else:
-        请求体 = {"能力id": 场景.能力id, "参数": 场景.参数 or {}}
+        请求体 = {"能力id": 场景.能力id, "参数": 场景.参数}
         请求 = urllib.request.Request(
-            完整地址 + urllib.parse.quote(场景路径, safe="/:@._-"),
+            目标,
             data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"),
             method="POST",
             headers={"Content-Type": "application/json"},
         )
     try:
         with urllib.request.urlopen(请求, timeout=超时秒) as 响应:
-            耗时 = (time.monotonic() - 开始) * 1000
-            正文 = 响应.read(请求上限字节).decode("utf-8")
+            正文 = 响应.read(请求上限字节 + 1)
+            if len(正文) > 请求上限字节:
+                return 响应.status, {"成功": False, "错误码": "返回过大", "错误说明": "响应超过读取上限"}, (time.monotonic() - 开始) * 1000
             try:
-                return 响应.status, json.loads(正文), 耗时
-            except json.JSONDecodeError:
-                return 响应.status, {"成功": False, "错误码": "返回非JSON", "错误说明": 正文[:200]}, 耗时
+                数据 = json.loads(正文.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                数据 = {"成功": False, "错误码": "返回非JSON", "错误说明": 正文[:200].decode("utf-8", errors="replace")}
+            return 响应.status, 数据, (time.monotonic() - 开始) * 1000
     except urllib.error.HTTPError as 错误:
-        耗时 = (time.monotonic() - 开始) * 1000
-        正文 = 错误.read(请求上限字节).decode("utf-8", errors="replace")
         try:
-            return 错误.code, json.loads(正文), 耗时
-        except json.JSONDecodeError:
-            return 错误.code, {"成功": False, "错误码": "返回非JSON", "错误说明": 正文[:200]}, 耗时
+            正文 = 错误.read(请求上限字节 + 1)
+            try:
+                数据 = json.loads(正文[:请求上限字节].decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                数据 = {"成功": False, "错误码": "返回非JSON", "错误说明": 正文[:200].decode("utf-8", errors="replace")}
+            return 错误.code, 数据, (time.monotonic() - 开始) * 1000
+        finally:
+            错误.close()
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:
-        耗时 = (time.monotonic() - 开始) * 1000
-        return 502, {"成功": False, "错误码": "网关断开", "错误说明": str(错误)}, 耗时
+        return 502, {"成功": False, "错误码": "网关断开", "错误说明": str(错误)}, (time.monotonic() - 开始) * 1000
+
+
+def _类型匹配(值: Any, 类型名: str) -> bool:
+    映射 = {
+        "字典型": lambda 项: isinstance(项, dict),
+        "对象型": lambda 项: isinstance(项, dict),
+        "列表型": lambda 项: isinstance(项, list),
+        "文本型": lambda 项: isinstance(项, str),
+        "字符串型": lambda 项: isinstance(项, str),
+        "整数型": lambda 项: type(项) is int,
+        "数值型": lambda 项: type(项) in {int, float},
+        "浮点型": lambda 项: type(项) is float,
+        "逻辑型": lambda 项: type(项) is bool,
+        "布尔型": lambda 项: type(项) is bool,
+        "空值型": lambda 项: 项 is None,
+    }
+    判断 = 映射.get(类型名)
+    return bool(判断 and 判断(值))
+
+
+def _取路径(值: Any, 路径: str) -> Any:
+    当前 = 值
+    if 路径 in {"", "$"}:
+        return 当前
+    for 段 in 路径.removeprefix("$.").split("."):
+        if isinstance(当前, dict) and 段 in 当前:
+            当前 = 当前[段]
+        elif isinstance(当前, list) and 段.isdigit() and int(段) < len(当前):
+            当前 = 当前[int(段)]
+        else:
+            return 未指定
+    return 当前
+
+
+def _校验统一返回(返回: Any) -> tuple[bool, str]:
+    if not isinstance(返回, dict):
+        return False, "返回必须是JSON对象"
+    缺失 = [字段 for 字段 in 统一返回字段 if 字段 not in 返回]
+    if 缺失:
+        return False, f"统一返回缺字段: {缺失}"
+    if type(返回["成功"]) is not bool:
+        return False, "成功必须是真正布尔型"
+    if "可重试" in 返回 and type(返回["可重试"]) is not bool:
+        return False, "可重试存在时必须是真正布尔型"
+    if not isinstance(返回["错误码"], str) or not isinstance(返回["错误说明"], str):
+        return False, "错误码/错误说明必须是文本型"
+    if not isinstance(返回["请求id"], str) or not 返回["请求id"]:
+        return False, "请求id必须是非空文本"
+    if type(返回["耗时毫秒"]) not in {int, float} or 返回["耗时毫秒"] < 0:
+        return False, "耗时毫秒必须是非负数值"
+    if 返回["成功"]:
+        if 返回["值"] is None:
+            return False, "成功结果的值不可为空"
+        if 返回["错误码"] or 返回["错误说明"]:
+            return False, "成功结果与错误字段互斥"
+    else:
+        if 返回["值"] is not None:
+            return False, "错误结果的值必须为空"
+        if not 返回["错误码"] or not 返回["错误说明"]:
+            return False, "错误结果必须包含错误码和错误说明"
+    return True, ""
 
 
 def _判定(场景: 验证场景, 状态码: int, 返回: dict[str, Any]) -> tuple[bool, str, str]:
-    """按场景预期判定结果，返回 (通过, 失败原因, 定位线索)。
-
-    优先级：错误码预期 > 状态码预期 > 成功预期 > 包含预期。
-    预期错误码非空时（如 参数不合法），状态码不必是 200（网关对错误码
-    返回 400/403/404/503 等），只看错误码是否命中。
-    """
-    返回 = 返回 or {}
-    # 1. 错误码预期（非空 = 期望特定失败；状态码按错误码映射，不要求 200）
-    if 场景.预期错误码:
-        if 返回.get("错误码") == 场景.预期错误码:
-            return True, "", ""
-        return False, f"错误码 {返回.get('错误码')!r} != 预期 {场景.预期错误码!r}", "能力"
-    # 2. 状态码预期
+    合法, 原因 = _校验统一返回(返回)
+    if not 合法:
+        return False, 原因, "返回契约"
     if 场景.预期状态码 and 状态码 != 场景.预期状态码:
-        线索 = "路由" if 状态码 in (404, 405) else "网关"
-        return False, f"状态码 {状态码} != 预期 {场景.预期状态码}", 线索
-    # 3. 默认期望成功
-    if 状态码 >= 400:
-        线索 = {
-            "参数不合法": "参数", "能力不存在": "能力", "句柄失效": "句柄",
-            "权限不足": "权限", "提供者不可用": "Provider", "限流": "限流",
-        }.get(str(返回.get("错误码")), "网关")
-        return False, f"{返回.get('错误码', 'HTTP错误')}: {返回.get('错误说明', '')}", 线索
-    if not 返回.get("成功"):
-        线索 = {
-            "参数不合法": "参数", "能力不存在": "能力", "句柄失效": "句柄",
-            "权限不足": "权限", "提供者不可用": "Provider", "限流": "限流",
-        }.get(str(返回.get("错误码")), "能力")
-        return False, f"{返回.get('错误码', '失败')}: {返回.get('错误说明', '')}", 线索
-    # 4. 预期包含（可选）
-    if 场景.预期包含:
-        正文 = json.dumps(返回, ensure_ascii=False)
-        if 场景.预期包含 not in 正文:
-            return False, f"返回未包含预期子串: {场景.预期包含}", "值"
+        return False, f"状态码 {状态码} != 预期 {场景.预期状态码}", "路由" if 状态码 in {404, 405} else "网关"
+    if 返回["成功"] is not 场景.预期成功:
+        return False, f"成功={返回['成功']} != 预期 {场景.预期成功}", "能力"
+    if not 场景.预期成功:
+        if 返回["错误码"] != 场景.预期错误码:
+            return False, f"错误码 {返回['错误码']!r} != 预期 {场景.预期错误码!r}", "能力"
+        return True, "", ""
+    值 = 返回["值"]
+    if 场景.预期值类型 and not _类型匹配(值, 场景.预期值类型):
+        return False, f"值类型不符合 {场景.预期值类型}", "值"
+    for 路径, 预期值 in 场景.预期关键值.items():
+        实际 = _取路径(值, str(路径))
+        if 实际 is 未指定 or 实际值不等于预期(实际, 预期值):
+            return False, f"关键值 {路径}={实际!r} != {预期值!r}", "值"
+    契约 = 场景.预期返回契约
+    必需字段 = 契约.get("必需字段", []) if isinstance(契约, dict) else []
+    字段类型 = 契约.get("字段类型", {}) if isinstance(契约, dict) else {}
+    if not isinstance(必需字段, list) or not isinstance(字段类型, dict):
+        return False, "返回契约的必需字段/字段类型格式不合法", "返回契约"
+    for 路径 in 必需字段:
+        if _取路径(值, str(路径)) is 未指定:
+            return False, f"返回值缺少必需字段: {路径}", "返回契约"
+    for 路径, 类型名 in 字段类型.items():
+        实际 = _取路径(值, str(路径))
+        if 实际 is 未指定 or not isinstance(类型名, str) or not _类型匹配(实际, 类型名):
+            return False, f"返回字段 {路径} 类型不符合 {类型名}", "返回契约"
+    if 场景.校验完整值 and 实际值不等于预期(值, 场景.预期值):
+        return False, f"完整值 {值!r} != 预期 {场景.预期值!r}", "值"
+    if 场景.预期包含 and 场景.预期包含 not in json.dumps(返回, ensure_ascii=False):
+        return False, f"返回未包含预期子串: {场景.预期包含}", "值"
     return True, "", ""
 
 
+def 实际值不等于预期(实际: Any, 预期: Any) -> bool:
+    """严格比较，避免 bool 与 0/1 被 Python 相等语义混淆。"""
+    return type(实际) is not type(预期) or 实际 != 预期
+
+
 def 验证单个(地址: str, 场景: 验证场景, 超时秒: float = 默认超时秒) -> 验证结果:
-    """验证一个场景。"""
     结果 = 验证结果(场景id=场景.场景id, 能力id=场景.能力id)
-    状态码, 返回, 耗时 = _发送请求(地址, 场景, 超时秒)
-    结果.状态码 = 状态码
-    结果.返回 = 返回
-    结果.耗时毫秒 = 耗时
-    通过, 原因, 线索 = _判定(场景, 状态码, 返回)
-    结果.通过 = 通过
-    结果.失败原因 = 原因
-    结果.定位线索 = 线索
+    try:
+        状态码, 返回, 耗时 = _发送请求(地址, 场景, 超时秒)
+        结果.状态码 = 状态码
+        结果.返回 = 返回
+        结果.耗时毫秒 = 耗时
+        结果.通过, 结果.失败原因, 结果.定位线索 = _判定(场景, 状态码, 返回)
+    except BaseException as 错误:
+        结果.失败原因 = f"验证任务异常: {type(错误).__name__}: {错误}"
+        结果.定位线索 = "验证器"
     return 结果
+
+
+def _校验制品前后绑定(报告: 验证报告) -> None:
+    前 = 报告.制品摘要前.get("制品摘要")
+    后 = 报告.制品摘要后.get("制品摘要")
+    if (not 前 or not 后 or 前 != 后) and not any(
+        结果.场景id == "制品.摘要绑定" for 结果 in 报告.结果列表
+    ):
+        报告.结果列表.append(验证结果(
+            场景id="制品.摘要绑定",
+            能力id="",
+            通过=False,
+            失败原因=f"制品全文件摘要前后不一致: {前} != {后}",
+            定位线索="制品绑定",
+        ))
+        报告.失败数 += 1
 
 
 def 验证全部(
@@ -401,228 +783,245 @@ def 验证全部(
     场景列表: list[验证场景],
     并发: int = 默认并发,
     超时秒: float = 默认超时秒,
-    端口: int = 0,
+    端口: int = 固定端口,
     自动打开: bool = False,
     直连地址: str = "",
+    进程接收: Any = None,
 ) -> tuple[验证报告, int | None, Any]:
-    """启动制品 → 并发验证 → 返回报告 + 制品端口 + 制品进程句柄。
-
-    直连地址 非空时跳过启动，直接对已运行制品地址验证（返回端口=0、进程=None）。
-    返回 (报告, 端口, 进程句柄)。进程句柄由调用方负责最终回收。
-    """
-    启动器 = _找启动器(制品目录)
-    报告 = 验证报告(制品路径=str(制品目录))
-    报告.制品指纹 = _制品指纹(制品目录)
-
-    地址 = 直连地址
-    进程: Any = None
+    del 自动打开
+    if not 场景列表:
+        raise ValueError("无任何有效验证场景")
+    if type(并发) is not int or 并发 < 1:
+        raise ValueError("并发必须是正整数")
+    报告 = 验证报告(制品路径=str(制品目录), 场景总数=len(场景列表))
+    报告.制品摘要前 = _制品全文件摘要(制品目录)
+    当前摘要 = 报告.制品摘要前["制品摘要"]
+    场景摘要集合 = {场景.制品摘要 for 场景 in 场景列表}
+    if 场景摘要集合 != {当前摘要}:
+        报告.失败数 = 1
+        报告.结果列表.append(验证结果(
+            "场景.制品绑定", "", False, 0,
+            失败原因=f"场景制品摘要未绑定当前制品: {sorted(场景摘要集合)} != {当前摘要}",
+            定位线索="制品绑定",
+        ))
+        报告.制品摘要后 = _制品全文件摘要(制品目录)
+        return 报告, None, None
+    报告.场景制品摘要 = 当前摘要
+    进程: subprocess.Popen[Any] | None = None
     实际端口: int | None = None
-    启动输出: list[str] = []
     if 直连地址:
-        # 直连模式：不启动制品，直接用已运行地址
-        地址 = 直连地址
+        地址 = _校验直连地址(直连地址)
     else:
-        # 自启动模式：先检查固定端口是否可用（冲突明确报错，不静默换随机端口）
-        端口可用, 端口消息 = _检查端口可用(端口)
-        if not 端口可用:
-            报告.结果列表.append(验证结果(
-                场景id="制品启动", 能力id="",
-                通过=False, 失败原因=端口消息, 定位线索="端口",
-            ))
+        启动器 = _找启动器(制品目录)
+        可用, 消息 = _检查端口可用(端口)
+        if not 可用:
             报告.失败数 = 1
+            报告.结果列表.append(验证结果("制品启动", "", False, 0, 失败原因=消息, 定位线索="端口"))
             return 报告, None, None
-        # 启动制品（独立 HTML 启动器），等待就绪
-        进程 = subprocess.Popen(
-            [sys.executable, "-u", str(启动器), "--端口", str(端口), "--不自动打开"],
-            cwd=str(制品目录),
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
-        实际端口 = 端口
-        就绪 = False
-        截止 = time.time() + 20
-        启动输出: list[str] = []
-        while time.time() < 截止:
-            if 进程.poll() is not None:
-                输出, 错误 = 进程.communicate(timeout=3)
-                报告.结果列表.append(验证结果(
-                    场景id="制品启动", 能力id="",
-                    通过=False, 失败原因=f"制品启动失败: {输出} {错误}", 定位线索="编译",
-                ))
-                报告.失败数 = 1
-                return 报告, None, 进程
-            行 = 进程.stdout.readline() if 进程.stdout else ""
-            if 行:
-                启动输出.append(行.strip())
-                if "已启动" in 行 or "127.0.0.1" in 行:
-                    import re
-                    匹配 = re.search(r"127\.0\.0\.1:(\d+)", 行)
-                    if 匹配:
-                        实际端口 = int(匹配.group(1))
-                        就绪 = True
-                        break
-            time.sleep(0.05)
-        if not 就绪:
-            报告.结果列表.append(验证结果(
-                场景id="制品启动", 能力id="",
-                通过=False, 失败原因=f"制品启动超时，输出: {'; '.join(启动输出)}", 定位线索="编译",
-            ))
+        try:
+            进程, 实际端口, _ = _启动制品(启动器, 制品目录, 端口)
+            if 进程接收 is not None:
+                进程接收(进程)
+        except BaseException as 错误:
             报告.失败数 = 1
-            return 报告, None, 进程
+            报告.结果列表.append(验证结果(
+                "制品启动", "", False, 0,
+                失败原因=f"制品启动异常: {type(错误).__name__}: {错误}", 定位线索="编译",
+            ))
+            报告.资源回收 = {"已回收": True, "原因": "启动助手已回收"}
+            return 报告, None, None
         地址 = f"http://127.0.0.1:{实际端口}"
-    报告.场景总数 = len(场景列表)
-
-    # 先验证健康/首页（制品是否真的能服务）
-    # 自启动/直连都统一走页面宿主入口：GET / 返回 HTML 页面（200）。
-    # 能力调用统一走页面宿主 POST /网关/调用（页面宿主转发到内部网关），
-    # 不绕过页面宿主直连内部网关——黑盒验证必须走用户真实路径。
-    健康路径 = "/"
-    健康场景 = 验证场景(场景id="制品.健康", 能力id="", 方法="GET", 路径=健康路径,
-                      预期状态码=200, 预期包含="", 说明="制品可用性检查（只认状态码）")
-    健康结果 = 验证单个(地址, 健康场景, 超时秒)
-    if 健康结果.状态码 != 200:
-        健康结果.通过 = False
-        健康结果.失败原因 = f"制品健康检查状态码 {健康结果.状态码} != 200"
-        健康结果.定位线索 = "编译"
-        报告.结果列表.append(健康结果)
-        报告.失败数 += 1
+    健康 = 验证场景(
+        场景id="制品.健康", 能力id="制品.健康", 方法="GET", 路径="/",
+        预期状态码=200, 预期成功=True, 预期值类型="字典型",
+    )
+    状态码, _, 耗时 = _发送请求(地址, 健康, 超时秒)
+    if 状态码 != 200:
+        报告.失败数 = 1
+        报告.结果列表.append(验证结果(
+            "制品.健康", "", False, 状态码, 耗时毫秒=耗时,
+            失败原因=f"制品健康检查状态码 {状态码} != 200", 定位线索="编译",
+        ))
+        if 直连地址:
+            报告.制品摘要后 = _制品全文件摘要(制品目录)
+            _校验制品前后绑定(报告)
         return 报告, 实际端口, 进程
-    # 健康检查通过但返回非 JSON（页面 HTML）时仍算通过
-    健康结果.通过 = True
-    健康结果.失败原因 = ""
-    报告.结果列表.append(健康结果)
 
-    # 并发验证全部场景
+    活跃 = 0
+    峰值 = 0
+    锁 = threading.Lock()
+
+    def 运行(场景: 验证场景) -> 验证结果:
+        nonlocal 活跃, 峰值
+        with 锁:
+            活跃 += 1
+            峰值 = max(峰值, 活跃)
+        try:
+            return 验证单个(地址, 场景, 超时秒)
+        except BaseException as 错误:
+            return 验证结果(
+                场景.场景id, 场景.能力id, False, 0,
+                失败原因=f"验证任务异常: {type(错误).__name__}: {错误}", 定位线索="验证器",
+            )
+        finally:
+            with 锁:
+                活跃 -= 1
+
     结果表: list[验证结果] = []
-    with ThreadPoolExecutor(max_workers=并发) as 执行器:
-        任务表 = {执行器.submit(验证单个, 地址, 场景, 超时秒): 场景 for 场景 in 场景列表}
+    with ThreadPoolExecutor(max_workers=min(并发, len(场景列表)), thread_name_prefix="HTML验证") as 执行器:
+        任务表 = {执行器.submit(运行, 场景): 场景 for 场景 in 场景列表}
         for 任务 in as_completed(任务表):
-            结果表.append(任务.result())
-    报告.结果列表 = 结果表
-    报告.通过数 = sum(1 for 项 in 结果表 if 项.通过)
-    报告.失败数 = len(结果表) - 报告.通过数
+            场景 = 任务表[任务]
+            try:
+                结果表.append(任务.result())
+            except BaseException as 错误:
+                结果表.append(验证结果(
+                    场景.场景id, 场景.能力id, False, 0,
+                    失败原因=f"验证任务异常: {type(错误).__name__}: {错误}", 定位线索="验证器",
+                ))
+    结果表.sort(key=lambda 结果: 结果.场景id)
+    报告.结果列表.extend(结果表)
+    报告.通过数 = sum(结果.通过 for 结果 in 结果表)
+    报告.失败数 += len(结果表) - 报告.通过数
+    报告.正向成功数 = sum(结果.通过 and 场景.预期成功 for 结果 in 结果表 for 场景 in 场景列表 if 场景.场景id == 结果.场景id)
+    报告.负向校验数 = sum(结果.通过 and not 场景.预期成功 for 结果 in 结果表 for 场景 in 场景列表 if 场景.场景id == 结果.场景id)
+    报告.并发峰值 = 峰值
+    if 直连地址:
+        报告.资源回收 = {"已回收": True, "模式": "直连"}
+        报告.制品摘要后 = _制品全文件摘要(制品目录)
+        _校验制品前后绑定(报告)
     return 报告, 实际端口, 进程
 
 
-# ---------- 证据落盘 ----------
-
 def _证据根目录(制品目录: Path) -> Path:
-    """证据根目录：默认写到 工程缓存/HTML验证证据/，绝不写进制品目录
-    （避免污染 制品完整性摘要.json，导致发布门禁「示例制品来源与摘要」失败）。"""
+    del 制品目录
     return 系统根 / "工程缓存" / "HTML验证证据"
 
 
 def 保存证据(报告: 验证报告, 制品目录: Path, 输出目录: Path | None = None) -> Path:
-    """把验证报告写成证据文件，绑定工作区指纹。
+    if not 报告.制品摘要前:
+        报告.制品摘要前 = _制品全文件摘要(制品目录)
+    if not 报告.制品摘要后:
+        报告.制品摘要后 = _制品全文件摘要(制品目录)
+    制品摘要 = 报告.制品摘要前.get("制品摘要", "未知制品")
+    报告.时间 = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    报告.证据绑定 = {
+        "制品摘要": 制品摘要,
+        "制品摘要前": 报告.制品摘要前.get("制品摘要", ""),
+        "制品摘要后": 报告.制品摘要后.get("制品摘要", ""),
+        "场景制品摘要": 报告.场景制品摘要,
+        "工作区指纹": _工作区指纹(),
+    }
+    输出根 = (输出目录 or _证据根目录(制品目录)) / 制品摘要
+    输出根.mkdir(parents=True, exist_ok=True)
+    for _ in range(10):
+        名称 = f"验证证据_{time.time_ns()}_{uuid.uuid4().hex[:12]}.json"
+        路径 = 输出根 / 名称
+        try:
+            with 路径.open("x", encoding="utf-8") as 文件:
+                json.dump(报告.转字典(), 文件, ensure_ascii=False, indent=2)
+                文件.write("\n")
+            return 路径
+        except FileExistsError:
+            continue
+    raise FileExistsError("无法生成唯一证据文件名")
 
-    默认输出到 工程缓存/HTML验证证据/（不污染制品目录）；显式传 输出目录 时用指定路径。
-    """
-    输出 = 输出目录 or _证据根目录(制品目录)
-    输出.mkdir(parents=True, exist_ok=True)
-    报告.制品指纹.update(_工作区指纹())
-    时间戳 = time.strftime("%Y%m%d_%H%M%S")
-    路径 = 输出 / f"验证证据_{时间戳}.json"
-    路径.write_text(
-        json.dumps(报告.转字典(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return 路径
-
-
-# ---------- 场景文件生成 ----------
 
 def 生成场景文件(制品目录: Path, 输出: Path | None = None) -> Path:
-    """扫描制品自动生成 验证场景.json。
-
-    默认输出到 工程缓存/HTML验证证据/（不污染制品目录）；显式传 输出 时用指定路径。
-    """
-    自动 = _扫描制品能力(制品目录)
-    输出路径 = 输出 or (_证据根目录(制品目录) / 场景文件名)
+    场景表 = _加载场景(制品目录, None)
+    摘要 = _制品全文件摘要(制品目录)["制品摘要"]
+    输出路径 = 输出 or (_证据根目录(制品目录) / 摘要 / 场景文件名)
     输出路径.parent.mkdir(parents=True, exist_ok=True)
-    输出路径.write_text(
-        json.dumps({"验证场景": 自动}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    数据 = {
+        "来源": "包级验证场景引用",
+        "制品摘要": 摘要,
+        "验证场景": [场景.转字典() for 场景 in 场景表],
+    }
+    输出路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 输出路径
 
 
-# ---------- 服务模式（托管验证页 + 反向代理） ----------
-
 def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Path | None = None) -> int:
-    """托管验证页 + 反向代理请求到制品（浏览器同源，无跨域）。
-
-    浏览器打开 http://127.0.0.1:45081/ 使用验证页；
-    页面所有请求走相对路径 /代理/*，本服务转发到制品地址；
-    /验证场景.json 返回制品的验证场景清单（供验证页加载）。
-    """
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    验证页目录 = Path(__file__).resolve().parent
-    页面字节 = (验证页目录 / "验证页.html").read_bytes()
-    # 场景文件：从 工程缓存/HTML验证证据/ 读（不污染制品目录），否则扫描生成
-    场景字节 = json.dumps({"验证场景": []}, ensure_ascii=False).encode("utf-8")
+    制品地址 = _校验直连地址(制品地址)
+    页面字节 = (Path(__file__).resolve().parent / "验证页.html").read_bytes()
+    场景字节 = json.dumps({"来源": "包级验证场景引用", "验证场景": []}, ensure_ascii=False).encode()
     if 制品目录 is not None:
-        try:
-            场景路径 = _证据根目录(制品目录) / 场景文件名
-            if not 场景路径.is_file():
-                生成场景文件(制品目录)
-            场景字节 = 场景路径.read_bytes()
-        except (OSError, ValueError):
-            场景字节 = json.dumps({"验证场景": []}, ensure_ascii=False).encode("utf-8")
+        场景路径 = 生成场景文件(制品目录)
+        场景字节 = 场景路径.read_bytes()
+    CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
     class 处理器(BaseHTTPRequestHandler):
-        def log_message(self, 格式, *参数): return
-        def _CORS头(self):
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        def do_OPTIONS(self):
-            self.send_response(204); self._CORS头(); self.end_headers()
-        def do_GET(self):
-            if self.path == "/" or self.path == "/验证页.html":
-                self.send_response(200); self._CORS头()
+        def log_message(self, format, *args):
+            del format, args
+
+        def _公共头(self) -> None:
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", CSP)
+
+        def do_GET(self) -> None:
+            解码路径 = urllib.parse.unquote(self.path)
+            if 解码路径 in {"/", "/验证页.html"}:
+                self.send_response(200)
+                self._公共头()
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(页面字节)))
-                self.end_headers(); self.wfile.write(页面字节); return
-            if urllib.parse.unquote(self.path) == "/验证场景.json":
-                self.send_response(200); self._CORS头()
+                self.end_headers()
+                self.wfile.write(页面字节)
+                return
+            if 解码路径 == "/验证场景.json":
+                self.send_response(200)
+                self._公共头()
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(场景字节)))
-                self.end_headers(); self.wfile.write(场景字节); return
-            # 浏览器/curl 会把中文路径编码，必须 unquote 后再转发，否则二次编码 404
-            if urllib.parse.unquote(self.path).startswith("/代理/"):
-                目标 = 制品地址 + urllib.parse.unquote(self.path)[len("/代理"):]
-                self._转发("GET", 目标); return
+                self.end_headers()
+                self.wfile.write(场景字节)
+                return
+            if 解码路径.startswith("/代理/"):
+                self._转发("GET", 制品地址 + 解码路径[len("/代理"):])
+                return
             self.send_error(404)
-        def do_POST(self):
-            if urllib.parse.unquote(self.path).startswith("/代理/"):
-                目标 = 制品地址 + urllib.parse.unquote(self.path)[len("/代理"):]
-                长度 = int(self.headers.get("Content-Length", "0") or 0)
-                正文 = self.rfile.read(长度) if 长度 else b""
-                self._转发("POST", 目标, 正文); return
-            self.send_error(404)
-        def _转发(self, 方法: str, 目标: str, 正文: bytes = b"") -> None:
-            import urllib.request as _请求
-            # urllib 不能直接发原始中文路径，必须 quote 编码路径部分
-            拆分 = urllib.parse.urlsplit(目标)
-            编码路径 = urllib.parse.quote(拆分.path, safe="/:@._-")
-            编码目标 = f"{拆分.scheme}://{拆分.netloc}{编码路径}"
-            if 拆分.query:
-                编码目标 += "?" + 拆分.query
+
+        def do_POST(self) -> None:
+            解码路径 = urllib.parse.unquote(self.path)
+            if not 解码路径.startswith("/代理/"):
+                self.send_error(404)
+                return
             try:
-                请求对象 = _请求.Request(编码目标, data=正文 or None, method=方法,
-                                     headers={"Content-Type": "application/json"})
-                with _请求.urlopen(请求对象, timeout=15) as 响应:
-                    状态码, 返回 = 响应.status, 响应.read()
+                长度 = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self.send_error(400)
+                return
+            if 长度 < 0 or 长度 > 请求上限字节:
+                self.send_error(413)
+                return
+            self._转发("POST", 制品地址 + 解码路径[len("/代理"):], self.rfile.read(长度))
+
+        def _转发(self, 方法: str, 目标: str, 正文: bytes = b"") -> None:
+            拆分 = urllib.parse.urlsplit(目标)
+            编码目标 = f"{拆分.scheme}://{拆分.netloc}{urllib.parse.quote(拆分.path, safe='/:@._-')}"
+            try:
+                请求 = urllib.request.Request(
+                    编码目标, data=正文 or None, method=方法,
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(请求, timeout=默认超时秒) as 响应:
+                    状态码, 返回 = 响应.status, 响应.read(请求上限字节)
             except urllib.error.HTTPError as 错误:
-                状态码, 返回 = 错误.code, 错误.read()
-            except (urllib.error.URLError, TimeoutError, OSError):
-                状态码 = 502; 返回 = json.dumps(
-                    {"成功": False, "错误码": "网关断开", "错误说明": "制品不可访问"},
-                    ensure_ascii=False).encode()
-            self.send_response(状态码); self._CORS头()
+                状态码, 返回 = 错误.code, 错误.read(请求上限字节)
+            except (urllib.error.URLError, TimeoutError, OSError) as 错误:
+                状态码 = 502
+                返回 = json.dumps({
+                    "成功": False, "值": None, "错误码": "网关断开", "错误说明": str(错误),
+                    "可重试": True, "请求id": uuid.uuid4().hex, "耗时毫秒": 0,
+                }, ensure_ascii=False).encode()
+            self.send_response(状态码)
+            self._公共头()
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(返回)))
-            self.end_headers(); self.wfile.write(返回)
+            self.end_headers()
+            self.wfile.write(返回)
 
     服务 = ThreadingHTTPServer(("127.0.0.1", 服务端口), 处理器)
     print(f"验证页已启动: http://127.0.0.1:{服务.server_port}/ （代理到 {制品地址}）")
@@ -631,58 +1030,97 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
     except KeyboardInterrupt:
         pass
     finally:
+        服务.shutdown()
         服务.server_close()
     return 0
 
 
-# ---------- 主入口 ----------
+def _记录流程异常(报告: 验证报告, 错误: BaseException) -> None:
+    报告.失败数 += 1
+    报告.结果列表.append(验证结果(
+        场景id="验证流程",
+        能力id="",
+        通过=False,
+        失败原因=f"验证流程异常: {type(错误).__name__}: {错误}",
+        定位线索="验证器",
+    ))
+
 
 def 主函数(参数: argparse.Namespace) -> int:
     制品目录 = Path(参数.制品).resolve()
     if not 制品目录.is_dir():
         print(f"阻断: 制品目录不存在: {制品目录}")
         return 2
-
-    if 参数.只生成场景:
-        路径 = 生成场景文件(制品目录, Path(参数.场景) if 参数.场景 else None)
-        print(f"验证场景已生成: {路径}")
-        return 0
-
     if 参数.服务:
-        # 服务模式：托管验证页 + 反向代理到制品
-        return 服务模式(参数.直连地址 or f"http://127.0.0.1:{参数.端口}", 参数.服务, 制品目录)
+        try:
+            return 服务模式(参数.直连地址 or f"http://127.0.0.1:{参数.端口}", 参数.服务, 制品目录)
+        except BaseException as 错误:
+            print(f"阻断: 服务模式启动失败: {错误}")
+            return 2
+    if 参数.只生成场景:
+        try:
+            路径 = 生成场景文件(制品目录, Path(参数.场景) if 参数.场景 else None)
+            print(f"验证场景已生成: {路径}")
+            return 0
+        except BaseException as 错误:
+            print(f"阻断: 场景生成失败: {错误}")
+            return 2
 
-    场景列表 = _加载场景(制品目录, Path(参数.场景) if 参数.场景 else None)
-    print(f"加载 {len(场景列表)} 个验证场景")
-    报告, 端口, 进程 = 验证全部(
-        制品目录, 场景列表, 并发=参数.并发, 超时秒=参数.超时秒, 端口=参数.端口,
-        直连地址=参数.直连地址,
-    )
-    证据路径 = 保存证据(报告, 制品目录)
+    报告 = 验证报告(制品路径=str(制品目录))
+    进程: subprocess.Popen[Any] | None = None
+    证据路径: Path | None = None
+    def 接收进程(新进程: subprocess.Popen[Any]) -> None:
+        nonlocal 进程
+        进程 = 新进程
+
+    try:
+        报告.制品摘要前 = _制品全文件摘要(制品目录)
+        场景列表 = _加载场景(制品目录, Path(参数.场景) if 参数.场景 else None)
+        print(f"加载 {len(场景列表)} 个包级验证场景")
+        报告, _, 进程 = 验证全部(
+            制品目录, 场景列表, 并发=参数.并发, 超时秒=参数.超时秒,
+            端口=参数.端口, 直连地址=参数.直连地址, 进程接收=接收进程,
+        )
+    except BaseException as 错误:
+        _记录流程异常(报告, 错误)
+    finally:
+        try:
+            回收 = _回收进程组(进程)
+            报告.资源回收 = 回收
+            if not 回收.get("已回收"):
+                报告.失败数 += 1
+                报告.结果列表.append(验证结果(
+                    "资源回收", "", False, 0, 失败原因=f"进程组回收失败: {回收}", 定位线索="资源回收",
+                ))
+        except BaseException as 错误:
+            _记录流程异常(报告, 错误)
+        try:
+            报告.制品摘要后 = _制品全文件摘要(制品目录)
+            _校验制品前后绑定(报告)
+        except BaseException as 错误:
+            _记录流程异常(报告, 错误)
+        try:
+            证据路径 = 保存证据(报告, 制品目录)
+        except BaseException as 错误:
+            报告.失败数 += 1
+            print(f"阻断: 失败证据写入失败: {错误}")
     print(报告.汇总())
-    print(f"证据: {证据路径}")
+    if 证据路径:
+        print(f"证据: {证据路径}")
     for 结果 in 报告.结果列表:
         if not 结果.通过:
             print(f"  ✗ [{结果.场景id}] {结果.失败原因}（{结果.定位线索}）")
-    # 回收制品进程
-    if 进程 is not None and 进程.poll() is None:
-        进程.terminate()
-        try:
-            进程.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            进程.kill()
-            进程.wait(timeout=5)
-    return 0 if 报告.失败数 == 0 else 1
+    return 0 if 报告.场景总数 > 0 and 报告.失败数 == 0 and 报告.正向成功数 > 0 else 1
 
 
 if __name__ == "__main__":
-    解析器 = argparse.ArgumentParser(description="HTML 黑盒验证器：对编译产物发真实 HTTP 请求")
-    解析器.add_argument("--制品", required=True, help="编译产物目录（含 运行入口/启动.py）")
-    解析器.add_argument("--场景", default="", help="验证场景.json 路径（缺省扫描制品自动生成）")
-    解析器.add_argument("--并发", type=int, default=默认并发, help=f"并发线程数（默认 {默认并发}）")
-    解析器.add_argument("--超时秒", type=float, default=默认超时秒, help=f"单请求超时秒（默认 {默认超时秒}）")
-    解析器.add_argument("--端口", type=int, default=固定端口, help=f"制品启动端口（默认 {固定端口}，固定；冲突报错，不静默换随机端口）")
-    解析器.add_argument("--直连地址", default="", help="直连已运行制品地址（如 http://127.0.0.1:65485，跳过启动）")
-    解析器.add_argument("--服务", type=int, default=0, help="服务模式：托管验证页+反向代理到制品（如 45081）")
-    解析器.add_argument("--只生成场景", action="store_true", help="只生成验证场景文件，不验证")
+    解析器 = argparse.ArgumentParser(description="HTML 黑盒验证器：只验证包级真实场景")
+    解析器.add_argument("--制品", required=True, help="编译产物目录")
+    解析器.add_argument("--场景", default="", help="由包级引用生成且绑定制品摘要的场景束")
+    解析器.add_argument("--并发", type=int, default=默认并发)
+    解析器.add_argument("--超时秒", type=float, default=默认超时秒)
+    解析器.add_argument("--端口", type=int, default=固定端口)
+    解析器.add_argument("--直连地址", default="", help="严格 IP 回环 HTTP 地址，带显式端口")
+    解析器.add_argument("--服务", type=int, default=0)
+    解析器.add_argument("--只生成场景", action="store_true")
     raise SystemExit(主函数(解析器.parse_args()))
