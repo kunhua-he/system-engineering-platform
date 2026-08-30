@@ -11,9 +11,14 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+系统根 = Path(__file__).resolve().parents[2]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
 
 from 开发工具.契约编译.聚合契约解析 import 校验能力条目, 读取原始
 
@@ -279,7 +284,7 @@ def _摘要文本(文本: str) -> str:
 
 
 def 编译目录(契约目录: Path, 输出目录: Path) -> 编译结果:
-    """编译目录内全部契约。"""
+    """统一编译器内部阶段：编译已计算影响闭包内的契约目录。"""
     汇总 = 编译结果(契约id="目录")
     for 契约文件 in sorted(契约目录.glob("*.json")):
         if "验证" in 契约文件.name or "数据" in 契约文件.name:
@@ -288,3 +293,8 @@ def 编译目录(契约目录: Path, 输出目录: Path) -> 编译结果:
         汇总.产物列表.extend(单结果.产物列表)
         汇总.问题列表.extend(单结果.问题列表)
     return 汇总
+
+
+if __name__ == "__main__":
+    print("编译阻断：契约编译已降为统一编译器内部阶段，不可独立正式调用")
+    raise SystemExit(2)

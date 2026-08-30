@@ -8,9 +8,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import keyword
+import os
+import py_compile
 import shutil
-import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,45 +21,90 @@ from typing import Any
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 from 开发工具.轻代码前端编辑器.页面模型 import 校验页面
+from 开发工具.项目编译.工作区指纹 import 计算工作区字节指纹
 from 开发工具.项目编译.正式包索引 import 构建索引, 校验显式包引用, 校验能力引用, 解析依赖闭包
 固定运行时目录 = ("公共契约", "后端核心", "运行核心", "前端核心")
 忽略目录 = {"__pycache__", ".pytest_cache", ".ruff_cache", "工程缓存"}
 运行时适配文件 = ("__init__.py", "脱敏模式.py", "系统探针.py", "适配契约.py")
 依赖锁文件名 = "依赖锁.json"
-编译器版本 = "1.2.0"
+编译器版本 = "1.3.0"
+关键源码目录 = {
+    ".git", "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心",
+    "后端核心", "支持库", "模块库", "项目适配层", "开发工具", "测试中心",
+    "示例项目", "客户端", "MCP工具箱", "开发文档",
+}
 
 
 def _来源指纹(排除目录: Path | None = None) -> dict[str, str]:
-    """记录编译输入对应的 Git 提交和工作区指纹，避免旧制品冒充当前源码。"""
-    def 执行(命令: list[str]) -> str:
-        try:
-            结果 = subprocess.run(
-                命令, cwd=系统根, capture_output=True, text=True, timeout=15, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return ""
-        return 结果.stdout.strip() if 结果.returncode == 0 else ""
+    """兼容既有调用名；唯一实现使用冻结的正式文件字节语义。"""
+    _ = 排除目录  # 排除规则由公共实现固定，调用方不得临时改变语义。
+    结果 = 计算工作区字节指纹(系统根)
+    return {键: str(结果[键]) for 键 in ("提交", "工作区摘要", "工作区状态")}
 
-    提交 = 执行(["git", "rev-parse", "HEAD"])
-    状态 = 执行(["git", "status", "--porcelain=v1", "-z"])
-    if 排除目录 is not None:
-        try:
-            排除相对 = 排除目录.resolve().relative_to(系统根.resolve()).as_posix().rstrip("/") + "/"
-            条目 = []
-            for 项 in 状态.split("\0"):
-                if not 项:
-                    continue
-                路径 = 项[3:] if len(项) >= 4 and 项[2] == " " else 项
-                if not 路径.startswith(排除相对):
-                    条目.append(项)
-            状态 = "\0".join(条目)
-        except ValueError:
-            pass
-    return {
-        "提交": 提交 or "未知",
-        "工作区摘要": hashlib.sha256(状态.encode("utf-8")).hexdigest(),
-        "工作区状态": "干净" if not 状态 else "含未提交变更",
-    }
+
+def 校验项目id(项目id: Any) -> str:
+    """项目 id 必须是非关键字的点分 Python 标识符，拒绝类型漂移和源码注入。"""
+    if not isinstance(项目id, str) or not 项目id:
+        raise ValueError("项目id必须是非空字符串")
+    if 项目id != 项目id.strip():
+        raise ValueError("项目id不能含首尾空白")
+    分段 = 项目id.split(".")
+    if any(not 段 or not 段.isidentifier() or keyword.iskeyword(段) for 段 in 分段):
+        raise ValueError("项目id必须是点分标识符，且每段不能是关键字")
+    if len(项目id) > 200:
+        raise ValueError("项目id过长")
+    return 项目id
+
+
+def 校验输出目录(项目目录: Path, 输出目录: Path) -> Path:
+    """拒绝会覆盖项目、源码、祖先或关键目录的输出目标。"""
+    项目 = Path(项目目录).resolve()
+    输出 = Path(输出目录).resolve()
+    源码根 = 系统根.resolve()
+    if 输出 == 项目 or 输出 in 项目.parents:
+        raise ValueError(f"输出目录危险：拒绝项目根或其祖先: {输出}")
+    if 输出 == 源码根 or 输出 in 源码根.parents:
+        raise ValueError(f"输出目录危险：拒绝源码根或其祖先: {输出}")
+    try:
+        输出.relative_to(源码根)
+    except ValueError:
+        pass
+    else:
+        工程缓存 = 源码根 / "工程缓存"
+        if 输出 == 工程缓存:
+            raise ValueError(f"输出目录危险：拒绝工程缓存根目录: {输出}")
+        if 工程缓存 not in 输出.parents:
+            raise ValueError(f"输出目录危险：源码树内只允许工程缓存子目录: {输出}")
+    for 名称 in 关键源码目录:
+        关键目录 = 源码根 / 名称
+        if 输出 == 关键目录 or 关键目录 in 输出.parents:
+            raise ValueError(f"输出目录危险：拒绝源码关键目录: {输出}")
+    for 名称 in ("前端", "后端", "模块", "运行入口", "资源", ".git"):
+        项目源码 = 项目 / 名称
+        if 输出 == 项目源码 or 项目源码 in 输出.parents:
+            raise ValueError(f"输出目录危险：拒绝项目源码目录: {输出}")
+    return 输出
+
+
+def _准备输出目录(项目目录: Path, 输出目录: Path) -> Path:
+    """在任何递归删除前重新解析并最终校验，缩短路径替换竞态窗口。"""
+    输出 = 校验输出目录(项目目录, 输出目录)
+    if 输出.exists():
+        shutil.rmtree(输出)
+    输出.mkdir(parents=True)
+    return 输出
+
+
+def _写入并编译Python(路径: Path, 内容: str) -> None:
+    """安全写入生成源码并立即 py_compile；临时 pyc 不进入正式制品。"""
+    路径.write_text(内容, encoding="utf-8")
+    描述符, 临时pyc = tempfile.mkstemp(prefix="统一编译语法_", suffix=".pyc")
+    os.close(描述符)
+    Path(临时pyc).unlink(missing_ok=True)
+    try:
+        py_compile.compile(str(路径), cfile=临时pyc, doraise=True)
+    finally:
+        Path(临时pyc).unlink(missing_ok=True)
 
 
 def _制品文件摘要(目录: Path) -> dict[str, Any]:
@@ -105,36 +153,131 @@ def _遍历JSON(项目目录: Path) -> list[dict[str, Any]]:
     return 文件表
 
 
-def _引用能力(项目目录: Path) -> tuple[set[str], set[str]]:
+def _项目JSON路径(项目目录: Path) -> list[Path]:
+    输入目录 = [项目目录 / "前端" / "页面", 项目目录 / "模块", 项目目录 / "后端"]
+    return sorted({
+        路径.resolve() for 目录 in 输入目录 if 目录.is_dir() for 路径 in 目录.rglob("*.json")
+        if not any(部分 in 忽略目录 for 部分 in 路径.parts)
+        and 路径.name not in {"编译制品.json", "编辑记录.json"}
+    })
+
+
+def _收集数据引用(数据表: list[dict[str, Any]]) -> tuple[set[str], set[str]]:
     能力集合: set[str] = set()
     模块集合: set[str] = set()
-    for 数据 in _遍历JSON(项目目录):
-        def 扫描(值: Any) -> None:
-            if isinstance(值, dict):
-                for 键, 子值 in 值.items():
-                    if 键 in ("能力id", "能力", "能力依赖"):
-                        扫描能力(子值)
-                    elif 键 in ("模块id", "模块", "模块依赖"):
-                        扫描模块(子值)
-                    else:
-                        扫描(子值)
-            elif isinstance(值, list):
-                for 项 in 值:
-                    扫描(项)
-        def 扫描能力(值: Any) -> None:
-            if isinstance(值, str) and 值.strip(): 能力集合.add(值.strip())
-            elif isinstance(值, list):
-                for 项 in 值: 扫描能力(项)
-            elif isinstance(值, dict):
-                扫描能力(值.get("id") or 值.get("能力id") or "")
-        def 扫描模块(值: Any) -> None:
-            if isinstance(值, str) and 值.strip(): 模块集合.add(值.strip())
-            elif isinstance(值, list):
-                for 项 in 值: 扫描模块(项)
-            elif isinstance(值, dict):
-                扫描模块(值.get("包id") or 值.get("模块id") or "")
+
+    def 扫描能力(值: Any) -> None:
+        if isinstance(值, str) and 值.strip():
+            能力集合.add(值.strip())
+        elif isinstance(值, list):
+            for 项 in 值: 扫描能力(项)
+        elif isinstance(值, dict):
+            扫描能力(值.get("id") or 值.get("能力id") or "")
+
+    def 扫描模块(值: Any) -> None:
+        if isinstance(值, str) and 值.strip():
+            模块集合.add(值.strip())
+        elif isinstance(值, list):
+            for 项 in 值: 扫描模块(项)
+        elif isinstance(值, dict):
+            扫描模块(值.get("包id") or 值.get("模块id") or "")
+
+    def 扫描(值: Any) -> None:
+        if isinstance(值, dict):
+            for 键, 子值 in 值.items():
+                if 键 in ("能力id", "能力", "能力依赖"):
+                    扫描能力(子值)
+                elif 键 in ("模块id", "模块", "模块依赖"):
+                    扫描模块(子值)
+                else:
+                    扫描(子值)
+        elif isinstance(值, list):
+            for 项 in 值: 扫描(项)
+
+    for 数据 in 数据表:
         扫描(数据)
     return 能力集合, 模块集合
+
+
+def _引用能力(项目目录: Path) -> tuple[set[str], set[str]]:
+    return _收集数据引用(_遍历JSON(项目目录))
+
+
+def 计算影响闭包(
+    项目目录: Path, *, 文件: Path | None = None, 能力: str | None = None,
+    组件: str | None = None,
+) -> dict[str, Any]:
+    """从一个文件/能力/组件计算本次契约、依赖、边界与页面影响闭包。"""
+    项目 = Path(项目目录).resolve()
+    已给 = sum(值 is not None for 值 in (文件, 能力, 组件))
+    if 已给 != 1:
+        raise ValueError("本次变更必须且只能提供文件、能力、组件之一")
+    全部路径 = _项目JSON路径(项目)
+    选中路径: list[Path] = []
+    类型, 值 = "", ""
+    if 文件 is not None:
+        类型 = "文件"
+        目标 = Path(文件)
+        if not 目标.is_absolute():
+            目标 = 项目 / 目标
+        目标 = 目标.resolve()
+        try:
+            目标.relative_to(项目)
+        except ValueError as 错误:
+            raise ValueError(f"变更文件必须位于项目目录内: {目标}") from 错误
+        if not 目标.is_file():
+            raise ValueError(f"变更文件不存在: {目标}")
+        值 = 目标.relative_to(项目).as_posix()
+        if 目标.name in {"项目声明.json", "项目.json"}:
+            选中路径 = 全部路径
+        elif 目标.suffix.lower() == ".json":
+            选中路径 = [目标]
+        else:
+            raise ValueError("变更文件必须是项目声明或项目 JSON 小单元")
+    elif 能力 is not None:
+        类型, 值 = "能力", 能力
+        if not isinstance(能力, str) or not 能力.strip():
+            raise ValueError("变更能力不能为空")
+        值 = 能力.strip()
+        for 路径 in 全部路径:
+            数据 = _读取(路径, {})
+            引用能力, _ = _收集数据引用([数据] if isinstance(数据, dict) else [])
+            if 值 in 引用能力:
+                选中路径.append(路径)
+        if not 选中路径:
+            raise ValueError(f"项目未引用变更能力: {值}")
+    else:
+        类型, 值 = "组件", str(组件 or "").strip()
+        if not 值:
+            raise ValueError("变更组件不能为空")
+        for 路径 in 全部路径:
+            数据 = _读取(路径, {})
+            组件表 = 数据.get("组件列表", []) if isinstance(数据, dict) else []
+            if any(isinstance(项, dict) and str(项.get("组件id", "")) == 值 for 项 in 组件表):
+                选中路径.append(路径)
+        if not 选中路径:
+            raise ValueError(f"项目未找到变更组件: {值}")
+    数据表 = [_读取(路径, {}) for 路径 in 选中路径]
+    数据表 = [数据 for 数据 in 数据表 if isinstance(数据, dict)]
+    能力集合, 模块集合 = _收集数据引用(数据表)
+    if 类型 == "能力":
+        能力集合.add(值)
+    页面根 = (项目 / "前端" / "页面").resolve()
+    页面路径 = []
+    for 路径 in 选中路径:
+        try:
+            路径.relative_to(页面根)
+        except ValueError:
+            continue
+        页面路径.append(路径)
+    return {
+        "变更单元": {"类型": 类型, "值": 值},
+        "受影响文件": [路径.relative_to(项目).as_posix() for 路径 in 选中路径],
+        "受影响页面": [路径.name for 路径 in 页面路径],
+        "契约": sorted(能力集合),
+        "依赖": sorted(模块集合),
+        "边界": {"项目根": str(项目), "仅项目内文件": True, "禁止测试中心和HTML全量": True},
+    }
 
 
 def _复制目录(源: Path, 目标: Path) -> None:
@@ -144,7 +287,8 @@ def _复制目录(源: Path, 目标: Path) -> None:
     if 符号链接:
         相对 = 符号链接[0].relative_to(源).as_posix()
         raise ValueError(f"编译输入包含不允许的符号链接: {相对}")
-    if 目标.exists(): shutil.rmtree(目标)
+    if 目标.exists():
+        raise ValueError(f"编译目标重复，拒绝递归删除子目录: {目标}")
     shutil.copytree(源, 目标, ignore=shutil.ignore_patterns(*忽略目录, "*.pyc"))
 
 
@@ -188,7 +332,8 @@ function 挂载(c,p){{const x=创建(c);p.append(x);for(const y of 页面.组件
 
 def _生成启动器(项目id: str) -> str:
     """生成独立 HTML 启动器，源码只依赖制品目录内的运行核心。"""
-    return f'''"""{项目id} 独立 HTML 启动器；不依赖开发网关。"""
+    项目id字面量 = json.dumps(校验项目id(项目id), ensure_ascii=False)
+    return f'''"""独立 HTML 启动器；不依赖开发网关。"""
 from __future__ import annotations
 import os, sys
 sys.dont_write_bytecode = True
@@ -197,6 +342,7 @@ import argparse, json, threading, urllib.error, urllib.request, webbrowser
 from urllib.parse import quote, unquote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+项目id = {项目id字面量}
 根 = Path(__file__).resolve().parents[1]
 if str(根) not in sys.path: sys.path.insert(0, str(根))
 from 后端核心.后端核心 import 后端核心
@@ -209,7 +355,18 @@ def 主函数(端口=45080, 自动打开=True):
     if not 启动.成功: raise RuntimeError(f"独立运行时装配失败: {{启动.错误说明}}")
     网关 = 本地网关服务器(网关核心实例=网关核心(后端), 端口=0); 成功, 说明 = 网关.启动()
     if not 成功: 后端.优雅关闭(); raise RuntimeError(说明)
-    页面 = (根 / "前端" / "编译页面" / "index.html").read_bytes(); 网关地址 = f"http://127.0.0.1:{{网关.端口}}"
+    页面目录 = 根 / "前端" / "编译页面"
+    路由数据 = json.loads((页面目录 / "路由表.json").read_text(encoding="utf-8"))
+    if not isinstance(路由数据, dict) or not 路由数据: raise RuntimeError("页面路由表为空或不合法")
+    页面表 = {{}}
+    for 路由, 文件名 in 路由数据.items():
+        if not isinstance(路由, str) or not 路由.startswith("/") or not isinstance(文件名, str): raise RuntimeError("页面路由表条目不合法")
+        页面文件 = (页面目录 / 文件名).resolve()
+        try: 页面文件.relative_to(页面目录.resolve())
+        except ValueError as 错误: raise RuntimeError("页面路由逃逸") from 错误
+        if not 页面文件.is_file(): raise RuntimeError(f"页面路由制品不存在: {{文件名}}")
+        页面表[路由] = 页面文件.read_bytes()
+    网关地址 = f"http://127.0.0.1:{{网关.端口}}"
     class 处理器(BaseHTTPRequestHandler):
         def log_message(self, 格式, *参数): return
         def _CORS头(self):
@@ -221,7 +378,8 @@ def 主函数(端口=45080, 自动打开=True):
         def do_OPTIONS(self):
             self.send_response(204); self._CORS头(); self.end_headers()
         def do_GET(self):
-            if self.path != "/": self.send_error(404); return
+            路由 = unquote(self.path.split("?", 1)[0]); 页面 = 页面表.get(路由)
+            if 页面 is None: self.send_error(404); return
             self.send_response(200); self._CORS头(); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(页面))); self.end_headers(); self.wfile.write(页面)
         def do_POST(self):
             # 浏览器/curl 会把中文路径编码（/网关/调用 → /%E7%BD%91...），
@@ -261,14 +419,29 @@ if __name__ == "__main__":
 '''
 
 
-def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
-    项目目录 = 项目目录.resolve(); 输出目录 = 输出目录.resolve()
+def 编译项目(
+    项目目录: Path, 输出目录: Path, *, 变更单元: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    项目目录 = 项目目录.resolve(); 输出目录 = 校验输出目录(项目目录, 输出目录)
     声明 = _读取(项目目录 / "项目声明.json") or _读取(项目目录 / "项目.json")
     if not isinstance(声明, dict) or not 声明.get("项目id"):
         raise ValueError("项目必须提供 项目声明.json 或 项目.json，且包含项目id")
+    项目id = 校验项目id(声明["项目id"])
+    if 变更单元 is None:
+        # 仅保留给仓库内既有程序化调用；唯一对外 CLI 强制提供小单元。
+        声明文件 = 项目目录 / ("项目声明.json" if (项目目录 / "项目声明.json").is_file() else "项目.json")
+        影响 = 计算影响闭包(项目目录, 文件=声明文件)
+        影响["变更单元"] = {"类型": "内部兼容", "值": 声明文件.name}
+    else:
+        if not isinstance(变更单元, dict) or len(变更单元) != 1:
+            raise ValueError("本次变更必须且只能提供文件、能力、组件之一")
+        类型, 值 = next(iter(变更单元.items()))
+        if 类型 not in {"文件", "能力", "组件"}:
+            raise ValueError("本次变更类型只能是文件、能力、组件")
+        影响 = 计算影响闭包(项目目录, **{类型: 值})
     索引 = 构建索引(系统根)
     支持库表 = dict(索引["支持库"]); 模块表 = dict(索引["模块库"])
-    能力集合, 模块集合 = _引用能力(项目目录)
+    能力集合, 模块集合 = set(影响["契约"]), set(影响["依赖"])
     能力归属: dict[str, str] = dict(索引["能力所有者"])
     for 能力id in sorted(能力集合):
         校验能力引用(系统根, 能力id)
@@ -291,8 +464,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
         支持库表, 模块表, 能力归属, 选中支持库, 选中模块)
     if not 能力集合 and not 模块集合:
         raise ValueError("项目没有发现能力id或模块id引用，拒绝生成空项目")
-    if 输出目录.exists(): shutil.rmtree(输出目录)
-    输出目录.mkdir(parents=True)
+    输出目录 = _准备输出目录(项目目录, 输出目录)
     for 目录名 in 固定运行时目录:
         _复制目录(系统根 / 目录名, 输出目录 / 目录名)
     # 运行核心的内部适配器，不属于用户业务支持库，但属于启动闭包。
@@ -327,7 +499,11 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
         源 = 项目目录 / 名称
         if 源.is_file(): (输出目录 / 名称).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(源, 输出目录 / 名称)
         elif 源.is_dir(): _复制目录(源, 输出目录 / 名称)
-    页面文件表 = sorted((项目目录 / "前端" / "页面").glob("*.json")) if (项目目录 / "前端" / "页面").is_dir() else []
+    受影响文件 = set(影响["受影响文件"])
+    页面文件表 = [
+        项目目录 / 相对 for 相对 in sorted(受影响文件)
+        if 相对.startswith("前端/页面/") and 相对.endswith(".json")
+    ]
     页面表: list[dict[str, Any]] = []
     路由表: dict[str, str] = {}
     for 页面文件 in 页面文件表:
@@ -348,6 +524,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     for 页面 in 页面表:
         文件名 = "index.html" if 页面["路由"] == "/" else f"{页面['页面id']}.html"
         (编译页面目录 / 文件名).write_text(_生成HTML(页面), encoding="utf-8")
+        路由表[str(页面["路由"])] = 文件名
     输入摘要 = hashlib.sha256()
     for 文件 in sorted((项目目录 / "前端" / "页面").glob("*.json")):
         输入摘要.update(文件.name.encode("utf-8")); 输入摘要.update(文件.read_bytes())
@@ -359,7 +536,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     (编译页面目录 / "路由表.json").write_text(json.dumps(路由表, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     启动器目录 = 输出目录 / "运行入口"
     启动器目录.mkdir(exist_ok=True)
-    (启动器目录 / "启动.py").write_text(_生成启动器(str(声明["项目id"])), encoding="utf-8")
+    _写入并编译Python(启动器目录 / "启动.py", _生成启动器(项目id))
     (启动器目录 / "启动网页.command").write_text(
         '#!/bin/sh\nset -eu\ncd "$(dirname "$0")/.." || exit 1\nexec env PYTHONDONTWRITEBYTECODE=1 python3 -B 运行入口/启动.py\n', encoding="utf-8"
     )
@@ -369,7 +546,13 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     (启动器目录 / "__init__.py").write_text('"""独立项目运行入口。"""\n', encoding="utf-8")
     (启动器目录 / "启动网页.command").chmod(0o755)
     来源 = _来源指纹(输出目录)
-    清单 = {"制品类型": "独立项目", "编译器版本": 编译器版本, "项目id": 声明["项目id"],
+    影响闭包 = {
+        "文件": list(影响["受影响文件"]), "页面": [str(页面["页面id"]) for 页面 in 页面表],
+        "能力": sorted(能力集合), "模块": sorted(选中模块), "支持库": sorted(选中支持库),
+        "依赖锁": 依赖锁, "边界": 影响["边界"],
+    }
+    清单 = {"制品类型": "独立项目", "编译器版本": 编译器版本, "项目id": 项目id,
+           "变更单元": 影响["变更单元"], "影响闭包": 影响闭包,
            "来源目录": "编译输入项目", "能力引用": sorted(能力集合), "模块引用": sorted(选中模块),
            "支持库引用": sorted(选中支持库), "开发网关": "不包含",
            "前端制品": "前端/编译页面/index.html",
@@ -384,7 +567,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     (输出目录 / 依赖锁文件名).write_text(json.dumps({
         "格式": "独立项目依赖锁",
         "版本": "1.0.0",
-        "项目id": 声明["项目id"],
+        "项目id": 项目id,
         "包": [
             {"包id": 包id, "类型": "支持库", "版本": 支持库表[包id][1].get("版本", "")}
             for 包id in sorted(选中支持库)
@@ -396,7 +579,7 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (输出目录 / "制品来源.json").write_text(json.dumps({
         "格式": "独立制品来源绑定", "编译器版本": 编译器版本,
-        "项目id": 声明["项目id"], **来源,
+        "项目id": 项目id, **来源,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (输出目录 / "制品完整性摘要.json").write_text(
         json.dumps(_制品文件摘要(输出目录), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -407,9 +590,14 @@ def 编译项目(项目目录: Path, 输出目录: Path) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    解析器 = argparse.ArgumentParser(description="编译独立项目制品")
+    解析器 = argparse.ArgumentParser(description="唯一统一编译入口：只编译本次变更小单元")
     解析器.add_argument("项目目录", type=Path); 解析器.add_argument("--输出", type=Path, required=True)
+    小单元 = 解析器.add_mutually_exclusive_group(required=True)
+    小单元.add_argument("--文件", type=Path)
+    小单元.add_argument("--能力")
+    小单元.add_argument("--组件")
     参数 = 解析器.parse_args()
-    try: 结果 = 编译项目(参数.项目目录, 参数.输出)
+    变更单元 = {名称: 值 for 名称, 值 in (("文件", 参数.文件), ("能力", 参数.能力), ("组件", 参数.组件)) if 值 is not None}
+    try: 结果 = 编译项目(参数.项目目录, 参数.输出, 变更单元=变更单元)
     except (ValueError, OSError) as 错误: print(f"编译阻断：{错误}"); raise SystemExit(1)
     print(json.dumps(结果, ensure_ascii=False, indent=2))

@@ -165,28 +165,18 @@ def 检查包(目标: Path, *, 执行样例: bool = False, 执行外部: bool = 
     return 退出码, 报告
 
 
-def 主函数() -> int:
-    解析器 = argparse.ArgumentParser(description="契约测试编译器与原则检查")
-    # 工作区范围不需要单独目标；包范围仍必须明确给出包目录或文件。
-    目标组 = 解析器.add_mutually_exclusive_group(required=False)
+def _运行内部阶段() -> int:
+    """仅供统一编译器调度的小单元检查；不提供工作区范围。"""
+    解析器 = argparse.ArgumentParser(description="统一编译器内部包检查阶段")
+    目标组 = 解析器.add_mutually_exclusive_group(required=True)
     目标组.add_argument("--包目录", type=Path)
     目标组.add_argument("--文件", type=Path)
-    解析器.add_argument("--范围", choices=("包", "工作区"), default="包")
     解析器.add_argument("--执行样例", action="store_true")
     解析器.add_argument("--执行外部", action="store_true")
     参数 = 解析器.parse_args()
     目标 = 参数.包目录 or 参数.文件
-    if 参数.范围 == "包" and 目标 is None:
-        解析器.error("包范围必须提供 --包目录 或 --文件")
     try:
-        if 参数.范围 == "工作区":
-            索引 = 构建索引(系统根)
-            目标表 = [项[0] / "包声明.json" for 项 in [*索引["支持库"].values(), *索引["模块库"].values()]]
-            结果表 = [检查包(项.parent, 执行样例=参数.执行样例, 执行外部=参数.执行外部)[1] for 项 in 目标表]
-            退出码 = max((int(项["退出码"]) for 项 in 结果表), default=10)
-            报告 = {"范围": "工作区", "结果": 结果表, "退出码": 退出码}
-        else:
-            退出码, 报告 = 检查包(目标, 执行样例=参数.执行样例, 执行外部=参数.执行外部)
+        退出码, 报告 = 检查包(目标, 执行样例=参数.执行样例, 执行外部=参数.执行外部)
     except (OSError, ValueError) as 错误:
         退出码, 报告 = 10, {"问题": [str(错误)], "退出码": 10}
     报告根.mkdir(parents=True, exist_ok=True)
@@ -196,4 +186,5 @@ def 主函数() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(主函数())
+    print("编译阻断：快速编译已降为统一编译器内部阶段，不可独立正式调用")
+    raise SystemExit(2)
