@@ -173,7 +173,7 @@ class 启动器页面路由测试(unittest.TestCase):
             }, ensure_ascii=False), encoding="utf-8")
             编译项目(项目, 输出, 变更单元={"文件": 项目 / "项目声明.json"})
             环境 = dict(os.environ)
-            环境["系统库网关凭证"] = "编译器黑盒测试凭证"
+            环境["系统库网关凭证"] = "123"
             进程 = subprocess.Popen(
                 ["python3.14", "-u", "-B", "运行入口/启动.py", "--端口", "0", "--不自动打开"],
                 cwd=输出, env=环境, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,

@@ -18,54 +18,26 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import ServerCapabilities, TextContent, Tool
 
-try:
-    from MCP工具箱.工具名映射 import 中文名到协议名, 协议名到中文名
-    from MCP工具箱.公开能力 import 搜索公开能力, 读取公开能力
-    from MCP工具箱.使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
-    from MCP工具箱.临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文, 核对修改范围
-    from MCP工具箱.任务观测 import 任务开始, 工具事件, 任务结束, 查询任务, 阶段记录, 生成效率报告
-    from MCP工具箱.工作区管理 import (
-        创建工作区, 查询工作区, 关闭工作区, 合并分支, 工作区提交,
-    )
-    from MCP工具箱.测试资源 import 登记资源, 清理资源
-    from MCP工具箱.支持库协作 import 登记需求, 复用搜索, 登记能力占用
-    from MCP工具箱.模块合规 import 校验模块合规
-    from MCP工具箱.核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
-    from MCP工具箱.发布治理 import (
-        运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决,
-        读取正式发布状态, 正式发布证据类型,
-    )
-    from MCP工具箱.协作状态 import 登记任务, 查询协作状态, 收口登记
-    from MCP工具箱.验证门禁 import (
-        校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
-        正式发布命令表, 唯一发布命令, 判定正式发布结果,
-    )
-    from MCP工具箱.角色权限 import (
-        获取角色指南, 网关实例名, 网关角色名, 网关说明,
-    )
-except ModuleNotFoundError:
-    from 工具名映射 import 中文名到协议名, 协议名到中文名
-    from 公开能力 import 搜索公开能力, 读取公开能力
-    from 使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
-    from 临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文, 核对修改范围
-    from 任务观测 import 任务开始, 工具事件, 任务结束, 查询任务, 阶段记录, 生成效率报告
-    from 工作区管理 import 创建工作区, 查询工作区, 关闭工作区, 合并分支, 工作区提交
-    from 测试资源 import 登记资源, 清理资源
-    from 支持库协作 import 登记需求, 复用搜索, 登记能力占用
-    from 模块合规 import 校验模块合规
-    from 核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
-    from 发布治理 import (
-        运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决,
-        读取正式发布状态, 正式发布证据类型,
-    )
-    from 协作状态 import 登记任务, 查询协作状态, 收口登记
-    from 验证门禁 import (
-        校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
-        正式发布命令表, 唯一发布命令, 判定正式发布结果,
-    )
-    from 角色权限 import (
-        获取角色指南, 网关实例名, 网关角色名, 网关说明,
-    )
+from .工具名映射 import 中文名到协议名, 协议名到中文名
+from .公开能力 import 搜索公开能力, 读取公开能力
+from .使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
+from .临时上下文 import 写入临时上下文, 读取临时上下文, 清理临时上下文, 清理过期上下文, 核对修改范围
+from .任务观测 import 任务开始, 工具事件, 任务结束, 查询任务, 阶段记录, 生成效率报告
+from .工作区管理 import 创建工作区, 查询工作区, 关闭工作区, 合并分支, 工作区提交
+from .测试资源 import 登记资源, 清理资源
+from .支持库协作 import 登记需求, 复用搜索, 登记能力占用
+from .模块合规 import 校验模块合规
+from .核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
+from .发布治理 import (
+    运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决,
+    读取正式发布状态, 正式发布证据类型,
+)
+from .协作状态 import 登记任务, 查询协作状态, 收口登记
+from .验证门禁 import (
+    校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
+    正式发布命令表, 唯一发布命令, 判定正式发布结果,
+)
+from .角色权限 import 获取角色指南, 网关实例名, 网关角色名, 网关说明
 
 项目根目录 = Path(__file__).resolve().parent.parent
 记忆目录 = 项目根目录 / "开发文档" / "项目记忆"
@@ -457,7 +429,7 @@ _工具定义列表 = [
         Tool(name="register_task", description="登记任务：登记主/子任务协作状态（parent/child 映射）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}, "角色": {"type": "string"}, "worktree路径": {"type": "string"}, "允许路径": {"type": "array", "items": {"type": "string"}}, "基线提交": {"type": "string"}, "parent_work_id": {"type": "string"}}, "required": ["work_id", "任务"]}),
         Tool(name="collaboration_status", description="协作状态：按开工id或任务查询协作状态（子任务/反馈/证据/阻断标记）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}}}),
         Tool(name="delivery_closeout", description="收口登记：delivery_closeout：收口登记五件套与结论；未反馈或证据不匹配阻断。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "五件套路径": {"type": "string"}, "结论": {"type": "string"}}, "required": ["work_id"]}),
-        Tool(name="validate_verification_command", description="校验验证命令：受控验证命令白名单校验（运行测试.py/pytest 定向，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
+        Tool(name="validate_verification_command", description="校验验证命令：受控模块验证命令白名单校验（仅允许 unittest 模块入口，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
         Tool(name="judge_verification_result", description="判定验证结果：判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}}, "required": ["退出码", "标准输出"]}),
     Tool(name="tool_catalog", description="工具目录：按 分类/关键词 返回全量工具清单（中文名+协议名+描述+分类+当前实例可调用性），用于发现未直接注入的工具。", inputSchema={"type": "object", "properties": {"分类": {"type": "string"}, "关键词": {"type": "string"}}}),
 ]

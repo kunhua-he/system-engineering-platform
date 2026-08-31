@@ -11,5 +11,4 @@ mkdir -p 工程缓存
 echo "启动 HTTP 能力网关: http://${地址}:${端口}"
 echo "接口: GET /能力/搜索  GET /能力/契约/{能力id}（执行统一走 40007 /网关/调用）"
 echo "日志: ${日志}"
-PYTHONPATH=. \
-  exec python3.14 MCP工具箱/能力网关.py --端口 "${端口}" --地址 "${地址}"
+exec python3.14 -m MCP工具箱.能力网关 --端口 "${端口}" --地址 "${地址}"

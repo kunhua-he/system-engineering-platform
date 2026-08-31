@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-import importlib.util
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-门禁路径 = Path(__file__).resolve().parents[2] / "MCP工具箱" / "验证门禁.py"
-sys.path.insert(0, str(门禁路径.parent))
-规格 = importlib.util.spec_from_file_location("验证门禁", 门禁路径)
-assert 规格 and 规格.loader
-门禁模块 = importlib.util.module_from_spec(规格)
-规格.loader.exec_module(门禁模块)
-
-from 使用反馈 import 写入反馈  # noqa: E402
+from MCP工具箱 import 验证门禁 as 门禁模块
+from MCP工具箱.使用反馈 import 写入反馈
 
 系统根 = Path(__file__).resolve().parents[2]
 

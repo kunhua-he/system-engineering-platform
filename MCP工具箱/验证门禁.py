@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from 使用反馈 import 查询反馈状态
+from .使用反馈 import 查询反馈状态
 
 项目根目录 = Path(__file__).resolve().parents[1]
 默认反馈路径 = 项目根目录 / "开发文档" / "项目证据" / "MCP使用反馈.jsonl"

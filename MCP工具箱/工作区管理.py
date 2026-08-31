@@ -15,10 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-try:
-    from MCP工具箱.测试资源 import 清理资源, 终止进程防残留, 写清理失败证据
-except ModuleNotFoundError:
-    from 测试资源 import 清理资源, 终止进程防残留, 写清理失败证据
+from .测试资源 import 清理资源, 终止进程防残留, 写清理失败证据
 
 
 def _标识(文本: str) -> str:

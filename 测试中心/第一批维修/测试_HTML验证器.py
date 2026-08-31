@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -86,6 +87,21 @@ def 绑定场景(场景, 制品: Path):
 
 
 class Test场景事实源与阻断(unittest.TestCase):
+    def test_记忆支持库场景引用为v1并覆盖全部公开能力(self):
+        包目录 = 系统根 / "支持库" / "后端" / "记忆支持库"
+        场景表 = 验证器._解析场景引用(包目录)
+        能力定义 = json.loads((包目录 / "能力定义.json").read_text(encoding="utf-8"))
+        公开能力 = {项["能力id"] for 项 in 能力定义["能力列表"]}
+        成功目标能力 = {
+            步骤["能力id"]
+            for 场景, _ in 场景表
+            for 步骤 in 场景["目标步骤"]
+            if 步骤["预期"]["成功"]
+        }
+        self.assertEqual(成功目标能力, 公开能力)
+        for 场景, _ in 场景表:
+            self.assertEqual(set(场景), {"场景id", "前置步骤", "目标步骤", "清理步骤"})
+
     def test_聚合父包声明不重复占用子包能力owner(self):
         with tempfile.TemporaryDirectory() as 临时:
             制品 = 建制品(Path(临时), [("样例.相加", {})], [成功场景()])
@@ -221,6 +237,34 @@ class TestP020多步骤场景契约(unittest.TestCase):
         场景束 = 验证器._加载场景(制品, None)
         with mock.patch.object(验证器, "_发送请求", side_effect=返回函数):
             return 验证器._执行场景束(制品, 场景束, "http://127.0.0.1:45080", 超时秒=1)
+
+    def test_独立场景按并发执行且场景内步骤保持顺序(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = 建新制品(Path(临时), ["样例.甲", "样例.乙"], [
+                新场景("场景甲", [新步骤("目标甲", "样例.甲")]),
+                新场景("场景乙", [新步骤("目标乙", "样例.乙")]),
+            ])
+            活跃 = 0
+            峰值 = 0
+            锁 = threading.Lock()
+
+            def 返回(_地址, _步骤, _超时):
+                nonlocal 活跃, 峰值
+                with 锁:
+                    活跃 += 1
+                    峰值 = max(峰值, 活跃)
+                time.sleep(0.05)
+                with 锁:
+                    活跃 -= 1
+                return 200, 统一成功返回(), 1
+
+            场景束 = 验证器._加载场景(制品, None)
+            with mock.patch.object(验证器, "_发送请求", side_effect=返回):
+                报告 = 验证器._执行场景束(
+                    制品, 场景束, "http://127.0.0.1:45080", 超时秒=1, 并发=2)
+            self.assertGreaterEqual(峰值, 2)
+            self.assertGreaterEqual(报告.并发峰值, 2)
+            self.assertEqual(报告.失败数, 0)
 
     def test_正式嵌套制品的制品根指向平台客户端代码根(self):
         with tempfile.TemporaryDirectory() as 临时:

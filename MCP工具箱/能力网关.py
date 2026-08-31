@@ -3,7 +3,7 @@
 面向开发（Agent 开发业务项目、开发者写业务代码）：搜索能力、查看契约。
 能力执行统一走运行核心 `/网关/调用`，本服务不保留执行兼容入口。
 
-本地场景：直接把支持库/模块库复制到本地，用本地绝对路径 import，不绕本网关。
+本地场景：仍须经平台公开能力与统一调用入口，不复制支持库/模块库源码，不绕过本网关。
 
 接口（全中文，客户端 UTF-8 百分号编码传输）：
 - GET  /能力/搜索?关键词=读取文件&限制=20   搜索能力（使用声明）
@@ -25,10 +25,6 @@ import socket
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-
-系统根 = Path(__file__).resolve().parents[1]
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
 
 from 开发工具.开发入口 import 搜索能力, 查看契约
 from 公共契约.运行时.端口策略 import 校验应用监听端口

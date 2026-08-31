@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import uuid
 from pathlib import Path
 
@@ -42,7 +43,10 @@ def 计算目录摘要16(目录: Path) -> str:
     for 文件 in sorted(Path(目录).rglob("*")):
         if 文件.is_dir() or "__pycache__" in 文件.parts:
             continue
-        if 文件.name in ("制品摘要.json", "制品来源.json", "物料清单.json"):
+        if 文件.name in (
+            "制品摘要.json", "制品来源.json", "制品完整性摘要.json",
+            "编译清单.json", "物料清单.json",
+        ):
             continue
         哈希器.update(str(文件.relative_to(目录)).encode("utf-8"))
         哈希器.update(文件.read_bytes())
@@ -52,7 +56,7 @@ def 计算目录摘要16(目录: Path) -> str:
 # 二进制资产后缀（示例/验证数据 等真实二进制文件，hex 编码入库）
 _二进制文件后缀表 = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
                   ".woff", ".woff2", ".ttf", ".otf", ".ico", ".mp3", ".wav",
-                  ".mp4", ".zip", ".xlsx", ".docx", ".pptx"}
+                  ".mp4", ".zip", ".xlsx", ".docx", ".pptx", ".db", ".sqlite", ".sqlite3"}
 _二进制前缀 = "hexfile:"
 
 
@@ -73,7 +77,12 @@ def 读取制品文件表(制品目录: Path) -> dict[str, str]:
             continue
         try:
             文件表[相对] = 文件.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as 错误:
+        except UnicodeDecodeError:
+            try:
+                文件表[相对] = _二进制前缀 + 文件.read_bytes().hex()
+            except OSError as 错误:
+                raise ValueError(f"制品文件不可读: {相对}（{错误}）") from 错误
+        except OSError as 错误:
             raise ValueError(f"制品文件不是可入库文本: {相对}（{错误}）") from 错误
     if not 文件表:
         raise ValueError(f"制品目录没有正式文件: {制品目录}")
@@ -167,9 +176,15 @@ class 平台客户端制品接入:
         # 1. 内容寻址登记（复用 包仓库.构建制品：路径安全→临时目录→磁盘校验→
         #    物料清单.json→原子发布→状态记录；同包同版本同摘要幂等）
         文件表 = 读取制品文件表(制品目录)
+        文件模式 = {
+            文件.relative_to(制品目录).as_posix(): stat.S_IMODE(文件.stat().st_mode)
+            for 文件 in 制品目录.rglob("*")
+            if 文件.is_file() and 文件.name != "物料清单.json"
+        }
         构建输入 = 构建输入 or {"来源": "客户端构建", "制品目录": 制品名}
         成功, 消息, 制品摘要 = self.仓库.构建制品(
-            包id=self.包id, 版本=摘要16, 文件表=文件表, 构建输入=构建输入)
+            包id=self.包id, 版本=摘要16, 文件表=文件表, 构建输入=构建输入,
+            文件模式=文件模式)
         if not 成功:
             return False, f"入库失败: {消息}", ""
         # 2. 签名（复用 签名能力；未签名才签，签名者不变不重签）
@@ -320,12 +335,6 @@ class 平台客户端制品接入:
                 shutil.copy2(文件, 目标文件)
                 with open(目标文件, "rb") as 句柄:
                     os.fsync(句柄.fileno())
-            (临时 / "制品来源.json").write_text(
-                json.dumps({"制品目录": 制品名, "摘要sha256": 摘要16},
-                           ensure_ascii=False),
-                encoding="utf-8")
-            with open(临时 / "制品来源.json", "rb") as 句柄:
-                os.fsync(句柄.fileno())
             目录句柄 = os.open(临时, os.O_RDONLY)
             try:
                 os.fsync(目录句柄)

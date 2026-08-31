@@ -25,7 +25,7 @@
     },
     {
       "路径": "数据交换/复用决策.json",
-      "sha256": "4429eee7a8ff7c1cf88ba4513900d68b17311dee842f6f9f149dcb26242a53c3"
+      "sha256": "e03cbf87a7992525b6f427ee14898fce91af3f3044d576df5587391723fcdcdb"
     },
     {
       "路径": "数据交换/实现/数据交换.py",
@@ -68,8 +68,12 @@
       "sha256": "39a7afc9682cbfc61de06898503d8340f6499d279874fb7c9bb88309df430608"
     },
     {
+      "路径": "数据交换/验证场景.json",
+      "sha256": "766fcafd7292bdafa9d35e72057b1f6ededd9ef273ab174976259079cb560817"
+    },
+    {
       "路径": "数据交换/验证场景引用.json",
-      "sha256": "ec4a6e4e564df06059d7d2b87c6029f5927dc64de442aca4c98614e3d78a4d08"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     },
     {
       "路径": "数据交换/默认配置/默认配置.json",
@@ -105,7 +109,7 @@
     },
     {
       "路径": "数据集合/能力契约/参数契约.json",
-      "sha256": "d5d49dec4b54ac899b90386f26f165df8f656fcd373d488be08a074bbe6148a7"
+      "sha256": "e1007fc9f2d8128a01d48e6e6aec78980dbbe389867f72ac5ecbabbafbdddb3a"
     },
     {
       "路径": "数据集合/能力定义.json",
@@ -136,8 +140,12 @@
       "sha256": "7393d2cbb2e3e8ce247ddab4c9ccf791133af4228ffdc90de86b07f8ded05952"
     },
     {
+      "路径": "数据集合/验证场景.json",
+      "sha256": "f48704d583a3e27bf780b4d9eb91b92a59d71cfca57cdf0db63d7a3f671f00b2"
+    },
+    {
       "路径": "数据集合/验证场景引用.json",
-      "sha256": "be30ac20dfe1a6ec798e92dd6d573082f95cb08efb0f7a0d9297d81b7b595b46"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     },
     {
       "路径": "数据集合/默认配置/默认配置.json",
@@ -200,8 +208,12 @@
       "sha256": "ba6b5d3263291092dc8b852c6402ff157970ee52092521392324c12b714e6853"
     },
     {
+      "路径": "文本处理/验证场景.json",
+      "sha256": "49ca840e31c0d6fb94750d0d6f441ddcb21370300f12ca5434376cc5da7be9df"
+    },
+    {
       "路径": "文本处理/验证场景引用.json",
-      "sha256": "bcd500484502e745556aa4eb9c5a28eb8e532194706b7eecc1bfddc6729cede5"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     },
     {
       "路径": "文本处理/默认配置/默认配置.json",
@@ -264,8 +276,12 @@
       "sha256": "37acf0127c95981929ba03b4db0b16c8252685a778c80efd542894463b61c20a"
     },
     {
+      "路径": "时间日期/验证场景.json",
+      "sha256": "7e8c91d31dffcab07fd3641edfa3df1cae1be3f374e4021f5ce6cd130d8c1840"
+    },
+    {
       "路径": "时间日期/验证场景引用.json",
-      "sha256": "8ff5fad0fed9ae72589ebb00cb9f22967effde5d6bec150aca3f721631b06319"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     },
     {
       "路径": "时间日期/默认配置/默认配置.json",
@@ -332,8 +348,12 @@
       "sha256": "ff234b5c8a6dc39f6d028e128762e5299b6f1982168c9ae0cc39c3073819f4a2"
     },
     {
+      "路径": "类型转换/验证场景.json",
+      "sha256": "a0f4bd2c420ad5046cbc2bbf058285feab2bb0a326ba9f83d62fc8bfb4004a06"
+    },
+    {
       "路径": "类型转换/验证场景引用.json",
-      "sha256": "2ce7ea8fd0c922d3729eabe69ead5f18968a59c5a702a1a16bfbaa025ed91f43"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     }
   ]
 }

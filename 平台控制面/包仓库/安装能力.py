@@ -36,6 +36,9 @@ class 安装能力:
                     目标文件 = 临时目标 / 相对
                     目标文件.parent.mkdir(parents=True, exist_ok=True)
                     目标文件.write_bytes(文件.read_bytes())
+                    模式 = json.loads(制品["文件清单"]).get(str(相对), {}).get("模式")
+                    if 模式 is not None:
+                        目标文件.chmod(int(模式) & 0o7777)
             # 安装后再次校验磁盘摘要（防复制过程篡改）
             for 路径, 摘要信息 in json.loads(制品["文件清单"]).items():
                 实际 = hashlib.sha256((临时目标 / 路径).read_bytes()).hexdigest()
