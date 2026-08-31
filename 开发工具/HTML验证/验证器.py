@@ -1471,13 +1471,22 @@ def _验证全部多实例(
     进程表: list[subprocess.Popen[Any]] = []
     地址表: list[str] = []
     try:
-        for 实例序号, 端口 in enumerate(端口表[:实例数]):
-            可用, 消息 = _检查端口可用(端口)
-            if not 可用:
-                raise RuntimeError(f"实例{实例序号 + 1} 端口 {端口} 不可用: {消息}")
-            进程, 实际端口, _ = _启动制品(启动器, 制品目录, 端口)
-            进程表.append(进程)
-            地址表.append(f"http://127.0.0.1:{实际端口}")
+        # 多实例并行启动：实例间独立端口、零竞争，同时拉起避免串行启动叠加
+        with ThreadPoolExecutor(
+            max_workers=实例数, thread_name_prefix="HTML验证实例启动"
+        ) as 启动执行器:
+            启动任务表 = {}
+            for 实例序号, 端口 in enumerate(端口表[:实例数]):
+                启动任务表[启动执行器.submit(_启动制品, 启动器, 制品目录, 端口)] = 实例序号
+            按序号表: list[tuple[int, subprocess.Popen[Any], int]] = []
+            for 任务 in as_completed(启动任务表):
+                实例序号 = 启动任务表[任务]
+                进程, 实际端口, _ = 任务.result()
+                按序号表.append((实例序号, 进程, 实际端口))
+            按序号表.sort()
+            for 实例序号, 进程, 实际端口 in 按序号表:
+                进程表.append(进程)
+                地址表.append(f"http://127.0.0.1:{实际端口}")
         分片报告表: list[验证报告] = []
         分片进程表: list[list[subprocess.Popen[Any]]] = []
         with ThreadPoolExecutor(
