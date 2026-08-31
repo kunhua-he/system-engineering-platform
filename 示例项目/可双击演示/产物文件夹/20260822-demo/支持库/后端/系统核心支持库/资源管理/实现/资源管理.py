@@ -17,6 +17,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
+from 公共契约.基础类型.结果类型 import 结果
 
 错误码_参数不合法 = "参数不合法"
 错误码_版本冲突 = "版本冲突"
@@ -24,6 +25,55 @@ from typing import Any, Callable
 错误码_资源被占用 = "资源被占用"
 错误码_超时 = "超时"
 错误码_内部错误 = "内部错误"
+_受管状态服务 = None
+
+
+def 设置受管状态服务(服务) -> None:
+    """由运行核心装配唯一资源句柄服务；支持库不反向依赖运行核心实现。"""
+    global _受管状态服务
+    _受管状态服务 = 服务
+
+
+def _状态服务():
+    if _受管状态服务 is None:
+        raise RuntimeError("受管状态服务未装配")
+    return _受管状态服务
+
+
+def _执行受管状态(函数) -> 结果:
+    try:
+        return 结果.成功结果(函数(_状态服务()))
+    except KeyError as 错误:
+        return 结果.失败("句柄无效", str(错误), 来源="资源管理")
+    except PermissionError as 错误:
+        return 结果.失败("句柄已过期", str(错误), 来源="资源管理")
+    except ValueError as 错误:
+        return 结果.失败("参数不合法", str(错误), 来源="资源管理")
+    except RuntimeError as 错误:
+        错误码 = "版本冲突" if "版本" in str(错误) or "提交" in str(错误) else "资源操作失败"
+        return 结果.失败(错误码, str(错误), 来源="资源管理")
+
+
+def 创建受管状态(资源id: str, 初始状态: dict, 项目id: str = "", 用户id: str = "") -> 结果:
+    return _执行受管状态(lambda 服务: 服务.创建受管状态(
+        资源id=资源id, 初始状态=初始状态, 项目id=项目id, 所有者=用户id))
+
+
+def 读取受管状态(句柄: int, 项目id: str = "", 用户id: str = "") -> 结果:
+    return _执行受管状态(lambda 服务: 服务.读取受管状态(
+        句柄, 项目id=项目id, 所有者=用户id))
+
+
+def 更新受管状态(句柄: int, 新状态: dict, 期望版本: str = "",
+             项目id: str = "", 用户id: str = "") -> 结果:
+    return _执行受管状态(lambda 服务: 服务.更新受管状态(
+        句柄, 新状态, 期望版本=期望版本, 项目id=项目id, 所有者=用户id)
+    )
+
+
+def 释放受管状态(句柄: int, 项目id: str = "", 用户id: str = "") -> 结果:
+    return _执行受管状态(lambda 服务: 服务.释放受管状态(
+        句柄, 项目id=项目id, 所有者=用户id))
 
 
 def 创建内容摘要(文件路径: Path, 算法: str = "sha256") -> str:
@@ -179,6 +229,22 @@ class 资源短锁:
             except json.JSONDecodeError:
                 return ""
         return ""
+
+
+def 执行资源短锁(锁目录: str | None = None, 资源id: str | None = None, 持有者: str = "") -> 结果:
+    """公开HTTP原子探针：获取短锁、读取持有者并释放，返回可传输结果。"""
+    if not isinstance(锁目录, str) or not 锁目录:
+        return 结果.失败("参数不合法", "锁目录必须是非空文本", 来源="资源管理")
+    if not isinstance(资源id, str) or not 资源id:
+        return 结果.失败("参数不合法", "资源id必须是非空文本", 来源="资源管理")
+    短锁 = 资源短锁(Path(锁目录), 资源id, 持有者)
+    已获取, 说明 = 短锁.获取()
+    if not 已获取:
+        return 结果.失败(错误码_资源被占用, 说明, 来源="资源管理")
+    当前持有者 = 短锁.持有者是谁()
+    已释放, 释放说明 = 短锁.释放()
+    return 结果.成功结果({"已获取": True, "已释放": 已释放, "持有者": 当前持有者,
+                      "锁路径": str(短锁.锁路径), "说明": 释放说明})
 
 
 def 安全释放资源(路径: Path) -> tuple[bool, str]:

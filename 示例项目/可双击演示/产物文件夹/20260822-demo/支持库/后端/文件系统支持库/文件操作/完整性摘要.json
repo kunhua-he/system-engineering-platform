@@ -33,7 +33,7 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "93063bf8ef3531ded41d389c00029acdd6b1b27a35ab7c1e63b8ee474806fb4c"
+      "sha256": "81f27136c55256cb8e5bccd7ca3288cb49707f50698ff1274888fd2ed9fa07bf"
     },
     {
       "路径": "能力定义.json",
@@ -65,7 +65,11 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "b85707c81192d6e8f7da4ce3ae9d5edad25189c05d8a241e76daaf16c43d99de"
+      "sha256": "1c4303fa1f47c7ce0eff075b91e05b1798f63efc6754c32c513f60cb4e5b0fb3"
+    },
+    {
+      "路径": "验证夹具/输入.txt",
+      "sha256": "6895ba5f1f252af50a6c140f6186d3d3767d194b205a6b0f6fc2193a27d7c398"
     },
     {
       "路径": "默认配置/默认配置.json",

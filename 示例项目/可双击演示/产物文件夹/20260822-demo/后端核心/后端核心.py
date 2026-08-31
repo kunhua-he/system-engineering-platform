@@ -21,7 +21,9 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
+from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析运行缓存根
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
+from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
 from 运行核心.资源协调 import 资源句柄服务
 
 _装配模板: 能力注册表 | None = None
@@ -43,16 +45,27 @@ class 后端状态:
 class 后端核心:
     """后端核心宿主：装配、注册、调用、任务、生命周期。"""
 
-    def __init__(self, 系统根目录: Path | None = None) -> None:
+    def __init__(self, 系统根目录: Path | None = None, *,
+                 运行缓存根目录: Path | None = None) -> None:
         self.系统根目录 = 系统根目录 or Path(后端核心.默认系统根())
+        if 运行缓存根目录 is None:
+            self.运行缓存根目录 = 解析运行缓存根(self.系统根目录)
+        else:
+            self.运行缓存根目录 = 解析运行缓存根(
+                self.系统根目录,
+                环境={运行缓存环境变量: str(Path(运行缓存根目录).resolve())},
+            )
         self.注册表 = 能力注册表()
+        self._唯一调用服务: 唯一能力调用服务 | None = None
         self.状态 = 后端状态()
         self.权限表: dict[str, set[str]] = {}  # 能力id → 允许用户id集合
         self.请求锁 = threading.Lock()
         self.停止标记 = False
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
-        self.资源句柄服务 = 资源句柄服务(self.系统根目录 / "工程缓存" / "权威状态")
+        self.资源句柄服务 = 资源句柄服务(self.运行缓存根目录 / "权威状态")
+        from 支持库.后端.系统核心支持库.资源管理 import 设置受管状态服务
+        设置受管状态服务(self.资源句柄服务)
 
     def 资源状态(self, 句柄: int, *, 项目id: str = "", 所有者: str = "") -> dict | None:
         return self.资源句柄服务.状态(句柄, 项目id=项目id, 所有者=所有者)
@@ -97,6 +110,8 @@ class 后端核心:
                 self.注册表 = copy.deepcopy(_装配模板)
                 if self.注册表 is None:
                     return 结果.失败("装配失败", "装配模板缺失", 来源="后端核心")
+            self._唯一调用服务 = 唯一能力调用服务(self.注册表)
+            设置全局唯一服务(self._唯一调用服务)
         return 结果.成功结果(len(self.注册表.能力id列表))
 
     def 启动(self) -> 结果:
@@ -157,21 +172,13 @@ class 后端核心:
             if 允许用户 is not None and 上下文.用户id and 上下文.用户id not in 允许用户:
                 返回结果 = 结果.失败("权限不足", f"用户 {上下文.用户id} 无权限调用 {能力id}", 来源="后端核心")
             else:
-                实现 = self.注册表.获取(能力id)
-                if 实现 is None:
-                    返回结果 = 结果.失败("能力不存在", f"能力未注册: {能力id}", 来源="后端核心")
+                if self._唯一调用服务 is None:
+                    返回结果 = 结果.失败("能力调用器未装配", "后端核心未绑定唯一能力调用服务", 来源="后端核心")
                 else:
-                    try:
-                        调用结果 = 实现.调用(**dict(参数 or {}))
-                        返回结果 = 调用结果 if isinstance(调用结果, 结果) else 结果.成功结果(调用结果)
-                    except TypeError as 错误:
-                        返回结果 = 结果.失败("参数不合法", f"调用参数错误: {错误}", 来源="后端核心")
-                    except FileNotFoundError as 错误:
-                        # 文件/资源能力的标准缺失语义必须跨 HTTP 保留，
-                        # 不能被通用异常转换成无法定位的“内部错误”。
-                        返回结果 = 结果.失败("文件不存在", str(错误), 来源="后端核心")
-                    except Exception as 错误:  # noqa: BLE001 - 能力边界统一转换外部实现异常
-                        返回结果 = 结果.失败("内部错误", f"调用异常: {错误}", 来源="后端核心")
+                    返回结果 = self._唯一调用服务.调用能力(
+                        能力id, 参数 or {}, 调用方="后端核心", 项目id=上下文.项目id,
+                        句柄=上下文.句柄,
+                    )
             if not 返回结果.成功:
                 with self.请求锁:
                     self.状态.失败请求数 += 1
@@ -340,6 +347,12 @@ class 后端核心:
             排空结果 = self.排空.排空()
             if not 排空结果.成功:
                 return 结果.失败("排空超时", 排空结果.诊断记录, 来源="后端核心")
+        try:
+            self.资源句柄服务.关闭服务()
+        except Exception as 错误:
+            self.状态.状态 = "故障"
+            return 结果.失败(
+                "资源释放失败", f"资源句柄服务关闭失败: {错误}", 来源="后端核心")
         self.状态.状态 = "已停止"
         return 结果.成功结果("后端核心已优雅关闭")
 
@@ -349,6 +362,12 @@ class 后端核心:
             排空结果 = self.排空.排空()
             if not 排空结果.成功:
                 return 结果.失败("资源未释放", 排空结果.诊断记录, 来源="后端核心")
+        try:
+            self.资源句柄服务.关闭服务()
+        except Exception as 错误:
+            self.状态.状态 = "故障"
+            return 结果.失败(
+                "资源释放失败", f"资源句柄服务关闭失败: {错误}", 来源="后端核心")
         self.状态.状态 = "已停止"
         return 结果.成功结果("后端核心已强制关闭")
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 import uuid
+import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -186,11 +188,95 @@ class 资源句柄服务:
         self._失效并记账(对象, "主动释放")
         return self._转公开(对象)
 
+    def 关闭服务(self) -> None:
+        """关闭句柄服务持有的权威状态连接；句柄账本保留供下次恢复。"""
+        self.权威状态.关闭()
+
+    def 创建受管状态(self, *, 资源id: str, 初始状态: dict[str, Any],
+                  项目id: str = "", 所有者: str = "") -> dict[str, Any]:
+        """创建句柄并把业务状态写入权威资源版本表。"""
+        if not isinstance(初始状态, dict):
+            raise ValueError("初始状态必须是字典型")
+        公开句柄 = self.创建(
+            资源id=资源id, 项目id=项目id, 所有者=所有者,
+            元数据={"受管状态": True},
+        )
+        self.权威状态.初始化资源(资源id, dict(初始状态))
+        return self._受管状态结果(公开句柄["句柄"], 项目id=项目id, 所有者=所有者)
+
+    def 读取受管状态(self, 句柄id: str | int, *,
+                  项目id: str = "", 所有者: str = "") -> dict[str, Any]:
+        """按有效句柄读取权威业务状态。"""
+        return self._受管状态结果(句柄id, 项目id=项目id, 所有者=所有者)
+
+    def 更新受管状态(self, 句柄id: str | int, 新状态: dict[str, Any], *,
+                  期望版本: str = "", 项目id: str = "", 所有者: str = "") -> dict[str, Any]:
+        """按句柄对权威状态做带资源锁和版本条件的原子更新。"""
+        if not isinstance(新状态, dict):
+            raise ValueError("新状态必须是字典型")
+        对象 = self._有效受管句柄(句柄id, 项目id=项目id, 所有者=所有者)
+        当前 = self.权威状态.读取资源(对象.资源id)
+        if 当前 is None:
+            raise KeyError("受管状态不存在")
+        版本 = str(期望版本 or 当前["版本"])
+        事务id = uuid.uuid4().hex
+        成功, 消息, 令牌 = self.权威状态.获取锁(
+            对象.资源id, 操作id=事务id, 事务id=事务id,
+            项目id=项目id, 所有者=所有者,
+        )
+        if not 成功:
+            raise RuntimeError(f"受管状态加锁失败: {消息}")
+        摘要 = hashlib.sha256(
+            json.dumps(新状态, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        try:
+            已提交, 提交消息 = self.权威状态.提交资源(
+                资源id=对象.资源id, 期望版本=版本, 期望令牌=str(令牌),
+                事务id=事务id, 项目id=项目id, 所有者=所有者,
+                新值=dict(新状态), 新摘要=摘要,
+            )
+        finally:
+            self.权威状态.释放锁(
+                对象.资源id, 操作id=事务id, 事务id=事务id, 令牌=令牌)
+        if not 已提交:
+            raise RuntimeError(f"受管状态更新失败: {提交消息}")
+        return self._受管状态结果(句柄id, 项目id=项目id, 所有者=所有者)
+
+    def 释放受管状态(self, 句柄id: str | int, *,
+                  项目id: str = "", 所有者: str = "") -> dict[str, Any]:
+        """释放受管状态句柄；历史资源版本保留审计。"""
+        return self.关闭(句柄id, 项目id=项目id, 所有者=所有者)
+
+    def _有效受管句柄(self, 句柄id: str | int, *, 项目id: str, 所有者: str):
+        对象 = self._加载句柄(句柄id)
+        if 对象 is None:
+            raise KeyError("句柄不存在")
+        公开 = self.状态(句柄id, 项目id=项目id, 所有者=所有者)
+        if 公开 is None or 公开["状态"] != "有效":
+            raise PermissionError("句柄已过期")
+        if not 对象.元数据.get("受管状态"):
+            # 重启恢复后元数据不持久化，以资源版本存在作为权威补判。
+            if self.权威状态.读取资源(对象.资源id) is None:
+                raise PermissionError("句柄未绑定受管状态")
+        return 对象
+
+    def _受管状态结果(self, 句柄id: str | int, *, 项目id: str, 所有者: str) -> dict[str, Any]:
+        对象 = self._有效受管句柄(句柄id, 项目id=项目id, 所有者=所有者)
+        状态 = self.权威状态.读取资源(对象.资源id)
+        if 状态 is None:
+            raise KeyError("受管状态不存在")
+        return {
+            "句柄": 对象.句柄id, "资源id": 对象.资源id,
+            "状态": 状态["值"], "版本": str(状态["版本"]),
+        }
+
     def _失效并记账(self, 对象: Any, 原因: str) -> None:
         """内存状态与 SQLite 账本原子顺序收口；重复失效不重复制造错误。"""
         if 对象.状态 == "已失效":
             return
-        self.句柄体系.失效(对象.句柄id, 原因)
+        成功, 消息 = self.句柄体系.失效(对象.句柄id, 原因)
+        if not 成功:
+            raise RuntimeError(f"资源未收敛：{消息}")
         self.权威状态.失效句柄并记录证据(
             句柄id=对象.句柄id, 资源id=对象.资源id, 类型=对象.句柄类型,
             原因=原因, 版本=对象.版本,

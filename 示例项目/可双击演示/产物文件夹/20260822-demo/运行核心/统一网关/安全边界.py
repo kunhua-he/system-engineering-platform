@@ -24,10 +24,12 @@ class 安全配置:
     请求大小上限: int = 1024 * 1024  # 1MB
     监听地址: str = "127.0.0.1"  # 默认只监听本机
     允许路径表: set[str] = field(default_factory=lambda: {"/健康", "/网关/调用", "/网关/流式"})
-    要求凭证: bool = False
+    要求凭证: bool = True
     默认权限范围: set[str] = field(default_factory=lambda: {"查询", "调用", "任务"})
     # 浏览器跨域来源必须显式配置；空集合表示不允许跨域调用。
     允许来源表: set[str] = field(default_factory=set)
+    # 关闭证书验证只能由生产装配显式放行，且目标仍必须是本机回环。
+    允许本地不验证SSL: bool = False
 
 
 class 凭证管理器:
@@ -108,6 +110,30 @@ class 请求限制器:
             return False, "请求正文必须使用 JSON"
         return True, ""
 
+    def 校验SSL策略(self, 参数: dict[str, Any]) -> tuple[bool, str]:
+        """SSL验证=False 只允许显式策略放行的 HTTPS 回环目标。"""
+        if not isinstance(参数, dict) or 参数.get("SSL验证") is not False:
+            return True, ""
+        if not self.配置.允许本地不验证SSL:
+            return False, "关闭 SSL 验证未获本地受控策略授权"
+        if 参数.get("允许回环") is not True:
+            return False, "关闭 SSL 验证必须同时显式允许回环"
+        地址 = 参数.get("地址")
+        if not isinstance(地址, str):
+            return False, "关闭 SSL 验证必须提供 HTTPS 回环地址"
+        try:
+            解析 = urlsplit(地址)
+            主机 = 解析.hostname or ""
+            if 解析.scheme.lower() != "https":
+                return False, "关闭 SSL 验证只允许 HTTPS 回环地址"
+            if 主机.lower() == "localhost":
+                return True, ""
+            if ipaddress.ip_address(主机).is_loopback:
+                return True, ""
+        except ValueError:
+            pass
+        return False, "关闭 SSL 验证只允许明确的本机回环目标"
+
 
 def 脱敏错误信息(文本: str) -> str:
     """错误信息脱敏：密钥片段替换为 已脱敏（不可逆）。"""
@@ -125,4 +151,7 @@ def 提取访问凭证(请求头: Any) -> str:
     授权头 = str(请求头.get("Authorization", ""))
     if 授权头.startswith("Bearer "):
         return 授权头[7:].strip()
-    return str(请求头.get("X-系统凭证", "")).strip()
+    return str(
+        请求头.get("X-System-Credential", "")
+        or 请求头.get("X-系统凭证", "")
+    ).strip()

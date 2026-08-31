@@ -38,7 +38,23 @@ class 测试页面模型编译(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "对象id重复"):
             校验页面(页面([项, dict(项, 组件id="乙")]))
 
-    def test_父组件必须存在且为容器(self):
+    def test_父对象id是父子关系权威(self):
+        结果 = 校验页面(页面([
+            {"组件id": "容器", "对象id": "容器对象", "类型": "容器", "属性": {}},
+            {"组件id": "按钮", "对象id": "按钮对象", "类型": "按钮",
+             "父对象id": "容器对象", "属性": {}},
+        ]))
+        子对象 = 结果["组件列表"][1]
+        self.assertEqual(子对象["父对象id"], "容器对象")
+        self.assertEqual(子对象["父组件id"], "容器")
+
+    def test_父对象id不存在必须阻断(self):
+        with self.assertRaisesRegex(ValueError, "父对象不存在"):
+            校验页面(页面([
+                {"组件id": "按钮", "对象id": "按钮对象", "类型": "按钮",
+                 "父对象id": "不存在对象", "属性": {}},
+            ]))
+
         with self.assertRaisesRegex(ValueError, "父组件不存在"):
             校验页面(页面([{"组件id": "甲", "对象id": "甲", "类型": "按钮", "父组件id": "丙", "属性": {}}]))
         with self.assertRaisesRegex(ValueError, "不是容器"):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import multiprocessing
 import os
+import signal
 import sys
 import tempfile
 import threading
@@ -35,6 +36,26 @@ class 资源繁忙错误(Exception):
         super().__init__(消息 or "任务进程池资源繁忙，拒绝提交新任务")
 
 
+def _执行任务进程入口(进程组就绪事件: Any, 发送连接: Any, 函数: Callable,
+                    请求: dict[str, Any], 取消事件: Any) -> None:
+    """先建立独立会话/进程组，再允许能力启动任何后代进程。"""
+    if hasattr(os, "setsid"):
+        try:
+            os.setsid()
+        except OSError as 错误:
+            响应 = {
+                "任务id": 请求.get("任务id", ""), "成功": False,
+                "错误码": "进程组建立失败", "错误说明": str(错误),
+            }
+            try:
+                发送连接.send_bytes(json.dumps(响应, ensure_ascii=False).encode("utf-8"))
+            finally:
+                发送连接.close()
+            return
+    进程组就绪事件.set()
+    执行单次任务(发送连接, 函数, 请求, 取消事件)
+
+
 class 独立任务:
     def __init__(self, *, 任务id: str = "", 能力id: str = "", 项目id: str = "",
                  用户id: str = "", 请求id: str = "", 超时秒: float = 10.0) -> None:
@@ -51,8 +72,13 @@ class 独立任务:
         self.错误说明 = ""
         self.日志: list[str] = []
         self.进程: multiprocessing.Process | None = None
+        self.进程组id: int | None = None
+        self.进程组就绪事件: Any = None
         self.接收连接: Any = None
         self.取消事件: Any = None
+        self.待发布状态 = ""
+        self.待发布错误码 = ""
+        self.待发布错误说明 = ""
         self.截止时刻: float = 0.0
         self.创建时间 = time.strftime("%Y-%m-%d %H:%M:%S")
         self.完成时间 = ""
@@ -77,7 +103,9 @@ class 任务进程池:
 
     def __init__(self, *, 工作器路径: Path | None = None, 存储目录: Path | None = None,
                  解释器: str | None = None, 最大活动数: int = 4,
-                 最大排队数: int = 16, 提交截止秒: float = 30.0) -> None:
+                 最大排队数: int = 16, 提交截止秒: float = 30.0,
+                 终止截止秒: float = 1.5, 排空截止秒: float = 5.0,
+                 关闭截止秒: float = 2.0) -> None:
         self.工作器路径 = 工作器路径
         self.解释器 = 解释器
         self.存储目录 = 存储目录 or Path(tempfile.gettempdir()) / "系统级支持库_任务进程"
@@ -88,6 +116,9 @@ class 任务进程池:
         self.最大活动数 = max(1, int(最大活动数))
         self.最大排队数 = max(0, int(最大排队数))
         self.提交截止秒 = max(0.0, float(提交截止秒))
+        self.终止截止秒 = max(0.0, float(终止截止秒))
+        self.排空截止秒 = max(0.0, float(排空截止秒))
+        self.关闭截止秒 = max(0.0, float(关闭截止秒))
         self.等待队列: list[独立任务] = []
         self.活动任务表: dict[str, 独立任务] = {}
         self.已停止 = False
@@ -146,19 +177,22 @@ class 任务进程池:
                 self.等待队列.remove(任务对象)
             接收连接, 发送连接 = self.进程上下文.Pipe(duplex=False)
             取消事件 = self.进程上下文.Event()
+            进程组就绪事件 = self.进程上下文.Event()
             请求 = {"任务id": 任务对象.任务id, "能力id": 能力id, "参数": 参数 or {}}
             进程 = self.进程上下文.Process(
-                target=执行单次任务,
-                args=(发送连接, 函数, 请求, 取消事件),
+                target=_执行任务进程入口,
+                args=(进程组就绪事件, 发送连接, 函数, 请求, 取消事件),
                 name=f"系统级任务-{任务对象.任务id}",
                 daemon=True,
             )
             任务对象.接收连接 = 接收连接
             任务对象.取消事件 = 取消事件
+            任务对象.进程组就绪事件 = 进程组就绪事件
             任务对象.进程 = 进程
             任务对象.截止时刻 = time.monotonic() + 任务对象.超时秒
             任务对象.状态 = 任务状态_运行中
             进程.start()
+            任务对象.进程组id = 进程.pid
             发送连接.close()
             self.任务表[任务对象.任务id] = 任务对象
             self.活动任务表[任务对象.任务id] = 任务对象
@@ -198,14 +232,25 @@ class 任务进程池:
             self.监视唤醒事件.wait(timeout=0.05)
             self.监视唤醒事件.clear()
 
-    def _轮询任务(self, 任务对象: 独立任务) -> None:
-        """单次非阻塞轮询：响应/取消/超时/崩溃任一命中即推进任务状态。"""
+    def _轮询任务(self, 任务对象: 独立任务, *, 截止时刻: float | None = None) -> None:
+        """单次轮询：推进状态，但任何资源回收都不得越过调用方给定的硬截止。"""
         with self.锁:
             if 任务对象.状态 in _终态:
                 return
+            if 任务对象.待发布状态:
+                self._完成(
+                    任务对象, 任务对象.待发布状态,
+                    任务对象.待发布错误码, 任务对象.待发布错误说明,
+                    截止时刻=截止时刻)
+                return
             if 任务对象.状态 == 任务状态_取消中:
-                self._终止工作器(任务对象)
-                self._完成失败(任务对象, 任务状态_已取消, "已取消", "任务已取消")
+                # “请求已发出”不等于“已退出”。请求阶段只设置取消事件；
+                # 若工作器自行响应退出，则在此确认后发布终态。强制终止只由
+                # 取消重试/关闭路径在各自硬截止内执行。
+                if not self._工作器存活(任务对象):
+                    self._完成失败(
+                        任务对象, 任务状态_已取消, "已取消", "任务已取消",
+                        截止时刻=截止时刻)
                 return
             进程 = 任务对象.进程
             连接 = 任务对象.接收连接
@@ -219,89 +264,157 @@ class 任务进程池:
                     return
                 if 响应 is None:
                     退出码 = 进程.exitcode if 进程 is not None else None
-                    self._终止工作器(任务对象)
-                    self._完成失败(任务对象, 任务状态_崩溃, "崩溃",
-                                   f"工作进程异常退出（退出码 {退出码}）")
+                    self._完成失败(
+                        任务对象, 任务状态_崩溃, "崩溃",
+                        f"工作进程异常退出（退出码 {退出码}）", 截止时刻=截止时刻)
                 elif 响应.get("取消"):
-                    self._终止工作器(任务对象)
-                    self._完成失败(任务对象, 任务状态_已取消, "已取消", "任务已取消")
+                    self._完成失败(
+                        任务对象, 任务状态_已取消, "已取消", "任务已取消",
+                        截止时刻=截止时刻)
                 elif 响应.get("成功", False):
                     任务对象.结果 = 响应.get("值")
-                    self._完成(任务对象, 任务状态_成功)
+                    self._完成(任务对象, 任务状态_成功, 截止时刻=截止时刻)
                 else:
-                    self._完成失败(任务对象, 任务状态_失败,
-                                  响应.get("错误码", "内部错误"), 响应.get("错误说明", "任务执行失败"))
+                    self._完成失败(
+                        任务对象, 任务状态_失败,
+                        响应.get("错误码", "内部错误"), 响应.get("错误说明", "任务执行失败"),
+                        截止时刻=截止时刻)
             return
         with self.锁:
             if 任务对象.状态 in _终态:
                 return
             if time.monotonic() >= 任务对象.截止时刻:
-                self._终止工作器(任务对象)
-                self._完成失败(任务对象, 任务状态_超时, "超时",
-                               f"任务执行超过 {任务对象.超时秒} 秒")
+                self._完成失败(
+                    任务对象, 任务状态_超时, "超时",
+                    f"任务执行超过 {任务对象.超时秒} 秒", 截止时刻=截止时刻)
             elif 进程 is not None and not 进程.is_alive():
                 退出码 = 进程.exitcode
-                self._终止工作器(任务对象)
-                self._完成失败(任务对象, 任务状态_崩溃, "崩溃",
-                               f"工作进程异常退出（退出码 {退出码}）")
+                self._完成失败(
+                    任务对象, 任务状态_崩溃, "崩溃",
+                    f"工作进程异常退出（退出码 {退出码}）", 截止时刻=截止时刻)
 
-    def _完成失败(self, 任务对象: 独立任务, 状态: str, 错误码: str, 错误说明: str) -> None:
-        任务对象.错误码 = 错误码
-        任务对象.错误说明 = 错误说明
-        self._完成(任务对象, 状态)
+    def _完成失败(self, 任务对象: 独立任务, 状态: str, 错误码: str, 错误说明: str,
+              *, 截止时刻: float | None = None) -> bool:
+        return self._完成(
+            任务对象, 状态, 错误码, 错误说明, 截止时刻=截止时刻)
 
-    def _完成(self, 任务对象: 独立任务, 最终状态: str) -> None:
+    def _完成(self, 任务对象: 独立任务, 最终状态: str,
+            错误码: str = "", 错误说明: str = "", *,
+            截止时刻: float | None = None) -> bool:
         # 终态是对外承诺：先确认工作器退出并释放通信资源，再发布终态。
         # 强杀仍未确认收敛时不得发布终态（否则账本显示终态但进程仍持有
         # 文件/socket/句柄，形成不可观测僵尸资源）。
-        收敛 = self._回收工作器(任务对象)
+        任务对象.待发布状态 = 最终状态
+        任务对象.待发布错误码 = 错误码
+        任务对象.待发布错误说明 = 错误说明
+        实际截止 = 截止时刻 if 截止时刻 is not None else time.monotonic() + self.终止截止秒
+        收敛 = self._终止工作器(任务对象, 实际截止)
         if not 收敛:
             # 进程未确认退出：保留任务在活动表，标记为故障待回收，不发布终态
             任务对象.错误码 = "资源未收敛"
-            任务对象.错误说明 = "工作进程强杀后未确认退出，终态未发布"
+            任务对象.错误说明 = "结束请求已发出但完整进程组未确认退出，资源账本已保留供重试"
+            self._持久化(任务对象)
             self.提交条件.notify_all()
-            return
+            return False
+        任务对象.错误码 = 错误码
+        任务对象.错误说明 = 错误说明
         任务对象.状态 = 最终状态
         任务对象.进度 = 1.0
         任务对象.完成时间 = time.strftime("%Y-%m-%d %H:%M:%S")
+        任务对象.待发布状态 = ""
+        任务对象.待发布错误码 = ""
+        任务对象.待发布错误说明 = ""
         self.活动任务表.pop(任务对象.任务id, None)
         self._持久化(任务对象)
         self.提交条件.notify_all()
+        return True
 
-    def _终止工作器(self, 任务对象: 独立任务) -> None:
+    @staticmethod
+    def _进程组存活(进程组id: int | None) -> bool:
+        if not 进程组id or not hasattr(os, "killpg"):
+            return False
+        try:
+            os.killpg(进程组id, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _进程组已就绪(self, 任务对象: 独立任务) -> bool:
+        事件 = 任务对象.进程组就绪事件
+        return bool(事件 is not None and 事件.is_set() and hasattr(os, "killpg"))
+
+    def _工作器存活(self, 任务对象: 独立任务) -> bool:
+        if self._进程组已就绪(任务对象):
+            return self._进程组存活(任务对象.进程组id)
+        进程 = 任务对象.进程
+        return bool(进程 is not None and 进程.is_alive())
+
+    def _发送工作器信号(self, 任务对象: 独立任务, 信号值: int) -> None:
+        进程 = 任务对象.进程
+        if self._进程组已就绪(任务对象) and 任务对象.进程组id:
+            # 绝不向主进程所在组发送信号；就绪事件只在子进程 setsid 后置位。
+            if 任务对象.进程组id != os.getpgrp():
+                try:
+                    os.killpg(任务对象.进程组id, 信号值)
+                except (ProcessLookupError, PermissionError, OSError):
+                    # 进程组可能在存活检查与发信号之间退出；EPERM 也不能
+                    # 被解释成信号已送达，后续仍以存活复查决定是否收敛。
+                    pass
+                return
+        if 进程 is None or not 进程.is_alive():
+            return
+        try:
+            if 信号值 == signal.SIGKILL and hasattr(进程, "kill"):
+                进程.kill()
+            else:
+                进程.terminate()
+        except (ProcessLookupError, OSError):
+            pass
+
+    def _等待工作器退出(self, 任务对象: 独立任务, 截止时刻: float) -> bool:
+        进程 = 任务对象.进程
+        while self._工作器存活(任务对象):
+            剩余秒 = 截止时刻 - time.monotonic()
+            if 剩余秒 <= 0:
+                return False
+            if 进程 is not None:
+                进程.join(timeout=min(0.02, 剩余秒))
+            else:
+                time.sleep(min(0.01, 剩余秒))
+        return True
+
+    def _终止工作器(self, 任务对象: 独立任务, 截止时刻: float) -> bool:
+        """在共享硬截止内 TERM→KILL 完整进程组；只有确认退出才回收账本。"""
         if 任务对象.取消事件 is not None:
             任务对象.取消事件.set()
-        进程 = 任务对象.进程
-        if 进程 is not None and 进程.is_alive():
-            进程.terminate()
-            进程.join(timeout=0.5)
-            if 进程.is_alive() and hasattr(进程, "kill"):
-                进程.kill()
-                进程.join(timeout=0.5)
-        self._回收工作器(任务对象)
+        if not self._工作器存活(任务对象):
+            return self._回收工作器(任务对象)
+        剩余秒 = 截止时刻 - time.monotonic()
+        if 剩余秒 <= 0:
+            return False
+        self._发送工作器信号(任务对象, signal.SIGTERM)
+        优雅截止 = min(截止时刻, time.monotonic() + min(0.2, 剩余秒 * 0.4))
+        if not self._等待工作器退出(任务对象, 优雅截止):
+            self._发送工作器信号(任务对象, signal.SIGKILL)
+            self._等待工作器退出(任务对象, 截止时刻)
+        return self._回收工作器(任务对象)
 
     def _回收工作器(self, 任务对象: 独立任务) -> bool:
         """回收工作器；返回是否确认收敛（进程已退出且管道已关闭）。"""
         进程 = 任务对象.进程
+        if self._工作器存活(任务对象):
+            return False
         if 进程 is not None:
-            if 进程.is_alive():
-                进程.join(timeout=0.5)
-            # 工作器已经交付结果却未自行退出时，不能把活进程留给调用者。
-            if 进程.is_alive():
-                进程.terminate()
-                进程.join(timeout=0.5)
-            if 进程.is_alive() and hasattr(进程, "kill"):
-                进程.kill()
-                进程.join(timeout=0.5)
-            if not 进程.is_alive():
-                进程.join(timeout=0)
+            进程.join(timeout=0)
         if 任务对象.接收连接 is not None:
             try:
                 任务对象.接收连接.close()
             except OSError:
                 pass
             任务对象.接收连接 = None
-        return 进程 is None or not 进程.is_alive()
+        return True
 
     def _持久化(self, 任务对象: 独立任务) -> None:
         目标 = self.存储目录 / f"{任务对象.任务id}.json"
@@ -341,12 +454,8 @@ class 任务进程池:
     def 查询日志(self, 任务id: str) -> list[str]:
         return list(self.查询(任务id).日志)
 
-    def 取消(self, 任务id: str) -> tuple[bool, str]:
-        """取消事件 + 强杀真实终止工作进程。
-
-        注意：本池不提供假称终止的 Future.cancel——取消只有在工作进程真实
-        退出（terminate 有界等待后 kill）并发布 已取消 终态后才返回成功。
-        """
+    def 取消(self, 任务id: str, *, 等待截止秒: float | None = None) -> tuple[bool, str]:
+        """发出取消请求，并在硬截止内确认完整进程组退出；未确认则可重试。"""
         with self.锁:
             任务对象 = self.查询(任务id)
             if 任务对象.状态 in _终态:
@@ -354,9 +463,23 @@ class 任务进程池:
             任务对象.状态 = 任务状态_取消中
             if 任务对象.取消事件 is not None:
                 任务对象.取消事件.set()
-            self._终止工作器(任务对象)
-            self._完成失败(任务对象, 任务状态_已取消, "已取消", "任务已取消并终止工作进程")
-            return True, "任务已取消，工作进程已终止"
+            等待秒 = self.终止截止秒 if 等待截止秒 is None else max(0.0, float(等待截止秒))
+            self._持久化(任务对象)
+            self.监视唤醒事件.set()
+            if 等待秒 <= 0:
+                return False, "取消请求已发出，工作进程尚未确认退出，活动账本已保留供重试"
+            任务对象.待发布状态 = 任务状态_已取消
+            任务对象.待发布错误码 = "已取消"
+            任务对象.待发布错误说明 = "任务已取消并终止工作进程"
+            收敛 = self._终止工作器(任务对象, time.monotonic() + 等待秒)
+            if not 收敛:
+                任务对象.错误码 = "资源未收敛"
+                任务对象.错误说明 = "取消请求已发出但完整进程组未确认退出，活动账本已保留供重试"
+                self._持久化(任务对象)
+                return False, 任务对象.错误说明
+            self._完成失败(
+                任务对象, 任务状态_已取消, "已取消", "任务已取消并终止工作进程")
+            return True, "任务已取消，完整工作进程组终止完成，已确认退出"
 
     def 查询诊断(self, 任务id: str) -> dict[str, Any]:
         任务对象 = self.查询(任务id)
@@ -365,29 +488,98 @@ class 任务进程池:
 
     def 活动进程数(self) -> int:
         with self.锁:
-            return sum(1 for 任务对象 in self.任务表.values()
-                       if 任务对象.进程 is not None and 任务对象.进程.is_alive())
+            return sum(1 for 任务对象 in self.活动任务表.values()
+                       if self._工作器存活(任务对象))
 
-    def 停止(self) -> None:
-        """停止进程池：拒绝排队任务、活动进程终止、监视线程退出；重复停止幂等。"""
-        with self.锁:
-            if self.已停止:
-                return
-            self.已停止 = True
-            for 任务对象 in self.等待队列:
-                self._完成失败(任务对象, 任务状态_已取消, "已取消", "进程池停止，排队任务未执行")
-            self.等待队列.clear()
-            for 任务对象 in list(self.活动任务表.values()):
-                if 任务对象.状态 not in _终态:
-                    任务对象.状态 = 任务状态_取消中
-                    self._终止工作器(任务对象)
-                    self._完成失败(任务对象, 任务状态_已取消, "已取消", "进程池停止，任务已终止")
-            self.提交条件.notify_all()
+    def 等待(self, 任务id: str, *, 超时秒: float = 10.0) -> tuple[bool, str]:
+        """等待单任务到终态；只等待到硬截止，不把等待超时伪装成任务终态。"""
+        截止时刻 = time.monotonic() + max(0.0, float(超时秒))
+        while True:
+            任务对象 = self.查询(任务id)
+            if 任务对象.状态 in _终态:
+                return True, f"任务已到终态 {任务对象.状态}"
+            self._轮询任务(任务对象, 截止时刻=截止时刻)
+            if 任务对象.状态 in _终态:
+                return True, f"任务已到终态 {任务对象.状态}"
+            剩余秒 = 截止时刻 - time.monotonic()
+            if 剩余秒 <= 0:
+                return False, "等待已到硬截止，任务仍未进入终态"
+            self.监视唤醒事件.wait(timeout=min(0.02, 剩余秒))
+
+    def _拒绝等待队列(self, 原因: str) -> None:
+        for 任务对象 in list(self.等待队列):
+            self._完成失败(任务对象, 任务状态_已取消, "已取消", 原因)
+        self.等待队列.clear()
+        self.提交条件.notify_all()
+
+    def _停止监视(self, 截止时刻: float) -> bool:
         self.监视停止事件.set()
         self.监视唤醒事件.set()
         线程 = self.监视线程
-        if 线程 is not None and 线程.is_alive():
-            线程.join(timeout=2)
+        if 线程 is None or not 线程.is_alive():
+            return True
+        剩余秒 = max(0.0, 截止时刻 - time.monotonic())
+        线程.join(timeout=剩余秒)
+        return not 线程.is_alive()
 
-    def 关闭全部(self) -> None:
-        self.停止()
+    def 排空(self, *, 超时秒: float | None = None) -> tuple[bool, str]:
+        """停止接收新任务并等待现有任务自然完成；到硬截止即失败且保留账本。"""
+        等待秒 = self.排空截止秒 if 超时秒 is None else max(0.0, float(超时秒))
+        截止时刻 = time.monotonic() + 等待秒
+        with self.锁:
+            self.已停止 = True
+            self._拒绝等待队列("进程池排空，排队任务未执行")
+        while True:
+            with self.锁:
+                活动快照 = list(self.活动任务表.values())
+            for 任务对象 in 活动快照:
+                self._轮询任务(任务对象, 截止时刻=截止时刻)
+            with self.锁:
+                已排空 = not self.活动任务表
+            if 已排空:
+                if self._停止监视(截止时刻):
+                    return True, "任务进程池已在硬截止内排空"
+                return False, "任务已排空但监视线程未在硬截止内退出"
+            剩余秒 = 截止时刻 - time.monotonic()
+            if 剩余秒 <= 0:
+                return False, "排空已到硬截止，未收敛任务及资源账本已保留"
+            self.监视唤醒事件.wait(timeout=min(0.02, 剩余秒))
+
+    def 停止(self, *, 超时秒: float | None = None) -> tuple[bool, str]:
+        """关闭进程池；所有任务共用一个硬截止，失败保留活动账本供重试。"""
+        等待秒 = self.关闭截止秒 if 超时秒 is None else max(0.0, float(超时秒))
+        截止时刻 = time.monotonic() + 等待秒
+        with self.锁:
+            self.已停止 = True
+            self._拒绝等待队列("进程池关闭，排队任务未执行")
+            活动快照 = list(self.活动任务表.values())
+            for 任务对象 in 活动快照:
+                if 任务对象.状态 not in _终态:
+                    任务对象.状态 = 任务状态_取消中
+                    if 任务对象.取消事件 is not None:
+                        任务对象.取消事件.set()
+                    self._持久化(任务对象)
+            if 等待秒 <= 0 and 活动快照:
+                return False, "关闭请求已发出，工作进程尚未确认退出，活动账本已保留供重试"
+            for 任务对象 in 活动快照:
+                if 任务对象.状态 in _终态:
+                    continue
+                任务对象.待发布状态 = 任务状态_已取消
+                任务对象.待发布错误码 = "已取消"
+                任务对象.待发布错误说明 = "进程池关闭，任务已终止"
+                if self._终止工作器(任务对象, 截止时刻):
+                    self._完成失败(
+                        任务对象, 任务状态_已取消, "已取消", "进程池关闭，任务已终止")
+                else:
+                    任务对象.错误码 = "资源未收敛"
+                    任务对象.错误说明 = "关闭请求已发出但完整进程组未确认退出，活动账本已保留供重试"
+                    self._持久化(任务对象)
+            已收敛 = not self.活动任务表
+        if not 已收敛:
+            return False, "关闭已到硬截止，未收敛任务及资源账本已保留供重试"
+        if not self._停止监视(截止时刻):
+            return False, "工作进程已退出，但监视线程未在关闭硬截止内退出"
+        return True, "任务进程池已关闭，完整工作进程组均已确认退出"
+
+    def 关闭全部(self, *, 超时秒: float | None = None) -> tuple[bool, str]:
+        return self.停止(超时秒=超时秒)

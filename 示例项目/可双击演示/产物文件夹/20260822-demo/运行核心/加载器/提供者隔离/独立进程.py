@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import signal
 import select
@@ -19,6 +20,7 @@ import sys
 import time
 import threading
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,8 @@ from typing import Any
 进程状态_故障 = "故障"
 
 日志上限 = 200  # 日志列表环形裁剪上限（对齐 提供者生命周期._日志上限）
+stderr日志上限 = 200
+最大允许池大小 = 16
 
 
 @dataclass
@@ -71,10 +75,33 @@ class 独立进程:
         self.重启次数 = 0
         self.退出码: int | None = None
         self.日志列表: list[str] = []
+        self.stderr日志 = deque(maxlen=stderr日志上限)
+        self._stderr线程: threading.Thread | None = None
+        self.关闭账本: list[dict[str, Any]] = []
         self._读取缓冲 = b""  # os.read 直读内核的行缓冲（绕开 TextIOWrapper 预读）
         # JSON 行协议是一问一答；同一 Provider 进程不能让多个线程交叉
         # 写 stdin/读 stdout，否则迟到响应会被下一请求消费。
         self._通信锁 = threading.RLock()
+
+    def _消费stderr(self, 进程: subprocess.Popen) -> None:
+        """持续消费 stderr；只保留最近固定数量的块，防管道回压和日志无界。"""
+        if 进程.stderr is None:
+            return
+        try:
+            描述符 = 进程.stderr.fileno()
+            while True:
+                块 = os.read(描述符, 4096)
+                if not 块:
+                    break
+                self.stderr日志.append(块.decode("utf-8", "replace"))
+        except (OSError, ValueError):
+            pass
+
+    def _启动stderr消费(self, 进程: subprocess.Popen) -> None:
+        self._stderr线程 = threading.Thread(
+            target=self._消费stderr, args=(进程,),
+            name=f"Provider-stderr-{self.名称}-{进程.pid}", daemon=True)
+        self._stderr线程.start()
 
     def _确定解释器(self) -> str:
         """确定子进程解释器；声明提供者环境时失败必须阻断，禁止回退。"""
@@ -136,6 +163,9 @@ class 独立进程:
                     管道.close()
                 except OSError:
                     pass
+        if (self._stderr线程 is not None
+                and self._stderr线程 is not threading.current_thread()):
+            self._stderr线程.join(timeout=1.0)
 
     def 启动(self) -> tuple[bool, str]:
         """启动子进程并等待 READY（启动超时失败）。"""
@@ -156,6 +186,7 @@ class 独立进程:
                 env={**os.environ, "PYTHONNOUSERSITE": "1"},
                 start_new_session=(os.name == "posix"),
             )
+            self._启动stderr消费(self.进程)
         except OSError as 错误:
             self.状态 = 进程状态_故障
             return False, f"启动失败: {错误}"
@@ -195,7 +226,11 @@ class 独立进程:
             self.进程.stdin.write(json.dumps(请求, ensure_ascii=False) + "\n")
             self.进程.stdin.flush()
             行 = self._读取一行(self.调用超时秒)
-            return json.loads(行)
+            响应 = json.loads(行)
+            if 响应.get("请求id") != 请求.get("请求id"):
+                raise ConnectionError(
+                    f"响应请求id不匹配: 期望 {请求.get('请求id')}，实际 {响应.get('请求id')}")
+            return 响应
 
     def 调用(self, *, 能力id: str, 参数: dict | None = None,
              契约版本: str = "1.0.0") -> 进程调用结果:
@@ -255,72 +290,232 @@ class 独立进程:
             self._记录日志(f"自动重启失败: {消息}")
         return True  # 崩溃且未恢复
 
-    def 优雅停止(self) -> tuple[bool, str]:
-        """优雅停止：发送停止请求，等待退出（超时强制终止）。"""
-        if self.状态 == 进程状态_已停止:
-            return True, "已停止（幂等）"
-        if self.进程 is None:
-            self.状态 = 进程状态_已停止
-            return True, "无进程，视为已停止"
-        try:
-            响应 = self._发送请求({"请求id": "停止", "类型": "停止"})
-            if not isinstance(响应, dict) or not 响应.get("成功", False):
-                return self.强制终止()
-            self._记录日志(f"优雅停止（{响应.get('值', '')}）")
-        except (TimeoutError, ConnectionError, json.JSONDecodeError):
-            return self.强制终止()
+    def _进程组存活(self) -> bool:
         进程 = self.进程
+        if 进程 is None:
+            return False
+        if os.name != "posix":
+            return 进程.poll() is None
         try:
-            进程.wait(timeout=self.调用超时秒)
-        except subprocess.TimeoutExpired:
-            return self.强制终止()
-        self.退出码 = 进程.returncode
-        self.状态 = 进程状态_已停止
-        self._关闭管道()
-        return self.退出码 == 0, f"优雅停止完成（退出码 {self.退出码}）"
+            os.killpg(进程.pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
 
-    def 强制终止(self) -> tuple[bool, str]:
-        """强制终止兜底。"""
-        if self.进程 is not None and self.进程.poll() is None:
+    def _等待进程组退出(self, 超时秒: float) -> bool:
+        截止 = time.monotonic() + max(0.0, 超时秒)
+        while self._进程组存活() and time.monotonic() < 截止:
+            time.sleep(0.01)
+        进程 = self.进程
+        if 进程 is not None and 进程.poll() is None and not self._进程组存活():
             try:
-                if os.name == "posix":
-                    os.killpg(self.进程.pid, signal.SIGTERM)
-                else:
-                    self.进程.terminate()
-            except OSError:
-                pass
-            try:
-                self.进程.wait(timeout=2)
+                进程.wait(timeout=0.1)
             except subprocess.TimeoutExpired:
+                pass
+        return not self._进程组存活()
+
+    def _发进程组信号(self, 信号值: int) -> None:
+        进程 = self.进程
+        if 进程 is None:
+            return
+        try:
+            if os.name == "posix" and 进程.pid != os.getpgrp():
+                os.killpg(进程.pid, 信号值)
+                return
+        except (OSError, ProcessLookupError):
+            pass
+        if 进程.poll() is None:
+            try:
+                进程.terminate() if 信号值 == signal.SIGTERM else 进程.kill()
+            except (OSError, ProcessLookupError):
+                pass
+
+    def _核对资源收敛(self) -> list[str]:
+        """进程组、三管道、stderr 消费线程全部收敛才算关闭成功。"""
+        未收敛: list[str] = []
+        进程 = self.进程
+        if 进程 is not None and self._进程组存活():
+            未收敛.append(f"进程组仍存活:{进程.pid}")
+        if 进程 is not None:
+            for 名称, 管道 in (("stdin", 进程.stdin), ("stdout", 进程.stdout), ("stderr", 进程.stderr)):
+                if 管道 is not None and not 管道.closed:
+                    未收敛.append(f"管道未关闭:{名称}")
+        if self._stderr线程 is not None and self._stderr线程.is_alive():
+            未收敛.append(f"stderr线程仍存活:{self._stderr线程.name}")
+        return 未收敛
+
+    def _关闭结果(self, *, 已使用SIGKILL: bool = False) -> dict[str, Any]:
+        self._关闭管道()
+        if self._stderr线程 is not None:
+            self._stderr线程.join(timeout=1.0)
+        未收敛 = self._核对资源收敛()
+        成功 = not 未收敛
+        self.状态 = 进程状态_已停止 if 成功 else 进程状态_故障
+        结果 = {
+            "成功": 成功, "错误码": "" if 成功 else "资源未收敛",
+            "错误说明": "资源已收敛" if 成功 else f"Provider资源未收敛: {'；'.join(未收敛)}",
+            "可重试": not 成功, "未收敛": 未收敛,
+            "已使用SIGKILL": 已使用SIGKILL, "退出码": self.退出码,
+        }
+        self.关闭账本.append(dict(结果, 时间=time.time()))
+        return 结果
+
+    def 关闭(self) -> dict[str, Any]:
+        """优雅请求后按 TERM→KILL 收口；只有全部资源核对通过才成功。"""
+        进程 = self.进程
+        已使用SIGKILL = False
+        if self._进程组存活():
+            if 进程 is not None and 进程.poll() is None:
                 try:
-                    if os.name == "posix":
-                        os.killpg(self.进程.pid, signal.SIGKILL)
-                    else:
-                        self.进程.kill()
-                except OSError:
+                    self._发送请求({"请求id": uuid.uuid4().hex[:12], "类型": "停止"})
+                except (TimeoutError, ConnectionError, json.JSONDecodeError, OSError, ValueError):
                     pass
                 try:
-                    self.进程.wait(timeout=2)
-                except subprocess.TimeoutExpired as 错误:
-                    self.状态 = 进程状态_故障
-                    self._关闭管道()
-                    return False, f"强制终止超时，进程组未回收: {错误}"
-            self.退出码 = self.进程.returncode
-        self.状态 = 进程状态_已停止 if self.进程 is None or self.进程.poll() is not None else 进程状态_故障
-        self._关闭管道()
-        return self.状态 == 进程状态_已停止, f"强制终止完成（退出码 {self.退出码}）"
+                    进程.wait(timeout=self.调用超时秒)
+                except subprocess.TimeoutExpired:
+                    pass
+            if self._进程组存活():
+                self._发进程组信号(signal.SIGTERM)
+                self._等待进程组退出(min(max(self.调用超时秒, 0.05), 1.0))
+            if self._进程组存活():
+                已使用SIGKILL = True
+                self._发进程组信号(signal.SIGKILL)
+                self._等待进程组退出(2.0)
+            if 进程 is not None:
+                self.退出码 = 进程.poll()
+        return self._关闭结果(已使用SIGKILL=已使用SIGKILL)
+
+    def 重试关闭(self) -> dict[str, Any]:
+        return self.关闭()
+
+    def 优雅停止(self) -> tuple[bool, str]:
+        结果 = self.关闭()
+        return bool(结果["成功"]), str(结果["错误说明"])
+
+    def 强制终止(self) -> tuple[bool, str]:
+        进程 = self.进程
+        已使用SIGKILL = False
+        if self._进程组存活():
+            self._发进程组信号(signal.SIGTERM)
+            self._等待进程组退出(min(max(self.调用超时秒, 0.05), 1.0))
+            if self._进程组存活():
+                已使用SIGKILL = True
+                self._发进程组信号(signal.SIGKILL)
+                self._等待进程组退出(2.0)
+            if 进程 is not None:
+                self.退出码 = 进程.poll()
+        结果 = self._关闭结果(已使用SIGKILL=已使用SIGKILL)
+        return bool(结果["成功"]), str(结果["错误说明"])
 
     def 停止(self) -> tuple[bool, str]:
         return self.优雅停止()
 
-    def 关闭并清理(self) -> None:
-        """关闭 stdin/stdout/stderr（资源释放）。"""
-        try:
-            if self.进程 is not None and self.进程.poll() is None:
-                self.强制终止()
-            self._关闭管道()
-        except (AttributeError, OSError):
-            pass
+    def 关闭并清理(self) -> dict[str, Any]:
+        return self.关闭()
+
+
+class 提供者进程池:
+    """有界 Provider 进程池；资源键稳定绑定成员，每个成员独立管道和通信锁。"""
+
+    def __init__(self, 名称: str, *, 池大小: int = 2, 最大资源键数: int = 4096,
+                 工作器路径: Path | None = None, 启动超时秒: float = 5.0,
+                 调用超时秒: float = 3.0, 最大重启次数: int = 3,
+                 解释器路径: str | None = None, 提供者目录: Path | None = None) -> None:
+        if not 1 <= int(池大小) <= 最大允许池大小:
+            raise ValueError(f"池大小必须在 1..{最大允许池大小} 之间")
+        if 最大资源键数 < 池大小:
+            raise ValueError("最大资源键数不得小于池大小")
+        self.名称 = 名称
+        self.池大小 = int(池大小)
+        self.最大资源键数 = int(最大资源键数)
+        self.成员表 = [独立进程(
+            f"{名称}#{序号 + 1}", 工作器路径=工作器路径,
+            启动超时秒=启动超时秒, 调用超时秒=调用超时秒,
+            最大重启次数=最大重启次数, 解释器路径=解释器路径,
+            提供者目录=提供者目录) for 序号 in range(self.池大小)]
+        self.资源分配: dict[str, int] = {}
+        self._分配锁 = threading.Lock()
+        self.关闭账本: list[dict[str, Any]] = []
+        self.运行状态 = 进程状态_已创建
+
+    def 启动(self) -> tuple[bool, str]:
+        已启动: list[独立进程] = []
+        for 成员 in self.成员表:
+            成功, 消息 = 成员.启动()
+            if not 成功:
+                for 已有成员 in 已启动:
+                    已有成员.关闭并清理()
+                self.运行状态 = 进程状态_故障
+                return False, f"成员 {成员.名称} 启动失败: {消息}"
+            已启动.append(成员)
+        self.运行状态 = 进程状态_运行中
+        return True, f"Provider进程池启动成功（{self.池大小} 个成员）"
+
+    def _分配成员(self, 资源键: str) -> 独立进程 | None:
+        with self._分配锁:
+            索引 = self.资源分配.get(资源键)
+            if 索引 is None:
+                if len(self.资源分配) >= self.最大资源键数:
+                    return None
+                摘要 = hashlib.sha256(资源键.encode("utf-8")).digest()
+                索引 = int.from_bytes(摘要[:8], "big") % self.池大小
+                self.资源分配[资源键] = 索引
+            return self.成员表[索引]
+
+    def 调用(self, *, 能力id: str, 参数: dict | None = None,
+             契约版本: str = "1.0.0", 资源键: str | None = None) -> 进程调用结果:
+        键 = str(资源键 or 能力id)
+        成员 = self._分配成员(键)
+        if 成员 is None:
+            return 进程调用结果(False, 错误码="资源繁忙",
+                              错误说明="Provider资源键表已满", 可重试=True)
+        return 成员.调用(能力id=能力id, 参数=参数, 契约版本=契约版本)
+
+    def 健康检查(self) -> bool:
+        return bool(self.成员表) and all(成员.健康检查() for 成员 in self.成员表)
+
+    def _核对资源收敛(self) -> list[str]:
+        未收敛: list[str] = []
+        for 序号, 成员 in enumerate(self.成员表):
+            未收敛.extend(f"成员{序号 + 1}:{问题}" for 问题 in 成员._核对资源收敛())
+        return 未收敛
+
+    def 关闭(self) -> dict[str, Any]:
+        成员结果 = [成员.关闭并清理() for 成员 in self.成员表]
+        未收敛 = self._核对资源收敛()
+        成功 = not 未收敛 and all(结果["成功"] for 结果 in 成员结果)
+        if not 成功 and not 未收敛:
+            未收敛 = [结果["错误说明"] for 结果 in 成员结果 if not 结果["成功"]]
+        self.运行状态 = 进程状态_已停止 if 成功 else 进程状态_故障
+        结果 = {
+            "成功": 成功, "错误码": "" if 成功 else "资源未收敛",
+            "错误说明": "Provider进程池资源已收敛" if 成功 else f"Provider进程池资源未收敛: {'；'.join(未收敛)}",
+            "可重试": not 成功, "未收敛": 未收敛,
+            "已使用SIGKILL": any(项.get("已使用SIGKILL", False) for 项 in 成员结果),
+            "成员结果": 成员结果,
+        }
+        self.关闭账本.append(dict(结果, 时间=time.time()))
+        return 结果
+
+    def 重试关闭(self) -> dict[str, Any]:
+        return self.关闭()
+
+    def 状态(self) -> dict[str, Any]:
+        成员状态 = [{
+            "名称": 成员.名称,
+            "状态": 成员.状态,
+            "pid": 成员.进程.pid if 成员.进程 is not None else None,
+            "stderr日志": list(成员.stderr日志),
+            "退出码": 成员.退出码,
+        } for 成员 in self.成员表]
+        return {
+            "状态": self.运行状态, "池大小": self.池大小,
+            "pid表": [项["pid"] for 项 in 成员状态 if 项["pid"] is not None],
+            "成员表": 成员状态, "资源分配": dict(self.资源分配),
+            "关闭账本": list(self.关闭账本),
+        }
 
 
 class 进程管理器:
