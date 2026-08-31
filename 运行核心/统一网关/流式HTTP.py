@@ -13,7 +13,6 @@ import uuid
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Callable, Iterator
 
-from 运行核心.统一网关.流式语义 import 流式管理器
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器
 from 公共契约.运行时.端口策略 import 校验应用监听端口
@@ -152,9 +151,9 @@ class HTTP流式通道:
 class HTTP流式管理器:
     """创建流式生产线程，并管理取消、超时和断开清理。"""
 
-    def __init__(self, 内部管理器: 流式管理器 | None = None,
-                 最大并发通道数: int = 64) -> None:
-        self.内部管理器 = 内部管理器 or 流式管理器()
+    def __init__(self, 最大并发通道数: int = 64,
+                 调用器: Any = None) -> None:
+        self.调用器 = 调用器
         self.通道表: dict[str, HTTP流式通道] = {}
         self.锁 = threading.RLock()
         if (isinstance(最大并发通道数, bool)
@@ -286,14 +285,15 @@ class 流式HTTP服务器:
 
     def __init__(self, *, 地址: str = "127.0.0.1", 端口: int = 0,
                  管理器: HTTP流式管理器 | None = None,
+                 调用器: Any = None,
                  凭证环境变量: str = "系统库网关凭证",
                  要求凭证: bool = True,
                  允许来源表: set[str] | None = None,
                  并发上限: int = 64) -> None:
         self.地址 = 地址
         self.端口 = 端口
-        self.管理器 = 管理器 or HTTP流式管理器()
-        self.能力表: dict[str, Callable] = {}
+        self.管理器 = 管理器 or HTTP流式管理器(调用器=调用器)
+        self.调用器 = 调用器
         self.服务器: 有界线程HTTP服务器 | None = None
         self.线程: threading.Thread | None = None
         if (isinstance(并发上限, bool) or not isinstance(并发上限, int)
@@ -310,19 +310,17 @@ class 流式HTTP服务器:
     @classmethod
     def 创建测试服务器(cls, *, 地址: str = "127.0.0.1", 端口: int = 0,
                  管理器: HTTP流式管理器 | None = None,
+                 调用器: Any = None,
                  允许来源表: set[str] | None = None,
                  并发上限: int = 64) -> "流式HTTP服务器":
         """测试/演示显式免凭证构造器。"""
         return cls(
             地址=地址, 端口=端口, 管理器=管理器, 要求凭证=False,
+            调用器=调用器,
             允许来源表=允许来源表, 并发上限=并发上限,
         )
 
-    def 注册能力(self, 能力id: str, 事件生成函数: Callable) -> None:
-        self.能力表[能力id] = 事件生成函数
-
     def 启动(self) -> tuple[bool, str]:
-        能力表 = self.能力表
         管理器 = self.管理器
         服务器 = self
 
@@ -339,6 +337,15 @@ class 流式HTTP服务器:
             已加载, 加载说明 = self.凭证管理器.加载()
             if not 已加载:
                 return False, f"流式服务启动拒绝：{加载说明}"
+        if self.调用器 is None:
+            try:
+                from 公共契约.能力契约.调用器 import 获取能力调用器
+                self.调用器 = 获取能力调用器()
+            except Exception as 错误:
+                return False, f"流式服务缺少统一能力调用器: {错误}"
+        if not callable(getattr(self.调用器, "调用能力", None)):
+            return False, "流式服务调用器不符合统一调用契约"
+        调用器 = self.调用器
 
         class 处理器(BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
@@ -436,21 +443,33 @@ class 流式HTTP服务器:
                     self._写JSON(200, {"成功": 成功, "请求id": 请求id})
                     return
                 能力id = str(数据.get("能力id", ""))
-                能力 = 能力表.get(能力id)
-                if 能力 is None:
+                if not 能力id:
                     服务器.记录审计(路径, str(数据.get("请求id", "")), 能力id,
-                                  False, "能力不存在")
-                    self._写JSON(404, {"成功": False, "错误码": "能力不存在"})
+                                  False, "参数不合法")
+                    self._写JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "能力id不能为空"})
                     return
                 参数 = 数据.get("参数") if isinstance(数据.get("参数"), dict) else {}
+                try:
+                    调用结果 = 调用器.调用能力(
+                        能力id, 参数, 调用方="流式HTTP",
+                        项目id=str(数据.get("项目id", "")),
+                    )
+                except Exception:
+                    调用结果 = None
+                if 调用结果 is None or not getattr(调用结果, "成功", False):
+                    错误码 = getattr(调用结果, "错误码", "提供者不可用") if 调用结果 is not None else "提供者不可用"
+                    错误说明 = getattr(调用结果, "错误说明", "统一能力调用器未返回结果") if 调用结果 is not None else "统一能力调用器调用失败"
+                    服务器.记录审计(路径, str(数据.get("请求id", "")), 能力id,
+                                  False, 错误码)
+                    状态码 = 404 if 错误码 == "能力不存在" else 400
+                    self._写JSON(状态码, {"成功": False, "错误码": 错误码, "错误说明": 错误说明})
+                    return
+                事件值 = 调用结果.值
 
                 def 生产(停止事件: threading.Event):
-                    参数数量 = len(inspect.signature(能力).parameters)
-                    if 参数数量 >= 2:
-                        return 能力(参数, 停止事件)
-                    if 参数数量 == 1:
-                        return 能力(参数)
-                    return 能力()
+                    if hasattr(事件值, "__iter__") and not isinstance(事件值, (str, bytes, dict)):
+                        return iter(事件值)
+                    return iter([事件值])
 
                 try:
                     最大事件数 = 数据.get("最大事件数", 1000)

@@ -87,7 +87,7 @@ class 前端核心:
         self.状态表: dict[str, Any] = {}
         self.事件处理表: dict[str, list[Callable]] = {}
         self.渲染提供者 = 渲染提供者
-        self.调用函数: Callable | None = None  # 后端能力调用入口（网关/直连）
+        self.调用函数: Any = None  # 统一能力调用器对象
 
     def 注册窗口(self, 窗口: 窗口定义) -> None:
         self.窗口表[窗口.窗口id] = 窗口
@@ -124,15 +124,17 @@ class 前端核心:
         self.状态表.setdefault("窗口状态", {})[窗口id] = "已关闭"
         return {"成功": True, "窗口id": 窗口id}
 
-    def 设置调用入口(self, 调用函数: Callable) -> None:
-        """设置后端能力调用入口（网关客户端或直连）。"""
-        self.调用函数 = 调用函数
+    def 设置调用入口(self, 调用器: Any) -> None:
+        """设置统一能力调用器；拒绝裸函数和直连执行入口。"""
+        if not callable(getattr(调用器, "调用能力", None)):
+            raise TypeError("调用入口必须提供调用能力方法")
+        self.调用函数 = 调用器
 
     def 调用后端能力(self, 能力id: str, 参数: dict | None = None) -> Any:
-        """经调用入口调用后端能力（统一结果）。"""
+        """经统一能力调用器按能力id调用后端能力。"""
         if self.调用函数 is None:
             return {"成功": False, "错误码": "网关未连接", "错误说明": "未设置后端调用入口"}
-        return self.调用函数(能力id, 参数 or {})
+        return self.调用函数.调用能力(能力id, 参数 or {})
 
     def 渲染(self, 窗口id: str) -> Any:
         """把窗口分派给渲染提供者渲染。"""

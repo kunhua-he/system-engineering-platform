@@ -158,18 +158,25 @@ def 校验页面(页面: dict[str, Any]) -> dict[str, Any]:
         组件表[组件id] = 组件
     容器类型 = {类型 for 类型, 条目 in 目录.items() if 条目.get("事件") is not None and 类型 == "容器"}
     for 组件id, 组件 in 组件表.items():
-        父id = 组件.get("父组件id")
-        if 父id in (None, ""):
+        父对象id = 组件.get("父对象id")
+        父组件id = 组件.get("父组件id")
+        if 父对象id in (None, "") and 父组件id in (None, ""):
             continue
-        父id = str(父id)
-        父 = 组件表.get(父id)
-        if 父 is None:
-            raise ValueError(f"组件 {组件id} 的父组件不存在: {父id}")
-        声明父对象id = 组件.get("父对象id")
-        if 声明父对象id not in (None, "") and str(声明父对象id) != str(父.get("对象id") or 父id):
-            raise ValueError(f"组件 {组件id} 的父对象id与父组件不一致: {声明父对象id}")
+        if 父对象id not in (None, ""):
+            父 = 对象表.get(str(父对象id))
+            if 父 is None:
+                raise ValueError(f"组件 {组件id} 的父对象不存在: {父对象id}")
+            if 父组件id not in (None, "") and str(父组件id) != str(父.get("组件id")):
+                raise ValueError(f"组件 {组件id} 的父组件id与父对象id不一致: {父组件id}")
+        else:
+            父 = 组件表.get(str(父组件id))
+            if 父 is None:
+                raise ValueError(f"组件 {组件id} 的父组件不存在: {父组件id}")
         if 父.get("类型") not in 容器类型:
-            raise ValueError(f"组件 {组件id} 的父组件不是容器: {父id}")
+            raise ValueError(f"组件 {组件id} 的父组件不是容器: {父.get('组件id')}")
+        # 父对象id是长期权威；父组件id只作为渲染和旧页面兼容字段。
+        组件["父对象id"] = str(父.get("对象id"))
+        组件["父组件id"] = str(父.get("组件id"))
         已见: set[str] = set()
         当前 = 组件id
         while 当前:

@@ -115,9 +115,15 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
             诊断=f"{名称} 探针成功",
         )
     finally:
-        # 成功/退出码非0 已由 communicate 回收；超时路径已强杀并 wait 回收
+        # 成功/退出码非0 已由 communicate 回收；超时路径已强杀并 wait 回收。
         if 进程.poll() is None:
             _终止进程组(进程)
+        for 管道 in (进程.stdin, 进程.stdout, 进程.stderr):
+            if 管道 is not None and not 管道.closed:
+                try:
+                    管道.close()
+                except OSError:
+                    pass
 
 
 def _解析可执行(可执行: str) -> str | None:

@@ -73,15 +73,37 @@ def _保存向量(库路径: str, 标识: str, 向量: list[float]) -> None:
 
 
 def _生成向量(文本: str) -> list[float] | None:
-    """调用大语言模型支持库生成嵌入（上游调用者，非归属）。"""
+    """经统一能力调用器连接、生成并释放向量句柄。"""
     try:
-        from 支持库.后端.大语言模型支持库.模型连接器 import 生成嵌入
-        r = 生成嵌入(文本=文本[:4000])
-        if r.成功 and r.值:
-            向量 = r.值.get("嵌入") or r.值.get("向量") or (r.值.get("值") or {}).get("嵌入")
-            if isinstance(向量, list) and 向量:
-                return 向量
-        return None
+        from 公共契约.能力契约.调用器 import 获取能力调用器
+        调用器 = 获取能力调用器()
+        连接结果 = 调用器.调用能力(
+            "大语言模型支持库.模型连接器.连接向量模型", {}, 调用方="记忆支持库",
+        )
+        if not 连接结果.成功 or not isinstance(连接结果.值, dict):
+            return None
+        句柄 = 连接结果.值.get("句柄")
+        if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+            return None
+        向量: list[float] | None = None
+        释放成功 = False
+        try:
+            生成结果 = 调用器.调用能力(
+                "大语言模型支持库.模型连接器.生成嵌入",
+                {"句柄": 句柄, "文本": 文本[:4000]},
+                调用方="记忆支持库",
+            )
+            if 生成结果.成功 and isinstance(生成结果.值, dict):
+                候选 = 生成结果.值.get("嵌入") or 生成结果.值.get("向量")
+                if isinstance(候选, list) and 候选:
+                    向量 = 候选
+        finally:
+            释放结果 = 调用器.调用能力(
+                "大语言模型支持库.模型连接器.释放句柄",
+                {"句柄": 句柄}, 调用方="记忆支持库",
+            )
+            释放成功 = bool(释放结果.成功)
+        return 向量 if 释放成功 else None
     except Exception:
         return None
 

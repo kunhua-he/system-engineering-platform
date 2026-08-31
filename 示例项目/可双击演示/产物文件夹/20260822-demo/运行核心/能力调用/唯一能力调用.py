@@ -90,25 +90,29 @@ class 唯一能力调用服务:
 
     @staticmethod
     def _规范化结果(值: Any) -> 统一结果类型:
-        """把历史实现返回的原子值/字典收口为唯一公开结果。
-
-        支持库内部函数仍可使用原子值，但跨包边界只允许统一结果；
-        字典若明确带成功字段则严格按其失败状态转换，禁止证据误绿。
-        """
+        """跨包字典必须完整满足统一结果契约；原子值仍由适配边界包装。"""
         if isinstance(值, 统一结果类型):
             return 值
-        if isinstance(值, dict) and "成功" in 值:
-            if bool(值.get("成功")):
-                return 统一结果类型.成功结果(值.get("值"))
-            return 统一结果类型.失败(
-                str(值.get("错误码") or "调用失败"),
-                str(值.get("错误说明") or "能力返回失败"),
-            )
+        if isinstance(值, dict):
+            必填字段 = {"成功", "值", "错误码", "错误说明"}
+            if not 必填字段.issubset(值):
+                return 统一结果类型.失败(
+                    "返回结果不符合契约", "字典返回缺少统一结果字段",
+                )
+            if (not isinstance(值.get("成功"), bool)
+                    or not isinstance(值.get("错误码"), str)
+                    or not isinstance(值.get("错误说明"), str)):
+                return 统一结果类型.失败(
+                    "返回结果不符合契约", "字典返回的统一结果字段类型不正确",
+                )
+            if 值["成功"]:
+                return 统一结果类型.成功结果(值["值"])
+            return 统一结果类型.失败(值["错误码"] or "调用失败", 值["错误说明"])
         return 统一结果类型.成功结果(值)
 
     def 请求(self, 目标: str, 参数: dict[str, Any] | None = None,
              句柄: str | None = None) -> Any:
-        """最小调用入口：目标在前，参数可省略，句柄可选。
+        """历史适配入口：文本句柄只在此转换，统一调用入口只接收整数。
 
         不携带句柄表示一次性调用；当前无状态能力执行完即由其实现释放。
         有状态 Provider 接入后，句柄只作为不透明值向下传递，调用方不接触
@@ -118,11 +122,17 @@ class 唯一能力调用服务:
             return self._失败("参数不合法", "目标不能为空")
         if 参数 is not None and not isinstance(参数, dict):
             return self._失败("参数不合法", "参数必须是字典")
-        return self.调用能力(目标, 参数 or {}, 句柄=句柄 or "")
+        if 句柄 is None:
+            统一句柄 = None
+        elif isinstance(句柄, str) and 句柄.isdecimal() and 1 <= int(句柄) <= 999999:
+            统一句柄 = int(句柄)
+        else:
+            return self._失败("参数不合法", "历史文本句柄必须表示 1 到 999999 的整数")
+        return self.调用能力(目标, 参数 or {}, 句柄=统一句柄)
 
     def 调用能力(self, 能力id: str, 参数: dict[str, Any] | None = None, *,
                  调用方: str = "", 项目id: str = "", 超时秒: float | None = None,
-                 句柄: str = "") -> Any:
+                 句柄: int | None = None) -> Any:
         """按能力 id 调用唯一注册实现，返回统一 结果。
 
         参数校验、证据采集在此统一完成；调用方不接触提供者。
@@ -132,6 +142,15 @@ class 唯一能力调用服务:
         """
         import time as _时间模块
         开始 = _时间模块.monotonic()
+        # 统一公开句柄冻结为整数；历史字符串只允许进程内连接器这个显式
+        # 适配层进入，并在跨越唯一调用边界前立即归一。
+        if isinstance(句柄, str) and 调用方 == "进程内连接器" and 句柄.isdecimal():
+            句柄 = int(句柄)
+        if 句柄 is not None and (
+            isinstance(句柄, bool) or not isinstance(句柄, int)
+            or not 1 <= 句柄 <= 999999
+        ):
+            return self._失败("参数不合法", "句柄必须是 1 到 999999 的整数")
         上下文 = 全局上下文管理器.当前()
         请求id = 上下文.请求id or ""
         实现 = self.注册表.获取(能力id)

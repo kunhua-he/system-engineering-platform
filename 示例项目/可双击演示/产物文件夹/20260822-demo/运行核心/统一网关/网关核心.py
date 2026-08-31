@@ -54,6 +54,14 @@ from 公共契约.基础类型.数值类型 import 校验数值类型
 }
 
 
+def _是JSON值(值: Any) -> bool:
+    try:
+        json.dumps(值, ensure_ascii=False, allow_nan=False)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 @dataclass
 class 网关请求:
     """已完成 HTTP 边界校验的网关请求。"""
@@ -145,22 +153,25 @@ class 网关核心:
         响应.错误说明 = 公开错误说明表.get(错误码, "请求处理失败")
 
     def _设置后端字典结果(self, 响应: 网关响应, 值: Any) -> None:
-        """适配控制面后端结果，禁止把业务失败嵌入值后仍返回外层成功。"""
-        if not isinstance(值, dict) or "成功" not in 值:
+        """后端字典必须完整满足统一结果契约，禁止缺字段字典伪装成功。"""
+        if not isinstance(值, dict):
             响应.值 = 值
             return
+        必填字段 = {"成功", "值", "错误码", "错误说明"}
+        if not 必填字段.issubset(值):
+            self._设置失败(响应, "返回结果不符合契约")
+            return
         成功 = 值.get("成功")
-        if not isinstance(成功, bool):
+        if (not isinstance(成功, bool)
+                or not isinstance(值.get("错误码"), str)
+                or not isinstance(值.get("错误说明"), str)):
             self._设置失败(响应, "返回结果不符合契约")
             return
         if not 成功:
-            错误码 = 值.get("错误码")
-            self._设置失败(响应, 错误码 if isinstance(错误码, str) and 错误码 else "内部错误")
-            错误说明 = 值.get("错误说明") or 值.get("消息")
-            if isinstance(错误说明, str):
-                响应.错误说明 = 脱敏错误信息(错误说明)
+            self._设置失败(响应, 值["错误码"] or "内部错误")
+            响应.错误说明 = 脱敏错误信息(值["错误说明"])
             return
-        响应.值 = 值
+        响应.值 = 值["值"]
 
     @staticmethod
     def _能力结果类型合法(结果对象: Any) -> bool:
@@ -205,14 +216,14 @@ class 网关核心:
                 "文本": "文本型", "整数": "整数型", "长整数": "长整数型",
                 "单精度数": "单精度数型", "双精度数": "双精度数型",
                 "浮点数": "双精度数型", "逻辑": "逻辑型", "布尔": "逻辑型",
-                "列表": "列表型", "字典": "字典型", "映射": "映射型",
+                "列表": "列表型", "字典": "字典型", "映射": "字典型",
             }.get(类型, 类型)
             类型匹配 = {
                 "逻辑型": lambda 值: isinstance(值, bool),
                 "文本型": lambda 值: isinstance(值, str),
                 "列表型": lambda 值: isinstance(值, list),
                 "字典型": lambda 值: isinstance(值, dict),
-                "映射型": lambda 值: isinstance(值, dict),
+                "JSON值型": _是JSON值,
             }.get(类型)
             if 类型 in ("整数型", "长整数型", "单精度数型", "双精度数型"):
                 try:
@@ -387,17 +398,17 @@ class 网关核心:
             句柄 = 请求.句柄 or str(请求.参数.get("句柄", ""))
             if not 句柄:
                 raise ValueError("缺少句柄")
-            self._设置后端字典结果(响应, self.后端核心.资源续租(
+            响应.值 = self.后端核心.资源续租(
                 句柄, 租约秒=请求.参数.get("租约秒", 300),
                 项目id=请求.项目id, 所有者=请求.用户id,
-            ))
+            )
         elif 请求.操作 == "资源关闭":
             句柄 = 请求.句柄 or str(请求.参数.get("句柄", ""))
             if not 句柄:
                 raise ValueError("缺少句柄")
-            self._设置后端字典结果(响应, self.后端核心.资源关闭(
+            响应.值 = self.后端核心.资源关闭(
                 句柄, 项目id=请求.项目id, 所有者=请求.用户id,
-            ))
+            )
         elif 请求.操作 == "调用能力":
             能力id = 请求.能力id or 请求.目标
             if not 能力id:
@@ -446,6 +457,8 @@ class 网关核心:
                     响应.句柄 = 新句柄["句柄"]
             else:
                 self._设置失败(响应, 结果对象.错误码 or "内部错误")
+                if 结果对象.错误说明:
+                    响应.错误说明 = 脱敏错误信息(结果对象.错误说明)
         elif 请求.操作 == "任务提交":
             if self.任务系统 is None:
                 raise ConnectionError("任务系统未接入")
@@ -472,8 +485,11 @@ class 网关核心:
                 raise ValueError("缺少任务id")
             成功, 消息 = self.任务系统.取消(任务id)
             self._设置后端字典结果(
-                响应, {"成功": 成功, "错误码": "" if 成功 else "调用已取消",
-                       "消息": 脱敏错误信息(str(消息))},
+                响应, {
+                    "成功": 成功, "值": str(消息) if 成功 else None,
+                    "错误码": "" if 成功 else "调用已取消",
+                    "错误说明": "" if 成功 else 脱敏错误信息(str(消息)),
+                },
             )
         elif 请求.操作 in ("版本查询", "诊断查询", "激活版本查询"):
             if self.版本查询 is None:

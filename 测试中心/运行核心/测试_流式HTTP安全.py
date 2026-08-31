@@ -16,6 +16,12 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 运行核心.统一网关.流式HTTP import 流式HTTP服务器
+from 公共契约.基础类型.结果类型 import 结果
+
+
+class 假流式调用器:
+    def 调用能力(self, 能力id: str, 参数: dict, **_) -> 结果:
+        return 结果.成功结果(iter([{"片段": "完成"}]))
 
 
 class Test流式HTTPS安全(unittest.TestCase):
@@ -45,8 +51,9 @@ class Test流式HTTPS安全(unittest.TestCase):
 
     def test_无凭证401_有凭证可建立流并写审计(self) -> None:
         with patch.dict(os.environ, {"流式测试凭证": "stream-test-token"}, clear=False):
-            服务 = 流式HTTP服务器(端口=0, 凭证环境变量="流式测试凭证")
-            服务.注册能力("流式.测试", lambda 参数: iter([{"片段": "完成"}]))
+            服务 = 流式HTTP服务器(
+                端口=0, 凭证环境变量="流式测试凭证", 调用器=假流式调用器(),
+            )
             成功, 消息 = 服务.启动()
             self.assertTrue(成功, 消息)
             地址 = f"http://127.0.0.1:{服务.端口}"

@@ -31,13 +31,13 @@ class 测试模型连接器释放(unittest.TestCase):
         模型连接器.全局模型索引.clear()
         模型连接器.本地进程表.clear()
 
-    def _创建连接(self) -> str:
+    def _创建连接(self) -> int:
         结果 = 模型连接器._登记连接(
             "LLM", {"模型名": "测试模型", "部署形态": "云端"},
             超时秒=1,
         )
         self.assertTrue(结果.成功, 结果.错误说明)
-        return str(结果.值["句柄"])
+        return 结果.值["句柄"]
 
     def test_过期回调在锁外执行并成功收口(self) -> None:
         句柄 = self._创建连接()
@@ -45,7 +45,7 @@ class 测试模型连接器释放(unittest.TestCase):
         连接器["最后活动时间"] = time.time() - 10
         回调记录: list[bool] = []
 
-        def 释放回调(句柄id: str) -> bool:
+        def 释放回调(句柄id: int) -> bool:
             已取得 = 模型连接器.锁.acquire(blocking=False)
             回调记录.append(已取得)
             if 已取得:
@@ -62,7 +62,7 @@ class 测试模型连接器释放(unittest.TestCase):
         句柄 = self._创建连接()
         尝试次数 = 0
 
-        def 释放回调(句柄id: str) -> bool:
+        def 释放回调(句柄id: int) -> bool:
             nonlocal 尝试次数
             尝试次数 += 1
             return 尝试次数 >= 2
@@ -101,7 +101,7 @@ class 测试线程池释放(unittest.TestCase):
         池 = 延迟线程池()
         并发控制.线程池释放等待秒 = 0.01
         创建结果 = 并发控制._创建("线程池", 池, "测试线程池")
-        句柄 = str(创建结果.值["句柄"])
+        句柄 = 创建结果.值["句柄"]
         开始 = time.monotonic()
         首次 = 并发控制.释放句柄(句柄)
         耗时 = time.monotonic() - 开始
