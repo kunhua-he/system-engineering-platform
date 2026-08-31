@@ -2,22 +2,39 @@
 
 from __future__ import annotations
 
-import importlib.util
 import asyncio
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-服务路径 = Path(__file__).resolve().parents[2] / "MCP工具箱" / "项目服务.py"
-sys.path.insert(0, str(服务路径.parent))
-规格 = importlib.util.spec_from_file_location("系统工程平台项目服务", 服务路径)
-assert 规格 and 规格.loader
-服务模块 = importlib.util.module_from_spec(规格)
-规格.loader.exec_module(服务模块)
+系统根 = Path(__file__).resolve().parents[2]
+from MCP工具箱 import 项目服务 as 服务模块
 
 
 class 项目服务测试(unittest.TestCase):
+    def test_MCP工具箱必须从项目根按包导入(self) -> None:
+        环境 = os.environ.copy()
+        环境.pop("PYTHONPATH", None)
+        结果 = subprocess.run(
+            [sys.executable, "-c", "import MCP工具箱.项目服务, MCP工具箱.能力网关"],
+            cwd=系统根, env=环境, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(结果.returncode, 0, 结果.stderr)
+
+    def test_启动脚本只使用包入口(self) -> None:
+        for 文件名, 入口 in (
+            ("启动HTTP服务.sh", "-m MCP工具箱.项目服务"),
+            ("启动能力网关.sh", "-m MCP工具箱.能力网关"),
+        ):
+            内容 = (系统根 / "MCP工具箱" / 文件名).read_text(encoding="utf-8")
+            self.assertIn(入口, 内容)
+            self.assertNotIn("PYTHONPATH=", 内容)
+            self.assertNotIn("MCP工具箱/项目服务.py", 内容)
+            self.assertNotIn("MCP工具箱/能力网关.py", 内容)
+
     def test_项目根固定为系统工程平台(self) -> None:
         self.assertEqual(服务模块.项目根目录, Path(__file__).resolve().parents[2])
 

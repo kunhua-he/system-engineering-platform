@@ -34,10 +34,12 @@ from 开发工具.项目编译.项目编译器 import _来源指纹 as _编译�
 
 验证版本 = "3.0.0"
 场景契约版本 = "验证场景/v1"
-默认并发 = 8
+并发上限 = 64
+默认并发 = min(并发上限, max(8, os.cpu_count() or 1))
 默认超时秒 = 15
 默认启动超时秒 = 120
 固定端口 = 45080
+固定端口池 = "45080-45180"
 请求上限字节 = 1024 * 1024
 输出上限字节 = 64 * 1024
 场景文件名 = "验证场景.json"
@@ -707,6 +709,71 @@ def _校验直连地址(地址: str) -> str:
     return 地址.rstrip("/")
 
 
+def _解析端口池(端口池: str) -> list[int]:
+    """解析端口池表达式："45080-45180" 区间 或 "45080,45082" 枚举。"""
+    if not isinstance(端口池, str) or not 端口池.strip():
+        raise ValueError("端口池必须是非空文本")
+    部分表 = [部分.strip() for 部分 in 端口池.split(",") if 部分.strip()]
+    if not 部分表:
+        raise ValueError("端口池为空")
+    端口表: list[int] = []
+    for 部分 in 部分表:
+        if "-" in 部分:
+            左右 = 部分.split("-", 1)
+            if len(左右) != 2 or not 左右[0].isdigit() or not 左右[1].isdigit():
+                raise ValueError(f"端口池区间不合法: {部分!r}")
+            起始, 结束 = int(左右[0]), int(左右[1])
+            if 起始 > 结束:
+                raise ValueError(f"端口池区间起始大于结束: {部分!r}")
+            if not 1 <= 起始 <= 65535 or not 1 <= 结束 <= 65535:
+                raise ValueError(f"端口池超出合法范围: {部分!r}")
+            端口表.extend(range(起始, 结束 + 1))
+        elif 部分.isdigit():
+            端口 = int(部分)
+            if not 1 <= 端口 <= 65535:
+                raise ValueError(f"端口超出合法范围: {部分!r}")
+            端口表.append(端口)
+        else:
+            raise ValueError(f"端口池项不合法: {部分!r}")
+    if len(set(端口表)) != len(端口表):
+        raise ValueError("端口池含重复端口")
+    return 端口表
+
+
+def _场景资源键(场景: 多步骤验证场景) -> tuple[str, ...]:
+    """根据能力前缀锁定非线程安全的共享外部提供者（模块级，供分片与并发锁共用）。"""
+    能力表 = {
+        步骤.能力id
+        for 阶段 in (场景.前置步骤, 场景.目标步骤, 场景.清理步骤)
+        for 步骤 in 阶段
+    }
+    键表 = set()
+    if any(能力.startswith(("文档转换支持库.", "LibreOffice转换.")) for 能力 in 能力表):
+        键表.add("LibreOffice")
+    if any(能力.startswith("大语言模型支持库.模型连接器.") for 能力 in 能力表):
+        键表.add("模型连接器")
+    if any(能力.startswith("媒体处理支持库.FFmpeg媒体.") for 能力 in 能力表):
+        键表.add("FFmpeg")
+    return tuple(sorted(键表))
+
+
+def _分片场景(场景束: 验证场景束, 实例数: int) -> list[list[多步骤验证场景]]:
+    """把场景束分片到 N 个实例：资源键场景固定同实例，普通场景按场景id哈希轮询。"""
+    if type(实例数) is not int or 实例数 < 1:
+        raise ValueError("实例数必须是正整数")
+    分片表: list[list[多步骤验证场景]] = [[] for _ in range(实例数)]
+    资源实例表: dict[tuple[str, ...], int] = {}
+    for 场景 in 场景束.场景列表:
+        键表 = _场景资源键(场景)
+        if 键表:
+            实例 = 资源实例表.setdefault(键表, len(资源实例表) % 实例数)
+            分片表[实例].append(场景)
+        else:
+            实例 = hash(场景.场景id) % 实例数
+            分片表[实例].append(场景)
+    return 分片表
+
+
 def _检查端口可用(端口: int) -> tuple[bool, str]:
     import socket
     测试 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1082,6 +1149,7 @@ def _展开动态值(
 
 def _执行场景束(
     制品目录: Path, 场景束: 验证场景束, 地址: str, *, 超时秒: float = 默认超时秒,
+    并发: int = 默认并发,
 ) -> 验证报告:
     """按场景执行前置→目标并finally清理；每个能力步骤只经正式HTTP通道。"""
     制品目录 = Path(制品目录).resolve()
@@ -1121,33 +1189,90 @@ def _执行场景束(
             结果.定位线索 = "场景执行器"
         return 结果
 
-    for 场景 in 场景束.场景列表:
+    def 执行场景(场景: 多步骤验证场景) -> tuple[list[验证结果], set[str], int, list[str]]:
+        """每个场景独立临时根；场景内仍严格保持步骤顺序。"""
         临时对象 = tempfile.TemporaryDirectory(prefix="HTML黑盒场景_")
         临时根 = Path(临时对象.name).resolve()
         返回表: dict[str, dict[str, Any]] = {}
-        前置通过 = True
+        结果表: list[验证结果] = []
+        场景成功目标: set[str] = set()
+        清理失败数 = 0
         try:
+            前置通过 = True
             for 步骤 in 场景.前置步骤:
                 结果 = 执行步骤(场景, 步骤, "前置", 临时根, 返回表)
-                报告.结果列表.append(结果)
+                结果表.append(结果)
                 if not 结果.通过:
                     前置通过 = False
                     break
             if 前置通过:
                 for 步骤 in 场景.目标步骤:
                     结果 = 执行步骤(场景, 步骤, "目标", 临时根, 返回表)
-                    报告.结果列表.append(结果)
+                    结果表.append(结果)
                     if 结果.通过 and 步骤.预期成功:
-                        实际成功目标.add(步骤.能力id)
+                        场景成功目标.add(步骤.能力id)
         finally:
             for 步骤 in 场景.清理步骤:
                 结果 = 执行步骤(场景, 步骤, "清理", 临时根, 返回表)
-                报告.结果列表.append(结果)
+                结果表.append(结果)
                 if not 结果.通过:
-                    报告.清理失败数 += 1
+                    清理失败数 += 1
             临时对象.cleanup()
-            if 临时根.exists():
-                报告.资源残留.append(str(临时根))
+        残留 = [str(临时根)] if 临时根.exists() else []
+        return 结果表, 场景成功目标, 清理失败数, 残留
+
+    活跃 = 0
+    峰值 = 0
+    活跃锁 = threading.Lock()
+    资源锁表: dict[str, threading.Lock] = {}
+    资源锁表锁 = threading.Lock()
+
+    def 取得资源锁(资源键表: tuple[str, ...]) -> list[threading.Lock]:
+        锁表 = []
+        with 资源锁表锁:
+            for 资源键 in 资源键表:
+                资源锁表.setdefault(资源键, threading.Lock())
+                锁表.append(资源锁表[资源键])
+        return 锁表
+
+    def 运行场景(场景: 多步骤验证场景) -> tuple[list[验证结果], set[str], int, list[str]]:
+        nonlocal 活跃, 峰值
+        with 活跃锁:
+            活跃 += 1
+            峰值 = max(峰值, 活跃)
+        资源锁表本地 = 取得资源锁(_场景资源键(场景))
+        try:
+            for 资源锁 in 资源锁表本地:
+                资源锁.acquire()
+            return 执行场景(场景)
+        except BaseException as 错误:
+            return ([验证结果(
+                场景.场景id, "", False, 0,
+                失败原因=f"场景执行异常: {type(错误).__name__}: {错误}", 定位线索="场景执行器",
+            )], set(), 0, [])
+        finally:
+            for 资源锁 in reversed(资源锁表本地):
+                资源锁.release()
+            with 活跃锁:
+                活跃 -= 1
+
+    执行结果表: list[tuple[list[验证结果], set[str], int, list[str]]] = []
+    with ThreadPoolExecutor(
+        max_workers=min(并发, len(场景束.场景列表)), thread_name_prefix="HTML验证场景"
+    ) as 执行器:
+        任务表 = {执行器.submit(运行场景, 场景): 场景 for 场景 in 场景束.场景列表}
+        for 任务 in as_completed(任务表):
+            执行结果表.append(任务.result())
+
+    for 结果表, 场景成功目标, 清理失败数, 残留 in 执行结果表:
+        报告.结果列表.extend(结果表)
+        实际成功目标.update(场景成功目标)
+        报告.清理失败数 += 清理失败数
+        报告.资源残留.extend(残留)
+    报告.并发峰值 = 峰值
+    报告.结果列表.sort(key=lambda 结果: (
+        结果.场景id, {"前置": 0, "目标": 1, "清理": 2}.get(结果.步骤类型, 3), 结果.步骤id,
+    ))
     报告.资源残留数 = len(报告.资源残留)
     报告.实际成功目标能力全集 = sorted(实际成功目标)
     报告.正向目标能力全集 = sorted(场景束.目标能力全集)
@@ -1202,8 +1327,8 @@ def 验证全部(
     del 自动打开
     if not 场景列表:
         raise ValueError("无任何有效验证场景")
-    if type(并发) is not int or 并发 < 1:
-        raise ValueError("并发必须是正整数")
+    if type(并发) is not int or not 1 <= 并发 <= 并发上限:
+        raise ValueError(f"并发必须是 1 到 {并发上限} 的整数")
     报告 = 验证报告(制品路径=str(制品目录), 场景总数=len(场景列表))
     报告.制品摘要前 = _制品全文件摘要(制品目录)
     当前摘要 = 报告.制品摘要前["制品摘要"]
@@ -1260,8 +1385,8 @@ def 验证全部(
         return 报告, 实际端口, 进程
 
     if isinstance(场景列表, 验证场景束):
-        场景报告 = _执行场景束(制品目录, 场景列表, 地址, 超时秒=超时秒)
-        场景报告.并发峰值 = 1
+        场景报告 = _执行场景束(
+            制品目录, 场景列表, 地址, 超时秒=超时秒, 并发=并发)
         if 直连地址:
             场景报告.资源回收 = {"已回收": True, "模式": "直连"}
         return 场景报告, 实际端口, 进程
@@ -1310,6 +1435,119 @@ def 验证全部(
         报告.制品摘要后 = _制品全文件摘要(制品目录)
         _校验制品前后绑定(报告)
     return 报告, 实际端口, 进程
+
+
+def _验证全部多实例(
+    制品目录: Path,
+    场景束: 验证场景束,
+    *,
+    并发: int = 默认并发,
+    超时秒: float = 默认超时秒,
+    端口池: str = 固定端口池,
+    实例数: int = 1,
+) -> tuple[验证报告, list[subprocess.Popen[Any]]]:
+    """多实例制品池：一次启动 N 个制品进程，各自独立端口，场景分片后并行执行。"""
+    if type(实例数) is not int or not 1 <= 实例数 <= 64:
+        raise ValueError(f"实例数必须是 1 到 64 的整数")
+    端口表 = _解析端口池(端口池)
+    if len(端口表) < 实例数:
+        raise ValueError(f"端口池 {端口池} 只有 {len(端口表)} 个端口，不足 {实例数} 个实例")
+    分片表 = _分片场景(场景束, 实例数)
+    报告 = 验证报告(制品路径=str(制品目录), 场景总数=len(场景束.场景列表))
+    报告.制品摘要前 = _制品全文件摘要(制品目录)
+    当前摘要 = 报告.制品摘要前["制品摘要"]
+    if 场景束.制品摘要 != 当前摘要:
+        报告.失败数 = 1
+        报告.结果列表.append(验证结果(
+            "场景.制品绑定", "", False, 0,
+            失败原因=f"场景制品摘要未绑定当前制品: {场景束.制品摘要} != {当前摘要}",
+            定位线索="制品绑定",
+        ))
+        报告.制品摘要后 = _制品全文件摘要(制品目录)
+        return 报告, []
+    报告.场景制品摘要 = 当前摘要
+
+    启动器 = _找启动器(制品目录)
+    进程表: list[subprocess.Popen[Any]] = []
+    地址表: list[str] = []
+    try:
+        for 实例序号, 端口 in enumerate(端口表[:实例数]):
+            可用, 消息 = _检查端口可用(端口)
+            if not 可用:
+                raise RuntimeError(f"实例{实例序号 + 1} 端口 {端口} 不可用: {消息}")
+            进程, 实际端口, _ = _启动制品(启动器, 制品目录, 端口)
+            进程表.append(进程)
+            地址表.append(f"http://127.0.0.1:{实际端口}")
+        分片报告表: list[验证报告] = []
+        分片进程表: list[list[subprocess.Popen[Any]]] = []
+        with ThreadPoolExecutor(
+            max_workers=实例数, thread_name_prefix="HTML验证实例"
+        ) as 执行器:
+            任务表 = {}
+            for 实例序号, (分片, 地址) in enumerate(zip(分片表, 地址表)):
+                子目标能力全集 = {
+                    步骤.能力id
+                    for 场景 in 分片
+                    for 步骤 in 场景.目标步骤
+                    if 步骤.预期成功
+                }
+                子束 = 验证场景束(
+                    场景列表=分片, 目标能力全集=子目标能力全集, 制品摘要=场景束.制品摘要,
+                )
+                任务表[执行器.submit(
+                    验证全部, 制品目录, 子束, 并发=并发, 超时秒=超时秒,
+                    端口=固定端口, 直连地址=地址, 进程接收=None,
+                )] = 实例序号
+            for 任务 in as_completed(任务表):
+                分片报告, _, _ = 任务.result()
+                分片报告表.append(分片报告)
+        # 合并各实例报告
+        实际成功目标: set[str] = set()
+        峰值总和 = 0
+        步骤总数 = 0
+        for 分片报告 in 分片报告表:
+            报告.结果列表.extend(分片报告.结果列表)
+            报告.清理失败数 += 分片报告.清理失败数
+            报告.资源残留.extend(分片报告.资源残留)
+            实际成功目标.update(分片报告.实际成功目标能力全集)
+            峰值总和 = max(峰值总和, 分片报告.并发峰值 or 0)
+            步骤总数 += 分片报告.步骤总数 or 0
+        报告.目标能力数 = len(场景束.目标能力全集)
+        报告.步骤总数 = 步骤总数
+        报告.并发峰值 = 峰值总和
+        报告.资源残留数 = len(报告.资源残留)
+        报告.实际成功目标能力全集 = sorted(实际成功目标)
+        报告.正向目标能力全集 = sorted(场景束.目标能力全集)
+        报告.通过数 = sum(结果.通过 for 结果 in 报告.结果列表)
+        报告.失败数 = sum(not 结果.通过 for 结果 in 报告.结果列表)
+        报告.正向成功数 = sum(
+            结果.通过 and 结果.步骤类型 == "目标" for 结果 in 报告.结果列表
+        )
+        报告.负向校验数 = sum(
+            结果.通过 and 结果.步骤类型 != "目标" for 结果 in 报告.结果列表
+        )
+        if 实际成功目标 != 场景束.目标能力全集:
+            报告.结果列表.append(验证结果(
+                "场景.实际覆盖", "", False,
+                失败原因=f"实际成功目标能力全集不一致: 缺少={sorted(场景束.目标能力全集 - 实际成功目标)}",
+                定位线索="覆盖对账",
+            ))
+            报告.失败数 += 1
+        if 报告.资源残留数:
+            报告.失败数 += 报告.资源残留数
+        报告.结果列表.sort(key=lambda 结果: (
+            结果.场景id, {"前置": 0, "目标": 1, "清理": 2}.get(结果.步骤类型, 3), 结果.步骤id,
+        ))
+        报告.制品摘要后 = _制品全文件摘要(制品目录)
+        _校验制品前后绑定(报告)
+        return 报告, 进程表
+    except BaseException:
+        for 进程 in 进程表:
+            try:
+                _回收进程组(进程)
+            except BaseException:
+                pass
+        raise
 
 
 def _证据根目录(制品目录: Path) -> Path:
@@ -1494,6 +1732,7 @@ def 主函数(参数: argparse.Namespace) -> int:
 
     报告 = 验证报告(制品路径=str(制品目录))
     进程: subprocess.Popen[Any] | None = None
+    进程表: list[subprocess.Popen[Any]] = []
     证据路径: Path | None = None
     def 接收进程(新进程: subprocess.Popen[Any]) -> None:
         nonlocal 进程
@@ -1503,20 +1742,34 @@ def 主函数(参数: argparse.Namespace) -> int:
         报告.制品摘要前 = _制品全文件摘要(制品目录)
         场景列表 = _加载场景(制品目录, Path(参数.场景) if 参数.场景 else None)
         print(f"加载 {len(场景列表)} 个包级验证场景")
-        报告, _, 进程 = 验证全部(
-            制品目录, 场景列表, 并发=参数.并发, 超时秒=参数.超时秒,
-            端口=参数.端口, 直连地址=参数.直连地址, 进程接收=接收进程,
-        )
+        if getattr(参数, "实例数", 1) > 1 and isinstance(场景列表, 验证场景束) and not 参数.直连地址:
+            报告, 进程表 = _验证全部多实例(
+                制品目录, 场景列表, 并发=参数.并发, 超时秒=参数.超时秒,
+                端口池=getattr(参数, "端口池", 固定端口池), 实例数=getattr(参数, "实例数", 1),
+            )
+        else:
+            报告, _, 进程 = 验证全部(
+                制品目录, 场景列表, 并发=参数.并发, 超时秒=参数.超时秒,
+                端口=参数.端口, 直连地址=参数.直连地址, 进程接收=接收进程,
+            )
     except BaseException as 错误:
         _记录流程异常(报告, 错误)
     finally:
         try:
-            回收 = _回收进程组(进程)
-            报告.资源回收 = 回收
-            if not 回收.get("已回收"):
+            全部进程 = 进程表 if 进程表 else ([进程] if 进程 else [])
+            回收成功 = True
+            进程组残留 = False
+            for 单进程 in 全部进程:
+                单回收 = _回收进程组(单进程)
+                if not 单回收.get("已回收"):
+                    回收成功 = False
+                if 单回收.get("进程组残留"):
+                    进程组残留 = True
+            报告.资源回收 = {"已回收": 回收成功, "进程组残留": 进程组残留, "实例数": len(全部进程)}
+            if not 回收成功:
                 报告.失败数 += 1
                 报告.结果列表.append(验证结果(
-                    "资源回收", "", False, 0, 失败原因=f"进程组回收失败: {回收}", 定位线索="资源回收",
+                    "资源回收", "", False, 0, 失败原因=f"进程组回收失败（{len(全部进程)} 实例）", 定位线索="资源回收",
                 ))
         except BaseException as 错误:
             _记录流程异常(报告, 错误)
@@ -1546,6 +1799,8 @@ if __name__ == "__main__":
     解析器.add_argument("--并发", type=int, default=默认并发)
     解析器.add_argument("--超时秒", type=float, default=默认超时秒)
     解析器.add_argument("--端口", type=int, default=固定端口)
+    解析器.add_argument("--端口池", default=固定端口池, help="多实例端口池：45080-45180 区间或逗号枚举")
+    解析器.add_argument("--实例数", type=int, default=1, help="制品进程实例数（>1 启用多实例制品池）")
     解析器.add_argument("--直连地址", default="", help="严格 IP 回环 HTTP 地址，带显式端口")
     解析器.add_argument("--服务", type=int, default=0)
     解析器.add_argument("--只生成场景", action="store_true")

@@ -37,7 +37,7 @@ class 包仓库(签名能力, 安装能力):
 
     # ---- 构建与内容寻址 ----
     def 构建制品(self, *, 包id: str, 版本: str, 文件表: dict[str, str],
-                构建输入: dict[str, Any]) -> tuple[bool, str, str]:
+                构建输入: dict[str, Any], 文件模式: dict[str, int] | None = None) -> tuple[bool, str, str]:
         """冻结候选包：临时目录构建 → 路径安全校验 → 摘要 → 原子发布。
 
         同一包id+版本只能绑定一个内容摘要；不同摘要必须换版本或拒绝。
@@ -56,8 +56,13 @@ class 包仓库(签名能力, 安装能力):
                 return hashlib.sha256(字节).hexdigest(), len(字节)
             return hashlib.sha256(内容.encode("utf-8")).hexdigest(), len(内容.encode("utf-8"))
 
-        文件清单 = {路径: {"sha256": _文件摘要(内容)[0], "大小": _文件摘要(内容)[1]}
-                    for 路径, 内容 in 规范化文件表.items()}
+        文件清单 = {}
+        for 路径, 内容 in 规范化文件表.items():
+            摘要, 大小 = _文件摘要(内容)
+            信息 = {"sha256": 摘要, "大小": 大小}
+            if 文件模式 is not None and 路径 in 文件模式:
+                信息["模式"] = int(文件模式[路径]) & 0o7777
+            文件清单[路径] = 信息
         正文 = json.dumps({"包id": 包id, "版本": 版本, "文件清单": 文件清单,
                            "构建输入": 构建输入}, ensure_ascii=False, sort_keys=True)
         制品摘要 = 内容摘要(正文.encode("utf-8"))
@@ -76,6 +81,8 @@ class 包仓库(签名能力, 安装能力):
                     目标.write_bytes(bytes.fromhex(内容[len(_二进制前缀):]))
                 else:
                     目标.write_text(内容, encoding="utf-8")
+                if 文件模式 is not None and 路径 in 文件模式:
+                    目标.chmod(int(文件模式[路径]) & 0o7777)
             # 逐一核对磁盘实际文件摘要（防写入前已存在文件干扰）
             for 路径, 内容 in 规范化文件表.items():
                 实际 = hashlib.sha256((临时目录 / 路径).read_bytes()).hexdigest()

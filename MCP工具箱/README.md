@@ -6,7 +6,7 @@
 
 ## 架构
 
-- **唯一入口**：`项目服务.py`，Streamable HTTP 单端口 8766 单实例。
+- **唯一入口**：`python3.14 -m MCP工具箱.项目服务`，Streamable HTTP 单端口 8766 单实例。
 - **网关定义**：`角色权限.py`。保留 `越权拒绝(PermissionError)` 语义，
   提供 `网关实例名`、`网关角色名`、`网关说明()` 与 `获取角色指南(工具名)`；
   角色工具白名单、目录边界与验证命令白名单已全部移除，网关直通全部工具。
@@ -28,19 +28,13 @@
   `remote: http://127.0.0.1:8766/mcp/`。
 - 服务根路径固定为 `/mcp/`，与 `项目服务.py::主程序HTTP` 一致。
 
-### 客户端降级直连
+### 客户端连接约束
 
-MCP 是工具协议层，不是业务运行时。Agent 注入失败时，可以用 Python 标准库、curl
-或本地 HTML 后端代理访问同一 `/mcp/`，不能复制工具实现或另起端口。客户端必须：
-
-1. `POST /mcp/` 发送 `initialize`；
-2. 同时声明 `Accept: application/json, text/event-stream`，否则服务返回 `406`；
-3. 保存初始化响应的 `mcp-session-id`，后续 `tools/call` 原样回传；
-4. 仍然调用 `project_context`、`mcp_feedback` 和 `verify_and_record`，接受相同的路径和命令白名单。
-
-Python/curl 示例和浏览器代理边界见
-`开发文档/项目说明.md` 的“MCP 适配”段落。HTML 只适合作为展示或本地后端代理，
-不应在前端持有会话凭据，也不能把页面成功响应当成验证账本成功。
+MCP 是工具协议层，不是业务运行时。客户端只能连接固定的
+`http://127.0.0.1:8766/mcp/`：先发送 `initialize`，声明
+`Accept: application/json, text/event-stream`，保存 `mcp-session-id`，再调用
+`project_context`、工具和验证入口。连接失败即阻断，不启用 Python/curl、HTML 代理或
+其他端口旁路；页面响应也不能替代验证账本。
 
 > 聚合接入：华世王镞_v3 侧只载入聚合 MCP，本平台工具经 `se_` 前缀路由到
 > `system_engineering_toolkit` 网关（只负责路由，不改变工具面）。（聚合方案落地中）
@@ -93,5 +87,5 @@ Python/curl 示例和浏览器代理边界见
 ```bash
 python3.14 -m py_compile MCP工具箱/项目服务.py MCP工具箱/角色权限.py
 ./MCP工具箱/启动HTTP服务.sh 8766   # 启动后 curl POST /mcp/ initialize 验证
-python3.14 测试中心/MCP工具箱/测试_项目服务.py  # 开发期定向回归，不是正式发布证据
+python3.14 -m 测试中心.MCP工具箱.测试_项目服务  # 开发期定向回归，不是正式发布证据
 ```

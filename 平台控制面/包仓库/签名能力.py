@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import time
 from typing import Any
 
@@ -83,6 +84,8 @@ class 签名能力:
             实际摘要 = hashlib.sha256(实际文件.read_bytes()).hexdigest()
             if 实际摘要 != 摘要信息["sha256"]:
                 return False, f"磁盘文件被篡改: {路径}"
+            if "模式" in 摘要信息 and stat.S_IMODE(实际文件.stat().st_mode) != int(摘要信息["模式"]):
+                return False, f"磁盘文件权限被篡改: {路径}"
         return True, "签名有效且磁盘内容一致"
 
     # ---- 信任目录 ----

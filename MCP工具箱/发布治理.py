@@ -15,7 +15,6 @@ import hashlib
 import os
 import re
 import subprocess
-import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -27,8 +26,6 @@ from 运行核心.加载器.依赖解析.解析器 import 解析依赖
 from 运行核心.加载器.提供者选择.选择器 import 选择全部提供者
 
 系统根目录 = Path(__file__).resolve().parent.parent
-if str(系统根目录) not in sys.path:
-    sys.path.insert(0, str(系统根目录))
 
 # ---- 错误码（统一） ----
 门禁失败 = "门禁失败"
@@ -45,10 +42,7 @@ _提交模式 = re.compile(r"^[0-9a-f]{40}$")
 _制品摘要模式 = re.compile(r"^[0-9a-f]{32}$")
 _指纹模式 = re.compile(r"^[0-9a-f]{64}$")
 
-try:
-    from MCP工具箱.验证门禁 import 唯一发布命令
-except ModuleNotFoundError:
-    from 验证门禁 import 唯一发布命令
+from .验证门禁 import 唯一发布命令
 
 # ---- 默认路径（测试可注入临时目录） ----
 验证历史路径 = 系统根目录 / "开发文档" / "项目证据" / "验证历史.jsonl"

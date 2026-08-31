@@ -174,6 +174,22 @@ class 测试客户端构建安全(unittest.TestCase):
         self.assertTrue((self.目标根 / "验证夹具" / "空状态.sqlite3").is_file())
         self.assertFalse((self.目标根 / "工程缓存" / "运行状态.sqlite3").exists())
 
+    def test_制品入库把SQLite夹具按二进制保存(self) -> None:
+        夹具 = self.源根 / "验证夹具" / "基础数据.db"
+        夹具.parent.mkdir(parents=True)
+        夹具.write_bytes(b"SQLite format 3\x00\x01")
+        from 平台控制面.包仓库.平台客户端制品 import 读取制品文件表
+        文件表 = 读取制品文件表(self.源根)
+        self.assertEqual(文件表["验证夹具/基础数据.db"], "hexfile:53514c69746520666f726d617420330001")
+
+    def test_制品入库把无扩展名二进制夹具按二进制保存(self) -> None:
+        夹具 = self.源根 / "验证夹具" / "git目录" / "index"
+        夹具.parent.mkdir(parents=True)
+        夹具.write_bytes(b"git index\x00\x8d\x94")
+        from 平台控制面.包仓库.平台客户端制品 import 读取制品文件表
+        文件表 = 读取制品文件表(self.源根)
+        self.assertEqual(文件表["验证夹具/git目录/index"], "hexfile:67697420696e646578008d94")
+
     def test_平台客户端生成来源绑定三件套(self) -> None:
         from 开发工具.项目编译 import 项目编译器
         制品 = self.临时根 / "来源制品"
@@ -277,6 +293,30 @@ class 测试客户端构建安全(unittest.TestCase):
         源码 = 启动器.read_text(encoding="utf-8")
         self.assertIn("from 平台客户端.后端核心.后端核心 import 后端核心", 源码)
         self.assertNotIn("from 后端核心.后端核心 import 后端核心", 源码)
+
+    def test_正式构建生成的制品摘要必须是标准JSON(self) -> None:
+        临时系统根 = self.临时根 / "临时系统"
+        (临时系统根 / "测试包").mkdir(parents=True)
+        (临时系统根 / "测试包" / "__init__.py").write_text("值 = 1\n", encoding="utf-8")
+        临时构建目录 = self.临时根 / "构建目录"
+        临时制品目录 = self.临时根 / "制品目录"
+        临时制品目录.mkdir()
+
+        with mock.patch.multiple(
+            构建模块,
+            系统根=临时系统根,
+            顶层包表=["测试包"],
+            构建目录=临时构建目录,
+            制品目录=临时制品目录,
+        ):
+            制品 = 构建模块.构建()
+
+        摘要 = json.loads((制品 / "制品摘要.json").read_text(encoding="utf-8"))
+        self.assertEqual(摘要["客户端"], "平台客户端")
+        self.assertEqual(摘要["顶层包"], ["测试包"])
+        self.assertIn("生成时间", 摘要)
+        from 平台控制面.包仓库.平台客户端制品 import 计算目录摘要16
+        self.assertEqual(制品.name.rsplit("-", 1)[-1], 计算目录摘要16(制品))
 
 
     def test_安装链无论成功都关闭制品接入状态库(self) -> None:

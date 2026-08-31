@@ -18,14 +18,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sys
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-系统根 = Path(__file__).resolve().parents[1]
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
 
 from 平台控制面.包仓库 import 规范化相对路径
 from 支持库.适配层 import 内容摘要

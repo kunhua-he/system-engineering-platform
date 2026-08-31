@@ -9,5 +9,4 @@ mkdir -p 工程缓存
 LOG_PATH="工程缓存/mcp_http_${SERVICE_PORT}.log"
 echo "启动 MCP HTTP 服务: http://127.0.0.1:${SERVICE_PORT}/mcp/  (单一网关)"
 echo "日志: ${LOG_PATH}"
-PYTHONPATH=. \
-  exec python3.14 MCP工具箱/项目服务.py --http --端口 "${SERVICE_PORT}"
+exec python3.14 -m MCP工具箱.项目服务 --http --端口 "${SERVICE_PORT}"
