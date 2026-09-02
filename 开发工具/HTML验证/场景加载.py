@@ -28,7 +28,7 @@ def _解析场景引用(包目录: Path) -> list[tuple[dict[str, Any], Path]]:
                 raise ValueError(f"内联场景引用不合法: {引用路径}#{序号}")
             场景表.append((引用["场景"], 包目录))
             continue
-        if set(引用) - {"场景文件", "场景id"}:
+        if set(引用) - {"场景文件", "场景id", "范围"}:
             raise ValueError(f"场景文件引用含未知字段: {引用路径}#{序号}")
         相对 = 引用.get("场景文件")
         if not isinstance(相对, str) or not 相对:

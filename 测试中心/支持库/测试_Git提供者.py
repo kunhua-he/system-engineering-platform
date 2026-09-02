@@ -234,10 +234,13 @@ class TestGit提供者(unittest.TestCase):
         from 支持库.适配层.Git提供者.实现 import 受管执行 as 执行模块
 
         class _挂起进程:
-            """communicate 永不返回的伪进程（模拟 git 卡死）。"""
+            """模拟 git 卡死：受限通信需 poll() 返回 None 触发超时。"""
 
             pid = 2147483000
             stdin = stdout = stderr = None
+
+            def poll(self):
+                return None
 
             def communicate(self, timeout=None):
                 raise subprocess.TimeoutExpired("git", timeout)
@@ -247,7 +250,7 @@ class TestGit提供者(unittest.TestCase):
 
         with mock.patch.object(执行模块.subprocess, "Popen",
                                return_value=_挂起进程()):
-            结果 = 获取当前提交哈希(str(self.仓库))
+            结果 = 获取当前提交哈希(str(self.仓库), 超时秒=1)
         self.assertEqual(结果.错误码, "超时")
         self.assertTrue(结果.可重试)
 
