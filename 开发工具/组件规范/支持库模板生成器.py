@@ -238,7 +238,7 @@ def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
     try:
         输出, _, 已超时, 已超限 = 受限通信(
             进程,
-            input=(json.dumps({"操作": 操作, "参数": 参数}, ensure_ascii=False) + "\n").encode(),
+            输入=(json.dumps({"操作": 操作, "参数": 参数}, ensure_ascii=False) + "\\n").encode(),
             超时秒=超时秒,
             终止回调=lambda: _终止进程组(进程),
         )
