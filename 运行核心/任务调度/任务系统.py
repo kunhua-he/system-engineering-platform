@@ -194,12 +194,17 @@ class 任务系统:
         任务对象.完成时间 = 独立对象.完成时间
         任务对象.取消标记 = 独立对象.状态 in (状态_取消中, 状态_已取消)
 
-    def 查询(self, 任务id: str) -> 任务:
+    def 查询(self, 任务id: str, 项目id: str = "", 用户id: str = "") -> 任务:
         # 查询直接取独立进程权威状态，不能依赖后台同步线程的调度时机。
         独立对象 = self.进程池.查询(任务id)
         with self.锁:
             任务对象 = self.任务表.get(任务id)
             if 任务对象 is None:
+                raise KeyError(f"未知任务id: {任务id}")
+            # 归属校验：任务有归属时，调用方必须匹配
+            if 任务对象.项目id and 项目id and 任务对象.项目id != 项目id:
+                raise KeyError(f"未知任务id: {任务id}")
+            if 任务对象.用户id and 用户id and 任务对象.用户id != 用户id:
                 raise KeyError(f"未知任务id: {任务id}")
             self._应用独立状态已加锁(任务对象, 独立对象)
             if 任务对象.状态 in _终态:
@@ -213,10 +218,15 @@ class 任务系统:
     def 查询进度(self, 任务id: str) -> float:
         return self.查询(任务id).进度
 
-    def 取消(self, 任务id: str) -> tuple[bool, str]:
+    def 取消(self, 任务id: str, 项目id: str = "", 用户id: str = "") -> tuple[bool, str]:
         with self.锁:
             任务对象 = self.任务表.get(任务id)
             if 任务对象 is None:
+                return False, f"未知任务id: {任务id}"
+            # 归属校验：任务有归属时，调用方必须匹配
+            if 任务对象.项目id and 项目id and 任务对象.项目id != 项目id:
+                return False, f"未知任务id: {任务id}"
+            if 任务对象.用户id and 用户id and 任务对象.用户id != 用户id:
                 return False, f"未知任务id: {任务id}"
             if 任务对象.状态 in _终态:
                 return True, f"任务已处于终态 {任务对象.状态}（取消幂等）"
