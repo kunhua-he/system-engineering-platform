@@ -90,6 +90,9 @@ class 冷启动反向门禁基础(unittest.TestCase):
         适配层影子.mkdir(exist_ok=True)
         for 文件 in ("系统探针.py", "脱敏模式.py"):
             shutil.copy2(支持库根 / "适配层" / 文件, 适配层影子 / 文件)
+        # 适配层是命名空间包：影子目录只放冷启动依赖的两个模块，用
+        # 最小 __init__.py 声明为常规包，避免真 __init__.py 拉入完整适配链。
+        (适配层影子 / "__init__.py").write_text('"""冷启动影子适配层：只含系统探针与脱敏模式。"""\n', encoding="utf-8")
         密码签名 = 支持库根 / "适配层" / "密码签名提供者"
         if 密码签名.is_dir():
             shutil.copytree(密码签名, 适配层影子 / "密码签名提供者")
@@ -151,7 +154,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
             "def 注册能力(注册表):\n"
             f"    注册表.注册(能力实现(\n"
             f"        能力id={注册能力id or 能力id!r}, 包id='支持库.适配层.{名称}',\n"
-            f"        实现函数=lambda: {{'成功': True, '值': {返回值!r}}}))\n",
+            f"        实现函数=lambda: {{'成功': True, '值': {返回值!r}, '错误码': '', '错误说明': ''}}))\n",
             encoding="utf-8")
         return 目录
 

@@ -101,7 +101,8 @@ class Test模块对称门禁(unittest.TestCase):
             "class 后端代理:\n"
             "    def 调用(self, 能力id, 参数=None, *, 上下文=None, 超时秒=10.0):\n"
             "        return 服务.调用能力(能力id, 参数 or {}, 超时秒=超时秒)\n"
-            "网关 = 本地网关服务器(网关核心实例=网关核心(后端代理()), 端口=0)\n"
+            "网关 = 本地网关服务器(网关核心实例=网关核心(后端代理()), 端口=0,\n"
+            "            配置={'禁止客户端身份': False, '要求凭证': False})\n"
             "启动成功, 启动说明 = 网关.启动()\n"
             "assert 启动成功, 启动说明\n"
             "连接器 = HTTP连接器(网关地址='127.0.0.1', 网关端口=网关.端口)\n"
@@ -117,7 +118,7 @@ class Test模块对称门禁(unittest.TestCase):
         )
         运行 = subprocess.run(
             [sys.executable, "-c", 脚本], capture_output=True, text=True,
-            cwd=str(系统根), env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": "~", "LANG": "zh_CN.UTF-8", "PYTHONPATH": str(系统根)},
+            cwd=str(系统根), env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": "~", "LANG": "zh_CN.UTF-8", "PYTHONPATH": str(系统根), "系统库网关凭证": "test"},
         )
         self.assertEqual(0, 运行.returncode, f"子进程失败: {运行.stdout[-800:]}\n{运行.stderr[-800:]}")
         self.assertIn("OK", 运行.stdout)
