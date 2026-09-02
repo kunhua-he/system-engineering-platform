@@ -113,13 +113,11 @@ def 受限通信(
     输出上限字节: int = 默认子进程输出上限字节,
     终止回调: Callable[[], None] | None = None,
 ) -> tuple[bytes, bytes, bool, bool]:
-    """有界读写子进程管道，返回（stdout、stderr、是否超时、是否超限）。"""
-    if 进程.stdin is not None:
-        if 输入:
-            进程.stdin.write(输入)
-            进程.stdin.flush()
-        进程.stdin.close()
+    """有界读写子进程管道，返回（stdout、stderr、是否超时、是否超限）。
 
+    先启动 stdout/stderr 读取线程，再写 stdin：避免子进程输出超过
+    管道缓冲（约 64KB）时写 stdout 阻塞、父进程同时写 stdin 阻塞的死锁。
+    """
     结果: dict[str, bytearray] = {"输出": bytearray(), "错误": bytearray()}
     超限事件 = threading.Event()
     读取线程: list[threading.Thread] = []
@@ -137,6 +135,12 @@ def 受限通信(
                               name=f"受限通信-{名称}")
         线程.start()
         读取线程.append(线程)
+
+    if 进程.stdin is not None:
+        if 输入:
+            进程.stdin.write(输入)
+            进程.stdin.flush()
+        进程.stdin.close()
 
     截止 = time.monotonic() + max(0.0, float(超时秒))
     已超时 = False
