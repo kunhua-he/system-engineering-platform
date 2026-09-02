@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
@@ -19,8 +20,16 @@ from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 
 
 
-降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程），有界保留
+降级记录上限 = 1000
 线程池释放等待秒 = 5.0
+
+def _记录降级(消息: Any) -> None:
+    """有界记录降级/清理异常，避免无界增长。"""
+    with 锁:
+        降级记录表.append(str(消息))
+        if len(降级记录表) > 降级记录上限:
+            del 降级记录表[: len(降级记录表) - 降级记录上限]
 
 def _句柄键(句柄: str | int) -> int:
     """资源表与公开网关统一使用整数句柄。"""
@@ -180,7 +189,7 @@ def 释放句柄(句柄: str = None) -> 结果:
             try:
                 池.shutdown(wait=True, cancel_futures=True)
             except Exception as 错误:
-                降级记录表.append(str(错误))
+                _记录降级(错误)
             finally:
                 完成.set()
 
@@ -200,7 +209,7 @@ def 释放句柄(句柄: str = None) -> 结果:
                 句柄系统.失效(int(键), "释放")
             return 结果.成功结果({"句柄": 句柄, "状态": "已结束并已释放", "已释放": True})
         except Exception as 错误:
-            降级记录表.append(str(错误))
+            _记录降级(错误)
             return 结果.失败("资源未收敛", "线程池已结束但句柄收口失败，资源账本已保留供核对",
                             来源="并发控制", 可重试=True)
     with 锁:

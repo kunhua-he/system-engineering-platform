@@ -15,7 +15,7 @@ from unittest.mock import patch
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 运行核心.统一网关.流式HTTP import 流式HTTP服务器
+from 运行核心.统一网关.流式HTTP import HTTP流式通道, 流式HTTP服务器
 from 公共契约.基础类型.结果类型 import 结果
 
 
@@ -72,6 +72,25 @@ class Test流式HTTPS安全(unittest.TestCase):
                 self.assertTrue(all("凭证" not in 项 for 项 in 审计))
             finally:
                 self.assertTrue(服务.优雅停止())
+    def test_单事件payload超限转失败终态(self) -> None:
+        通道 = HTTP流式通道(
+            能力id="流式.测试", 单事件上限字节=1024, 累计事件上限字节=4096,
+        )
+        事件 = 通道.追加事件("中间事件", "x" * 5000)
+        self.assertEqual(事件["事件类型"], "失败事件")
+        self.assertTrue(通道.结束)
+        self.assertEqual(事件["数据"]["错误码"], "事件负载超限")
+
+    def test_累计payload超限清空旧队列并停止生产(self) -> None:
+        通道 = HTTP流式通道(
+            能力id="流式.测试", 单事件上限字节=4096, 累计事件上限字节=5000,
+        )
+        通道.追加事件("中间事件", "a" * 1500)
+        终态 = 通道.追加事件("中间事件", "b" * 3500)
+        self.assertEqual(终态["事件类型"], "失败事件")
+        self.assertTrue(通道.结束)
+        self.assertLessEqual(通道.累计事件字节数, 通道.累计事件上限字节)
+        self.assertEqual(通道.事件队列[-1]["数据"]["错误码"], "事件负载超限")
 
 
 if __name__ == "__main__":

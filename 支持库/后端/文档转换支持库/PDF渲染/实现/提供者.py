@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 受限通信
 
 包目录 = Path(__file__).resolve().parent.parent
 子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
@@ -62,13 +63,13 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
     except OSError as 错误:
         return _失败("提供者不可用", f"无法启动 PyMuPDF 隔离子进程: {错误}", 可重试=True)
     try:
-        标准输出, _标准错误 = 进程.communicate(
-            input=(json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8"),
-            timeout=超时秒,
+        标准输出, 标准错误, 已超时, 已超限 = 受限通信(
+            进程, 输入=(json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8"),
+            超时秒=超时秒, 输出上限字节=默认最大输出字节,
+            终止回调=lambda: _终止进程组(进程),
         )
-    except subprocess.TimeoutExpired:
-        _终止进程组(进程)
-        return _失败("超时", f"PyMuPDF 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
+        if 已超时:
+            return _失败("超时", f"PyMuPDF 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
     finally:
         try:
             if 进程.poll() is None:
@@ -82,7 +83,7 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
             except (OSError, ValueError):
                 pass
     退出码 = 进程.returncode or 0
-    if len(标准输出) > 默认最大输出字节:
+    if 已超限 or len(标准输出) > 默认最大输出字节:
         return _失败("超出限制", f"PyMuPDF 隔离子进程输出超过上限 {默认最大输出字节} 字节")
     if 退出码 != 0:
         return _失败("提供者崩溃", f"PyMuPDF 隔离子进程异常退出（退出码 {退出码}）", 可重试=True)

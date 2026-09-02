@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 受限通信
 
 包目录 = Path(__file__).resolve().parent.parent
 子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
@@ -82,10 +83,15 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
         return _失败("提供者不可用", f"无法启动 PDF 隔离子进程: {错误}", 可重试=True)
     请求行 = (json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8")
     try:
-        标准输出, _标准错误 = 进程.communicate(input=请求行, timeout=超时秒)
-    except subprocess.TimeoutExpired:
-        _终止进程组(进程)
-        return _失败("超时", f"PDF 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
+        标准输出, _标准错误, 已超时, 输出超限 = 受限通信(
+            进程, 输入=请求行, 超时秒=超时秒,
+            输出上限字节=默认最大输出字节,
+            终止回调=lambda: _终止进程组(进程),
+        )
+        if 已超时:
+            return _失败("超时", f"PDF 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
+        if 输出超限:
+            return _失败("超出限制", f"PDF 隔离子进程输出超过上限 {默认最大输出字节} 字节")
     finally:
         try:
             if 进程.poll() is None:

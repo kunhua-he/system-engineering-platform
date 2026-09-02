@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import ipaddress
 import json
+import logging
 import select
 import socket
 import threading
@@ -17,10 +18,14 @@ from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
+日志 = logging.getLogger("流式HTTP")
+
 
 # 流式入口的请求与资源边界。超过边界必须在创建生产线程前拒绝。
 请求体上限字节 = 1024 * 1024
 最大事件数上限 = 10000
+单事件payload上限字节 = 256 * 1024
+累计payload上限字节 = 4 * 1024 * 1024
 最大持续秒上限 = 3600.0
 最小持续秒下限 = 0.01
 最大并发通道上限 = 256
@@ -32,12 +37,21 @@ class HTTP流式通道:
     def __init__(self, *, 请求id: str = "", 任务id: str = "",
                  能力id: str = "", 最大事件数: int = 1000,
                  最大持续秒: float = 30.0,
+                 单事件上限字节: int = 单事件payload上限字节,
+                 累计事件上限字节: int = 累计payload上限字节,
                  结束回调: Callable[[str], None] | None = None) -> None:
         self.请求id = 请求id or uuid.uuid4().hex[:16]
         self.任务id = 任务id or uuid.uuid4().hex[:16]
         self.能力id = 能力id
         self.最大事件数 = 最大事件数
         self.最大持续秒 = 最大持续秒
+        if not isinstance(单事件上限字节, int) or 单事件上限字节 < 1024:
+            raise ValueError("单事件上限字节必须是不小于1024的整数")
+        if not isinstance(累计事件上限字节, int) or 累计事件上限字节 < 单事件上限字节:
+            raise ValueError("累计事件上限字节必须不小于单事件上限字节")
+        self.单事件上限字节 = 单事件上限字节
+        self.累计事件上限字节 = 累计事件上限字节
+        self.累计事件字节数 = 0
         self.序号 = 0
         self.事件队列: list[dict[str, Any]] = []
         self.条件 = threading.Condition(threading.RLock())
@@ -58,22 +72,43 @@ class HTTP流式通道:
             "数据": 数据,
             "时间": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
+        事件字节数 = len(self.格式事件行(事件))
+        if 事件字节数 > self.单事件上限字节:
+            raise ValueError(f"单事件负载超过上限 {self.单事件上限字节} 字节")
+        if self.累计事件字节数 + 事件字节数 > self.累计事件上限字节:
+            raise ValueError(f"累计事件负载超过上限 {self.累计事件上限字节} 字节")
         self.事件队列.append(事件)
+        self.累计事件字节数 += 事件字节数
         self.条件.notify_all()
         return 事件
 
     def 追加事件(self, 事件类型: str, 数据: Any = None) -> dict[str, Any]:
-        """追加非终止事件；终止后不再接受新事件。"""
-        with self.条件:
-            if self.结束:
-                return {}
-            return self._追加事件(事件类型, 数据)
+        """追加非终止事件；负载超限时转成结构化失败终态。"""
+        try:
+            with self.条件:
+                if self.结束:
+                    return {}
+                return self._追加事件(事件类型, 数据)
+        except ValueError as 错误:
+            return self._终止(
+                "失败事件",
+                {"错误码": "事件负载超限", "错误说明": str(错误)},
+                "事件负载超限",
+            )
 
     def _终止(self, 事件类型: str, 数据: Any = None, 原因: str = "") -> dict[str, Any]:
         with self.条件:
             if self.结束:
                 return {}
-            事件 = self._追加事件(事件类型, 数据)
+            try:
+                事件 = self._追加事件(事件类型, 数据)
+            except ValueError:
+                self.事件队列.clear()
+                self.累计事件字节数 = 0
+                事件 = self._追加事件(
+                    "失败事件",
+                    {"错误码": "事件负载超限", "错误说明": "终止事件负载超过流式预算"},
+                )
             self.结束 = True
             self.停止事件.set()
             self.条件.notify_all()
@@ -88,8 +123,12 @@ class HTTP流式通道:
         if self.结束回调 is not None:
             try:
                 self.结束回调(原因)
-            except Exception:
-                pass
+            except Exception as 错误:  # 回调失败不得阻断通道终止，但要可观测
+                try:
+                    日志.error("流式通道结束回调异常 请求id=%s 原因=%s: %s",
+                               self.请求id, 原因, 错误, exc_info=True)
+                except Exception:
+                    pass
 
     def 完成(self, 数据: Any = None) -> dict[str, Any]:
         return self._终止("完成事件", 数据, "完成")
@@ -120,6 +159,7 @@ class HTTP流式通道:
             self.结束 = True
             self.停止事件.set()
             self.事件队列.clear()
+            self.累计事件字节数 = 0
             self.条件.notify_all()
         self._执行结束回调("客户端断开")
 

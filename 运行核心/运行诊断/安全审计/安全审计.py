@@ -14,6 +14,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.有界IO import (
+    默认JSONL文件上限字节, 默认JSONL读取上限字节, 默认JSONL读取上限记录,
+    追加JSONL, 读取JSONL,
+)
 from 运行核心.运行诊断.运行事件.脱敏工具 import 脱敏值
 
 
@@ -57,10 +61,12 @@ class 安全审计:
         }
         记录 = 脱敏值(记录)
         try:
-            with self.锁, self.审计文件.open("a", encoding="utf-8") as 输出:
-                输出.write(json.dumps(记录, ensure_ascii=False, sort_keys=True) + "\n")
-                输出.flush()
-                os.fsync(输出.fileno())
+            with self.锁:
+                追加JSONL(
+                    self.审计文件, 记录,
+                    最大文件字节数=默认JSONL文件上限字节,
+                    强制落盘=True,
+                )
         except OSError:
             return ""
         return 审计id
@@ -69,16 +75,15 @@ class 安全审计:
              成功: bool | None = None, 限流: bool | None = None,
              权限拒绝: bool | None = None, 回滚: bool | None = None,
              敏感配置: bool | None = None, 项目id: str = "",
-             请求id: str = "", 任务id: str = "", 错误码: str = "") -> list[dict[str, Any]]:
-        """按任意维度查询审计记录。"""
+             请求id: str = "", 任务id: str = "", 错误码: str = "",
+             最大记录数: int = 默认JSONL读取上限记录) -> list[dict[str, Any]]:
+        """按任意维度查询最近有界审计记录。"""
         结果列表 = []
-        if not self.审计文件.is_file():
-            return 结果列表
-        for 行 in self.审计文件.read_text(encoding="utf-8").splitlines():
-            try:
-                记录 = json.loads(行)
-            except json.JSONDecodeError:
-                continue
+        记录列表, _ = 读取JSONL(
+            self.审计文件, 最大字节数=默认JSONL读取上限字节,
+            最大记录数=默认JSONL读取上限记录,
+        )
+        for 记录 in 记录列表:
             if 用户id and 记录.get("用户id") != 用户id:
                 continue
             if 能力id and 记录.get("能力id") != 能力id:
@@ -104,7 +109,7 @@ class 安全审计:
             if 敏感配置 is not None and 记录.get("访问敏感配置") != 敏感配置:
                 continue
             结果列表.append(记录)
-        return 结果列表
+        return 结果列表[-max(1, int(最大记录数)):]
 
     def 统计(self) -> dict[str, int]:
         全部 = self.查询()

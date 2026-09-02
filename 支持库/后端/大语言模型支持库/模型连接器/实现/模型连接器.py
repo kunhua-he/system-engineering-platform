@@ -17,6 +17,7 @@ import os
 import threading
 import time
 import uuid
+from collections import deque
 from typing import Any, Callable
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -40,7 +41,7 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 
 
 
-降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+降级记录表: deque[str] = deque(maxlen=1000)  # 尽力清理/降级异常，最多保留1000条
 
 def _句柄键(句柄id: str | int) -> int:
     """连接表与公开网关统一使用整数句柄。"""
@@ -91,10 +92,10 @@ def _预计占用(连接类型: str, 配置: dict) -> int:
 
 
 def _内存守卫(连接类型: str, 配置: dict) -> 结果 | None:
-    """系统内存安全检查：预计占用超安全阈值则拒绝。通过返回 None，拒绝返回失败结果。"""
+    """系统内存安全检查：预计占用超安全阈值或探针不可用时拒绝。"""
     快照 = _系统内存快照()
     if not 快照.get("可用"):
-        return None  # 无 psutil，跳过守卫（不阻断）
+        return _失败("资源预算未验证", "系统内存探针不可用，拒绝启动新模型以避免突破内存预算")
     预计 = _预计占用(连接类型, 配置)
     总量 = 快照["总量字节"]
     当前已用 = 快照["已用字节"]
@@ -218,7 +219,10 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
     )
     try:
         with urllib.request.urlopen(请求, timeout=30) as 响应:
-            数据 = json.loads(响应.read().decode("utf-8"))
+            原始 = 响应.read(4 * 1024 * 1024 + 1)
+            if len(原始) > 4 * 1024 * 1024:
+                return _失败("超出限制", f"{连接类型} HTTP响应超过4MB上限")
+            数据 = json.loads(原始.decode("utf-8"))
         if 连接类型 == "LLM":
             return 结果.成功结果({"回复": 数据["choices"][0]["message"]["content"], "用量": 数据.get("usage", {})})
         if 连接类型 == "向量":

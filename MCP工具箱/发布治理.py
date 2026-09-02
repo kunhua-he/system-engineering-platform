@@ -324,7 +324,10 @@ def _读取物料清单(制品目录: Path) -> tuple[dict[str, Any] | None, str]
     for 相对路径, 摘要信息 in 清单["文件清单"].items():
         if not isinstance(摘要信息, dict) or not _指纹模式.fullmatch(str(摘要信息.get("sha256", ""))):
             return None, f"物料清单文件摘要不合法: {相对路径}"
-        if not (制品目录 / str(相对路径)).is_file():
+        实际路径 = (制品目录 / str(相对路径)).resolve()
+        if not str(实际路径).startswith(str(制品目录.resolve()) + "/"):
+            return None, f"物料清单路径越界: {相对路径}"
+        if not 实际路径.is_file():
             return None, f"物料清单中的正式文件不存在: {相对路径}"
     return 清单, ""
 
@@ -372,6 +375,42 @@ def _写激活准备证据(路径: Path, 条目: dict[str, Any]) -> 结果:
     return 结果(True, 消息="激活准备证据已持久化", 数据={"路径": str(路径)})
 
 
+def _CAS切换激活指针(指针文件: Path, 目标摘要: str, 旧令牌: int) -> 结果:
+    """CAS 校验并构造新指针：读指针、校验令牌、构造新指针。
+
+    指针缺失/不可读 → 指针缺失；令牌不匹配 → 陈旧令牌；
+    匹配 → 返回新指针数据（版本+1、令牌+1）。
+    不写文件，由调用方在证据落盘后原子写。
+    成功时 data={"旧指针": 旧指针, "新指针": 新指针}。
+    """
+    if not 指针文件.is_file():
+        return 结果(False, 指针缺失, f"激活指针缺失: {指针文件}")
+    try:
+        指针 = json.loads(指针文件.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as 错误:
+        return 结果(False, 指针缺失, f"激活指针不可读: {错误}")
+    if not isinstance(指针, dict):
+        return 结果(False, 指针缺失, "激活指针结构不合法")
+    try:
+        当前令牌 = int(指针.get(栅栏令牌字段, 0))
+        旧版本 = int(指针.get(版本字段, 1))
+        请求令牌 = int(旧令牌)
+    except (TypeError, ValueError):
+        return 结果(False, 参数无效, "激活指针版本或栅栏令牌不合法")
+    if 当前令牌 != 请求令牌:
+        return 结果(False, 陈旧令牌,
+                    f"陈旧令牌: 当前栅栏令牌为 {当前令牌}，收到 {旧令牌}")
+    新指针 = {
+        摘要字段: 目标摘要[:16],
+        制品目录字段: f"平台客户端-{目标摘要[:16]}",
+        制品摘要字段: 目标摘要,
+        版本字段: 旧版本 + 1,
+        栅栏令牌字段: 当前令牌 + 1,
+    }
+    return 结果(True, 消息=f"CAS 校验通过（令牌 {当前令牌}→{新指针[栅栏令牌字段]}）",
+                数据={"旧指针": 指针, "新指针": 新指针})
+
+
 def 切换激活指针(目标摘要: str, 旧令牌: int, *,
                 环境目录参数: str | Path | None = None,
                 提交: str = "", 证据目录参数: str | Path | None = None,
@@ -416,39 +455,19 @@ def 切换激活指针(目标摘要: str, 旧令牌: int, *,
     )
     if not 正式证据.成功:
         return 正式证据
-
     指针文件 = 目录 / "当前.json"
-    if not 指针文件.is_file():
-        return 结果(False, 指针缺失, f"激活指针缺失: {指针文件}")
-    try:
-        指针 = json.loads(指针文件.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as 错误:
-        return 结果(False, 指针缺失, f"激活指针不可读: {错误}")
-    if not isinstance(指针, dict):
-        return 结果(False, 指针缺失, "激活指针结构不合法")
-    try:
-        当前令牌 = int(指针.get(栅栏令牌字段, 0))
-        旧版本 = int(指针.get(版本字段, 1))
-        请求令牌 = int(旧令牌)
-    except (TypeError, ValueError):
-        return 结果(False, 参数无效, "激活指针版本或栅栏令牌不合法")
-    if 当前令牌 != 请求令牌:
-        return 结果(False, 陈旧令牌,
-                    f"陈旧令牌: 当前栅栏令牌为 {当前令牌}，收到 {旧令牌}")
-    新指针 = {
-        摘要字段: 目标摘要[:16],
-        制品目录字段: f"平台客户端-{目标摘要[:16]}",
-        制品摘要字段: 目标摘要,
-        版本字段: 旧版本 + 1,
-        栅栏令牌字段: 当前令牌 + 1,
-    }
+    cas结果 = _CAS切换激活指针(指针文件, 目标摘要, 旧令牌)
+    if not cas结果.成功:
+        return cas结果
+    旧指针 = cas结果.数据["旧指针"]
+    新指针 = cas结果.数据["新指针"]
     激活证据路径 = Path(激活证据路径参数) if 激活证据路径参数 else (
         Path(证据目录参数) if 证据目录参数 else 发布证据目录
     ) / "激活证据.jsonl"
     准备证据 = _写激活准备证据(激活证据路径, {
         "类型": "激活准备", "状态": "已校验待切换", "提交": 证据提交,
         "制品摘要": 目标摘要, "来源指纹": 清单来源指纹,
-        "工作区指纹": 实际工作区指纹, "旧指针": 指针, "新指针": 新指针,
+        "工作区指纹": 实际工作区指纹, "旧指针": 旧指针, "新指针": 新指针,
         "时间": _时间戳(),
     })
     if not 准备证据.成功:
@@ -457,8 +476,9 @@ def 切换激活指针(目标摘要: str, 旧令牌: int, *,
         _原子写文本(指针文件, json.dumps(新指针, ensure_ascii=False))
     except OSError as 错误:
         return 结果(False, 指针缺失, f"激活指针写入失败: {错误}")
+    旧令牌号 = int(旧指针.get(栅栏令牌字段, 0))
     return 结果(True,
-               消息=f"激活指针已切换（令牌 {当前令牌}→{新指针[栅栏令牌字段]}）",
+               消息=f"激活指针已切换（令牌 {旧令牌号}→{新指针[栅栏令牌字段]}）",
                数据={"新指针": 新指针, "指针文件": str(指针文件),
                     "激活证据": 准备证据.数据})
 

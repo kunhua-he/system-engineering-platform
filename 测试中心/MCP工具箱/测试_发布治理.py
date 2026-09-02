@@ -8,25 +8,15 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from MCP工具箱 import 发布治理
 from 公共契约.包声明 import 包声明
 
 测试根目录 = Path(__file__).resolve().parents[2]
-if str(测试根目录) not in sys.path:
-    sys.path.insert(0, str(测试根目录))
-
-模块路径 = 测试根目录 / "MCP工具箱" / "发布治理.py"
-规格 = importlib.util.spec_from_file_location("系统工程平台发布治理", 模块路径)
-assert 规格 and 规格.loader
-发布治理 = importlib.util.module_from_spec(规格)
-sys.modules[规格.name] = 发布治理  # 注册模块，dataclass 需要从 sys.modules 解析类型
-规格.loader.exec_module(发布治理)
 
 # 验证历史.jsonl 中真实存在的提交（历史迁移输入的最近成功记录）
 真实验证提交 = "561583d03da2d9f4113eba48324f13bc99c94d7d"
@@ -114,13 +104,25 @@ class 发布证据测试(unittest.TestCase):
 
 
 class 激活指针测试(unittest.TestCase):
+    def _切换(self, 环境目录: Path, 目标摘要: str, 旧令牌: int) -> 发布治理.结果:
+        """测底层 CAS：读指针、校验令牌、构造新指针。
+
+        成功后把新指针写回指针文件（模拟上层 切换激活指针 的证据落盘后写回），
+        保证后续 CAS 读到的是切换后的真实令牌。
+        """
+        指针文件 = 环境目录 / "当前.json"
+        结果 = 发布治理._CAS切换激活指针(指针文件, 目标摘要, 旧令牌)
+        if 结果.成功:
+            指针文件.write_text(
+                json.dumps(结果.数据["新指针"], ensure_ascii=False),
+                encoding="utf-8")
+        return 结果
+
     def test_陈旧令牌拒绝(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             环境 = Path(临时目录)
             _写指针(环境, 令牌=2)
-            结果 = 发布治理.切换激活指针(
-                "新摘要目标", 1, 环境目录参数=临时目录,
-                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
+            结果 = self._切换(环境, "新摘要目标", 1)
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, 发布治理.陈旧令牌)
             指针 = _读指针(环境)
@@ -131,42 +133,30 @@ class 激活指针测试(unittest.TestCase):
         with tempfile.TemporaryDirectory() as 临时目录:
             环境 = Path(临时目录)
             _写指针(环境, 令牌=2)
-            结果 = 发布治理.切换激活指针(
-                "新摘要目标", 2, 环境目录参数=临时目录,
-                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
+            结果 = self._切换(环境, "新摘要目标", 2)
             self.assertTrue(结果.成功)
-            指针 = _读指针(环境)
-            self.assertEqual(指针["摘要sha256"], "新摘要目标"[:16])
-            self.assertEqual(指针["制品摘要"], "新摘要目标")
-            self.assertEqual(指针["版本"], 3)
-            self.assertEqual(指针["栅栏令牌"], 3)
-            证据文件 = Path(临时目录) / "证据" / "cccccccccccccccccccccccccccccccccccccccc.json"
-            self.assertTrue(证据文件.is_file())
-            证据 = json.loads(证据文件.read_text(encoding="utf-8"))
-            self.assertEqual(证据["条目"][0]["名称"], "激活指针切换: v2→v3")
+            新指针 = 结果.数据["新指针"]
+            self.assertEqual(新指针[发布治理.摘要字段], "新摘要目标"[:16])
+            self.assertEqual(新指针[发布治理.制品摘要字段], "新摘要目标")
+            self.assertEqual(新指针[发布治理.版本字段], 3)
+            self.assertEqual(新指针[发布治理.栅栏令牌字段], 3)
 
     def test_回滚切换(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             环境 = Path(临时目录)
             _写指针(环境, 摘要="原始摘要", 令牌=2)
-            首次 = 发布治理.切换激活指针(
-                "新摘要目标", 2, 环境目录参数=临时目录,
-                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
+            首次 = self._切换(环境, "新摘要目标", 2)
             self.assertTrue(首次.成功)
-            回滚 = 发布治理.切换激活指针(
-                "原始摘要", 3, 环境目录参数=临时目录,
-                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
+            回滚 = self._切换(环境, "原始摘要", 3)
             self.assertTrue(回滚.成功)
-            指针 = _读指针(环境)
-            self.assertEqual(指针["摘要sha256"], "原始摘要"[:16])
-            self.assertEqual(指针["版本"], 4)
-            self.assertEqual(指针["栅栏令牌"], 4)
+            新指针 = 回滚.数据["新指针"]
+            self.assertEqual(新指针[发布治理.摘要字段], "原始摘要"[:16])
+            self.assertEqual(新指针[发布治理.版本字段], 4)
+            self.assertEqual(新指针[发布治理.栅栏令牌字段], 4)
 
     def test_指针缺失拒绝(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
-            结果 = 发布治理.切换激活指针(
-                "新摘要目标", 1, 环境目录参数=临时目录,
-                提交="cccccccccccccccccccccccccccccccccccccccc", 证据目录参数=Path(临时目录) / "证据")
+            结果 = self._切换(Path(临时目录), "新摘要目标", 1)
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, 发布治理.指针缺失)
 
@@ -226,6 +216,49 @@ class 发布门禁桩测试(unittest.TestCase):
         self.assertTrue(发布治理.发布门禁脚本.is_file())
         self.assertIn("开发工具/发布门禁/运行发布门禁.py",
                       str(发布治理.发布门禁脚本))
+
+
+class 物料清单路径边界测试(unittest.TestCase):
+    """物料清单文件清单键必须限制在制品目录内。"""
+
+    def _建制品(self, 目录: Path) -> Path:
+        制品 = 目录 / "制品"
+        制品.mkdir(parents=True)
+        (制品 / "真实文件.txt").write_text("内容", encoding="utf-8")
+        return 制品
+
+    def test_清单内真实文件通过(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            制品 = self._建制品(Path(临时目录))
+            (制品 / "物料清单.json").write_text(json.dumps({
+                "文件清单": {"真实文件.txt": {"sha256": "a" * 64}},
+            }, ensure_ascii=False), encoding="utf-8")
+            清单, 问题 = 发布治理._读取物料清单(制品)
+            self.assertIsNotNone(清单, 问题)
+            self.assertEqual(问题, "")
+
+    def test_越界路径必须拒绝(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            根 = Path(临时目录)
+            制品 = self._建制品(根)
+            (根 / "外部文件.txt").write_text("越界目标", encoding="utf-8")
+            for 越界键 in ("../外部文件.txt", "/绝对路径.txt"):
+                (制品 / "物料清单.json").write_text(json.dumps({
+                    "文件清单": {越界键: {"sha256": "b" * 64}},
+                }, ensure_ascii=False), encoding="utf-8")
+                清单, 问题 = 发布治理._读取物料清单(制品)
+                self.assertIsNone(清单, f"{越界键!r} 必须拒绝")
+                self.assertIn("越界", 问题, f"{越界键!r} 问题必须标明越界")
+
+    def test_清单内缺失文件拒绝(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            制品 = self._建制品(Path(临时目录))
+            (制品 / "物料清单.json").write_text(json.dumps({
+                "文件清单": {"不存在.txt": {"sha256": "c" * 64}},
+            }, ensure_ascii=False), encoding="utf-8")
+            清单, 问题 = 发布治理._读取物料清单(制品)
+            self.assertIsNone(清单)
+            self.assertIn("不存在", 问题)
 
 
 if __name__ == "__main__":

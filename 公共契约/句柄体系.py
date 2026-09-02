@@ -10,6 +10,7 @@ import secrets
 import threading
 import os
 import signal
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,6 +27,8 @@ from typing import Any
 失效原因_释放 = "释放"
 失效原因_超时 = "超时"
 句柄位数 = 6
+句柄绑定资源上限 = 1000
+回收证据上限 = 1000
 
 
 def 是合法句柄id(句柄id: str | int) -> bool:
@@ -65,7 +68,7 @@ class 句柄:
 class 句柄体系:
     def __init__(self) -> None:
         self.句柄表: dict[int, 句柄] = {}
-        self.回收证据表: list[dict[str, Any]] = []
+        self.回收证据表: deque[dict[str, Any]] = deque(maxlen=回收证据上限)
         self._锁 = threading.Lock()
 
     def 创建句柄(self, *, 句柄类型: str, 资源id: str, 项目id: str = "", 所有者: str = "", 版本: str = "") -> 句柄:
@@ -111,6 +114,8 @@ class 句柄体系:
             对象 = self.句柄表.get(句柄id)
             if 对象 is None: return False, f"句柄不存在: {句柄id}"
             if 对象.状态 != 状态_有效: return False, f"句柄已失效，不能登记资源: {句柄id}"
+            if len(对象.绑定资源) >= 句柄绑定资源上限:
+                return False, f"句柄绑定资源超过上限 {句柄绑定资源上限}"
             对象.绑定资源.append({
                 "资源类型": 资源类型, "PID": PID, "端口": 端口, "资源路径": 资源路径,
                 "清理函数": 清理函数, "已回收": False, "回收说明": "",

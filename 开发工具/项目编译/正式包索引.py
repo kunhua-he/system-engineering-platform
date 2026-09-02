@@ -13,6 +13,21 @@ from typing import Any
 
 非生产路径片段 = {"_模板", "模板", "样板", "非生产", "开发样例"}
 非生产字段 = ("非生产", "仅供复制", "仅供开发", "模板", "样板")
+聚合支持库名表 = {"系统核心支持库", "大语言模型支持库", "办公文档支持库",
+              "文件系统支持库", "数据操作支持库", "网络通信支持库"}
+
+
+def _是聚合父包(系统根: Path, 包路径: Path, 类型目录: str) -> bool:
+    """判断只作目录视图的聚合父包，与运行时发现器保持同一口径。"""
+    if 类型目录 != "支持库":
+        return False
+    try:
+        相对部分 = 包路径.resolve().relative_to((系统根 / "支持库").resolve()).parts
+    except ValueError:
+        return False
+    return (len(相对部分) >= 2
+            and 相对部分[1] in 聚合支持库名表
+            and not (包路径 / "能力定义.json").is_file())
 
 
 def _读取(路径: Path) -> dict[str, Any]:
@@ -57,6 +72,8 @@ def _扫描包(系统根: Path, 类型目录: str) -> tuple[
             raise ValueError(f"包声明缺少包id: {声明路径}")
         if _是非生产包(声明路径, 声明, 包id):
             排除[包id] = f"非生产包排除: {声明路径.parent}"
+            continue
+        if _是聚合父包(系统根, 声明路径.parent, 类型目录):
             continue
         if 包id in 正式 and 正式[包id][0] != 声明路径.parent:
             raise ValueError(f"正式包id重复: {包id} -> {正式[包id][0]} / {声明路径.parent}")

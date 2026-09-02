@@ -23,10 +23,11 @@ import json
 import sys
 import socket
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from 开发工具.开发入口 import 搜索能力, 查看契约
+from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 
@@ -129,7 +130,7 @@ def 启动网关(*, 端口: int, 地址: str = "127.0.0.1") -> None:
             raise ValueError("监听地址无法解析") from 错误
     if not 解析地址.is_loopback:
         raise ValueError("能力网关仅允许回环监听地址")
-    httpd = ThreadingHTTPServer((地址, 端口), 能力网关请求处理器)
+    httpd = 有界线程HTTP服务器((地址, 端口), 能力网关请求处理器)
     print(f"能力网关已启动: http://{地址}:{端口}")
     print("接口: GET /能力/搜索  GET /能力/契约/{能力id}")
     try:

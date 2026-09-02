@@ -64,8 +64,10 @@ def 注入平台客户端路径() -> None:
     if _环境目录已注入:
         return
     环境目录 = 解析平台客户端环境目录()
-    if 环境目录 is not None and str(环境目录) not in sys.path:
-        sys.path.insert(0, str(环境目录))
+    if 环境目录 is not None:
+        for 导入路径 in (环境目录, 环境目录 / "平台客户端"):
+            if 导入路径.is_dir() and str(导入路径) not in sys.path:
+                sys.path.insert(0, str(导入路径))
     _环境目录已注入 = True
 
 

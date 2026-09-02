@@ -7,6 +7,7 @@ from __future__ import annotations
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import sys
 
@@ -78,6 +79,20 @@ class 测试模型连接器释放(unittest.TestCase):
         self.assertTrue(再次.成功, 再次.错误说明)
         self.assertEqual(再次.值["状态"], "已结束并已释放")
         self.assertNotIn(句柄, 模型连接器.连接表)
+    def test_内存探针不可用时拒绝新连接(self) -> None:
+        with mock.patch.object(模型连接器, "psutil", None):
+            结果 = 模型连接器._内存守卫("LLM", {})
+        self.assertIsNotNone(结果)
+        assert 结果 is not None
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "资源预算未验证")
+
+    def test_降级记录表有界(self) -> None:
+        模型连接器.降级记录表.clear()
+        for 索引 in range(1200):
+            模型连接器.降级记录表.append(str(索引))
+        self.assertEqual(len(模型连接器.降级记录表), 1000)
+        self.assertEqual(模型连接器.降级记录表[0], "200")
 
 
 class 测试线程池释放(unittest.TestCase):
