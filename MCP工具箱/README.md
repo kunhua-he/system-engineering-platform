@@ -33,8 +33,8 @@
 MCP 是工具协议层，不是业务运行时。客户端只能连接固定的
 `http://127.0.0.1:8766/mcp/`：先发送 `initialize`，声明
 `Accept: application/json, text/event-stream`，保存 `mcp-session-id`，再调用
-`project_context`、工具和验证入口。连接失败即阻断，不启用 Python/curl、HTML 代理或
-其他端口旁路；页面响应也不能替代验证账本。
+`project_context`、工具和验证入口。MCP 不作为只读 HTML 审计前置条件；页面响应不能替代
+验证账本，且不得借此修改源码或绕过权限门禁。
 
 > 聚合接入：华世王镞_v3 侧只载入聚合 MCP，本平台工具经 `se_` 前缀路由到
 > `system_engineering_toolkit` 网关（只负责路由，不改变工具面）。（聚合方案落地中）
