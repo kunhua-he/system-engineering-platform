@@ -25,6 +25,7 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
     处理器函数 = None
     活动连接数 = 0  # 子类实例级覆盖（type(self) 访问，多实例互不污染）
     连接锁 = threading.Lock()
+    请求体上限 = 4 * 1024 * 1024
     protocol_version = "HTTP/1.0"  # 每请求后关闭连接 → 连接释放
 
     def setup(self):
@@ -50,6 +51,9 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
     def _执行(self):
         try:
             长度 = int(self.headers.get("Content-Length") or 0)
+            if 长度 < 0 or 长度 > type(self).请求体上限:
+                self.send_error(413, "请求体过大")
+                return
             请求体 = self.rfile.read(长度) if 长度 else b""
             # 客户端可能发送 percent-编码路径（中文），解码后交给处理器（中文契约）
             解码路径 = urllib.parse.unquote(self.path)
@@ -75,6 +79,27 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
 class 线程HTTP服务(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True      # 优雅关闭不等待进行中的慢请求线程
     allow_reuse_address = True  # 停止后端口可立即重新绑定
+    最大线程数 = 32
+
+    def __init__(self, *参数, **关键字):
+        super().__init__(*参数, **关键字)
+        self._线程信号量 = threading.BoundedSemaphore(self.最大线程数)
+
+    def process_request(self, request, client_address):
+        if not self._线程信号量.acquire(blocking=False):
+            self.close_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._线程信号量.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._线程信号量.release()
 
 class HTTP提供者:
     """HTTP 真实提供者：启动 / 请求 / 停止 中文契约。"""

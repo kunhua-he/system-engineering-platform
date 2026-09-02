@@ -256,8 +256,9 @@ class 任务进程池:
             连接 = 任务对象.接收连接
         if 连接 is not None and 连接.poll():
             try:
-                响应 = json.loads(连接.recv_bytes().decode("utf-8"))
-            except (EOFError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+                响应 = json.loads(连接.recv_bytes(4 * 1024 * 1024).decode("utf-8"))
+            except (EOFError, OSError, UnicodeDecodeError, json.JSONDecodeError,
+                    ValueError, multiprocessing.BufferTooShort):
                 响应 = None
             with self.锁:
                 if 任务对象.状态 in _终态:

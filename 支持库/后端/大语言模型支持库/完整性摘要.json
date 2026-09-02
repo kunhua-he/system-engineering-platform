@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "9adabe12a75c8a7546257b8d104160fa89ad6868f43f673fc3f33a542805e57d"
+      "sha256": "c8c259535596b56be233d3c21176407bd82b74e100e28a6db12885b197db0fff"
     },
     {
       "路径": "上下文压缩/__init__.py",
@@ -141,7 +141,7 @@
     },
     {
       "路径": "嵌入缓存/实现/嵌入缓存.py",
-      "sha256": "aded6548b7d6dda877fbefe0d6ed77520694daa52d6a05fcb0c39bb3bd2fae67"
+      "sha256": "0d701b3729b899debe937dd3d218cfe9d593dc06dfd14ff47ecdd200edd1e2bc"
     },
     {
       "路径": "嵌入缓存/权限契约/权限契约.json",

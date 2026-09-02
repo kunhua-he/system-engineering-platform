@@ -40,5 +40,5 @@ def 注册能力(注册表) -> None:
             注册函数 = getattr(入口, "注册能力", None)
             if callable(注册函数):
                 注册函数(注册表)
-        except Exception:
-            pass
+        except Exception as 错误:
+            raise RuntimeError(f"聚合子库 {子库名} 注册失败: {错误}") from 错误

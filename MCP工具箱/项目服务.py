@@ -629,7 +629,7 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                 数据 = 任务结束(观测路径, 任务id=任务id, 开工id=观测开工id,
                                成功=bool(参数.get("success", True)), 错误码=str(参数.get("error_code", "")))
             elif 操作 == "查询":
-                数据 = 查询任务(观测路径, 任务id)
+                数据 = 查询任务(观测路径, 任务id, 观测开工id)
             elif 操作 in {"阶段开始", "阶段结束"}:
                 数据 = 阶段记录(观测路径, 任务id=任务id,
                              开工id=观测开工id,

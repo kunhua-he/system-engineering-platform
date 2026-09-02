@@ -27,6 +27,8 @@ import urllib.request
 import uuid
 from typing import Any
 
+默认响应上限字节 = 4 * 1024 * 1024
+
 from 公共契约.错误结构 import (
     错误码_参数不合法,
     错误码_提供者不可用,
@@ -214,14 +216,24 @@ class HTTP连接器:
         try:
             开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             with 开放器.open(请求, timeout=float(超时秒 if 超时秒 is not None else self.默认超时秒)) as 响应:
-                return 响应.status, json.loads(响应.read().decode("utf-8")), ""
+                原始 = 响应.read(默认响应上限字节 + 1)
+                if len(原始) > 默认响应上限字节:
+                    return 响应.status, None, "网关响应超过大小上限"
+                return 响应.status, json.loads(原始.decode("utf-8")), ""
         except urllib.error.HTTPError as 错误:
             try:
                 try:
-                    数据 = json.loads(错误.read().decode("utf-8"))
+                    原始 = 错误.read(默认响应上限字节 + 1)
+                    if len(原始) > 默认响应上限字节:
+                        数据 = None
+                        说明 = "HTTP错误响应超过大小上限"
+                    else:
+                        数据 = json.loads(原始.decode("utf-8"))
+                        说明 = f"HTTP {错误.code}"
                 except (json.JSONDecodeError, UnicodeDecodeError, OSError):
                     数据 = None
-                return 错误.code, 数据, f"HTTP {错误.code}"
+                    说明 = f"HTTP {错误.code}"
+                return 错误.code, 数据, 说明
             finally:
                 错误.close()
         except (http.client.RemoteDisconnected, http.client.IncompleteRead) as 错误:

@@ -142,9 +142,9 @@ class 资源句柄服务:
         对象 = self._加载句柄(句柄id)
         if 对象 is None:
             return None
-        if 项目id and 对象.项目id and 对象.项目id != 项目id:
+        if 对象.项目id and 对象.项目id != 项目id:
             raise PermissionError("句柄所属项目不匹配")
-        if 所有者 and 对象.所有者 and 对象.所有者 != 所有者:
+        if 对象.所有者 and 对象.所有者 != 所有者:
             raise PermissionError("句柄所属所有者不匹配")
         if 对象.状态 != "有效":
             return self._转公开(对象)
