@@ -57,8 +57,10 @@ def _验证全部多实例(
             for 任务 in as_completed(启动任务表):
                 实例序号 = 启动任务表[任务]
                 进程, 实际端口, _ = 任务.result()
+                进程表.append(进程)
                 按序号表.append((实例序号, 进程, 实际端口))
             按序号表.sort()
+            进程表.clear()
             for 实例序号, 进程, 实际端口 in 按序号表:
                 进程表.append(进程)
                 地址表.append(f"http://127.0.0.1:{实际端口}")
@@ -126,6 +128,15 @@ def _验证全部多实例(
         _校验制品前后绑定(报告)
         return 报告, 进程表
     except BaseException:
+        for 任务 in locals().get("启动任务表", {}):
+            if not 任务.done():
+                continue
+            try:
+                结果 = 任务.result()
+                if isinstance(结果, tuple) and 结果 and 结果[0] not in 进程表:
+                    进程表.append(结果[0])
+            except BaseException:
+                pass
         for 进程 in 进程表:
             try:
                 _回收进程组(进程)
