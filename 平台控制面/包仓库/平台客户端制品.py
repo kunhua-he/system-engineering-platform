@@ -61,12 +61,18 @@ _二进制前缀 = "hexfile:"
 
 
 def 读取制品文件表(制品目录: Path) -> dict[str, str]:
-    """把制品目录全部正式文件读为 相对路径→文本 文件表（供 包仓库.构建制品）。"""
+    """把制品目录全部正式文件读为 相对路径→文本 文件表（供 包仓库.构建制品）。
+
+    排除与 计算目录摘要16 一致的非内容元数据，保证版本不变时制品摘要稳定。
+    """
     文件表: dict[str, str] = {}
     for 文件 in sorted(Path(制品目录).rglob("*")):
         if 文件.is_dir() or "__pycache__" in 文件.parts:
             continue
-        if 文件.name == "物料清单.json":
+        if 文件.name in (
+            "制品摘要.json", "制品来源.json", "制品完整性摘要.json",
+            "编译清单.json", "物料清单.json",
+        ):
             continue
         相对 = 文件.relative_to(制品目录).as_posix()
         if 文件.suffix.lower() in _二进制文件后缀表:
