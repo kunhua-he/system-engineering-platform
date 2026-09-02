@@ -117,12 +117,17 @@ def _启动制品(
     启动超时秒: float = 默认启动超时秒,
     上限字节: int = 输出上限字节,
 ) -> tuple[subprocess.Popen[Any], int, dict[str, str]]:
+    环境 = os.environ.copy()
+    # HTML 黑盒是本地受管验证链；制品默认要求凭证时，为验证子进程
+    # 注入非生产测试凭证，真实请求仍由网关按自身策略校验。
+    环境.setdefault("系统库网关凭证", "html-blackbox-verifier")
     进程 = subprocess.Popen(
         [sys.executable, "-u", str(启动器), "--端口", str(端口), "--不自动打开"],
         cwd=str(制品目录),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=os.name == "posix",
+        env=环境,
     )
     标准输出 = _有界输出(上限字节)
     标准错误 = _有界输出(上限字节)

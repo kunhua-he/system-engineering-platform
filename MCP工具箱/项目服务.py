@@ -558,8 +558,10 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "feedback_status":
             数据 = 查询反馈状态(反馈路径, 当前开工id)
         elif 名称 == "feedback_review":
+            # 审阅只能针对当前任务或已登记子任务；空 work_id 不得退化为全量读取。
+            审阅开工id = _有效开工id(参数.get("work_id"))
             数据 = 读取反馈列表(
-                反馈路径, 开工id=str(参数.get("work_id", "")),
+                反馈路径, 开工id=审阅开工id,
                 任务=str(参数.get("task", "")), 数量=int(参数.get("limit", 20)),
             )
         elif 名称 in {
@@ -670,13 +672,15 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             else:
                 raise ValueError("测试资源操作必须是登记或清理")
         elif 名称 == "register_requirement":
+            需求开工id = _有效开工id(参数.get("work_id"))
             数据 = 登记需求(工程缓存目录, 能力id=str(参数["能力id"]), 说明=str(参数["说明"]),
-                          来源任务=str(参数.get("来源任务", 当前任务名称)), work_id=str(参数.get("work_id", 当前开工id)))
+                          来源任务=str(参数.get("来源任务", 当前任务名称)), work_id=需求开工id)
         elif 名称 == "reuse_search":
             数据 = 复用搜索(项目根目录, str(参数["关键词"]))
         elif 名称 == "claim_capability":
+            占用开工id = _有效开工id(参数.get("开工id"))
             数据 = 登记能力占用(工程缓存目录, 能力id=str(参数["能力id"]),
-                              提供包id=str(参数["提供包id"]), 开工id=str(参数.get("开工id", 当前开工id)))
+                              提供包id=str(参数["提供包id"]), 开工id=占用开工id)
         elif 名称 == "validate_module_compliance":
             数据 = 校验模块合规(项目根目录, str(参数["模块名"]))
         elif 名称 == "generate_module_template":
@@ -722,9 +726,11 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                            worktree路径=str(参数.get("worktree路径", "")), 允许路径=list(参数.get("允许路径", [])),
                            基线提交=str(参数.get("基线提交", "")), parent_work_id=str(参数.get("parent_work_id", "")))
         elif 名称 == "collaboration_status":
-            数据 = 查询协作状态(str(参数.get("work_id", "")), 任务=str(参数.get("任务", "")))
+            协作开工id = _有效开工id(参数.get("work_id"))
+            数据 = 查询协作状态(协作开工id, 任务=str(参数.get("任务", "")))
         elif 名称 == "delivery_closeout":
-            数据 = 收口登记(str(参数.get("work_id", "")), 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
+            收口开工id = _有效开工id(参数.get("work_id"))
+            数据 = 收口登记(收口开工id, 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
         elif 名称 == "validate_verification_command":
             数据 = 校验验证命令受控(list(参数["命令"]))
         elif 名称 == "judge_verification_result":
