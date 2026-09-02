@@ -27,6 +27,12 @@ assert 规格 and 规格.loader
 
 
 class 能力搜索覆盖率测试(unittest.TestCase):
+    def setUp(self) -> None:
+        # 隔离：冷启动/其他波次可能已加载第三方实现包；搜索测试要求
+        # 这些包未进入 sys.modules（验证"搜索不加载实现"），先清理。
+        for 包名 in 第三方实现包表:
+            sys.modules.pop(包名, None)
+
     def test_真实搜索十条目字段齐全(self) -> None:
         for 关键词 in ("图像", "PDF", "签名", "媒体"):
             with self.subTest(关键词=关键词):
