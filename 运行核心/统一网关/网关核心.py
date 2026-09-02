@@ -334,9 +334,15 @@ class 网关核心:
                 return 响应
         try:
             self._执行(请求, 响应)
-        except Exception:
-            self._设置失败(响应, "内部错误")
-        finally:
+        except BaseException:
+            # 异常场景不缓存部分响应；错误码映射由外层 处理 统一完成。
+            with self._幂等锁:
+                self._幂等进行中.pop(请求.请求id, None)
+                while len(self._幂等表) > 500:
+                    self._幂等表.pop(next(iter(self._幂等表)))
+                完成事件.set()
+            raise
+        else:
             with self._幂等锁:
                 self._幂等表[请求.请求id] = (摘要, copy.deepcopy(响应))
                 self._幂等进行中.pop(请求.请求id, None)
@@ -528,6 +534,8 @@ class 网关核心:
             self._设置失败(响应, "能力不存在")
         except PermissionError:
             self._设置失败(响应, "权限不足")
+        except FileNotFoundError:
+            self._设置失败(响应, "文件不存在")
         except ValueError:
             self._设置失败(响应, "参数不合法")
         except (ConnectionError, TimeoutError):

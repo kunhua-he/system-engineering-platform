@@ -99,12 +99,13 @@ class _假进程:
     """模拟子进程：返回超过输出上限的响应字节（测 超大输出 错误码）。"""
 
     returncode = 0
-    stdin = None
-    stdout = None
-    stderr = None
+    pid = 99999
 
-    def communicate(self, input=None, timeout=None):
-        return b"x" * (提供者模块.默认最大输出字节 + 1), b""
+    def __init__(self):
+        import io
+        self.stdin = io.BytesIO()
+        self.stdout = io.BytesIO(b"x" * (提供者模块.默认最大输出字节 + 1))
+        self.stderr = io.BytesIO(b"")
 
     def poll(self):
         return 0

@@ -150,14 +150,14 @@ class 本地网关服务器:
         地址通过, 地址消息 = self.请求限制器.校验监听地址(self.地址)
         if not 地址通过:
             return False, 地址消息
-        if self.安全配置.要求凭证:
-            凭证通过, 凭证消息 = self.凭证管理器.加载()
-            if not 凭证通过:
-                return False, 凭证消息
         try:
             校验应用监听端口(self.端口)
         except (TypeError, ValueError) as 错误:
             return False, str(错误)
+        if self.安全配置.要求凭证:
+            凭证通过, 凭证消息 = self.凭证管理器.加载()
+            if not 凭证通过:
+                return False, 凭证消息
         try:
             self.服务器 = 有界线程HTTP服务器(
                 (self.地址, self.端口), self._构造处理类(),
