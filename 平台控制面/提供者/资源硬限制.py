@@ -15,6 +15,8 @@ import os
 import resource
 import subprocess
 import sys
+import threading
+import signal
 from pathlib import Path
 
 模块路径 = str(Path(__file__).resolve())
@@ -23,6 +25,75 @@ from pathlib import Path
           "内存": resource.RLIMIT_AS, "核心转储": resource.RLIMIT_CORE}
 预算对应表 = {"进程数上限": "进程数", "文件句柄上限": "文件句柄",
             "内存上限": "内存", "核心转储上限": "核心转储"}
+默认输出上限 = 4 * 1024 * 1024
+
+
+def _终止进程组(进程: subprocess.Popen) -> None:
+    try:
+        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        try:
+            进程.kill()
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        进程.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _受限通信(进程: subprocess.Popen, 超时秒: float,
+             输出上限: int = 默认输出上限) -> tuple[bytes, bytes, bool, bool]:
+    """双管道有界读取，避免 communicate 一次性把子进程输出载入内存。"""
+    结果: dict[str, bytearray] = {"输出": bytearray(), "错误输出": bytearray()}
+    超限 = {"输出": False, "错误输出": False}
+
+    def 读取(名称: str, 流) -> None:
+        if 流 is None:
+            return
+        try:
+            while True:
+                块 = 流.read(65536)
+                if not 块:
+                    return
+                if isinstance(块, str):
+                    块 = 块.encode("utf-8", "replace")
+                目标 = 结果[名称]
+                if len(目标) < 输出上限:
+                    目标.extend(块[:输出上限 - len(目标)])
+                if len(目标) >= 输出上限 and len(块) > 输出上限 - len(目标):
+                    超限[名称] = True
+                    _终止进程组(进程)
+                    return
+        except (OSError, ValueError):
+            return
+
+    线程表 = [threading.Thread(target=读取, args=(名称, 流), daemon=True)
+             for 名称, 流 in (("输出", 进程.stdout), ("错误输出", 进程.stderr))]
+    for 线程 in 线程表:
+        线程.start()
+    try:
+        进程.wait(timeout=超时秒)
+    except subprocess.TimeoutExpired:
+        _终止进程组(进程)
+        for 线程 in 线程表:
+            线程.join(timeout=1.0)
+        for 流 in (进程.stdout, 进程.stderr):
+            try:
+                if 流 is not None:
+                    流.close()
+            except (OSError, ValueError):
+                pass
+        return bytes(结果["输出"]), bytes(结果["错误输出"]), True, any(线程.is_alive() for 线程 in 线程表)
+    for 线程 in 线程表:
+        线程.join(timeout=1.0)
+    for 流 in (进程.stdout, 进程.stderr):
+        try:
+            if 流 is not None:
+                流.close()
+        except (OSError, ValueError):
+            pass
+    return bytes(结果["输出"]), bytes(结果["错误输出"]), False, any(超限.values())
 
 
 def 设置限制(类型: str, 软上限: int, 硬上限: int) -> dict:
@@ -142,12 +213,20 @@ def 在独立进程组中运行(命令列表: list[str], 预算: dict, 超时秒
         return {"成功": False, "错误码": 未强制, "值": None,
                 "错误说明": f"进程启动失败: {错误}"}
     try:
-        输出, 错误输出 = 进程.communicate(timeout=超时秒)
-    except subprocess.TimeoutExpired:
+        输出, 错误输出, 已超时, 输出超限 = _受限通信(进程, 超时秒)
+    except Exception as 错误:
+        _终止进程组(进程)
+        return {"成功": False, "错误码": "命令失败", "值": None,
+                "错误说明": f"受限读取失败: {错误}"}
+    if 已超时:
         进程.kill()
         进程.wait()
         return {"成功": False, "错误码": "超时", "值": None,
                 "错误说明": f"命令 {超时秒} 秒未结束，已终止"}
+    if 输出超限:
+        _终止进程组(进程)
+        return {"成功": False, "错误码": "超出限制", "值": None,
+                "错误说明": f"命令输出超过上限 {默认输出上限} 字节，已终止"}
     return {"成功": 进程.returncode == 0,
             "错误码": "" if 进程.returncode == 0 else "命令失败",
             "错误说明": "" if 进程.returncode == 0 else "命令返回非零",

@@ -578,9 +578,9 @@ class 权威状态:
                 (资源id,)).fetchone()
             if 锁行 is None:
                 return False, "锁不存在: 提交必须持有资源锁"
-            if 事务id and 锁行[0] and 锁行[0] != 事务id:
+            if 锁行[0] and 锁行[0] != 事务id:
                 return False, f"锁所有权不匹配: 锁属事务 {锁行[0]}，请求 {事务id}"
-            if 进程身份键 and 锁行[1] and 锁行[1] != 进程身份键:
+            if 锁行[1] and 锁行[1] != 进程身份键:
                 return False, f"锁所有权不匹配: 锁属进程 {锁行[1]}，请求 {进程身份键}"
             if 锁行[2] and 锁行[2] != 项目id:
                 return False, f"跨项目提交被拒绝: 锁属 {锁行[2]}，请求 {项目id}"
