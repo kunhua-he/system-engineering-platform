@@ -21,7 +21,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.办公文档支持库.演示文稿 import 解析演示文稿
-from 支持库.后端.办公文档支持库.文档转换 import 检查提供者
+from 支持库.后端.文档转换支持库.LibreOffice转换 import 检查提供者
 
 
 class 假调用器:
@@ -180,9 +180,9 @@ class Test演示文稿ppt转换链(unittest.TestCase):
         shutil.rmtree(self.临时目录, ignore_errors=True)
 
     def test_pptx转ppt再经转换链解析(self):
-        状态 = 检查提供者("libreoffice")
+        状态 = 检查提供者()
         self.assertTrue(状态.成功)
-        self.assertEqual(状态.值.get("libreoffice"), "可用", "本机需装 LibreOffice 才能真实转换")
+        self.assertEqual(状态.值.get("LibreOffice"), "可用", "本机需装 LibreOffice 才能真实转换")
         # 夹具：平台文档转换暂不支持生成 ppt，直接用 LibreOffice 把示例 pptx 转成旧版 .ppt
         输出目录 = self.临时目录 / "转ppt"
         输出目录.mkdir()
