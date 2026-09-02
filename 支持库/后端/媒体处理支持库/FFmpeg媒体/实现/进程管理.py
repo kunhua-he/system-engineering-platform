@@ -89,7 +89,11 @@ def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输�
         )
     except OSError as 错误:
         return 受管结果(成功=False, 错误码="提供者不可用", 错误摘要=str(错误))
-    进程组id = os.getpgid(进程.pid)
+    进程组id = None
+    try:
+        进程组id = os.getpgid(进程.pid)
+    except (OSError, ProcessLookupError):
+        pass
     共享 = {"标准输出": b"", "标准错误": b"", "截断": False}
 
     def 读取流(流, 键: str) -> None:

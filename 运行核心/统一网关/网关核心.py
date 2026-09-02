@@ -473,7 +473,7 @@ class 网关核心:
             任务id = 请求.参数.get("任务id", 请求.任务id)
             if not 任务id:
                 raise ValueError("缺少任务id")
-            任务对象 = self.任务系统.查询(任务id)
+            任务对象 = self.任务系统.查询(任务id, 项目id=请求.项目id, 用户id=请求.用户id)
             if 任务对象 is None:
                 raise KeyError(任务id)
             响应.值 = 任务对象.转字典()
@@ -483,7 +483,7 @@ class 网关核心:
             任务id = 请求.参数.get("任务id", 请求.任务id)
             if not 任务id:
                 raise ValueError("缺少任务id")
-            成功, 消息 = self.任务系统.取消(任务id)
+            成功, 消息 = self.任务系统.取消(任务id, 项目id=请求.项目id, 用户id=请求.用户id)
             self._设置后端字典结果(
                 响应, {
                     "成功": 成功, "值": str(消息) if 成功 else None,
