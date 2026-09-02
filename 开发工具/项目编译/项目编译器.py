@@ -351,6 +351,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 项目id = {项目id字面量}
 包前缀 = {包前缀字面量}
+响应上限字节 = 4 * 1024 * 1024
+并发上限 = 32
 根 = Path(__file__).resolve().parents[1]
 if str(根) not in sys.path: sys.path.insert(0, str(根))
 源码根 = 根 / 包前缀 if 包前缀 else 根
@@ -415,14 +417,34 @@ def 主函数(端口=45080, 自动打开=True):
             if 凭证: 请求头["Authorization"] = f"Bearer {{凭证}}"
             请求 = urllib.request.Request(网关地址 + quote("/网关/调用"), data=请求正文, headers=请求头)
             try:
-                with urllib.request.urlopen(请求, timeout=10) as 响应: 状态码, 正文 = 响应.status, 响应.read()
+                with urllib.request.urlopen(请求, timeout=10) as 响应:
+                    正文 = 响应.read(响应上限字节 + 1)
+                    if len(正文) > 响应上限字节:
+                        状态码 = 502
+                        正文 = json.dumps({{"成功":False,"错误码":"返回过大","错误说明":"网关响应超过上限"}}, ensure_ascii=False).encode()
+                    else:
+                        状态码 = 响应.status
             except urllib.error.HTTPError as 错误:
-                try: 状态码, 正文 = 错误.code, 错误.read()
+                try: 状态码, 正文 = 错误.code, 错误.read(响应上限字节 + 1)
                 finally: 错误.close()
             except (urllib.error.URLError, TimeoutError, OSError):
                 状态码 = 502; 正文 = json.dumps({{"成功":False,"错误码":"网关断开","错误说明":"网关不可访问"}}, ensure_ascii=False).encode()
             self.send_response(状态码); self._CORS头(); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(正文))); self.end_headers(); self.wfile.write(正文)
-    服务 = ThreadingHTTPServer(("127.0.0.1", 端口), 处理器); 地址 = f"http://127.0.0.1:{{服务.server_port}}"
+    class 有界线程HTTP服务器(ThreadingHTTPServer):
+        daemon_threads = True
+        block_on_close = True
+        def __init__(self, *参数, **关键字):
+            super().__init__(*参数, **关键字)
+            self._线程信号量 = threading.BoundedSemaphore(并发上限)
+        def process_request(self, 请求, 客户端地址):
+            if not self._线程信号量.acquire(blocking=False):
+                self.shutdown_request(请求)
+                return
+            def 执行():
+                try: self.process_request_thread(请求, 客户端地址)
+                finally: self._线程信号量.release()
+            threading.Thread(target=执行, daemon=True).start()
+    服务 = 有界线程HTTP服务器(("127.0.0.1", 端口), 处理器); 地址 = f"http://127.0.0.1:{{服务.server_port}}"
     try:
         threading.Thread(target=服务.serve_forever, daemon=True).start(); print(f"独立项目已启动: {{地址}}")
         if 自动打开: webbrowser.open(地址)

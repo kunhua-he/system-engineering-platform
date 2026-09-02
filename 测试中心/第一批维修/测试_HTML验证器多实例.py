@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from 开发工具.HTML验证 import 端口池
 from 开发工具.HTML验证.单步场景 import 验证步骤
 from 开发工具.HTML验证.多步场景 import 验证场景束, 多步骤验证场景
+from 开发工具.HTML验证 import 多实例制品池
 
 
 class 端口池解析测试(unittest.TestCase):
@@ -65,6 +67,24 @@ class 场景分片测试(unittest.TestCase):
         分片表 = 端口池._分片场景(束, 实例数=1)
         self.assertEqual(len(分片表), 1)
         self.assertEqual(len(分片表[0]), 5)
+
+
+class 启动失败清理测试(unittest.TestCase):
+    def test_部分启动失败仍回收已启动实例(self) -> None:
+        场景束 = 验证场景束(场景列表=[], 目标能力全集=set(), 制品摘要="摘要")
+        进程 = object()
+        def 启动(_启动器, _制品, 端口):
+            if 端口 == 45081:
+                raise RuntimeError("模拟启动失败")
+            return 进程, 端口, None
+        with mock.patch.object(多实例制品池, "_制品全文件摘要", return_value={"制品摘要": "摘要"}), \
+             mock.patch.object(多实例制品池, "_找启动器", return_value=Path("启动.py")), \
+             mock.patch.object(多实例制品池, "_启动制品", side_effect=启动), \
+             mock.patch.object(多实例制品池, "_回收进程组", return_value={}) as 回收:
+            with self.assertRaises(RuntimeError):
+                多实例制品池._验证全部多实例(
+                    Path("制品"), 场景束, 实例数=2, 端口池="45080-45081")
+        回收.assert_called_once_with(进程)
 
 
 if __name__ == "__main__":

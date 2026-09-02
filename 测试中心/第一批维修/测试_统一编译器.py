@@ -28,11 +28,19 @@ from 开发工具.项目编译.项目编译器 import (
     计算影响闭包,
     校验项目id,
     校验输出目录,
+    _生成启动器,
     编译项目,
 )
 
 
 class 统一编译器安全边界测试(unittest.TestCase):
+    def test_启动器响应和线程资源有界(self):
+        启动器 = _生成启动器("示例项目.可双击演示")
+        self.assertIn("响应.read(响应上限字节 + 1)", 启动器)
+        self.assertIn('响应上限字节 = 4 * 1024 * 1024', 启动器)
+        self.assertIn("有界线程HTTP服务器", 启动器)
+        self.assertIn("BoundedSemaphore(并发上限)", 启动器)
+
     def test_输出拒绝项目根源码祖先和关键目录(self):
         with tempfile.TemporaryDirectory(prefix=f"隔离用例_{os.getpid()}_", dir="/tmp") as 临时:
             项目 = Path(临时) / "项目"
