@@ -18,6 +18,7 @@ if str(系统根) not in sys.path:
 
 from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
 from 开发工具.依赖生命周期审计.审计核心 import 审计单个提供者, 审计全部
+from 运行核心.依赖防火墙 import 审计依赖
 
 包id = "支持库.适配层.示例提供者"
 
@@ -126,6 +127,23 @@ class Test依赖与生命周期审计(unittest.TestCase):
         for 结果 in 结果列表:
             print(f"  [{结果.提供者名}] 违规 {len(结果.违规列表)} 条: {结果.违规列表}")
         print(f"  跳过 {len(跳过列表)}: {跳过列表}")
+
+    def test_依赖防火墙检出语法错误和属性动态导入(self):
+        from 运行核心 import 依赖防火墙
+        旧根 = 依赖防火墙.系统根
+        try:
+            临时根 = Path(tempfile.mkdtemp(prefix="依赖防火墙_"))
+            (临时根 / "运行核心").mkdir()
+            (临时根 / "测试中心").mkdir()
+            (临时根 / "运行核心" / "坏.py").write_text("import importlib\n模块名 = input()\nimportlib.import_module(模块名)\n", encoding="utf-8")
+            依赖防火墙.系统根 = 临时根
+            结果 = 审计依赖(临时根)
+            self.assertTrue(any("动态导入绕过" in 项.规则 for 项 in 结果.违规列表))
+            (临时根 / "运行核心" / "坏.py").write_text("def x(:\n", encoding="utf-8")
+            结果 = 审计依赖(临时根)
+            self.assertTrue(any("源码无法解析" in 项.规则 for 项 in 结果.违规列表))
+        finally:
+            依赖防火墙.系统根 = 旧根
 
 
 if __name__ == "__main__":

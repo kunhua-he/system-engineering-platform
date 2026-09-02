@@ -169,7 +169,36 @@ def 检查包(包目录: Path) -> list[dict]:
         违规.append({"能力id": "*", "包": 包id, "缺口类型": "说明书-使用说明.md缺失", "路径": str(说明路径)})
     验证场景 = 读取json(验证路径)
     验证文本 = json.dumps(验证场景, ensure_ascii=False) if 验证场景 else ""
-    验证覆盖包 = any(条.get("目标") == 包id for 条 in 验证场景.get("验证场景引用", []) if isinstance(条, dict)) if 验证场景 else False
+    # 引用文件只是索引，必须继续读取实际场景，否则所有按文件引用组织的
+    # 正式包都会被误报为“未覆盖能力”。读取失败保持 fail-closed。
+    引用能力id: set[str] = set()
+    验证覆盖包 = False
+    def _收集(对象):
+        if isinstance(对象, dict):
+            值 = 对象.get("能力id")
+            if isinstance(值, str) and 值:
+                引用能力id.add(值)
+            for 子值 in 对象.values():
+                _收集(子值)
+        elif isinstance(对象, list):
+            for 子值 in 对象:
+                _收集(子值)
+    _收集(验证场景)
+    if isinstance(验证场景, dict):
+        for 条 in 验证场景.get("验证场景引用", []):
+            if not isinstance(条, dict):
+                continue
+            if 条.get("目标") == 包id:
+                验证覆盖包 = True
+            场景文件 = 条.get("场景文件")
+            if not isinstance(场景文件, str) or not 场景文件:
+                continue
+            场景路径 = 包目录 / 场景文件
+            try:
+                场景数据 = json.loads(场景路径.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            _收集(场景数据)
     if 验证场景 is None:
         违规.append({"能力id": "*", "包": 包id, "缺口类型": "验证场景-验证场景引用.json缺失", "路径": str(验证路径)})
     for 能力 in 能力列表:
@@ -179,9 +208,12 @@ def 检查包(包目录: Path) -> list[dict]:
             违规.append({"能力id": 能力id, "包": 包id, "缺口类型": "说明书-未含能力名", "路径": str(说明路径)})
         if 搜索数据 is not None and 能力id not in 搜索id集:
             违规.append({"能力id": 能力id, "包": 包id, "缺口类型": "搜索-未含能力id", "路径": str(搜索路径)})
-        if 能力id and (映射.get(能力id) or 能力id.split(".")[-1]) not in 导出名:
+        导出候选 = {能力id.split(".")[-1]}
+        if 映射.get(能力id):
+            导出候选.add(映射[能力id])
+        if 能力id and not (导出候选 & 导出名):
             违规.append({"能力id": 能力id, "包": 包id, "缺口类型": "公开调用-声明未导出", "路径": str(入口路径)})
-        if 验证场景 is not None and not 验证覆盖包 and 能力id not in 验证文本:
+        if 验证场景 is not None and not 验证覆盖包 and 能力id not in (引用能力id | {验证文本}):
             违规.append({"能力id": 能力id, "包": 包id, "缺口类型": "验证场景-未覆盖能力", "路径": str(验证路径)})
     return 违规
 

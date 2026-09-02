@@ -24,7 +24,7 @@ from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析运行缓存根
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
 from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
-from 运行核心.资源协调 import 资源句柄服务
+from 运行核心.资源协调 import 资源句柄服务, 设置受管状态服务
 
 _装配模板: 能力注册表 | None = None
 _装配锁 = threading.Lock()
@@ -64,7 +64,6 @@ class 后端核心:
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
         self.资源句柄服务 = 资源句柄服务(self.运行缓存根目录 / "权威状态")
-        from 支持库.后端.系统核心支持库.资源管理 import 设置受管状态服务
         设置受管状态服务(self.资源句柄服务)
 
     def 资源状态(self, 句柄: int, *, 项目id: str = "", 所有者: str = "") -> dict | None:

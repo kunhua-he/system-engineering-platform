@@ -111,9 +111,9 @@ class 资源协调器:
             raise KeyError("句柄不存在")
         if 句柄["句柄类型"] != "读取句柄" or 句柄["资源id"] != 资源id or str(句柄["版本"]) != str(版本):
             raise PermissionError("句柄与资源/版本不匹配")
-        if 项目id and 句柄["项目id"] and 句柄["项目id"] != 项目id:
+        if 句柄["项目id"] and 句柄["项目id"] != 项目id:
             raise PermissionError("句柄所属项目不匹配")
-        if 所有者 and 句柄["所有者"] and 句柄["所有者"] != 所有者:
+        if 句柄["所有者"] and 句柄["所有者"] != 所有者:
             raise PermissionError("句柄所属所有者不匹配")
         if 句柄["状态"] == "已失效":
             return
@@ -190,9 +190,9 @@ class 资源协调器:
         句柄 = self.状态.读取句柄(句柄id)
         if 句柄 is None or 句柄["状态"] != "有效":
             return False, f"句柄已失效（{句柄['失效原因'] if 句柄 else '不存在'}），不能自动复活", ""
-        if 项目id and 句柄["项目id"] and 句柄["项目id"] != 项目id:
+        if 句柄["项目id"] and 句柄["项目id"] != 项目id:
             return False, f"跨项目复用被拒绝: 句柄属 {句柄['项目id']}，请求 {项目id}", ""
-        if 所有者 and 句柄["所有者"] and 句柄["所有者"] != 所有者:
+        if 句柄["所有者"] and 句柄["所有者"] != 所有者:
             return False, f"跨所有者复用被拒绝: 句柄属 {句柄['所有者']}，请求 {所有者}", ""
         # 2. 提交前比较版本
         当前数据, 当前版本, 当前令牌 = self.读取基础版本(资源id)

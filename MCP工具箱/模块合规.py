@@ -202,7 +202,9 @@ def 审计模块边界(项目根: Path, 模块名: str) -> dict[str, Any]:
     违规列表: list[dict[str, Any]] = []
     实现目录 = 模块目录 / "实现"
     if 实现目录.is_dir():
-        for 源码路径 in sorted(实现目录.glob("*.py")):
+        # 实现目录下的子目录同样属于模块边界，必须递归审计，避免通过
+        # 子目录放置实现文件绕过导入和直接 I/O 检查。
+        for 源码路径 in sorted(实现目录.rglob("*.py")):
             相对路径 = 源码路径.relative_to(项目根).as_posix()
             for 导入 in _解析导入(源码路径):
                 分类 = _分类导入(导入["模块"])

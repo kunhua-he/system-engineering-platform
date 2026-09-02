@@ -79,6 +79,13 @@ class _测试处理器(BaseHTTPRequestHandler):
             self.end_headers()
             self._安全写(正文)
             return
+        if type(self).返回类型 == "超大":
+            正文 = b"x" * (4 * 1024 * 1024 + 1)
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(正文)))
+            self.end_headers()
+            self._安全写(正文)
+            return
         返回数据 = dict(type(self).返回数据)
         返回数据.setdefault("请求id", type(self).请求体.get("请求id", "响应请求"))
         返回数据.setdefault("句柄", None)
@@ -180,6 +187,12 @@ class 测试HTTP连接器(unittest.TestCase):
 
     def test_非JSON响应拒绝成功(self) -> None:
         _测试处理器.返回类型 = "非JSON"
+        结果 = self.连接器.调用能力("测试.读取", {})
+        self.assertFalse(结果["成功"])
+        self.assertEqual(结果["错误码"], "返回结果不符合契约")
+
+    def test_超大响应被拒绝(self) -> None:
+        _测试处理器.返回类型 = "超大"
         结果 = self.连接器.调用能力("测试.读取", {})
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "返回结果不符合契约")

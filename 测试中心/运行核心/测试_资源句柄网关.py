@@ -101,6 +101,16 @@ class 资源句柄网关测试(unittest.TestCase):
         self.assertFalse(状态["成功"])
         self.assertEqual(状态["错误码"], "权限不足")
 
+    def test_省略身份不得查询或关闭他人句柄(self) -> None:
+        公开 = self.后端.资源句柄服务.创建(
+            资源id="测试-身份必填", 项目id="项目甲", 所有者="用户甲",
+        )
+        句柄 = 公开["句柄"]
+        with self.assertRaises(PermissionError):
+            self.后端.资源句柄服务.状态(句柄)
+        with self.assertRaises(PermissionError):
+            self.后端.资源句柄服务.关闭(句柄)
+
 
 if __name__ == "__main__":
     unittest.main()

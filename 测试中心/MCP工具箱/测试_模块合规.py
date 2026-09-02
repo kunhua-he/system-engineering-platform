@@ -98,6 +98,15 @@ class 模块合规测试(unittest.TestCase):
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["违规列表"][0]["类别"], "实现目录导入")
 
+    def test_实现子目录递归检出(self):
+        模块目录 = self.临时根 / "模块库" / "子目录越过"
+        (模块目录 / "实现" / "内部").mkdir(parents=True)
+        (模块目录 / "实现" / "内部" / "坏.py").write_text(
+            "import subprocess\nsubprocess.run(['echo', 'x'])\n", encoding="utf-8")
+        结果 = 审计模块边界(self.临时根, "子目录越过")
+        self.assertFalse(结果["成功"])
+        self.assertTrue(any(违规["类别"] == "进程调用" for 违规 in 结果["违规列表"]))
+
     def test_直接IO检出(self):
         搭建违规模块(self.临时根, "直接IO模块",
                       "from pathlib import Path\nPath(\"数据\").read_bytes()\n")

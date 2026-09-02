@@ -6,10 +6,28 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from MCP工具箱.临时上下文 import 清理临时上下文, 读取临时上下文, 写入临时上下文
+from MCP工具箱.临时上下文 import 清理临时上下文, 读取临时上下文, 写入临时上下文, 核对修改范围
 
 
 class 临时上下文测试(unittest.TestCase):
+
+    def test_标识路径穿越和碰撞拒绝(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            目录 = Path(临时目录)
+            with self.assertRaises(ValueError):
+                写入临时上下文(目录, 开工id="../逃逸", 父任务="甲", 角色="开发者",
+                              允许目录=[], 记忆查询=[], 事实=[], 验证计划=[])
+            with self.assertRaises(ValueError):
+                写入临时上下文(目录, 开工id="a/b", 父任务="甲", 角色="开发者",
+                              允许目录=[], 记忆查询=[], 事实=[], 验证计划=[])
+
+    def test_范围核对拒绝绝对路径与父目录逃逸(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            目录 = Path(临时目录)
+            写入临时上下文(目录, 开工id="scope-a1", 父任务="甲", 角色="开发者",
+                          允许目录=["MCP工具箱"], 记忆查询=[], 事实=[], 验证计划=[])
+            self.assertFalse(核对修改范围(目录, "scope-a1", ["MCP工具箱/../运行核心/a.py"])["成功"])
+            self.assertFalse(核对修改范围(目录, "scope-a1", ["/Users/evil.py"])["成功"])
     def test_写入读取只返回定向上下文(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             目录 = Path(临时目录)

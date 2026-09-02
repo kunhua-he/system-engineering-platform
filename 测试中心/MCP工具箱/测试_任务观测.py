@@ -29,6 +29,13 @@ class 任务观测测试(unittest.TestCase):
             self.assertFalse(结果["成功"])
             self.assertEqual(结果["错误码"], "OBSERVATION_NOT_FOUND")
 
+    def test_同任务不同开工id隔离(self) -> None:
+        with tempfile.TemporaryDirectory() as 临时目录:
+            路径 = Path(临时目录) / "事件.jsonl"
+            任务开始(路径, 任务id="任务甲", 开工id="开工甲", 角色="平台维护者")
+            结果 = 查询任务(路径, "任务甲", "开工乙")
+            self.assertFalse(结果["成功"])
+
     def test_阶段报告区分分类与未分类时间(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             路径 = Path(临时目录) / "事件.jsonl"

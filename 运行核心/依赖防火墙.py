@@ -108,6 +108,16 @@ def _确定层(路径: Path) -> str:
 def _解析导入(树: ast.AST) -> list[tuple[str, int]]:
     """AST 解析全部导入（含动态 import 调用）。"""
     导入表: list[tuple[str, int]] = []
+    # for 名称 in ["固定子包", ...] 形式是有界的聚合注册，不属于任意动态导入。
+    有界变量 = {
+        节点.target.id
+        for 节点 in ast.walk(树)
+        if isinstance(节点, ast.For)
+        and isinstance(节点.target, ast.Name)
+        and isinstance(节点.iter, (ast.List, ast.Tuple))
+        and all(isinstance(元素, ast.Constant) and isinstance(元素.value, str)
+                for 元素 in 节点.iter.elts)
+    }
     for 节点 in ast.walk(树):
         if isinstance(节点, ast.Import):
             for 别名 in 节点.names:
@@ -115,13 +125,28 @@ def _解析导入(树: ast.AST) -> list[tuple[str, int]]:
         elif isinstance(节点, ast.ImportFrom):
             模块 = 节点.module or ""
             导入表.append((模块, 节点.lineno))
-        elif isinstance(节点, ast.Call) and isinstance(节点.func, ast.Name) \
-                and 节点.func.id in ("__import__", "import_module", "动态导入"):
-            if 节点.args:
-                try:
-                    导入表.append((ast.literal_eval(节点.args[0]), 节点.lineno))
-                except (ValueError, SyntaxError):
-                    导入表.append(("<动态参数>", 节点.lineno))
+        elif isinstance(节点, ast.Call) and (
+                (isinstance(节点.func, ast.Name) and 节点.func.id in ("__import__", "import_module", "动态导入"))
+                or (isinstance(节点.func, ast.Attribute) and 节点.func.attr in ("import_module", "动态导入"))):
+            try:
+                参数 = 节点.args[0]
+                if (isinstance(参数, ast.BinOp) and isinstance(参数.op, ast.Add)
+                        and any(isinstance(部分, ast.Name) and 部分.id in 有界变量
+                                for 部分 in ast.walk(参数))):
+                    # 已由源码中的固定列表约束取值；保留模块前缀用于层向检查。
+                    导入表.append(("<受控聚合导入>", 节点.lineno))
+                elif isinstance(参数, ast.BinOp) and isinstance(参数.op, ast.Add):
+                    def _字面字符串(表达式: ast.AST) -> str:
+                        if isinstance(表达式, ast.Constant) and isinstance(表达式.value, str):
+                            return 表达式.value
+                        if isinstance(表达式, ast.BinOp) and isinstance(表达式.op, ast.Add):
+                            return _字面字符串(表达式.left) + _字面字符串(表达式.right)
+                        raise ValueError("非字面字符串")
+                    导入表.append((_字面字符串(参数), 节点.lineno))
+                else:
+                    导入表.append((ast.literal_eval(参数), 节点.lineno))
+            except (ValueError, SyntaxError, IndexError, TypeError):
+                导入表.append(("<动态参数>", 节点.lineno))
     return 导入表
 
 
@@ -166,7 +191,8 @@ def 审计依赖(目标目录: Path | None = None, *, 返回违规: bool = True)
             continue
         try:
             树 = ast.parse(文件.read_text(encoding="utf-8"))
-        except (SyntaxError, OSError):
+        except (SyntaxError, OSError, UnicodeDecodeError) as 错误:
+            结果.违规列表.append(依赖违规(_确定层(文件), str(错误), "源码无法解析", str(文件.relative_to(系统根)), 0))
             continue
         来源层 = _确定层(文件)
         结果.审计文件数 += 1

@@ -98,8 +98,8 @@ class 句柄体系:
         对象 = self.句柄表.get(句柄id)
         if 对象 is None: return False, f"句柄不存在: {句柄id}"
         if 对象.状态 != 状态_有效: return False, f"句柄已失效（{对象.失效原因}），不能自动复活"
-        if 项目id and 对象.项目id and 对象.项目id != 项目id: return False, f"跨项目复用被拒绝: 句柄属 {对象.项目id}，请求 {项目id}"
-        if 所有者 and 对象.所有者 and 对象.所有者 != 所有者: return False, f"跨所有者复用被拒绝: 句柄属 {对象.所有者}，请求 {所有者}"
+        if 对象.项目id and 对象.项目id != 项目id: return False, f"跨项目复用被拒绝: 句柄属 {对象.项目id}，请求 {项目id or '未提供'}"
+        if 对象.所有者 and 对象.所有者 != 所有者: return False, f"跨所有者复用被拒绝: 句柄属 {对象.所有者}，请求 {所有者 or '未提供'}"
         return True, "句柄有效"
 
     # ── 资源登记（状态机内置，华哥口径）────────────────

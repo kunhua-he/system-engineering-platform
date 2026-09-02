@@ -10,10 +10,13 @@ from typing import Any
 
 
 def _安全标识(开工id: str) -> str:
-    标识 = re.sub(r"[^A-Za-z0-9_-]", "", str(开工id))
-    if not 标识 or len(标识) > 64:
+    原文 = str(开工id).strip()
+    # 标识直接作为文件名，禁止清洗后继续使用，避免路径穿越和不同输入碰撞。
+    if (not 原文 or len(原文) > 64 or 原文 in {".", ".."}
+            or "/" in 原文 or "\\" in 原文 or "\x00" in 原文
+            or re.sub(r"[^A-Za-z0-9_\-\u4e00-\u9fff]", "", 原文) != 原文):
         raise ValueError("开工id无效")
-    return 标识
+    return 原文
 
 
 def _文件路径(目录: Path, 开工id: str) -> Path:
@@ -71,15 +74,23 @@ def 核对修改范围(目录: Path, 开工id: str, 实际路径: list[str]) -> 
     上下文 = 读取临时上下文(目录, 开工id)
     if not 上下文.get("成功"):
         return 上下文
-    允许 = [
-        str(项).replace("\\", "/").lstrip("./").rstrip("/")
-        for 项 in 上下文.get("允许目录", []) if str(项).strip()
-    ]
+    def _规范范围(值: Any) -> str | None:
+        文本 = str(值).replace("\\", "/").strip()
+        if not 文本 or 文本.startswith("/"):
+            return None
+        部件 = [项 for 项 in 文本.split("/") if 项 != ""]
+        if any(项 in (".", "..") for 项 in 部件):
+            return None
+        return "/".join(部件).rstrip("/") or None
+
+    允许 = [范围 for 项 in 上下文.get("允许目录", [])
+            if (范围 := _规范范围(项)) is not None]
     越界 = []
     for 路径 in 实际路径:
-        规范 = str(路径).replace("\\", "/").lstrip("./")
-        if not any(规范 == 范围 or 规范.startswith(f"{范围}/") for 范围 in 允许):
-            越界.append(规范)
+        原文 = str(路径).replace("\\", "/").strip()
+        规范 = _规范范围(原文)
+        if 规范 is None or not any(规范 == 范围 or 规范.startswith(f"{范围}/") for 范围 in 允许):
+            越界.append(原文)
     return {"成功": not 越界, "开工id": 开工id, "实际路径数": len(实际路径),
             "越界路径": 越界,
             "错误码": "TEMPORARY_CONTEXT_SCOPE_MISMATCH" if 越界 else ""}

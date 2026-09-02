@@ -582,9 +582,9 @@ class 权威状态:
                 return False, f"锁所有权不匹配: 锁属事务 {锁行[0]}，请求 {事务id}"
             if 进程身份键 and 锁行[1] and 锁行[1] != 进程身份键:
                 return False, f"锁所有权不匹配: 锁属进程 {锁行[1]}，请求 {进程身份键}"
-            if 项目id and 锁行[2] and 锁行[2] != 项目id:
+            if 锁行[2] and 锁行[2] != 项目id:
                 return False, f"跨项目提交被拒绝: 锁属 {锁行[2]}，请求 {项目id}"
-            if 所有者 and 锁行[3] and 锁行[3] != 所有者:
+            if 锁行[3] and 锁行[3] != 所有者:
                 return False, f"跨所有者提交被拒绝: 锁属 {锁行[3]}，请求 {所有者}"
             资源行 = 连接.execute(
                 "SELECT 版本, 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()

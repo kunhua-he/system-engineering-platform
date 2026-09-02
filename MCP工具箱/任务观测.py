@@ -62,7 +62,7 @@ def 任务结束(路径: Path, *, 任务id: str, 开工id: str, 成功: bool,
     return {"成功": True, "任务id": task_id}
 
 
-def 查询任务(路径: Path, 任务id: str) -> dict[str, Any]:
+def 查询任务(路径: Path, 任务id: str, 开工id: str = "") -> dict[str, Any]:
     if not 路径.is_file():
         return {"成功": False, "错误码": "OBSERVATION_NOT_FOUND", "消息": "任务观测不存在"}
     事件表: list[dict[str, Any]] = []
@@ -71,7 +71,7 @@ def 查询任务(路径: Path, 任务id: str) -> dict[str, Any]:
             记录 = json.loads(行)
         except json.JSONDecodeError:
             continue
-        if 记录.get("任务id") == 任务id:
+        if 记录.get("任务id") == 任务id and (not 开工id or 记录.get("开工id") == 开工id):
             事件表.append(记录)
     if not 事件表:
         return {"成功": False, "错误码": "OBSERVATION_NOT_FOUND", "消息": "任务观测不存在"}

@@ -9,6 +9,7 @@ import os
 import shutil
 import signal
 import subprocess
+import threading
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -86,12 +87,34 @@ class 本地进程适配器(外部适配器):
         except OSError as 错误:
             return 结果.失败("启动失败", f"无法启动本地进程: {错误}", 来源=self.适配器名称, 可重试=True)
         self.运行进程 = 进程
+        输出箱: dict[str, bytes] = {"标准输出": b"", "标准错误": b""}
+        超限 = threading.Event()
+        def 读取流(名称: str, 流) -> None:
+            缓冲 = bytearray()
+            try:
+                while True:
+                    块 = 流.read(65536)
+                    if not 块:
+                        break
+                    if len(缓冲) + len(块) > 输出上限字节:
+                        超限.set()
+                        break
+                    缓冲.extend(块)
+            except (OSError, ValueError):
+                pass
+            输出箱[名称] = bytes(缓冲)
+        线程列表 = [threading.Thread(target=读取流, args=("标准输出", 进程.stdout), daemon=True),
+                    threading.Thread(target=读取流, args=("标准错误", 进程.stderr), daemon=True)]
+        for 线程 in 线程列表:
+            线程.start()
         try:
-            标准输出, _标准错误 = 进程.communicate(timeout=超时秒)
+            进程.wait(timeout=超时秒)
         except subprocess.TimeoutExpired:
             self._终止进程组(进程)
             return 结果.失败("超时", f"本地进程执行超过 {超时秒} 秒", 来源=self.适配器名称, 可重试=True)
         finally:
+            for 线程 in 线程列表:
+                线程.join(timeout=1)
             self.运行进程 = None
             for 流 in (进程.stdout, 进程.stderr):
                 try:
@@ -99,7 +122,8 @@ class 本地进程适配器(外部适配器):
                         流.close()
                 except (OSError, ValueError):
                     pass
-        if len(标准输出) > 输出上限字节:
+        标准输出 = 输出箱["标准输出"]
+        if 超限.is_set() or len(标准输出) > 输出上限字节 or len(输出箱["标准错误"]) > 输出上限字节:
             return 结果.失败("超出限制", f"本地进程输出超过上限 {输出上限字节} 字节", 来源=self.适配器名称)
         if 进程.returncode != 0:
             return 结果.失败("执行失败", f"本地进程退出码 {进程.returncode}", 来源=self.适配器名称)
