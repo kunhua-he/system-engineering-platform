@@ -571,6 +571,7 @@ class 权威状态:
         拒绝：版本不匹配、旧栅栏令牌、锁不属于该事务/进程、项目或所有者不匹配。
         写入使用单条条件 UPDATE（WHERE 资源id AND 版本 AND 栅栏令牌），无 SELECT 后无条件 UPDATE 竞态。
         """
+        进程身份键 = 进程身份键 or self.身份.身份键()
         连接 = self._连接()
         with 连接:
             锁行 = 连接.execute(

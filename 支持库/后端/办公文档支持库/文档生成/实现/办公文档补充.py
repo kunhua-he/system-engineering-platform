@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 读取文件, 默认JSONL读取上限字节
 
 def 合并文本文件(文件列表: list = None, 输出路径: str = None, 分隔符: str = None) -> 结果:
     """合并多个文本文件到输出文件。返回 {输出路径, 合并文件数, 总字节数}。"""
@@ -17,8 +18,10 @@ def 合并文本文件(文件列表: list = None, 输出路径: str = None, 分�
             for i, 路径 in enumerate(文件列表):
                 if not os.path.isfile(路径):
                     continue
-                with open(路径, "r", encoding="utf-8") as 输入:
-                    内容 = 输入.read()
+                数据, 超限 = 读取文件(路径, 默认JSONL读取上限字节)
+                if 超限:
+                    return 结果.失败("超出限制", f"文件过大超过上限: {路径}", 来源="办公文档")
+                内容 = 数据.decode("utf-8", errors="replace")
                 if i > 0:
                     输出.write(分隔)
                 输出.write(内容)
@@ -35,8 +38,10 @@ def 文档统计(文件路径: str = None) -> 结果:
     if not os.path.isfile(文件路径):
         return 结果.失败("文件不存在", f"文件不存在: {文件路径}", 来源="办公文档")
     try:
-        with open(文件路径, "r", encoding="utf-8") as f:
-            内容 = f.read()
+        数据, 超限 = 读取文件(文件路径, 默认JSONL读取上限字节)
+        if 超限:
+            return 结果.失败("超出限制", f"文件过大超过上限: {文件路径}", 来源="办公文档")
+        内容 = 数据.decode("utf-8", errors="replace")
         行数 = len(内容.splitlines())
         字数 = len(内容.split())
         字符数 = len(内容)
