@@ -16,6 +16,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.有界IO import (
+    默认JSONL读取上限字节, 默认JSONL读取上限记录, 读取JSONL,
+)
 from MCP工具箱.临时上下文 import 读取临时上下文
 
 系统根 = Path(__file__).resolve().parents[1]
@@ -128,27 +131,23 @@ def _读取记录(状态目录: Path, work_id: str) -> dict[str, Any] | None:
 
 
 def _读取反馈状态(反馈文件: Path, work_id: str) -> str:
-    if not 反馈文件.is_file():
-        return "未反馈"
-    for 行 in reversed(反馈文件.read_text(encoding="utf-8").splitlines()):
-        try:
-            记录 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
+    记录列表, _ = 读取JSONL(
+        反馈文件, 最大字节数=默认JSONL读取上限字节,
+        最大记录数=默认JSONL读取上限记录,
+    )
+    for 记录 in reversed(记录列表):
         if 记录.get("开工id") == work_id:
             return "已反馈"
     return "未反馈"
 
 
 def _读取验证证据(验证历史文件: Path, work_id: str) -> list[dict[str, Any]]:
-    if not 验证历史文件.is_file():
-        return []
+    记录列表, _ = 读取JSONL(
+        验证历史文件, 最大字节数=默认JSONL读取上限字节,
+        最大记录数=默认JSONL读取上限记录,
+    )
     证据表: list[dict[str, Any]] = []
-    for 行 in 验证历史文件.read_text(encoding="utf-8").splitlines():
-        try:
-            记录 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
+    for 记录 in 记录列表:
         if 记录.get("开工id") != work_id:
             continue
         证据表.append({

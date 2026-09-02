@@ -22,6 +22,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
+
 版本行最大长度 = 200
 标准错误摘要最大长度 = 300
 终止宽限秒 = 1.0
@@ -90,10 +92,11 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
         return 探针结果(False, 错误码="工具缺失",
                          诊断=f"无法启动 {名称}: {错误}")
     try:
-        try:
-            标准输出, 标准错误 = 进程.communicate(timeout=超时秒)
-        except subprocess.TimeoutExpired:
-            _终止进程组(进程)
+        标准输出, 标准错误, 已超时, 已超限 = 受限通信(
+            进程, 超时秒=超时秒, 输出上限字节=默认子进程输出上限字节,
+            终止回调=lambda: _终止进程组(进程),
+        )
+        if 已超时:
             return 探针结果(
                 False, 错误码="探针超时", 耗时秒=time.monotonic() - 开始,
                 诊断=f"{名称} 探针超时（> {超时秒} 秒），已强制终止",
@@ -115,15 +118,8 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
             诊断=f"{名称} 探针成功",
         )
     finally:
-        # 成功/退出码非0 已由 communicate 回收；超时路径已强杀并 wait 回收。
         if 进程.poll() is None:
             _终止进程组(进程)
-        for 管道 in (进程.stdin, 进程.stdout, 进程.stderr):
-            if 管道 is not None and not 管道.closed:
-                try:
-                    管道.close()
-                except OSError:
-                    pass
 
 
 def _解析可执行(可执行: str) -> str | None:

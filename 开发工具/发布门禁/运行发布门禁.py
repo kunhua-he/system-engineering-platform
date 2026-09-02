@@ -28,8 +28,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.有界IO import 受限读取
+
 
 _门禁临时目录表: set[Path] = set()
+发布输出上限字节 = 200 * 1024
 
 
 def _清理门禁临时目录() -> None:
@@ -117,56 +120,89 @@ class 门禁结果:
 
 def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
             实时输出: bool = False, 环境覆盖: dict[str, str] | None = None) -> tuple[int, str]:
-    """运行子进程（供门禁检查使用）。实时输出仅转发，不改变返回证据。"""
-    进程 = None
+    """运行子进程：输出边读边限额，超时/超限均回收整个进程组。"""
     try:
         进程对象 = subprocess.Popen(
             命令列表, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=not 实时输出, start_new_session=(os.name == "posix"),
+            text=False, start_new_session=(os.name == "posix"),
             env={**os.environ, **(环境覆盖 or {}), "PYTHONUNBUFFERED": "1"},
         )
-        进程 = 进程对象
-        if not 实时输出:
-            输出, _ = 进程对象.communicate(timeout=超时秒)
-            return 进程对象.returncode, 输出 or ""
-        # 使用独立读取线程，父线程负责硬超时；不能用 ``for 行 in stdout``，
-        # 否则子进程无输出时会永久阻塞，超时检查永远不会执行。
-        输出盒: list[bytes] = []
-        读取完成 = threading.Event()
-        def 读取() -> None:
-            try:
-                assert 进程对象.stdout is not None
-                while True:
-                    数据 = 进程对象.stdout.readline()
-                    if not 数据:
-                        break
-                    输出盒.append(数据)
-                    print(f"[门禁子测试] {数据.decode('utf-8', 'replace')}", end="", flush=True)
-            finally:
-                读取完成.set()
-        线程 = threading.Thread(target=读取, name="门禁输出读取", daemon=True)
-        线程.start()
-        if not 读取完成.wait(timeout=max(0.0, 超时秒)):
-            raise subprocess.TimeoutExpired(命令列表, 超时秒, output=b"".join(输出盒))
-        进程对象.wait(timeout=5)
-        return 进程对象.returncode, b"".join(输出盒).decode("utf-8", "replace")
-    except subprocess.TimeoutExpired:
-        if 进程 is not None and 进程.poll() is None:
-            try:
-                if os.name == "posix":
-                    os.killpg(进程.pid, signal.SIGKILL)
-                else:
-                    进程.kill()
-            except OSError:
-                pass
-            try:
-                输出, _ = 进程.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                return -1, f"超时且进程组未能回收（> {超时秒} 秒）"
-            return -1, f"超时（> {超时秒} 秒），已回收进程组\n{输出 or ''}"
-        return -1, f"超时（> {超时秒} 秒）"
     except OSError as 错误:
         return -1, f"启动子进程失败: {错误}"
+
+    输出盒 = bytearray()
+    读取完成 = threading.Event()
+    输出超限 = threading.Event()
+    打印字节数 = 0
+
+    def 输出回调(数据: bytes) -> None:
+        nonlocal 打印字节数
+        if not 实时输出 or 打印字节数 >= 发布输出上限字节:
+            return
+        剩余 = 发布输出上限字节 - 打印字节数
+        可打印 = 数据[:剩余]
+        if 可打印:
+            print(可打印.decode("utf-8", "replace"), end="", flush=True)
+            打印字节数 += len(可打印)
+
+    def 读取() -> None:
+        try:
+            assert 进程对象.stdout is not None
+            内容, _超限 = 受限读取(
+                进程对象.stdout, 发布输出上限字节,
+                数据回调=输出回调, 超限回调=输出超限.set,
+            )
+            输出盒.extend(内容)
+        finally:
+            读取完成.set()
+
+    读取线程 = threading.Thread(target=读取, name="门禁输出读取", daemon=True)
+    读取线程.start()
+    截止时间 = time.monotonic() + max(0.0, float(超时秒))
+    超时 = False
+    while not 读取完成.is_set():
+        if 输出超限.is_set():
+            break
+        if time.monotonic() >= 截止时间:
+            超时 = True
+            break
+        if 进程对象.poll() is not None:
+            读取完成.wait(timeout=0.1)
+        else:
+            time.sleep(0.05)
+
+    if 超时 or 输出超限.is_set():
+        原因 = "输出超过上限" if 输出超限.is_set() else f"超时（> {超时秒} 秒）"
+        try:
+            if os.name == "posix":
+                os.killpg(进程对象.pid, signal.SIGKILL)
+            else:
+                进程对象.kill()
+        except OSError:
+            pass
+        try:
+            进程对象.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            return -1, f"{原因}，进程组未能回收"
+        读取线程.join(timeout=5)
+        if 进程对象.stdout is not None and 读取线程.is_alive():
+            进程对象.stdout.close()
+        后缀 = "\n" + bytes(输出盒).decode("utf-8", "replace") if 输出盒 else ""
+        return -1, f"{原因}，已回收进程组{后缀}"
+
+    读取线程.join(timeout=5)
+    try:
+        退出码 = 进程对象.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            if os.name == "posix":
+                os.killpg(进程对象.pid, signal.SIGKILL)
+            else:
+                进程对象.kill()
+        except OSError:
+            pass
+        return -1, "子进程退出确认超时，已请求回收进程组"
+    return 退出码, bytes(输出盒).decode("utf-8", "replace")
 
 
 def _扫描英文函数命名() -> str:

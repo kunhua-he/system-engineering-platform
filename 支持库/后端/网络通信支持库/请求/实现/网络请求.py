@@ -197,6 +197,10 @@ def 上传文件(*, 地址: str = None, 文件路径: str = None, 字段名: str
         消息 = email.mime.multipart.MIMEMultipart()
         for 键, 值 in (额外字段 or {}).items():
             消息.attach(email.mime.text.MIMEText(值))
+        文件大小 = os.path.getsize(文件路径)
+        上传上限字节 = 256 * 1024 * 1024
+        if 文件大小 > 上传上限字节:
+            return 结果.失败("超出限制", f"上传文件过大: {文件大小} 字节 > {上传上限字节}", 来源="网络请求")
         with open(文件路径, "rb") as f:
             附件 = email.mime.base.MIMEBase("application", "octet-stream")
             附件.set_payload(f.read())

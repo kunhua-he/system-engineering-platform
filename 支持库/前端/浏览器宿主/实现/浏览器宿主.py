@@ -5,10 +5,12 @@ import html
 import json
 import threading
 import webbrowser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
 
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
@@ -16,7 +18,7 @@ from 公共契约.运行时.端口策略 import 校验应用监听端口
 def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str = "",
                网关地址: str = "", 能力id: str = "", 端口: int = 45080,
                自动打开: bool = False, 受管验证: bool = False,
-               状态目录: str = "") -> tuple[ThreadingHTTPServer, str] | dict[str, Any]:
+               状态目录: str = "") -> tuple[有界线程HTTP服务器, str] | dict[str, Any]:
     """启动静态浏览器宿主；页面调用只能转发 POST /网关/调用。"""
     校验应用监听端口(端口)
     标题文本 = html.escape(str(标题), quote=True)
@@ -48,7 +50,7 @@ def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str 
             self.send_error(404)
 
     try:
-        服务 = ThreadingHTTPServer(("127.0.0.1", 端口), 处理器)
+        服务 = 有界线程HTTP服务器(("127.0.0.1", 端口), 处理器)
     except OSError as 错误:
         raise OSError(f"网页宿主端口 {端口} 无法监听；不会自动改绑随机端口: {错误}") from 错误
     服务.daemon_threads = True

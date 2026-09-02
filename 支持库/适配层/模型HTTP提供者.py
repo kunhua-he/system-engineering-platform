@@ -8,8 +8,10 @@ import urllib.request
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 受限读取
 
 来源 = "模型HTTP提供者"
+响应上限字节 = 1024 * 1024
 
 
 def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
@@ -45,7 +47,10 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any]) -> tupl
     try:
         开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with 开放器.open(请求, timeout=float(配置.get("请求超时秒") or 120)) as 响应:
-            return 响应.status, json.loads(响应.read().decode("utf-8")), ""
+            正文, 超限 = 受限读取(响应, 响应上限字节)
+            if 超限:
+                return 响应.status, None, f"响应超过读取上限 {响应上限字节} 字节"
+            return 响应.status, json.loads(正文.decode("utf-8")), ""
     except urllib.error.HTTPError as 错误:
         return 错误.code, None, f"HTTP {错误.code}"
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:

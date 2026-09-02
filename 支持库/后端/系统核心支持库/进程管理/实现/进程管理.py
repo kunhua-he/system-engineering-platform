@@ -15,6 +15,7 @@ import time
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
+from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
 
 句柄系统 = 句柄体系()
 进程表: dict[int, dict] = {}
@@ -139,12 +140,20 @@ def 等待进程结束(句柄: int | None = None, 超时秒: float = None) -> �
     if 进程 is None:
         return 结果.失败("句柄失效", 原因, 来源="进程管理")
     try:
-        stdout, stderr = 进程.communicate(timeout=超时秒)
+        stdout, stderr, 已超时, 已超限 = 受限通信(
+            进程, 超时秒=float(超时秒) if 超时秒 is not None else 60.0,
+            输出上限字节=默认子进程输出上限字节,
+            终止回调=lambda: _终止进程组(进程),
+        )
+        if 已超时:
+            return 结果.失败("超时", "进程等待超时", 来源="进程管理")
+        if 已超限:
+            return 结果.失败("超出限制", "进程输出超过上限", 来源="进程管理")
         return 结果.成功结果({"退出码": 进程.returncode,
                                 "标准输出": (stdout or b"").decode("utf-8", errors="replace"),
                                 "错误输出": (stderr or b"").decode("utf-8", errors="replace")})
-    except subprocess.TimeoutExpired:
-        return 结果.失败("超时", "进程等待超时", 来源="进程管理")
+    except Exception as 错误:
+        return 结果.失败("等待失败", str(错误), 来源="进程管理")
 
 
 def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str = None) -> 结果:
@@ -163,17 +172,27 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
     进程 = None
     try:
         进程 = subprocess.Popen(
-            命令表, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            命令表, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=工作目录, start_new_session=(os.name == "posix"))
-        stdout, stderr = 进程.communicate(timeout=超时秒 or 60)
-        return 结果.成功结果({"退出码": 进程.returncode, "标准输出": stdout,
-                                "错误输出": stderr})
-    except subprocess.TimeoutExpired:
-        # 超时后强制回收独立进程组，避免子孙进程残留
-        if 进程 is not None:
-            _终止进程组(进程, 强制=True)
-        return 结果.失败("超时", "命令执行超时", 来源="进程管理")
+        stdout, stderr, 已超时, 已超限 = 受限通信(
+            进程, 超时秒=float(超时秒 or 60),
+            输出上限字节=默认子进程输出上限字节,
+            终止回调=lambda: _终止进程组(进程),
+        )
+        if 已超时:
+            return 结果.失败("超时", "命令执行超时", 来源="进程管理")
+        if 已超限:
+            return 结果.失败("超出限制", "命令输出超过上限", 来源="进程管理")
+        return 结果.成功结果({"退出码": 进程.returncode,
+                                "标准输出": (stdout or b"").decode("utf-8", errors="replace"),
+                                "错误输出": (stderr or b"").decode("utf-8", errors="replace")})
     except Exception as 错误:
+        # 超时/异常后强制回收独立进程组，避免子孙进程残留
+        if 进程 is not None:
+            try:
+                _终止进程组(进程, 强制=True)
+            except Exception:
+                pass
         return 结果.失败("执行失败", str(错误), 来源="进程管理")
 
 

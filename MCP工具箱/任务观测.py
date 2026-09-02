@@ -9,6 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.有界IO import (
+    默认JSONL文件上限字节, 默认JSONL读取上限字节, 默认JSONL读取上限记录,
+    追加JSONL, 读取JSONL,
+)
+
 允许阶段 = {"探索", "开发", "子代理", "测试", "等待", "合并", "收口"}
 
 
@@ -17,9 +22,7 @@ def _现在() -> str:
 
 
 def _写入(路径: Path, 记录: dict[str, Any]) -> None:
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    with 路径.open("a", encoding="utf-8") as 文件:
-        文件.write(json.dumps(记录, ensure_ascii=False) + "\n")
+    追加JSONL(路径, 记录, 最大文件字节数=默认JSONL文件上限字节)
 
 
 def 任务开始(路径: Path, *, 任务id: str, 开工id: str, 角色: str,
@@ -66,11 +69,11 @@ def 查询任务(路径: Path, 任务id: str, 开工id: str = "") -> dict[str, A
     if not 路径.is_file():
         return {"成功": False, "错误码": "OBSERVATION_NOT_FOUND", "消息": "任务观测不存在"}
     事件表: list[dict[str, Any]] = []
-    for 行 in 路径.read_text(encoding="utf-8").splitlines():
-        try:
-            记录 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
+    全部事件, 是否截断 = 读取JSONL(
+        路径, 最大字节数=默认JSONL读取上限字节,
+        最大记录数=默认JSONL读取上限记录,
+    )
+    for 记录 in 全部事件:
         if 记录.get("任务id") == 任务id and (not 开工id or 记录.get("开工id") == 开工id):
             事件表.append(记录)
     if not 事件表:
@@ -80,7 +83,7 @@ def 查询任务(路径: Path, 任务id: str, 开工id: str = "") -> dict[str, A
             "工具调用数": len(工具表),
             "工具耗时秒": round(sum(float(项.get("耗时秒", 0)) for 项 in 工具表), 6),
             "失败工具数": sum(项.get("退出码", 0) not in (0, None) for 项 in 工具表),
-            "事件": 事件表}
+            "事件": 事件表, "查询是否截断": 是否截断}
 
 
 def 阶段记录(路径: Path, *, 任务id: str, 开工id: str, 阶段: str,

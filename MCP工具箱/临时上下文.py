@@ -79,8 +79,9 @@ def 核对修改范围(目录: Path, 开工id: str, 实际路径: list[str]) -> 
         if not 文本 or 文本.startswith("/"):
             return None
         部件 = [项 for 项 in 文本.split("/") if 项 != ""]
-        if any(项 in (".", "..") for 项 in 部件):
+        if any(项 == ".." for 项 in 部件):
             return None
+        部件 = [项 for 项 in 部件 if 项 != "."]
         return "/".join(部件).rstrip("/") or None
 
     允许 = [范围 for 项 in 上下文.get("允许目录", [])

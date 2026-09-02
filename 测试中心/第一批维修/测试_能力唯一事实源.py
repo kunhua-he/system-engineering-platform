@@ -78,6 +78,18 @@ class 测试能力唯一事实源(unittest.TestCase):
         self.assertEqual(索引能力, self.运行时能力, json.dumps(差集, ensure_ascii=False, indent=2))
         self.assertEqual(self.运行时能力, 网关能力, json.dumps(差集, ensure_ascii=False, indent=2))
 
+    def test_正式包集合与运行时发现集合逐项相等(self) -> None:
+        from 运行核心.加载器.包发现.发现器 import 发现全部
+
+        发现 = 发现全部(系统根 / "支持库", 系统根 / "模块库")
+        运行包 = {声明.包id for 声明 in 发现.声明列表}
+        正式包 = set(self.索引["支持库"]) | set(self.索引["模块库"])
+        差集 = {
+            "运行独有": sorted(运行包 - 正式包),
+            "正式独有": sorted(正式包 - 运行包),
+        }
+        self.assertEqual(运行包, 正式包, json.dumps(差集, ensure_ascii=False, indent=2))
+
     def test_能力owner与运行时注册owner逐项相等且全局无重复(self) -> None:
         self.assertFalse(self.索引["能力冲突"], self.索引["能力冲突"])
         索引owner = self.索引["能力所有者"]

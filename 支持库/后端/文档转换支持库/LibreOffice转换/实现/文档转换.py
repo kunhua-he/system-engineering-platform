@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
 
 默认超时秒 = 60
 默认最大输出字节 = 200 * 1024 * 1024
@@ -123,10 +124,17 @@ def 转换办公文件(输入路径: str, 目标格式: str, *, 超时秒: float
             start_new_session=True,
         )
         try:
-            _, 错误输出 = 进程.communicate(timeout=超时秒)
-        except subprocess.TimeoutExpired:
-            _终止进程组(进程)
-            return _失败("超时", f"LibreOffice 转换超时（> {超时秒} 秒）", 可重试=True)
+            标准输出, 错误输出, 已超时, 已超限 = 受限通信(
+                进程, 超时秒=超时秒,
+                输出上限字节=min(最大输出字节, 默认子进程输出上限字节),
+                终止回调=lambda: _终止进程组(进程),
+            )
+            if 已超时:
+                return _失败("超时", f"LibreOffice 转换超时（> {超时秒} 秒）", 可重试=True)
+            if 已超限:
+                return _失败("超出限制", "LibreOffice 子进程输出超过上限")
+        except OSError as 错误:
+            return _失败("转换失败", f"LibreOffice 调用失败: {错误}")
         退出码 = 进程.returncode
         if 退出码 != 0:
             错误文本 = 错误输出.decode("utf-8", errors="replace")[-300:] if 错误输出 else ""

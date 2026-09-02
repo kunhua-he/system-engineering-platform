@@ -53,6 +53,26 @@ class 工作区与清理测试(unittest.TestCase):
             self.assertEqual(结果["失败表"], [])
             self.assertFalse(资源.exists())
 
+    def test_历史临时脚本别名按文件清理(self) -> None:
+        with _临时测试根() as 临时目录:
+            根 = Path(临时目录)
+            资源 = 根 / "验证.py"
+            资源.write_text("print(1)\n", encoding="utf-8")
+            清单 = 根 / "清单.jsonl"
+            登记资源(清单, 资源路径=str(资源), 临时根目录=根,
+                      资源类型="临时验证脚本")
+            结果 = 清理资源(清单, 临时根目录=根)
+            self.assertTrue(结果["成功"], 结果)
+            self.assertEqual(结果["清理数"], 1)
+            self.assertFalse(资源.exists())
+
+    def test_未知资源类型登记时拒绝(self) -> None:
+        with _临时测试根() as 临时目录:
+            根 = Path(临时目录)
+            with self.assertRaises(ValueError):
+                登记资源(根 / "清单.jsonl", 资源路径=str(根 / "未知.txt"),
+                          临时根目录=根, 资源类型="未知类型")
+
     def test_保留资源不删除且禁止越界登记(self) -> None:
         with _临时测试根() as 临时目录:
             根 = Path(临时目录)

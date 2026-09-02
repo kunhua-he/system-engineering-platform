@@ -18,6 +18,9 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import ServerCapabilities, TextContent, Tool
 
+from 公共契约.运行时.有界IO import (
+    默认JSONL读取上限字节, 默认JSONL读取上限记录, 读取JSONL,
+)
 from .工具名映射 import 中文名到协议名, 协议名到中文名
 from .公开能力 import 搜索公开能力, 读取公开能力
 from .使用反馈 import 写入反馈, 查询反馈状态, 读取反馈列表
@@ -92,19 +95,12 @@ def _代码指纹() -> tuple[str, str]:
 
 
 def _读取成功记录(数量: int = 3) -> list[dict[str, Any]]:
-    if not 证据路径.is_file():
-        return []
-    记录列表: list[dict[str, Any]] = []
-    for 行 in reversed(证据路径.read_text(encoding="utf-8").splitlines()):
-        try:
-            记录 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
-        if 记录.get("退出码") == 0:
-            记录列表.append(记录)
-        if len(记录列表) >= max(1, min(数量, 3)):
-            break
-    return 记录列表
+    全部记录, _ = 读取JSONL(
+        证据路径, 最大字节数=默认JSONL读取上限字节,
+        最大记录数=默认JSONL读取上限记录,
+    )
+    记录列表 = [记录 for 记录 in reversed(全部记录) if 记录.get("退出码") == 0]
+    return 记录列表[: max(1, min(数量, 3))]
 
 
 def _代码地图状态() -> dict[str, Any]:

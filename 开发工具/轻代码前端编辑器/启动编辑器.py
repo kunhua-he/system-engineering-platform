@@ -8,10 +8,12 @@ import sys
 import threading
 import uuid
 import webbrowser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
 
 根目录 = Path(__file__).resolve().parents[2]
 默认文件 = 根目录 / "工程缓存" / "轻代码前端编辑器" / "页面.json"
@@ -400,7 +402,7 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
 
     try:
         # 指定端口失败必须阻断；只有调用方明确传入 0 才允许系统分配端口。
-        服务 = ThreadingHTTPServer(("127.0.0.1", 端口), 处理器)
+        服务 = 有界线程HTTP服务器(("127.0.0.1", 端口), 处理器)
     except OSError as 错误:
         raise RuntimeError(f"IDE 端口 {端口} 无法监听，未自动改绑随机端口: {错误}") from 错误
     threading.Thread(target=服务.serve_forever, daemon=True).start()

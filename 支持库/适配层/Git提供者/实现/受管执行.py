@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 受限通信
 from 支持库.适配层.Git提供者.实现.白名单 import 失败结果, 校验仓库路径, 校验超时
 
 默认超时秒 = 60.0
@@ -61,10 +62,10 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
     except OSError as 错误:
         return 失败结果("提供者不可用", f"无法启动 git: {错误}", 可重试=True)
     try:
-        标准输出, 标准错误 = 进程.communicate(timeout=超时秒)
-    except subprocess.TimeoutExpired:
-        _终止进程组(进程)
-        return 失败结果("超时", f"git 命令超过 {超时秒} 秒", 可重试=True)
+        标准输出, 标准错误, 已超时, 输出超限 = 受限通信(
+            进程, 超时秒=超时秒, 输出上限字节=最大输出字节,
+            终止回调=lambda: _终止进程组(进程),
+        )
     finally:
         for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
             if 流:
@@ -72,7 +73,9 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
                     流.close()
                 except (OSError, ValueError):
                     pass
-    if len(标准输出) > 最大输出字节:
+    if 已超时:
+        return 失败结果("超时", f"git 命令超过 {超时秒} 秒", 可重试=True)
+    if 输出超限:
         return 失败结果("超出限制", f"git 输出超过上限 {最大输出字节} 字节")
     return 结果.成功结果({
         "退出码": 进程.returncode,

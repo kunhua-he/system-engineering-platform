@@ -8,6 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.有界IO import (
+    默认JSONL文件上限字节, 默认JSONL读取上限字节, 默认JSONL读取上限记录,
+    追加JSONL, 读取JSONL,
+)
+
 
 def _脱敏(文本: str) -> str:
     文本 = 文本[:2000]
@@ -33,23 +38,24 @@ def 写入反馈(
         "时间": datetime.now(timezone.utc).isoformat(),
         **{键: _脱敏(str(值).strip()) for 键, 值 in 字段表.items()},
     }
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    with 路径.open("a", encoding="utf-8") as 文件:
-        文件.write(json.dumps(记录, ensure_ascii=False) + "\n")
+    追加JSONL(
+        路径, 记录, 最大文件字节数=默认JSONL文件上限字节,
+    )
     return {"成功": True, "开工id": 开工id, "反馈门禁": "已满足"}
 
 
 def 查询反馈状态(路径: Path, 开工id: str) -> dict[str, Any]:
-    if not 开工id or not 路径.is_file():
+    if not 开工id:
         return {"已反馈": False, "开工id": 开工id}
-    for 行 in reversed(路径.read_text(encoding="utf-8").splitlines()):
-        try:
-            记录 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
+    记录列表, 是否截断 = 读取JSONL(
+        路径, 最大字节数=默认JSONL读取上限字节,
+        最大记录数=默认JSONL读取上限记录,
+    )
+    for 记录 in reversed(记录列表):
         if 记录.get("开工id") == 开工id:
-            return {"已反馈": True, "开工id": 开工id, "反馈": 记录}
-    return {"已反馈": False, "开工id": 开工id}
+            return {"已反馈": True, "开工id": 开工id, "反馈": 记录,
+                    "查询是否截断": 是否截断}
+    return {"已反馈": False, "开工id": 开工id, "查询是否截断": 是否截断}
 
 
 def 读取反馈列表(
@@ -57,12 +63,12 @@ def 读取反馈列表(
 ) -> dict[str, Any]:
     if not 路径.is_file():
         return {"数量": 0, "反馈列表": [], "升级候选": []}
+    反馈源, 是否截断 = 读取JSONL(
+        路径, 最大字节数=默认JSONL读取上限字节,
+        最大记录数=默认JSONL读取上限记录,
+    )
     反馈表: list[dict[str, Any]] = []
-    for 行 in reversed(路径.read_text(encoding="utf-8").splitlines()):
-        try:
-            记录 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
+    for 记录 in reversed(反馈源):
         if 开工id and 记录.get("开工id") != 开工id:
             continue
         if 任务 and 任务 not in str(记录.get("任务", "")):
@@ -79,4 +85,5 @@ def 读取反馈列表(
                     "开工id": 记录.get("开工id"), "任务": 记录.get("任务"),
                     "角色": 记录.get("角色"), "类别": 字段, "内容": 内容,
                 })
-    return {"数量": len(反馈表), "反馈列表": 反馈表, "升级候选": 升级候选}
+    return {"数量": len(反馈表), "反馈列表": 反馈表, "升级候选": 升级候选,
+            "查询是否截断": 是否截断}
