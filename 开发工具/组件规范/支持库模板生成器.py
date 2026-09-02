@@ -195,6 +195,7 @@ from pathlib import Path
 if 系统根 not in sys.path:
     sys.path.insert(0, 系统根)
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.有界IO import 受限通信
 
 包目录 = Path(__file__).resolve().parent.parent
 子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
@@ -203,6 +204,27 @@ from 公共契约.基础类型.结果类型 import 结果
 
 def _失败(错误码: str, 消息: str) -> 结果:
     return 结果.失败(错误码, 消息, 来源="@@名称@@", 可重试=错误码 in 可重试错误码)
+
+
+def _终止进程组(进程, 宽限秒: float = 1.0) -> None:
+    """超时/异常时 killpg 回收整个进程组（SIGTERM → 宽限 → SIGKILL）。"""
+    try:
+        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        pass
+    try:
+        进程.wait(timeout=宽限秒)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        pass
+    try:
+        进程.wait(timeout=宽限秒)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
@@ -214,21 +236,18 @@ def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
     except OSError as 错误:
         return _失败("提供者不可用", f"无法启动子进程: {错误}")
     try:
-        输出, _ = 进程.communicate(
-            input=(json.dumps({"操作": 操作, "参数": 参数}, ensure_ascii=False) + "\\n").encode(),
-            timeout=超时秒)
-    except subprocess.TimeoutExpired:
-        for 信号值 in (signal.SIGTERM, signal.SIGKILL):
-            try: os.killpg(os.getpgid(进程.pid), 信号值)
-            except OSError: pass
-            try:
-                进程.wait(timeout=1)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-        for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
-            if 流 is not None: 流.close()
-        return _失败("超时", f"执行超过 {超时秒} 秒")
+        输出, _, 已超时, 已超限 = 受限通信(
+            进程,
+            input=(json.dumps({"操作": 操作, "参数": 参数}, ensure_ascii=False) + "\n").encode(),
+            超时秒=超时秒,
+            终止回调=lambda: _终止进程组(进程),
+        )
+        if 已超时:
+            return _失败("超时", f"执行超过 {超时秒} 秒")
+        if 已超限:
+            return _失败("超出限制", "子进程输出超过上限")
+    except OSError as 错误:
+        return _失败("提供者不可用", f"子进程通信失败: {错误}")
     if 进程.returncode:
         return _失败("提供者崩溃", f"子进程异常退出（退出码 {进程.returncode}）")
     try:
