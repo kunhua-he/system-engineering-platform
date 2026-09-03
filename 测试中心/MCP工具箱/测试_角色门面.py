@@ -7,21 +7,12 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import json
 import sys
 import unittest
-from pathlib import Path
 
-服务路径 = Path(__file__).resolve().parents[2] / "MCP工具箱" / "项目服务.py"
-sys.path.insert(0, str(服务路径.parent))
-规格 = importlib.util.spec_from_file_location("系统工程平台项目服务", 服务路径)
-assert 规格 and 规格.loader
-服务模块 = importlib.util.module_from_spec(规格)
-规格.loader.exec_module(服务模块)
-
-# 与服务模块共用同一角色权限实例，避免包/顶层双导入导致异常类不一致
-角色权限模块 = sys.modules.get("MCP工具箱.角色权限") or sys.modules["角色权限"]
+from MCP工具箱 import 项目服务 as 服务模块
+from MCP工具箱 import 角色权限 as 角色权限模块
 网关实例名 = 角色权限模块.网关实例名
 网关角色名 = 角色权限模块.网关角色名
 
