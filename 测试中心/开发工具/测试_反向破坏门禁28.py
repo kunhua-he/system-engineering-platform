@@ -26,7 +26,8 @@ class Test反向破坏门禁28(unittest.TestCase):
             "测试_FFmpeg提供者.py", "测试_Git提供者.py", "测试_MLXWhisper提供者.py",
             "测试_PDF隔离提供者.py", "测试_PyMuPDF提供者.py", "测试_PyMuPDF自足性.py",
             "测试_Pillow提供者.py", "测试_Tesseract提供者.py", "测试_openpyxl提供者.py",
-            "测试_pg8000提供者.py", "测试_psycopg提供者.py", "测试_python-docx提供者.py",
+            "测试_pg8000提供者.py", "测试_psycopg提供者.py", "测试_python_docx提供者.py",
+            "测试_python_pptx提供者.py",
             "测试_reportlab提供者.py", "测试_密码签名提供者.py", "测试_密码签名提供者_生命周期.py",
             "测试_系统探针.py",
             # 内部生命周期/资源收口测试：直导 实现 层验证并发/记忆 资源释放
