@@ -18,7 +18,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
@@ -38,6 +38,19 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 默认超时秒 = 1800                            # 华哥口径：不申报默认 30 分钟（1800 秒），模块/支持库应主动申报
 内存安全阈值 = 0.80                              # 系统内存占用安全阈值（80%）
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
+默认协议 = "chat_completions"
+允许协议 = frozenset(("chat_completions", "codex_responses"))
+协议别名 = {
+    "chat": "chat_completions",
+    "chat_completions": "chat_completions",
+    "res": "codex_responses",
+    "codex_responses": "codex_responses",
+}
+
+
+def _规范化协议(协议: Any) -> str | None:
+    """把公开短协议别名统一为内部长协议；非法值返回 None。"""
+    return 协议别名.get(协议) if isinstance(协议, str) else None
 
 
 
@@ -61,8 +74,9 @@ def _包申报超时() -> int:
     return 默认超时秒
 
 
-def _失败(错误码: str, 消息: str) -> 结果:
-    return 结果.失败(错误码, 消息, 来源="模型连接器")
+def _失败(错误码: str, 消息: str, *, 可重试: bool = False,
+        详情: dict[str, Any] | None = None) -> 结果:
+    return 结果.失败(错误码, 消息, 来源="模型连接器", 可重试=可重试, 详情=详情)
 
 
 def _系统内存快照() -> dict[str, Any]:
@@ -168,6 +182,7 @@ def _登记连接(连接类型: str, 配置: dict, *, 超时秒: int, 所有者:
         return 结果.成功结果({"句柄": 连接键, "连接类型": 连接类型,
                                 "模型": 配置.get("模型名") or 配置.get("模型"),
                                 "部署形态": 配置.get("部署形态") or "本地", "超时秒": 有效超时,
+                                "协议": 配置.get("协议") if 连接类型 == "LLM" else None,
                                 "说明": "句柄超时由包声明申报（默认 30 分钟），一直用持续重置，可续租，可显式释放"})
 
 
@@ -195,7 +210,7 @@ def _取连接(句柄id: int) -> tuple[dict[str, Any] | None, str]:
 
 
 def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
-    """URL连接的默认 OpenAI 兼容调用器，不依赖包外注册副作用。"""
+    """URL连接的默认兼容调用器；与受管 Provider 保持同一协议契约。"""
     import json
     import urllib.error
     import urllib.request
@@ -204,10 +219,21 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
         return _失败("提供者不可用", f"{连接类型}连接未配置url")
     模型 = 配置.get("模型名") or 配置.get("模型")
     if 连接类型 == "LLM":
+        流式输出 = 参数.get("流式输出", False)
+        if 流式输出 is True:
+            return _失败(
+                "流式能力未装配",
+                "流式输出已请求，但40007网关尚未装配模型SSE传输，待补网关流；未伪造完成结果",
+                详情={"流式输出": True, "协议": 配置.get("协议", 默认协议), "网关": "40007"},
+            )
         消息 = list(参数.get("消息列表") or [])
         if 参数.get("系统提示词"):
             消息.insert(0, {"role": "system", "content": 参数["系统提示词"]})
-        路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息}
+        协议 = 配置.get("协议", 默认协议)
+        if 协议 == "codex_responses":
+            路径, 请求体 = "/responses", {"model": 模型, "input": 消息, "stream": False}
+        else:
+            路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息, "stream": False}
     elif 连接类型 == "向量":
         路径, 请求体 = "/embeddings", {"model": 模型, "input": 参数.get("文本")}
     else:
@@ -224,14 +250,24 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
                 return _失败("超出限制", f"{连接类型} HTTP响应超过4MB上限")
             数据 = json.loads(原始.decode("utf-8"))
         if 连接类型 == "LLM":
-            return 结果.成功结果({"回复": 数据["choices"][0]["message"]["content"], "用量": 数据.get("usage", {})})
+            回复 = 数据.get("output_text")
+            if not isinstance(回复, str):
+                回复 = (((数据.get("choices") or [{}])[0].get("message") or {}).get("content"))
+            if not isinstance(回复, str) or not 回复:
+                return _失败("模型调用失败", "模型响应没有可用文本")
+            return 结果.成功结果({"回复": 回复, "用量": 数据.get("usage", {})})
         if 连接类型 == "向量":
             向量 = 数据["data"][0]["embedding"]
             return 结果.成功结果({"向量": 向量, "维度": len(向量)})
         原始 = 数据.get("results") or 数据.get("data") or []
         重排结果 = [{"索引": 项.get("index"), "分数": 项.get("relevance_score", 项.get("score"))} for 项 in 原始]
         return 结果.成功结果({"重排结果": 重排结果})
-    except (OSError, ValueError, KeyError, IndexError, TypeError, urllib.error.HTTPError) as 错误:
+    except urllib.error.HTTPError as 错误:
+        错误码 = {401: "认证失败", 403: "认证失败", 404: "端点不存在", 408: "超时", 429: "请求限流"}.get(
+            错误.code, "模型调用失败"
+        )
+        return _失败(错误码, f"模型 HTTP 返回 {错误.code}", 可重试=错误.code >= 500)
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as 错误:
         return _失败("模型调用失败", f"{连接类型} HTTP调用失败: {错误}")
 
 
@@ -255,29 +291,36 @@ def _调用模型(句柄id: int, 连接类型: str, 参数: dict) -> 结果:
 
 def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = None,
            本地路径: str = None, 启动器: str = None, 模型大小字节: int = None,
-           url: str = None, api_key: str = None, 上下文长度: int = None, 超时秒: int = None) -> 结果:
-    """连接大语言模型，返回句柄。缺参时使用 env 统一参数（加载环境配置 后生效）。
+           url: str = None, api_key: str = None, 上下文长度: int = None,
+           超时秒: int = None, 协议: str = 默认协议) -> 结果:
+    """连接大语言模型，返回句柄。连接阶段只接受连接配置与协议参数；流式输出属于生成对话选项，未知关键字（包括连接阶段流式输出）由函数签名拒绝。
 
-    本地：部署形态=本地+GGUF 文件绝对路径，由底座直接启动 llama-server；云端：部署形态=云端+url/api_key/模型/上下文长度。
+    缺参时使用 env 统一参数（加载环境配置后生效）。本地：部署形态=本地+GGUF 文件绝对路径，由底座直接启动 llama-server；云端：部署形态=云端+url/api_key/模型/上下文长度。
     """
     显式 = {"模型": 模型, "提供者": 提供者, "部署形态": 部署形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
-            "上下文长度": 上下文长度, "超时秒": 超时秒}
+            "上下文长度": 上下文长度, "超时秒": 超时秒, "协议": 协议}
     显式 = _合入环境参数("LLM", 显式)
     模型, 提供者, 部署形态 = 显式["模型"], 显式["提供者"], 显式["部署形态"]
-    url, api_key, 上下文长度, 超时秒 = 显式["url"], 显式["api_key"], 显式["上下文长度"], 显式["超时秒"]
+    url, api_key, 上下文长度, 超时秒 = (显式["url"], 显式["api_key"], 显式["上下文长度"],
+                                       显式["超时秒"])
+    规范协议 = _规范化协议(显式.get("协议", 默认协议))
     本地路径, 启动器, 模型大小字节 = 显式["本地路径"], 显式["启动器"], 显式["模型大小字节"]
     if not isinstance(模型, str) or not 模型.strip():
         return _失败("参数不合法", "模型必须是非空字符串（env 未配置默认LLM模型）")
+    if 规范协议 is None:
+        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+    协议 = 规范协议
     形态 = (部署形态 or "云端" if (url or api_key) else 部署形态 or "本地").lower()
     形态 = "云端" if 形态 in ("cloud", "api", "云") else "本地" if 形态 in ("local", "本机") else 形态
     if 形态 not in ("本地", "云端"):
         return _失败("参数不合法", f"部署形态必须是 本地 或 云端: {部署形态}")
     配置 = {"模型名": 模型, "提供者": 提供者 or "本地", "部署形态": 形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
-            "上下文长度": 上下文长度}
+            "上下文长度": 上下文长度, "协议": 协议}
     if 形态 == "本地" and 本地路径:
-        return 启动本地模型(本地路径, 启动器, "LLM", 模型大小字节=模型大小字节, 超时秒=超时秒)
+        return 启动本地模型(本地路径, 启动器, "LLM", 模型大小字节=模型大小字节,
+                           参数={"协议": 协议}, 超时秒=超时秒)
     return _登记连接("LLM", 配置, 超时秒=超时秒)
 
 
@@ -545,12 +588,18 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
             句柄系统.失效(int(现有句柄), "进程暴毙")
     端口 = _分配端口(端口)
     启动参数 = dict(参数 or {})
+    if 类型 == "LLM":
+        启动协议 = _规范化协议(启动参数.get("协议", 默认协议))
+        if 启动协议 is None:
+            return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+        启动参数["协议"] = 启动协议
     启动器名 = str(启动器 or "")
     if not isinstance(模型大小字节, (int, float)) or 模型大小字节 <= 0:
         模型大小字节 = _计算模型大小(模型路径) or None
     配置 = {"模型名": Path(规范路径).name, "提供者": "本地", "部署形态": "本地",
             "本地路径": 规范路径, "模型源格式": 源格式, "启动器": 启动器名, "模型类型": 类型,
-            "模型大小字节": 模型大小字节, "端口": 端口, "url": f"http://127.0.0.1:{端口}/v1"}
+            "模型大小字节": 模型大小字节, "端口": 端口, "url": f"http://127.0.0.1:{端口}/v1",
+            "协议": 启动参数.get("协议", 默认协议) if 类型 == "LLM" else None}
     with 锁:
         守卫 = _内存守卫(类型, 配置)
         if 守卫 is not None:
@@ -570,7 +619,9 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
         if not _等待本地健康(端口, 有效超时):
             raise TimeoutError(f"本地模型启动后健康检查超时: {模型路径}")
         return 结果.成功结果({"句柄": 对象.句柄id, "模型类型": 类型, "模型路径": 规范路径,
-                         "端口": 端口, "启动命令": 命令, "全局句柄": True, "超时秒": 有效超时})
+                         "端口": 端口, "启动命令": 命令, "全局句柄": True,
+                         "协议": 配置.get("协议") if 类型 == "LLM" else None,
+                         "超时秒": 有效超时})
     except Exception as 错误:
         释放句柄(对象.句柄id)
         return _失败("提供者不可用", f"本地模型启动失败: {错误}")
@@ -649,12 +700,75 @@ def 注册本地进程(句柄: int | None = None, 进程对象: Any = None) -> �
 
 # ── 句柄调用（持句柄使用模型）────────────────────────
 
-def 生成对话(句柄: int | None = None, 消息列表: list = None, 系统提示词: str = None) -> 结果:
+def 生成对话(句柄: int | None = None, 消息列表: list = None,
+           系统提示词: str = None, 流式输出: bool = False) -> 结果:
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return _失败("参数不合法", "句柄必须是1到999999的整数")
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
-    return _调用模型(句柄, "LLM", {"消息列表": 消息列表, "系统提示词": 系统提示词})
+    if not isinstance(流式输出, bool):
+        return _失败("参数不合法", "流式输出必须是逻辑型")
+    return _调用模型(句柄, "LLM", {
+        "消息列表": 消息列表, "系统提示词": 系统提示词, "流式输出": 流式输出,
+    })
+
+
+def _流式错误事件(错误码: str, 错误说明: str, *, 可重试: bool = False,
+               **详情: Any) -> dict[str, Any]:
+    事件: dict[str, Any] = {
+        "类型": "错误", "错误码": 错误码, "错误说明": 错误说明,
+        "可重试": 可重试,
+    }
+    事件.update(详情)
+    return 事件
+
+
+def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
+               系统提示词: str = None, 流式输出: bool = True) -> Iterator[dict[str, Any]]:
+    """按句柄配置调用 H 节点 Provider，并原样转发有限流式事件。
+
+    这是连接器内部/包级流式边界，不是 HTTP 路由。流式输出必须显式保持为
+    True；Provider 事件不聚合，返回的迭代器应消费至终态或由调用方 close。
+    """
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return iter((_流式错误事件("参数不合法", "句柄必须是1到999999的整数"),))
+    if not isinstance(消息列表, list) or not 消息列表:
+        return iter((_流式错误事件("参数不合法", "消息列表必须是非空列表"),))
+    if not isinstance(流式输出, bool):
+        return iter((_流式错误事件("参数不合法", "流式输出必须是逻辑型"),))
+    if not 流式输出:
+        return iter((_流式错误事件("参数不合法", "流式生成对话要求流式输出为真"),))
+
+    连接, 原因 = _取连接(句柄)
+    if 连接 is None:
+        return iter((_流式错误事件("句柄失效", 原因),))
+    if 连接.get("类型") != "LLM":
+        return iter((_流式错误事件(
+            "不支持流式连接类型", f"句柄 {句柄} 是 {连接.get('类型')} 连接，流式生成对话只支持 LLM",
+        ),))
+
+    配置 = dict(连接.get("配置") or {})
+    try:
+        from 支持库.适配层 import 模型HTTP提供者 as 提供者
+        上游迭代器 = 提供者.流式调用对话(
+            配置=配置, 消息列表=消息列表, 系统提示词=系统提示词,
+        )
+    except Exception as 错误:
+        return iter((_流式错误事件(
+            "模型流式调用失败", f"调用 Provider 流式对话失败：{错误}",
+            异常类型=type(错误).__name__,
+        ),))
+
+    def 转发() -> Iterator[dict[str, Any]]:
+        try:
+            yield from 上游迭代器
+        except Exception as 错误:
+            yield _流式错误事件(
+                "模型流式调用失败", f"Provider 流式迭代异常：{错误}",
+                异常类型=type(错误).__name__,
+            )
+
+    return 转发()
 
 
 def 生成嵌入(句柄: int | None = None, 文本: str = None) -> 结果:
@@ -738,6 +852,7 @@ def 查询句柄状态(句柄: int | None = None) -> 结果:
     剩余 = max(0, int(连接["超时秒"] - (time.time() - 连接["最后活动时间"])))
     return 结果.成功结果({"句柄": 句柄, "状态": "有效", "连接类型": 连接["类型"],
                             "模型": 连接["配置"].get("模型名"), "部署形态": 连接["配置"].get("部署形态"),
+                            "协议": 连接["配置"].get("协议") if 连接["类型"] == "LLM" else None,
                             "全局句柄": bool(连接.get("全局句柄")),
                             "剩余秒": 剩余})
 
