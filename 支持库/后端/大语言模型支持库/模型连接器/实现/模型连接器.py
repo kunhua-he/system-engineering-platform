@@ -40,6 +40,17 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
 默认协议 = "chat_completions"
 允许协议 = frozenset(("chat_completions", "codex_responses"))
+协议别名 = {
+    "chat": "chat_completions",
+    "chat_completions": "chat_completions",
+    "res": "codex_responses",
+    "codex_responses": "codex_responses",
+}
+
+
+def _规范化协议(协议: Any) -> str | None:
+    """把公开短协议别名统一为内部长协议；非法值返回 None。"""
+    return 协议别名.get(协议) if isinstance(协议, str) else None
 
 
 
@@ -291,13 +302,15 @@ def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = Non
             "上下文长度": 上下文长度, "超时秒": 超时秒, "协议": 协议}
     显式 = _合入环境参数("LLM", 显式)
     模型, 提供者, 部署形态 = 显式["模型"], 显式["提供者"], 显式["部署形态"]
-    url, api_key, 上下文长度, 超时秒, 协议 = (显式["url"], 显式["api_key"], 显式["上下文长度"],
-                                                显式["超时秒"], 显式.get("协议") or 默认协议)
+    url, api_key, 上下文长度, 超时秒 = (显式["url"], 显式["api_key"], 显式["上下文长度"],
+                                       显式["超时秒"])
+    规范协议 = _规范化协议(显式.get("协议", 默认协议))
     本地路径, 启动器, 模型大小字节 = 显式["本地路径"], 显式["启动器"], 显式["模型大小字节"]
     if not isinstance(模型, str) or not 模型.strip():
         return _失败("参数不合法", "模型必须是非空字符串（env 未配置默认LLM模型）")
-    if not isinstance(协议, str) or 协议 not in 允许协议:
+    if 规范协议 is None:
         return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+    协议 = 规范协议
     形态 = (部署形态 or "云端" if (url or api_key) else 部署形态 or "本地").lower()
     形态 = "云端" if 形态 in ("cloud", "api", "云") else "本地" if 形态 in ("local", "本机") else 形态
     if 形态 not in ("本地", "云端"):
@@ -575,6 +588,11 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
             句柄系统.失效(int(现有句柄), "进程暴毙")
     端口 = _分配端口(端口)
     启动参数 = dict(参数 or {})
+    if 类型 == "LLM":
+        启动协议 = _规范化协议(启动参数.get("协议", 默认协议))
+        if 启动协议 is None:
+            return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+        启动参数["协议"] = 启动协议
     启动器名 = str(启动器 or "")
     if not isinstance(模型大小字节, (int, float)) or 模型大小字节 <= 0:
         模型大小字节 = _计算模型大小(模型路径) or None

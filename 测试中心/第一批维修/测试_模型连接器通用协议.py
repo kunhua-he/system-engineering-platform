@@ -12,10 +12,11 @@ import sys
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 支持库.后端.大语言模型支持库.模型连接器 import (  # noqa: E402
+from 支持库.后端.大语言模型支持库.模型连接器 import (
     连接LLM,
     生成对话,
     释放句柄,
+    查询句柄状态,
 )
 from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型连接器 as 实现  # noqa: E402
 
@@ -106,6 +107,49 @@ class 测试模型连接器通用协议(unittest.TestCase):
         结果 = self._连接("codex_responses")
         self.assertEqual(结果.值["协议"], "codex_responses")
 
+    def test_连接LLM四种协议输入均只保存并返回长规范值(self) -> None:
+        预期 = {
+            "chat": "chat_completions",
+            "chat_completions": "chat_completions",
+            "res": "codex_responses",
+            "codex_responses": "codex_responses",
+        }
+        for 输入协议, 规范协议 in 预期.items():
+            with self.subTest(输入协议=输入协议):
+                结果 = self._连接(输入协议)
+                句柄 = 结果.值["句柄"]
+                self.assertEqual(结果.值["协议"], 规范协议)
+                self.assertEqual(实现.连接表[句柄]["配置"]["协议"], 规范协议)
+                self.assertEqual(查询句柄状态(句柄).值["协议"], 规范协议)
+
+    def test_连接LLM非法协议返回结构化参数错误(self) -> None:
+        for 非法协议 in ("responses", "", "unsupported"):
+            with self.subTest(非法协议=非法协议):
+                结果 = 连接LLM(
+                    模型="fixture-model", 提供者="fixture-provider", 部署形态="云端",
+                    url=self.夹具.地址, 超时秒=60, 协议=非法协议,
+                )
+                self.assertFalse(结果.成功)
+                self.assertEqual(结果.错误码, "参数不合法")
+                self.assertIsInstance(结果.错误说明, str)
+                self.assertIsNone(结果.值)
+
+    def test_连接LLM本地启动调用传入规范协议参数(self) -> None:
+        from tempfile import NamedTemporaryFile
+        from unittest.mock import patch
+
+        with NamedTemporaryFile(suffix=".gguf") as 模型文件:
+            with patch.object(实现, "启动本地模型", return_value=实现.结果.成功结果({"句柄": 123})) as 启动模拟:
+                返回 = 连接LLM(
+                    模型="fixture-model", 部署形态="本地", 本地路径=模型文件.name,
+                    协议="res", 超时秒=60,
+                )
+        self.assertTrue(返回.成功, 返回.错误说明)
+        启动模拟.assert_called_once_with(
+            模型文件.name, None, "LLM", 模型大小字节=None,
+            参数={"协议": "codex_responses"}, 超时秒=60,
+        )
+
     def test_chat非流式返回统一结果并组装协议请求(self) -> None:
         句柄 = self._连接().值["句柄"]
         结果 = 生成对话(句柄, [{"role": "user", "content": "你好"}])
@@ -117,6 +161,12 @@ class 测试模型连接器通用协议(unittest.TestCase):
         self.assertEqual(请求体["model"], "fixture-model")
         self.assertEqual(请求体["messages"][0]["content"], "你好")
         self.assertIs(请求体["stream"], False)
+
+    def test_chat别名生成对话仍走chat_completions请求路径(self) -> None:
+        句柄 = self._连接("chat").值["句柄"]
+        结果 = 生成对话(句柄, [{"role": "user", "content": "别名"}])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(self.夹具.请求[0][0], "/v1/chat/completions")
 
     def test_codex_responses组装路径和请求体并返回统一结果(self) -> None:
         句柄 = self._连接("codex_responses").值["句柄"]
@@ -134,6 +184,12 @@ class 测试模型连接器通用协议(unittest.TestCase):
         self.assertEqual(请求体["input"][0], {"role": "system", "content": "系统规则"})
         self.assertEqual(请求体["input"][1]["content"], "只回复夹具")
         self.assertIs(请求体["stream"], False)
+
+    def test_res别名生成对话走codex_responses请求路径(self) -> None:
+        句柄 = self._连接("res").值["句柄"]
+        结果 = 生成对话(句柄, [{"role": "user", "content": "别名"}])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(self.夹具.请求[0][0], "/v1/responses")
 
     def test_codex_responses错误保持统一失败契约(self) -> None:
         self.夹具.响应状态 = 401
