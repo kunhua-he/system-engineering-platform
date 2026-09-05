@@ -134,6 +134,61 @@ class 测试模型连接器通用协议(unittest.TestCase):
                 self.assertIsInstance(结果.错误说明, str)
                 self.assertIsNone(结果.值)
 
+    def test_连接LLM拒绝连接阶段流式输出未知参数(self) -> None:
+        with self.assertRaises(TypeError):
+            连接LLM(
+                模型="fixture-model", 提供者="fixture-provider", 部署形态="云端",
+                url=self.夹具.地址, 流式输出=True,
+            )
+        self.assertEqual(self.夹具.请求, [])
+
+    def test_连接LLM未指定超时使用包申报的1800秒默认值(self) -> None:
+        结果 = 连接LLM(
+            模型="fixture-model", 提供者="fixture-provider", 部署形态="云端",
+            url=self.夹具.地址,
+        )
+        self.assertTrue(结果.成功, 结果.错误说明)
+        句柄 = 结果.值["句柄"]
+        self.句柄表.append(句柄)
+        self.assertEqual(实现.默认超时秒, 1800)
+        self.assertEqual(结果.值["超时秒"], 1800)
+        self.assertEqual(实现.连接表[句柄]["超时秒"], 1800)
+
+    def test_连接器契约默认超时与实现一致且流式只在生成对话(self) -> None:
+        包目录 = 系统根 / "支持库" / "后端" / "大语言模型支持库" / "模型连接器"
+        with (包目录 / "包声明.json").open(encoding="utf-8") as 文件:
+            包声明 = json.load(文件)
+        with (包目录 / "能力定义.json").open(encoding="utf-8") as 文件:
+            能力定义 = json.load(文件)
+        with (包目录 / "能力契约" / "参数契约.json").open(encoding="utf-8") as 文件:
+            参数契约 = json.load(文件)
+        with (包目录 / "能力数据" / "能力搜索数据.json").open(encoding="utf-8") as 文件:
+            能力搜索 = json.load(文件)
+
+        self.assertEqual(包声明["句柄超时秒"], 1800)
+        for 文档 in (包声明, 能力定义, 参数契约):
+            for 能力 in 文档.get("能力列表", 文档.get("能力契约", [])):
+                for 参数 in 能力.get("参数", []):
+                    if 参数.get("名称") == "超时秒":
+                        self.assertEqual(参数.get("默认值"), 1800)
+        for 能力 in 能力搜索:
+            说明 = 能力.get("说明", "")
+            self.assertNotIn("连接阶段流式输出", 说明)
+            self.assertNotIn("默认 300 秒", 说明)
+        说明书 = (包目录 / "说明" / "使用说明.md").read_text(encoding="utf-8")
+        self.assertNotIn("默认 300 秒", 说明书)
+        self.assertIn("默认 1800 秒", 说明书)
+        连接参数 = next(
+            能力 for 能力 in 能力定义["能力列表"]
+            if 能力["能力id"].endswith(".连接LLM")
+        )["参数"]
+        self.assertNotIn("流式输出", {参数["名称"] for 参数 in 连接参数})
+        生成参数 = next(
+            能力 for 能力 in 能力定义["能力列表"]
+            if 能力["能力id"].endswith(".生成对话")
+        )["参数"]
+        self.assertIn("流式输出", {参数["名称"] for 参数 in 生成参数})
+
     def test_连接LLM本地启动调用传入规范协议参数(self) -> None:
         from tempfile import NamedTemporaryFile
         from unittest.mock import patch
@@ -201,6 +256,10 @@ class 测试模型连接器通用协议(unittest.TestCase):
         self.assertIsInstance(结果.错误说明, str)
 
     def test_流式输出为真不得静默降级且返回结构化错误(self) -> None:
+        import inspect
+
+        self.assertIn("流式输出", inspect.signature(生成对话).parameters)
+        self.assertNotIn("流式输出", inspect.signature(连接LLM).parameters)
         句柄 = self._连接().值["句柄"]
         try:
             结果 = 生成对话(
