@@ -18,7 +18,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
@@ -711,6 +711,64 @@ def 生成对话(句柄: int | None = None, 消息列表: list = None,
     return _调用模型(句柄, "LLM", {
         "消息列表": 消息列表, "系统提示词": 系统提示词, "流式输出": 流式输出,
     })
+
+
+def _流式错误事件(错误码: str, 错误说明: str, *, 可重试: bool = False,
+               **详情: Any) -> dict[str, Any]:
+    事件: dict[str, Any] = {
+        "类型": "错误", "错误码": 错误码, "错误说明": 错误说明,
+        "可重试": 可重试,
+    }
+    事件.update(详情)
+    return 事件
+
+
+def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
+               系统提示词: str = None, 流式输出: bool = True) -> Iterator[dict[str, Any]]:
+    """按句柄配置调用 H 节点 Provider，并原样转发有限流式事件。
+
+    这是连接器内部/包级流式边界，不是 HTTP 路由。流式输出必须显式保持为
+    True；Provider 事件不聚合，返回的迭代器应消费至终态或由调用方 close。
+    """
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return iter((_流式错误事件("参数不合法", "句柄必须是1到999999的整数"),))
+    if not isinstance(消息列表, list) or not 消息列表:
+        return iter((_流式错误事件("参数不合法", "消息列表必须是非空列表"),))
+    if not isinstance(流式输出, bool):
+        return iter((_流式错误事件("参数不合法", "流式输出必须是逻辑型"),))
+    if not 流式输出:
+        return iter((_流式错误事件("参数不合法", "流式生成对话要求流式输出为真"),))
+
+    连接, 原因 = _取连接(句柄)
+    if 连接 is None:
+        return iter((_流式错误事件("句柄失效", 原因),))
+    if 连接.get("类型") != "LLM":
+        return iter((_流式错误事件(
+            "不支持流式连接类型", f"句柄 {句柄} 是 {连接.get('类型')} 连接，流式生成对话只支持 LLM",
+        ),))
+
+    配置 = dict(连接.get("配置") or {})
+    try:
+        from 支持库.适配层 import 模型HTTP提供者 as 提供者
+        上游迭代器 = 提供者.流式调用对话(
+            配置=配置, 消息列表=消息列表, 系统提示词=系统提示词,
+        )
+    except Exception as 错误:
+        return iter((_流式错误事件(
+            "模型流式调用失败", f"调用 Provider 流式对话失败：{错误}",
+            异常类型=type(错误).__name__,
+        ),))
+
+    def 转发() -> Iterator[dict[str, Any]]:
+        try:
+            yield from 上游迭代器
+        except Exception as 错误:
+            yield _流式错误事件(
+                "模型流式调用失败", f"Provider 流式迭代异常：{错误}",
+                异常类型=type(错误).__name__,
+            )
+
+    return 转发()
 
 
 def 生成嵌入(句柄: int | None = None, 文本: str = None) -> 结果:
