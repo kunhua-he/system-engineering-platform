@@ -126,7 +126,7 @@ class 本地网关服务器:
             凭证环境变量=str(self.配置.get("凭证环境变量", "系统库网关凭证")),
             请求大小上限=int(self.配置.get("请求大小上限", 1024 * 1024)),
             监听地址="127.0.0.1",
-            允许路径表=set(self.配置.get("允许路径表", {"/健康", "/网关/调用", "/网关/流式"})),
+            允许路径表=set(self.配置.get("允许路径表", {"/健康", "/网关/调用", "/网关/流式", "/网关/流式/取消"})),
             要求凭证=要求凭证,
             默认权限范围=set(self.配置.get("默认权限范围", {"查询", "调用", "任务"})),
             允许来源表=set(self.配置.get("允许来源表", set())),
@@ -134,6 +134,10 @@ class 本地网关服务器:
         )
         self.请求限制器 = 请求限制器(self.安全配置)
         self.凭证管理器 = 凭证管理器(self.安全配置.凭证环境变量)
+        # 流式通道与普通调用共用同一 HTTP 服务、线程预算和安全边界。
+        # 延迟导入避免 流式HTTP.py 的类型引用与本模块形成导入环。
+        from 运行核心.统一网关.流式HTTP import HTTP流式管理器
+        self.流式管理器 = HTTP流式管理器(最大并发通道数=self.并发上限)
         self.服务器: 有界线程HTTP服务器 | None = None
         self.线程: threading.Thread | None = None
 
@@ -192,6 +196,7 @@ class 本地网关服务器:
         请求限制器实例 = self.请求限制器
         凭证管理器实例 = self.凭证管理器
         安全配置实例 = self.安全配置
+        流式管理器实例 = self.流式管理器
 
         class 处理类(BaseHTTPRequestHandler):
             def setup(self) -> None:
@@ -389,6 +394,12 @@ class 本地网关服务器:
                 路径 = self._规范路径()
                 if not self._校验边界(路径):
                     return
+                if 路径 == "/网关/流式":
+                    self._处理流式网关请求()
+                    return
+                if 路径 == "/网关/流式/取消":
+                    self._处理流式取消请求()
+                    return
                 if 路径 != "/网关/调用":
                     self._拒绝(405, "方法不允许", "该路径不支持普通请求")
                     return
@@ -427,6 +438,136 @@ class 本地网关服务器:
             do_PATCH = _方法不允许
             do_DELETE = _方法不允许
             do_HEAD = _方法不允许
+
+            def _处理流式取消请求(self) -> None:
+                """按请求 id 取消同一 40007 服务中的流式通道。"""
+                读取成功, 请求数据, 错误说明 = self._读请求体()
+                if not 读取成功:
+                    self._拒绝(400, "参数不合法", 错误说明, "流式取消")
+                    return
+                if 禁止客户端身份 and any(
+                    str(请求数据.get(字段, ""))
+                    for 字段 in ("项目id", "用户id", "会话id", "任务id")
+                ):
+                    self._拒绝(403, "权限不足", "项目/用户/会话/任务身份必须由网关凭证注入", "流式取消")
+                    return
+                未知字段 = sorted(set(请求数据) - {"请求id"})
+                if 未知字段:
+                    self._拒绝(400, "参数不合法", "取消请求包含未知字段: " + ", ".join(map(str, 未知字段)), "流式取消")
+                    return
+                请求id = 请求数据.get("请求id", "")
+                if not isinstance(请求id, str) or not 请求id or len(请求id) > 64:
+                    self._拒绝(400, "参数不合法", "取消请求必须提供不超过64字符的请求id", "流式取消")
+                    return
+                成功 = 流式管理器实例.取消(请求id)
+                if not 成功:
+                    self._拒绝(404, "句柄无效", "流式请求不存在或已经结束", "流式取消")
+                    return
+                网关核心实例.审计.记录(
+                    操作="流式取消", 请求id=请求id, 成功=True,
+                    来源地址=self.client_address[0],
+                )
+                self._写JSON(200, {
+                    "请求id": 请求id, "操作": "流式取消", "成功": True,
+                    "值": {"已取消": True}, "错误码": "", "错误说明": "",
+                    "句柄": None, "耗时毫秒": 0.0,
+                })
+
+            def _处理流式网关请求(self) -> None:
+                """在同一 40007 HTTP 服务内逐事件转发模型连接器 SSE。"""
+                读取成功, 请求数据, 错误说明 = self._读请求体()
+                if not 读取成功:
+                    状态码 = 413 if "大小上限" in 错误说明 else 400
+                    self._拒绝(状态码, "参数不合法", 错误说明, "流式生成对话")
+                    return
+                允许字段 = {"能力id", "参数", "句柄", "请求id", "最大事件数", "最大持续秒"}
+                if 禁止客户端身份 and any(
+                    str(请求数据.get(字段, ""))
+                    for 字段 in ("项目id", "用户id", "会话id", "任务id")
+                ):
+                    self._拒绝(403, "权限不足", "项目/用户/会话/任务身份必须由网关凭证注入", "流式生成对话")
+                    return
+                未知字段 = sorted(set(请求数据) - 允许字段)
+                if 未知字段:
+                    self._拒绝(400, "参数不合法", "流式请求包含未知字段: " + ", ".join(map(str, 未知字段)), "流式生成对话")
+                    return
+                能力id = 请求数据.get("能力id", "")
+                目标能力 = "大语言模型支持库.模型连接器.生成对话"
+                if 能力id != 目标能力:
+                    self._拒绝(404, "能力不存在", "流式入口只支持模型连接器生成对话", "流式生成对话")
+                    return
+                参数 = 请求数据.get("参数")
+                if not isinstance(参数, dict):
+                    self._拒绝(400, "参数不合法", "流式参数必须是对象", "流式生成对话")
+                    return
+                参数 = dict(参数)
+                顶层句柄 = 请求数据.get("句柄")
+                参数句柄 = 参数.get("句柄")
+                if 顶层句柄 is not None and 参数句柄 is not None and 顶层句柄 != 参数句柄:
+                    self._拒绝(400, "参数不合法", "顶层句柄与参数句柄不一致", "流式生成对话")
+                    return
+                句柄 = 顶层句柄 if 顶层句柄 is not None else 参数句柄
+                if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+                    self._拒绝(400, "参数不合法", "句柄必须是 1 到 999999 的整数", "流式生成对话")
+                    return
+                消息列表 = 参数.get("消息列表")
+                if not isinstance(消息列表, list) or not 消息列表:
+                    self._拒绝(400, "参数不合法", "消息列表必须是非空列表", "流式生成对话")
+                    return
+                流式输出 = 参数.get("流式输出")
+                if 流式输出 is not True:
+                    self._拒绝(400, "参数不合法", "流式输出必须是逻辑型真值", "流式生成对话")
+                    return
+                请求id = str(请求数据.get("请求id", self.headers.get("X-请求-id", "")))[:64]
+                if not 请求id:
+                    请求id = uuid.uuid4().hex[:16]
+                try:
+                    最大事件数 = 请求数据.get("最大事件数", 1000)
+                    最大持续秒 = 请求数据.get("最大持续秒", 请求超时秒)
+                    def 事件生成函数(_停止事件):
+                        from 支持库.后端.大语言模型支持库.模型连接器 import 流式生成对话
+                        return 流式生成对话(
+                            句柄=句柄,
+                            消息列表=消息列表,
+                            系统提示词=参数.get("系统提示词"),
+                            流式输出=True,
+                        )
+                    通道 = 流式管理器实例.开始(
+                        能力id=能力id,
+                        事件生成函数=事件生成函数,
+                        请求id=请求id,
+                        最大事件数=最大事件数,
+                        最大持续秒=最大持续秒,
+                    )
+                except RuntimeError as 错误:
+                    self._拒绝(429, "限流", str(错误), "流式生成对话")
+                    return
+                except (TypeError, ValueError) as 错误:
+                    状态码 = 409 if "请求id已存在" in str(错误) else 400
+                    错误码 = "幂等键冲突" if 状态码 == 409 else "参数不合法"
+                    self._拒绝(状态码, 错误码, str(错误), "流式生成对话")
+                    return
+                网关核心实例.审计.记录(
+                    操作="流式生成对话", 能力id=能力id, 请求id=通道.请求id,
+                    成功=True, 来源地址=self.client_address[0],
+                )
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                    self.send_header("Cache-Control", "no-cache, no-transform")
+                    self.send_header("Connection", "close")
+                    self.send_header("X-Accel-Buffering", "no")
+                    self.end_headers()
+                    for 事件 in 通道.迭代事件():
+                        self.wfile.write(通道.格式事件行(事件))
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, OSError) as 错误:
+                    if isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断("流式写回断开", 错误)
+                    流式管理器实例.断开(通道.请求id)
+                finally:
+                    流式管理器实例.清理(通道.请求id)
+                    self.close_connection = True
 
             def _处理网关请求(self) -> None:
                 读取成功, 请求数据, 错误说明 = self._读请求体()
