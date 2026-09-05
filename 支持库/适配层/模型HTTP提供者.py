@@ -1,13 +1,14 @@
+# ruff: noqa: N999
 """模型 HTTP Provider：统一承接 LLM、向量、重排的本地/云端兼容协议。"""
 
 from __future__ import annotations
 
 import json
-import socket
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.有界IO import 受限读取
@@ -145,12 +146,28 @@ def _流式事件内容(数据: dict[str, Any], 协议: str) -> tuple[str, str |
     """提取单个已解码 SSE JSON 的文本、完成原因和用量。"""
     if isinstance(数据.get("error"), dict):
         错误 = 数据["error"]
-        raise ValueError(f"上游错误：{错误.get('message') or 错误}")
+        raise ValueError(f"上游错误：{错误.get('message') or 错误}")  # noqa: TRY004
     类型 = 数据.get("type")
     if 协议 == "codex_responses":
         if 类型 == "response.error":
             错误 = 数据.get("error") or {}
             raise ValueError(f"上游错误：{错误.get('message') or 错误}")
+        if 类型 in {
+            "response.created",
+            "response.in_progress",
+            "response.output_item.added",
+            "response.content_part.added",
+            "response.output_text.done",
+            "response.content_part.done",
+            "response.output_item.done",
+        }:
+            # Responses 生命周期事件只表示状态推进，不产生文本增量；
+            # 必须跳过而不是误判为畸形，终态仍由 response.completed 处理。
+            return "", None, {}
+        if 类型 in {"response.failed", "response.incomplete"}:
+            响应 = 数据.get("response") or {}
+            错误 = 响应.get("error") if isinstance(响应, dict) else None
+            raise ValueError(f"上游错误：{(错误 or {}).get('message') or 类型}")
         if 类型 == "response.output_text.delta":
             增量 = 数据.get("delta", "")
             if not isinstance(增量, str):
@@ -253,7 +270,7 @@ def _解析流式响应(响应: Any, 协议: str, *, 响应上限: int,
         _流式读取超时(响应, 剩余时间)
         try:
             块 = 响应.read(流式读取块大小)
-        except (socket.timeout, TimeoutError) as 异常:
+        except TimeoutError as 异常:
             yield 错误("超时", f"上游 SSE 读取超时：{异常 or '读取超时'}",
                        可重试=True, 异常类型=type(异常).__name__)
             return
@@ -368,7 +385,7 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
                 f"模型 HTTP 返回 {异常.code}", 状态码=异常.code,
                 可重试=异常.code >= 500, 异常类型=type(异常).__name__,
             )
-        except (socket.timeout, TimeoutError) as 异常:
+        except TimeoutError as 异常:
             yield _流式错误("超时", f"模型 HTTP 请求超时：{异常 or '请求超时'}",
                            可重试=True, 异常类型=type(异常).__name__)
         except (urllib.error.URLError, OSError) as 异常:

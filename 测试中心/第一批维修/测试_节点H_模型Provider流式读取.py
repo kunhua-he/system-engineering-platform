@@ -2,18 +2,18 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import sys
 
 系统根 = Path(__file__).resolve().parents[2]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 支持库.适配层 import 模型HTTP提供者 as 提供者  # noqa: E402
+from 支持库.适配层 import 模型HTTP提供者 as 提供者
 
 
 class 可复用HTTP服务(ThreadingHTTPServer):
@@ -71,19 +71,26 @@ class SSE夹具:
                     夹具._写入(self, [
                         b": keepalive\n\n",
                         b"event: chunk\n",
-                        'data: {"choices":[{"delta":{"content":"你"}}]}\n\n'.encode("utf-8"),
-                        'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'.encode("utf-8"),
+                        'data: {"choices":[{"delta":{"content":"你"}}]}\n\n'.encode(),
+                        'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'.encode(),
                         b"data: [DONE]\n\n",
                     ])
                 elif 夹具.模式 == "codex":
                     夹具._写入(self, [
-                        'data: {"type":"response.output_text.delta","delta":"甲"}\n\n'.encode("utf-8"),
-                        'data: {"type":"response.output_text.delta","delta":"乙"}\n\n'.encode("utf-8"),
-                        'data: {"type":"response.completed","response":{"usage":{"input_tokens":1}}}\n\n'.encode("utf-8"),
+                        b'event: response.created\ndata: {"type":"response.created","response":{"status":"in_progress"}}\n\n',
+                        b'event: response.in_progress\ndata: {"type":"response.in_progress","response":{"status":"in_progress"}}\n\n',
+                        b'event: response.output_item.added\ndata: {"type":"response.output_item.added","item":{"type":"message"}}\n\n',
+                        b'event: response.content_part.added\ndata: {"type":"response.content_part.added","part":{"type":"output_text"}}\n\n',
+                        'data: {"type":"response.output_text.delta","delta":"甲"}\n\n'.encode(),
+                        'data: {"type":"response.output_text.delta","delta":"乙"}\n\n'.encode(),
+                        'event: response.output_text.done\ndata: {"type":"response.output_text.done","text":"甲乙"}\n\n'.encode(),
+                        'event: response.content_part.done\ndata: {"type":"response.content_part.done","part":{"type":"output_text","text":"甲乙"}}\n\n'.encode(),
+                        b'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message"}}\n\n',
+                        b'event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":1}}}\n\n',
                     ])
                 elif 夹具.模式 == "错误":
                     夹具._写入(self, [
-                        'data: {"error":{"type":"invalid_request_error","message":"上游拒绝"}}\n\n'.encode("utf-8"),
+                        'data: {"error":{"type":"invalid_request_error","message":"上游拒绝"}}\n\n'.encode(),
                     ])
                 elif 夹具.模式 == "畸形":
                     夹具._写入(self, [b"data: {not-json}\n\n"])
@@ -91,7 +98,7 @@ class SSE夹具:
                     夹具._写入(self, [b'data: {"choices":[{"delta":{"content":"' + b"x" * 300 + b'"}}]}\n\n'])
                 elif 夹具.模式 == "断开":
                     夹具._写入(self, [
-                        'data: {"choices":[{"delta":{"content":"未完成"}}]}\n\n'.encode("utf-8"),
+                        'data: {"choices":[{"delta":{"content":"未完成"}}]}\n\n'.encode(),
                     ])
                 elif 夹具.模式 == "超时":
                     time.sleep(0.2)
