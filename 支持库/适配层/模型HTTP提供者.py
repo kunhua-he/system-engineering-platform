@@ -14,8 +14,9 @@ from 公共契约.运行时.有界IO import 受限读取
 响应上限字节 = 1024 * 1024
 
 
-def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
-    return 结果.失败(错误码, 消息, 来源=来源, 可重试=可重试)
+def _失败(错误码: str, 消息: str, *, 可重试: bool = False,
+        详情: dict[str, Any] | None = None) -> 结果:
+    return 结果.失败(错误码, 消息, 来源=来源, 可重试=可重试, 详情=详情)
 
 
 def _端点(配置: dict[str, Any], 后缀: str) -> str:
@@ -52,7 +53,10 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any]) -> tupl
                 return 响应.status, None, f"响应超过读取上限 {响应上限字节} 字节"
             return 响应.status, json.loads(正文.decode("utf-8")), ""
     except urllib.error.HTTPError as 错误:
-        return 错误.code, None, f"HTTP {错误.code}"
+        try:
+            return 错误.code, None, f"HTTP {错误.code}"
+        finally:
+            错误.close()
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:
         return 0, None, str(错误)
     except (json.JSONDecodeError, UnicodeDecodeError) as 错误:
@@ -101,11 +105,27 @@ def _文本(数据: dict[str, Any]) -> str:
     return ""
 
 
-def 调用对话(*, 配置: dict[str, Any], 消息列表: list, 系统提示词: str | None = None) -> 结果:
+def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
+           系统提示词: str | None = None, 流式输出: bool = False) -> 结果:
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
-    载荷 = {"model": 配置.get("模型名", ""), "messages": _消息列表(消息列表, 系统提示词), "stream": False}
-    状态码, 数据, 说明 = _请求(配置, "/chat/completions", 载荷)
+    if 流式输出 is True:
+        return _失败(
+            "流式能力未装配",
+            "流式输出已请求，但40007网关尚未装配模型SSE传输，待补网关流；未伪造完成结果",
+            详情={"流式输出": True, "协议": 配置.get("协议", "chat_completions"), "网关": "40007"},
+        )
+    if not isinstance(流式输出, bool):
+        return _失败("参数不合法", "流式输出必须是逻辑型")
+    协议 = 配置.get("协议", "chat_completions")
+    消息 = _消息列表(消息列表, 系统提示词)
+    if 协议 == "codex_responses":
+        路径, 载荷 = "/responses", {"model": 配置.get("模型名", ""), "input": 消息, "stream": False}
+    elif 协议 == "chat_completions":
+        路径, 载荷 = "/chat/completions", {"model": 配置.get("模型名", ""), "messages": 消息, "stream": False}
+    else:
+        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+    状态码, 数据, 说明 = _请求(配置, 路径, 载荷)
     if 状态码 >= 400 or not 数据:
         return _错误响应(状态码, 说明)
     回复 = _文本(数据)

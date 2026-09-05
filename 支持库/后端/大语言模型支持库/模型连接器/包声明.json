@@ -75,6 +75,13 @@
           "说明": "上下文窗口"
         },
         {
+          "名称": "协议",
+          "类型": "文本型",
+          "必填": false,
+          "默认值": "chat_completions",
+          "说明": "请求协议：chat_completions 或 codex_responses"
+        },
+        {
           "名称": "超时秒",
           "类型": "整数型",
           "必填": false,
