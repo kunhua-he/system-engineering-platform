@@ -9,6 +9,7 @@ Provider 作为其内部受管边界被直接引用，不重复占用会话能�
 
 from __future__ import annotations
 
+from 公共契约.基础类型.结果类型 import 结果
 from 支持库.适配层.浏览器自动化提供者.实现.提供者 import 浏览器自动化提供者
 
 __all__ = ["浏览器自动化提供者", "注册能力"]
@@ -20,8 +21,16 @@ def 注册能力(注册表) -> None:
 
     提供者 = 浏览器自动化提供者()
 
-    def 检查可用() -> dict:
-        return 提供者.检查可用()
+    def 检查可用() -> 结果:
+        """检查 Browser Use/agent-browser 命令可用性，返回统一结果。"""
+        原始 = 提供者.检查可用()
+        if 原始.get("成功"):
+            return 结果.成功结果(原始.get("值") or {})
+        return 结果.失败(
+            str(原始.get("错误码") or "提供者不可用"),
+            str(原始.get("错误说明") or "browser-use/uvx 未安装"),
+            来源="浏览器自动化提供者",
+        )
 
     注册表.注册(
         能力实现(
