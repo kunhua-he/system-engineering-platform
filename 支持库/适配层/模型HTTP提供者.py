@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 import json
+import socket
+import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, Iterator
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.有界IO import 受限读取
 
 来源 = "模型HTTP提供者"
 响应上限字节 = 1024 * 1024
+流式响应上限字节 = 1024 * 1024
+流式事件上限字节 = 64 * 1024
+流式事件数量上限 = 10000
+流式读取块大小 = 4096
 
 
-def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
-    return 结果.失败(错误码, 消息, 来源=来源, 可重试=可重试)
+def _失败(错误码: str, 消息: str, *, 可重试: bool = False,
+        详情: dict[str, Any] | None = None) -> 结果:
+    return 结果.失败(错误码, 消息, 来源=来源, 可重试=可重试, 详情=详情)
 
 
 def _端点(配置: dict[str, Any], 后缀: str) -> str:
@@ -52,7 +59,10 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any]) -> tupl
                 return 响应.status, None, f"响应超过读取上限 {响应上限字节} 字节"
             return 响应.status, json.loads(正文.decode("utf-8")), ""
     except urllib.error.HTTPError as 错误:
-        return 错误.code, None, f"HTTP {错误.code}"
+        try:
+            return 错误.code, None, f"HTTP {错误.code}"
+        finally:
+            错误.close()
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:
         return 0, None, str(错误)
     except (json.JSONDecodeError, UnicodeDecodeError) as 错误:
@@ -101,11 +111,294 @@ def _文本(数据: dict[str, Any]) -> str:
     return ""
 
 
-def 调用对话(*, 配置: dict[str, Any], 消息列表: list, 系统提示词: str | None = None) -> 结果:
+
+
+def _流式错误(错误码: str, 错误说明: str, *, 可重试: bool = False,
+           **详情: Any) -> dict[str, Any]:
+    事件: dict[str, Any] = {
+        "类型": "错误", "错误码": 错误码, "错误说明": 错误说明,
+        "可重试": 可重试,
+    }
+    事件.update(详情)
+    return 事件
+
+
+def _流式完成(完成原因: str, 用量: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "类型": "完成", "文本": "", "完成原因": 完成原因,
+        "用量": 用量 if isinstance(用量, dict) else {},
+    }
+
+
+def _流式读取超时(响应: Any, 秒: float) -> None:
+    """把本次读取的 socket 空闲超时收紧到总截止时间，尽量避免阻塞超出预算。"""
+    try:
+        套接字 = 响应.fp.raw._sock
+        套接字.settimeout(max(0.001, 秒))
+    except (AttributeError, OSError):
+        # urllib 的底层对象在不同 Python 版本可能没有公开 socket 路径；
+        # opener.open 的 timeout 仍提供空闲读取上限。
+        pass
+
+
+def _流式事件内容(数据: dict[str, Any], 协议: str) -> tuple[str, str | None, dict[str, Any]]:
+    """提取单个已解码 SSE JSON 的文本、完成原因和用量。"""
+    if isinstance(数据.get("error"), dict):
+        错误 = 数据["error"]
+        raise ValueError(f"上游错误：{错误.get('message') or 错误}")
+    类型 = 数据.get("type")
+    if 协议 == "codex_responses":
+        if 类型 == "response.error":
+            错误 = 数据.get("error") or {}
+            raise ValueError(f"上游错误：{错误.get('message') or 错误}")
+        if 类型 == "response.output_text.delta":
+            增量 = 数据.get("delta", "")
+            if not isinstance(增量, str):
+                raise TypeError("Responses 增量 delta 必须是字符串")
+            return 增量, None, {}
+        if 类型 == "response.completed":
+            回复 = 数据.get("response") or {}
+            用量 = 回复.get("usage") if isinstance(回复, dict) else {}
+            return "", "completed", 用量 if isinstance(用量, dict) else {}
+        raise LookupError(f"未知 Responses SSE 事件类型：{类型!r}")
+
+    选择列表 = 数据.get("choices")
+    if not isinstance(选择列表, list) or not 选择列表 or not isinstance(选择列表[0], dict):
+        raise LookupError("Chat SSE 缺少 choices")
+    选择 = 选择列表[0]
+    完成原因 = 选择.get("finish_reason")
+    增量对象 = 选择.get("delta") or 选择.get("message") or {}
+    if not isinstance(增量对象, dict):
+        raise TypeError("Chat SSE 的 delta/message 必须是对象")
+    增量 = 增量对象.get("content", "")
+    if isinstance(增量, list):
+        增量 = "".join(
+            str(项.get("text", "")) for 项 in 增量 if isinstance(项, dict)
+        )
+    if not isinstance(增量, str):
+        raise TypeError("Chat SSE 的 content 必须是字符串或内容列表")
+    用量 = 数据.get("usage")
+    return 增量, 完成原因 if isinstance(完成原因, str) else None, 用量 if isinstance(用量, dict) else {}
+
+
+def _解析流式响应(响应: Any, 协议: str, *, 响应上限: int,
+               事件上限: int, 事件数量上限: int, 超时时间: float) -> Iterator[dict[str, Any]]:
+    """按 SSE 行和事件边界读取上游，不把整个响应当作 JSON。"""
+    缓冲 = bytearray()
+    数据行: list[bytes] = []
+    总字节数 = 0
+    事件字节数 = 0
+    事件数量 = 0
+    已完成 = False
+    完成原因 = "stop"
+    截止时间 = time.monotonic() + 超时时间
+
+    def 错误(错误码: str, 说明: str, **详情: Any) -> dict[str, Any]:
+        return _流式错误(错误码, 说明, **详情)
+
+    def 处理事件() -> tuple[list[dict[str, Any]], bool]:
+        nonlocal 数据行, 事件字节数, 事件数量, 已完成, 完成原因
+        if not 数据行:
+            事件字节数 = 0
+            return [], False
+        事件数量 += 1
+        文本数据 = b"\n".join(数据行)
+        数据行 = []
+        事件字节数 = 0
+        if 事件数量 > 事件数量上限:
+            return [错误("事件数量超限", f"SSE 事件数量超过上限 {事件数量上限}",
+                         上限数量=事件数量上限)], True
+        try:
+            文本 = 文本数据.decode("utf-8")
+        except UnicodeDecodeError as 异常:
+            return [错误("事件格式错误", f"SSE 数据不是 UTF-8：{异常}",
+                         异常类型=type(异常).__name__)], True
+        if 文本.strip() == "[DONE]":
+            if 已完成:
+                return [], False
+            已完成 = True
+            return [_流式完成(完成原因)], True
+        try:
+            数据 = json.loads(文本)
+            if not isinstance(数据, dict):
+                raise TypeError("SSE data 必须是 JSON 对象")
+            增量, 原因, 用量 = _流式事件内容(数据, 协议)
+        except ValueError as 异常:
+            说明 = str(异常)
+            if 说明.startswith("上游错误："):
+                return [错误("上游错误", 说明.removeprefix("上游错误："),
+                             异常类型=type(异常).__name__)], True
+            return [错误("事件格式错误", f"SSE JSON 无效：{说明}",
+                         异常类型=type(异常).__name__)], True
+        except (TypeError, LookupError, json.JSONDecodeError) as 异常:
+            return [错误("事件格式错误", f"SSE 事件结构无效：{异常}",
+                         异常类型=type(异常).__name__)], True
+        结果: list[dict[str, Any]] = []
+        if 增量:
+            结果.append({"类型": "增量", "文本": 增量})
+        if 原因 is not None:
+            已完成 = True
+            完成原因 = 原因
+            结果.append(_流式完成(原因, 用量))
+        elif 数据.get("type") == "response.completed":
+            已完成 = True
+            结果.append(_流式完成("completed", 用量))
+        return 结果, bool(结果 and 已完成)
+
+    while True:
+        剩余时间 = 截止时间 - time.monotonic()
+        if 剩余时间 <= 0:
+            yield 错误("超时", f"上游 SSE 读取超过 {超时时间:g} 秒", 可重试=True)
+            return
+        _流式读取超时(响应, 剩余时间)
+        try:
+            块 = 响应.read(流式读取块大小)
+        except (socket.timeout, TimeoutError) as 异常:
+            yield 错误("超时", f"上游 SSE 读取超时：{异常 or '读取超时'}",
+                       可重试=True, 异常类型=type(异常).__name__)
+            return
+        except (OSError, urllib.error.URLError) as 异常:
+            yield 错误("上游断开", f"上游 SSE 读取中断：{异常}",
+                       可重试=True, 异常类型=type(异常).__name__)
+            return
+        if not 块:
+            break
+        总字节数 += len(块)
+        if 总字节数 > 响应上限:
+            yield 错误("响应超限", f"SSE 响应超过读取上限 {响应上限} 字节",
+                       上限字节=响应上限)
+            return
+        缓冲.extend(块)
+        while b"\n" in 缓冲:
+            行, _, 剩余 = 缓冲.partition(b"\n")
+            缓冲 = bytearray(剩余)
+            if 行.endswith(b"\r"):
+                行 = 行[:-1]
+            if not 行:
+                事件, 终止 = 处理事件()
+                yield from 事件
+                if 终止:
+                    return
+                continue
+            if 行.startswith(b":"):
+                continue
+            if 行.startswith(b"data:"):
+                内容 = 行[5:]
+                if 内容.startswith(b" "):
+                    内容 = 内容[1:]
+                事件字节数 += len(内容)
+                if 事件字节数 > 事件上限:
+                    yield 错误("事件超限", f"单个 SSE 事件超过上限 {事件上限} 字节",
+                               上限字节=事件上限)
+                    return
+                数据行.append(bytes(内容))
+                continue
+            if 行.startswith((b"event:", b"id:", b"retry:")):
+                continue
+            yield 错误("事件格式错误", "SSE 含有无法识别的字段",
+                       字段=行[:64].decode("ascii", errors="replace"))
+            return
+    if 缓冲.strip() or 数据行:
+        if 缓冲.strip():
+            yield 错误("事件格式错误", "SSE 响应以未结束的事件行结尾")
+            return
+        事件, 终止 = 处理事件()
+        yield from 事件
+        if 终止:
+            return
+    if not 已完成:
+        yield 错误("上游断开", "上游 SSE 在完成事件前断开", 可重试=True)
+
+
+def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
+             系统提示词: str | None = None) -> Iterator[dict[str, Any]]:
+    """读取模型 Provider SSE；调用方必须消费或显式 close 返回的有限迭代器。"""
+    if not isinstance(消息列表, list) or not 消息列表:
+        return iter((_流式错误("参数不合法", "消息列表必须是非空列表"),))
+    协议别名表 = {
+        "chat": "chat_completions", "chat_completions": "chat_completions",
+        "res": "codex_responses", "codex_responses": "codex_responses",
+    }
+    协议 = 协议别名表.get(配置.get("协议", "chat_completions"))
+    if 协议 is None:
+        return iter((_流式错误("参数不合法", "协议必须是 chat_completions 或 codex_responses"),))
+    try:
+        超时时间 = float(配置.get("请求超时秒") or 120)
+        响应上限 = int(配置.get("流式响应上限字节") or 流式响应上限字节)
+        事件上限 = int(配置.get("流式事件上限字节") or 流式事件上限字节)
+        数量上限 = int(配置.get("流式事件数量上限") or 流式事件数量上限)
+    except (TypeError, ValueError):
+        return iter((_流式错误("参数不合法", "流式超时和响应上限必须是正数"),))
+    if 超时时间 <= 0 or 响应上限 <= 0 or 事件上限 <= 0 or 数量上限 <= 0:
+        return iter((_流式错误("参数不合法", "流式超时和响应上限必须是正数"),))
+    地址 = _端点(配置, "/responses" if 协议 == "codex_responses" else "/chat/completions")
+    if not 地址:
+        return iter((_流式错误("提供者不可用", "未配置模型 HTTP 地址", 可重试=True),))
+    消息 = _消息列表(消息列表, 系统提示词)
+    if 协议 == "codex_responses":
+        载荷 = {"model": 配置.get("模型名", ""), "input": 消息, "stream": True}
+    else:
+        载荷 = {"model": 配置.get("模型名", ""), "messages": 消息, "stream": True}
+    请求头 = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    if 配置.get("api_key"):
+        请求头["Authorization"] = f"Bearer {配置['api_key']}"
+    请求 = urllib.request.Request(
+        地址, data=json.dumps(载荷, ensure_ascii=False).encode("utf-8"),
+        headers=请求头, method="POST",
+    )
+
+    def 读取() -> Iterator[dict[str, Any]]:
+        try:
+            开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with 开放器.open(请求, timeout=超时时间) as 响应:
+                if 响应.status >= 400:
+                    yield _流式错误(
+                        "上游错误", f"模型 HTTP 返回 {响应.status}",
+                        状态码=响应.status, 可重试=响应.status >= 500,
+                    )
+                    return
+                yield from _解析流式响应(
+                    响应, 协议, 响应上限=响应上限, 事件上限=事件上限,
+                    事件数量上限=数量上限, 超时时间=超时时间,
+                )
+        except urllib.error.HTTPError as 异常:
+            异常.close()
+            yield _流式错误(
+                "认证失败" if 异常.code in (401, 403) else "上游错误",
+                f"模型 HTTP 返回 {异常.code}", 状态码=异常.code,
+                可重试=异常.code >= 500, 异常类型=type(异常).__name__,
+            )
+        except (socket.timeout, TimeoutError) as 异常:
+            yield _流式错误("超时", f"模型 HTTP 请求超时：{异常 or '请求超时'}",
+                           可重试=True, 异常类型=type(异常).__name__)
+        except (urllib.error.URLError, OSError) as 异常:
+            yield _流式错误("提供者不可用", f"模型 HTTP Provider 不可用：{异常}",
+                           可重试=True, 异常类型=type(异常).__name__)
+
+    return 读取()
+
+
+def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
+           系统提示词: str | None = None, 流式输出: bool = False) -> 结果:
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
-    载荷 = {"model": 配置.get("模型名", ""), "messages": _消息列表(消息列表, 系统提示词), "stream": False}
-    状态码, 数据, 说明 = _请求(配置, "/chat/completions", 载荷)
+    if 流式输出 is True:
+        return _失败(
+            "流式能力未装配",
+            "流式输出已请求，但40007网关尚未装配模型SSE传输，待补网关流；未伪造完成结果",
+            详情={"流式输出": True, "协议": 配置.get("协议", "chat_completions"), "网关": "40007"},
+        )
+    if not isinstance(流式输出, bool):
+        return _失败("参数不合法", "流式输出必须是逻辑型")
+    协议 = 配置.get("协议", "chat_completions")
+    消息 = _消息列表(消息列表, 系统提示词)
+    if 协议 == "codex_responses":
+        路径, 载荷 = "/responses", {"model": 配置.get("模型名", ""), "input": 消息, "stream": False}
+    elif 协议 == "chat_completions":
+        路径, 载荷 = "/chat/completions", {"model": 配置.get("模型名", ""), "messages": 消息, "stream": False}
+    else:
+        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+    状态码, 数据, 说明 = _请求(配置, 路径, 载荷)
     if 状态码 >= 400 or not 数据:
         return _错误响应(状态码, 说明)
     回复 = _文本(数据)
