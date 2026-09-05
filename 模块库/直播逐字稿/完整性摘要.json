@@ -57,11 +57,15 @@
     },
     {
       "路径": "验证场景/正向HTTP场景.json",
-      "sha256": "60322844a1e830d60621d366c260e630fcab4a854c84b3d214027ad397a05ea4"
+      "sha256": "b52e0573290f9dfc7fb498f219303c9e4aeaa8ccb27363593678e03f0953deba"
     },
     {
       "路径": "验证场景引用.json",
       "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
+    },
+    {
+      "路径": "验证夹具/转写成功.wav",
+      "sha256": "ddbdc71f848efdf90a62f399a4123df2dd6d3262b2221f8512a15c0aad7ce9de"
     }
   ]
 }

@@ -58,9 +58,15 @@ class Test浏览器宿主(unittest.TestCase):
             请求 = urllib.request.Request(
                 地址 + "/api/%E8%B0%83%E7%94%A8", data=b"{}",
                 headers={"Content-Type": "application/json"}, method="POST")
-            with self.assertRaises(urllib.error.HTTPError) as 上下文:
+            try:
                 urllib.request.urlopen(请求, timeout=2)
-            self.assertEqual(上下文.exception.code, 404)
+            except urllib.error.HTTPError as 错误:
+                try:
+                    错误.close()
+                finally:
+                    self.assertEqual(错误.code, 404)
+            else:
+                self.fail("旧 API 应返回 404")
         finally:
             服务.shutdown()
             服务.server_close()
