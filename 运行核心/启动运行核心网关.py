@@ -27,7 +27,7 @@ if not 成功:
     print(f"运行核心网关启动失败: {说明}")
     sys.exit(1)
 print(f"运行核心网关已启动: http://127.0.0.1:40007")
-print(f"接口: POST /网关/调用  GET /健康（调用需凭证）")
+print(f"接口: POST /网关/调用  POST /网关/流式  GET /健康（调用需凭证）")
 import time
 while True:
     time.sleep(3600)
