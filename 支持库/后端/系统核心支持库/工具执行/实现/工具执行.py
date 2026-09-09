@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -68,3 +69,129 @@ def 清理执行记录(执行id: str = None) -> 结果:
     with 锁:
         存在 = 执行记录表.pop(执行id, None)
     return 结果.成功结果({"执行id": 执行id, "已清理": 存在 is not None})
+
+
+
+# ═══════════════════════════════════════════════
+# 认领投递：Hermes claim_completion_delivery 模式化落地
+# SQLite 落库（重启不丢）+ 认领（原子取出）+ 超时补投（重启恢复）。
+# 0加密0限制：负载原文存取，脱敏由业务端自理。
+# ═══════════════════════════════════════════════
+import sqlite3 as _sqlite3
+import os as _os
+
+投递默认库路径 = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "..", "工程缓存", "认领投递.db")
+
+
+def _投递连接(库路径: str):
+    _os.makedirs(_os.path.dirname(库路径), exist_ok=True)
+    连接 = _sqlite3.connect(库路径, timeout=5)
+    连接.execute("""CREATE TABLE IF NOT EXISTS 投递表 (
+        投递id TEXT PRIMARY KEY,
+        队列名 TEXT NOT NULL,
+        负载 TEXT NOT NULL,
+        状态 TEXT DEFAULT '待认领',
+        认领者 TEXT,
+        认领时间 TEXT,
+        完成时间 TEXT,
+        结果 TEXT,
+        创建时间 TEXT NOT NULL
+    )""")
+    连接.execute("CREATE INDEX IF NOT EXISTS idx_投递_队列 ON 投递表(队列名, 状态, 创建时间)")
+    连接.commit()
+    return 连接
+
+
+def 登记投递(*, 队列名: str = None, 负载: dict = None, 库路径: str = None) -> 结果:
+    """登记一条投递（落 SQLite，重启不丢）。返回 投递id。"""
+    if not isinstance(队列名, str) or not 队列名.strip():
+        return 结果.失败("参数不合法", "队列名必须是非空字符串", 来源="工具执行")
+    if not isinstance(负载, dict):
+        return 结果.失败("参数不合法", "负载必须是字典型", 来源="工具执行")
+    投递id = uuid.uuid4().hex[:16]
+    路径 = 库路径 or 投递默认库路径
+    try:
+        with 锁, _投递连接(路径) as 连接:
+            连接.execute("INSERT INTO 投递表 VALUES (?,?,?,?,?,?,?,?,?)",
+                          (投递id, 队列名, json.dumps(负载, ensure_ascii=False), "待认领",
+                           None, None, None, None,
+                           time.strftime("%Y-%m-%d %H:%M:%S")))
+        return 结果.成功结果({"投递id": 投递id, "队列名": 队列名, "状态": "待认领"})
+    except Exception as 错误:
+        return 结果.失败("登记投递失败", str(错误), 来源="工具执行")
+
+
+def 认领投递(*, 队列名: str = None, 认领者: str = None, 库路径: str = None) -> 结果:
+    """原子认领最早一条待认领投递。返回 {投递id, 负载}；无则 无待认领。"""
+    if not isinstance(队列名, str) or not 队列名.strip():
+        return 结果.失败("参数不合法", "队列名必须是非空字符串", 来源="工具执行")
+    路径 = 库路径 or 投递默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.成功结果({"认领": False, "原因": "队列为空"})
+    try:
+        with 锁, _投递连接(路径) as 连接:
+            行 = 连接.execute(
+                "SELECT 投递id, 负载 FROM 投递表 WHERE 队列名=? AND 状态='待认领' "
+                "ORDER BY rowid ASC LIMIT 1",
+                (队列名,)).fetchone()
+            if 行 is None:
+                return 结果.成功结果({"认领": False, "原因": "队列为空"})
+            连接.execute("UPDATE 投递表 SET 状态='已认领', 认领者=?, 认领时间=? WHERE 投递id=?",
+                          (认领者 or "匿名", time.strftime("%Y-%m-%d %H:%M:%S"), 行[0]))
+        return 结果.成功结果({"认领": True, "投递id": 行[0], "负载": json.loads(行[1]),
+                             "认领者": 认领者 or "匿名"})
+    except Exception as 错误:
+        return 结果.失败("认领投递失败", str(错误), 来源="工具执行")
+
+
+def 完成投递(*, 投递id: str = None, 成功: bool = None, 结果值: dict = None,
+             库路径: str = None) -> 结果:
+    """投递完成登记（成功/失败）。"""
+    if not isinstance(投递id, str) or not 投递id.strip():
+        return 结果.失败("参数不合法", "投递id必须是非空字符串", 来源="工具执行")
+    路径 = 库路径 or 投递默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.失败("投递不存在", f"投递 {投递id} 不存在", 来源="工具执行")
+    try:
+        with 锁, _投递连接(路径) as 连接:
+            行 = 连接.execute("SELECT 状态 FROM 投递表 WHERE 投递id=?", (投递id,)).fetchone()
+            if 行 is None:
+                return 结果.失败("投递不存在", f"投递 {投递id} 不存在", 来源="工具执行")
+            新状态 = "已完成" if 成功 else "已失败"
+            连接.execute("UPDATE 投递表 SET 状态=?, 完成时间=?, 结果=? WHERE 投递id=?",
+                          (新状态, time.strftime("%Y-%m-%d %H:%M:%S"),
+                           json.dumps(结果值 or {}, ensure_ascii=False), 投递id))
+        return 结果.成功结果({"投递id": 投递id, "状态": 新状态})
+    except Exception as 错误:
+        return 结果.失败("完成投递失败", str(错误), 来源="工具执行")
+
+
+def 补投超时(*, 队列名: str = None, 超时秒: int = None, 库路径: str = None) -> 结果:
+    """扫描已认领但超时未完成的投递，状态改回待认领（重启补投语义）。"""
+    if not isinstance(队列名, str) or not 队列名.strip():
+        return 结果.失败("参数不合法", "队列名必须是非空字符串", 来源="工具执行")
+    路径 = 库路径 or 投递默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.成功结果({"补投数": 0, "投递id列表": []})
+    阈值秒 = max(0, int(超时秒 if 超时秒 is not None else 60))
+    try:
+        with 锁, _投递连接(路径) as 连接:
+            截止 = time.time() - 阈值秒
+            行们 = 连接.execute(
+                "SELECT 投递id FROM 投递表 WHERE 队列名=? AND 状态='已认领' "
+                "AND 认领时间 IS NOT NULL",
+                (队列名,)).fetchall()
+            重投列表 = []
+            for (投递id,) in 行们:
+                认领行 = 连接.execute("SELECT 认领时间 FROM 投递表 WHERE 投递id=?", (投递id,)).fetchone()
+                try:
+                    认领时间戳 = time.mktime(time.strptime(认领行[0], "%Y-%m-%d %H:%M:%S"))
+                except Exception:
+                    continue
+                if 认领时间戳 <= 截止:
+                    连接.execute("UPDATE 投递表 SET 状态='待认领', 认领者=NULL, 认领时间=NULL WHERE 投递id=?",
+                                  (投递id,))
+                    重投列表.append(投递id)
+        return 结果.成功结果({"补投数": len(重投列表), "投递id列表": 重投列表})
+    except Exception as 错误:
+        return 结果.失败("补投超时失败", str(错误), 来源="工具执行")
