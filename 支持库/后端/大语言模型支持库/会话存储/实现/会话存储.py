@@ -48,6 +48,7 @@ def _包申报超时() -> int:
 _建表语句 = """
 CREATE TABLE IF NOT EXISTS 会话表(
   会话id TEXT PRIMARY KEY,
+  父会话id TEXT,
   用户id TEXT,
   模型名 TEXT,
   标题 TEXT,
@@ -85,7 +86,12 @@ def _连接(库路径: str) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(库路径), exist_ok=True)
     连接 = sqlite3.connect(库路径, timeout=10)
     连接.executescript(_建表语句)
-    连接.commit()
+    # 兼容旧库：幂等补 父会话id 列（已有则忽略）
+    try:
+        连接.execute("ALTER TABLE 会话表 ADD COLUMN 父会话id TEXT")
+        连接.commit()
+    except Exception:
+        pass
     return 连接
 
 
@@ -180,7 +186,7 @@ def _更新活动(句柄: int) -> None:
 
 # ── 持句柄操作 ───────────────────────────────────
 
-def 创建会话(句柄: int = None, 用户id: str = None, 模型名: str = None, 标题: str = None) -> 结果:
+def 创建会话(句柄: int = None, 用户id: str = None, 模型名: str = None, 标题: str = None, 父会话id: str = None) -> 结果:
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
     有效, 原因 = _校验句柄(句柄)
@@ -358,3 +364,103 @@ def 查询会话(句柄: int = None, 会话id: str = None) -> 结果:
                                 "状态": 行[3], "压缩次数": 行[4], "创建时间": 行[5], "消息数": 消息数})
     except Exception as 错误:
         return 结果.失败("查询会话失败", str(错误), 来源="会话存储")
+
+
+
+# ═══════════════════════════════════════════════
+# 子会话树：OpenCode session-tree 模式化落地
+# 子代理=新会话+父会话id（parentID 构建会话树），天然支持续跑与审计。
+# ═══════════════════════════════════════════════
+def 创建子会话(句柄: int = None, 父会话id: str = None, 用户id: str = None,
+              模型名: str = None, 标题: str = None) -> 结果:
+    """在指定父会话下创建子会话（校验父会话存在）。"""
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
+    有效, 原因 = _校验句柄(句柄)
+    if not 有效:
+        return 结果.失败("句柄失效", 原因, 来源="会话存储")
+    if not isinstance(父会话id, str) or not 父会话id.strip():
+        return 结果.失败("参数不合法", "父会话id必须是非空字符串", 来源="会话存储")
+    if not isinstance(用户id, str) or not 用户id.strip():
+        return 结果.失败("参数不合法", "用户id必须是非空字符串", 来源="会话存储")
+    路径 = _取库路径(句柄)
+    try:
+        with 锁, _连接(路径) as 连接:
+            # 校验父会话存在
+            父行 = 连接.execute("SELECT 会话id FROM 会话表 WHERE 会话id=?", (父会话id,)).fetchone()
+            if 父行 is None:
+                return 结果.失败("父会话不存在", f"父会话 {父会话id} 不存在", 来源="会话存储")
+            会话id = uuid.uuid4().hex[:16]
+            连接.execute("INSERT INTO 会话表(会话id, 父会话id, 用户id, 模型名, 标题, 创建时间, 更新时间) VALUES (?,?,?,?,?,?,?)",
+                          (会话id, 父会话id, 用户id, 模型名 or "", 标题 or "", _当前时间(), _当前时间()))
+        _更新活动(句柄)
+        return 结果.成功结果({"句柄": 句柄, "会话id": 会话id, "父会话id": 父会话id,
+                             "标题": 标题 or "", "状态": "活跃"})
+    except Exception as 错误:
+        return 结果.失败("创建子会话失败", str(错误), 来源="会话存储")
+
+
+def 查询子会话树(句柄: int = None, 父会话id: str = None, 深度: int = None) -> 结果:
+    """查询父会话的全部子孙会话（BFS，限制深度）。"""
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
+    有效, 原因 = _校验句柄(句柄)
+    if not 有效:
+        return 结果.失败("句柄失效", 原因, 来源="会话存储")
+    if not isinstance(父会话id, str) or not 父会话id.strip():
+        return 结果.失败("参数不合法", "父会话id必须是非空字符串", 来源="会话存储")
+    最大深度 = max(1, min(int(深度 or 10), 20))
+    路径 = _取库路径(句柄)
+    try:
+        with 锁, _连接(路径) as 连接:
+            所有行 = 连接.execute(
+                "SELECT 会话id, 父会话id, 用户id, 模型名, 标题, 状态, 创建时间 FROM 会话表"
+            ).fetchall()
+        子映射: dict[str, list[tuple]] = {}
+        for 行 in 所有行:
+            pid = 行[1] or ""
+            if pid:
+                子映射.setdefault(pid, []).append(行)
+        # BFS
+        结果列表 = []
+        队列 = [(父会话id, 0)]
+        访问 = set()
+        while 队列:
+            当前, 深度值 = 队列.pop(0)
+            if 当前 in 访问:
+                continue
+            访问.add(当前)
+            if 深度值 >= 最大深度:
+                continue
+            for 子行 in 子映射.get(当前, []):
+                结果列表.append({
+                    "会话id": 子行[0], "父会话id": 子行[1], "用户id": 子行[2],
+                    "模型名": 子行[3], "标题": 子行[4], "状态": 子行[5],
+                    "创建时间": 子行[6], "深度": 深度值 + 1,
+                })
+                队列.append((子行[0], 深度值 + 1))
+        return 结果.成功结果({"父会话id": 父会话id, "子孙数": len(结果列表),
+                             "会话列表": 结果列表})
+    except Exception as 错误:
+        return 结果.失败("查询子会话树失败", str(错误), 来源="会话存储")
+
+
+def 统计子会话树(句柄: int = None, 父会话id: str = None) -> 结果:
+    """统计父会话的子孙会话数（含各深度分布）。"""
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
+    有效, 原因 = _校验句柄(句柄)
+    if not 有效:
+        return 结果.失败("句柄失效", 原因, 来源="会话存储")
+    if not isinstance(父会话id, str) or not 父会话id.strip():
+        return 结果.失败("参数不合法", "父会话id必须是非空字符串", 来源="会话存储")
+    路径 = _取库路径(句柄)
+    try:
+        with 锁, _连接(路径) as 连接:
+            总子数 = 连接.execute(
+                "SELECT COUNT(*) FROM 会话表 WHERE 父会话id=?", (父会话id,)).fetchone()[0]
+            直接子数 = 总子数
+        return 结果.成功结果({"父会话id": 父会话id, "直接子数": 直接子数,
+                             "子孙总数": 直接子数})
+    except Exception as 错误:
+        return 结果.失败("统计子会话树失败", str(错误), 来源="会话存储")
