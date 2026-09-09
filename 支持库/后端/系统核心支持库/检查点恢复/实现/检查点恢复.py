@@ -163,3 +163,174 @@ def 查询中断(会话id: str = None, 库路径: str = None) -> 结果:
         })
     except Exception as 错误:
         return 结果.失败("查询中断失败", str(错误), 来源="检查点恢复")
+
+
+# ═══════════════════════════════════════════════
+# 任务状态机：OpenClaw 任务注册表 + DeepSeek 可续跑合并模式化落地
+# queued→running→terminal（已完成/失败），SQLite 落库重启不丢，支持多worker并发与断点续跑。
+# 0加密0限制：任务数据原文存取，脱敏由业务端自理。
+# ═══════════════════════════════════════════════
+import sqlite3 as _sqlite3
+import os as _os
+
+任务默认库路径 = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "..", "工程缓存", "任务状态机.db")
+
+
+def _任务连接(库路径: str):
+    _os.makedirs(_os.path.dirname(库路径), exist_ok=True)
+    连接 = _sqlite3.connect(库路径, timeout=5)
+    连接.execute("""CREATE TABLE IF NOT EXISTS 任务表 (
+        任务id TEXT PRIMARY KEY,
+        任务名 TEXT NOT NULL,
+        归属人 TEXT,
+        状态 TEXT DEFAULT '排队',
+        执行者 TEXT,
+        结果 TEXT,
+        错误 TEXT,
+        创建时间 TEXT NOT NULL,
+        更新时间 TEXT NOT NULL
+    )""")
+    连接.execute("CREATE INDEX IF NOT EXISTS idx_任务_归属 ON 任务表(归属人, 状态)")
+    连接.commit()
+    return 连接
+
+
+def 创建任务(*, 任务名: str = None, 归属人: str = None, 库路径: str = None) -> 结果:
+    """创建任务（状态=排队）。返回 任务id。"""
+    if not isinstance(任务名, str) or not 任务名.strip():
+        return 结果.失败("参数不合法", "任务名必须是非空字符串", 来源="检查点恢复")
+    任务id = uuid.uuid4().hex[:16]
+    路径 = 库路径 or 任务默认库路径
+    try:
+        with 锁, _任务连接(路径) as 连接:
+            连接.execute("INSERT INTO 任务表 VALUES (?,?,?,?,?,?,?,?,?)",
+                          (任务id, 任务名, 归属人 or "", "排队", None, None, None,
+                           time.strftime("%Y-%m-%d %H:%M:%S"),
+                           time.strftime("%Y-%m-%d %H:%M:%S")))
+        return 结果.成功结果({"任务id": 任务id, "任务名": 任务名, "状态": "排队"})
+    except Exception as 错误:
+        return 结果.失败("创建任务失败", str(错误), 来源="检查点恢复")
+
+
+def 领取任务(*, 任务id: str = None, 执行者: str = None, 库路径: str = None) -> 结果:
+    """领取任务（排队→运行中）。仅排队态可领（幂等保护）。"""
+    if not isinstance(任务id, str) or not 任务id.strip():
+        return 结果.失败("参数不合法", "任务id必须是非空字符串", 来源="检查点恢复")
+    路径 = 库路径 or 任务默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+    try:
+        with 锁, _任务连接(路径) as 连接:
+            行 = 连接.execute("SELECT 状态 FROM 任务表 WHERE 任务id=?", (任务id,)).fetchone()
+            if 行 is None:
+                return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+            if 行[0] != "排队":
+                return 结果.成功结果({"领取": False, "任务id": 任务id, "原因": f"当前状态={行[0]}（仅排队可领）"})
+            连接.execute("UPDATE 任务表 SET 状态='运行中', 执行者=?, 更新时间=? WHERE 任务id=?",
+                          (执行者 or "匿名", time.strftime("%Y-%m-%d %H:%M:%S"), 任务id))
+        return 结果.成功结果({"领取": True, "任务id": 任务id, "状态": "运行中", "执行者": 执行者 or "匿名"})
+    except Exception as 错误:
+        return 结果.失败("领取任务失败", str(错误), 来源="检查点恢复")
+
+
+def 完成任务(*, 任务id: str = None, 成功: bool = None, 结果值: dict = None,
+             库路径: str = None) -> 结果:
+    """完成任务（运行中→已完成/失败，终态）。"""
+    if not isinstance(任务id, str) or not 任务id.strip():
+        return 结果.失败("参数不合法", "任务id必须是非空字符串", 来源="检查点恢复")
+    路径 = 库路径 or 任务默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+    try:
+        with 锁, _任务连接(路径) as 连接:
+            行 = 连接.execute("SELECT 状态 FROM 任务表 WHERE 任务id=?", (任务id,)).fetchone()
+            if 行 is None:
+                return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+            if 行[0] not in ("运行中", "排队"):
+                return 结果.成功结果({"完成": False, "任务id": 任务id, "原因": f"当前状态={行[0]}（终态不可改）"})
+            新状态 = "已完成" if 成功 else "已失败"
+            连接.execute("UPDATE 任务表 SET 状态=?, 结果=?, 错误=?, 更新时间=? WHERE 任务id=?",
+                          (新状态, json.dumps(结果值 or {}, ensure_ascii=False),
+                           "" if 成功 else "执行失败",
+                           time.strftime("%Y-%m-%d %H:%M:%S"), 任务id))
+        return 结果.成功结果({"完成": True, "任务id": 任务id, "状态": 新状态})
+    except Exception as 错误:
+        return 结果.失败("完成任务失败", str(错误), 来源="检查点恢复")
+
+
+def 查询任务(*, 任务id: str = None, 归属人: str = None, 库路径: str = None) -> 结果:
+    """查询任务状态（按任务id 或 归属人列表）。"""
+    路径 = 库路径 or 任务默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.成功结果({"命中": 0, "任务列表": []})
+    try:
+        with 锁, _任务连接(路径) as 连接:
+            if 任务id:
+                行 = 连接.execute(
+                    "SELECT 任务id, 任务名, 归属人, 状态, 执行者, 结果, 错误, 创建时间 FROM 任务表 WHERE 任务id=?",
+                    (任务id,)).fetchone()
+                if 行 is None:
+                    return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+                return 结果.成功结果({"命中": 1, "任务列表": [{
+                    "任务id": 行[0], "任务名": 行[1], "归属人": 行[2], "状态": 行[3],
+                    "执行者": 行[4], "结果": json.loads(行[5]) if 行[5] else None,
+                    "错误": 行[6], "创建时间": 行[7],
+                }]})
+            if 归属人:
+                行们 = 连接.execute(
+                    "SELECT 任务id, 任务名, 归属人, 状态, 执行者, 创建时间 FROM 任务表 WHERE 归属人=? ORDER BY rowid DESC LIMIT 50",
+                    (归属人,)).fetchall()
+                return 结果.成功结果({"命中": len(行们), "任务列表": [
+                    {"任务id": r[0], "任务名": r[1], "归属人": r[2], "状态": r[3],
+                     "执行者": r[4], "创建时间": r[5]} for r in 行们
+                ]})
+            return 结果.失败("参数不合法", "任务id 或 归属人 至少传一个", 来源="检查点恢复")
+    except Exception as 错误:
+        return 结果.失败("查询任务失败", str(错误), 来源="检查点恢复")
+
+
+def 续跑任务(*, 任务id: str = None, 执行者: str = None, 库路径: str = None) -> 结果:
+    """续跑任务（已失败→排队，DeepSeek cold resume 语义）。"""
+    if not isinstance(任务id, str) or not 任务id.strip():
+        return 结果.失败("参数不合法", "任务id必须是非空字符串", 来源="检查点恢复")
+    路径 = 库路径 or 任务默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+    try:
+        with 锁, _任务连接(路径) as 连接:
+            行 = 连接.execute("SELECT 状态 FROM 任务表 WHERE 任务id=?", (任务id,)).fetchone()
+            if 行 is None:
+                return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+            if 行[0] not in ("已失败", "已完成"):
+                return 结果.成功结果({"续跑": False, "任务id": 任务id, "原因": f"当前状态={行[0]}（仅终态可续跑）"})
+            连接.execute("UPDATE 任务表 SET 状态='排队', 执行者=NULL, 结果=NULL, 错误=NULL, 更新时间=? WHERE 任务id=?",
+                          (time.strftime("%Y-%m-%d %H:%M:%S"), 任务id))
+        return 结果.成功结果({"续跑": True, "任务id": 任务id, "状态": "排队", "说明": "已重新排队"})
+    except Exception as 错误:
+        return 结果.失败("续跑任务失败", str(错误), 来源="检查点恢复")
+
+
+def 超时重排队(*, 任务id: str = None, 超时秒: int = None, 库路径: str = None) -> 结果:
+    """运行中超时→排队（worker 崩溃恢复语义）。"""
+    if not isinstance(任务id, str) or not 任务id.strip():
+        return 结果.失败("参数不合法", "任务id必须是非空字符串", 来源="检查点恢复")
+    路径 = 库路径 or 任务默认库路径
+    if not _os.path.isfile(路径):
+        return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+    阈值秒 = max(0, int(超时秒 if 超时秒 is not None else 60))
+    try:
+        with 锁, _任务连接(路径) as 连接:
+            行 = 连接.execute(
+                "SELECT 状态, 更新时间 FROM 任务表 WHERE 任务id=?", (任务id,)).fetchone()
+            if 行 is None:
+                return 结果.失败("任务不存在", f"任务 {任务id} 不存在", 来源="检查点恢复")
+            if 行[0] != "运行中":
+                return 结果.成功结果({"重排队": False, "任务id": 任务id, "原因": f"当前状态={行[0]}（仅运行中可超时重排队）"})
+            更新时间戳 = time.mktime(time.strptime(行[1], "%Y-%m-%d %H:%M:%S"))
+            if time.time() - 更新时间戳 < 阈值秒:
+                return 结果.成功结果({"重排队": False, "任务id": 任务id, "原因": "未超时"})
+            连接.execute("UPDATE 任务表 SET 状态='排队', 执行者=NULL, 更新时间=? WHERE 任务id=?",
+                          (time.strftime("%Y-%m-%d %H:%M:%S"), 任务id))
+        return 结果.成功结果({"重排队": True, "任务id": 任务id, "状态": "排队", "说明": "超时已重排队"})
+    except Exception as 错误:
+        return 结果.失败("超时重排队失败", str(错误), 来源="检查点恢复")
