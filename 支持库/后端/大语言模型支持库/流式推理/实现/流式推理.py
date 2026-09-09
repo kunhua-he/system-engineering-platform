@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -77,3 +78,45 @@ def 推送事件(流id: str, 事件类型: str, 数据: dict) -> bool:
 def 注册流提供者(提供者名: str, 调用函数: Callable) -> None:
     """注册流式提供者（由适配层 Provider 调用）。"""
     提供者表[提供者名] = 调用函数
+
+
+
+# ═══════════════════════════════════════════════
+# SSE 事件名协议：Coze SSE 三件套模式化落地
+# 事件帧格式化（ack/增量/完成/错误 + [DONE]）、X-Accel-Buffering 头建议。
+# 0加密0限制：数据原文透传，脱敏由业务端自理。
+# ═══════════════════════════════════════════════
+_SSE事件名 = ("ack", "增量", "完成", "错误")
+SSE缓冲头 = {"X-Accel-Buffering": "no", "Cache-Control": "no-cache", "Content-Type": "text/event-stream; charset=utf-8"}
+
+
+def 格式化事件帧(*, 事件名: str = None, 数据: dict = None, 序号: int = None,
+                 带缓冲头: bool = None) -> 结果:
+    """格式化 SSE 事件帧。返回 {帧文本, 响应头, 是否结束, 序号}。
+
+    事件名 ∈ ack/增量/完成/错误；完成帧后自动附 [DONE]（OpenClaw 约定）。
+    带缓冲头=True 时返回 SSE 标准响应头（含 X-Accel-Buffering: no 穿透反代缓冲）。
+    """
+    try:
+        名称 = str(事件名 or "").strip()
+        if 名称 not in _SSE事件名:
+            return 结果.失败("参数不合法",
+                             f"事件名必须是 {'/'.join(_SSE事件名)}: {名称}", 来源="流式推理")
+        if 数据 is None:
+            数据 = {}
+        if not isinstance(数据, dict):
+            return 结果.失败("参数不合法", "数据必须是字典型", 来源="流式推理")
+        序号值 = int(序号 or 0)
+        数据体 = json.dumps(数据, ensure_ascii=False)
+        帧 = f"event: {名称}\nid: {序号值}\ndata: {数据体}\n\n"
+        是否结束 = 名称 == "完成"
+        if 是否结束:
+            帧 += "data: [DONE]\n\n"
+        return 结果.成功结果({
+            "帧文本": 帧,
+            "响应头": dict(SSE缓冲头) if 带缓冲头 is not False else {},
+            "是否结束": 是否结束,
+            "序号": 序号值,
+        })
+    except Exception as 异常:
+        return 结果.失败("格式化失败", str(异常), 来源="流式推理")
