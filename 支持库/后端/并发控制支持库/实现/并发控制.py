@@ -446,3 +446,98 @@ def lane查询(*, 名称: str = None) -> 结果:
                                  "完成数": lane["完成数"], "失败数": lane["失败数"]})
     except Exception as 异常:
         return 结果.失败("查询失败", str(异常), 来源="并发控制")
+
+
+# ═══════════════════════════════════════════════
+# 主体串行调度：OpenClaw ALS 会话级写串行化模式化落地
+# 同主体（客户/会话/门店）串行、跨主体并行；复用 lane 机制（每主体一条 lane，并发上限1）。
+# 0加密0限制：主体id原文使用，业务端自理敏感处理。
+# ═══════════════════════════════════════════════
+_主体桶表: dict[str, str] = {}  # 主体id -> lane名
+
+
+def 登记主体桶(*, 主体id: str = None) -> 结果:
+    """登记主体串行桶（内部创建 lane，并发上限=1 强制串行）。幂等。"""
+    try:
+        主体 = str(主体id or "").strip()
+        if not 主体:
+            return 结果.失败("参数不合法", "主体id不能为空", 来源="并发控制")
+        with _lane锁:
+            if 主体 in _主体桶表:
+                lane名 = _主体桶表[主体]
+            else:
+                lane名 = f"主体串行-{主体}"
+                _主体桶表[主体] = lane名
+                if lane名 not in _lane表:
+                    import time as _时间
+                    _lane表[lane名] = {
+                        "并发上限": 1, "队列上限": 1000, "活跃数": 0, "排队数": 0,
+                        "完成数": 0, "失败数": 0, "创建时间": _时间.time(),
+                    }
+            return 结果.成功结果({"主体id": 主体, "lane名": lane名, "并发上限": 1,
+                                 "状态": "串行就绪"})
+    except Exception as 异常:
+        return 结果.失败("登记失败", str(异常), 来源="并发控制")
+
+
+def 主体串行排入(*, 主体id: str = None, 任务数: int = None) -> 结果:
+    """主体桶内排入任务（同主体排队等待串行执行）。"""
+    try:
+        主体 = str(主体id or "").strip()
+        if not 主体:
+            return 结果.失败("参数不合法", "主体id不能为空", 来源="并发控制")
+        with _lane锁:
+            if 主体 not in _主体桶表:
+                return 结果.失败("主体未登记", f"主体 {主体} 未登记主体桶", 来源="并发控制")
+            lane名 = _主体桶表[主体]
+        return lane排入(名称=lane名, 任务数=任务数 or 1)
+    except Exception as 异常:
+        return 结果.失败("排入失败", str(异常), 来源="并发控制")
+
+
+def 主体串行领取(*, 主体id: str = None, 数量: int = None) -> 结果:
+    """从主体桶领取可执行任务（并发上限1=同一主体同一时刻最多1个执行）。"""
+    try:
+        主体 = str(主体id or "").strip()
+        if not 主体:
+            return 结果.失败("参数不合法", "主体id不能为空", 来源="并发控制")
+        with _lane锁:
+            if 主体 not in _主体桶表:
+                return 结果.失败("主体未登记", f"主体 {主体} 未登记主体桶", 来源="并发控制")
+            lane名 = _主体桶表[主体]
+        return lane领取(名称=lane名, 数量=数量 or 1)
+    except Exception as 异常:
+        return 结果.失败("领取失败", str(异常), 来源="并发控制")
+
+
+def 主体串行完成(*, 主体id: str = None, 数量: int = None, 失败数: int = None,
+                 退避秒: float = None) -> 结果:
+    """主体桶任务完成上报。"""
+    try:
+        主体 = str(主体id or "").strip()
+        if not 主体:
+            return 结果.失败("参数不合法", "主体id不能为空", 来源="并发控制")
+        with _lane锁:
+            if 主体 not in _主体桶表:
+                return 结果.失败("主体未登记", f"主体 {主体} 未登记主体桶", 来源="并发控制")
+            lane名 = _主体桶表[主体]
+        return lane完成(名称=lane名, 数量=数量 or 1, 失败数=失败数 or 0, 退避秒=退避秒 or 0)
+    except Exception as 异常:
+        return 结果.失败("完成上报失败", str(异常), 来源="并发控制")
+
+
+def 主体串行查询(*, 主体id: str = None) -> 结果:
+    """查询主体桶状态（空=全部）。"""
+    try:
+        主体 = str(主体id or "").strip()
+        with _lane锁:
+            if not 主体:
+                return 结果.成功结果({"主体桶列表": [
+                    {"主体id": k, "lane名": v, "状态": "串行"} for k, v in _主体桶表.items()
+                ]})
+            if 主体 not in _主体桶表:
+                return 结果.失败("主体未登记", f"主体 {主体} 未登记主体桶", 来源="并发控制")
+            lane名 = _主体桶表[主体]
+        return lane查询(名称=lane名)
+    except Exception as 异常:
+        return 结果.失败("查询失败", str(异常), 来源="并发控制")
