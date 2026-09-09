@@ -464,3 +464,56 @@ def 统计子会话树(句柄: int = None, 父会话id: str = None) -> 结果:
                              "子孙总数": 直接子数})
     except Exception as 错误:
         return 结果.失败("统计子会话树失败", str(错误), 来源="会话存储")
+
+
+
+# ═══════════════════════════════════════════════
+# 重生成：Coze RegenerateMessageID 语义模式化落地
+# 删除指定序号之后的所有消息（删旧）→ 重新追加（重跑）。天然支持"重新生成"按钮。
+# 0加密0限制：只做消息删除，不做业务判断。
+# ═══════════════════════════════════════════════
+def 重生成会话(句柄: int = None, 会话id: str = None, 截止序号: int = None) -> 结果:
+    """删除 截止序号 之后的所有消息（含截止序号本身，删旧重跑）。返回删除数。"""
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
+    有效, 原因 = _校验句柄(句柄)
+    if not 有效:
+        return 结果.失败("句柄失效", 原因, 来源="会话存储")
+    if not isinstance(会话id, str) or not 会话id.strip():
+        return 结果.失败("参数不合法", "会话id必须是非空字符串", 来源="会话存储")
+    if isinstance(截止序号, bool) or not isinstance(截止序号, int) or 截止序号 < 1:
+        return 结果.失败("参数不合法", "截止序号必须是正整数", 来源="会话存储")
+    路径 = _取库路径(句柄)
+    try:
+        with 锁, _连接(路径) as 连接:
+            行 = 连接.execute("SELECT 序号 FROM 消息表 WHERE 会话id=? AND 序号=?", (会话id, 截止序号)).fetchone()
+            if 行 is None:
+                return 结果.失败("消息不存在", f"会话 {会话id} 序号 {截止序号} 不存在", 来源="会话存储")
+            删除数 = 连接.execute("DELETE FROM 消息表 WHERE 会话id=? AND 序号>=?",
+                                  (会话id, 截止序号)).rowcount
+            连接.execute("UPDATE 会话表 SET 更新时间=? WHERE 会话id=?", (_当前时间(), 会话id))
+        _更新活动(句柄)
+        return 结果.成功结果({"会话id": 会话id, "删除数": 删除数,
+                             "说明": "已删旧，可重新追加重跑"})
+    except Exception as 错误:
+        return 结果.失败("重生成失败", str(错误), 来源="会话存储")
+
+
+def 清空会话消息(句柄: int = None, 会话id: str = None) -> 结果:
+    """清空会话全部消息（重新开始的语义）。返回删除数。"""
+    if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
+        return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
+    有效, 原因 = _校验句柄(句柄)
+    if not 有效:
+        return 结果.失败("句柄失效", 原因, 来源="会话存储")
+    if not isinstance(会话id, str) or not 会话id.strip():
+        return 结果.失败("参数不合法", "会话id必须是非空字符串", 来源="会话存储")
+    路径 = _取库路径(句柄)
+    try:
+        with 锁, _连接(路径) as 连接:
+            删除数 = 连接.execute("DELETE FROM 消息表 WHERE 会话id=?", (会话id,)).rowcount
+            连接.execute("UPDATE 会话表 SET 更新时间=? WHERE 会话id=?", (_当前时间(), 会话id))
+        _更新活动(句柄)
+        return 结果.成功结果({"会话id": 会话id, "删除数": 删除数, "说明": "已清空"})
+    except Exception as 错误:
+        return 结果.失败("清空失败", str(错误), 来源="会话存储")
