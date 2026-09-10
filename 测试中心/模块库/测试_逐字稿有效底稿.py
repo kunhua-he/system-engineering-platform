@@ -14,7 +14,8 @@ from pathlib import Path
 if str(项目根) not in sys.path:
     sys.path.insert(0, str(项目根))
 
-from 模块库.直播逐字稿.实现.有效底稿 import (在死循环区间, 剔除摘要, 剔除死循环, 有效文本)
+from 模块库.直播逐字稿.实现.有效底稿 import (在死循环区间, 压缩段内重复, 剔除摘要, 剔除死循环,
+                                          清洗分段, 有效文本)
 
 
 def 造段(开始: float, 结束: float, 文本: str) -> dict:
@@ -63,6 +64,21 @@ class Test死循环剔除(unittest.TestCase):
         摘要 = 剔除摘要(分段, 区间, 剩下)
         self.assertEqual((摘要["分段总数"], 摘要["剔除分段数"], 摘要["死循环区间数"]), (3, 2, 1))
         self.assertEqual(摘要["有效字符数"], 1)
+
+    def test_短片段重复被压缩(self):
+        self.assertLessEqual(len(压缩段内重复("嗯" * 32)), 3, "长噪声必须被压到门禁阈值以下")
+        self.assertLessEqual(len(压缩段内重复("你好" + "嗯" * 8 + "你好")), 6)
+        self.assertEqual(压缩段内重复("谢谢谢谢谢谢谢谢谢谢"), "谢谢")
+
+    def test_正常重复不被误伤(self):
+        self.assertEqual(压缩段内重复("对对对，可以可以"), "对对对，可以可以")
+        self.assertEqual(压缩段内重复("好的好的"), "好的好的")
+
+    def test_清洗分段同时剔区间并压重复(self):
+        分段 = [造段(0.0, 1.0, "嗯" * 20 + "大家好"), 造段(700.0, 701.0, "幻觉")]
+        剩下 = 清洗分段(分段, [{"开始秒": 600.0, "结束秒": 900.0}])
+        self.assertEqual(len(剩下), 1)
+        self.assertEqual(剩下[0]["文本"], "嗯大家好")
 
     def test_坏数据不抛异常(self):
         分段 = [{"开始秒": "坏值", "文本": "x"}, {"没有开始秒": True}, 造段(700.0, 701.0, "幻觉")]
