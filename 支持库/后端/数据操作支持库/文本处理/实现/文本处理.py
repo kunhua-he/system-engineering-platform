@@ -90,3 +90,51 @@ def 按行分割(文本: str = None) -> 结果:
     if not isinstance(文本, str):
         return _失败("参数不合法", "文本必须为字符串")
     return _成功(文本.splitlines())
+
+def 解析区间(文本: str = None, 模式: str = "集合") -> 结果:
+    """解析 "1-5,7,10" 形式的页码/行号区间文本。
+
+    模式="集合"：支持多段（逗号分隔）与范围（起-止），
+                返回 {数值列表(去重升序), 数量, 是否有效}；无法解析出任何数值时 是否有效=False。
+    模式="范围"：仅接受单个 "起-止" 或单值，返回 {起始, 结束, 是否有效}。
+    空文本：集合模式返回空集（是否有效=True）；范围模式返回 是否有效=False。
+    """
+    if 文本 is not None and not isinstance(文本, str):
+        return 结果.失败("参数不合法", "文本必须是文本型", 来源="文本处理")
+    if 模式 not in ("集合", "范围"):
+        return 结果.失败("参数不合法", "模式必须是 集合 或 范围", 来源="文本处理")
+
+    原文 = (文本 or "").strip()
+    if 模式 == "范围":
+        if not 原文:
+            return 结果.成功结果({"起始": None, "结束": None, "是否有效": False})
+        if "-" in 原文:
+            起, 止 = 原文.split("-", 1)
+            try:
+                return 结果.成功结果({"起始": int(起), "结束": int(止), "是否有效": True})
+            except ValueError:
+                return 结果.成功结果({"起始": None, "结束": None, "是否有效": False})
+        try:
+            值 = int(原文)
+            return 结果.成功结果({"起始": 值, "结束": 值, "是否有效": True})
+        except ValueError:
+            return 结果.成功结果({"起始": None, "结束": None, "是否有效": False})
+
+    集合: set[int] = set()
+    for 段 in 原文.split(","):
+        段 = 段.strip()
+        if not 段:
+            continue
+        if "-" in 段:
+            起, 止 = 段.split("-", 1)
+            try:
+                集合.update(range(int(起), int(止) + 1))
+            except ValueError:
+                continue
+        else:
+            try:
+                集合.add(int(段))
+            except ValueError:
+                continue
+    数值列表 = sorted(集合)
+    return 结果.成功结果({"数值列表": 数值列表, "数量": len(数值列表), "是否有效": bool(数值列表) or not 原文})
