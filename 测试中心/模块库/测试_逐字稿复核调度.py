@@ -2,7 +2,7 @@
 
 不联网、不依赖真实模型、不装配平台网关；临时文件只写 tempfile 目录。
 覆盖：聚类边界（单段/合并/等于阈值不合并/多段/空输入/id 连续）、
-复核区间成功写盘与调用参数、底层失败如实反映且不伪造文本、参数校验。
+复核区间先截取区间音频再跑多轮转写、底层失败如实反映且不伪造文本、参数校验。
 """
 
 from __future__ import annotations
@@ -21,27 +21,46 @@ from 公共契约.基础类型.结果类型 import 结果
 from 模块库.直播逐字稿.实现.复核调度 import 聚类区间, 复核区间
 
 转写能力id = "转写支持库.转写.转写音频文件"
+截取能力id = "媒体处理支持库.FFmpeg媒体.截取音频"
 
 
 class 假调用器:
-    """记录调用参数并按脚本返回统一结果；可指定整轮失败或某几轮失败。"""
+    """记录调用参数并按脚本返回统一结果；截取与转写分别可控。"""
 
-    def __init__(self, 失败轮: set[int] | None = None, 全部失败: bool = False):
+    def __init__(self, 失败轮: set[int] | None = None, 全部失败: bool = False,
+                 截取失败: bool = False, 转写抛异常: bool = False):
         self.调用记录: list[tuple[str, dict]] = []
         self.失败轮 = set(失败轮 or ())
         self.全部失败 = bool(全部失败)
+        self.截取失败 = bool(截取失败)
+        self.转写抛异常 = bool(转写抛异常)
 
     def __call__(self, 能力id, 请求参数):
         self.调用记录.append((能力id, 请求参数))
-        序号 = len(self.调用记录)
+        if 能力id == 截取能力id:
+            if self.截取失败:
+                return 结果.失败("参数不合法", "区间音频截取失败", 来源="测试")
+            return 结果.成功结果({"字节b64": "", "格式": "mp3", "字节数": 0,
+                                 "输出路径": 请求参数.get("输出路径", "")})
+        if self.转写抛异常:
+            raise RuntimeError("底层转写崩溃")
+        序号 = len(self.转写调用记录)
         if self.全部失败 or 序号 in self.失败轮:
             return 结果.失败("转写失败", f"第{序号}轮底层转写失败", 来源="测试")
         return 结果.成功结果({"文本": f"第{序号}轮识别文本",
                              "分段": [{"序号": 1, "开始秒": 0.0, "结束秒": 1.0}]})
 
     @property
+    def 转写调用记录(self) -> list[tuple[str, dict]]:
+        return [记录 for 记录 in self.调用记录 if 记录[0] == 转写能力id]
+
+    @property
+    def 截取调用记录(self) -> list[tuple[str, dict]]:
+        return [记录 for 记录 in self.调用记录 if 记录[0] == 截取能力id]
+
+    @property
     def 附加术语列表(self) -> list[str]:
-        return [记录[1].get("附加术语", "") for 记录 in self.调用记录]
+        return [记录[1].get("附加术语", "") for 记录 in self.转写调用记录]
 
 
 class Test聚类区间(unittest.TestCase):
@@ -93,27 +112,40 @@ class Test复核区间(unittest.TestCase):
     def tearDown(self):
         self.临时目录.cleanup()
 
-    def test_复核区间成功写盘(self):
+    def test_先截取区间音频再跑多轮转写(self):
         调用 = 假调用器()
         结果字典 = 复核区间("媒体文件.bin", self.区间, self.复核目录, 调用,
                             轮数=3, 模型配置={"模型名": "假模型"}, 超时秒=12.5)
         self.assertEqual(结果字典["状态"], "完成")
         self.assertEqual(结果字典["错误说明"], "")
         self.assertEqual(len(结果字典["轮次"]), 3)
-        路径 = Path(self.复核目录) / "复核_0001.json"
-        self.assertTrue(路径.is_file(), "未落盘 复核_0001.json")
-        self.assertEqual(结果字典["写入路径"], str(路径))
-        数据 = json.loads(路径.read_text(encoding="utf-8"))
-        self.assertEqual((数据["区间id"], len(数据["轮次"])), (1, 3))
-        self.assertEqual(数据["轮次"][0]["文本"], "第1轮识别文本")
-        # 调用参数与每轮术语提示
-        self.assertEqual(len(调用.调用记录), 3)
-        for 能力id, 参数 in 调用.调用记录:
+        self.assertEqual(len(调用.截取调用记录), 1, "每个区间只截取一次")
+        截取参数 = 调用.截取调用记录[0][1]
+        self.assertEqual((截取参数["文件路径"], 截取参数["开始秒"], 截取参数["结束秒"]),
+                         ("媒体文件.bin", 10.2, 14.8))
+        self.assertEqual(截取参数["输出路径"], 结果字典["区间音频路径"])
+        self.assertTrue(截取参数["输出路径"].endswith("区间_0001.mp3"))
+        self.assertEqual(len(调用.转写调用记录), 3)
+        for 能力id, 参数 in 调用.转写调用记录:
             self.assertEqual(能力id, 转写能力id)
-            self.assertEqual((参数["文件路径"], 参数["超时秒"]), ("媒体文件.bin", 12.5))
+            self.assertEqual(参数["文件路径"], 结果字典["区间音频路径"], "必须转写区间音频而不是整场")
+            self.assertEqual(参数["超时秒"], 12.5)
             self.assertEqual(参数["配置"], {"模型名": "假模型"})
             self.assertTrue(参数["返回分段"])
         self.assertEqual(len(set(调用.附加术语列表)), 3, "三轮附加术语提示必须不同")
+        路径 = Path(self.复核目录) / "复核_0001.json"
+        self.assertTrue(路径.is_file(), "未落盘 复核_0001.json")
+        数据 = json.loads(路径.read_text(encoding="utf-8"))
+        self.assertEqual((数据["区间id"], len(数据["轮次"])), (1, 3))
+        self.assertEqual(数据["轮次"][0]["文本"], "第1轮识别文本")
+        self.assertEqual(数据["区间音频路径"], 结果字典["区间音频路径"])
+
+    def test_区间截取失败如实返回且不转写(self):
+        调用 = 假调用器(截取失败=True)
+        结果字典 = 复核区间("媒体文件.bin", self.区间, self.复核目录, 调用, 轮数=3)
+        self.assertEqual((结果字典["状态"], 结果字典["错误码"]), ("失败", "截取失败"))
+        self.assertIn("区间截取失败", 结果字典["错误说明"])
+        self.assertEqual(调用.转写调用记录, [], "截取失败时不得继续转写")
 
     def test_复核区间底层失败如实反映不伪造文本(self):
         调用 = 假调用器(全部失败=True)
@@ -148,12 +180,9 @@ class Test复核区间(unittest.TestCase):
         self.assertEqual(调用.调用记录, [], "参数不合法时不得调用底层能力")
 
     def test_复核区间调用异常不外泄(self):
-        def 抛异常调用器(能力id, 请求参数):
-            raise RuntimeError("底层崩溃")
-
-        结果字典 = 复核区间("媒体文件.bin", self.区间, self.复核目录, 抛异常调用器, 轮数=2)
+        结果字典 = 复核区间("媒体文件.bin", self.区间, self.复核目录, 假调用器(转写抛异常=True), 轮数=2)
         self.assertEqual((结果字典["状态"], 结果字典["错误码"]), ("部分失败", "调用异常"))
-        self.assertIn("底层崩溃", 结果字典["错误说明"])
+        self.assertIn("底层转写崩溃", 结果字典["错误说明"])
 
 
 if __name__ == "__main__":
