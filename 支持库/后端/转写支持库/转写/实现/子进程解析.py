@@ -81,8 +81,35 @@ def 获取模型版本(模型路径: str, 模型名: str) -> dict[str, Any]:
     }}
 
 
-def 转写音频(文件路径: str, 模型路径: str, 模型名: str, 附加术语: str = "") -> dict[str, Any]:
-    """转写音频文件；失败逐类映射稳定错误码，不伪装成功。"""
+def _轻量分段(原始分段: Any) -> list[dict[str, Any]]:
+    """把 mlx_whisper 分段压成疑难标记所需字段（丢弃 token 等大字段，控制子进程输出体积）。"""
+    分段表: list[dict[str, Any]] = []
+    if not isinstance(原始分段, list):
+        return 分段表
+    for 序号, 段 in enumerate(原始分段, start=1):
+        if not isinstance(段, dict):
+            continue
+        try:
+            分段表.append({
+                "序号": 序号,
+                "开始秒": round(float(段.get("start") or 0.0), 3),
+                "结束秒": round(float(段.get("end") or 0.0), 3),
+                "文本": str(段.get("text") or "").strip(),
+                "平均对数概率": round(float(段.get("avg_logprob") or 0.0), 4),
+                "压缩比": round(float(段.get("compression_ratio") or 0.0), 4),
+                "无语音概率": round(float(段.get("no_speech_prob") or 0.0), 4),
+            })
+        except (TypeError, ValueError):
+            continue
+    return 分段表
+
+
+def 转写音频(文件路径: str, 模型路径: str, 模型名: str, 附加术语: str = "",
+             返回分段: bool = False) -> dict[str, Any]:
+    """转写音频文件；失败逐类映射稳定错误码，不伪装成功。
+
+    返回分段 为真时额外返回 分段 指标（平均对数概率/压缩比/无语音概率），供疑难标记使用。
+    """
     if _库模块 is None:
         return _不可用()
     文件 = Path(文件路径)
@@ -102,8 +129,11 @@ def 转写音频(文件路径: str, 模型路径: str, 模型名: str, 附加术
     if not isinstance(结果, dict) or not str(结果.get("text") or "").strip():
         return {"错误码": "转写失败", "错误说明": "转写未返回文本"}
     语言 = str(结果.get("language") or "")
-    return {"值": {
+    值: dict[str, Any] = {
         "文本": str(结果["text"]).strip(),
         "语言": 语言,
         "模型名": 模型名 or 模型路径,
-    }}
+    }
+    if 返回分段:
+        值["分段"] = _轻量分段(结果.get("segments"))
+    return {"值": 值}

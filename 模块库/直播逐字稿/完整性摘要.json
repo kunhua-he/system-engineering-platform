@@ -1,47 +1,99 @@
 {
   "包id": "模块库.直播逐字稿",
-  "版本": "1.0.0",
+  "版本": "1.1.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "92c6e1da0b08fa9c52d39b74b1b42208450d99649461133af0bcaadb25f80e00"
+      "sha256": "3b90ef45ce15aac26b4dfe6ca42db3a87e280d9d625c0aae28a27cc3803a544e"
     },
     {
       "路径": "依赖契约/依赖契约.json",
-      "sha256": "26661e8fc594cfc5c31ddcaf90aa3238b1b9518c1f93bc0023bbfdf2fd3972e1"
+      "sha256": "3d8a614db75d32f006fccef8b571ac666f667dc4264b6d06ffc9cc154b33e07d"
     },
     {
       "路径": "包声明.json",
-      "sha256": "078ee68d8d4c9c79ca64ca925069527f3da055e7580488adcce3f752bd7663cf"
+      "sha256": "3fdaf5fb1bfb9921d64e119bcd6ba8ba7631b9f0ac4cfce5447d5b49cbaa0f79"
     },
     {
       "路径": "复用决策.json",
       "sha256": "8d0f1b1158cd58f96f68406ef5b7a30df92047554d35a9c0ea6dfd91032e65ef"
     },
     {
+      "路径": "实现/入参校验.py",
+      "sha256": "d414ab23c00a27157acb3c00b41e88140cc13dd2cfda427c224a569af5e6beb8"
+    },
+    {
+      "路径": "实现/全自动精校.py",
+      "sha256": "3ff093e167108888c3cf407ecf49ec78d7425b95aa0bdcc4561faded62d06692"
+    },
+    {
+      "路径": "实现/复核调度.py",
+      "sha256": "d025475289240530ae67af1b94c1262c1c7e3ff7c89952b39cc6fd0d7e78da5d"
+    },
+    {
+      "路径": "实现/导出落盘.py",
+      "sha256": "2684342562993d422207a0014ace064251a3ffe6e00d4548e4db3f4109e85722"
+    },
+    {
+      "路径": "实现/排版合成.py",
+      "sha256": "6c07aef69a6f8752e2b130ca48458a9e32ad4acfb49eed20ad7d5f87c0913f73"
+    },
+    {
+      "路径": "实现/模式注册表.py",
+      "sha256": "c9006be3a201dbcc005d374734a08bbee793026feb7a540204c22fe83bcdff99"
+    },
+    {
+      "路径": "实现/疑难标记.py",
+      "sha256": "715989938684bdda3406371a8d01bacd9ab361d5b4adf3edd226a327b78a2bbe"
+    },
+    {
       "路径": "实现/直播逐字稿.py",
       "sha256": "4a6b84bd3f9f628d59bbd71f6d25273203321aa3c9f8534c485faa51edc27261"
     },
     {
+      "路径": "实现/窗口切分.py",
+      "sha256": "5f9c23fe150a1d53c8b5f65677a2aa4df38729636454afbad5bb1cacec5ea251"
+    },
+    {
+      "路径": "实现/精校裁决.py",
+      "sha256": "523af4ddeaad045ef7e8a9671116a3c4b5fb21b4aaedb582f669d90cce28ec1f"
+    },
+    {
+      "路径": "实现/缓存与续跑.py",
+      "sha256": "65c8b4e396cd7ca8ee39ddddf1c6cdde37d7daba32c2eaf69b3ff108aa1fcbca"
+    },
+    {
+      "路径": "实现/证据包.py",
+      "sha256": "2aade917b0bf0f1b489a97186a23e29eb9649681086e49b47398d322f5eeef15"
+    },
+    {
+      "路径": "实现/质检门禁.py",
+      "sha256": "3f358042258f5969a3cafbca6b032c1b4ee5ce7ea861fe974979f936331ea1b9"
+    },
+    {
       "路径": "权限契约/权限契约.json",
-      "sha256": "08d2ea8807d4522d471c80c1f5328aef6e3b51a09b1dd8d7ec03e2454b37659f"
+      "sha256": "c6fcfda41ffc4508b6eb823d25b2576134435f820129c5db643513d0df7ac05f"
+    },
+    {
+      "路径": "模式数据/模式注册表.json",
+      "sha256": "222e9041ce15e2dcd01d2d4f196bf40ab6c0b8a4b3bc278d93de6acf8348c33b"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "dd9039d190c72bb75591a4589282c8a6e26a9ecefc1edebd4ac509538a12f4eb"
+      "sha256": "0434324df0b59bcbfa6409df292a5b1880e8928ec32e01d529b11c387386f389"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "21f79f457fc94465796beddffff96841b405b2f5e728c7d308c40ebd7b576156"
+      "sha256": "b2c3ce6238c1873145453248ca78202ee9c97be23dacff0b424f8c52c8a0d197"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "494a12438d114d70229013d8d8c73a0e770dad8e6c9cf07850fd26ab20ca0748"
+      "sha256": "68b079cdadd5f7f04716d4fda565a85a09acd41ed176499d2d6dcb8a8e28bf3e"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "9f5c725d8121b159f30cd8d3ff662eac7c05507a014c418f34873c2eafe5fdec"
+      "sha256": "631923e5233b400c752c7676bcb31e3e4c022f60076606741bfef25c68c0da86"
     },
     {
       "路径": "说明/使用说明.md",
@@ -53,7 +105,7 @@
     },
     {
       "路径": "配置契约/配置契约.json",
-      "sha256": "386160f712058f94d99ae644d2d0f76cc040d9954b90ff7702a5857cb2b3a407"
+      "sha256": "ee18abd55c1354411be08d44c2ec648424e5a2cbfcd0cea5f2b05c22aba28413"
     },
     {
       "路径": "验证场景/正向HTTP场景.json",
@@ -67,14 +119,5 @@
       "路径": "验证夹具/转写成功.wav",
       "sha256": "ddbdc71f848efdf90a62f399a4123df2dd6d3262b2221f8512a15c0aad7ce9de"
     }
-  ],
-  "能力数": 3,
-  "能力清单": [
-    "直播逐字稿.转写媒体文件",
-    "直播逐字稿.检查可用性",
-    "直播逐字稿.读取项目状态"
-  ],
-  "实现摘要": "实现",
-  "能力定义摘要": "d84043f7c9b7cbe3",
-  "生成时间": "由能力定义编译器生成"
+  ]
 }

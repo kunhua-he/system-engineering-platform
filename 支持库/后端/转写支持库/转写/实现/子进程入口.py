@@ -62,7 +62,8 @@ def 主循环() -> int:
         "获取模型版本": lambda 请求: 获取模型版本(str(请求.get("模型路径") or ""), str(请求.get("模型名") or "")),
         "转写音频": lambda 请求: 转写音频(str(请求.get("文件路径") or ""),
                                          str(请求.get("模型路径") or ""), str(请求.get("模型名") or ""),
-                                         str(请求.get("附加术语") or "")),
+                                         str(请求.get("附加术语") or ""),
+                                         bool(请求.get("返回分段"))),
     }
     处理函数 = 操作表.get(str(请求.get("操作") or ""))
     if 处理函数 is None:
