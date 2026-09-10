@@ -162,3 +162,30 @@ def 按字段排序(列表: list = None, 字段名: str = None, 升序: bool = T
         if not isinstance(项目, dict) or 字段名 not in 项目:
             return _失败("参数不合法", f"列表项目缺少排序字段: {字段名}")
     return _成功(sorted(列表, key=lambda 项目: 项目[字段名], reverse=not bool(升序)))
+
+def 展平字典(数据: dict = None, 分隔符: str = ".", 保留扁平键: bool = True, 最大深度: int = 32) -> 结果:
+    """把嵌套字典展平为单层字典。
+
+    键拼接规则：嵌套路径用 分隔符 连接（如 a.b.c）；保留扁平键=True 时
+    同时写入末级键名（与 V3 既有 展平metrics 行为一致）。
+    同名键后写覆盖。最大深度防环。
+    """
+    if not isinstance(数据, dict):
+        return 结果.失败("参数不合法", "数据必须是字典型", 来源="数据集合")
+    分隔 = 分隔符 if isinstance(分隔符, str) and 分隔符 else "."
+    展平: dict = {}
+
+    def _递归(当前: dict, 前缀: str, 深度: int) -> None:
+        if 深度 > 最大深度:
+            return
+        for 键, 值 in 当前.items():
+            名 = str(键)
+            完整键 = f"{前缀}{分隔}{名}" if 前缀 else 名
+            展平[完整键] = 值
+            if 保留扁平键:
+                展平[名] = 值
+            if isinstance(值, dict):
+                _递归(值, 完整键, 深度 + 1)
+
+    _递归(数据, "", 0)
+    return 结果.成功结果({"展平结果": 展平, "键数": len(展平)})
