@@ -105,3 +105,29 @@ def 序列化YAML(数据: Any = None):
     except Exception as e:
         return _失败("序列化失败", f"YAML 序列化异常: {e}")
 
+def 深合并(基础: dict = None, 覆盖: dict = None) -> 结果:
+    """递归合并两个字典（深合并）。
+
+    规则：同键且两边都是字典时递归合并；否则用「覆盖」的值替换。
+    返回全新对象，不修改入参。
+    """
+    if not isinstance(基础, dict):
+        return 结果.失败("参数不合法", "基础必须是字典型", 来源="数据交换")
+    if not isinstance(覆盖, dict):
+        return 结果.失败("参数不合法", "覆盖必须是字典型", 来源="数据交换")
+
+    def _合并(左: dict, 右: dict) -> dict:
+        结果字典 = {}
+        for 键, 值 in 左.items():
+            结果字典[键] = _合并(值, {}) if isinstance(值, dict) else 值
+        for 键, 值 in 右.items():
+            if isinstance(值, dict) and isinstance(结果字典.get(键), dict):
+                结果字典[键] = _合并(结果字典[键], 值)
+            elif isinstance(值, dict):
+                结果字典[键] = _合并({}, 值)
+            else:
+                结果字典[键] = 值
+        return 结果字典
+
+    合并后 = _合并(基础, 覆盖)
+    return 结果.成功结果({"合并结果": 合并后, "键数": len(合并后)})
