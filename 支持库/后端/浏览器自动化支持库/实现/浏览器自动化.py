@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -92,8 +93,8 @@ def 读取页面(句柄: int, 内容类型: str = "文本", 最大长度: int = 
     会话名, 原因 = _会话(句柄)
     if not 会话名:
         return 结果.失败("句柄无效", 原因, 来源=来源)
-    if 内容类型 not in {"文本", "HTML"} or not isinstance(最大长度, int) or not 1 <= 最大长度 <= 100000:
-        return 结果.失败("参数不合法", "内容类型或最大长度不符合契约", 来源=来源)
+    if 内容类型 not in {"文本", "HTML", "链接"} or not isinstance(最大长度, int) or not 1 <= 最大长度 <= 100000:
+        return 结果.失败("参数不合法", "内容类型（文本/HTML/链接）或最大长度不符合契约", 来源=来源)
     return _统一(_提供者.读取(会话名=会话名, 内容类型=内容类型, 最大长度=最大长度))
 
 
@@ -158,3 +159,43 @@ def 关闭会话(句柄: int) -> 结果:
         会话表.pop(句柄, None)
         截图表.pop(句柄, None)
     return 结果.成功结果({"句柄": 句柄, "状态": "已结束并已释放", "已释放": True})
+
+def 读取截图(资源句柄: int, 最大字节数: int = 20971520) -> 结果:
+    """读取截图内容：截图句柄由本支持库创建，故由本支持库解析（谁创建谁管）。
+
+    二进制经 base64 返回，避免大字节直接塞进统一结果 JSON。
+    """
+    import base64 as _base64
+
+    if isinstance(资源句柄, bool) or not isinstance(资源句柄, int):
+        return 结果.失败("参数不合法", "资源句柄必须是整数型", 来源=来源)
+    if not isinstance(最大字节数, int) or not 1 <= 最大字节数 <= 104857600:
+        return 结果.失败("参数不合法", "最大字节数必须是 1-104857600 的整数", 来源=来源)
+    有效, 原因 = 句柄系统.校验(资源句柄)
+    if not 有效:
+        return 结果.失败("句柄无效", 原因, 来源=来源)
+    资源列表 = 句柄系统.查询资源(资源句柄)
+    if not 资源列表:
+        return 结果.失败("资源不存在", f"句柄 {资源句柄} 未登记截图资源", 来源=来源)
+    路径 = ""
+    for 项 in 资源列表:
+        候选 = str(项.get("资源路径") or "").strip()
+        if 候选:
+            路径 = 候选
+            break
+    if not 路径:
+        return 结果.失败("资源不存在", "截图资源没有可用路径", 来源=来源)
+    目标 = Path(路径)
+    if not 目标.is_file():
+        return 结果.失败("资源不存在", f"截图文件不可读: {路径}", 来源=来源)
+    try:
+        数据 = 目标.read_bytes()
+    except OSError as 错误:
+        return 结果.失败("读取失败", str(错误), 来源=来源)
+    if len(数据) > 最大字节数:
+        return 结果.失败("输出超限", f"截图 {len(数据)} 字节超过上限 {最大字节数}", 来源=来源)
+    return 结果.成功结果({
+        "内容base64": _base64.b64encode(数据).decode("ascii"),
+        "字节数": len(数据),
+        "路径": 路径,
+    })

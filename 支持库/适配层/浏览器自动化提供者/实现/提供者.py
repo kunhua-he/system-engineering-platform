@@ -184,6 +184,14 @@ class 浏览器自动化提供者:
     def 读取(self, *, 会话名: str, 内容类型: str = "文本", 最大长度: int = 20000) -> dict[str, Any]:
         if 内容类型 == "HTML":
             表达式 = f"document.documentElement ? document.documentElement.outerHTML.slice(0, {最大长度}) : ''"
+        elif 内容类型 == "链接":
+            # 可见链接清单：只取 href 与文本，不碰 cookie / localStorage
+            表达式 = (
+                "JSON.stringify(Array.from(document.querySelectorAll('a[href]'))"
+                ".map(function(el){return {text:(el.textContent||'').trim().slice(0,200),"
+                "href:el.getAttribute('href'),可见:el.offsetParent!==null}})"
+                ".filter(function(l){return l.href&&l.text}).slice(0,100))"
+            )
         else:
             表达式 = f"document.body ? document.body.innerText.slice(0, {最大长度}) : ''"
         代码 = (
