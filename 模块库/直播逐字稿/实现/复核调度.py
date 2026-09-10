@@ -133,10 +133,31 @@ def _截取区间(调用能力, 源音频路径: str, 开始: float, 结束: flo
     return 输出路径, ""
 
 
+def _读已有复核(复核目录: str, 区间id: int) -> dict | None:
+    """复用已落盘复核：文件存在、区间id一致且轮次非空；否则返回 None（重新复核）。"""
+    try:
+        路径 = Path(复核目录).expanduser() / f"复核_{区间id:04d}.json"
+        if not 路径.is_file():
+            return None
+        数据 = json.loads(路径.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(数据, dict) or int(数据.get("区间id") or 0) != int(区间id):
+        return None
+    轮次 = 数据.get("轮次")
+    if not isinstance(轮次, list) or not 轮次:
+        return None
+    完成 = all(bool(条目.get("成功")) for 条目 in 轮次 if isinstance(条目, dict))
+    return {"区间id": 区间id, "开始秒": 数据.get("开始秒"), "结束秒": 数据.get("结束秒"),
+            "轮次": 轮次, "区间音频路径": 数据.get("区间音频路径") or "",
+            "状态": "完成" if 完成 else "部分失败", "错误码": "", "错误说明": "",
+            "写入路径": str(路径), "复用": True}
+
+
 def 复核区间(源音频路径: str, 区间: dict, 复核目录: str, 调用能力,
              轮数: int = 默认轮数, 模型配置: dict | None = None,
-             超时秒: float = 默认超时秒) -> dict:
-    """对单个区间先截取区间音频、再跑多轮独立转写并落盘。"""
+             超时秒: float = 默认超时秒, 续跑: bool = True) -> dict:
+    """对单个区间先截取区间音频、再跑多轮独立转写并落盘；已落盘且区间一致时直接复用。"""
     区间id, 开始, 结束 = _区间信息(区间)
     超时 = _取数(超时秒)
 
@@ -159,6 +180,11 @@ def 复核区间(源音频路径: str, 区间: dict, 复核目录: str, 调用�
         return 失败(错误说明)
     区间id = int(区间id)
     超时 = float(超时)
+
+    if 续跑 and callable(调用能力):
+        已有 = _读已有复核(复核目录, 区间id)
+        if 已有 is not None:
+            return 已有
 
     区间音频, 截取错误 = _截取区间(调用能力, 源音频路径, 开始, 结束, 复核目录, 区间id, 超时)
     if 截取错误:
