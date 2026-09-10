@@ -89,6 +89,9 @@ def _正文块(模式号: int, 模式: dict, 段落列表, 元: dict) -> list[st
     elif 模式号 == 8:
         for 序号, (_段, 文本) in enumerate(有效, start=1):
             块.extend((f"## 问题{序号}", 文本))
+    elif 模式号 == 9:
+        for 序号, (_段, 文本) in enumerate(有效, start=1):
+            块.extend((f"## 要点 {序号}", 文本))
     else:
         for _段, 文本 in 有效:
             块.append(文本)
