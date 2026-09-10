@@ -139,18 +139,57 @@ def 创建唯一运行目录(基础目录: Path, 前缀: str = "运行") -> Path
     return Path(tempfile.mkdtemp(prefix=f"{前缀}_", dir=str(基础目录)))
 
 
-def 原子写入(目标路径: Path, 内容: str | bytes) -> None:
-    """原子写入：临时文件 + fsync + rename。"""
+def 原子写入(
+    目标路径: Path,
+    内容: str | bytes | None = None,
+    保留权限: bool = True,
+    内容字节: bytes | None = None,
+) -> bool:
+    """原子写入：临时文件 + fsync + rename。
+
+    - 保留权限（默认真）：目标文件已存在时，写入后仍保持原权限位。
+      权限位常承载安全语义（如 0o600 的密钥文件），默认放宽等于静默降级。
+    - 内容 与 内容字节 二选一：文本走 内容，二进制走 内容字节。
+    - 写入后同步父目录，保证 rename 落盘。
+    """
     目标路径 = Path(目标路径)
     目标路径.parent.mkdir(parents=True, exist_ok=True)
+    数据 = 内容字节 if 内容字节 is not None else 内容
+    原权限 = None
+    if 保留权限 and 目标路径.exists():
+        try:
+            import stat as _stat
+            原权限 = _stat.S_IMODE(目标路径.stat().st_mode)
+        except OSError:
+            原权限 = None
     临时路径 = 目标路径.parent / f".{目标路径.name}.{uuid.uuid4().hex[:8]}.tmp"
-    模式 = "wb" if isinstance(内容, bytes) else "w"
-    编码 = None if isinstance(内容, bytes) else "utf-8"
-    with open(临时路径, 模式, encoding=编码) as 输出:
-        输出.write(内容)
-        输出.flush()
-        os.fsync(输出.fileno())
-    os.replace(临时路径, 目标路径)  # 原子替换
+    模式 = "wb" if isinstance(数据, (bytes, bytearray)) else "w"
+    编码 = None if isinstance(数据, (bytes, bytearray)) else "utf-8"
+    try:
+        with open(临时路径, 模式, encoding=编码) as 输出:
+            输出.write(数据)
+            输出.flush()
+            os.fsync(输出.fileno())
+        if 原权限 is not None:
+            try:
+                os.chmod(临时路径, 原权限)
+            except OSError:
+                pass
+        os.replace(临时路径, 目标路径)  # 原子替换
+    finally:
+        try:
+            if 临时路径.exists():
+                临时路径.unlink()
+        except OSError:
+            pass
+    try:  # 同步父目录，确保 rename 落盘
+        目录描述符 = os.open(str(目标路径.parent), os.O_RDONLY)
+        try:
+            os.fsync(目录描述符)
+        finally:
+            os.close(目录描述符)
+    except OSError:
+        pass
     return True
 
 
