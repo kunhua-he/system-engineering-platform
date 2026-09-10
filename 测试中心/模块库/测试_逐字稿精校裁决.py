@@ -16,25 +16,34 @@ from 模块库.直播逐字稿.实现.精校裁决 import 渲染提示词, 裁�
 
 
 class 假调用能力:
-    """记录调用过程的假调用能力，可指定第几次对话失败。"""
+    """记录调用过程的假调用能力，可指定前几次对话失败、或前几次报句柄不存在。"""
 
-    def __init__(self, 失败次数: int = 0):
+    def __init__(self, 失败次数: int = 0, 句柄失效次数: int = 0):
         self.调用记录: list[tuple[str, dict]] = []
         self.失败次数 = 失败次数
+        self.句柄失效次数 = 句柄失效次数
         self.对话计数 = 0
+        self.连接次数 = 0
         self.锁 = threading.Lock()
 
     def __call__(self, 能力id: str, 参数: dict):
         with self.锁:
             self.调用记录.append((能力id, 参数))
         if 能力id.endswith("连接LLM"):
-            return 结果.成功结果({"句柄": 999, "模型": "假模型"})
+            with self.锁:
+                self.连接次数 += 1
+                本次 = self.连接次数
+            return 结果.成功结果({"句柄": 1000 + 本次, "模型": "假模型"})
         if 能力id.endswith("释放句柄"):
             return 结果.成功结果({"句柄": 参数.get("句柄"), "已释放": True})
         if 能力id.endswith("生成对话"):
             with self.锁:
                 self.对话计数 += 1
                 序号 = self.对话计数
+                # 句柄失效场景：第 1 轮（第一次连接出来的句柄）的对话全报不存在
+                当前句柄 = 参数.get("句柄")
+            if self.句柄失效次数 and 当前句柄 == 1001 and 序号 <= self.句柄失效次数:
+                return 结果.失败("句柄不存在", f"句柄不存在: {当前句柄}", 来源="测试")
             if 序号 <= self.失败次数:
                 return 结果.失败("提供者不可用", "假失败", 来源="测试")
             # 从消息里取时间范围，回显成"回复"，便于校验顺序
@@ -94,6 +103,18 @@ class 测试裁决窗口列表(unittest.TestCase):
         self.assertTrue(all(参数.get("句柄") == 12345
                         for 能力id, 参数 in 假.调用记录
                         if 能力id.endswith("生成对话")))
+
+    def test_句柄被回收后自动重连只补失败窗口(self):
+        """句柄默认 30 分钟空闲即被回收；失效时应用模型配置重连一次并补跑失败窗口。"""
+        窗口列表 = [造窗(i) for i in range(1, 4)]
+        假 = 假调用能力(句柄失效次数=3)   # 第一轮三个窗口全报"句柄不存在"
+        出 = 裁决窗口列表(窗口列表, "提示词", 假,
+                     {"模型": "假模型", "部署形态": "云端", "url": "http://x", "api_key": "k"},
+                     重试次数=0, 并发数=1)
+        self.assertEqual([段["状态"] for 段 in 出["段落列表"]], ["完成"] * 3,
+                        "重连后所有失败窗口都应补跑成功")
+        self.assertGreaterEqual(假.连接次数, 2, "应当重新连接拿新句柄")
+        self.assertFalse(出["借用句柄"], "重连出来的句柄由底座释放")
 
     def test_自带配置时连接后必释放(self):
         假 = 假调用能力()
