@@ -246,10 +246,26 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
         if 参数.get("系统提示词"):
             消息.insert(0, {"role": "system", "content": 参数["系统提示词"]})
         协议 = 配置.get("协议", 默认协议)
+        温度 = 参数.get("温度")
+        最大令牌数 = 参数.get("最大令牌数")
+        工具 = 参数.get("工具")
+        响应格式 = 参数.get("响应格式")
         if 协议 == "codex_responses":
             路径, 请求体 = "/responses", {"model": 模型, "input": 消息, "stream": False}
+            令牌键 = "max_output_tokens"
+            if 响应格式:
+                请求体["text"] = {"format": 响应格式}
         else:
             路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息, "stream": False}
+            令牌键 = "max_tokens"
+            if 响应格式:
+                请求体["response_format"] = 响应格式
+        if 温度 is not None:
+            请求体["temperature"] = 温度
+        if 最大令牌数 is not None:
+            请求体[令牌键] = 最大令牌数
+        if 工具:
+            请求体["tools"] = 工具
     elif 连接类型 == "向量":
         路径, 请求体 = "/embeddings", {"model": 模型, "input": 参数.get("文本")}
     else:
@@ -724,15 +740,33 @@ def 注册本地进程(句柄: int | None = None, 进程对象: Any = None) -> �
 # ── 句柄调用（持句柄使用模型）────────────────────────
 
 def 生成对话(句柄: int | None = None, 消息列表: list = None,
-           系统提示词: str = None, 流式输出: bool = False) -> 结果:
+           系统提示词: str = None, 流式输出: bool = False,
+           温度: float = None, 最大令牌数: int = None,
+           工具: list = None, 响应格式: dict = None) -> 结果:
+    """持句柄生成对话。
+
+    可选生成参数（温度/最大令牌数/工具/响应格式）按协议映射到上游请求体：
+    codex_responses → temperature / max_output_tokens / tools / text.format；
+    chat_completions → temperature / max_tokens / tools / response_format。
+    不传则不下发该字段（由上游取默认值）。
+    """
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return _失败("参数不合法", "句柄必须是1到999999的整数")
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
+    if 温度 is not None and (isinstance(温度, bool) or not isinstance(温度, (int, float))):
+        return _失败("参数不合法", "温度必须是数值")
+    if 最大令牌数 is not None and (isinstance(最大令牌数, bool) or not isinstance(最大令牌数, int)):
+        return _失败("参数不合法", "最大令牌数必须是整数")
+    if 工具 is not None and not isinstance(工具, list):
+        return _失败("参数不合法", "工具必须是列表")
+    if 响应格式 is not None and not isinstance(响应格式, dict):
+        return _失败("参数不合法", "响应格式必须是字典型")
     if not isinstance(流式输出, bool):
         return _失败("参数不合法", "流式输出必须是逻辑型")
     return _调用模型(句柄, "LLM", {
         "消息列表": 消息列表, "系统提示词": 系统提示词, "流式输出": 流式输出,
+        "温度": 温度, "最大令牌数": 最大令牌数, "工具": 工具, "响应格式": 响应格式,
     })
 
 
