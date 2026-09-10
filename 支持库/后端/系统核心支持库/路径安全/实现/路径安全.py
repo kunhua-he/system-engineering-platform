@@ -46,3 +46,22 @@ def 校验文件名(文件名: str = None) -> 结果:
     if 文件名 in (".", "..") or 文件名.startswith("."):
         return 结果.成功结果({"通过": False, "原因": "文件名不能是 . / .. 或以点开头", "安全文件名": ""})
     return 结果.成功结果({"通过": True, "原因": "允许", "安全文件名": 文件名})
+
+def 显示相对路径(目标路径: str = None, 基准目录: str = None, 备选基准: str = None) -> 结果:
+    """把绝对路径显示为相对某基准目录的字符串（用于日志/UI 展示）。
+
+    依次尝试 基准目录 → 备选基准，都不在则原样返回绝对路径。
+    不抛异常：任何异常都回退为原样返回，保证展示路径永不中断调用方。
+    """
+    from pathlib import Path as _Path
+
+    if not isinstance(目标路径, str) or not 目标路径.strip():
+        return 结果.失败("参数不合法", "目标路径必须是非空字符串", 来源="路径安全")
+    路径 = _Path(目标路径)
+    for 候选 in (基准目录, 备选基准):
+        if isinstance(候选, str) and 候选.strip():
+            try:
+                return 结果.成功结果({"显示路径": str(路径.relative_to(_Path(候选))), "相对": True})
+            except ValueError:
+                continue
+    return 结果.成功结果({"显示路径": str(路径), "相对": False})
