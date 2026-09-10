@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -95,7 +96,10 @@ class Test死循环剔除(unittest.TestCase):
         折叠后, 折叠数 = 折叠循环话术(分段, 最少次数=3)
         self.assertEqual(折叠数, 2, "重复出现的两次必须被折叠掉")
         self.assertEqual(len(折叠后), 2)
-        self.assertIn("整场重复 3 次", 折叠后[0]["文本"])
+        self.assertIn("整场重复多次", 折叠后[0]["文本"])
+        # 标注里不能出现数字：质检按阿拉伯数字算保留率，标注数字会污染基线
+        self.assertNotIn("3", 折叠后[0]["文本"].replace(话术, ""))
+        self.assertEqual(re.findall(r"\d+", 折叠后[0]["文本"]), [])
 
     def test_重复不足阈值不折叠(self):
         分段 = [造段(0.0, 1.0, "这句话只出现两次"), 造段(10.0, 11.0, "这句话只出现两次")]
