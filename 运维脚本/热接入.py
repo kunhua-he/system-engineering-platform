@@ -42,8 +42,20 @@ def 调用(操作: str, 参数: dict | None = None, 超时秒: float = 180.0) ->
     请求体 = {"操作": 操作}
     if 参数:
         请求体["参数"] = 参数
+    return _发请求("/" + quote("网关/调用"), 请求体, 超时秒)
+
+
+def 热接入(超时秒: float = 300.0) -> dict:
+    """热接入走专用路径 POST /网关/热接入（空请求体），不是 /网关/调用 + 操作。
+
+    网关对该路径固定注入 操作=热接入、参数={}，调用方不能伪造其他操作。
+    """
+    return _发请求("/" + quote("网关/热接入"), {}, 超时秒)
+
+
+def _发请求(路径: str, 请求体: dict, 超时秒: float) -> dict:
     请求 = urllib.request.Request(
-        网关地址 + "/" + quote("网关/调用"),
+        网关地址 + 路径,
         data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"),
         headers={
             "Content-Type": "application/json; charset=utf-8",
@@ -79,7 +91,7 @@ def 主(仅查看: bool) -> int:
         return 0
 
     起点 = time.time()
-    结果 = 调用("热接入")
+    结果 = 热接入()
     耗时 = time.time() - 起点
 
     if not 结果.get("成功"):
