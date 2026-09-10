@@ -9,11 +9,11 @@
     },
     {
       "路径": "依赖契约/依赖契约.json",
-      "sha256": "3d8a614db75d32f006fccef8b571ac666f667dc4264b6d06ffc9cc154b33e07d"
+      "sha256": "c123c517bd2912e1a4d418f50eccc27e1268069c641658bba5254cfa92172a00"
     },
     {
       "路径": "包声明.json",
-      "sha256": "3fdaf5fb1bfb9921d64e119bcd6ba8ba7631b9f0ac4cfce5447d5b49cbaa0f79"
+      "sha256": "ccdacc81a45450ebad8711e5ece741fef3646963f8663dfa67ca291ca9460aa5"
     },
     {
       "路径": "复用决策.json",
@@ -25,11 +25,19 @@
     },
     {
       "路径": "实现/全自动精校.py",
-      "sha256": "3ff093e167108888c3cf407ecf49ec78d7425b95aa0bdcc4561faded62d06692"
+      "sha256": "7d558748f1d64dd940fbec8dcee75daaa5130ebf9ce8fdf3c2bc8c529c0f28e5"
+    },
+    {
+      "路径": "实现/分片转写.py",
+      "sha256": "75515b2562f0a7846c356b8f0477e3c073a79b0ab11aeedfc84306aab688a0fa"
+    },
+    {
+      "路径": "实现/复核编排.py",
+      "sha256": "656515beb422b9ecd43bdbfb949d96b37a8cbcb67736fa99911989d3135290b9"
     },
     {
       "路径": "实现/复核调度.py",
-      "sha256": "d025475289240530ae67af1b94c1262c1c7e3ff7c89952b39cc6fd0d7e78da5d"
+      "sha256": "77b4955c3d88c1d66dc8ca492a375c7c9a0c6df3191f0479c11d52d2da365fa1"
     },
     {
       "路径": "实现/导出落盘.py",
@@ -37,7 +45,7 @@
     },
     {
       "路径": "实现/排版合成.py",
-      "sha256": "6c07aef69a6f8752e2b130ca48458a9e32ad4acfb49eed20ad7d5f87c0913f73"
+      "sha256": "b2ac0529c6f0e2908aa38a48085148fa45cb9b58236fa213fbdd0d287b6bef25"
     },
     {
       "路径": "实现/模式注册表.py",
@@ -45,7 +53,7 @@
     },
     {
       "路径": "实现/疑难标记.py",
-      "sha256": "715989938684bdda3406371a8d01bacd9ab361d5b4adf3edd226a327b78a2bbe"
+      "sha256": "20269bd523e4037f91af3c8fde1a4c4057b70cf481363cab86b4ff8c28820ab0"
     },
     {
       "路径": "实现/直播逐字稿.py",
@@ -57,7 +65,7 @@
     },
     {
       "路径": "实现/精校裁决.py",
-      "sha256": "523af4ddeaad045ef7e8a9671116a3c4b5fb21b4aaedb582f669d90cce28ec1f"
+      "sha256": "efe3669e98aaac4c34efd28f0956ff49fb898c8cab518e20ceda85993363fb4b"
     },
     {
       "路径": "实现/缓存与续跑.py",
