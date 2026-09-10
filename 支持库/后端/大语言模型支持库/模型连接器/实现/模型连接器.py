@@ -209,6 +209,22 @@ def _取连接(句柄id: int) -> tuple[dict[str, Any] | None, str]:
     return 连接, ""
 
 
+默认HTTP请求超时秒 = 600
+环境变量HTTP超时 = "模型HTTP_请求超时秒"
+
+
+def _HTTP请求超时秒(配置: dict) -> float:
+    """单次模型 HTTP 请求超时：配置优先，其次环境变量，默认 600 秒。
+
+    原来硬编码 30 秒，长文本生成（逐字稿逐窗精校等）必然超时；
+    30 秒对推理模型的千字级输出远远不够。
+    """
+    try:
+        return float(配置.get("请求超时秒") or os.environ.get(环境变量HTTP超时) or 默认HTTP请求超时秒)
+    except (TypeError, ValueError):
+        return float(默认HTTP请求超时秒)
+
+
 def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
     """URL连接的默认兼容调用器；与受管 Provider 保持同一协议契约。"""
     import json
@@ -244,7 +260,7 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
             {"Authorization": f"Bearer {配置['api_key']}"} if 配置.get("api_key") else {})},
     )
     try:
-        with urllib.request.urlopen(请求, timeout=30) as 响应:
+        with urllib.request.urlopen(请求, timeout=_HTTP请求超时秒(配置)) as 响应:
             原始 = 响应.read(4 * 1024 * 1024 + 1)
             if len(原始) > 4 * 1024 * 1024:
                 return _失败("超出限制", f"{连接类型} HTTP响应超过4MB上限")

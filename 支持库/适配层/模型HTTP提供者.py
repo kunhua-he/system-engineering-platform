@@ -54,7 +54,7 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any]) -> tupl
     )
     try:
         开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with 开放器.open(请求, timeout=float(配置.get("请求超时秒") or 120)) as 响应:
+        with 开放器.open(请求, timeout=float(配置.get("请求超时秒") or 600)) as 响应:
             正文, 超限 = 受限读取(响应, 响应上限字节)
             if 超限:
                 return 响应.status, None, f"响应超过读取上限 {响应上限字节} 字节"
