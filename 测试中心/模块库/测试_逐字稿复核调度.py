@@ -74,10 +74,16 @@ class Test聚类区间(unittest.TestCase):
         self.assertEqual(len(区间), 1)
         self.assertEqual((区间[0]["开始秒"], 区间[0]["结束秒"], 区间[0]["疑难数"]), (10.0, 60.0, 2))
 
-    def test_间隔刚好等于阈值不合并(self):
+    def test_间隔刚好等于阈值合并(self):
         区间 = 聚类区间([{"开始秒": 0.0, "结束秒": 10.0},
                         {"开始秒": 70.0, "结束秒": 80.0}], 间隔秒=60)["区间"]
-        self.assertEqual(len(区间), 2, "间隔恰好等于阈值必须算两段")
+        self.assertEqual(len(区间), 1, "间隔恰好等于阈值必须并入同一区间")
+        self.assertEqual((区间[0]["开始秒"], 区间[0]["结束秒"], 区间[0]["疑难数"]), (0.0, 80.0, 2))
+
+    def test_间隔超过阈值才分段(self):
+        区间 = 聚类区间([{"开始秒": 0.0, "结束秒": 10.0},
+                        {"开始秒": 71.0, "结束秒": 80.0}], 间隔秒=60)["区间"]
+        self.assertEqual(len(区间), 2, "间隔严格大于阈值才另起区间")
         self.assertEqual([项["区间id"] for 项 in 区间], [1, 2])
 
     def test_多段聚成一段(self):
