@@ -63,12 +63,20 @@ def _绝对化分段(分段: list, 片开始秒: float) -> list[dict]:
     return 结果
 
 
+def _取数(值, 默认: float) -> float:
+    """宽松取数：数值或数字文本转 float；取不到才用默认（不能用 `or`，0.0 是合法值）。"""
+    try:
+        return float(值)
+    except (TypeError, ValueError):
+        return 默认
+
+
 def _区间吻合(已有: dict, 区间: dict) -> bool:
     """复用判定：已落盘分片的序号与时间区间必须与当前分片一致（防整段旧产物被误复用）。"""
     try:
-        return (int(已有.get("分片序号") or 0) == int(区间["序号"])
-                and abs(float(已有.get("开始秒") or -1) - float(区间["开始秒"])) < 0.01
-                and abs(float(已有.get("结束秒") or -1) - float(区间["结束秒"])) < 0.01)
+        return (int(_取数(已有.get("分片序号"), 0.0)) == int(区间["序号"])
+                and abs(_取数(已有.get("开始秒"), -1.0) - float(区间["开始秒"])) < 0.01
+                and abs(_取数(已有.get("结束秒"), -1.0) - float(区间["结束秒"])) < 0.01)
     except (TypeError, ValueError, KeyError):
         return False
 
