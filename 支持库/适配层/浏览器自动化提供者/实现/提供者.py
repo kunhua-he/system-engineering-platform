@@ -59,7 +59,8 @@ class 浏览器自动化提供者:
         ]
         return next((路径 for 路径 in 候选 if 路径 and Path(路径).is_file()), None)
 
-    def _启动浏览器(self, 会话名: str, 目录: Path, 超时秒: int) -> tuple[subprocess.Popen, int] | None:
+    def _启动浏览器(self, 会话名: str, 目录: Path, 超时秒: int,
+                    视口宽: int = 0, 视口高: int = 0) -> tuple[subprocess.Popen, int] | None:
         浏览器 = self._发现浏览器()
         if not 浏览器:
             return None
@@ -69,6 +70,9 @@ class 浏览器自动化提供者:
             "--disable-background-networking", "--disable-component-update",
             "--disable-default-apps", "--disable-sync", "--no-startup-window",
         ]
+        # 视口（可选）：由调用方指定宽高，不传则用浏览器默认
+        if isinstance(视口宽, int) and isinstance(视口高, int) and 视口宽 > 0 and 视口高 > 0:
+            参数.append(f"--window-size={视口宽},{视口高}")
         try:
             进程 = subprocess.Popen(
                 参数, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -143,7 +147,7 @@ class 浏览器自动化提供者:
                 continue
         return {}
 
-    def 建立连接(self, *, 超时秒: int = 30) -> dict[str, Any]:
+    def 建立连接(self, *, 超时秒: int = 30, 视口宽: int = 0, 视口高: int = 0) -> dict[str, Any]:
         可用 = self.检查可用()
         if not 可用["成功"]:
             return 可用
@@ -151,7 +155,7 @@ class 浏览器自动化提供者:
         目录 = Path(tempfile.mkdtemp(prefix="会话-", dir=self.工作根))
         self.会话目录表[会话名] = 目录
         if "browser-use" in self.命令:
-            if self._启动浏览器(会话名, 目录, 超时秒) is None:
+            if self._启动浏览器(会话名, 目录, 超时秒, 视口宽, 视口高) is None:
                 self.会话目录表.pop(会话名, None)
                 shutil.rmtree(目录, ignore_errors=True)
                 return {"成功": False, "错误码": "提供者不可用", "错误说明": "独立Chromium未能启动或暴露CDP端口"}
