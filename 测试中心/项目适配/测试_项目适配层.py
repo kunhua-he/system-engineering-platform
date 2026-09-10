@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -128,23 +129,36 @@ class Test依赖锁定(unittest.TestCase):
 class Test项目入口(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.后端 = 后端核心(系统根)
-        启动结果 = cls.后端.启动()
-        if not 启动结果.成功:
-            raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
-        cls.网关 = 本地网关服务器(
-            网关核心实例=网关核心(cls.后端), 端口=0, 地址="127.0.0.1",
-            配置={"请求超时秒": 10},
-        )
-        成功, 说明 = cls.网关.启动()
-        if not 成功:
-            cls.后端.强制关闭()
-            raise RuntimeError(f"测试网关启动失败: {说明}")
+        cls._原网关凭证 = os.environ.get("系统库网关凭证")
+        os.environ["系统库网关凭证"] = "test"
+        try:
+            cls.后端 = 后端核心(系统根)
+            启动结果 = cls.后端.启动()
+            if not 启动结果.成功:
+                raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
+            cls.网关 = 本地网关服务器(
+                网关核心实例=网关核心(cls.后端), 端口=0, 地址="127.0.0.1",
+                配置={"请求超时秒": 10, "要求凭证": False, "禁止客户端身份": False},
+            )
+            成功, 说明 = cls.网关.启动()
+            if not 成功:
+                cls.后端.强制关闭()
+                raise RuntimeError(f"测试网关启动失败: {说明}")
+        except Exception:
+            if cls._原网关凭证 is None:
+                os.environ.pop("系统库网关凭证", None)
+            else:
+                os.environ["系统库网关凭证"] = cls._原网关凭证
+            raise
 
     @classmethod
     def tearDownClass(cls):
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
+        if cls._原网关凭证 is None:
+            os.environ.pop("系统库网关凭证", None)
+        else:
+            os.environ["系统库网关凭证"] = cls._原网关凭证
 
     def setUp(self):
         self.适配示例目录 = 系统根 / "示例项目" / "适配层示例"

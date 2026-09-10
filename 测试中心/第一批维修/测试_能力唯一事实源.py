@@ -58,7 +58,10 @@ class 测试能力唯一事实源(unittest.TestCase):
                 with urllib.request.urlopen(请求, timeout=10) as 响应:
                     数据 = json.loads(响应.read().decode("utf-8"))
             except urllib.error.HTTPError as 错误:
-                数据 = json.loads(错误.read().decode("utf-8"))
+                try:
+                    数据 = json.loads(错误.read().decode("utf-8"))
+                finally:
+                    错误.close()
             if 数据.get("错误码") != "能力不存在":
                 可调用.add(能力id)
         return 可调用

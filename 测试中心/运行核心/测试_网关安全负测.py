@@ -52,7 +52,10 @@ def _POST(网关, 请求体: dict, 凭证: str = "") -> tuple[int, dict]:
         with urllib.request.urlopen(请求, timeout=5) as 响应:
             return 响应.status, json.loads(响应.read().decode())
     except urllib.error.HTTPError as 错误:
-        return 错误.code, json.loads(错误.read().decode())
+        try:
+            return 错误.code, json.loads(错误.read().decode())
+        finally:
+            错误.close()
 
 
 class 网关身份负测(unittest.TestCase):

@@ -26,7 +26,7 @@ def _生成视频(路径: Path, 含音频: bool, 尺寸: str = "64x64") -> Path:
     参数 = [探测模块.查找命令("ffmpeg"), "-y", "-f", "lavfi", "-i",
             f"testsrc=size={尺寸}:rate=10", "-t", "1"]
     if 含音频:
-        参数 += ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest"]
+        参数 += ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest", "-t", "1"]
     参数 += ["-pix_fmt", "yuv420p", str(路径)]
     subprocess.run(参数, capture_output=True, check=True)
     return 路径

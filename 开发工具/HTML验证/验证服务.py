@@ -81,7 +81,10 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
                 with urllib.request.urlopen(请求, timeout=默认超时秒) as 响应:
                     状态码, 返回 = 响应.status, 响应.read(请求上限字节)
             except urllib.error.HTTPError as 错误:
-                状态码, 返回 = 错误.code, 错误.read(请求上限字节)
+                try:
+                    状态码, 返回 = 错误.code, 错误.read(请求上限字节)
+                finally:
+                    错误.close()
             except (urllib.error.URLError, TimeoutError, OSError) as 错误:
                 状态码 = 502
                 返回 = json.dumps({

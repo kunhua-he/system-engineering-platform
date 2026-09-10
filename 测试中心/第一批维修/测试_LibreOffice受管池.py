@@ -125,7 +125,7 @@ class 测试LibreOffice受管池(unittest.TestCase):
         self.assertTrue(all(not 项.exists() for 项 in 配置档路径))
 
     def test_活动子进程不超过固定池大小(self):
-        池 = self._新建池(池大小=2, 队列长度=10)
+        池 = self._新建池(池大小=2, 队列长度=10, 排队超时秒=2.0)
         键一 = "资源一"
         键二 = next(f"资源{序号}" for 序号 in range(2, 100)
                   if 池._选择成员序号(f"资源{序号}") != 池._选择成员序号(键一))

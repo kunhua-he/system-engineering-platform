@@ -143,6 +143,9 @@ class Test进程补齐(unittest.TestCase):
         except (OSError, ProcessLookupError):
             残留 = False
         self.assertFalse(残留, "进程组应被 killpg 回收，零残留")
+        for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
+            if 流 is not None:
+                流.close()
 
     def test_进程临时资源登记清理(self):
         """进程产生的临时资源登记→统一清理→消失。"""

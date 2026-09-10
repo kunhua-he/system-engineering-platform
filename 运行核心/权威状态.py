@@ -20,12 +20,14 @@
 """
 from __future__ import annotations
 
+import atexit
 import json
 import shutil
 import sqlite3
 import threading
 import time
 import uuid
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -80,6 +82,20 @@ def 版本元组(版本: str) -> tuple[int, ...]:
     ("1.2.0", "_迁移到120"),
 ]
 
+_活动状态实例: weakref.WeakSet = weakref.WeakSet()
+
+
+def _退出时关闭状态连接() -> None:
+    """解释器退出前关闭所有仍存活的状态对象连接。"""
+    for 状态 in list(_活动状态实例):
+        try:
+            状态.关闭()
+        except Exception:
+            pass
+
+
+atexit.register(_退出时关闭状态连接)
+
 
 class 权威状态:
     """权威状态存储（sqlite3 WAL）。"""
@@ -108,6 +124,7 @@ class 权威状态:
         self._连接锁 = threading.RLock()
         self._连接表: dict[int, sqlite3.Connection] = {}
         self._连接线程表: dict[int, threading.Thread] = {}
+        _活动状态实例.add(self)
         self._初始化()
 
     # ---- 连接管理（每线程独立 + 死线程回收） ----
@@ -886,6 +903,20 @@ class 权威状态:
                     pass
             self._连接表.clear()
             self._连接线程表.clear()
+
+    def __del__(self) -> None:
+        """对象异常离开生命周期时尽力关闭连接，避免解释器回收时报资源泄漏。"""
+        try:
+            连接表 = getattr(self, "_连接表", {})
+            for 连接 in list(连接表.values()):
+                try:
+                    连接.close()
+                except Exception:
+                    pass
+            连接表.clear()
+            getattr(self, "_连接线程表", {}).clear()
+        except Exception:
+            pass
 
     def 校验结构(self) -> tuple[bool, str]:
         """结构校验：版本一致 + 必需列齐全 + integrity_check 返回 ok。"""

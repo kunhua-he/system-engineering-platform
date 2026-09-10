@@ -148,7 +148,9 @@ def _参数最小值(能力id: str, 参数: dict[str, Any], 根目录: Path) -> 
 def _加载模块(文件路径: Path):
     """加载任意 Python 文件为模块（用于真实实现调用）。"""
     import importlib.util as _工具
-    规格 = _工具.spec_from_file_location(f"合规_{文件路径.stem}", 文件路径)
+    标识 = hashlib.sha1(str(文件路径.resolve()).encode("utf-8")).hexdigest()[:12]
+    模块名 = f"合规_{文件路径.stem}_{标识}"
+    规格 = _工具.spec_from_file_location(模块名, 文件路径)
     if 规格 is None or 规格.loader is None:
         raise ImportError(f"无法加载: {文件路径}")
     模块 = _工具.module_from_spec(规格)
@@ -157,13 +159,23 @@ def _加载模块(文件路径: Path):
 
 
 def _加载入口(组件目录: Path, 入口路径: Path):
-    """按公开入口加载入口模块：临时把组件目录加入 sys.path（兼容包内相对导入）。"""
+    """按公开入口加载入口模块，隔离临时组件的固定包名缓存。"""
     import sys as _系统
+    原有模块 = {
+        名称: 模块 for 名称, 模块 in _系统.modules.items()
+        if 名称 == "实现" or 名称.startswith("实现.")
+    }
+    for 名称 in list(原有模块):
+        del _系统.modules[名称]
     _系统.path.insert(0, str(组件目录))
     try:
         return _加载模块(入口路径)
     finally:
         _系统.path.remove(str(组件目录))
+        for 名称 in list(_系统.modules):
+            if 名称 == "实现" or 名称.startswith("实现."):
+                del _系统.modules[名称]
+        _系统.modules.update(原有模块)
 
 
 def _值类型(值: Any) -> str:

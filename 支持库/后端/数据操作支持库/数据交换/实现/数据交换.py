@@ -66,3 +66,35 @@ def 反序列化CSV(文本: str = None) -> 结果:
         return _成功([行 for 行 in 读取器])
     except (csv.Error, TypeError) as 错误:
         return _失败("反序列化失败", f"CSV 解析失败: {错误}")
+
+
+def 解析YAML(文本: str = None):
+    """把 YAML 文本解析为数据（经适配层 YAML提供者）。"""
+    try:
+        from 支持库.适配层.YAML提供者.实现.提供者 import 解析YAML as _解析YAML
+        from 支持库.适配层.YAML提供者.实现.提供者 import YAML解析错误
+    except ImportError as e:
+        return _失败("解析失败", f"PyYAML 不可用: {e}")
+    if 文本 is None:
+        return _失败("参数不合法", "文本 不能为空")
+    if not isinstance(文本, str):
+        return _失败("参数不合法", "文本 必须是文本")
+    try:
+        return _成功(_解析YAML(文本))
+    except YAML解析错误 as e:
+        return _失败("解析失败", f"YAML 解析失败: {e}")
+    except Exception as e:
+        return _失败("解析失败", f"YAML 解析异常: {e}")
+
+
+def 序列化YAML(数据: Any = None):
+    """把数据序列化为 YAML 文本（经适配层 YAML提供者）。"""
+    try:
+        from 支持库.适配层.YAML提供者.实现.提供者 import 序列化YAML as _序列化YAML
+    except ImportError as e:
+        return _失败("序列化失败", f"PyYAML 不可用: {e}")
+    try:
+        return _成功(_序列化YAML(数据))
+    except Exception as e:
+        return _失败("序列化失败", f"YAML 序列化异常: {e}")
+

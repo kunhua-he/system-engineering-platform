@@ -75,6 +75,16 @@ class SSE夹具:
                         'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'.encode(),
                         b"data: [DONE]\n\n",
                     ])
+                elif 夹具.模式 == "chat空完成原因":
+                    夹具._写入(self, [
+                        b": keepalive\n\n",
+                        b'event: chunk\n',
+                        b'data: {"choices":[{"delta":{"role":"assistant","content":""},"finish_reason":""}]}\n\n',
+                        'data: {"choices":[{"delta":{"content":"你"}}]}\n\n'.encode(),
+                        'data: {"choices":[{"delta":{"content":"好"}}]}\n\n'.encode(),
+                        b'data: {"choices":[{"delta":{"content":""},"finish_reason":"stop"}]}\n\n',
+                        b"data: [DONE]\n\n",
+                    ])
                 elif 夹具.模式 == "codex":
                     夹具._写入(self, [
                         b'event: response.created\ndata: {"type":"response.created","response":{"status":"in_progress"}}\n\n',
@@ -178,6 +188,14 @@ class 测试节点H模型Provider流式读取(unittest.TestCase):
         self.assertIs(请求["正文"]["stream"], True)
         self.assertEqual(请求["正文"]["messages"][0], {"role": "system", "content": "系统"})
         self.assertEqual(请求["接收"], "text/event-stream")
+
+    def test_chat首个空完成原因不会吞掉后续增量(self) -> None:
+        事件 = self._读取("chat空完成原因")
+        self.assertEqual(事件, [
+            {"类型": "增量", "文本": "你"},
+            {"类型": "增量", "文本": "好"},
+            {"类型": "完成", "文本": "", "完成原因": "stop", "用量": {}},
+        ])
 
     def test_codex协议解析Responses增量和完成事件(self) -> None:
         事件 = self._读取("codex", "codex_responses")

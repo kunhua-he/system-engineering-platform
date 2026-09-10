@@ -395,23 +395,15 @@ def 生成Agent数据(定义: dict[str, Any], 包id: str) -> str:
     return json.dumps(数据, ensure_ascii=False, indent=1)
 
 
-def 生成验证场景引用(定义: dict[str, Any], 包id: str) -> str:
-    """生成 验证场景引用.json。"""
-    数据 = {
-        "验证场景引用": [
-            {
-                "场景id": "支持库.资产验证",
-                "目标": 包id,
-                "范围": "资产",
-            },
-            {
-                "场景id": "支持库.能力契约验证",
-                "目标": 包id,
-                "范围": "契约",
-            },
-        ]
-    }
-    return json.dumps(数据, ensure_ascii=False, indent=1)
+def 生成验证场景引用(定义: dict[str, Any], 包id: str) -> str | None:
+    """不再生成 验证场景引用.json。
+
+    旧实现输出的 {场景id,目标,范围} 三键格式缺 契约版本、且不符合 HTML 验证
+    的 v1 契约（引用条目必须是 {"场景":...} 或 {"场景文件":...}），生成即把
+    合法文件覆盖成非法文件，并会毁掉能力作者手写的富场景。场景引用只能由
+    能力作者按 v1 契约手写维护，编译器不参与生成。
+    """
+    return None
 
 
 def 生成完整性摘要(定义: dict[str, Any], 包id: str, 实现摘要: str,
@@ -462,9 +454,20 @@ def 编译能力定义(定义文件: Path, 包目录: Path, 包id: str, 包名�
     if 契约问题:
         结果.问题列表.extend(f"生成契约: {问题}" for 问题 in 契约问题)
         return 结果
-    # 2. 包声明能力清单
+    # 2. 包声明能力清单（保留既有额外顶层字段，如 句柄超时秒）
     声明路径 = 包目录 / "包声明.json"
-    _写产物(声明路径, 生成包声明(定义, 包id, 包名称, 包类型, 依赖), 结果)
+    声明文本 = 生成包声明(定义, 包id, 包名称, 包类型, 依赖)
+    try:
+        既有声明 = json.loads(声明路径.read_text(encoding="utf-8")) if 声明路径.is_file() else {}
+        新声明 = json.loads(声明文本)
+        if isinstance(既有声明, dict) and isinstance(新声明, dict):
+            额外字段 = {键: 值 for 键, 值 in 既有声明.items() if 键 not in 新声明}
+            if 额外字段:
+                新声明.update(额外字段)
+                声明文本 = json.dumps(新声明, ensure_ascii=False, indent=1)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+    _写产物(声明路径, 声明文本, 结果)
     # 3. 注册入口
     入口路径 = 包目录 / "__init__.py"
     _写产物(入口路径, 生成注册入口(定义, 包id, 实现模块), 结果)
@@ -473,8 +476,11 @@ def 编译能力定义(定义文件: Path, 包目录: Path, 包id: str, 包名�
     数据目录.mkdir(parents=True, exist_ok=True)
     _写产物(数据目录 / "能力搜索数据.json", 生成搜索数据(定义), 结果)
     _写产物(数据目录 / "Agent查询数据.json", 生成Agent数据(定义, 包id), 结果)
-    # 5. 验证场景引用
-    _写产物(包目录 / "验证场景引用.json", 生成验证场景引用(定义, 包id), 结果)
+    # 5. 验证场景引用：编译器不再生成（v1 契约由能力作者手写维护），
+    #    避免把合法文件覆盖成非法旧格式。
+    场景引用文本 = 生成验证场景引用(定义, 包id)
+    if 场景引用文本 is not None:
+        _写产物(包目录 / "验证场景引用.json", 场景引用文本, 结果)
     # 6. 完整性摘要
     _写产物(包目录 / "完整性摘要.json", 生成完整性摘要(定义, 包id, "实现", 包目录), 结果)
     return 结果

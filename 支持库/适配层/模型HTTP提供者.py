@@ -195,7 +195,7 @@ def _流式事件内容(数据: dict[str, Any], 协议: str) -> tuple[str, str |
     if not isinstance(增量, str):
         raise TypeError("Chat SSE 的 content 必须是字符串或内容列表")
     用量 = 数据.get("usage")
-    return 增量, 完成原因 if isinstance(完成原因, str) else None, 用量 if isinstance(用量, dict) else {}
+    return 增量, 完成原因 if isinstance(完成原因, str) and 完成原因 else None, 用量 if isinstance(用量, dict) else {}
 
 
 def _解析流式响应(响应: Any, 协议: str, *, 响应上限: int,

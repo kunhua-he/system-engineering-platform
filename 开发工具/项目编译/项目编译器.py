@@ -27,7 +27,7 @@ from 开发工具.项目编译.正式包索引 import 构建索引, 校验显式
 忽略目录 = {"__pycache__", ".pytest_cache", ".ruff_cache", "工程缓存"}
 运行时适配文件 = ("__init__.py", "脱敏模式.py", "系统探针.py", "适配契约.py")
 依赖锁文件名 = "依赖锁.json"
-编译器版本 = "1.3.0"
+编译器版本 = "1.4.0"
 关键源码目录 = {
     ".git", "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心",
     "后端核心", "支持库", "模块库", "项目适配层", "开发工具", "测试中心",
@@ -129,6 +129,102 @@ def _制品文件摘要(目录: Path) -> dict[str, Any]:
         汇总.update(项["路径"].encode("utf-8")); 汇总.update(项["sha256"].encode("ascii"))
     return {"摘要算法": "sha256", "文件数": len(文件表), "文件清单": 文件表,
             "制品摘要": 汇总.hexdigest()}
+
+
+def _输入文件指纹(文件表: dict[str, Path]) -> dict[str, Any]:
+    """计算实际编译输入闭包指纹；路径与字节共同参与，排除缓存和测试。"""
+    清单: list[dict[str, Any]] = []
+    汇总 = hashlib.sha256()
+    for 逻辑路径, 文件 in sorted(文件表.items()):
+        if not 文件.is_file() or 文件.suffix in {".pyc", ".pyo"}:
+            continue
+        内容 = 文件.read_bytes()
+        摘要 = hashlib.sha256(内容).hexdigest()
+        清单.append({"路径": 逻辑路径, "字节数": len(内容), "sha256": 摘要})
+        汇总.update(逻辑路径.encode("utf-8")); 汇总.update(b"\\0")
+        汇总.update(str(len(内容)).encode("ascii")); 汇总.update(b"\\0")
+        汇总.update(摘要.encode("ascii")); 汇总.update(b"\\0")
+    return {"摘要算法": "sha256-编译输入-v1", "文件数": len(清单),
+            "文件清单": 清单, "输入指纹": 汇总.hexdigest()}
+
+
+def _建立编译输入文件表(
+    项目目录: Path, 受影响文件: list[str], 选中支持库: set[str],
+    选中模块: set[str], 支持库表: dict[str, tuple[Path, dict[str, Any]]],
+    模块表: dict[str, tuple[Path, dict[str, Any]]],
+) -> dict[str, Path]:
+    """按最终复制边界建立输入表，不把整个工作区当成运行依赖。"""
+    文件表: dict[str, Path] = {}
+
+    def 加目录(源目录: Path, 前缀: str) -> None:
+        if not 源目录.is_dir():
+            return
+        for 文件 in 源目录.rglob("*"):
+            if 文件.is_file() and "__pycache__" not in 文件.parts and 文件.suffix not in {".pyc", ".pyo"}:
+                文件表[f"{前缀}/{文件.relative_to(源目录).as_posix()}"] = 文件
+
+    for 目录名 in 固定运行时目录:
+        加目录(系统根 / 目录名, 目录名)
+    for 文件名 in 运行时适配文件:
+        文件 = 系统根 / "支持库" / "适配层" / 文件名
+        if 文件.is_file():
+            文件表[f"支持库/适配层/{文件名}"] = 文件
+    for 目录名 in ("提供者注册表", "密码签名提供者", "数据库适配器", "HTTP服务适配器", "本地进程适配器", "动态库适配器", "配置契约"):
+        加目录(系统根 / "支持库" / "适配层" / 目录名, f"支持库/适配层/{目录名}")
+    for 包id in sorted(选中支持库):
+        源, _ = 支持库表[包id]
+        加目录(源, f"支持库/{源.relative_to(系统根 / '支持库').as_posix()}")
+    for 包id in sorted(选中模块):
+        源, _ = 模块表[包id]
+        加目录(源, f"模块库/{源.relative_to(系统根 / '模块库').as_posix()}")
+
+    for 名称 in ("项目声明.json", "项目.json"):
+        文件 = 项目目录 / 名称
+        if 文件.is_file(): 文件表[名称] = 文件
+    for 名称 in ("模块", "资源"):
+        加目录(项目目录 / 名称, 名称)
+    for 相对 in sorted(受影响文件):
+        文件 = 项目目录 / 相对
+        if 文件.is_file(): 文件表[f"项目/{相对}"] = 文件
+    return 文件表
+
+
+def _项目缓存根(缓存根目录: Path, 项目目录: Path, 项目id: str) -> Path:
+    项目摘要 = hashlib.sha256(str(Path(项目目录).resolve()).encode("utf-8")).hexdigest()[:16]
+    return Path(缓存根目录).resolve() / 项目id / 项目摘要
+
+
+def _读取缓存摘要(版本目录: Path) -> dict[str, Any] | None:
+    摘要路径 = 版本目录 / "制品完整性摘要.json"
+    if not 版本目录.is_dir() or not 摘要路径.is_file():
+        return None
+    try:
+        已存摘要 = json.loads(摘要路径.read_text(encoding="utf-8"))
+        当前摘要 = _制品文件摘要(版本目录)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return 当前摘要 if 当前摘要.get("制品摘要") == 已存摘要.get("制品摘要") else None
+
+
+def _部署稳定产物(版本目录: Path, 输出目录: Path, 项目目录: Path) -> None:
+    """把不可变版本复制为部署镜像，复制成功后再原子替换旧输出。"""
+    输出目录 = 校验输出目录(项目目录, 输出目录)
+    暂存 = 输出目录.parent / f".{输出目录.name}.部署中"
+    if 暂存.exists():
+        shutil.rmtree(暂存)
+    shutil.copytree(版本目录, 暂存)
+    if 输出目录.exists():
+        shutil.rmtree(输出目录)
+    暂存.replace(输出目录)
+
+
+def _写候选指针(输出目录: Path, 项目id: str, 制品指纹: str, 版本目录: Path) -> Path:
+    指针 = 输出目录 / "候选.json"
+    指针.write_text(json.dumps({
+        "项目id": 项目id, "候选制品指纹": 制品指纹,
+        "制品版本目录": str(版本目录), "状态": "待验收",
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return 指针
 
 
 def _读取(路径: Path, 默认: Any = None) -> Any:
@@ -460,8 +556,10 @@ if __name__ == "__main__":
 
 def 编译项目(
     项目目录: Path, 输出目录: Path, *, 变更单元: dict[str, Any] | None = None,
+    缓存根目录: Path | None = None, 强制重新编译: bool = False,
 ) -> dict[str, Any]:
-    项目目录 = 项目目录.resolve(); 输出目录 = 校验输出目录(项目目录, 输出目录)
+    项目目录 = 项目目录.resolve(); 部署目录 = Path(输出目录).resolve()
+    校验输出目录(项目目录, 部署目录)
     声明 = _读取(项目目录 / "项目声明.json") or _读取(项目目录 / "项目.json")
     if not isinstance(声明, dict) or not 声明.get("项目id"):
         raise ValueError("项目必须提供 项目声明.json 或 项目.json，且包含项目id")
@@ -488,7 +586,6 @@ def 编译项目(
             raise ValueError(f"公开能力重复 owner: {能力id} -> {能力归属[能力id]}")
     for 包id in sorted(模块集合):
         校验显式包引用(系统根, 包id)
-    # 能力引用自动选中其所属包；显式模块引用优先加入模块闭包。
     选中模块 = set(模块集合)
     选中支持库: set[str] = set()
     待处理能力 = list(能力集合)
@@ -498,12 +595,35 @@ def 编译项目(
         if not 包id: raise ValueError(f"找不到能力所属包: {能力id}")
         if 包id.startswith("模块库."): 选中模块.add(包id)
         else: 选中支持库.add(包id)
-    # 支持库与模块统一递归展开能力/包依赖，并生成制品依赖锁。
     选中支持库, 选中模块, 依赖锁 = _解析依赖闭包(
         支持库表, 模块表, 能力归属, 选中支持库, 选中模块)
     if not 能力集合 and not 模块集合:
         raise ValueError("项目没有发现能力id或模块id引用，拒绝生成空项目")
-    输出目录 = _准备输出目录(项目目录, 输出目录)
+    输入表 = _建立编译输入文件表(
+        项目目录, list(影响["受影响文件"]), 选中支持库, 选中模块, 支持库表, 模块表)
+    输入指纹 = _输入文件指纹(输入表)
+    指纹载荷 = {
+        "项目id": 项目id, "变更单元": 影响["变更单元"],
+        "编译器版本": 编译器版本, "运行时版本": "固定运行时-v1",
+        "依赖锁": 依赖锁, "输入指纹": 输入指纹["输入指纹"],
+    }
+    制品指纹 = hashlib.sha256(
+        json.dumps(指纹载荷, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:32]
+    缓存根目录 = Path(缓存根目录 or (系统根 / "工程缓存" / "编译缓存"))
+    缓存项目根 = _项目缓存根(缓存根目录, 项目目录, 项目id)
+    版本目录 = 缓存项目根 / "版本" / 制品指纹
+    if not 强制重新编译 and _读取缓存摘要(版本目录) is not None:
+        _部署稳定产物(版本目录, 部署目录, 项目目录)
+        _写候选指针(部署目录, 项目id, 制品指纹, 版本目录)
+        return {
+            "编译状态": "命中缓存", "制品指纹": 制品指纹,
+            "制品版本目录": str(版本目录), "部署目录": str(部署目录),
+            "输入指纹": 输入指纹,
+        }
+    版本目录.parent.mkdir(parents=True, exist_ok=True)
+    工作输出 = Path(tempfile.mkdtemp(prefix=f"制品编译_{制品指纹}_", dir=str(版本目录.parent)))
+    输出目录 = _准备输出目录(项目目录, 工作输出)
     for 目录名 in 固定运行时目录:
         _复制目录(系统根 / 目录名, 输出目录 / 目录名)
     # 运行核心的内部适配器，不属于用户业务支持库，但属于启动闭包。
@@ -602,7 +722,12 @@ def 编译项目(
     清单["来源提交"] = 来源["提交"]
     清单["来源工作区字节指纹"] = 来源["工作区字节指纹"]
     清单["来源工作区状态"] = 来源["工作区状态"]
+    清单["制品指纹"] = 制品指纹
+    清单["输入指纹"] = 输入指纹["输入指纹"]
+    清单["编译状态"] = "重新编译"
     (输出目录 / "编译清单.json").write_text(json.dumps(清单, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (输出目录 / "编译输入指纹.json").write_text(
+        json.dumps(输入指纹, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (输出目录 / 依赖锁文件名).write_text(json.dumps({
         "格式": "独立项目依赖锁",
         "版本": "1.0.0",
@@ -625,6 +750,13 @@ def 编译项目(
     清单["制品摘要文件"] = "制品完整性摘要.json"
     清单["来源绑定文件"] = "制品来源.json"
     (输出目录 / "编译清单.json").write_text(json.dumps(清单, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if 版本目录.exists():
+        shutil.rmtree(版本目录)
+    输出目录.replace(版本目录)
+    _部署稳定产物(版本目录, 部署目录, 项目目录)
+    _写候选指针(部署目录, 项目id, 制品指纹, 版本目录)
+    清单["制品版本目录"] = str(版本目录)
+    清单["部署目录"] = str(部署目录)
     return 清单
 
 
@@ -635,8 +767,14 @@ if __name__ == "__main__":
     小单元.add_argument("--文件", type=Path)
     小单元.add_argument("--能力")
     小单元.add_argument("--组件")
+    解析器.add_argument("--缓存根目录", type=Path, help="编译缓存根目录，默认使用工程缓存/编译缓存")
+    解析器.add_argument("--强制重新编译", action="store_true", help="忽略同指纹缓存并重新生成制品")
     参数 = 解析器.parse_args()
     变更单元 = {名称: 值 for 名称, 值 in (("文件", 参数.文件), ("能力", 参数.能力), ("组件", 参数.组件)) if 值 is not None}
-    try: 结果 = 编译项目(参数.项目目录, 参数.输出, 变更单元=变更单元)
+    try:
+        结果 = 编译项目(
+            参数.项目目录, 参数.输出, 变更单元=变更单元,
+            缓存根目录=参数.缓存根目录, 强制重新编译=参数.强制重新编译,
+        )
     except (ValueError, OSError) as 错误: print(f"编译阻断：{错误}"); raise SystemExit(1)
     print(json.dumps(结果, ensure_ascii=False, indent=2))

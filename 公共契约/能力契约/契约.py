@@ -70,6 +70,20 @@ class 能力注册表:
             )
         self._实现表[实现.能力id] = 实现
 
+    def 移除(self, 能力id: str, 包id: str = "") -> bool:
+        """移除指定能力（热接入回滚/删除场景）。
+
+        传 包id 时只允许移除该包已注册的能力（跨包保护）；
+        能力不存在返回 False。
+        """
+        已有 = self._实现表.get(能力id)
+        if 已有 is None:
+            return False
+        if 包id and 已有.包id != 包id:
+            return False
+        del self._实现表[能力id]
+        return True
+
     def 获取(self, 能力id: str) -> 能力实现 | None:
         return self._实现表.get(能力id)
 

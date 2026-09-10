@@ -43,7 +43,10 @@ class 能力网关测试(unittest.TestCase):
             with urllib.request.urlopen(f"{self.基址}{路径}", timeout=10) as 响应:
                 return json.loads(响应.read().decode("utf-8"))
         except urllib.error.HTTPError as 错误:
-            return json.loads(错误.read().decode("utf-8"))
+            try:
+                return json.loads(错误.read().decode("utf-8"))
+            finally:
+                错误.close()
 
     def _POST(self, body: dict) -> dict:
         请求 = urllib.request.Request(
@@ -56,7 +59,10 @@ class 能力网关测试(unittest.TestCase):
             with urllib.request.urlopen(请求, timeout=30) as 响应:
                 return json.loads(响应.read().decode("utf-8"))
         except urllib.error.HTTPError as 错误:
-            return json.loads(错误.read().decode("utf-8"))
+            try:
+                return json.loads(错误.read().decode("utf-8"))
+            finally:
+                错误.close()
 
     def _编码URL(self, 路径: str, 查询: dict[str, str] | None = None) -> str:
         """把中文路径/参数编码成标准 UTF-8 百分号 URL。"""

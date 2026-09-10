@@ -55,7 +55,10 @@ from 开发工具.轻代码前端编辑器.启动编辑器 import 主函数
                     with urllib.request.urlopen(请求对象, timeout=2) as 响应:
                         return 响应.status, 响应.read()
                 except urllib.error.HTTPError as 错误:
-                    return 错误.code, 错误.read()
+                    try:
+                        return 错误.code, 错误.read()
+                    finally:
+                        错误.close()
 
             self.assertEqual(请求("/工程/请求")[0], 404)
             self.assertEqual(请求("/内部/工程请求")[0], 403)
@@ -69,6 +72,9 @@ from 开发工具.轻代码前端编辑器.启动编辑器 import 主函数
             except subprocess.TimeoutExpired:
                 进程.kill()
                 进程.wait(timeout=3)
+            for 流 in (进程.stdout, 进程.stderr):
+                if 流 is not None:
+                    流.close()
             import shutil
             shutil.rmtree(临时根, ignore_errors=True)
 

@@ -81,7 +81,7 @@ def 获取模型版本(模型路径: str, 模型名: str) -> dict[str, Any]:
     }}
 
 
-def 转写音频(文件路径: str, 模型路径: str, 模型名: str) -> dict[str, Any]:
+def 转写音频(文件路径: str, 模型路径: str, 模型名: str, 附加术语: str = "") -> dict[str, Any]:
     """转写音频文件；失败逐类映射稳定错误码，不伪装成功。"""
     if _库模块 is None:
         return _不可用()
@@ -93,7 +93,10 @@ def 转写音频(文件路径: str, 模型路径: str, 模型名: str) -> dict[s
         return 错误
     目标 = 模型路径 or 模型名
     try:
-        结果 = _库模块.transcribe(str(文件), path_or_hf_repo=目标)
+        参数 = {"path_or_hf_repo": 目标}
+        if 附加术语:
+            参数["initial_prompt"] = 附加术语
+        结果 = _库模块.transcribe(str(文件), **参数)
     except Exception as 错误对象:
         return {"错误码": "转写失败", "错误说明": f"转写失败: {错误对象}"}
     if not isinstance(结果, dict) or not str(结果.get("text") or "").strip():

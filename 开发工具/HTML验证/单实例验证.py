@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from 开发工具.HTML验证.常量 import 默认并发, 默认超时秒, 固定端口, 并发上限
+from 开发工具.HTML验证.常量 import 默认并发, 默认超时秒, 固定端口, 动态端口, 并发上限
 from 开发工具.HTML验证.单步场景 import 验证场景
 from 开发工具.HTML验证.多步场景 import 验证场景束
 from 开发工具.HTML验证.验证报告 import 验证结果, 验证报告
@@ -52,23 +52,40 @@ def 验证全部(
         地址 = _校验直连地址(直连地址)
     else:
         启动器 = _找启动器(制品目录)
-        可用, 消息 = _检查端口可用(端口)
-        if not 可用:
-            报告.失败数 = 1
-            报告.结果列表.append(验证结果("制品启动", "", False, 0, 失败原因=消息, 定位线索="端口"))
-            return 报告, None, None
-        try:
-            进程, 实际端口, _ = _启动制品(启动器, 制品目录, 端口)
-            if 进程接收 is not None:
-                进程接收(进程)
-        except BaseException as 错误:
-            报告.失败数 = 1
-            报告.结果列表.append(验证结果(
-                "制品启动", "", False, 0,
-                失败原因=f"制品启动异常: {type(错误).__name__}: {错误}", 定位线索="编译",
-            ))
-            报告.资源回收 = {"已回收": True, "原因": "启动助手已回收"}
-            return 报告, None, None
+        # 动态端口（0）由操作系统分配，先启动再从制品自报地址解析真实端口；
+        # 句柄回收（进程组终止）即释放端口，无固定端口占用竞态。显式固定端口
+        # 仅用于诊断，保留端口独占检查避免覆盖正在运行的服务。
+        if 端口 == 动态端口:
+            try:
+                进程, 实际端口, _ = _启动制品(启动器, 制品目录, 动态端口)
+                if 进程接收 is not None:
+                    进程接收(进程)
+            except BaseException as 错误:
+                报告.失败数 = 1
+                报告.结果列表.append(验证结果(
+                    "制品启动", "", False, 0,
+                    失败原因=f"制品启动异常: {type(错误).__name__}: {错误}", 定位线索="编译",
+                ))
+                报告.资源回收 = {"已回收": True, "原因": "启动助手已回收"}
+                return 报告, None, None
+        else:
+            可用, 消息 = _检查端口可用(端口)
+            if not 可用:
+                报告.失败数 = 1
+                报告.结果列表.append(验证结果("制品启动", "", False, 0, 失败原因=消息, 定位线索="端口"))
+                return 报告, None, None
+            try:
+                进程, 实际端口, _ = _启动制品(启动器, 制品目录, 端口)
+                if 进程接收 is not None:
+                    进程接收(进程)
+            except BaseException as 错误:
+                报告.失败数 = 1
+                报告.结果列表.append(验证结果(
+                    "制品启动", "", False, 0,
+                    失败原因=f"制品启动异常: {type(错误).__name__}: {错误}", 定位线索="编译",
+                ))
+                报告.资源回收 = {"已回收": True, "原因": "启动助手已回收"}
+                return 报告, None, None
         地址 = f"http://127.0.0.1:{实际端口}"
     健康 = 验证场景(
         场景id="制品.健康", 能力id="制品.健康", 方法="GET", 路径="/",

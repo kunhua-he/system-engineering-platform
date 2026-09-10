@@ -60,6 +60,19 @@ class 场景分片测试(unittest.TestCase):
         实例B = next(i for i, 片 in enumerate(分片表) if any(场景.场景id == "转换B" for 场景 in 片))
         self.assertEqual(实例A, 实例B)
 
+    def test_组件控件场景固定同实例(self) -> None:
+        步骤 = 验证步骤(步骤id="目标", 能力id="组件控件.创建组件",
+                      预期成功=True, 预期状态码=200)
+        场景A = 多步骤验证场景(场景id="组件A", 包目录=Path("测试"), 前置步骤=[], 目标步骤=[步骤], 清理步骤=[])
+        场景B = 多步骤验证场景(场景id="组件B", 包目录=Path("测试"), 前置步骤=[], 目标步骤=[步骤], 清理步骤=[])
+        束 = 验证场景束(场景列表=[场景A, 场景B], 目标能力全集=set(), 制品摘要="测试")
+        self.assertEqual(端口池._场景资源键(场景A), ("组件控件",))
+        分片表 = 端口池._分片场景(束, 实例数=2)
+        实例A = next(i for i, 片 in enumerate(分片表) if any(场景.场景id == "组件A" for 场景 in 片))
+        实例B = next(i for i, 片 in enumerate(分片表) if any(场景.场景id == "组件B" for 场景 in 片))
+        self.assertEqual(实例A, 实例B)
+
+
     def test_实例数为1时全部场景同实例(self) -> None:
         场景表 = [多步骤验证场景(场景id=f"场景{i}", 包目录=Path("测试"), 前置步骤=[], 目标步骤=[], 清理步骤=[])
                  for i in range(5)]

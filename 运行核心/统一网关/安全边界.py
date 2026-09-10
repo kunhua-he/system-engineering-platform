@@ -23,7 +23,7 @@ class 安全配置:
     凭证环境变量: str = "系统库网关凭证"
     请求大小上限: int = 1024 * 1024  # 1MB
     监听地址: str = "127.0.0.1"  # 默认只监听本机
-    允许路径表: set[str] = field(default_factory=lambda: {"/健康", "/网关/调用", "/网关/流式"})
+    允许路径表: set[str] = field(default_factory=lambda: {"/健康", "/网关/调用", "/网关/流式", "/能力/搜索", "/能力/目录", "/能力/契约"})
     要求凭证: bool = True
     默认权限范围: set[str] = field(default_factory=lambda: {"查询", "调用", "任务"})
     # 浏览器跨域来源必须显式配置；空集合表示不允许跨域调用。
@@ -89,7 +89,7 @@ class 请求限制器:
             return False, "请求路径不合法"
         if "\x00" in 规范路径 or any(段 in (".", "..") for 段 in 规范路径.split("/")):
             return False, "请求路径不合法"
-        if 规范路径 not in self.配置.允许路径表:
+        if 规范路径 not in self.配置.允许路径表 and not 规范路径.startswith("/平台/能力反馈/") and not 规范路径.startswith("/能力/契约/"):
             return False, "请求路径未授权"
         return True, ""
 

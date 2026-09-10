@@ -295,6 +295,12 @@ class 统一能力服务:
             return {"成功": False, "错误码": "VERIFY_FAILED", "消息": str(错误)[:200]}
         finally:
             self._终止进程组(进程)
+            for 流 in (进程.stdout, 进程.stderr, 进程.stdin):
+                if 流 is not None:
+                    try:
+                        流.close()
+                    except OSError:
+                        pass
 
     def _受限读取验证输出(self, 进程: subprocess.Popen, 超时秒: float
                        ) -> tuple[bytes, bool, bool]:

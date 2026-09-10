@@ -185,12 +185,20 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
         except subprocess.TimeoutExpired:
             return -1, f"{原因}，进程组未能回收"
         读取线程.join(timeout=5)
-        if 进程对象.stdout is not None and 读取线程.is_alive():
-            进程对象.stdout.close()
+        if 进程对象.stdout is not None:
+            try:
+                进程对象.stdout.close()
+            except OSError:
+                pass
         后缀 = "\n" + bytes(输出盒).decode("utf-8", "replace") if 输出盒 else ""
         return -1, f"{原因}，已回收进程组{后缀}"
 
     读取线程.join(timeout=5)
+    if 进程对象.stdout is not None:
+        try:
+            进程对象.stdout.close()
+        except OSError:
+            pass
     try:
         退出码 = 进程对象.wait(timeout=5)
     except subprocess.TimeoutExpired:
@@ -672,7 +680,7 @@ def _扫描工程缓存Python源码() -> list[str]:
         return 源码表
     # 制品仓库、提供者虚拟环境和验证运行目录可能包含数 GB 文件，
     # 直接 Path.rglob 会把无关内容全部枚举；这些目录本身已有独立门禁。
-    跳过目录 = {"制品仓库", "提供者运行环境", "__pycache__"}
+    跳过目录 = {"制品仓库", "编译缓存", "提供者运行环境", "__pycache__"}
     try:
         for 当前根, 目录名表, 文件名表 in os.walk(缓存目录):
             目录名表[:] = [名称 for 名称 in 目录名表 if 名称 not in 跳过目录]
@@ -818,7 +826,7 @@ def 执行门禁(*, 包目录: Path | None = None, 制品目录: Path | None = N
     结果 = 门禁结果()
     门禁项列表 = 结果.门禁项列表
     全部测试已执行 = False
-    门禁HTML端口 = 45090  # 门禁专属 HTML 黑盒端口，与对外统一入口 45080 分离，避免抢端口
+    门禁HTML端口 = 0  # 制品句柄动态分配端口；门禁不占用固定端口，回收即释放
 
     def 检查(名称: str, 通过: bool, 详情: str = "", 强制: bool = True) -> None:
         if 强制 and not 详情.strip():

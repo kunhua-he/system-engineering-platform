@@ -165,10 +165,13 @@ class HTTP提供者:
                         "头部": dict(响应.headers.items()), "截断": 截断,
                         "错误": "", "可重试": False, "重试次数": 0}
         except urllib.error.HTTPError as 错误:
-            响应体, 截断 = self._受限读取(错误, 上限)
-            return {"成功": False, "状态码": 错误.code, "响应": 响应体,
-                    "头部": dict(错误.headers.items()), "截断": 截断,
-                    "错误": f"HTTP 状态码 {错误.code}", "可重试": False, "重试次数": 0}
+            try:
+                响应体, 截断 = self._受限读取(错误, 上限)
+                return {"成功": False, "状态码": 错误.code, "响应": 响应体,
+                        "头部": dict(错误.headers.items()), "截断": 截断,
+                        "错误": f"HTTP 状态码 {错误.code}", "可重试": False, "重试次数": 0}
+            finally:
+                错误.close()
         except Exception as 错误:
             if isinstance(错误, socket.timeout) or (
                     isinstance(错误, urllib.error.URLError)

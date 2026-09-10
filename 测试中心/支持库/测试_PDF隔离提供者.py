@@ -84,6 +84,12 @@ class TestPDF隔离提供者(unittest.TestCase):
                 return 提供者模块._失败("超时", "模拟超时", 可重试=True)
             finally:
                 提供者模块._终止进程组(进程)
+                for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
+                    if 流 is not None:
+                        try:
+                            流.close()
+                        except (OSError, ValueError):
+                            pass
             return 提供者模块._失败("超时", "模拟超时", 可重试=True)
 
         with mock.patch.object(提供者模块, "执行任务", side_effect=挂起执行):

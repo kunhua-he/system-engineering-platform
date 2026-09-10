@@ -13,9 +13,11 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
+from 平台控制面.能力反馈 import 能力反馈服务
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 请求限制器, 提取访问凭证
 from 运行核心.统一网关.网关核心 import 网关核心, 网关请求
 from 公共契约.运行时.端口策略 import 校验应用监听端口
@@ -126,7 +128,7 @@ class 本地网关服务器:
             凭证环境变量=str(self.配置.get("凭证环境变量", "系统库网关凭证")),
             请求大小上限=int(self.配置.get("请求大小上限", 1024 * 1024)),
             监听地址="127.0.0.1",
-            允许路径表=set(self.配置.get("允许路径表", {"/健康", "/网关/调用", "/网关/流式", "/网关/流式/取消"})),
+            允许路径表=set(self.配置.get("允许路径表", {"/健康", "/网关/调用", "/网关/流式", "/网关/流式/取消", "/网关/热接入", "/平台/能力反馈", "/能力/搜索", "/能力/目录"})),
             要求凭证=要求凭证,
             默认权限范围=set(self.配置.get("默认权限范围", {"查询", "调用", "任务"})),
             允许来源表=set(self.配置.get("允许来源表", set())),
@@ -134,6 +136,17 @@ class 本地网关服务器:
         )
         self.请求限制器 = 请求限制器(self.安全配置)
         self.凭证管理器 = 凭证管理器(self.安全配置.凭证环境变量)
+        默认缓存根 = os.environ.get("系统底座_工程缓存根", "工程缓存")
+        反馈状态目录 = Path(self.配置.get(
+            "反馈状态目录", str(Path(默认缓存根) / "平台控制面")))
+        self.反馈处理凭证管理器 = 凭证管理器(
+            str(self.配置.get("反馈处理凭证环境变量", "系统平台反馈处理凭证")))
+        self.反馈处理凭证管理器.加载()
+        self.反馈服务 = 能力反馈服务(
+            str(反馈状态目录),
+            lambda 能力id: 能力id in getattr(
+                getattr(getattr(网关核心实例, "后端核心", None), "注册表", None), "能力id列表", []),
+        )
         # 流式通道与普通调用共用同一 HTTP 服务、线程预算和安全边界。
         # 延迟导入避免 流式HTTP.py 的类型引用与本模块形成导入环。
         from 运行核心.统一网关.流式HTTP import HTTP流式管理器
@@ -197,6 +210,8 @@ class 本地网关服务器:
         凭证管理器实例 = self.凭证管理器
         安全配置实例 = self.安全配置
         流式管理器实例 = self.流式管理器
+        反馈服务实例 = self.反馈服务
+        凭证处理凭证管理器实例 = self.反馈处理凭证管理器
 
         class 处理类(BaseHTTPRequestHandler):
             def setup(self) -> None:
@@ -390,15 +405,100 @@ class 本地网关服务器:
                     return [处理类._解码JSON值(子值) for 子值 in 值]
                 return 值
 
+            def _反馈响应(self, 状态码: int, 成功: bool, 值: Any = None,
+                         错误码: str = "", 错误说明: str = "", 操作: str = "能力反馈") -> None:
+                self._写JSON(状态码, {
+                    "请求id": str(self.headers.get("X-请求-id", ""))[:64] or uuid.uuid4().hex[:16],
+                    "操作": 操作, "成功": 成功, "值": 值 if 成功 else None,
+                    "错误码": 错误码 if not 成功 else "",
+                    "错误说明": 错误说明 if not 成功 else "",
+                    "句柄": None, "耗时毫秒": 0.0,
+                })
+
+            def _反馈路径段(self) -> list[str]:
+                return [段 for 段 in self._规范路径().split("/") if 段]
+
+            def _反馈处理认证(self) -> bool:
+                凭证 = self.headers.get("X-Platform-Feedback-Credential", "")
+                通过, _ = 凭证处理凭证管理器实例.校验(凭证)
+                if not 通过:
+                    self._拒绝(403, "权限不足", "反馈状态迁移需要平台处理凭证", "能力反馈状态")
+                    return False
+                return True
+
+            def _处理反馈登记(self) -> None:
+                读取成功, 请求数据, 错误说明 = self._读请求体()
+                if not 读取成功:
+                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明=错误说明,
+                                 操作="能力反馈登记")
+                    return
+                成功, 错误码, 值 = 反馈服务实例.登记(请求数据)
+                状态码 = 200 if 成功 else {"能力不存在": 404, "幂等键冲突": 409}.get(错误码, 400)
+                self._反馈响应(状态码, 成功, 值, 错误码, 错误码, "能力反馈登记")
+
+            def _处理反馈查询(self) -> None:
+                段 = self._反馈路径段()
+                反馈id = unquote(段[2]) if len(段) == 3 else ""
+                查询 = parse_qs(urlsplit(self.path).query, encoding="utf-8")
+                状态 = (查询.get("状态") or [""])[0]
+                能力id = (查询.get("能力id") or [""])[0]
+                限制原值 = (查询.get("限制") or ["50"])[0]
+                try:
+                    限制 = int(限制原值)
+                except (TypeError, ValueError):
+                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明="限制必须是整数",
+                                 操作="能力反馈查询")
+                    return
+                成功, 错误码, 列表 = 反馈服务实例.查询(反馈id, 状态, 能力id, 限制)
+                if not 成功:
+                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明=错误码,
+                                 操作="能力反馈查询")
+                    return
+                if 反馈id and not 列表:
+                    self._反馈响应(404, False, 错误码="反馈不存在", 错误说明="反馈记录不存在",
+                                 操作="能力反馈查询")
+                    return
+                self._反馈响应(200, True, {"记录表": 列表, "数量": len(列表)}, 操作="能力反馈查询")
+
+            def _处理反馈状态(self) -> None:
+                if not self._反馈处理认证():
+                    return
+                段 = self._反馈路径段()
+                反馈id = unquote(段[2])
+                读取成功, 请求数据, 错误说明 = self._读请求体()
+                if not 读取成功:
+                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明=错误说明,
+                                 操作="能力反馈状态")
+                    return
+                成功, 错误码, 值 = 反馈服务实例.迁移状态(反馈id, 请求数据)
+                状态码 = 200 if 成功 else {"反馈不存在": 404, "状态版本冲突": 409,
+                                             "状态迁移不允许": 409}.get(错误码, 400)
+                self._反馈响应(状态码, 成功, 值, 错误码, 错误码, "能力反馈状态")
+
+            def _是反馈路由(self) -> bool:
+                return self._规范路径() == "/平台/能力反馈" or self._规范路径().startswith("/平台/能力反馈/")
+
             def do_POST(self) -> None:
                 路径 = self._规范路径()
                 if not self._校验边界(路径):
+                    return
+                if self._是反馈路由():
+                    段 = self._反馈路径段()
+                    if len(段) == 2:
+                        self._处理反馈登记()
+                    elif len(段) == 4 and 段[3] == "状态":
+                        self._处理反馈状态()
+                    else:
+                        self._拒绝(404, "路由不存在", "能力反馈路由不合法", "能力反馈")
                     return
                 if 路径 == "/网关/流式":
                     self._处理流式网关请求()
                     return
                 if 路径 == "/网关/流式/取消":
                     self._处理流式取消请求()
+                    return
+                if 路径 == "/网关/热接入":
+                    self._处理热接入请求()
                     return
                 if 路径 != "/网关/调用":
                     self._拒绝(405, "方法不允许", "该路径不支持普通请求")
@@ -408,6 +508,13 @@ class 本地网关服务器:
             def do_GET(self) -> None:
                 路径 = self._规范路径()
                 if not self._校验边界(路径):
+                    return
+                if self._是反馈路由():
+                    段 = self._反馈路径段()
+                    if len(段) == 2 or len(段) == 3:
+                        self._处理反馈查询()
+                    else:
+                        self._拒绝(404, "路由不存在", "能力反馈路由不合法", "能力反馈")
                     return
                 if 路径 == "/健康":
                     # 健康必须经过同一网关核心，不能由 HTTP 层固定返回“健康”。
@@ -422,6 +529,65 @@ class 本地网关服务器:
                         self._拒绝(500, "内部错误", "网关处理失败", "健康检查")
                         return
                     self._写JSON(200 if 响应.成功 else 503, 响应.转字典())
+                elif 路径 == "/能力/搜索":
+                    查询参数 = parse_qs(urlsplit(self.path).query, encoding="utf-8")
+                    关键词 = (查询参数.get("关键词") or [""])[0]
+                    限制文本 = (查询参数.get("限制") or ["50"])[0]
+                    try:
+                        限制 = max(1, min(int(限制文本), 200))
+                    except ValueError:
+                        限制 = 50
+                    请求对象 = 网关请求(
+                        操作="能力搜索", 参数={"关键词": 关键词, "限制": 限制},
+                        权限范围=sorted(安全配置实例.默认权限范围),
+                        来源地址=self.client_address[0], 请求id=str(self.headers.get("X-请求-id", ""))[:64],
+                        超时秒=请求超时秒,
+                    )
+                    try:
+                        响应 = 网关核心实例.处理(请求对象)
+                    except Exception:
+                        self._拒绝(500, "内部错误", "网关处理失败", "能力搜索")
+                        return
+                    self._写JSON(200 if 响应.成功 else 400, 响应.转字典())
+                elif 路径 == "/能力/目录":
+                    查询参数 = parse_qs(urlsplit(self.path).query, encoding="utf-8")
+                    关键词 = (查询参数.get("关键词") or [""])[0]
+                    偏移文本 = (查询参数.get("偏移") or ["0"])[0]
+                    限制文本 = (查询参数.get("限制") or ["20"])[0]
+                    try:
+                        偏移 = max(0, int(偏移文本))
+                    except ValueError:
+                        偏移 = 0
+                    try:
+                        限制 = max(1, min(int(限制文本), 200))
+                    except ValueError:
+                        限制 = 20
+                    请求对象 = 网关请求(
+                        操作="能力目录", 参数={"关键词": 关键词, "偏移": 偏移, "限制": 限制},
+                        权限范围=sorted(安全配置实例.默认权限范围),
+                        来源地址=self.client_address[0], 请求id=str(self.headers.get("X-请求-id", ""))[:64],
+                        超时秒=请求超时秒,
+                    )
+                    try:
+                        响应 = 网关核心实例.处理(请求对象)
+                    except Exception:
+                        self._拒绝(500, "内部错误", "网关处理失败", "能力目录")
+                        return
+                    self._写JSON(200 if 响应.成功 else 400, 响应.转字典())
+                elif 路径.startswith("/能力/契约/"):
+                    能力id = unquote(urlsplit(self.path).path)[len("/能力/契约/"):]
+                    请求对象 = 网关请求(
+                        操作="能力详情", 参数={"能力id": 能力id},
+                        权限范围=sorted(安全配置实例.默认权限范围),
+                        来源地址=self.client_address[0], 请求id=str(self.headers.get("X-请求-id", ""))[:64],
+                        超时秒=请求超时秒,
+                    )
+                    try:
+                        响应 = 网关核心实例.处理(请求对象)
+                    except Exception:
+                        self._拒绝(500, "内部错误", "网关处理失败", "能力详情")
+                        return
+                    self._写JSON(200 if 响应.成功 else 404, 响应.转字典())
                 elif 路径 == "/网关/调用":
                     # 能力执行契约固定为 POST；拒绝 GET 旁路，避免有副作用的请求
                     # 被缓存/代理按安全方法处理。
@@ -678,6 +844,36 @@ class 本地网关服务器:
                         "调用已取消": 409,
                     }.get(响应.错误码, 500)
                 self._写JSON(状态码, 响应.转字典())
+
+            def _处理热接入请求(self) -> None:
+                """热接入：扫描新增/变更支持库与模块，增量装配免重启投产。
+
+                仅接受可选空请求体（未来可带 仅新增/仅变更 过滤），凭证由
+                _校验边界 层强制；操作固定为 热接入，不可伪造其他操作。
+                """
+                读取成功, 请求数据, 错误说明 = self._读请求体()
+                if not 读取成功:
+                    self._拒绝(400, "参数不合法", 错误说明, "热接入")
+                    return
+                if 禁止客户端身份 and any(
+                    str(请求数据.get(字段, ""))
+                    for 字段 in ("项目id", "用户id", "会话id", "任务id")
+                ):
+                    self._拒绝(403, "权限不足", "项目/用户/会话/任务身份必须由网关凭证注入", "热接入")
+                    return
+                请求对象 = 网关请求(
+                    操作="热接入", 参数={},
+                    权限范围=sorted(安全配置实例.默认权限范围),
+                    来源地址=self.client_address[0],
+                    请求id=str(self.headers.get("X-请求-id", ""))[:64],
+                    超时秒=请求超时秒,
+                )
+                try:
+                    响应 = 网关核心实例.处理(请求对象)
+                except Exception:
+                    self._拒绝(500, "内部错误", "网关处理失败", "热接入")
+                    return
+                self._写JSON(200 if 响应.成功 else 400, 响应.转字典())
 
         return 处理类
 

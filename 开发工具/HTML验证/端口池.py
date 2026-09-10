@@ -45,6 +45,8 @@ def _场景资源键(场景: 多步骤验证场景) -> tuple[str, ...]:
         键表.add("模型连接器")
     if any(能力.startswith("媒体处理支持库.FFmpeg媒体.") for 能力 in 能力表):
         键表.add("FFmpeg")
+    if any(能力.startswith("组件控件.") for 能力 in 能力表):
+        键表.add("组件控件")
     return tuple(sorted(键表))
 
 def _分片场景(场景束: 验证场景束, 实例数: int) -> list[list[多步骤验证场景]]:

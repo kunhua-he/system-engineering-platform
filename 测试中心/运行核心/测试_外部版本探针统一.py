@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import platform
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -207,22 +208,38 @@ class Test版本漂移(unittest.TestCase):
 class Test主进程不加载原生扩展(unittest.TestCase):
     """fitz/PyMuPDF 等原生扩展禁止主进程加载（版本走发行包元数据）。"""
 
+    def _子进程计算指纹(self, 含外部应用: bool) -> dict:
+        """在全新解释器验证原生扩展未进入主进程，避免套件顺序污染。"""
+        脚本 = (
+            "import json, sys; "
+            "from 运行核心.环境指纹 import 计算环境指纹; "
+            f"结果=计算环境指纹(含外部应用={含外部应用!r}); "
+            "print(json.dumps({'成功':结果.成功,'详细信息':结果.详细信息,"
+            "'加载fitz':'fitz' in sys.modules,'加载PyMuPDF':'PyMuPDF' in sys.modules},"
+            "ensure_ascii=False))"
+        )
+        环境 = {键: 值 for 键, 值 in __import__('os').environ.items() if 键 != "PYTHONPATH"}
+        环境["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+        运行 = subprocess.run(
+            [sys.executable, "-c", 脚本], cwd=str(Path(__file__).resolve().parents[2]),
+            env=环境, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(运行.returncode, 0, 运行.stderr[-1000:])
+        return json.loads(运行.stdout)
+
     def test_计算指纹不加载fitz(self):
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=_成功探针("26.2.2.2"),
-        ):
-            指纹 = 计算环境指纹()
-        self.assertTrue(指纹.成功)
-        self.assertNotIn("fitz", sys.modules)
-        self.assertNotIn("PyMuPDF", sys.modules)
+        数据 = self._子进程计算指纹(True)
+        self.assertTrue(数据["成功"])
+        self.assertFalse(数据["加载fitz"])
+        self.assertFalse(数据["加载PyMuPDF"])
 
     def test_第三方版本经元数据非import(self):
-        指纹 = 计算环境指纹(含外部应用=False)
-        第三方 = 指纹.详细信息["第三方"]
+        数据 = self._子进程计算指纹(False)
+        第三方 = 数据["详细信息"]["第三方"]
         self.assertIn("PyMuPDF", 第三方)
-        self.assertTrue(第三方["PyMuPDF"])  # 真实发行版本或"未安装"，非异常
-        self.assertNotIn("fitz", sys.modules)
+        self.assertTrue(第三方["PyMuPDF"])
+        self.assertFalse(数据["加载fitz"])
+        self.assertFalse(数据["加载PyMuPDF"])
 
 
 class Test真实探针(unittest.TestCase):

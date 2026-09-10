@@ -18,12 +18,13 @@ from 运行核心.权威状态 import 权威状态, 版本元组
 class 平台状态(权威状态):
     """平台控制面状态（结构 1.3.0：六服务表 + 信任 + 激活指针 + 核心快照）。"""
 
-    目标版本 = "1.3.0"
-    迁移序列表 = 权威状态.迁移序列表 + [("1.3.0", "_迁移到130")]
+    目标版本 = "1.4.0"
+    迁移序列表 = 权威状态.迁移序列表 + [("1.3.0", "_迁移到130"), ("1.4.0", "_迁移到140")]
     校验规则表 = {
         **权威状态.校验规则表,
         "1.3.0": {"表": ["证据", "需求", "工作包", "能力条目", "占用租约", "制品",
                           "信任", "策略", "发布", "激活指针", "核心快照"]},
+        "1.4.0": {"表": ["能力反馈"], "列": [("能力反馈", "去重键"), ("能力反馈", "状态")]},
     }
 
     def _迁移到130(self, 连接) -> None:
@@ -75,6 +76,29 @@ class 平台状态(权威状态):
             CREATE TABLE IF NOT EXISTS 核心快照(
                 快照id TEXT PRIMARY KEY, 摘要 TEXT, 核心版本 TEXT, 状态兼容 TEXT,
                 回滚许可 TEXT, 迁移方式 TEXT, 签名 TEXT, 签名者 TEXT, 状态 TEXT);
+        """)
+
+    def _迁移到140(self, 连接) -> None:
+        """1.4.0：能力反馈唯一持久化表与幂等索引。"""
+        连接.executescript("""
+            CREATE TABLE IF NOT EXISTS 能力反馈(
+                反馈id TEXT PRIMARY KEY, 去重键 TEXT NOT NULL UNIQUE,
+                来源系统 TEXT NOT NULL, 来源版本 TEXT NOT NULL,
+                请求id TEXT NOT NULL, 能力id TEXT NOT NULL,
+                契约版本 TEXT NOT NULL, 错误码 TEXT NOT NULL,
+                错误说明 TEXT NOT NULL, HTTP状态码 INTEGER NOT NULL,
+                请求摘要 TEXT NOT NULL, 响应摘要 TEXT NOT NULL,
+                复现标识 TEXT NOT NULL, 优先级 TEXT NOT NULL,
+                状态 TEXT NOT NULL, 创建时间 TEXT NOT NULL,
+                更新时间 TEXT NOT NULL, 处理者 TEXT NOT NULL,
+                状态原因 TEXT NOT NULL, 关联提交 TEXT NOT NULL,
+                验证证据 TEXT NOT NULL, 发布制品 TEXT NOT NULL,
+                内容摘要 TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS 索引_能力反馈状态
+                ON 能力反馈(状态, 更新时间 DESC);
+            CREATE INDEX IF NOT EXISTS 索引_能力反馈能力
+                ON 能力反馈(能力id, 更新时间 DESC);
         """)
 
     # ---- 六服务通用读写（唯一写入口） ----

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 import urllib.request
 import urllib.error
@@ -20,18 +21,34 @@ from 运行核心.统一网关.网关核心 import 网关核心
 class 渐进能力目录测试(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.后端 = 后端核心(系统根)
-        启动 = cls.后端.启动()
-        assert 启动.成功, 启动.错误说明
-        cls.服务器 = 本地网关服务器(网关核心实例=网关核心(cls.后端), 端口=0)
-        成功, 消息 = cls.服务器.启动()
-        assert 成功, 消息
-        cls.地址 = f"http://127.0.0.1:{cls.服务器.端口}" + quote("/网关/调用", safe="/")
+        cls._原网关凭证 = os.environ.get("系统库网关凭证")
+        os.environ["系统库网关凭证"] = "test"
+        try:
+            cls.后端 = 后端核心(系统根)
+            启动 = cls.后端.启动()
+            assert 启动.成功, 启动.错误说明
+            cls.服务器 = 本地网关服务器(
+                网关核心实例=网关核心(cls.后端), 端口=0,
+                配置={"要求凭证": False, "禁止客户端身份": False},
+            )
+            成功, 消息 = cls.服务器.启动()
+            assert 成功, 消息
+            cls.地址 = f"http://127.0.0.1:{cls.服务器.端口}" + quote("/网关/调用", safe="/")
+        except Exception:
+            if cls._原网关凭证 is None:
+                os.environ.pop("系统库网关凭证", None)
+            else:
+                os.environ["系统库网关凭证"] = cls._原网关凭证
+            raise
 
     @classmethod
     def tearDownClass(cls) -> None:
         cls.服务器.优雅停止()
         cls.后端.优雅关闭()
+        if cls._原网关凭证 is None:
+            os.environ.pop("系统库网关凭证", None)
+        else:
+            os.environ["系统库网关凭证"] = cls._原网关凭证
 
     def 请求(self, 操作: str, 参数: dict | None = None) -> dict:
         请求 = urllib.request.Request(
@@ -125,7 +142,10 @@ class 渐进能力目录测试(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as 上下文:
                 urllib.request.urlopen(请求, timeout=10)
             self.assertEqual(上下文.exception.code, 400)
-            响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            try:
+                响应 = json.loads(上下文.exception.read().decode("utf-8"))
+            finally:
+                上下文.exception.close()
             self.assertFalse(响应["成功"])
             self.assertEqual(响应["错误码"], "参数不合法")
 

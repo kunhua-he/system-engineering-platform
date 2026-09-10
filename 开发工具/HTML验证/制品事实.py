@@ -41,20 +41,11 @@ def _制品全文件摘要(制品目录: Path) -> dict[str, Any]:
     }
 
 def _找启动器(制品目录: Path) -> Path:
-    候选 = [
-        制品目录 / "运行入口" / "启动.py",
-        制品目录 / "运行入口" / "独立HTML启动器.py",
-        制品目录 / "运行入口" / "启动器.py",
-    ]
-    for 路径 in 候选:
-        if 路径.is_file():
-            return 路径
-    入口目录 = 制品目录 / "运行入口"
-    if 入口目录.is_dir():
-        for 路径 in sorted(入口目录.rglob("*.py")):
-            if "启动" in 路径.name or "入口" in 路径.name:
-                return 路径
-    raise FileNotFoundError(f"制品目录找不到启动器: {制品目录}")
+    """正式制品只允许唯一启动入口，禁止在候选入口之间猜测。"""
+    路径 = Path(制品目录) / "运行入口" / "启动.py"
+    if not 路径.is_file():
+        raise FileNotFoundError(f"制品缺少唯一启动器: {路径}")
+    return 路径
 
 def _读取JSON严格(路径: Path, 名称: str) -> Any:
     try:

@@ -507,6 +507,22 @@ class Test返回契约(unittest.TestCase):
         self.assertFalse(返回判定._判定(场景, 200, 统一成功返回({"和": 3, "明细": []}))[0])
 
 
+class Test激活稳定指针(unittest.TestCase):
+    def test_激活稳定指针指向不可变版本目录(self):
+        with tempfile.TemporaryDirectory(prefix=f"激活指针_{os.getpid()}_", dir="/tmp") as 临时:
+            根 = Path(临时)
+            部署 = 根 / "部署"
+            指纹 = "a" * 32
+            版本 = 根 / "缓存" / "版本" / 指纹
+            版本.mkdir(parents=True)
+            写JSON(部署 / "编译清单.json", {"项目id": "样例项目", "制品指纹": 指纹})
+            写JSON(部署 / "候选.json", {"制品版本目录": str(版本)})
+            指针 = 验证应用._激活稳定指针(部署 / "当前.json", 部署)
+            数据 = json.loads(指针.read_text(encoding="utf-8"))
+            self.assertEqual(数据["状态"], "已验收")
+            self.assertEqual(数据["当前制品指纹"], 指纹)
+            self.assertEqual(Path(数据["制品版本目录"]).resolve(), 版本.resolve())
+
 class Test直连异常与证据(unittest.TestCase):
     def test_直连地址只接受显式端口的IP回环HTTP根地址(self):
         for 地址 in ("http://127.0.0.1:45080", "http://[::1]:45080"):
@@ -617,6 +633,46 @@ class Test直连异常与证据(unittest.TestCase):
                 退出码 = 验证应用.主函数(参数)
         self.assertNotEqual(退出码, 0)
         self.assertIn(mock.call(假进程), 回收.call_args_list)
+
+
+class Test制品端口策略(unittest.TestCase):
+    """动态端口（0）= 系统分配、句柄回收即释放；显式端口仅诊断保留占用检查。"""
+
+    def test_动态端口直通启动不查占用(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = Path(临时)
+            (制品 / "运行入口").mkdir()
+            (制品 / "运行入口" / "启动.py").write_text("", encoding="utf-8")
+            场景 = 绑定场景(验证场景.从字典(成功场景()), 制品)
+            with mock.patch.object(单实例验证, "_启动制品",
+                                   return_value=(object(), 52301, {})) as 启动, \
+                 mock.patch.object(单实例验证, "_检查端口可用",
+                                   side_effect=AssertionError("动态端口不得检查占用")), \
+                 mock.patch.object(单实例验证, "_发送请求",
+                                   return_value=(200, 统一成功返回(), 1)), \
+                 mock.patch.object(返回判定, "_发送请求",
+                                   return_value=(200, 统一成功返回(), 1)):
+                报告, 实际端口, 进程 = 单实例验证.验证全部(制品, [场景], 端口=0)
+            self.assertEqual(报告.失败数, 0)
+            self.assertEqual(实际端口, 52301)
+            self.assertIsNotNone(进程)
+            启动.assert_called_once()
+            启动.assert_called_once_with(制品 / "运行入口" / "启动.py", 制品, 0)
+
+    def test_显式固定端口保留占用检查(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            制品 = Path(临时)
+            (制品 / "运行入口").mkdir()
+            (制品 / "运行入口" / "启动.py").write_text("", encoding="utf-8")
+            场景 = 绑定场景(验证场景.从字典(成功场景()), 制品)
+            with mock.patch.object(单实例验证, "_检查端口可用", return_value=(False, "端口 45080 已被占用: 测试")) as 检查, \
+                 mock.patch.object(单实例验证, "_启动制品",
+                                   side_effect=AssertionError("端口被占用时禁止启动制品")):
+                报告, 实际端口, 进程 = 单实例验证.验证全部(制品, [场景], 端口=45080)
+            self.assertGreater(报告.失败数, 0)
+            self.assertIn("已被占用", 报告.结果列表[-1].失败原因)
+            检查.assert_called_once_with(45080)
+            self.assertIsNone(实际端口)
 
 
 @unittest.skipUnless(os.name == "posix", "进程组回收仅在 POSIX 验证")

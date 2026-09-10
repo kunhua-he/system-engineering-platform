@@ -148,3 +148,228 @@ def 压缩会话(句柄: str = None, 会话id: str = None, 压缩阈值: int = N
         })
     except Exception as e:
         return 结果.失败("写回压缩结果失败", f"会话存储不可用: {e}", 来源="上下文压缩")
+
+
+# ==== 四阶段压缩（批次5新增：原子分组约束 + 确定性降级链）====
+
+默认保留最近token = 2000
+
+
+def _消息内容文本(消息) -> str:
+    """取消息正文文本（非字典消息按文本处理）。"""
+    if isinstance(消息, dict):
+        return str(消息.get("content", ""))
+    return str(消息)
+
+
+def _是否工具调用消息(消息) -> bool:
+    """判定是否为「工具调用」发起消息（tool_calls/工具调用 非空）。"""
+    if not isinstance(消息, dict):
+        return False
+    for 键 in ("tool_calls", "工具调用"):
+        调用列表 = 消息.get(键)
+        if isinstance(调用列表, list) and 调用列表:
+            return True
+    return False
+
+
+def _是否工具结果消息(消息) -> bool:
+    """判定是否为「工具结果」消息（role=tool 或带 tool_call_id/调用id）。"""
+    if not isinstance(消息, dict):
+        return False
+    角色 = str(消息.get("role", 消息.get("角色", ""))).strip().lower()
+    if 角色 in ("tool", "工具"):
+        return True
+    for 键 in ("tool_call_id", "调用id"):
+        标识 = 消息.get(键)
+        if isinstance(标识, str) and 标识.strip():
+            return True
+    return False
+
+
+def _计算原子分组(消息列表: list) -> list[list[int]]:
+    """把消息切成原子分组：工具调用与其后续连续的工具结果绑成一组。"""
+    分组列表: list[list[int]] = []
+    序号 = 0
+    while 序号 < len(消息列表):
+        if _是否工具调用消息(消息列表[序号]):
+            分组 = [序号]
+            后续 = 序号 + 1
+            while 后续 < len(消息列表) and _是否工具结果消息(消息列表[后续]):
+                分组.append(后续)
+                后续 += 1
+            分组列表.append(分组)
+            序号 = 后续
+        else:
+            分组列表.append([序号])
+            序号 += 1
+    return 分组列表
+
+
+def _无模型剪枝(消息列表: list, 分组列表: list[list[int]]) -> tuple[list, int]:
+    """阶段①：无 LLM 剪枝——丢弃空消息与连续重复消息，原子分组整组跳过。"""
+    成对索引: set[int] = set()
+    for 分组 in 分组列表:
+        if len(分组) > 1:
+            成对索引.update(分组)
+    保留列表: list = []
+    剪掉条数 = 0
+    for 索引, 消息 in enumerate(消息列表):
+        if 索引 in 成对索引:
+            保留列表.append(消息)
+            continue
+        正文 = _消息内容文本(消息)
+        if not 正文.strip():
+            剪掉条数 += 1
+            continue
+        # 只折叠与原文上一条完全相同的连续重复消息（不跨被剪消息连坐）
+        if 索引 > 0 and 正文 == _消息内容文本(消息列表[索引 - 1]).strip():
+            剪掉条数 += 1
+            continue
+        保留列表.append(消息)
+    return 保留列表, 剪掉条数
+
+
+def _消息token合计(消息列表: list) -> int:
+    """按既有估算口径合计消息 token（每条加 4 结构开销）。"""
+    合计 = 0
+    for 消息 in 消息列表:
+        合计 += _估算文本token(_消息内容文本(消息)) + 4
+    return 合计
+
+
+def _对齐原子边界(分组列表: list[list[int]], 边界起点: int) -> int:
+    """阶段②辅助：边界不得落在分组内部；落内部则整组前移进保留区。"""
+    for 分组 in 分组列表:
+        if 分组[0] < 边界起点 <= 分组[-1]:
+            return 分组[0]
+    return 边界起点
+
+
+def _分组起止(分组列表: list[list[int]], 索引: int) -> tuple[int, int]:
+    """返回包含该索引的分组的起止下标（无分组时返回自身）。"""
+    for 分组 in 分组列表:
+        if 索引 in 分组:
+            return 分组[0], 分组[-1]
+    return 索引, 索引
+
+
+def _确定性摘要(压缩消息列表: list, 摘要预算token: int) -> str:
+    """阶段③ fallback：纯规则拼接 + 截断，不调用任何模型。"""
+    行列表: list[str] = []
+    已用token = 0
+    for 消息 in 压缩消息列表:
+        角色 = 消息.get("role", "user") if isinstance(消息, dict) else "user"
+        正文 = _消息内容文本(消息).strip().replace("\n", " ")
+        首句 = 正文.split("。")[0].strip()
+        if len(首句) > 120:
+            首句 = 首句[:120]
+        行 = f"[{角色}] {首句}"
+        行token = _估算文本token(行) + 1
+        if 已用token + 行token > 摘要预算token and 行列表:
+            break
+        行列表.append(行)
+        已用token += 行token
+    文本 = "\n".join(行列表)
+    if len(行列表) < len(压缩消息列表):
+        文本 = f"{文本}\n…（更早内容已折叠）" if 文本 else "（更早内容已折叠）"
+    return 文本
+
+
+def 四阶段压缩(消息列表: list = None, 可用额度token: int = None,
+               保留最近token: int = None, 降级模式: str = None,
+               原子分组: bool = None, 结束标记: str = None) -> 结果:
+    """四阶段上下文压缩（无 LLM 剪枝 → 定边界 → 结构化摘要 → 组装）。
+
+    ① 无 LLM 剪枝：按预算丢弃/折叠明显可省的低价值旧消息（不破坏原子分组）
+    ② 定边界：结合 可用额度token 与 保留最近token 算出可压缩区间起止
+    ③ 结构化摘要：严格模式无法形成摘要即失败；确定性 fallback 不做模型调用
+    ④ 组装：摘要文本 + 保留消息 + 结束标记
+    原子分组为真时，切分边界不得把「工具调用」与它的「结果」拆散。
+    返回 {摘要文本, 保留消息, 已压缩条数, 降级, 结束标记}。
+    """
+    if not isinstance(消息列表, list) or not 消息列表:
+        return 结果.失败("参数不合法", "消息列表必须是非空列表", 来源="上下文压缩")
+    if isinstance(可用额度token, bool) or not isinstance(可用额度token, int) or 可用额度token <= 0:
+        return 结果.失败("参数不合法", "可用额度token 必须是正整数", 来源="上下文压缩")
+    if 保留最近token is None:
+        保留额度 = 默认保留最近token
+    elif isinstance(保留最近token, bool) or not isinstance(保留最近token, int) or 保留最近token < 0:
+        return 结果.失败("参数不合法", "保留最近token 必须是非负整数", 来源="上下文压缩")
+    else:
+        保留额度 = 保留最近token
+    模式 = str(降级模式).strip() if 降级模式 is not None else "2"
+    if 模式 not in ("1", "2"):
+        return 结果.失败("参数不合法", f"降级模式 必须是 1/2: {降级模式}", 来源="上下文压缩")
+    if 原子分组 is not None and not isinstance(原子分组, bool):
+        return 结果.失败("参数不合法", "原子分组 必须是逻辑值", 来源="上下文压缩")
+    启用原子分组 = True if 原子分组 is None else 原子分组
+    if 结束标记 is not None and not isinstance(结束标记, str):
+        return 结果.失败("参数不合法", "结束标记 必须是文本", 来源="上下文压缩")
+    标记 = "" if 结束标记 is None else 结束标记
+
+    原条数 = len(消息列表)
+    # 阶段① 无 LLM 剪枝
+    分组列表 = _计算原子分组(消息列表) if 启用原子分组 else [[i] for i in range(原条数)]
+    剪枝后列表, _剪枝条数 = _无模型剪枝(消息列表, 分组列表)
+    压缩前token = _消息token合计(剪枝后列表)
+    if 压缩前token <= 可用额度token:
+        return 结果.成功结果({
+            "摘要文本": "", "保留消息": 剪枝后列表,
+            "已压缩条数": 原条数 - len(剪枝后列表),
+            "降级": False, "结束标记": "",
+        })
+
+    # 阶段② 定边界（保留额度从尾部累计）
+    剪枝后分组 = _计算原子分组(剪枝后列表) if 启用原子分组 else [[i] for i in range(len(剪枝后列表))]
+    边界起点 = 0
+    累计token = 0
+    for 索引 in range(len(剪枝后列表) - 1, -1, -1):
+        累计token += _估算文本token(_消息内容文本(剪枝后列表[索引])) + 4
+        if 累计token > 保留额度:
+            边界起点 = 索引 + 1
+            break
+    if 启用原子分组:
+        对齐后 = _对齐原子边界(剪枝后分组, 边界起点)
+        if 对齐后 != 边界起点:
+            保留token = _消息token合计(剪枝后列表[对齐后:])
+            if 保留token > 可用额度token:
+                # 成对压缩：整组移入压缩区，绝不拆散工具调用与结果
+                起, 止 = _分组起止(剪枝后分组, 对齐后)
+                边界起点 = 止 + 1
+            else:
+                边界起点 = 对齐后
+    压缩区 = 剪枝后列表[:边界起点]
+    保留消息 = 剪枝后列表[边界起点:]
+
+    if not 压缩区:
+        if 模式 == "1":
+            return 结果.失败("摘要生成失败", "严格模式：可压缩区间为空，无法形成结构化摘要", 来源="上下文压缩")
+        return 结果.成功结果({
+            "摘要文本": "", "保留消息": 保留消息,
+            "已压缩条数": 原条数 - len(保留消息),
+            "降级": True, "结束标记": "",
+        })
+
+    # 阶段③ 结构化摘要（确定性 fallback 不做任何模型调用）
+    压缩区token = _消息token合计(压缩区)
+    摘要预算token = max(64, int(压缩区token * 0.3))
+    摘要文本 = _确定性摘要(压缩区, 摘要预算token)
+    if not 摘要文本.strip():
+        if 模式 == "1":
+            return 结果.失败("摘要生成失败", "严格模式：摘要为空，无法形成结构化摘要", 来源="上下文压缩")
+        摘要文本 = "（更早内容已折叠）"
+    摘要token = _估算文本token(摘要文本)
+    if 模式 == "1" and 摘要token >= 压缩区token:
+        return 结果.失败("摘要生成失败", f"严格模式：摘要 token {摘要token} 未小于原文 {压缩区token}",
+                        来源="上下文压缩")
+
+    # 阶段④ 组装
+    组装摘要 = f"{摘要文本}{标记}" if 标记 else 摘要文本
+    return 结果.成功结果({
+        "摘要文本": 组装摘要,
+        "保留消息": 保留消息,
+        "已压缩条数": 原条数 - len(保留消息),
+        "降级": 模式 == "2",
+        "结束标记": 标记,
+    })

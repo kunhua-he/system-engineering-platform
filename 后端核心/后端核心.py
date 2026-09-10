@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -65,6 +67,9 @@ class 后端核心:
         self.排空 = None  # 自动排空管理器（启动时装配）
         self.资源句柄服务 = 资源句柄服务(self.运行缓存根目录 / "权威状态")
         设置受管状态服务(self.资源句柄服务)
+        self._包指纹表: dict[str, str] = {}  # 包id -> 源码指纹（热接入变更检测基线）
+        self._包轻量指纹表: dict[str, str] = {}  # 包id -> 轻量指纹（调用前漂移校验基线）
+        self._包目录表: dict[str, Path] = {}  # 包id -> 包根目录（校验时定位用，免重新发现）
 
     def 资源状态(self, 句柄: int, *, 项目id: str = "", 所有者: str = "") -> dict | None:
         return self.资源句柄服务.状态(句柄, 项目id=项目id, 所有者=所有者)
@@ -111,6 +116,7 @@ class 后端核心:
                     return 结果.失败("装配失败", "装配模板缺失", 来源="后端核心")
             self._唯一调用服务 = 唯一能力调用服务(self.注册表)
             设置全局唯一服务(self._唯一调用服务)
+        self.初始化包指纹表()  # 记录已装配包基线指纹（热接入变更检测依据）
         return 结果.成功结果(len(self.注册表.能力id列表))
 
     def 启动(self) -> 结果:
@@ -124,6 +130,8 @@ class 后端核心:
         self.状态.状态 = "运行中"
         self.状态.启动时间 = time.strftime("%Y-%m-%d %H:%M:%S")
         self.状态.能力数 = len(self.注册表.能力id列表)
+        # 正式环境（环境开关开启）注入指纹校验：被改动未重新热接入即报错。
+        self.启用包指纹校验()
         return 结果.成功结果(f"后端核心已就绪，{self.状态.能力数} 个能力")
 
     def 注册能力(self, 能力id: str, 实现函数: Callable, *, 参数: list | None = None,
@@ -136,6 +144,335 @@ class 后端核心:
         except ValueError as 错误:
             return 结果.失败("能力重复", str(错误), 来源="后端核心")
         return 结果.成功结果(能力id)
+
+    # ═══════════════════════════════════════════════════════════════
+    # 热接入：新增/变更包免重启直接投产（增量装配）
+    # 只装载「未装配的新包 + 源码指纹变化的已装配包」，不动其余包
+    # （已装配包的模块级运行态、句柄、线程池全部保留，不重启网关）。
+    # ═══════════════════════════════════════════════════════════════
+    def 计算包指纹(self, 声明) -> str:
+        """计算包源码与契约指纹：内容变化即可被发现，不依赖文件时间精度。"""
+        import hashlib
+        try:
+            包根 = Path(声明.来源路径).parent.resolve()
+        except Exception:
+            包根 = Path(getattr(声明, "来源路径", "") or "").parent.resolve()
+        if not 包根.is_dir():
+            return ""
+        摘要 = hashlib.sha256()
+        for 文件 in sorted(包根.rglob("*")):
+            if not 文件.is_file() or "__pycache__" in 文件.parts:
+                continue
+            if 文件.name == "完整性摘要.json" or 文件.name.endswith(".pyc"):
+                continue
+            try:
+                摘要.update(str(文件.relative_to(包根)).encode("utf-8"))
+                摘要.update(b"\0")
+                摘要.update(文件.read_bytes())
+                摘要.update(b"\0")
+            except OSError:
+                continue
+        return 摘要.hexdigest()
+
+    def _目录轻量指纹(self, 包根: Path) -> str:
+        """按 相对路径+大小+纳秒修改时间 聚合目录轻量指纹（只 stat 不读内容）。"""
+        import hashlib
+        if not 包根.is_dir():
+            return ""
+        摘要 = hashlib.sha256()
+        for 文件 in sorted(包根.rglob("*")):
+            if not 文件.is_file() or "__pycache__" in 文件.parts:
+                continue
+            if 文件.name == "完整性摘要.json" or 文件.name.endswith(".pyc"):
+                continue
+            try:
+                状态 = 文件.stat()
+            except OSError:
+                continue
+            摘要.update(str(文件.relative_to(包根)).encode("utf-8"))
+            摘要.update(f"|{状态.st_size}|{状态.st_mtime_ns}".encode("utf-8"))
+        return 摘要.hexdigest()
+
+    def 计算包轻量指纹(self, 声明) -> str:
+        """计算包轻量指纹（校验用，代价远低于内容摘要）。"""
+        try:
+            包根 = Path(声明.来源路径).parent.resolve()
+        except Exception:
+            包根 = Path(getattr(声明, "来源路径", "") or "").parent.resolve()
+        return self._目录轻量指纹(包根)
+
+    def 校验包指纹(self, 包id: str) -> tuple[bool, str]:
+        """校验包当前指纹是否与注册时一致（调用前防静默漂移）。
+
+        返回 (是否一致, 说明)：包目录缺失或文件被改动未重新热接入即不一致；
+        未登记基线的包（如核心自身注册的能力）不阻断。
+        """
+        基线 = self._包轻量指纹表.get(包id)
+        if 基线 is None:
+            return True, ""
+        包根 = self._包目录表.get(包id)
+        if 包根 is None:
+            return True, ""
+        if not 包根.is_dir():
+            return False, f"包 {包id} 目录缺失（制品或源码已被删除）"
+        if self._目录轻量指纹(包根) != 基线:
+            return False, f"包 {包id} 指纹已变化（被改动但未重新热接入/注册指纹）"
+        return True, ""
+
+    def 启用包指纹校验(self) -> bool:
+        """按环境开关把指纹校验器注入唯一调用服务（正式环境开启）。"""
+        开关 = str(os.environ.get("系统底座_指纹校验", "")).strip().lower()
+        if 开关 not in ("1", "true", "yes", "是"):
+            return False
+        if self._唯一调用服务 is None:
+            return False
+        self._唯一调用服务.设置包指纹校验器(self.校验包指纹)
+        return True
+
+    def 初始化包指纹表(self) -> None:
+        """首次全量装配成功后，为每个已装配包记录基线指纹（内容指纹 + 轻量指纹 + 目录）。"""
+        from 运行核心.加载器.包发现.发现器 import 发现全部
+        发现 = 发现全部(self.系统根目录 / "支持库", self.系统根目录 / "模块库")
+        if not 发现.成功:
+            return
+        self._包指纹表 = {}
+        self._包轻量指纹表 = {}
+        self._包目录表 = {}
+        for 声明 in 发现.声明列表:
+            if getattr(声明, "已废弃", False):
+                continue
+            self._包指纹表[声明.包id] = self.计算包指纹(声明)
+            self._包轻量指纹表[声明.包id] = self.计算包轻量指纹(声明)
+            try:
+                self._包目录表[声明.包id] = Path(声明.来源路径).parent.resolve()
+            except Exception:
+                continue
+
+    def 热接入(self) -> 结果:
+        """热接入：发现新增/变更包并增量装配，免重启直接投产。
+
+        规则：
+        1. 重新发现全部支持库/模块，对比注册表找出 新增包 + 源码指纹变化的变更包；
+        2. 只装载这批包（先支持库后模块，按包id排序），不重跑全量装配，
+           不触发装配锁漂移，已装配包运行态/句柄全部保留；
+        3. 变更包重载前先弹出 sys.modules 旧入口与实现模块，保证新代码生效；
+        4. 成功后更新装配模板与装配状态锁，后续全量装配不会漂移冲突。
+        """
+        import sys
+        from 运行核心.加载器.包发现.发现器 import 发现全部
+        from 运行核心.加载器.包安装.支持库安装 import 安装支持库
+        from 运行核心.加载器.包安装.模块安装 import 安装模块
+        global _装配模板
+        with _装配锁:
+            if self.状态.状态 != "运行中":
+                return 结果.失败("外部不可访问",
+                                   f"后端核心未运行（状态 {self.状态.状态}）", 来源="后端核心")
+            发现 = 发现全部(self.系统根目录 / "支持库", self.系统根目录 / "模块库")
+            if not 发现.成功:
+                return 结果.失败("热接入失败", "; ".join(发现.问题列表), 来源="后端核心")
+            声明列表 = 发现.声明列表
+            if not 声明列表:
+                return 结果.失败("热接入失败", "未发现任何支持库或模块", 来源="后端核心")
+
+            已注册包id集合 = {实现.包id for 能力id in self.注册表.能力id列表
+                              for 实现 in [self.注册表.获取(能力id)] if 实现 is not None}
+            新增声明 = [声明 for 声明 in 声明列表
+                       if 声明.包id not in 已注册包id集合
+                       and not getattr(声明, "已废弃", False)]
+            变更声明 = []
+            for 声明 in 声明列表:
+                if getattr(声明, "已废弃", False) or 声明.包id not in 已注册包id集合:
+                    continue
+                if self.计算包指纹(声明) != self._包指纹表.get(声明.包id):
+                    变更声明.append(声明)
+
+            # ── 卸载目标：已注册但不再被发现 / 已标记废弃 的包 ──
+            # 提前返回前必须先算出卸载集合，否则整包删除永远不触发。
+            活跃包id集合 = {声明.包id for 声明 in 声明列表
+                           if not getattr(声明, "已废弃", False)}
+            卸载包id集合 = {
+                包id for 包id in 已注册包id集合
+                if 包id != "后端核心" and 包id not in 活跃包id集合
+            }
+
+            if not 新增声明 and not 变更声明 and not 卸载包id集合:
+                return 结果.成功结果({"新增包": 0, "变更包": 0,
+                                        "卸载包": 0, "成功包": [], "失败包": [],
+                                        "已注册能力数": len(self.注册表.能力id列表)})
+
+            def 排序键(声明):
+                return (0 if 声明.类型 == "支持库" else 1, 声明.包id)
+            待处理 = sorted(新增声明 + 变更声明, key=排序键)
+
+            成功包表: list[str] = []
+            失败表: list[str] = []
+            # ── 卸载语义执行：移除能力、弹出模块、删除指纹 ──
+            for 包id in sorted(卸载包id集合):
+                try:
+                    for 能力id in list(self.注册表.能力id列表):
+                        旧实现 = self.注册表.获取(能力id)
+                        if 旧实现 is not None and 旧实现.包id == 包id:
+                            self.注册表.移除(能力id, 包id=包id)
+                    模块键前缀 = (f"支持库运行时_{包id.replace('.', '_')}",
+                                 f"模块运行时_{包id.replace('.', '_')}",
+                                 包id + ".")
+                    for 键 in [k for k in list(sys.modules)
+                               if k == 模块键前缀[0] or k == 模块键前缀[1]
+                               or k.startswith(模块键前缀[2])]:
+                        sys.modules.pop(键, None)
+                    self._包指纹表.pop(包id, None)
+                    self._包轻量指纹表.pop(包id, None)
+                    self._包目录表.pop(包id, None)
+                    成功包表.append(f"{包id}（卸载）")
+                except Exception as 错误:
+                    失败表.append(f"{包id}（卸载）: {错误}")
+
+            for 声明 in 待处理:
+                try:
+                    # 在临时注册表装配，避免新入口失败时破坏线上旧能力。
+                    临时注册表 = 能力注册表()
+                    for 能力id in self.注册表.能力id列表:
+                        旧实现 = self.注册表.获取(能力id)
+                        if 旧实现 is not None and 旧实现.包id != 声明.包id:
+                            临时注册表.注册(旧实现)
+
+                    # 弹出入口及包目录内实现模块，确保不会复用旧 Python 模块。
+                    包根 = Path(声明.来源路径).parent.resolve()
+                    模块键前缀 = (f"支持库运行时_{声明.包id.replace('.', '_')}",
+                                 f"模块运行时_{声明.包id.replace('.', '_')}",
+                                 声明.包id + ".")
+                    for 键, 模块对象 in list(sys.modules.items()):
+                        文件路径 = getattr(模块对象, "__file__", "") or ""
+                        属于包 = False
+                        try:
+                            属于包 = bool(文件路径) and Path(文件路径).resolve().is_relative_to(包根)
+                        except (OSError, ValueError):
+                            pass
+                        if (键 == 模块键前缀[0] or 键 == 模块键前缀[1]
+                                or 键.startswith(模块键前缀[2]) or 属于包):
+                            sys.modules.pop(键, None)
+
+                    # 清除包目录下全部字节码缓存：源文件内容变化但 mtime 秒级/size
+                    # 相同（如仅版本串变化）时，Python 会误用旧 .pyc，导致重载
+                    # 后仍执行旧实现。重载必须强制重新编译。
+                    for 缓存目录 in list(包根.rglob("__pycache__")):
+                        shutil.rmtree(缓存目录, ignore_errors=True)
+
+                    if 声明.类型 == "支持库":
+                        安装支持库(声明, 临时注册表)
+                    else:
+                        安装模块(声明, 临时注册表)
+
+                    # 一致性门禁（与全量装配同口径）：声明能力必须与入口注册、
+                    # 参数契约三方对齐；依赖能力必须可解析。任一不一致即该包失败，
+                    # 不允许“注册了但没登记”的半齐状态进入运行态。
+                    校验问题 = self._校验热接入包(声明, 临时注册表)
+                    if 校验问题:
+                        raise ValueError("；".join(校验问题))
+
+                    # 临时注册成功后，在短临界区一次性替换该包能力。
+                    with self.请求锁:
+                        for 能力id in list(self.注册表.能力id列表):
+                            旧实现 = self.注册表.获取(能力id)
+                            if 旧实现 is not None and 旧实现.包id == 声明.包id:
+                                self.注册表.移除(能力id, 包id=声明.包id)
+                        for 能力id in 临时注册表.能力id列表:
+                            新实现 = 临时注册表.获取(能力id)
+                            if 新实现 is not None and 新实现.包id == 声明.包id:
+                                self.注册表.注册(新实现)
+                    self._包指纹表[声明.包id] = self.计算包指纹(声明)
+                    self._包轻量指纹表[声明.包id] = self.计算包轻量指纹(声明)
+                    try:
+                        self._包目录表[声明.包id] = Path(声明.来源路径).parent.resolve()
+                    except Exception:
+                        pass
+                    成功包表.append(f"{声明.包id}（{'新增' if 声明 in 新增声明 else '变更'}）")
+                except Exception as 错误:
+                    失败表.append(f"{声明.包id}: {错误}")
+
+            # 更新装配模板，保证后续 装配() 不会用旧模板覆盖新能力
+            _装配模板 = copy.deepcopy(self.注册表)
+            # 重建装配状态锁：使后续全量装配与热接入后状态一致（尽力而为，失败不阻断）
+            try:
+                from 运行核心.加载器.依赖解析.装配锁 import 构建装配锁, 记录装配状态
+                from 运行核心.加载器.提供者选择.选择器 import 选择全部提供者
+                from 运行核心.加载器.依赖解析.解析器 import 解析依赖
+                活跃声明 = [声明 for 声明 in 声明列表 if not getattr(声明, "已废弃", False)]
+                提供者表 = 选择全部提供者(活跃声明)
+                能力提供者 = {能力id: (选择.提供包id, 选择.提供版本)
+                              for 能力id, 选择 in 提供者表.items() if 选择.成功}
+                解析 = 解析依赖(活跃声明, 能力提供者)
+                if 解析.成功:
+                    新锁 = 构建装配锁(活跃声明, 提供者表, 解析.顺序列表)
+                    记录装配状态(self.注册表, 新锁)
+            except Exception:
+                pass
+
+            self.状态.能力数 = len(self.注册表.能力id列表)
+            # 指纹基线已随本次热接入刷新，清掉校验缓存避免沿用旧判定。
+            if self._唯一调用服务 is not None:
+                self._唯一调用服务.清空包指纹缓存()
+            # 失败必须失败：任一包装配/卸载失败，不得用成功信封掩盖（正式环境直接报错）。
+            if 失败表:
+                return 结果.失败(
+                    "热接入失败",
+                    "部分包装配或卸载失败: " + "; ".join(失败表),
+                    来源="后端核心",
+                )
+            return 结果.成功结果({
+                "新增包": len(新增声明), "变更包": len(变更声明),
+                "卸载包": len(卸载包id集合),
+                "成功包": 成功包表, "失败包": 失败表,
+                "已注册能力数": self.状态.能力数,
+            })
+
+    def _校验热接入包(self, 声明, 临时注册表) -> list[str]:
+        """热接入单包一致性门禁：声明 / 入口注册 / 参数契约 三方对齐 + 依赖可解析。
+
+        注册能力按“包 id 前缀”归属：聚合支持库的顶层声明覆盖其子域包
+        （如 支持库.后端.系统核心支持库 的声明含 系统核心支持库.工具执行.*），
+        子域注册同样算该顶层声明已落地。
+        """
+        问题: list[str] = []
+        try:
+            包根 = Path(声明.来源路径).parent.resolve()
+        except Exception:
+            包根 = Path(getattr(声明, "来源路径", "") or "").parent.resolve()
+        声明能力集合 = {能力.能力id for 能力 in 声明.能力}
+        注册能力集合: set[str] = set()
+        for 能力id in 临时注册表.能力id列表:
+            实现 = 临时注册表.获取(能力id)
+            if 实现 is None:
+                continue
+            if 实现.包id == 声明.包id or 实现.包id.startswith(声明.包id + "."):
+                注册能力集合.add(能力id)
+        缺失登记 = sorted(注册能力集合 - 声明能力集合)
+        缺失实现 = sorted(声明能力集合 - 注册能力集合)
+        if 缺失登记:
+            问题.append(f"注册未声明: {缺失登记}")
+        if 缺失实现:
+            问题.append(f"声明未注册: {缺失实现}")
+        契约路径 = 包根 / "能力契约" / "参数契约.json"
+        if 契约路径.is_file():
+            try:
+                契约数据 = json.loads(契约路径.read_text(encoding="utf-8"))
+                契约能力集合 = {项.get("能力id") for 项 in 契约数据.get("能力契约", [])}
+            except (OSError, ValueError) as 错误:
+                问题.append(f"参数契约不可读: {错误}")
+            else:
+                契约缺 = sorted(声明能力集合 - 契约能力集合)
+                if 契约缺:
+                    问题.append(f"参数契约缺声明能力: {契约缺}")
+        elif 声明.类型 in ("基础模块", "功能模块"):
+            问题.append("参数契约缺失: 缺少 能力契约/参数契约.json")
+        缺失依赖 = []
+        for 依赖 in 声明.依赖:
+            依赖能力id = str(依赖.get("能力", ""))
+            if 依赖能力id and 临时注册表.获取(依赖能力id) is None:
+                缺失依赖.append(依赖能力id)
+        if 缺失依赖:
+            问题.append(f"依赖能力缺失: {缺失依赖}")
+        return 问题
 
     def 设置权限(self, 能力id: str, 允许用户id列表: list[str]) -> None:
         self.权限表[能力id] = set(允许用户id列表)

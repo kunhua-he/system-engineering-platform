@@ -250,6 +250,25 @@ class Test发布门禁收敛(unittest.TestCase):
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 
+    def test_编译缓存内生成制品源码不误判为持久源码(self) -> None:
+        """不可变编译产物属于生成物；缓存外未登记源码仍必须阻断。"""
+        from 开发工具.发布门禁 import 运行发布门禁 as 门禁
+
+        临时根 = Path(tempfile.mkdtemp(prefix="门禁编译缓存源码_"))
+        try:
+            生成目录 = 临时根 / "工程缓存" / "编译缓存" / "项目" / "版本" / "abc"
+            持久目录 = 临时根 / "工程缓存" / "未登记源码"
+            生成目录.mkdir(parents=True)
+            持久目录.mkdir(parents=True)
+            (生成目录 / "启动.py").write_text("", encoding="utf-8")
+            (持久目录 / "主.py").write_text("", encoding="utf-8")
+            with patch.object(门禁, "系统根", 临时根):
+                结果 = 门禁._扫描工程缓存Python源码()
+            self.assertEqual(结果, ["工程缓存/未登记源码/主.py"])
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+
     def test_英文命名扫描覆盖全部正式目录(self) -> None:
         """漏扫的正式层放入英文函数时必须被门禁发现。"""
         from 开发工具.发布门禁 import 运行发布门禁 as 门禁

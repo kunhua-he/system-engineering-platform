@@ -166,6 +166,34 @@ class Test未配置模型如实返回(直播逐字稿装配):
         self.assertIsNone(结果.值)
 
 
+class Test附加术语传递(直播逐字稿装配):
+    def test_附加术语传给转写支持库(self):
+        from unittest.mock import patch
+        from 模块库.直播逐字稿.实现 import 直播逐字稿 as 实现
+
+        记录 = []
+
+        def 假调用(能力id, 请求参数):
+            if 能力id == "媒体处理支持库.FFmpeg媒体.探测媒体":
+                return 结果类型.成功结果({"时长秒": 1.0, "格式": "wav"})
+            if 能力id == "转写支持库.转写.转写音频文件":
+                记录.append((能力id, 请求参数))
+                return 结果类型.成功结果({"文本": "华世王镞", "语言": "zh"})
+            raise AssertionError(f"出现未预期的能力调用: {能力id}")
+
+        with patch.object(实现, "_调用", side_effect=假调用):
+            结果 = 实现.转写媒体文件(
+                self.音频路径,
+                str(self.临时目录 / "输出"),
+                模型配置={"模型路径": "/模型"},
+                附加术语="华世王镞、合作店",
+            )
+
+        self.assertTrue(结果.成功)
+        self.assertEqual(len(记录), 1)
+        self.assertEqual(记录[0][1]["附加术语"], "华世王镞、合作店")
+
+
 class Test读取项目状态(直播逐字稿装配):
     def test_无项目状态目录不存在(self):
         结果 = 读取项目状态(str(self.临时目录 / "不存在项目"))

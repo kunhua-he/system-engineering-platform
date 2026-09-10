@@ -269,5 +269,73 @@ class 工作区字节指纹测试(unittest.TestCase):
             self.assertNotEqual(暂存["工作区字节指纹"], 未跟踪["工作区字节指纹"])
 
 
+    def test_正式制品只允许唯一启动入口(self):
+        from 开发工具.HTML验证.制品事实 import _找启动器
+        with tempfile.TemporaryDirectory(prefix=f"启动入口_{os.getpid()}_", dir="/tmp") as 临时:
+            制品 = Path(临时)
+            (制品 / "运行入口").mkdir()
+            (制品 / "运行入口" / "启动器.py").write_text("", encoding="utf-8")
+            with self.assertRaises(FileNotFoundError):
+                _找启动器(制品)
+            (制品 / "运行入口" / "启动.py").write_text("", encoding="utf-8")
+            self.assertEqual(_找启动器(制品), 制品 / "运行入口" / "启动.py")
+
+    def test_命令行支持缓存状态和强制重编译(self):
+        帮助 = subprocess.run(
+            ["python3.14", "开发工具/项目编译/项目编译器.py", "--help"],
+            cwd=系统根, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(帮助.returncode, 0, 帮助.stderr)
+        self.assertIn("--缓存根目录", 帮助.stdout)
+        self.assertIn("--强制重新编译", 帮助.stdout)
+
+
+class 编译产物缓存与稳定指针测试(unittest.TestCase):
+    """第一批：源码只生产不可变产物，重复编译必须命中缓存。"""
+
+    def setUp(self):
+        self.源项目 = 系统根 / "示例项目" / "可双击演示" / "开发文件夹"
+        self.临时根 = Path(tempfile.mkdtemp(prefix=f"编译缓存_{os.getpid()}_", dir="/tmp"))
+        self.项目 = self.临时根 / "项目"
+        self.输出 = self.临时根 / "输出"
+        self.缓存 = self.临时根 / "缓存"
+        shutil.copytree(self.源项目, self.项目)
+
+    def tearDown(self):
+        shutil.rmtree(self.临时根, ignore_errors=True)
+
+    def _编译(self):
+        return 编译项目(
+            self.项目,
+            self.输出,
+            变更单元={"文件": self.项目 / "项目声明.json"},
+            缓存根目录=self.缓存,
+        )
+
+    def test_重复编译命中缓存并返回同一制品指纹(self):
+        第一次 = self._编译()
+        第二次 = self._编译()
+        self.assertEqual(第一次["编译状态"], "重新编译")
+        self.assertEqual(第二次["编译状态"], "命中缓存")
+        self.assertEqual(第一次["制品指纹"], 第二次["制品指纹"])
+        self.assertTrue(Path(第二次["制品版本目录"]).is_dir())
+        self.assertTrue((self.输出 / "候选.json").is_file())
+
+    def test_修改页面生成新版本且保留旧版本(self):
+        第一次 = self._编译()
+        旧版本 = Path(第一次["制品版本目录"])
+        (self.项目 / "前端" / "页面" / "关于.json").write_text(json.dumps({
+            "页面id": "关于", "标题": "关于页面", "路由": "/关于", "组件列表": [],
+        }, ensure_ascii=False), encoding="utf-8")
+        第二次 = self._编译()
+        新版本 = Path(第二次["制品版本目录"])
+        self.assertEqual(第二次["编译状态"], "重新编译")
+        self.assertNotEqual(第一次["制品指纹"], 第二次["制品指纹"])
+        self.assertTrue(旧版本.is_dir(), "旧版本必须保留用于回滚")
+        self.assertTrue((新版本 / "前端" / "编译页面" / "关于.html").is_file())
+        指针 = json.loads((self.输出 / "候选.json").read_text(encoding="utf-8"))
+        self.assertEqual(指针["候选制品指纹"], 第二次["制品指纹"])
+
+
 if __name__ == "__main__":
     unittest.main()

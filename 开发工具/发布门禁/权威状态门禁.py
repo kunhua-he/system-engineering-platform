@@ -54,8 +54,13 @@ def _旧库迁移() -> str:
         状态 = 权威状态(目录)
         结构正常, 说明 = 状态.校验结构()
         资源 = 状态.读取资源("老资源")
-        版本 = sqlite3.connect(str(目录 / "权威状态.db")).execute(
-            "SELECT 值 FROM 元信息 WHERE 键='结构版本'").fetchone()[0]
+        查询连接 = sqlite3.connect(str(目录 / "权威状态.db"))
+        try:
+            版本 = 查询连接.execute(
+                "SELECT 值 FROM 元信息 WHERE 键='结构版本'"
+            ).fetchone()[0]
+        finally:
+            查询连接.close()
         状态.关闭()
         if not (结构正常 and 版本 == 状态结构版本 and 资源["值"]["内容"] == "旧数据"):
             raise AssertionError(f"迁移结果异常: {说明} / {版本} / {资源}")
@@ -121,9 +126,17 @@ time.sleep(30)
         进程 = subprocess.Popen(
             [sys.executable, "-S", "-c", 脚本, str(系统根), str(目录)],
             cwd=str(系统根), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        握手 = json.loads(进程.stdout.readline())
-        进程.kill()
-        进程.wait(timeout=5)
+        try:
+            输出管道 = 进程.stdout
+            if 输出管道 is None:
+                raise RuntimeError("门禁子进程未提供标准输出管道")
+            握手 = json.loads(输出管道.readline())
+        finally:
+            进程.kill()
+            进程.wait(timeout=5)
+            for 流 in (进程.stdout, 进程.stderr):
+                if 流 is not None:
+                    流.close()
         状态 = 权威状态(目录, 项目id="门禁", 所有者="接管者")
         清理 = 状态.清理死亡进程资源(项目id="门禁", 所有者="死进程")
         成功, _, 新令牌 = 状态.获取锁(
