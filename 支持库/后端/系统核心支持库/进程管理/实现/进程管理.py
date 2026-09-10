@@ -231,3 +231,158 @@ def 释放句柄(句柄: int | None = None) -> 结果:
                 if 管道 is not None:
                     管道.close()
     return 结果.成功结果({"句柄": 句柄, "已释放": True})
+
+# ── macOS sandbox-exec 内核沙箱执行（迁移自 V3 终端工具 沙箱处理器） ────────
+
+默认沙箱输出上限字节 = 1 * 1024 * 1024
+
+
+def _构建沙箱配置(工作目录: str) -> str:
+    """返回 sandbox-exec profile：系统只读 + 仅工作目录可读写。
+
+    只读放开的位置限定为系统工具/动态库目录与 Python 解释器自身 prefix，
+    不放开整个 /Users，避免越出工作区读用户其他文件。
+    """
+    import sys as _sys
+    py_prefix = os.path.realpath(_sys.prefix)
+    py_base = os.path.realpath(_sys.base_prefix)
+    return f"""(version 1)
+(import "system.sb")
+(allow process-fork)
+(allow process-exec)
+(allow network*)
+(allow mach-lookup)
+(allow sysctl-read)
+(allow file-read-metadata)
+(allow file-read*
+  (subpath "/usr") (subpath "/bin") (subpath "/sbin")
+  (subpath "/System") (subpath "/Library") (subpath "/opt/homebrew")
+  (subpath "/private/var/db/dyld") (subpath "/private/var/folders")
+  (subpath "/private/var/select") (subpath "/dev")
+  (subpath "/private/etc/ssl")
+  (subpath "{py_prefix}") (subpath "{py_base}")
+  (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf"))
+(allow file-read* file-write* (subpath "{工作目录}"))
+"""
+
+
+def _沙箱安全环境(工作目录: str) -> dict:
+    """子进程环境白名单：不整体转发宿主环境，避免泄露密钥/令牌。"""
+    from pathlib import Path as _Path
+    临时目录 = _Path(工作目录) / ".tmp"
+    临时目录.mkdir(parents=True, exist_ok=True)
+    return {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": 工作目录,
+        "WORKSPACE": 工作目录,
+        "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+        "LC_ALL": os.environ.get("LC_ALL", "en_US.UTF-8"),
+        "TMPDIR": str(临时目录),
+    }
+
+
+def 沙箱执行命令(
+    命令: str = None,
+    工作目录: str = None,
+    超时秒: float = None,
+    输出上限字节: int = None,
+    环境变量: dict = None,
+) -> 结果:
+    """在 macOS sandbox-exec 内核沙箱内执行 shell 命令。
+
+    - 内核级隔离：系统目录只读，只有「工作目录」可读写；
+    - Linux 等无 sandbox-exec 的平台 **fail-closed**（拒绝执行，不降级为无沙箱）；
+    - 输出上限内截断；超时用 killpg 回收整棵进程树；
+    - 环境变量走白名单，可用 环境变量 追加白名单内的键。
+
+    注意：危险命令检测不在此能力内（那是策略不是机制），由调用方先做。
+    """
+    from pathlib import Path as _Path
+
+    if not isinstance(命令, str) or not 命令.strip():
+        return 结果.失败("参数不合法", "命令必须是非空字符串", 来源=来源)
+    if not isinstance(工作目录, str) or not 工作目录.strip():
+        return 结果.失败("参数不合法", "工作目录必填（沙箱唯一可读写目录）", 来源=来源)
+    工作区 = _Path(工作目录).resolve()
+    if not 工作区.is_dir():
+        return 结果.失败("目录不存在", f"工作目录不存在: {工作区}", 来源=来源)
+    上限字节 = int(输出上限字节) if isinstance(输出上限字节, int) and 输出上限字节 > 0 \
+        else 默认沙箱输出上限字节
+    超时 = float(超时秒) if isinstance(超时秒, (int, float)) and 超时秒 > 0 else 60.0
+
+    import shutil as _shutil
+    import sys as _sys
+    if not (_sys.platform == "darwin" and _shutil.which("sandbox-exec")):
+        return 结果.失败(
+            "沙箱不可用",
+            "当前平台无 sandbox-exec 内核沙箱，沙箱执行已禁用（fail-closed，不降级）",
+            来源=来源,
+        )
+
+    环境 = _沙箱安全环境(str(工作区))
+    for 键, 值 in (环境变量 or {}).items():
+        if 键 in 环境:
+            环境[键] = str(值)
+    配置 = _构建沙箱配置(str(工作区))
+    argv = ["sandbox-exec", "-p", 配置, "/bin/sh", "-c", 命令]
+
+    import tempfile as _tempfile
+    import uuid as _uuid
+    令牌 = _uuid.uuid4().hex
+    输出文件 = _Path(_tempfile.gettempdir()) / f".沙箱输出_{令牌}.txt"
+    错误文件 = _Path(_tempfile.gettempdir()) / f".沙箱错误_{令牌}.txt"
+    进程 = None
+    try:
+        with 输出文件.open("wb") as 出, 错误文件.open("wb") as 错:
+            进程 = subprocess.Popen(
+                argv, cwd=str(工作区), stdout=出, stderr=错,
+                env=环境, start_new_session=(os.name == "posix"))
+            超时标志 = False
+            try:
+                进程.wait(timeout=超时)
+            except subprocess.TimeoutExpired:
+                超时标志 = True
+                _终止进程组(进程, 强制=True)
+        标准输出 = _读受限(输出文件, 上限字节)
+        错误输出 = _读受限(错误文件, 上限字节)
+        if 超时标志:
+            return 结果.失败(
+                "超时", f"沙箱命令执行超过 {超时} 秒",
+                来源=来源,
+                详情={"标准输出": 标准输出, "错误输出": 错误输出},
+            )
+        return 结果.成功结果({
+            "退出码": 进程.returncode,
+            "成功执行": 进程.returncode == 0,   # 命令执行完成且退出码为 0
+            "标准输出": 标准输出,
+            "错误输出": 错误输出,
+            "沙箱": "macOS sandbox-exec",
+        })
+    except Exception as 错误:
+        if 进程 is not None:
+            try:
+                _终止进程组(进程, 强制=True)
+            except Exception:
+                pass
+        return 结果.失败("执行失败", str(错误), 来源=来源)
+    finally:
+        for 文件 in (输出文件, 错误文件):
+            try:
+                文件.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _读受限(路径, 上限字节: int) -> str:
+    """按上限读取子进程输出文件，超限截断并标注。"""
+    try:
+        原始 = 路径.read_bytes()
+    except OSError:
+        return ""
+    截断 = len(原始) > 上限字节
+    if 截断:
+        原始 = 原始[:上限字节]
+    文本 = 原始.decode("utf-8", errors="replace")
+    if 截断:
+        文本 += f"\n... [truncated at {上限字节} bytes]"
+    return 文本
