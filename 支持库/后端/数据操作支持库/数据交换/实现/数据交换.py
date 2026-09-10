@@ -57,12 +57,19 @@ def 序列化CSV(行列表: list = None) -> 结果:
         return _失败("序列化失败", f"CSV 序列化失败: {错误}")
 
 
-def 反序列化CSV(文本: str = None) -> 结果:
-    """把 CSV 文本解析为行列表。"""
+def 反序列化CSV(文本: str = None, 分隔符: str = "", 严格模式: bool = False) -> 结果:
+    """把 CSV 文本解析为行列表。
+
+    分隔符：留空按逗号解析；支持 , \\t ; | 等单字符分隔符。
+    严格模式：开启后畸形 CSV（未闭合引号等）返回 反序列化失败，而不是静默吞掉。
+    """
     if 文本 is None or not isinstance(文本, str):
         return _失败("参数不合法", "文本必须为非空字符串")
+    实际分隔符 = 分隔符 if isinstance(分隔符, str) and 分隔符 else ","
+    if len(实际分隔符) != 1:
+        return _失败("参数不合法", "分隔符必须是单个字符")
     try:
-        读取器 = csv.reader(io.StringIO(文本))
+        读取器 = csv.reader(io.StringIO(文本), delimiter=实际分隔符, strict=bool(严格模式))
         return _成功([行 for 行 in 读取器])
     except (csv.Error, TypeError) as 错误:
         return _失败("反序列化失败", f"CSV 解析失败: {错误}")

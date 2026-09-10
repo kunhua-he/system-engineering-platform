@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "73c8b0dbaff23f0fe5559441b0941dbaa811b850c8efbadf3941e15b34ca27e5"
+      "sha256": "3de2db50f35c3c8f5b81ae41e7b8d3385ebdf7f1163954a44bf21b69c2a8c360"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "75b86cc4c2834b5e06c12a95aa879d7af03542944eaf87066980c48cb9d6ac5e"
+      "sha256": "fcfcdfd834109893154ec3eae4c8e6076c1fdffe0f9221efa353dd8afe180423"
     },
     {
       "路径": "复用决策.json",
@@ -25,7 +25,7 @@
     },
     {
       "路径": "实现/处理.py",
-      "sha256": "4978ad86b894b133db17d8cc234a478b99190cd9e3103f26045b3b1ee1663e6c"
+      "sha256": "b0b9300da251644dd2f9e160e8c7744383a9ad28cd72260a26d131ae5539c09c"
     },
     {
       "路径": "实现/探测.py",
@@ -37,23 +37,23 @@
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "2dd62c27f5a395e2a6477af58c6708ce99b2097f9ce941af880dd3953daa433f"
+      "sha256": "f663b2c28a8fb1ca1df63f440171576137167e6a7ee3c212695733c58d477672"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "680535966dd1943cf3f61ffb6014bc31ac7e702464038396d6c830ea8ec0a933"
+      "sha256": "b701800b078503cc8fe4d74811c1af843d8a7c67ab73ed4ae8d470737582a549"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "3be9c42e6fef1000f6aaf6ad22f48d9eef5549d0cb94a7fcbc667455b73689a0"
+      "sha256": "bcf5c1a6419b4f317a7cf41356a0f4a492cc0ef6fb605212ee0e57cb35116d2c"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "a1aa18ca1711bea95d5b5ee4e315d4b0694f0c0214c4b7ef59d8d1186b2ecf72"
+      "sha256": "a6ae9685817466674308e98467bb5223f8f08c755b0bd7e72394c076bf9603bf"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "d565fdd0ad039fcbed25203de5cd2d3696d82bccce0a6fcdde52d5418ae7b859"
+      "sha256": "16e67dca25c01ffa48bedde89ce678ceca421cc644d54c2eaeaacf5239f93e66"
     },
     {
       "路径": "说明/使用说明.md",
