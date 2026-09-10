@@ -266,12 +266,19 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
                 return _失败("超出限制", f"{连接类型} HTTP响应超过4MB上限")
             数据 = json.loads(原始.decode("utf-8"))
         if 连接类型 == "LLM":
-            回复 = 数据.get("output_text")
+            # 归一化：产出 内容/思考/工具调用/结束原因；保留 回复/用量 以兼容既有调用方
+            归一 = _归一化响应体(数据, True)
+            回复 = 归一.get("内容") or 数据.get("output_text")
             if not isinstance(回复, str):
                 回复 = (((数据.get("choices") or [{}])[0].get("message") or {}).get("content"))
-            if not isinstance(回复, str) or not 回复:
-                return _失败("模型调用失败", "模型响应没有可用文本")
-            return 结果.成功结果({"回复": 回复, "用量": 数据.get("usage", {})})
+            if not isinstance(回复, str):
+                回复 = ""
+            if not 回复 and not 归一.get("工具调用"):
+                return _失败("模型调用失败", "模型响应既没有可用文本也没有工具调用")
+            值 = {"回复": 回复, "用量": 数据.get("usage", {}),
+                  "内容": 归一.get("内容", ""), "思考": 归一.get("思考", ""),
+                  "工具调用": 归一.get("工具调用", []), "结束原因": 归一.get("结束原因", "stop")}
+            return 结果.成功结果(值)
         if 连接类型 == "向量":
             向量 = 数据["data"][0]["embedding"]
             return 结果.成功结果({"向量": 向量, "维度": len(向量)})
@@ -1285,9 +1292,10 @@ def _归一化响应体(原始数据: dict, 包含思考: bool) -> dict:
     # ③ ollama：message.content
     if isinstance(原始数据.get("message"), dict) and not 原始数据.get("choices"):
         消息 = 原始数据.get("message") or {}
-        return {"内容": str(消息.get("content") or ""), "思考": "",
+        return {"内容": str(消息.get("content") or ""),
+                "思考": str(消息.get("reasoning_content") or "") if 包含思考 else "",
                 "工具调用": _归一化工具调用({"tool_calls": 消息.get("tool_calls")}),
-                "结束原因": "stop", "用量": 用量}
+                "结束原因": str(原始数据.get("done_reason") or "stop"), "用量": 用量}
 
     # ④ chat_completions：choices[0].message
     选项列表 = 原始数据.get("choices") or []
@@ -1372,6 +1380,9 @@ def _归一化分块体(分块: dict, 包含思考: bool):
         工具调用 = _归一化工具调用({"tool_calls": 消息.get("tool_calls")})
         if 工具调用:
             return {"类型": _流事件类型_工具调用, "内容": "", "工具调用": 工具调用, "用量": None}
+        思考 = 消息.get("reasoning_content") or ""
+        if 包含思考 and 思考:
+            return {"类型": _流事件类型_思考中, "内容": str(思考), "工具调用": [], "用量": None}
         if 消息.get("content"):
             return {"类型": _流事件类型_令牌, "内容": str(消息["content"]), "工具调用": [], "用量": None}
         return None
