@@ -153,8 +153,9 @@ def 主() -> int:
     解析.add_argument("--强制", action="store_true", help="忽略已有稿子重跑")
     解析.add_argument("--重试次数", type=int, default=3,
                     help="单场失败自动重试次数（网关重启/瞬时故障自动补跑）")
-    解析.add_argument("--并发场次", type=int, default=2,
-                    help="同时处理几场：GPU 只在转写阶段争用，裁决阶段在等远程模型，故可并行")
+    解析.add_argument("--并发场次", type=int, default=1,
+                    help="同时处理几场。实测并发 2 反而更慢（两场同时转写争 GPU、同时调模型更易撞 503）："
+                         "场内已有裁决窗口并发，场间默认保持串行")
     参数 = 解析.parse_args()
 
     视频表 = sorted(老项目根.rglob("合并视频.mp4"))

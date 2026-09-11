@@ -9,7 +9,7 @@
         <string>/opt/homebrew/bin/python3.14</string>
         <string>~/Documents/Hermes工作区/录音分析/直播逐字稿/工具/批量精校队列.py</string>
         <string>--并发场次</string>
-        <string>2</string>
+        <string>1</string>
     </array>
     <key>WorkingDirectory</key>
     <string>~/Documents/Hermes工作区/录音分析/直播逐字稿/工具</string>
