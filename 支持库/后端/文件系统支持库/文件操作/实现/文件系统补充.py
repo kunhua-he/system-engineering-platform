@@ -116,3 +116,44 @@ def 获取文件权限(路径: str = None) -> 结果:
                                 "可执行": os.access(路径, os.X_OK)})
     except OSError as 错误:
         return 结果.失败("读取失败", str(错误), 来源="文件系统")
+
+def 查找祖先目录(起点: str, 标记: str, 匹配起点名: bool = True, 最大层数: int = 64) -> 结果:
+    """从起点向上查找包含指定标记（子目录或文件）的最近祖先目录。
+
+    标记可以是目录名（如 MCP工具箱）或文件名（如 .git、pyproject.toml）。
+    匹配起点名=真 时，若起点自身的名字等于标记，直接返回其父目录（兼容「起点就在
+    标记目录内」的调用形态）。找不到任何命中时返回起点本身并置 命中=假。
+    """
+    from pathlib import Path as _Path
+
+    if not isinstance(起点, str) or not 起点.strip():
+        return 结果.失败("参数不合法", "起点必须是非空字符串", 来源="文件操作")
+    if not isinstance(标记, str) or not 标记.strip():
+        return 结果.失败("参数不合法", "标记必须是非空字符串", 来源="文件操作")
+    if not isinstance(匹配起点名, bool):
+        return 结果.失败("参数不合法", "匹配起点名必须是逻辑型", 来源="文件操作")
+
+    路径 = _Path(起点).expanduser()
+    try:
+        路径 = 路径.resolve()
+    except OSError as 错误:
+        return 结果.失败("路径无效", f"起点无法解析: {错误}", 来源="文件操作")
+
+    起点文本 = str(路径)
+    if 匹配起点名 and 路径.name == 标记:
+        return 结果.成功结果({"根目录": str(路径.parent), "命中": True, "层级": 0,
+                            "命中路径": 起点文本, "起点": 起点文本})
+    if (路径 / 标记).exists():
+        return 结果.成功结果({"根目录": 起点文本, "命中": True, "层级": 0,
+                            "命中路径": 起点文本, "起点": 起点文本})
+
+    层数 = 0
+    for 上级 in 路径.parents:
+        层数 += 1
+        if 层数 > 最大层数:
+            break
+        if (上级 / 标记).exists():
+            return 结果.成功结果({"根目录": str(上级), "命中": True, "层级": 层数,
+                                "命中路径": str(上级 / 标记), "起点": 起点文本})
+    return 结果.成功结果({"根目录": 起点文本, "命中": False, "层级": 层数,
+                        "命中路径": "", "起点": 起点文本})

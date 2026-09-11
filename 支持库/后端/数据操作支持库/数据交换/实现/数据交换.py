@@ -131,3 +131,57 @@ def 深合并(基础: dict = None, 覆盖: dict = None) -> 结果:
 
     合并后 = _合并(基础, 覆盖)
     return 结果.成功结果({"合并结果": 合并后, "键数": len(合并后)})
+
+def 提取带前缀JSON(文本: str, 前缀: str, 从末尾查找: bool = True) -> 结果:
+    """从文本中提取带指定前缀的 JSON 行（默认从末尾往前找）。
+
+    用于把子进程输出里的「@@结果@@ {json}」这类机器可读行取回：剥去前缀后
+    必须是合法 JSON 且为对象。命中前缀但解析失败时立即停止并返回 找到=假
+    （与既有实现一致，不继续向上遍历）。
+    """
+    import json as _json
+
+    if not isinstance(文本, str):
+        return 结果.失败("参数不合法", "文本必须是字符串", 来源="数据交换")
+    if not isinstance(前缀, str) or not 前缀:
+        return 结果.失败("参数不合法", "前缀必须是非空字符串", 来源="数据交换")
+    if not isinstance(从末尾查找, bool):
+        return 结果.失败("参数不合法", "从末尾查找必须是逻辑型", 来源="数据交换")
+
+    行列表 = 文本.splitlines()
+    if 从末尾查找:
+        行列表 = list(reversed(行列表))
+
+    for 行 in 行列表:
+        文本行 = 行.strip()
+        if not 文本行.startswith(前缀):
+            continue
+        try:
+            数据 = _json.loads(文本行[len(前缀):].strip())
+        except _json.JSONDecodeError:
+            return 结果.成功结果({"找到": False, "数据": None, "原因": "命中前缀但不是合法 JSON"})
+        if not isinstance(数据, dict):
+            return 结果.成功结果({"找到": False, "数据": None, "原因": "命中前缀但 JSON 不是对象"})
+        return 结果.成功结果({"找到": True, "数据": 数据})
+    return 结果.成功结果({"找到": False, "数据": None, "原因": "未找到带前缀的行"})
+
+
+def 压缩描述字段(数据: Any, 字段名: str = "description") -> 结果:
+    """递归折叠数据结构中指定字段的字符串值（只动该字段，不改结构与其它键）。
+
+    用于把 JSON Schema 的自然语言描述压成单行以减少出口体积；机器契约不变。
+    """
+    if not isinstance(字段名, str) or not 字段名:
+        return 结果.失败("参数不合法", "字段名必须是非空字符串", 来源="数据交换")
+
+    def 递归(值: Any) -> Any:
+        if isinstance(值, list):
+            return [递归(项) for 项 in 值]
+        if isinstance(值, dict):
+            return {
+                键: (" ".join(子值.split()) if 键 == 字段名 and isinstance(子值, str) else 递归(子值))
+                for 键, 子值 in 值.items()
+            }
+        return 值
+
+    return 结果.成功结果({"压缩结果": 递归(数据), "字段名": 字段名})
