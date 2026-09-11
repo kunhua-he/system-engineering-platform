@@ -189,3 +189,106 @@ def 展平字典(数据: dict = None, 分隔符: str = ".", 保留扁平键: boo
 
     _递归(数据, "", 0)
     return 结果.成功结果({"展平结果": 展平, "键数": len(展平)})
+
+
+def _取非负整数(值: Any, 默认: int) -> int:
+    """把入参安全取成非负整数；非法或布尔值回落到默认值。"""
+    if isinstance(值, bool) or not isinstance(值, (int, float)):
+        return 默认
+    try:
+        return max(0, int(值))
+    except (TypeError, ValueError):
+        return 默认
+
+
+def 展平结构条目(数据: Any = None, 分隔符: str = ".", 列表索引格式: str = "[{索引}]",
+                 最大深度: int = 10, 最大条目数: int = 3000,
+                 超深标记: str = "(已超最大深度)", 根路径: str = "$") -> 结果:
+    """把任意嵌套结构展平为「路径 + 值」的有序条目列表。
+
+    字典键用 分隔符 连接；列表元素路径用 列表索引格式（`{索引}` 为占位符）；
+    容器超过 最大深度 时产出一条 超深=真 的标记条目；标量不分深度直接产出。
+    总条目数 计全部（含被截断部分），条目列表 最多 最大条目数 条。
+    """
+    分隔 = 分隔符 if isinstance(分隔符, str) and 分隔符 else "."
+    索引格式 = 列表索引格式 if isinstance(列表索引格式, str) and 列表索引格式 else "[{索引}]"
+    根 = 根路径 if isinstance(根路径, str) and 根路径 else "$"
+    标记 = 超深标记 if isinstance(超深标记, str) else "(已超最大深度)"
+    深度上限 = _取非负整数(最大深度, 10)
+    条目上限 = _取非负整数(最大条目数, 3000)
+    条目列表: list = []
+    状态 = {"总条目数": 0, "已截断": False}
+
+    def 添加(路径: str, 值: Any, 超深: bool = False) -> None:
+        状态["总条目数"] += 1
+        if len(条目列表) < 条目上限:
+            条目列表.append({"路径": 路径, "值": 值, "超深": 超深})
+        else:
+            状态["已截断"] = True
+
+    def 遍历(值: Any, 路径: str, 深度: int) -> None:
+        if 深度 > 深度上限:
+            添加(路径 or 根, 标记, True)
+            return
+        if isinstance(值, dict):
+            for 键, 项 in 值.items():
+                子路径 = f"{路径}{分隔}{键}" if 路径 else str(键)
+                if isinstance(项, (dict, list)):
+                    遍历(项, 子路径, 深度 + 1)
+                else:
+                    添加(子路径, 项)
+            return
+        if isinstance(值, list):
+            for 索引, 项 in enumerate(值):
+                段 = 索引格式.replace("{索引}", str(索引))
+                子路径 = f"{路径}{段}" if 路径 else 段
+                if isinstance(项, (dict, list)):
+                    遍历(项, 子路径, 深度 + 1)
+                else:
+                    添加(子路径, 项)
+            return
+        添加(路径 or 根, 值)
+
+    遍历(数据, "", 0)
+    return 结果.成功结果({
+        "条目列表": 条目列表,
+        "总条目数": 状态["总条目数"],
+        "已截断": 状态["已截断"],
+    })
+
+
+def 规范化条目指纹(条目列表: Any = None, 字段顺序: list = None,
+                   条目分隔符: str = "||", 字段分隔符: str = "|",
+                   缺失文本: str = "", 排序: bool = True) -> 结果:
+    """把条目集合归一化为可比较的指纹文本（用于两侧结构一致性判定）。
+
+    列表型：逐条按 字段顺序 取值，非字典型条目跳过；
+    字典型：每个键为一条目，键名作为第一个字段的值，其余字段从值字典取。
+    字段缺失或为 空值 → 缺失文本；顺序=真 时条目排序后再连接。
+    """
+    if not isinstance(字段顺序, list) or not 字段顺序:
+        return _失败("参数不合法", "字段顺序必须是非空列表")
+    顺序 = [str(项) for 项 in 字段顺序]
+    条目分隔 = 条目分隔符 if isinstance(条目分隔符, str) else "||"
+    字段分隔 = 字段分隔符 if isinstance(字段分隔符, str) else "|"
+    缺失 = 缺失文本 if isinstance(缺失文本, str) else ""
+
+    def 取文本(容器: dict, 键: str) -> str:
+        值 = 容器.get(键)
+        return 缺失 if 值 is None else str(值)
+
+    指纹表: list = []
+    if isinstance(条目列表, list):
+        for 条目 in 条目列表:
+            if not isinstance(条目, dict):
+                continue
+            指纹表.append(字段分隔.join(取文本(条目, 键) for 键 in 顺序))
+    elif isinstance(条目列表, dict):
+        for 键, 详情 in 条目列表.items():
+            容器 = 详情 if isinstance(详情, dict) else {}
+            指纹表.append(字段分隔.join([str(键)] + [取文本(容器, 字段) for 字段 in 顺序[1:]]))
+    else:
+        return _失败("参数不合法", "条目列表必须是列表或字典")
+    if 排序:
+        指纹表.sort()
+    return 结果.成功结果({"指纹": 条目分隔.join(指纹表), "条目数": len(指纹表)})
