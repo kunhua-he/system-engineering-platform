@@ -40,6 +40,7 @@ from .文件租约 import (
     申请文件租约, 续租文件租约, 释放文件租约, 释放工作包文件租约,
     回收过期文件租约, 查询文件占用,
 )
+from .文件补丁 import 应用文件补丁
 from .验证门禁 import (
     校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
     正式发布命令表, 唯一发布命令, 判定正式发布结果,
@@ -437,6 +438,7 @@ _工具定义列表 = [
         Tool(name="collaboration_status", description="协作状态：按开工id或任务查询协作状态（子任务/反馈/证据/阻断标记）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}}}),
         Tool(name="delivery_closeout", description="收口登记：delivery_closeout：收口登记五件套与结论；未反馈或证据不匹配阻断。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "五件套路径": {"type": "string"}, "结论": {"type": "string"}}, "required": ["work_id"]}),
         Tool(name="file_lease", description="文件占用租约：多会话同仓开发时按文件原子互斥认领（复用平台控制面占用租约，不建新表）。开工自动申请、收口自动释放；本工具做查询、续租、手动释放与过期回收。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["查询", "续租", "释放", "回收过期"]}, "paths": {"type": "array", "items": {"type": "string"}}, "lease_ids": {"type": "array", "items": {"type": "string"}}, "evidence": {"type": "string"}}, "required": ["operation"]}),
+        Tool(name="apply_file_patch", description="写入通道：经底座能力「文本补丁.应用精确替换」改文件，写前带「预期文件摘要」乐观锁，且文件被别的开工id占租约时拒绝。写入=false 只预览不落盘。", inputSchema={"type": "object", "properties": {"文件路径": {"type": "string"}, "旧文本": {"type": "string"}, "新文本": {"type": "string"}, "预期文件摘要": {"type": "string"}, "预期旧文本摘要": {"type": "string"}, "起始行": {"type": "integer"}, "结束行": {"type": "integer"}, "写入": {"type": "boolean", "default": True}, "开工id": {"type": "string"}}, "required": ["文件路径", "旧文本", "新文本"]}),
         Tool(name="validate_verification_command", description="校验验证命令：受控模块验证命令白名单校验（仅允许 unittest 模块入口，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
         Tool(name="judge_verification_result", description="判定验证结果：判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}}, "required": ["退出码", "标准输出"]}),
     Tool(name="tool_catalog", description="工具目录：按 分类/关键词 返回全量工具清单（中文名+协议名+描述+分类+当前实例可调用性），用于发现未直接注入的工具。", inputSchema={"type": "object", "properties": {"分类": {"type": "string"}, "关键词": {"type": "string"}}}),
@@ -787,6 +789,17 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                 数据 = 回收过期文件租约(平台控制面目录)
             else:
                 raise ValueError("文件租约操作必须是查询、续租、释放或回收过期")
+        elif 名称 == "apply_file_patch":
+            开工id = str(参数.get("开工id") or 当前开工id)
+            数据 = 应用文件补丁(
+                项目根目录, 平台控制面目录,
+                文件路径=str(参数["文件路径"]), 旧文本=str(参数["旧文本"]),
+                新文本=str(参数["新文本"]),
+                预期文件摘要=str(参数.get("预期文件摘要", "")),
+                预期旧文本摘要=str(参数.get("预期旧文本摘要", "")),
+                起始行=参数.get("起始行"), 结束行=参数.get("结束行"),
+                写入=bool(参数.get("写入", True)), 开工id=开工id,
+            )
         elif 名称 == "validate_verification_command":
             数据 = 校验验证命令受控(list(参数["命令"]))
         elif 名称 == "judge_verification_result":

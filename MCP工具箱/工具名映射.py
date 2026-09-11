@@ -4,6 +4,7 @@
     "登记需求": "register_requirement",
     "复用搜索": "reuse_search",
     "登记能力占用": "claim_capability",
+    "应用文件补丁": "apply_file_patch",
     "校验模块合规": "validate_module_compliance",
     "生成模块模板": "generate_module_template",
     "创建核心快照": "create_core_snapshot",
