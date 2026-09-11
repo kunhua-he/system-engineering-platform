@@ -17,7 +17,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 开发工具.契约编译.能力定义编译器 import (
     编译能力定义, 编译结果, 生成Agent数据, 生成包声明, 生成能力契约,
-    生成注册入口, 生成搜索数据, 生成验证场景引用, 读取能力定义, 校验能力定义,
+    生成注册入口, 生成搜索数据, 读取能力定义, 校验能力定义,
     从现有包生成能力定义,
 )
 from 开发工具.契约编译.漂移检测 import 检测能力定义漂移
@@ -77,7 +77,9 @@ class Test能力定义编译器(unittest.TestCase):
         self.assertIn("__init__.py", 名称表)
         self.assertIn("能力搜索数据.json", 名称表)
         self.assertIn("Agent查询数据.json", 名称表)
-        self.assertIn("验证场景引用.json", 名称表)
+        # 验证场景引用.json 由能力作者手写，编译器一律不生成、不覆盖；
+        # 旧编译器生成的 {场景id,目标,范围} 三键格式不是合法 v1 引用。
+        self.assertNotIn("验证场景引用.json", 名称表)
         self.assertIn("完整性摘要.json", 名称表)
 
     def test_生成标记存在(self):

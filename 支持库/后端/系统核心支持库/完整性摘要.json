@@ -333,7 +333,7 @@
     },
     {
       "路径": "检查点恢复/__init__.py",
-      "sha256": "23e3f416a64a172ee18831df77821a56655400f7e830ae08ea7f72bdb74a9932"
+      "sha256": "c3df3a09ed5b462d3aa94eb89b47eaecee7877eacbdc27a11bf8d85ceebac443"
     },
     {
       "路径": "检查点恢复/依赖契约/依赖契约.json",

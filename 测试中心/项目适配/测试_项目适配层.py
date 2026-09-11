@@ -69,7 +69,10 @@ class Test支持库绑定(unittest.TestCase):
     def test_有效绑定(self):
         结果 = 校验支持库("支持库.后端.文件系统支持库.文件操作", ">=1.0.0", 系统根 / "支持库")
         self.assertTrue(结果.成功, str(结果.问题列表))
-        self.assertEqual(结果.绑定版本, "1.0.0")
+        声明 = json.loads(
+            (系统根 / "支持库" / "后端" / "文件系统支持库" / "文件操作" / "包声明.json")
+            .read_text(encoding="utf-8"))
+        self.assertEqual(结果.绑定版本, 声明["版本"])
 
     def test_不存在的支持库失败(self):
         结果 = 校验支持库("支持库.后端.不存在", "", 系统根 / "支持库")

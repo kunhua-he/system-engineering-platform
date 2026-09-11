@@ -59,6 +59,15 @@ from 公共契约.基础类型.结果类型 import 结果
 
 硬禁止调用标记 = ("shell=True", "eval", "exec", "compile", "__import__")
 
+# 硬禁止：即便 os 属标准库可导入，其命令执行/进程派生子接口也不得调用
+硬禁止调用链 = frozenset({
+    "os.system", "os.popen", "os.fork", "os.forkpty", "os.posix_spawn",
+    "os.spawnl", "os.spawnle", "os.spawnlp", "os.spawnlpe",
+    "os.spawnv", "os.spawnve", "os.spawnvp", "os.spawnvpe",
+    "os.execv", "os.execl", "os.execle", "os.execlp", "os.execlpe",
+    "os.execvp", "os.execvpe", "os.startfile", "pty.spawn",
+})
+
 固定解释器 = sys.executable
 
 默认超时秒 = 30
@@ -129,18 +138,34 @@ def _收集导入别名(树: ast.AST) -> dict[str, str]:
                 别名[项.asname or 项.name.split(".")[0]] = 项.name
         elif isinstance(节点, ast.ImportFrom) and 节点.module:
             别名[节点.module.split(".")[0]] = 节点.module
+            for 项 in 节点.names:
+                # from os import system → 别名[system] = os.system（供调用链比对）
+                别名.setdefault(项.asname or 项.name, f"{节点.module}.{项.name}")
     return 别名
 
 
+def _解析调用真名(节点: ast.AST, 别名: dict[str, str]) -> str:
+    """把调用表达式解析成尽可能完整的点分真名，用于禁入调用链比对。"""
+    if isinstance(节点, ast.Name):
+        return 别名.get(节点.id, 节点.id)
+    if isinstance(节点, ast.Attribute):
+        链 = _属性链名(节点)
+        根, _, 尾 = 链.partition(".")
+        真根 = 别名.get(根, 根)
+        return f"{真根}.{尾}" if 尾 else 真根
+    return ""
+
+
 def _审计导入(模块名: str, 禁止导入前缀: tuple[str, ...]) -> list[str]:
+    """审计单个导入：标准库放行，硬禁止与调用方禁入前缀一律拦截，其余（第三方/项目模块）拦截。"""
     顶层 = (模块名 or "").split(".")[0]
     违规: list[str] = []
     if 顶层 in 硬禁止导入模块:
         违规.append(f"禁止导入模块: {模块名}")
-    if 顶层 and 顶层 not in 标准库模块集合 and 顶层 not in 硬禁止导入模块:
-        # 非标准库：只允许技能根目录内自包含模块（由调用方前缀白名单放行）
-        if not any(模块名 == 前缀 or 模块名.startswith(前缀 + ".") for 前缀 in 禁止导入前缀):
-            违规.append(f"禁止导入非标准库模块: {模块名}")
+    elif any(模块名 == 前缀 or 模块名.startswith(前缀 + ".") for 前缀 in 禁止导入前缀):
+        违规.append(f"禁止导入项目模块: {模块名}")
+    elif 顶层 and 顶层 not in 标准库模块集合:
+        违规.append(f"禁止导入非标准库模块: {模块名}")
     return 违规
 
 
@@ -161,13 +186,16 @@ def 审计脚本源码(脚本源码: str, 禁止导入前缀: tuple[str, ...] = 
             elif 模块名:
                 违规.extend(_审计导入(模块名, 禁止导入前缀))
         elif isinstance(节点, ast.Call):
+            调用真名 = _解析调用真名(节点.func, 别名)
             if isinstance(节点.func, ast.Name) and 节点.func.id in 硬禁止调用标记:
                 违规.append(f"禁止调用: {节点.func.id}")
-            elif isinstance(节点.func, ast.Attribute):
+            elif 调用真名 in 硬禁止调用链:
+                违规.append(f"禁止调用: {调用真名}")
+            if isinstance(节点.func, ast.Attribute):
                 链 = _属性链名(节点.func)
                 根 = 链.split(".")[0]
-                真名 = 别名.get(根, 根)
-                if 真名 in 硬禁止导入模块:
+                根真名 = 别名.get(根, 根)
+                if 根真名 in 硬禁止导入模块:
                     违规.append(f"禁止调用: {链}")
                 for 关键字 in 节点.keywords:
                     if 关键字.arg == "shell" and isinstance(关键字.value, ast.Constant) and 关键字.value.value is True:
@@ -341,6 +369,7 @@ def 运行受控脚本(
         }
     if isinstance(解析结果, dict):
         解析结果.setdefault("耗时秒", round(time.monotonic() - 开始, 3))
+        解析结果["成功"] = True
         return 解析结果
     return {"成功": True, "结果": 解析结果, "耗时秒": round(time.monotonic() - 开始, 3)}
 
@@ -433,7 +462,7 @@ def 运行技能包(
             来源=来源标识,
             详情={k: v for k, v in 运行结果.items() if k not in ("成功", "错误码", "错误信息")},
         )
-    return 结果.成功结果(运行结果)
+    return 结果.成功结果({k: v for k, v in 运行结果.items() if k != "成功"})
 
 
 def 扫描技能包(技能根目录: str = None) -> 结果:

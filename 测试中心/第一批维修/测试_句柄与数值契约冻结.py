@@ -11,7 +11,7 @@ from pathlib import Path
 class 测试句柄与数值契约冻结(unittest.TestCase):
     def test_句柄参数统一为整数型(self) -> None:
         违规 = []
-        for 根名 in ("支持库", "模块库"):
+        for 根名 in ("支持库", "模块库", "技能库"):
             for 文件 in (系统根 / 根名).rglob("能力契约/参数契约.json"):
                 数据 = json.loads(文件.read_text(encoding="utf-8"))
                 for 能力 in 数据.get("能力契约", []):
@@ -23,7 +23,7 @@ class 测试句柄与数值契约冻结(unittest.TestCase):
 
     def test_浮点参数场景字面量不能写成整数(self) -> None:
         类型表 = {}
-        for 根名 in ("支持库", "模块库"):
+        for 根名 in ("支持库", "模块库", "技能库"):
             for 文件 in (系统根 / 根名).rglob("能力契约/参数契约.json"):
                 数据 = json.loads(文件.read_text(encoding="utf-8"))
                 for 能力 in 数据.get("能力契约", []):
@@ -43,7 +43,7 @@ class 测试句柄与数值契约冻结(unittest.TestCase):
             elif isinstance(值, list):
                 for 子值 in 值:
                     扫描(子值, 文件)
-        for 根名 in ("支持库", "模块库"):
+        for 根名 in ("支持库", "模块库", "技能库"):
             for 文件 in (系统根 / 根名).rglob("*.json"):
                 if "验证场景" not in 文件.as_posix():
                     continue

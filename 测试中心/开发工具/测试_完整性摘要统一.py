@@ -259,7 +259,7 @@ class Test迁移与全仓扫描(unittest.TestCase):
     def test_全仓无能力数格式残留(self):
         残留表 = []
         格式错误表 = []
-        for 根目录名 in ("支持库", "模块库"):
+        for 根目录名 in ("支持库", "模块库", "技能库"):
             根目录 = 系统根 / 根目录名
             if not 根目录.is_dir():
                 continue
