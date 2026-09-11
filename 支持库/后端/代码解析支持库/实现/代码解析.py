@@ -609,3 +609,84 @@ class 解析器基类:
         结果["source"]["文件名"] = 完整路径.name
         结果["元数据"]["文件名"] = 完整路径.name
         return 结果
+
+def 扫描类属性(
+    目录: str,
+    属性名: str,
+    递归: bool = True,
+    排除关键字: list | None = None,
+    最大文件数: int = 5000,
+) -> 结果:
+    """AST 扫描 Python 文件中「类属性 = 字符串常量」赋值，产出去重值清单。
+
+    典型用途：扫描 ORM 数据模型的 __tablename__、扫描配置类常量等。
+    只读能力：语法错误的文件跳过并计数，不中断整体扫描。
+    返回 {属性名, 值列表, 文件映射, 扫描文件数, 跳过文件数}。
+    """
+    from pathlib import Path as _Path
+
+    from 公共契约.基础类型.结果类型 import 结果
+
+    if not isinstance(目录, str) or not 目录.strip():
+        return 结果.失败("参数不合法", "目录必须是非空字符串", 来源="代码解析")
+    if not isinstance(属性名, str) or not 属性名.strip():
+        return 结果.失败("参数不合法", "属性名必须是非空字符串", 来源="代码解析")
+    if not isinstance(递归, bool):
+        return 结果.失败("参数不合法", "递归必须是逻辑型", 来源="代码解析")
+    if not (排除关键字 is None or isinstance(排除关键字, list)):
+        return 结果.失败("参数不合法", "排除关键字必须是列表型", 来源="代码解析")
+
+    根 = _Path(目录).expanduser()
+    if not 根.is_dir():
+        return 结果.失败("目录不存在", f"目录不存在: {根}", 来源="代码解析")
+    根 = 根.resolve()
+
+    排除项 = tuple(str(项) for 项 in 排除关键字) if 排除关键字 else ("测试",)
+    上限 = max(1, int(最大文件数)) if isinstance(最大文件数, int) and not isinstance(最大文件数, bool) else 5000
+
+    匹配文件 = 根.rglob("*.py") if 递归 else 根.glob("*.py")
+    值列表: list[str] = []
+    文件映射: dict[str, list[str]] = {}
+    扫描文件数 = 0
+    跳过文件数 = 0
+
+    for 文件 in sorted(匹配文件):
+        if 扫描文件数 >= 上限:
+            break
+        名称 = str(文件.relative_to(根))
+        if any(关键词 in 文件.name or 关键词 in 名称 for 关键词 in 排除项):
+            continue
+        try:
+            源码 = 文件.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            跳过文件数 += 1
+            continue
+        扫描文件数 += 1
+        try:
+            语法树 = ast.parse(源码)
+        except SyntaxError:
+            跳过文件数 += 1
+            continue
+        本文件值: list[str] = []
+        for 节点 in ast.walk(语法树):
+            if not isinstance(节点, ast.Assign) or len(节点.targets) != 1:
+                continue
+            目标 = 节点.targets[0]
+            if isinstance(目标, ast.Name) and 目标.id == 属性名:
+                if isinstance(节点.value, ast.Constant) and isinstance(节点.value.value, str):
+                    值 = 节点.value.value.strip()
+                    if 值:
+                        if 值 not in 值列表:
+                            值列表.append(值)
+                        if 值 not in 本文件值:
+                            本文件值.append(值)
+        if 本文件值:
+            文件映射[名称] = 本文件值
+
+    return 结果.成功结果({
+        "属性名": 属性名,
+        "值列表": 值列表,
+        "文件映射": 文件映射,
+        "扫描文件数": 扫描文件数,
+        "跳过文件数": 跳过文件数,
+    })
