@@ -101,6 +101,29 @@ class 项目服务测试(unittest.TestCase):
         self.assertIn("合并", 操作表)
         self.assertIn("test_resource", 工具表)
 
+    def test_全量工具都有中文名且可中文调用(self) -> None:
+        from MCP工具箱.工具名映射 import 中文名到协议名, 协议名到中文名
+        工具表 = {工具.name for 工具 in asyncio.run(服务模块.工具列表())}
+        缺失 = sorted(名称 for 名称 in 工具表 if 名称 not in 协议名到中文名)
+        self.assertEqual(缺失, [], f"以下工具缺中文名映射: {缺失}")
+        多余 = sorted(协议名 for 协议名 in 协议名到中文名 if 协议名 not in 工具表)
+        self.assertEqual(多余, [], f"映射表存在已下线工具: {多余}")
+        # 中文名必须唯一且不等于协议名（否则门面没有意义）
+        中文名表 = list(中文名到协议名)
+        self.assertEqual(len(中文名表), len(set(中文名表)), "中文名出现重复")
+        for 中文名, 协议名 in 中文名到协议名.items():
+            self.assertNotEqual(中文名, 协议名)
+            self.assertEqual(协议名到中文名[协议名], 中文名)
+
+    def test_工具目录展示中文名(self) -> None:
+        目录 = 服务模块._工具目录()
+        条目 = {项["协议名"]: 项 for 项 in 目录["工具清单"]}
+        self.assertEqual(目录["条目数"], len(条目))
+        self.assertEqual(条目["claim_capability"]["中文名"], "登记能力占用")
+        self.assertEqual(条目["tool_catalog"]["中文名"], "工具目录")
+        for 项 in 目录["工具清单"]:
+            self.assertNotEqual(项["中文名"], 项["协议名"], f"{项['协议名']} 未展示中文名")
+
     def test_子任务反馈必须绑定有效临时上下文(self) -> None:
         原反馈 = 服务模块.反馈路径
         原上下文 = 服务模块.临时上下文目录

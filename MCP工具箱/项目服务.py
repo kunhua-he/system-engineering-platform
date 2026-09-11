@@ -28,7 +28,11 @@ from .临时上下文 import 写入临时上下文, 读取临时上下文, 清�
 from .任务观测 import 任务开始, 工具事件, 任务结束, 查询任务, 阶段记录, 生成效率报告
 from .工作区管理 import 创建工作区, 查询工作区, 关闭工作区, 合并分支, 工作区提交
 from .测试资源 import 登记资源, 清理资源
-from .支持库协作 import 登记需求, 复用搜索, 登记能力占用
+from .支持库协作 import 登记需求, 复用搜索
+from .能力占用 import (
+    申请能力占用, 续租能力占用, 释放能力占用, 释放开工id能力占用,
+    回收过期能力占用, 查询能力占用,
+)
 from .模块合规 import 校验模块合规
 from .核心治理 import 创建核心快照, 查询核心快照, 兼容性检查, 回滚门禁
 from .发布治理 import (
@@ -422,7 +426,7 @@ _工具定义列表 = [
         Tool(name="test_resource", description="按开工id登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}}, "required": ["operation", "temp_root"]}),
         Tool(name="register_requirement", description="登记需求：登记平台能力需求快照（能力id/说明/来源任务）。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "说明": {"type": "string"}, "来源任务": {"type": "string"}, "work_id": {"type": "string"}}, "required": ["能力id", "说明"]}),
         Tool(name="reuse_search", description="复用搜索：扫描既有支持库能力，返回可复用候选或标记无现成。", inputSchema={"type": "object", "properties": {"关键词": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["关键词"]}),
-        Tool(name="claim_capability", description="登记能力占用：登记某能力由某提供包占用；异包重复占用冲突拒绝。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "提供包id": {"type": "string"}, "开工id": {"type": "string"}}, "required": ["能力id", "提供包id"]}),
+        Tool(name="claim_capability", description="登记能力占用：登记某能力由某提供包占用；异包重复占用冲突拒绝。占用是数据库租约（原子互斥 + 心跳 + 过期回收），开工自动登记、收口自动释放；本工具也做查询、续租、手动释放与过期回收。", inputSchema={"type": "object", "properties": {"操作": {"type": "string", "enum": ["登记", "查询", "续租", "释放", "回收过期"], "default": "登记"}, "能力id": {"type": "string"}, "提供包id": {"type": "string"}, "开工id": {"type": "string"}, "能力id表": {"type": "array", "items": {"type": "string"}}, "租约id表": {"type": "array", "items": {"type": "string"}}, "证据": {"type": "string"}}, "required": []}),
         Tool(name="validate_module_compliance", description="校验模块合规：模块合规验证：权威 13 项组件合规 + 模块专属边界审计（支持库/提供者物理导入、直接I/O、tempfile、subprocess、socket、数据库、动态import 等）。", inputSchema={"type": "object", "properties": {"模块名": {"type": "string"}}, "required": ["模块名"]}),
         Tool(name="generate_module_template", description="生成模块模板：唯一模块模板生成器：按 模块名/类型(基础模块|功能模块)/能力清单/依赖能力清单 生成 聚合契约+包声明+经调用器实现骨架+对称入口+完整性摘要。", inputSchema={"type": "object", "properties": {"模块名": {"type": "string"}, "类型": {"type": "string", "enum": ["基础模块", "功能模块"]}, "能力清单": {"type": "array", "items": {"type": "object"}}, "依赖能力清单": {"type": "array", "items": {"type": "object"}}}, "required": ["模块名", "能力清单"]}),
         Tool(name="create_core_snapshot", description="创建核心快照：创建核心快照（运行核心+公共契约清单与摘要，入工程缓存）。", inputSchema={"type": "object", "properties": {"说明": {"type": "string"}}}),
@@ -715,9 +719,28 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "reuse_search":
             数据 = 复用搜索(项目根目录, str(参数["关键词"]))
         elif 名称 == "claim_capability":
+            占用操作 = str(参数.get("操作") or "登记")
             占用开工id = _有效开工id(参数.get("开工id"))
-            数据 = 登记能力占用(工程缓存目录, 能力id=str(参数["能力id"]),
-                              提供包id=str(参数["提供包id"]), 开工id=占用开工id)
+            if 占用操作 == "查询":
+                数据 = 查询能力占用(
+                    平台控制面目录,
+                    [str(项) for 项 in 参数.get("能力id表", [])] or None)
+            elif 占用操作 == "续租":
+                数据 = 续租能力占用(
+                    平台控制面目录, [str(项) for 项 in 参数.get("租约id表", [])])
+            elif 占用操作 == "释放":
+                数据 = 释放能力占用(
+                    平台控制面目录, [str(项) for 项 in 参数.get("租约id表", [])],
+                    证据=str(参数.get("证据", "")))
+            elif 占用操作 == "回收过期":
+                数据 = 回收过期能力占用(平台控制面目录)
+            elif 占用操作 == "登记":
+                数据 = 申请能力占用(平台控制面目录,
+                                  能力id=str(参数.get("能力id", "")),
+                                  提供包id=str(参数.get("提供包id", "")),
+                                  开工id=占用开工id)
+            else:
+                raise ValueError("能力占用操作必须是登记、查询、续租、释放或回收过期")
         elif 名称 == "validate_module_compliance":
             数据 = 校验模块合规(项目根目录, str(参数["模块名"]))
         elif 名称 == "generate_module_template":
@@ -769,8 +792,12 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
             收口开工id = _有效开工id(参数.get("work_id"))
             数据 = 收口登记(收口开工id, 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
             if 数据.get("成功"):
-                # 收口后自动释放本工作包持有的全部文件租约，不留残锁。
+                # 收口后自动释放本工作包持有的全部文件租约与能力占用，不留残锁。
                 数据["文件租约释放"] = 释放工作包文件租约(
+                    平台控制面目录, 收口开工id,
+                    证据=f"收口：{str(参数.get('结论', '')).strip()}",
+                )
+                数据["能力占用释放"] = 释放开工id能力占用(
                     平台控制面目录, 收口开工id,
                     证据=f"收口：{str(参数.get('结论', '')).strip()}",
                 )

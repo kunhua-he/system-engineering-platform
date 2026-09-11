@@ -13,11 +13,8 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from MCP工具箱.支持库协作 import (
     登记需求,
-    登记能力占用,
     复用搜索,
     参数不合法,
-    占用冲突,
-    能力已占用,
 )
 
 
@@ -85,35 +82,14 @@ class 支持库协作测试(unittest.TestCase):
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], 参数不合法)
 
-    def test_占用登记重复占用同包幂等异包冲突(self) -> None:
-        首次 = 登记能力占用(self.工程缓存根, 能力id="图像解码.解码图像",
-                         提供包id="支持库.适配层.Pillow提供者", 开工id="work-a")
-        self.assertTrue(首次["成功"], 首次)
-        self.assertFalse(首次["值"]["幂等"])
-        同包 = 登记能力占用(self.工程缓存根, 能力id="图像解码.解码图像",
-                         提供包id="支持库.适配层.Pillow提供者", 开工id="work-b")
-        self.assertTrue(同包["成功"], 同包)
-        self.assertTrue(同包["值"]["幂等"])
-        异包 = 登记能力占用(self.工程缓存根, 能力id="图像解码.解码图像",
-                         提供包id="支持库.后端.图像处理", 开工id="work-c")
-        self.assertFalse(异包["成功"])
-        self.assertEqual(异包["错误码"], 占用冲突)
-        self.assertEqual(异包["值"]["现有占用"]["提供包id"], "支持库.适配层.Pillow提供者")
-
-    def test_占用登记参数不合法(self) -> None:
-        结果 = 登记能力占用(self.工程缓存根, 能力id="", 提供包id="包甲", 开工id="work-a")
-        self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], 参数不合法)
-
     def test_零残留无临时文件(self) -> None:
         登记需求(self.工程缓存根, 能力id="能力甲", 说明="说明",
                 来源任务="任务甲", work_id="work-a")
-        登记能力占用(self.工程缓存根, 能力id="能力甲", 提供包id="包甲", 开工id="work-a")
         残留 = sorted(self.工程缓存根.rglob("*.tmp"))
         self.assertEqual(残留, [])
-        占用文件 = self.工程缓存根 / "能力占用" / "能力甲.json"
-        磁盘 = json.loads(占用文件.read_text(encoding="utf-8"))
-        self.assertEqual(磁盘["提供包id"], "包甲")
+        需求文件 = self.工程缓存根 / "需求登记" / "work-a.json"
+        磁盘 = json.loads(需求文件.read_text(encoding="utf-8"))
+        self.assertEqual(磁盘["能力id"], "能力甲")
 
 
 if __name__ == "__main__":
