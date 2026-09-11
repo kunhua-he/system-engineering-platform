@@ -39,13 +39,18 @@ def _端点(配置: dict[str, Any], 后缀: str) -> str:
     return 地址 + 后缀
 
 
-def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any]) -> tuple[int, dict[str, Any] | None, str]:
+def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any],
+         附加请求头: dict[str, Any] | None = None) -> tuple[int, dict[str, Any] | None, str]:
     地址 = _端点(配置, 后缀)
     if not 地址:
         return 0, None, "未配置模型 HTTP 地址"
     请求头 = {"Content-Type": "application/json"}
     if 配置.get("api_key"):
         请求头["Authorization"] = f"Bearer {配置['api_key']}"
+    if isinstance(配置.get("额外请求头"), dict):
+        请求头.update(配置["额外请求头"])
+    if isinstance(附加请求头, dict):
+        请求头.update(附加请求头)
     请求 = urllib.request.Request(
         地址,
         data=json.dumps(载荷, ensure_ascii=False).encode("utf-8"),
@@ -328,7 +333,8 @@ def _解析流式响应(响应: Any, 协议: str, *, 响应上限: int,
 
 
 def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
-             系统提示词: str | None = None) -> Iterator[dict[str, Any]]:
+             系统提示词: str | None = None,
+             附加请求头: dict[str, Any] | None = None) -> Iterator[dict[str, Any]]:
     """读取模型 Provider SSE；调用方必须消费或显式 close 返回的有限迭代器。"""
     if not isinstance(消息列表, list) or not 消息列表:
         return iter((_流式错误("参数不合法", "消息列表必须是非空列表"),))
@@ -359,6 +365,10 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
     请求头 = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if 配置.get("api_key"):
         请求头["Authorization"] = f"Bearer {配置['api_key']}"
+    if isinstance(配置.get("额外请求头"), dict):
+        请求头.update(配置["额外请求头"])
+    if isinstance(附加请求头, dict):
+        请求头.update(附加请求头)
     请求 = urllib.request.Request(
         地址, data=json.dumps(载荷, ensure_ascii=False).encode("utf-8"),
         headers=请求头, method="POST",
@@ -396,7 +406,8 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
 
 
 def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
-           系统提示词: str | None = None, 流式输出: bool = False) -> 结果:
+           系统提示词: str | None = None, 流式输出: bool = False,
+           附加请求头: dict[str, Any] | None = None) -> 结果:
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
     if 流式输出 is True:
@@ -415,7 +426,7 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
         路径, 载荷 = "/chat/completions", {"model": 配置.get("模型名", ""), "messages": 消息, "stream": False}
     else:
         return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
-    状态码, 数据, 说明 = _请求(配置, 路径, 载荷)
+    状态码, 数据, 说明 = _请求(配置, 路径, 载荷, 附加请求头)
     if 状态码 >= 400 or not 数据:
         return _错误响应(状态码, 说明)
     回复 = _文本(数据)

@@ -270,10 +270,16 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
         路径, 请求体 = "/embeddings", {"model": 模型, "input": 参数.get("文本")}
     else:
         路径, 请求体 = "/rerank", {"model": 模型, "query": 参数.get("查询"), "documents": 参数.get("文档列表")}
+    出站请求头 = {"Content-Type": "application/json"}
+    if 配置.get("api_key"):
+        出站请求头["Authorization"] = f"Bearer {配置['api_key']}"
+    if isinstance(配置.get("额外请求头"), dict):
+        出站请求头.update(配置["额外请求头"])
+    if isinstance(参数.get("附加请求头"), dict):
+        出站请求头.update(参数["附加请求头"])
     请求 = urllib.request.Request(
         基址 + 路径, data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"), method="POST",
-        headers={"Content-Type": "application/json", **(
-            {"Authorization": f"Bearer {配置['api_key']}"} if 配置.get("api_key") else {})},
+        headers=出站请求头,
     )
     try:
         with urllib.request.urlopen(请求, timeout=_HTTP请求超时秒(配置)) as 响应:
@@ -331,24 +337,28 @@ def _调用模型(句柄id: int, 连接类型: str, 参数: dict) -> 结果:
 def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = None,
            本地路径: str = None, 启动器: str = None, 模型大小字节: int = None,
            url: str = None, api_key: str = None, 上下文长度: int = None,
-           超时秒: int = None, 协议: str = 默认协议) -> 结果:
+           超时秒: int = None, 协议: str = 默认协议, 额外请求头: dict = None) -> 结果:
     """连接大语言模型，返回句柄。连接阶段只接受连接配置与协议参数；流式输出属于生成对话选项，未知关键字（包括连接阶段流式输出）由函数签名拒绝。
 
     缺参时使用 env 统一参数（加载环境配置后生效）。本地：部署形态=本地+GGUF 文件绝对路径，由底座直接启动 llama-server；云端：部署形态=云端+url/api_key/模型/上下文长度。
+    额外请求头：连接级静态请求头，出站时叠加在内置头之上（生成对话的 附加请求头 可覆盖同名键）。
     """
     显式 = {"模型": 模型, "提供者": 提供者, "部署形态": 部署形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
-            "上下文长度": 上下文长度, "超时秒": 超时秒, "协议": 协议}
+            "上下文长度": 上下文长度, "超时秒": 超时秒, "协议": 协议, "额外请求头": 额外请求头}
     显式 = _合入环境参数("LLM", 显式)
     模型, 提供者, 部署形态 = 显式["模型"], 显式["提供者"], 显式["部署形态"]
     url, api_key, 上下文长度, 超时秒 = (显式["url"], 显式["api_key"], 显式["上下文长度"],
                                        显式["超时秒"])
     规范协议 = _规范化协议(显式.get("协议", 默认协议))
     本地路径, 启动器, 模型大小字节 = 显式["本地路径"], 显式["启动器"], 显式["模型大小字节"]
+    额外请求头 = 显式["额外请求头"]
     if not isinstance(模型, str) or not 模型.strip():
         return _失败("参数不合法", "模型必须是非空字符串（env 未配置默认LLM模型）")
     if 规范协议 is None:
         return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+    if 额外请求头 is not None and not isinstance(额外请求头, dict):
+        return _失败("参数不合法", "额外请求头必须是字典型或空值")
     协议 = 规范协议
     形态 = (部署形态 or "云端" if (url or api_key) else 部署形态 or "本地").lower()
     形态 = "云端" if 形态 in ("cloud", "api", "云") else "本地" if 形态 in ("local", "本机") else 形态
@@ -356,7 +366,7 @@ def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = Non
         return _失败("参数不合法", f"部署形态必须是 本地 或 云端: {部署形态}")
     配置 = {"模型名": 模型, "提供者": 提供者 or "本地", "部署形态": 形态, "本地路径": 本地路径,
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
-            "上下文长度": 上下文长度, "协议": 协议}
+            "上下文长度": 上下文长度, "协议": 协议, "额外请求头": 额外请求头}
     if 形态 == "本地" and 本地路径:
         return 启动本地模型(本地路径, 启动器, "LLM", 模型大小字节=模型大小字节,
                            参数={"协议": 协议}, 超时秒=超时秒)
@@ -742,13 +752,15 @@ def 注册本地进程(句柄: int | None = None, 进程对象: Any = None) -> �
 def 生成对话(句柄: int | None = None, 消息列表: list = None,
            系统提示词: str = None, 流式输出: bool = False,
            温度: float = None, 最大令牌数: int = None,
-           工具: list = None, 响应格式: dict = None) -> 结果:
+           工具: list = None, 响应格式: dict = None,
+           附加请求头: dict = None) -> 结果:
     """持句柄生成对话。
 
     可选生成参数（温度/最大令牌数/工具/响应格式）按协议映射到上游请求体：
     codex_responses → temperature / max_output_tokens / tools / text.format；
     chat_completions → temperature / max_tokens / tools / response_format。
     不传则不下发该字段（由上游取默认值）。
+    附加请求头：单次调用级请求头，仅本次出站叠加，可覆盖连接级 额外请求头 的同名键。
     """
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return _失败("参数不合法", "句柄必须是1到999999的整数")
@@ -762,11 +774,14 @@ def 生成对话(句柄: int | None = None, 消息列表: list = None,
         return _失败("参数不合法", "工具必须是列表")
     if 响应格式 is not None and not isinstance(响应格式, dict):
         return _失败("参数不合法", "响应格式必须是字典型")
+    if 附加请求头 is not None and not isinstance(附加请求头, dict):
+        return _失败("参数不合法", "附加请求头必须是字典型或空值")
     if not isinstance(流式输出, bool):
         return _失败("参数不合法", "流式输出必须是逻辑型")
     return _调用模型(句柄, "LLM", {
         "消息列表": 消息列表, "系统提示词": 系统提示词, "流式输出": 流式输出,
         "温度": 温度, "最大令牌数": 最大令牌数, "工具": 工具, "响应格式": 响应格式,
+        "附加请求头": 附加请求头,
     })
 
 
@@ -781,11 +796,13 @@ def _流式错误事件(错误码: str, 错误说明: str, *, 可重试: bool = 
 
 
 def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
-               系统提示词: str = None, 流式输出: bool = True) -> Iterator[dict[str, Any]]:
+               系统提示词: str = None, 流式输出: bool = True,
+               附加请求头: dict = None) -> Iterator[dict[str, Any]]:
     """按句柄配置调用 H 节点 Provider，并原样转发有限流式事件。
 
     这是连接器内部/包级流式边界，不是 HTTP 路由。流式输出必须显式保持为
     True；Provider 事件不聚合，返回的迭代器应消费至终态或由调用方 close。
+    附加请求头：单次调用级请求头，仅本次流式出站叠加，覆盖连接级同名键。
     """
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return iter((_流式错误事件("参数不合法", "句柄必须是1到999999的整数"),))
@@ -795,6 +812,8 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
         return iter((_流式错误事件("参数不合法", "流式输出必须是逻辑型"),))
     if not 流式输出:
         return iter((_流式错误事件("参数不合法", "流式生成对话要求流式输出为真"),))
+    if 附加请求头 is not None and not isinstance(附加请求头, dict):
+        return iter((_流式错误事件("参数不合法", "附加请求头必须是字典型或空值"),))
 
     连接, 原因 = _取连接(句柄)
     if 连接 is None:
@@ -809,6 +828,7 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
         from 支持库.适配层 import 模型HTTP提供者 as 提供者
         上游迭代器 = 提供者.流式调用对话(
             配置=配置, 消息列表=消息列表, 系统提示词=系统提示词,
+            附加请求头=附加请求头,
         )
     except Exception as 错误:
         return iter((_流式错误事件(
