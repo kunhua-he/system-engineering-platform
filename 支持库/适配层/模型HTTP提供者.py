@@ -14,11 +14,26 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.有界IO import 受限读取
 
 来源 = "模型HTTP提供者"
+默认协议 = "chat_completions"
+# 与 大语言模型支持库.模型连接器.协议别名 同表：公开短值 chat/res 与内部长值一一对应。
+# 适配层与连接器是两个层，不能互相导入；此处镜像该表，并由
+# 测试中心.支持库.测试_模型协议别名 断言两份取值一致，防止漂移。
+协议别名表 = {
+    "chat": "chat_completions",
+    "chat_completions": "chat_completions",
+    "res": "codex_responses",
+    "codex_responses": "codex_responses",
+}
 响应上限字节 = 1024 * 1024
 流式响应上限字节 = 1024 * 1024
 流式事件上限字节 = 64 * 1024
 流式事件数量上限 = 10000
 流式读取块大小 = 4096
+
+
+def _规范化协议(协议: Any) -> str | None:
+    """把公开短协议别名统一为内部长协议；非法值返回 None。"""
+    return 协议别名表.get(协议) if isinstance(协议, str) else None
 
 
 def _失败(错误码: str, 消息: str, *, 可重试: bool = False,
@@ -338,11 +353,7 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
     """读取模型 Provider SSE；调用方必须消费或显式 close 返回的有限迭代器。"""
     if not isinstance(消息列表, list) or not 消息列表:
         return iter((_流式错误("参数不合法", "消息列表必须是非空列表"),))
-    协议别名表 = {
-        "chat": "chat_completions", "chat_completions": "chat_completions",
-        "res": "codex_responses", "codex_responses": "codex_responses",
-    }
-    协议 = 协议别名表.get(配置.get("协议", "chat_completions"))
+    协议 = _规范化协议(配置.get("协议", 默认协议))
     if 协议 is None:
         return iter((_流式错误("参数不合法", "协议必须是 chat_completions 或 codex_responses"),))
     try:
@@ -441,7 +452,9 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
         return _失败("参数不合法", "工具必须是列表")
     if 响应格式 is not None and not isinstance(响应格式, dict):
         return _失败("参数不合法", "响应格式必须是字典型")
-    协议 = 配置.get("协议", "chat_completions")
+    协议 = _规范化协议(配置.get("协议", 默认协议))
+    if 协议 is None:
+        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
     消息 = _消息列表(消息列表, 系统提示词)
     if 协议 == "codex_responses":
         路径, 载荷 = "/responses", {"model": 配置.get("模型名", ""), "input": 消息, "stream": False}

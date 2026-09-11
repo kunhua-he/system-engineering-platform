@@ -163,10 +163,18 @@ def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = N
         except HTTPError as 错误:
             # HTTP 4xx/5xx 是远端请求失败，不能包装成成功结果；否则模块
             # 会把服务端拒绝、鉴权失败或网关错误误判为业务成功。
+            # 3xx（调用方关掉自动重定向时）必须把响应头原样带出：调用方要靠
+            # Location 经本能力逐跳跟随，每一跳都重跑 SSRF 校验；不带出就等于
+            # 逼调用方绕过本能力手工发请求，SSRF 防线形同虚设。
+            try:
+                状态码, 原因 = 错误.code, 错误.reason
+                响应头 = dict(错误.headers.items()) if 错误.headers else {}
+            finally:
+                错误.close()
             return 结果.失败(
-                "HTTP错误", f"HTTP {错误.code}: {错误.reason}",
-                来源="网络请求", 可重试=错误.code >= 500,
-                详情={"状态码": 错误.code},
+                "HTTP错误", f"HTTP {状态码}: {原因}",
+                来源="网络请求", 可重试=状态码 >= 500,
+                详情={"状态码": 状态码, "响应头": 响应头},
             )
         except TimeoutError:
             return 结果.失败("网络超时", "网络请求超时", 来源="网络请求")
