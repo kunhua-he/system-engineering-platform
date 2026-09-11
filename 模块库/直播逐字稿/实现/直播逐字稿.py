@@ -1,6 +1,7 @@
 """直播逐字稿模块（功能模块）：组合 媒体处理/媒体转写 公开能力，把直播媒体文件变成逐字稿。
 
-只经 获取能力调用器().调用能力 组合现有公开能力，不 import 支持库/提供者/实现目录。
+只经 获取能力调用器().调用能力 组合现有公开能力，不 import 支持库/提供者/实现目录；
+文件读写与 JSON 解析同样经底座原子能力，本文件不直接触碰标准库 I/O。
 对外能力：
 - 检查可用性：探测 ffmpeg(媒体处理) 与 转写(媒体转写) 链路是否就绪。
 - 转写媒体文件：传视频/音频绝对路径 → 探测 → 按类型走对应转写能力 → 产出带时间戳的原始逐字稿文件。
@@ -10,7 +11,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -30,6 +30,23 @@ def _调用(能力id: str, 请求参数: dict) -> 结果:
         return 调用器.调用能力(能力id, 请求参数, 调用方=来源)
     except Exception as 错误:
         return 结果.失败("提供者不可用", f"{能力id} 调用失败: {错误}", 来源=来源)
+
+
+def _底座(能力id: str, 参数: dict):
+    """经唯一能力调用服务调用底座原子能力；未装配或异常时返回 None。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+    try:
+        return 获取能力调用器().调用能力(能力id, 参数, 调用方=来源)
+    except Exception:
+        return None
+
+
+def _成功(结果对象) -> bool:
+    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+
+
+def _失败说明(结果对象, 兜底: str) -> str:
+    return str(getattr(结果对象, "错误说明", "") or getattr(结果对象, "错误码", "") or 兜底)
 
 
 def _校验文本(值, 名称: str, *, 必填: bool = True) -> 结果 | None:
@@ -95,7 +112,8 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
         错误 = _校验文本(值, 名称)
         if 错误:
             return 错误
-    if not Path(文件路径).is_file():
+    存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(Path(文件路径))})
+    if not bool(getattr(存在, "值", False)):
         return 结果.失败("文件不存在", f"媒体文件不存在: {文件路径}", 来源=来源)
     错误 = _校验数值(分片秒数, "分片秒数", 1) or _校验数值(重叠秒数, "重叠秒数", 0) or _校验数值(超时秒, "超时秒", 1)
     if 错误:
@@ -104,7 +122,7 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
         return 结果.失败("参数不合法", "模型配置 必须为对象", 来源=来源)
 
     输出根 = Path(输出目录).expanduser().resolve()
-    输出根.mkdir(parents=True, exist_ok=True)
+    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(输出根), "递归": True})
 
     探测 = _探测媒体(文件路径, 60.0)
     if not 探测.成功:
@@ -122,15 +140,15 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
 
     元数据目录 = 输出根 / "00_元数据"
     转录底稿目录 = 输出根 / "02_转录底稿"
-    元数据目录.mkdir(parents=True, exist_ok=True)
-    转录底稿目录.mkdir(parents=True, exist_ok=True)
+    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(元数据目录), "递归": True})
+    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(转录底稿目录), "递归": True})
     原文路径 = 转录底稿目录 / "03_原始逐字稿.txt"
 
     行内容 = f"[00:00-{时长秒:06.1f}] {文本}" if 文本 else ""
-    try:
-        原文路径.write_text(行内容 + "\n", encoding="utf-8")
-    except OSError as 错误:
-        return 结果.失败("写入失败", f"无法写原始逐字稿: {错误}", 来源=来源)
+    写入 = _底座("系统核心支持库.资源管理.原子写入",
+              {"目标路径": str(原文路径), "内容": 行内容 + "\n"})
+    if not _成功(写入):
+        return 结果.失败("写入失败", f"无法写原始逐字稿: {_失败说明(写入, '原子写入未成功')}", 来源=来源)
 
     状态 = {
         "状态": "转写完成" if 文本 else "转写空结果",
@@ -143,11 +161,11 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
         "分片秒数": 分片秒数,
         "重叠秒数": 重叠秒数,
     }
-    try:
-        (元数据目录 / "项目状态.json").write_text(
-            json.dumps(状态, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    except OSError:
-        pass
+    序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 状态})
+    if _成功(序列化) and isinstance(getattr(序列化, "值", None), str):
+        _底座("系统核心支持库.资源管理.原子写入",
+            {"目标路径": str(元数据目录 / "项目状态.json"),
+             "内容": getattr(序列化, "值") + "\n"})
 
     if not 文本:
         return 结果.失败("转写失败", "转写返回空文本", 来源=来源, 详情={"输出目录": str(输出根)})
@@ -170,10 +188,14 @@ def 读取项目状态(输出目录: str) -> 结果:
     if 错误:
         return 错误
     状态路径 = Path(输出目录).expanduser().resolve() / "00_元数据" / "项目状态.json"
-    if not 状态路径.is_file():
+    存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(状态路径)})
+    if not bool(getattr(存在, "值", False)):
         return 结果.失败("目录不存在", f"未找到项目状态文件: {状态路径}", 来源=来源)
-    try:
-        数据 = json.loads(状态路径.read_text(encoding="utf-8"))
-    except Exception as 错误:
-        return 结果.失败("读取失败", f"项目状态文件无法解析: {错误}", 来源=来源)
-    return 结果.成功结果(数据)
+    读 = _底座("文件系统支持库.文件操作.读取文件",
+              {"文件路径": str(状态路径), "编码": "utf-8"})
+    if not _成功(读) or not isinstance(getattr(读, "值", None), str):
+        return 结果.失败("读取失败", f"项目状态文件无法读取: {状态路径}", 来源=来源)
+    解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": getattr(读, "值")})
+    if not _成功(解析):
+        return 结果.失败("读取失败", f"项目状态文件无法解析: {_失败说明(解析, '解析失败')}", 来源=来源)
+    return 结果.成功结果(getattr(解析, "值", None))

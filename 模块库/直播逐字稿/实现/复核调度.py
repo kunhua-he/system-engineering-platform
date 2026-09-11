@@ -8,9 +8,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+_来源 = "直播逐字稿"
 默认间隔秒 = 60
 默认轮数 = 3
 默认超时秒 = 600.0
@@ -22,6 +22,23 @@ from pathlib import Path
     "第2轮：换一种断句粒度复听，重点纠正同音误字与吞字。",
     "第3轮：以整句语义为准复听，标出仍无法确认的位置。",
 )
+
+def _底座(能力id: str, 参数: dict):
+    """经唯一能力调用服务调用底座原子能力；未装配或异常时返回 None。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+    try:
+        return 获取能力调用器().调用能力(能力id, 参数, 调用方=_来源)
+    except Exception:
+        return None
+
+
+def _成功(结果对象) -> bool:
+    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+
+
+def _失败说明(结果对象, 兜底: str) -> str:
+    return str(getattr(结果对象, "错误说明", "") or getattr(结果对象, "错误码", "") or 兜底)
+
 
 def _取数(值) -> float | None:
     """宽松取数：数值或数字文本转 float，取不到返回 None。"""
@@ -105,13 +122,17 @@ def _执行一轮(调用能力, 源音频路径: str, 超时: float, 模型配�
 def _写复核盘(复核目录: str, 区间id: int, 数据: dict) -> tuple[str, str]:
     """写 复核_0001.json（id 补 4 位）；返回 (路径, 错误说明)。"""
     try:
-        根 = Path(复核目录).expanduser()
-        根.mkdir(parents=True, exist_ok=True)
-        路径 = 根 / f"复核_{区间id:04d}.json"
-        路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        return str(路径), ""
-    except (OSError, TypeError, ValueError) as 错误:
+        路径 = Path(复核目录).expanduser() / f"复核_{区间id:04d}.json"
+    except (TypeError, ValueError) as 错误:
         return "", str(错误)
+    序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 数据})
+    if not _成功(序列化) or not isinstance(getattr(序列化, "值", None), str):
+        return "", "数据无法序列化为 JSON"
+    写 = _底座("系统核心支持库.资源管理.原子写入",
+             {"目标路径": str(路径), "内容": getattr(序列化, "值") + "\n"})
+    if not _成功(写):
+        return "", _失败说明(写, "写盘失败")
+    return str(路径), ""
 
 def _截取区间(调用能力, 源音频路径: str, 开始: float, 结束: float,
              复核目录: str, 区间id: int, 超时: float) -> tuple[str, str]:
@@ -137,12 +158,21 @@ def _读已有复核(复核目录: str, 区间id: int) -> dict | None:
     """复用已落盘复核：文件存在、区间id一致且轮次非空；否则返回 None（重新复核）。"""
     try:
         路径 = Path(复核目录).expanduser() / f"复核_{区间id:04d}.json"
-        if not 路径.is_file():
-            return None
-        数据 = json.loads(路径.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+    except (TypeError, ValueError):
         return None
-    if not isinstance(数据, dict) or int(数据.get("区间id") or 0) != int(区间id):
+    读 = _底座("文件系统支持库.文件操作.读取文件",
+              {"文件路径": str(路径), "编码": "utf-8"})
+    if not _成功(读) or not isinstance(getattr(读, "值", None), str):
+        return None
+    解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": getattr(读, "值")})
+    if not _成功(解析):
+        return None
+    数据 = getattr(解析, "值", None)
+    try:
+        一致 = isinstance(数据, dict) and int(数据.get("区间id") or 0) == int(区间id)
+    except (TypeError, ValueError):
+        return None
+    if not 一致:
         return None
     轮次 = 数据.get("轮次")
     if not isinstance(轮次, list) or not 轮次:

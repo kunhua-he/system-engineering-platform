@@ -13,6 +13,20 @@ from 公共契约.基础类型.结果类型 import 结果
 
 来源 = "直播逐字稿"
 
+
+def _底座(能力id: str, 参数: dict):
+    """经唯一能力调用服务调用底座原子能力；未装配或异常时返回 None。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+    try:
+        return 获取能力调用器().调用能力(能力id, 参数, 调用方=来源)
+    except Exception:
+        return None
+
+
+def _成功(结果对象) -> bool:
+    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+
+
 媒体扩展名表 = {
     ".mp4", ".mov", ".mkv", ".flv", ".ts", ".avi", ".m4v", ".wmv", ".webm",
     ".m4a", ".mp3", ".wav", ".aac", ".flac", ".ogg", ".aiff", ".amr",
@@ -38,10 +52,10 @@ def _校验绝对路径(值: str, 名称: str) -> 结果 | None:
 
 
 def _校验可创建(目录: Path, 名称: str) -> 结果 | None:
-    try:
-        目录.mkdir(parents=True, exist_ok=True)
-    except OSError as 错误:
-        return 结果.失败("写入失败", f"{名称} 无法创建: {错误}", 来源=来源)
+    创建 = _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(目录), "递归": True})
+    if not _成功(创建):
+        说明 = getattr(创建, "错误说明", "") or "底座不可用"
+        return 结果.失败("写入失败", f"{名称} 无法创建: {说明}", 来源=来源)
     return None
 
 
@@ -67,9 +81,9 @@ def _校验数值(参数: dict) -> 结果 | None:
     return None
 
 
-def _校验磁盘(源文件: Path, 缓存根: Path) -> 结果 | None:
+def _校验磁盘(源文件大小: int, 缓存根: Path) -> 结果 | None:
     try:
-        需要 = 源文件.stat().st_size * 磁盘余量倍数
+        需要 = 源文件大小 * 磁盘余量倍数
         可用 = shutil.disk_usage(str(缓存根)).free
     except OSError as 错误:
         return 结果.失败("磁盘空间不足", f"无法读取磁盘空间: {错误}", 来源=来源)
@@ -96,8 +110,9 @@ def 校验入参(参数: dict, 注册表: dict) -> 结果 | None:
     源文件 = Path(源文件原文).expanduser()
     导出路径 = Path(导出原文).expanduser()
     缓存根 = Path(缓存原文).expanduser()
-    if not 源文件.is_file():
-        return 结果.失败("文件不存在", f"源文件不存在: {源文件}", 来源=来源)
+    源文件大小 = _底座("文件系统支持库.文件操作.获取大小", {"文件路径": str(源文件)})
+    if not _成功(源文件大小):
+        return 结果.失败("文件不存在", f"源文件不存在或不是文件: {源文件}", 来源=来源)
     if 源文件.suffix.lower() not in 媒体扩展名表:
         return 结果.失败("不支持的媒体格式",
                         f"不支持的扩展名 {源文件.suffix or '(无)'}；支持：{sorted(媒体扩展名表)}",
@@ -116,4 +131,4 @@ def 校验入参(参数: dict, 注册表: dict) -> 结果 | None:
     错误 = _校验模式(参数, 注册表) or _校验数值(参数)
     if 错误:
         return 错误
-    return _校验磁盘(源文件, 缓存根)
+    return _校验磁盘(int(getattr(源文件大小, "值", 0) or 0), 缓存根)

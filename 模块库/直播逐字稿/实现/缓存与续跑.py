@@ -2,18 +2,33 @@
 
 约定：任一阶段产物存在且任务指纹一致 → 该阶段可跳过；指纹不一致只重算受影响的下游。
 本文件只负责路径、指纹与状态；不含任何转写/裁决逻辑。
+
+文件读写、目录创建与 JSON 解析统一经唯一能力调用服务走底座原子能力，
+本文件不直接触碰标准库 I/O。
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 from datetime import datetime
 from pathlib import Path
 
+来源 = "直播逐字稿"
 指纹文件名 = "任务指纹.json"
 状态文件名 = "项目状态.json"
-摘要分块字节 = 4 * 1024 * 1024
+
+
+def _底座(能力id: str, 参数: dict):
+    """经唯一能力调用服务调用底座原子能力；未装配或异常时返回 None。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+    try:
+        return 获取能力调用器().调用能力(能力id, 参数, 调用方=来源)
+    except Exception:
+        return None
+
+
+def _成功(结果对象) -> bool:
+    """结果对象是否成功。"""
+    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
 
 
 def 现在文本() -> str:
@@ -39,7 +54,7 @@ def 准备缓存(缓存目录: str) -> dict[str, Path]:
     for 名称, 路径 in 路径表.items():
         if 名称 == "根":
             continue
-        路径.mkdir(parents=True, exist_ok=True)
+        _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(路径), "递归": True})
     路径表["疑难清单"] = 根 / "04_疑难清单.json"
     路径表["复核区间"] = 根 / "05_复核区间.json"
     路径表["指纹"] = 路径表["元数据"] / 指纹文件名
@@ -48,37 +63,40 @@ def 准备缓存(缓存目录: str) -> dict[str, Path]:
 
 
 def 计算文件摘要(文件路径: str) -> str:
-    """分块计算文件 sha256；失败返回空串（调用方按“未知摘要”处理）。"""
-    摘要 = hashlib.sha256()
-    try:
-        with open(文件路径, "rb") as 句柄:
-            while True:
-                块 = 句柄.read(摘要分块字节)
-                if not 块:
-                    break
-                摘要.update(块)
-    except OSError:
+    """计算文件 sha256；失败返回空串（调用方按“未知摘要”处理）。"""
+    结果对象 = _底座("系统核心支持库.资源管理.创建内容摘要",
+                   {"文件路径": str(文件路径), "算法": "sha256"})
+    if not _成功(结果对象):
         return ""
-    return 摘要.hexdigest()
+    return str(getattr(结果对象, "值", "") or "")
 
 
 def 读JSON(路径: Path) -> dict | None:
     """读 JSON；不存在或损坏返回 None（不抛异常）。"""
-    try:
-        return json.loads(Path(路径).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    读 = _底座("文件系统支持库.文件操作.读取文件",
+              {"文件路径": str(路径), "编码": "utf-8"})
+    if not _成功(读):
         return None
+    文本 = getattr(读, "值", None)
+    if not isinstance(文本, str) or not 文本.strip():
+        return None
+    解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": 文本})
+    if not _成功(解析):
+        return None
+    return getattr(解析, "值", None)
 
 
 def 写JSON(路径: Path, 数据: dict) -> bool:
     """写 JSON（utf-8、缩进 2）；成功返回 True。"""
-    目标 = Path(路径)
-    try:
-        目标.parent.mkdir(parents=True, exist_ok=True)
-        目标.write_text(json.dumps(数据, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    except (OSError, TypeError):
+    序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 数据})
+    if not _成功(序列化):
         return False
-    return True
+    文本 = getattr(序列化, "值", None)
+    if not isinstance(文本, str):
+        return False
+    写 = _底座("文件系统支持库.文件操作.写入文件",
+              {"文件路径": str(路径), "内容": 文本 + "\n", "编码": "utf-8"})
+    return _成功(写)
 
 
 def 读指纹(缓存: dict) -> dict | None:
@@ -116,11 +134,13 @@ def 产物存在(缓存: dict, 键: str, 子项: str | None = None) -> bool:
     路径 = 缓存.get(键)
     if 路径 is None:
         return False
-    if 子项:
-        return (Path(路径) / 子项).is_file()
-    if Path(路径).is_file():
-        return True
-    try:
-        return any(Path(路径).iterdir())
-    except OSError:
+    目标 = (Path(路径) / 子项) if 子项 else Path(路径)
+    存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(目标)})
+    if not bool(getattr(存在, "值", False)):
         return False
+    if 子项:
+        return True
+    列 = _底座("文件系统支持库.文件操作.列出目录", {"目录路径": str(目标)})
+    if _成功(列):
+        return bool(getattr(列, "值", None))
+    return True   # 存在但不是目录 → 是文件，视为已存在

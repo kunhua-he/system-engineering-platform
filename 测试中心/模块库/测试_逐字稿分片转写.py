@@ -24,6 +24,34 @@ from 模块库.直播逐字稿.实现.分片转写 import 分片区间表, 分�
 转写能力id = "转写支持库.转写.转写音频文件"
 
 
+def 装配底座():
+    """装配底座三包（文件操作/数据交换/资源管理）：实现层的缓存目录与 JSON 落盘走底座。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    from 公共契约.能力契约.契约 import 能力注册表
+    from 运行核心.能力调用.唯一能力调用 import 唯一能力调用服务, 设置全局唯一服务
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册表 = 能力注册表()
+    from 支持库.后端.文件系统支持库.文件操作 import 注册能力 as 注册文件操作
+    from 支持库.后端.数据操作支持库.数据交换 import 注册能力 as 注册数据交换
+    from 支持库.后端.系统核心支持库.资源管理 import 注册能力 as 注册资源管理
+    注册文件操作(注册表)
+    注册数据交换(注册表)
+    注册资源管理(注册表)
+    服务 = 唯一能力调用服务(注册表)
+    注册能力调用器(服务)
+    设置全局唯一服务(服务)
+    return 原惰性装配
+
+
+def 卸载底座(原惰性装配) -> None:
+    from 公共契约.能力契约.调用器 import 注册能力调用器, 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+    注册能力调用器(None)
+    设置全局唯一服务(None)
+    设置惰性装配函数(原惰性装配)
+
+
 class 假调用器:
     """截取返回落盘路径，转写返回含分段的文本；可指定哪几片失败。"""
 
@@ -56,6 +84,14 @@ class 假调用器:
 
 
 class 测试用例基类(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.原惰性装配 = 装配底座()
+
+    @classmethod
+    def tearDownClass(cls):
+        卸载底座(cls.原惰性装配)
+
     def setUp(self):
         self.临时 = tempfile.TemporaryDirectory(prefix="测试_分片转写_")
         self.缓存 = 准备缓存(str(Path(self.临时.name) / "缓存"))

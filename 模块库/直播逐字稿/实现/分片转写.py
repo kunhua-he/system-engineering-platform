@@ -11,12 +11,46 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from 模块库.直播逐字稿.实现.缓存与续跑 import 读JSON, 写JSON
-
+_来源 = "直播逐字稿"
 截取能力id = "媒体处理支持库.FFmpeg媒体.截取音频"
 转写能力id = "转写支持库.转写.转写音频文件"
 分片音频格式 = "mp3"
 默认单片超时秒 = 600.0
+
+
+def _底座(能力id: str, 参数: dict):
+    """经唯一能力调用服务调用底座原子能力；未装配或异常时返回 None。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+    try:
+        return 获取能力调用器().调用能力(能力id, 参数, 调用方=_来源)
+    except Exception:
+        return None
+
+
+def _成功(结果对象) -> bool:
+    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+
+
+def _读JSON(路径: Path) -> dict | None:
+    """经底座读并解析 JSON；不存在或损坏返回 None。"""
+    读 = _底座("文件系统支持库.文件操作.读取文件",
+              {"文件路径": str(路径), "编码": "utf-8"})
+    if not _成功(读) or not isinstance(getattr(读, "值", None), str):
+        return None
+    解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": getattr(读, "值")})
+    if not _成功(解析):
+        return None
+    return getattr(解析, "值", None)
+
+
+def _写JSON(路径: Path, 数据: dict) -> bool:
+    """经底座序列化并写 JSON（utf-8、缩进 2）；成功返回 True。"""
+    序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 数据})
+    if not _成功(序列化) or not isinstance(getattr(序列化, "值", None), str):
+        return False
+    写 = _底座("系统核心支持库.资源管理.原子写入",
+             {"目标路径": str(路径), "内容": getattr(序列化, "值") + "\n"})
+    return _成功(写)
 
 
 def 分片区间表(时长秒: float, 分片秒数: int) -> list[dict]:
@@ -37,8 +71,11 @@ def 分片区间表(时长秒: float, 分片秒数: int) -> list[dict]:
 def _截取分片(源文件路径: str, 缓存: dict, 区间: dict, 调用能力, 超时秒: float) -> tuple[str, str]:
     """把一片音频截到 02_分片/分片_NNNN.mp3；已存在直接复用。返回 (路径, 错误说明)。"""
     目标 = Path(缓存["分片"]) / f"分片_{区间['序号']:04d}.{分片音频格式}"
-    if 目标.is_file() and 目标.stat().st_size > 0:
-        return str(目标), ""
+    存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(目标)})
+    if bool(getattr(存在, "值", False)):
+        大小 = _底座("文件系统支持库.文件操作.获取大小", {"文件路径": str(目标)})
+        if int(getattr(大小, "值", 0) or 0) > 0:
+            return str(目标), ""
     结果对象 = 调用能力(截取能力id, {"文件路径": 源文件路径, "开始秒": 区间["开始秒"],
                                   "结束秒": 区间["结束秒"], "输出格式": 分片音频格式,
                                   "输出路径": str(目标), "超时秒": 超时秒})
@@ -86,7 +123,7 @@ def _转写一片(音频路径: str, 区间: dict, 缓存: dict, 调用能力, �
     """转写一片（已落盘且区间吻合才复用）；返回 (分片转写条目, 错误说明, 是否复用)。"""
     落盘 = Path(缓存["分片转写"]) / f"分片_{区间['序号']:04d}.json"
     if 续跑:
-        已有 = 读JSON(落盘)
+        已有 = _读JSON(落盘)
         if isinstance(已有, dict) and isinstance(已有.get("分段"), list) and _区间吻合(已有, 区间):
             return 已有, "", True
     参数 = {"文件路径": 音频路径, "超时秒": 超时秒, "配置": 模型配置,
@@ -99,7 +136,7 @@ def _转写一片(音频路径: str, 区间: dict, 缓存: dict, 调用能力, �
             "文本": str(值.get("文本") or "").strip(),
             "分段": _绝对化分段(值.get("分段") or [], 区间["开始秒"]),
             "语言": str(值.get("语言") or "")}
-    写JSON(落盘, 条目)
+    _写JSON(落盘, 条目)
     return 条目, "", False
 
 

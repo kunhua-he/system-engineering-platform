@@ -6,11 +6,24 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+来源 = "直播逐字稿"
 模式数据路径 = Path(__file__).resolve().parent.parent / "模式数据" / "模式注册表.json"
 _注册表缓存: dict | None = None
+
+
+def _底座(能力id: str, 参数: dict):
+    """经唯一能力调用服务调用底座原子能力；未装配或异常时返回 None。"""
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+    try:
+        return 获取能力调用器().调用能力(能力id, 参数, 调用方=来源)
+    except Exception:
+        return None
+
+
+def _成功(结果对象) -> bool:
+    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
 
 
 def 读取模式注册表(强制重载: bool = False) -> dict:
@@ -18,14 +31,26 @@ def 读取模式注册表(强制重载: bool = False) -> dict:
     global _注册表缓存
     if _注册表缓存 is not None and not 强制重载:
         return _注册表缓存
-    try:
-        数据 = json.loads(模式数据路径.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        数据 = {}
+    数据 = _读盘()
     if not isinstance(数据, dict) or not isinstance(数据.get("模式列表"), list):
         数据 = {"注册表版本": "", "模式列表": []}
     _注册表缓存 = 数据
     return 数据
+
+
+def _读盘():
+    """经底座读文件并解析为对象；任一步失败返回 None。"""
+    读 = _底座("文件系统支持库.文件操作.读取文件",
+              {"文件路径": str(模式数据路径), "编码": "utf-8"})
+    if not _成功(读):
+        return None
+    文本 = getattr(读, "值", None)
+    if not isinstance(文本, str) or not 文本.strip():
+        return None
+    解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": 文本})
+    if not _成功(解析):
+        return None
+    return getattr(解析, "值", None)
 
 
 def 模式列表() -> list[dict]:

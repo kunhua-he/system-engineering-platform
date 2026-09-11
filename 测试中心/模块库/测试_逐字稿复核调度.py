@@ -24,6 +24,34 @@ from 模块库.直播逐字稿.实现.复核调度 import 聚类区间, 复核�
 截取能力id = "媒体处理支持库.FFmpeg媒体.截取音频"
 
 
+def 装配底座():
+    """装配底座三包（文件操作/数据交换/资源管理）：复核盘落盘与复用读取走底座。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    from 公共契约.能力契约.契约 import 能力注册表
+    from 运行核心.能力调用.唯一能力调用 import 唯一能力调用服务, 设置全局唯一服务
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册表 = 能力注册表()
+    from 支持库.后端.文件系统支持库.文件操作 import 注册能力 as 注册文件操作
+    from 支持库.后端.数据操作支持库.数据交换 import 注册能力 as 注册数据交换
+    from 支持库.后端.系统核心支持库.资源管理 import 注册能力 as 注册资源管理
+    注册文件操作(注册表)
+    注册数据交换(注册表)
+    注册资源管理(注册表)
+    服务 = 唯一能力调用服务(注册表)
+    注册能力调用器(服务)
+    设置全局唯一服务(服务)
+    return 原惰性装配
+
+
+def 卸载底座(原惰性装配) -> None:
+    from 公共契约.能力契约.调用器 import 注册能力调用器, 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务
+    注册能力调用器(None)
+    设置全局唯一服务(None)
+    设置惰性装配函数(原惰性装配)
+
+
 class 假调用器:
     """记录调用参数并按脚本返回统一结果；截取与转写分别可控。"""
 
@@ -110,6 +138,14 @@ class Test聚类区间(unittest.TestCase):
 
 
 class Test复核区间(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.原惰性装配 = 装配底座()
+
+    @classmethod
+    def tearDownClass(cls):
+        卸载底座(cls.原惰性装配)
+
     def setUp(self):
         self.临时目录 = tempfile.TemporaryDirectory(prefix="测试_复核调度_")
         self.复核目录 = str(Path(self.临时目录.name) / "06_复核")
