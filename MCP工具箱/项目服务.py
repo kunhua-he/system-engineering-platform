@@ -35,12 +35,17 @@ from .发布治理 import (
     运行发布门禁, 检查发布证据, 生成发布证据, 切换激活指针, 依赖裁决,
     读取正式发布状态, 正式发布证据类型,
 )
-from .协作状态 import 登记任务, 查询协作状态, 收口登记
+from .协作状态 import 登记任务, 查询协作状态, 收口登记, 计算代码指纹
+from .文件租约 import (
+    申请文件租约, 续租文件租约, 释放文件租约, 释放工作包文件租约,
+    回收过期文件租约, 查询文件占用,
+)
 from .验证门禁 import (
     校验验证命令 as 校验验证命令受控, 判定验证结果, 反馈门禁,
     正式发布命令表, 唯一发布命令, 判定正式发布结果,
 )
 from .角色权限 import 获取角色指南, 网关实例名, 网关角色名, 网关说明
+from .热重载 import 扫描并重载工具模块
 
 项目根目录 = Path(__file__).resolve().parent.parent
 记忆目录 = 项目根目录 / "开发文档" / "项目记忆"
@@ -52,6 +57,7 @@ from .角色权限 import 获取角色指南, 网关实例名, 网关角色名, 
 工作区根目录 = 项目根目录 / "工程缓存" / "任务工作区"
 测试资源清单目录 = 项目根目录 / "工程缓存" / "测试资源清单"
 协作状态目录 = 项目根目录 / "工程缓存" / "协作状态"
+平台控制面目录 = 项目根目录 / "工程缓存" / "平台控制面"
 服务 = Server("system_engineering_toolkit")
 # 单网关（无角色）模式：8766 单一对外网关，不再读取角色环境变量。
 当前任务名称 = ""
@@ -215,11 +221,16 @@ def _运行验证(名称: str, 命令: list[str], 超时秒数: int, *, 开工id
         raise ValueError("名称和命令数组不能为空")
     结果 = _执行(命令, max(1, min(超时秒数, 3600)))
     提交, 工作区指纹 = _代码指纹()
+    # 同时写两种指纹：`工作区指纹` 是 sha256(git status)（发布证据路径用），
+    # `指纹` 是 `计算代码指纹` 的目录内容摘要前 16 位——收口登记（delivery_closeout）
+    # 读的正是后者。此前只写前者，两者取值域不同导致收口恒报「证据指纹不匹配」。
+    内容指纹结果 = 计算代码指纹(项目根目录)
     记录 = {
         "名称": 名称, "命令": 命令, "退出码": 结果["退出码"], "开工id": 开工id,
         "时间": datetime.now(timezone.utc).isoformat(), "提交": 提交,
         "工作区指纹": 工作区指纹, "输出末尾": 结果["标准输出"][-2000:],
         "错误末尾": 结果["标准错误"][-1000:],
+        "指纹": str(内容指纹结果.get("指纹", "")) if 内容指纹结果.get("成功") else "",
     }
     # 退出码为 0 只代表进程正常结束，不能证明测试真的通过；统一判定器
     # 还会拒绝零测试、导入失败、未解释跳过和门禁失败。只有两者同时成立
@@ -425,9 +436,11 @@ _工具定义列表 = [
         Tool(name="register_task", description="登记任务：登记主/子任务协作状态（parent/child 映射）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}, "角色": {"type": "string"}, "worktree路径": {"type": "string"}, "允许路径": {"type": "array", "items": {"type": "string"}}, "基线提交": {"type": "string"}, "parent_work_id": {"type": "string"}}, "required": ["work_id", "任务"]}),
         Tool(name="collaboration_status", description="协作状态：按开工id或任务查询协作状态（子任务/反馈/证据/阻断标记）。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "任务": {"type": "string"}}}),
         Tool(name="delivery_closeout", description="收口登记：delivery_closeout：收口登记五件套与结论；未反馈或证据不匹配阻断。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "五件套路径": {"type": "string"}, "结论": {"type": "string"}}, "required": ["work_id"]}),
+        Tool(name="file_lease", description="文件占用租约：多会话同仓开发时按文件原子互斥认领（复用平台控制面占用租约，不建新表）。开工自动申请、收口自动释放；本工具做查询、续租、手动释放与过期回收。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["查询", "续租", "释放", "回收过期"]}, "paths": {"type": "array", "items": {"type": "string"}}, "lease_ids": {"type": "array", "items": {"type": "string"}}, "evidence": {"type": "string"}}, "required": ["operation"]}),
         Tool(name="validate_verification_command", description="校验验证命令：受控模块验证命令白名单校验（仅允许 unittest 模块入口，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
         Tool(name="judge_verification_result", description="判定验证结果：判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}}, "required": ["退出码", "标准输出"]}),
     Tool(name="tool_catalog", description="工具目录：按 分类/关键词 返回全量工具清单（中文名+协议名+描述+分类+当前实例可调用性），用于发现未直接注入的工具。", inputSchema={"type": "object", "properties": {"分类": {"type": "string"}, "关键词": {"type": "string"}}}),
+    Tool(name="reload_tool_modules", description="热重载工具模块：比对 MCP工具箱 下工具源码时间戳，重载变化的模块；改工具实现后免重启进程即时生效（新增/删除工具与参数表变更仍需重启）。", inputSchema={"type": "object", "properties": {}}),
 ]
 
 
@@ -440,7 +453,7 @@ async def 工具列表() -> list[Tool]:
 # 工具目录分类：按 14 个模块域划分，覆盖全部全量工具。
 _工具分类表 = {
     "基础": ["project_context", "role_profile", "mcp_feedback", "feedback_status",
-             "feedback_review", "tool_catalog"],
+             "feedback_review", "tool_catalog", "reload_tool_modules"],
     "公开能力": ["capability_search", "capability_read"],
     "开发": ["codegraph_explore", "support_library_development_guide",
              "module_development_guide", "core_development_guide",
@@ -450,7 +463,7 @@ _工具分类表 = {
     "模块": ["validate_module_compliance", "generate_module_template"],
     "核心": ["create_core_snapshot", "query_core_snapshot", "compatibility_check", "rollback_gate"],
     "发布": ["run_release_gate", "check_release_evidence", "generate_release_evidence", "switch_active_pointer", "dependency_arbitration"],
-    "协作": ["register_task", "collaboration_status", "delivery_closeout"],
+    "协作": ["register_task", "collaboration_status", "delivery_closeout", "file_lease"],
     "记忆": ["memory_search", "memory_write"],
     "验证": ["verify_and_record", "verification_plan", "validate_verification_command", "judge_verification_result"],
     "工作区": ["workspace", "development_start"],
@@ -511,6 +524,8 @@ def _工具目录(分类: str = "", 关键词: str = "") -> dict[str, Any]:
 
 @服务.call_tool()
 async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]:
+    # 改 MCP工具箱 下工具代码后免重启：入口按源码时间戳增量重载（详见 热重载.py）。
+    本次重载 = 扫描并重载工具模块(Path(__file__).parent, globals(), {Path(__file__).name})
     # 兼容：调用方可能用中文名，统一归一化为英文协议名再分发。
     名称 = 中文名到协议名.get(名称, 名称)
     if 名称 == "tool_catalog":
@@ -527,6 +542,13 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
     try:
         if 名称 == "project_context":
             数据 = _开工上下文(str(参数.get("task", "")), int(参数.get("history_limit", 3)))
+        elif 名称 == "reload_tool_modules":
+            数据 = {
+                "成功": True,
+                "本次重载模块": 本次重载,
+                "重载数量": len(本次重载),
+                "说明": "已即时生效，无需重启" if 本次重载 else "无变化（源码未改动）",
+            }
         elif 名称 == "role_profile":
             数据 = {
                 **网关说明(),
@@ -586,6 +608,23 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                 str(参数.get("level", "工作包")), int(参数.get("history_limit", 3)),
                 str(参数.get("artifact", "")),
             )
+            # 文件级占用：拿到"修改路径"后先批量申请文件租约，冲突在开工那一刻暴露。
+            租约结果 = 申请文件租约(
+                平台控制面目录, 修改路径, 所有者=当前开工id,
+                任务=str(参数.get("task", "")),
+            )
+            if 修改路径 and not 租约结果.get("成功"):
+                数据 = {
+                    "成功": False, "错误码": 租约结果.get("错误码"),
+                    "消息": f"开工被拒：{租约结果.get('消息', '')}",
+                    "冲突文件": 租约结果.get("文件路径"),
+                    "占用者": 租约结果.get("占用者"),
+                    "占用开始时间": 租约结果.get("占用开始时间"),
+                    "已回滚": 租约结果.get("已回滚", []),
+                    "处置": "换不重叠的工作包，或写进旁路清单待下一批；不许硬闯。",
+                }
+            else:
+                数据["文件租约"] = 租约结果
         elif 名称 == "temporary_context":
             操作 = str(参数["operation"])
             开工id = str(参数["work_id"])
@@ -727,6 +766,27 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "delivery_closeout":
             收口开工id = _有效开工id(参数.get("work_id"))
             数据 = 收口登记(收口开工id, 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))
+            if 数据.get("成功"):
+                # 收口后自动释放本工作包持有的全部文件租约，不留残锁。
+                数据["文件租约释放"] = 释放工作包文件租约(
+                    平台控制面目录, 收口开工id,
+                    证据=f"收口：{str(参数.get('结论', '')).strip()}",
+                )
+        elif 名称 == "file_lease":
+            操作 = str(参数["operation"])
+            路径表 = list(参数.get("paths", []))
+            租约id表 = [str(项) for 项 in 参数.get("lease_ids", [])]
+            证据 = str(参数.get("evidence", ""))
+            if 操作 == "查询":
+                数据 = 查询文件占用(平台控制面目录, 路径表 or None)
+            elif 操作 == "续租":
+                数据 = 续租文件租约(平台控制面目录, 租约id表)
+            elif 操作 == "释放":
+                数据 = 释放文件租约(平台控制面目录, 租约id表, 证据=证据)
+            elif 操作 == "回收过期":
+                数据 = 回收过期文件租约(平台控制面目录)
+            else:
+                raise ValueError("文件租约操作必须是查询、续租、释放或回收过期")
         elif 名称 == "validate_verification_command":
             数据 = 校验验证命令受控(list(参数["命令"]))
         elif 名称 == "judge_verification_result":
