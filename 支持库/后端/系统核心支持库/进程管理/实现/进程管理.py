@@ -300,12 +300,12 @@ def 沙箱执行命令(
     from pathlib import Path as _Path
 
     if not isinstance(命令, str) or not 命令.strip():
-        return 结果.失败("参数不合法", "命令必须是非空字符串", 来源=来源)
+        return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
     if not isinstance(工作目录, str) or not 工作目录.strip():
-        return 结果.失败("参数不合法", "工作目录必填（沙箱唯一可读写目录）", 来源=来源)
+        return 结果.失败("参数不合法", "工作目录必填（沙箱唯一可读写目录）", 来源="进程管理")
     工作区 = _Path(工作目录).resolve()
     if not 工作区.is_dir():
-        return 结果.失败("目录不存在", f"工作目录不存在: {工作区}", 来源=来源)
+        return 结果.失败("目录不存在", f"工作目录不存在: {工作区}", 来源="进程管理")
     上限字节 = int(输出上限字节) if isinstance(输出上限字节, int) and 输出上限字节 > 0 \
         else 默认沙箱输出上限字节
     超时 = float(超时秒) if isinstance(超时秒, (int, float)) and 超时秒 > 0 else 60.0
@@ -316,7 +316,7 @@ def 沙箱执行命令(
         return 结果.失败(
             "沙箱不可用",
             "当前平台无 sandbox-exec 内核沙箱，沙箱执行已禁用（fail-closed，不降级）",
-            来源=来源,
+            来源="进程管理",
         )
 
     环境 = _沙箱安全环境(str(工作区))
@@ -348,7 +348,7 @@ def 沙箱执行命令(
         if 超时标志:
             return 结果.失败(
                 "超时", f"沙箱命令执行超过 {超时} 秒",
-                来源=来源,
+                来源="进程管理",
                 详情={"标准输出": 标准输出, "错误输出": 错误输出},
             )
         return 结果.成功结果({
@@ -364,7 +364,7 @@ def 沙箱执行命令(
                 _终止进程组(进程, 强制=True)
             except Exception:
                 pass
-        return 结果.失败("执行失败", str(错误), 来源=来源)
+        return 结果.失败("执行失败", str(错误), 来源="进程管理")
     finally:
         for 文件 in (输出文件, 错误文件):
             try:
