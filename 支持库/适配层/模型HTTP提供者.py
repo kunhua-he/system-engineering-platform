@@ -349,10 +349,24 @@ def _解析流式响应(响应: Any, 协议: str, *, 响应上限: int,
 
 def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
              系统提示词: str | None = None,
+             温度: float | None = None, 最大令牌数: int | None = None,
+             工具: list | None = None, 响应格式: dict | None = None,
              附加请求头: dict[str, Any] | None = None) -> Iterator[dict[str, Any]]:
-    """读取模型 Provider SSE；调用方必须消费或显式 close 返回的有限迭代器。"""
+    """读取模型 Provider SSE；调用方必须消费或显式 close 返回的有限迭代器。
+
+    生成参数 `温度/最大令牌数/工具/响应格式` 与 `调用对话` 同一套校验与协议映射表，
+    不传则载荷里不出现对应键（与迁移前行为逐字节一致）。
+    """
     if not isinstance(消息列表, list) or not 消息列表:
         return iter((_流式错误("参数不合法", "消息列表必须是非空列表"),))
+    if 温度 is not None and (isinstance(温度, bool) or not isinstance(温度, (int, float))):
+        return iter((_流式错误("参数不合法", "温度必须是数值"),))
+    if 最大令牌数 is not None and (isinstance(最大令牌数, bool) or not isinstance(最大令牌数, int)):
+        return iter((_流式错误("参数不合法", "最大令牌数必须是整数"),))
+    if 工具 is not None and not isinstance(工具, list):
+        return iter((_流式错误("参数不合法", "工具必须是列表"),))
+    if 响应格式 is not None and not isinstance(响应格式, dict):
+        return iter((_流式错误("参数不合法", "响应格式必须是字典型"),))
     协议 = _规范化协议(配置.get("协议", 默认协议))
     if 协议 is None:
         return iter((_流式错误("参数不合法", "协议必须是 chat_completions 或 codex_responses"),))
@@ -371,11 +385,24 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
     消息 = _消息列表(消息列表, 系统提示词)
     if 协议 == "codex_responses":
         载荷 = {"model": 配置.get("模型名", ""), "input": 消息, "stream": True}
+        令牌键 = "max_output_tokens"
+        if 响应格式:
+            载荷["text"] = {"format": 响应格式}
     else:
         # chat 协议流式默认不回传 usage；显式索取，用量追踪才有数（与迁移前 V3 实现一致）。
         # codex/responses 协议自带用量，不加此键。
         载荷 = {"model": 配置.get("模型名", ""), "messages": 消息, "stream": True,
                 "stream_options": {"include_usage": True}}
+        令牌键 = "max_tokens"
+        if 响应格式:
+            载荷["response_format"] = 响应格式
+    # 生成参数按 `调用对话` 同一张映射表落地；None/空即不写入，保证不传时载荷不变。
+    if 温度 is not None:
+        载荷["temperature"] = 温度
+    if 最大令牌数 is not None:
+        载荷[令牌键] = 最大令牌数
+    if 工具:
+        载荷["tools"] = 工具
     请求头 = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if 配置.get("api_key"):
         请求头["Authorization"] = f"Bearer {配置['api_key']}"

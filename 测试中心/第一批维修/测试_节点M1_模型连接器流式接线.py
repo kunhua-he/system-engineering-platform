@@ -228,6 +228,70 @@ class 测试节点M1模型连接器流式接线(unittest.TestCase):
         事件 = list(流式生成对话(句柄, [{"role": "user", "content": "读取配置"}]))
         self.assertEqual(事件[-1]["类型"], "完成")
 
+    def test_生成参数按协议映射进流式载荷(self) -> None:
+        """与非流式 `生成对话` 同一张映射表：chat→response_format，res→text.format。"""
+        工具 = [{"type": "function", "function": {"name": "查库存"}}]
+        句柄 = self._连接("chat", "chat")
+        事件 = list(流式生成对话(
+            句柄, [{"role": "user", "content": "映射"}],
+            温度=0.3, 最大令牌数=64,
+            工具=工具, 响应格式={"type": "json_object"},
+        ))
+        self.assertEqual(事件[-1]["类型"], "完成")
+        正文 = self.夹具.请求[0]["正文"]
+        self.assertEqual(正文["temperature"], 0.3)
+        self.assertEqual(正文["max_tokens"], 64)
+        self.assertEqual(正文["tools"], 工具)
+        self.assertEqual(正文["response_format"], {"type": "json_object"})
+        self.assertNotIn("max_output_tokens", 正文)
+        self.assertNotIn("text", 正文)
+
+    def test_生成参数在res协议按output和text_format映射(self) -> None:
+        工具 = [{"type": "function", "name": "查库存"}]
+        句柄 = self._连接("res", "res")
+        事件 = list(流式生成对话(
+            句柄, [{"role": "user", "content": "映射"}],
+            温度=0.7, 最大令牌数=128,
+            工具=工具, 响应格式={"type": "json_object"},
+        ))
+        self.assertEqual(事件[-1]["类型"], "完成")
+        正文 = self.夹具.请求[0]["正文"]
+        self.assertEqual(正文["temperature"], 0.7)
+        self.assertEqual(正文["max_output_tokens"], 128)
+        self.assertEqual(正文["tools"], 工具)
+        self.assertEqual(正文["text"], {"format": {"type": "json_object"}})
+        self.assertNotIn("max_tokens", 正文)
+        self.assertNotIn("response_format", 正文)
+
+    def test_不传生成参数时流式载荷不含这四个键(self) -> None:
+        """防漂移：不传即不下发，保证既有流式行为逐字节不变。"""
+        for 协议, 模式 in (("chat", "chat"), ("res", "res")):
+            with self.subTest(协议=协议):
+                self.setUp()
+                句柄 = self._连接(协议, 模式)
+                事件 = list(流式生成对话(句柄, [{"role": "user", "content": "默认"}]))
+                self.assertEqual(事件[-1]["类型"], "完成")
+                正文 = self.夹具.请求[0]["正文"]
+                for 键 in ("temperature", "max_tokens", "max_output_tokens",
+                           "tools", "response_format", "text"):
+                    self.assertNotIn(键, 正文, f"未传生成参数却下发了 {键}")
+                self.tearDown()
+
+    def test_生成参数类型非法即拒绝且不发请求(self) -> None:
+        句柄 = self._连接("chat", "chat")
+        非法表 = (
+            {"温度": "热"}, {"温度": True},
+            {"最大令牌数": 1.5}, {"最大令牌数": True},
+            {"工具": {"名称": "查库存"}},
+            {"响应格式": ["json"]},
+        )
+        for 非法 in 非法表:
+            with self.subTest(**非法):
+                事件 = list(流式生成对话(句柄, [{"role": "user", "content": "非法"}], **非法))
+                self.assertEqual(事件[0]["类型"], "错误")
+                self.assertEqual(事件[0]["错误码"], "参数不合法")
+        self.assertEqual(len(self.夹具.请求), 0, "参数非法时不得发起上游请求")
+
 
 if __name__ == "__main__":
     unittest.main()

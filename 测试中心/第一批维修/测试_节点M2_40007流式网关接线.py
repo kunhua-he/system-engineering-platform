@@ -116,6 +116,59 @@ class M2流式网关测试(unittest.TestCase):
         self.assertEqual(状态, 400)
         self.assertIn("参数不合法", 内容)
 
+    def test_生成参数经HTTP透传到流式连接器(self) -> None:
+        """流式入口不再丢弃 温度/最大令牌数/工具/响应格式，HTTP 层原样转交。"""
+        工具 = [{"type": "function", "function": {"name": "查库存"}}]
+        收到 = {}
+
+        def 假流式生成对话(**参数):
+            收到.update(参数)
+            yield {"类型": "完成", "完成原因": "stop"}
+
+        with patch(
+            "支持库.后端.大语言模型支持库.模型连接器.流式生成对话",
+            side_effect=假流式生成对话,
+        ):
+            状态, _头, 内容 = self._请求({
+                "能力id": "大语言模型支持库.模型连接器.生成对话",
+                "请求id": "m2-params-1",
+                "参数": {
+                    "句柄": 123,
+                    "消息列表": [{"role": "user", "content": "带参"}],
+                    "流式输出": True,
+                    "温度": 0.3,
+                    "最大令牌数": 64,
+                    "工具": 工具,
+                    "响应格式": {"type": "json_object"},
+                },
+            })
+        self.assertEqual(状态, 200)
+        self.assertIn("完成事件", 内容)
+        self.assertEqual(收到.get("温度"), 0.3)
+        self.assertEqual(收到.get("最大令牌数"), 64)
+        self.assertEqual(收到.get("工具"), 工具)
+        self.assertEqual(收到.get("响应格式"), {"type": "json_object"})
+
+    def test_不传生成参数时不向下游传这四个键(self) -> None:
+        收到 = {}
+
+        def 假流式生成对话(**参数):
+            收到.update(参数)
+            yield {"类型": "完成", "完成原因": "stop"}
+
+        with patch(
+            "支持库.后端.大语言模型支持库.模型连接器.流式生成对话",
+            side_effect=假流式生成对话,
+        ):
+            状态, _头, _内容 = self._请求({
+                "能力id": "大语言模型支持库.模型连接器.生成对话",
+                "请求id": "m2-params-2",
+                "参数": {"句柄": 123, "消息列表": [{"role": "user", "content": "默认"}], "流式输出": True},
+            })
+        self.assertEqual(状态, 200)
+        for 键 in ("温度", "最大令牌数", "工具", "响应格式"):
+            self.assertIsNone(收到.get(键), f"未传 {键} 却传了下游值 {收到.get(键)!r}")
+
     def test_客户端身份不能伪造(self) -> None:
         状态, _头, 内容 = self._请求({
             "能力id": "大语言模型支持库.模型连接器.生成对话",

@@ -797,11 +797,15 @@ def _流式错误事件(错误码: str, 错误说明: str, *, 可重试: bool = 
 
 def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
                系统提示词: str = None, 流式输出: bool = True,
+               温度: float = None, 最大令牌数: int = None,
+               工具: list = None, 响应格式: dict = None,
                附加请求头: dict = None) -> Iterator[dict[str, Any]]:
     """按句柄配置调用 H 节点 Provider，并原样转发有限流式事件。
 
     这是连接器内部/包级流式边界，不是 HTTP 路由。流式输出必须显式保持为
     True；Provider 事件不聚合，返回的迭代器应消费至终态或由调用方 close。
+    生成参数 温度/最大令牌数/工具/响应格式 与 `生成对话` 非流式侧同名同义同校验，
+    经 Provider 按协议映射进流式载荷；不传即不下发。
     附加请求头：单次调用级请求头，仅本次流式出站叠加，覆盖连接级同名键。
     """
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
@@ -812,6 +816,14 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
         return iter((_流式错误事件("参数不合法", "流式输出必须是逻辑型"),))
     if not 流式输出:
         return iter((_流式错误事件("参数不合法", "流式生成对话要求流式输出为真"),))
+    if 温度 is not None and (isinstance(温度, bool) or not isinstance(温度, (int, float))):
+        return iter((_流式错误事件("参数不合法", "温度必须是数值"),))
+    if 最大令牌数 is not None and (isinstance(最大令牌数, bool) or not isinstance(最大令牌数, int)):
+        return iter((_流式错误事件("参数不合法", "最大令牌数必须是整数"),))
+    if 工具 is not None and not isinstance(工具, list):
+        return iter((_流式错误事件("参数不合法", "工具必须是列表"),))
+    if 响应格式 is not None and not isinstance(响应格式, dict):
+        return iter((_流式错误事件("参数不合法", "响应格式必须是字典型"),))
     if 附加请求头 is not None and not isinstance(附加请求头, dict):
         return iter((_流式错误事件("参数不合法", "附加请求头必须是字典型或空值"),))
 
@@ -828,6 +840,8 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
         from 支持库.适配层 import 模型HTTP提供者 as 提供者
         上游迭代器 = 提供者.流式调用对话(
             配置=配置, 消息列表=消息列表, 系统提示词=系统提示词,
+            温度=温度, 最大令牌数=最大令牌数,
+            工具=工具, 响应格式=响应格式,
             附加请求头=附加请求头,
         )
     except Exception as 错误:
