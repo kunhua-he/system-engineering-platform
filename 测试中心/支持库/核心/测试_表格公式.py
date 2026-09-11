@@ -3,6 +3,7 @@ import unittest
 from 支持库.后端.办公文档支持库.表格公式 import (
     求值公式, 解析单元格地址, 格式化单元格地址, 格式化列字母,
     列字母转索引, 解析单元格范围, 展开单元格范围, 批量格式化单元格地址,
+    批量解析单元格地址,
 )
 
 
@@ -80,6 +81,30 @@ class 测试批量格式化单元格地址(unittest.TestCase):
         self.assertFalse(批量格式化单元格地址([1, 2]).成功)
         self.assertFalse(批量格式化单元格地址([{"行": "x", "列": 0}]).成功)
         self.assertFalse(批量格式化单元格地址([{"行": True, "列": 0}]).成功)
+
+
+class 测试批量解析单元格地址(unittest.TestCase):
+    def test_批量与逐项一致(self):
+        地址列表 = ["A1", "AB12", "B3"]
+        self.assertEqual(批量解析单元格地址(地址列表).值,
+                         {"解析列表": [{"行": 1, "列": 0}, {"行": 12, "列": 27},
+                                       {"行": 3, "列": 1}]})
+
+    def test_空列表(self):
+        self.assertEqual(批量解析单元格地址([]).值, {"解析列表": []})
+
+    def test_非法地址按零处理(self):
+        self.assertEqual(批量解析单元格地址(["??", "A1"]).值,
+                         {"解析列表": [{"行": 0, "列": 0}, {"行": 1, "列": 0}]})
+
+    def test_逐项等价(self):
+        样本 = ["A1", "AB12", "Z9", "??", "1A"]
+        期望 = [解析单元格地址(项).值 for 项 in 样本]
+        self.assertEqual(批量解析单元格地址(样本).值["解析列表"], 期望)
+
+    def test_非法入参失败(self):
+        self.assertFalse(批量解析单元格地址("不是列表").成功)
+        self.assertFalse(批量解析单元格地址([1, 2]).成功)
 
 
 if __name__ == "__main__":

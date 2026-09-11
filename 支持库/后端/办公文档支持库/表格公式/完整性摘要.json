@@ -5,35 +5,35 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "801e1519b1cb3ee348234e08085985921202d79499e7a67c3da06a1784d70fa0"
+      "sha256": "d22281f144e4172af5102eabd88b891dc577a7b4a53282bb71cf26ec4c3f4b89"
     },
     {
       "路径": "包声明.json",
-      "sha256": "fe62cd036e8aceca36430b54d846507b3932799214711c13c01670844705ce5f"
+      "sha256": "2413b0b9ab04dc251566a75611a123de70f2aa80ba82e05adf68b2a96746d41b"
     },
     {
       "路径": "实现/表格公式.py",
-      "sha256": "f50cf8ac73f97e4a4041bcaaab6041a22eb0a76c24c1d2c984fcce665b048c1d"
+      "sha256": "311a03aacd7e28ab7636fa015ba2de7ad7c7dcd90cc89b6103dffe327e35467a"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "916c24ab59fb48eef24543e580262c71548c7edd611c32f02744e6eccf583993"
+      "sha256": "6f2881263c573f85a691b1a087a178e1f70326c550b045508d5f1266db0e8ad1"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "5523df618461f01287b25aebef2903e96d33371658e54c0cfee1c8ef091806b9"
+      "sha256": "11c4f542da8d4610b710534306f406ca8c08e22d498e542a6fa0f8285cdd5b5e"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "0d75adba93be9bada2c526b1b98a3123d9f5ea3eea9538f32b0cd3d9ea7e43f8"
+      "sha256": "ec88087e8bbae31e3beb30fb7c26a29acd8595107322441992c8609cf1508ea5"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "98bc316d7d010ea9c4dd193e6eb7e657fd35c8dbfc0a9a23e924d6cc4d6cf8c8"
+      "sha256": "71b937d3974e3cdfa3436e9d19ba293c0e52bbd2f3a36d11e7424f6ed1b5636f"
     },
     {
       "路径": "验证场景.json",
-      "sha256": "53403bba60b2d2eca8963acc00977d8955bf414e6057021314f15b92635faa98"
+      "sha256": "5d80726cf7345a570b96d51acbcb8a5be60eae37a38dfdfc6167381d30ca256d"
     },
     {
       "路径": "验证场景引用.json",
