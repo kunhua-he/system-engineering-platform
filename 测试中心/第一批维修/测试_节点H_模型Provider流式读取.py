@@ -186,6 +186,8 @@ class 测试节点H模型Provider流式读取(unittest.TestCase):
         请求 = self.夹具.请求[0]
         self.assertEqual(请求["路径"], "/v1/chat/completions")
         self.assertIs(请求["正文"]["stream"], True)
+        # chat 协议流式默认不回传 usage，必须显式索取，否则用量追踪恒为零。
+        self.assertEqual(请求["正文"]["stream_options"], {"include_usage": True})
         self.assertEqual(请求["正文"]["messages"][0], {"role": "system", "content": "系统"})
         self.assertEqual(请求["接收"], "text/event-stream")
 
@@ -208,6 +210,8 @@ class 测试节点H模型Provider流式读取(unittest.TestCase):
         请求 = self.夹具.请求[0]
         self.assertEqual(请求["路径"], "/v1/responses")
         self.assertIs(请求["正文"]["stream"], True)
+        # codex/responses 自带用量，不应出现 chat 专有的 stream_options。
+        self.assertNotIn("stream_options", 请求["正文"])
         self.assertEqual(请求["正文"]["input"][0]["content"], "系统")
         self.assertEqual(请求["接收"], "text/event-stream")
 

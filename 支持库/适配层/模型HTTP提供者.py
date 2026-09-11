@@ -372,7 +372,10 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
     if 协议 == "codex_responses":
         载荷 = {"model": 配置.get("模型名", ""), "input": 消息, "stream": True}
     else:
-        载荷 = {"model": 配置.get("模型名", ""), "messages": 消息, "stream": True}
+        # chat 协议流式默认不回传 usage；显式索取，用量追踪才有数（与迁移前 V3 实现一致）。
+        # codex/responses 协议自带用量，不加此键。
+        载荷 = {"model": 配置.get("模型名", ""), "messages": 消息, "stream": True,
+                "stream_options": {"include_usage": True}}
     请求头 = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if 配置.get("api_key"):
         请求头["Authorization"] = f"Bearer {配置['api_key']}"
