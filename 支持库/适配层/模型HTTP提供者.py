@@ -405,9 +405,24 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
     return 读取()
 
 
+def _归一化响应(数据: dict[str, Any]) -> dict[str, Any]:
+    """复用连接器公开的响应归一化（延迟导入避免环形依赖）；失败返回空结构。"""
+    try:
+        from 支持库.后端.大语言模型支持库.模型连接器 import 归一化对话响应
+
+        归一结果 = 归一化对话响应(数据, True)
+    except Exception:
+        return {}
+    值 = getattr(归一结果, "值", None)
+    return 值 if isinstance(值, dict) else {}
+
+
 def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
            系统提示词: str | None = None, 流式输出: bool = False,
+           温度: float | None = None, 最大令牌数: int | None = None,
+           工具: list | None = None, 响应格式: dict | None = None,
            附加请求头: dict[str, Any] | None = None) -> 结果:
+    """与连接器 `_HTTP调用模型` 同一协议契约：生成参数按协议映射，响应统一归一化。"""
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
     if 流式输出 is True:
@@ -418,21 +433,47 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
         )
     if not isinstance(流式输出, bool):
         return _失败("参数不合法", "流式输出必须是逻辑型")
+    if 温度 is not None and (isinstance(温度, bool) or not isinstance(温度, (int, float))):
+        return _失败("参数不合法", "温度必须是数值")
+    if 最大令牌数 is not None and (isinstance(最大令牌数, bool) or not isinstance(最大令牌数, int)):
+        return _失败("参数不合法", "最大令牌数必须是整数")
+    if 工具 is not None and not isinstance(工具, list):
+        return _失败("参数不合法", "工具必须是列表")
+    if 响应格式 is not None and not isinstance(响应格式, dict):
+        return _失败("参数不合法", "响应格式必须是字典型")
     协议 = 配置.get("协议", "chat_completions")
     消息 = _消息列表(消息列表, 系统提示词)
     if 协议 == "codex_responses":
         路径, 载荷 = "/responses", {"model": 配置.get("模型名", ""), "input": 消息, "stream": False}
+        令牌键 = "max_output_tokens"
+        if 响应格式:
+            载荷["text"] = {"format": 响应格式}
     elif 协议 == "chat_completions":
         路径, 载荷 = "/chat/completions", {"model": 配置.get("模型名", ""), "messages": 消息, "stream": False}
+        令牌键 = "max_tokens"
+        if 响应格式:
+            载荷["response_format"] = 响应格式
     else:
         return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+    if 温度 is not None:
+        载荷["temperature"] = 温度
+    if 最大令牌数 is not None:
+        载荷[令牌键] = 最大令牌数
+    if 工具:
+        载荷["tools"] = 工具
     状态码, 数据, 说明 = _请求(配置, 路径, 载荷, 附加请求头)
     if 状态码 >= 400 or not 数据:
         return _错误响应(状态码, 说明)
-    回复 = _文本(数据)
-    if not 回复:
-        return _失败("模型调用失败", "模型响应没有可用文本")
-    return 结果.成功结果({"回复": 回复, "用量": 数据.get("usage") or {}})
+    归一 = _归一化响应(数据)
+    回复 = str(归一.get("内容") or _文本(数据) or "")
+    if not 回复 and not 归一.get("工具调用"):
+        return _失败("模型调用失败", "模型响应既没有可用文本也没有工具调用")
+    return 结果.成功结果({
+        "回复": 回复, "用量": 数据.get("usage") or {},
+        "内容": 归一.get("内容", ""), "思考": 归一.get("思考", ""),
+        "工具调用": 归一.get("工具调用", []),
+        "结束原因": str(归一.get("结束原因") or "stop"),
+    })
 
 
 def 调用嵌入(*, 配置: dict[str, Any], 文本: str) -> 结果:
