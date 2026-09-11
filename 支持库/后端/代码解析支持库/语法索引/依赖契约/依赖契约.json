@@ -1,0 +1,9 @@
+{
+  "第三方": [
+    "tree-sitter",
+    "tree-sitter-typescript"
+  ],
+  "系统": [
+    "Python 标准库"
+  ]
+}
