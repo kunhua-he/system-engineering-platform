@@ -6,12 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from 开发工具.组件规范.完整性摘要 import (
-    生成完整性摘要,
-    扫描正式包,
-    摘要文件名,
-)
-
+# 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
 系统根 = Path(__file__).resolve()
 for _祖先 in 系统根.parents:
     if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
@@ -19,6 +14,12 @@ for _祖先 in 系统根.parents:
         break
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
+
+from 开发工具.组件规范.完整性摘要 import (
+    生成完整性摘要,
+    扫描正式包,
+    摘要文件名,
+)
 
 
 def 生成单包摘要(包目录: Path) -> dict[str, object]:

@@ -6,7 +6,8 @@
 旧版本引用保护生效/测试全部通过/语法编译全部通过。
 任一强制门禁失败，发布状态必须为失败或阻断。
 
-用法：python3.14 开发工具/开发工具/发布门禁/运行发布门禁.py [--包目录 路径] [--允许真实进程]
+用法：python3.14 -m 开发工具.发布门禁.运行发布门禁 [--包目录 路径] [--允许真实进程]
+      （直接执行 python3.14 开发工具/发布门禁/运行发布门禁.py 亦可）
 """
 
 from __future__ import annotations
@@ -27,6 +28,16 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# 项目根入 sys.path：本脚本既可 `-m 开发工具.发布门禁.运行发布门禁`，也可直接
+# `python3.14 开发工具/发布门禁/运行发布门禁.py`（直接执行时项目根不在 path）。
+系统根 = Path(__file__).resolve()
+for _祖先 in 系统根.parents:
+    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "开发工具").is_dir():
+        系统根 = _祖先
+        break
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
 
 from 公共契约.运行时.有界IO import 受限读取
 
@@ -52,13 +63,6 @@ def _创建门禁临时目录(*, 前缀: str) -> Path:
     _门禁临时目录表.add(路径)
     return 路径
 
-系统根 = Path(__file__).resolve()
-for _祖先 in 系统根.parents:
-    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "开发工具").is_dir():
-        系统根 = _祖先
-        break
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
 
 正式源码目录名表 = (
     "公共契约", "平台控制面", "启动监督器", "运行核心", "前端核心", "后端核心",

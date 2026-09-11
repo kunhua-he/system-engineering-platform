@@ -13,13 +13,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
-
+# 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
 根目录 = Path(__file__).resolve().parents[2]
 默认文件 = 根目录 / "工程缓存" / "轻代码前端编辑器" / "页面.json"
 内部工程请求路径 = "/内部/工程请求"
 if str(根目录) not in sys.path:
     sys.path.insert(0, str(根目录))
+
+from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
+
 from 开发工具.轻代码前端编辑器.页面模型 import 校验页面
 
 页面 = r'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>轻代码前端 IDE</title>

@@ -26,6 +26,11 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
+# 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
+_项目根 = Path(__file__).resolve().parents[1]
+if str(_项目根) not in sys.path:
+    sys.path.insert(0, str(_项目根))
+
 from 开发工具.开发入口 import 搜索能力, 查看契约
 from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
 from 公共契约.运行时.端口策略 import 校验应用监听端口

@@ -12,8 +12,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+# 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
+_项目根 = Path(__file__).resolve().parents[2]
+if str(_项目根) not in sys.path:
+    sys.path.insert(0, str(_项目根))
 
 from 公共契约.基础类型.结果类型 import 结果
 from 开发工具.组件规范.完整性摘要 import 生成完整性摘要

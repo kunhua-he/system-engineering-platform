@@ -1,6 +1,22 @@
-"""HTML 黑盒验证器 CLI 唯一入口。"""
+"""HTML 黑盒验证器 CLI 唯一入口。
+
+用法：python3.14 -m 开发工具.HTML验证.验证器 [--制品 目录 | --制品指针 当前.json]
+      （直接执行 python3.14 开发工具/HTML验证/验证器.py 亦可）
+"""
 from __future__ import annotations
 import argparse
+import sys
+from pathlib import Path
+
+# 项目根入 sys.path：本脚本既可 `-m`，也可直接执行（直接执行时项目根不在 path）。
+系统根 = Path(__file__).resolve()
+for _祖先 in 系统根.parents:
+    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "开发工具").is_dir():
+        系统根 = _祖先
+        break
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
+
 from 开发工具.HTML验证.常量 import (默认并发, 默认超时秒, 动态端口, 固定端口池)
 from 开发工具.HTML验证.验证应用 import 主函数
 
