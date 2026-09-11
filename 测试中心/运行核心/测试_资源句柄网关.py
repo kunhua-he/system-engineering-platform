@@ -111,6 +111,61 @@ class 资源句柄网关测试(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.后端.资源句柄服务.关闭(句柄)
 
+    def _句柄请求(self, 操作: str, 句柄: int, **额外) -> dict:
+        请求 = {"操作": 操作, "句柄": 句柄, "项目id": "项目甲", "用户id": "用户甲",
+                "权限范围": ["调用"] if 操作 != "资源状态" else ["查询"]}
+        请求.update(额外)
+        return self.网关.处理(网关请求(**请求)).转字典()
+
+    def test_不存在句柄的资源三操作报句柄无效(self) -> None:
+        """句柄缺失属句柄域：三操作都报「句柄无效」，不再误报「能力不存在」。"""
+        for 操作 in ("资源状态", "资源续租", "资源关闭"):
+            with self.subTest(操作=操作):
+                结果 = self._句柄请求(操作, 999999)
+                self.assertFalse(结果["成功"])
+                self.assertEqual(结果["错误码"], "句柄无效")
+                self.assertEqual(结果["错误说明"], "句柄不存在或格式错误")
+
+    def test_资源续租已失效句柄报句柄已过期(self) -> None:
+        返回 = self.网关.处理(网关请求(
+            操作="调用能力", 能力id="测试.创建批次", 获取句柄=True,
+            项目id="项目甲", 用户id="用户甲", 权限范围=["调用"],
+        )).转字典()
+        self.assertTrue(返回["成功"])
+        句柄 = 返回["句柄"]
+        关闭 = self._句柄请求("资源关闭", 句柄)
+        self.assertTrue(关闭["成功"])
+
+        续租 = self._句柄请求("资源续租", 句柄)
+        self.assertFalse(续租["成功"])
+        self.assertEqual(续租["错误码"], "句柄已过期")
+        self.assertEqual(续租["错误说明"], "句柄已超时/释放/回收，不能复活")
+
+    def test_资源关闭已失效句柄仍幂等成功(self) -> None:
+        返回 = self.网关.处理(网关请求(
+            操作="调用能力", 能力id="测试.创建批次", 获取句柄=True,
+            项目id="项目甲", 用户id="用户甲", 权限范围=["调用"],
+        )).转字典()
+        self.assertTrue(返回["成功"])
+        句柄 = 返回["句柄"]
+        self.assertTrue(self._句柄请求("资源关闭", 句柄)["成功"])
+        再次 = self._句柄请求("资源关闭", 句柄)
+        self.assertTrue(再次["成功"], 再次)
+        self.assertEqual(再次["值"]["状态"], "已失效")
+
+    def test_资源续租跨项目仍报权限不足(self) -> None:
+        返回 = self.网关.处理(网关请求(
+            操作="调用能力", 能力id="测试.创建批次", 获取句柄=True,
+            项目id="项目甲", 用户id="用户甲", 权限范围=["调用"],
+        )).转字典()
+        self.assertTrue(返回["成功"])
+        续租 = self.网关.处理(网关请求(
+            操作="资源续租", 句柄=返回["句柄"], 项目id="项目乙", 用户id="用户甲",
+            权限范围=["调用"],
+        )).转字典()
+        self.assertFalse(续租["成功"])
+        self.assertEqual(续租["错误码"], "权限不足")
+
 
 if __name__ == "__main__":
     unittest.main()
