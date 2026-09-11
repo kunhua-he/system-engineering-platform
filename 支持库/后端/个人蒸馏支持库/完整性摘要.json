@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "35643b05a42151a36415a90cb38eb6b882829f9428538abf081ad7d0b970b0fb"
+      "sha256": "e69ac5e20c3dbc7ceb4089d53d7ab1fd93a2a2d032118519dc7cb81746f6aef6"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -20,12 +20,8 @@
       "sha256": "24700bbf8bd54284fc1b663932dd6c864f17a393b81fc6962ecfc87816e9cf0a"
     },
     {
-      "路径": "完整性摘要.json",
-      "sha256": "d3e5977f0e5a1178786e1e338ef76304c0da9aedbb9c50821a61f1d2c43d753e"
-    },
-    {
       "路径": "实现/个人蒸馏.py",
-      "sha256": "ef3ed4f22bd6a2febd749d9a63d95075bf5683272c7e8f3f3634c1d6524b7cd0"
+      "sha256": "69c827ff3814218a255191dc78f04e64b0ef5a3e7faa06a962a151b3f83af1a2"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -36,16 +32,20 @@
       "sha256": "1439008d5c222ecfbc8976e0769ed53b67a0ba0cf56920f790ef3d367fbd09c8"
     },
     {
+      "路径": "能力定义.json",
+      "sha256": "19847f807b4905d1812438704fcc29cb80b9e627b1e8f9f9892237e74f3e6019"
+    },
+    {
       "路径": "能力数据/Agent查询数据.json",
       "sha256": "3eefb2ebf33ff76a4297c1f74e553178aab760530a924d6edc07cf52e2b59e4d"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "e88889c4859fffa7d46b90aa0e4e1a2c3a80424a0a86cb71e2b7ac3ff607b886"
+      "sha256": "b95354b65ea5827e89ddb8ada97ab712b9392a36839e76950a678839fd7e89f7"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "4dc302f060fe0c89bc9da0ee22910bcfe10c70838a194a5187ec8619f52c55b0"
+      "sha256": "cf437bb73b1285bc6bfa4dda15038c9d3985b143b558e72c5c4a0c3dce10be9a"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -60,8 +60,12 @@
       "sha256": "edb275678e1c908b2c22538beff086e38fdac973ef691a39c59ffa20961d3a33"
     },
     {
+      "路径": "验证场景.json",
+      "sha256": "c295625e31fd4691e883871ca98d813a78fa4d602816f579e9527e674f4e9ba6"
+    },
+    {
       "路径": "验证场景引用.json",
-      "sha256": "fb2beadd825de0689d599f0fe834e255ce2be45cd836d4024f7616f60f66123a"
+      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
     }
   ]
 }

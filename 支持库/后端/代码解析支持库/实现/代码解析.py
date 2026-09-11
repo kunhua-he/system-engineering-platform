@@ -116,10 +116,10 @@ class 解析器基类:
     跳过标签集合: ClassVar[set[str]] = {"noscript"}
 
     def __init__(self, 规则文件路径: Path | str | None = None) -> None:
+        # 允许无规则路径构造：按规则切块 等能力直接接收 规则 参数，无需规则文件。
+        # 真正依赖规则文件的入口（加载切块规则）在使用时自行校验。
         if 规则文件路径 is not None:
             self.规则文件路径 = Path(规则文件路径)
-        if self.规则文件路径 is None:
-            raise 代码解析错误("未配置切块规则文件路径")
         self._规则缓存: dict | None = None
         self._规则修改时间: float | None = None
 
@@ -127,6 +127,8 @@ class 解析器基类:
 
     def 加载切块规则(self, 强制重载: bool = False) -> dict:
         """读切块规则；默认按 mtime 缓存，强制重载=True 强制重载。"""
+        if self.规则文件路径 is None:
+            raise 代码解析错误("未配置切块规则文件路径")
         if not self.规则文件路径.exists():
             raise 代码解析错误(f"缺少切块规则: {self.规则文件路径}")
         修改时间 = self.规则文件路径.stat().st_mtime
@@ -574,7 +576,7 @@ class 解析器基类:
             "parser": self.模块键,
             "格式化": 标准化扩展名,
             "language": 规则列表.get("language", 标准化扩展名),
-            "rules_path": str(self.规则文件路径.name),
+            "rules_path": str(self.规则文件路径.name) if self.规则文件路径 else "",
             "block_count": len(块列表),
         })
         return {

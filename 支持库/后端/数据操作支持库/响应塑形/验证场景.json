@@ -1,0 +1,101 @@
+{
+  "契约版本": "验证场景/v1",
+  "验证场景": [
+    {
+      "场景id": "响应塑形.裁剪响应正向链",
+      "前置步骤": [],
+      "目标步骤": [
+        {
+          "步骤id": "裁剪响应原样返回",
+          "能力id": "数据操作支持库.响应塑形.裁剪响应",
+          "参数": {
+            "载荷": {
+              "a": 1,
+              "data": [
+                1,
+                2,
+                3
+              ]
+            }
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值类型": "字典型",
+              "关键值": {
+                "已塑形": false,
+                "已截断": false,
+                "选择路径": null,
+                "省略计数": {},
+                "警告列表": []
+              }
+            }
+          }
+        },
+        {
+          "步骤id": "裁剪响应按路径选择条目",
+          "能力id": "数据操作支持库.响应塑形.裁剪响应",
+          "参数": {
+            "载荷": {
+              "status_code": 200,
+              "data": {
+                "items": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ]
+              }
+            },
+            "选择路径": "data.items",
+            "最大条目数": 2
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值类型": "字典型",
+              "关键值": {
+                "已塑形": true,
+                "已截断": true,
+                "选择路径": "data.items",
+                "省略计数": {
+                  "data.items": 3
+                },
+                "塑形结果.status_code": 200,
+                "塑形结果.data.0": 1,
+                "塑形结果.data.1": 2
+              }
+            }
+          }
+        },
+        {
+          "步骤id": "裁剪响应按字节上限",
+          "能力id": "数据操作支持库.响应塑形.裁剪响应",
+          "参数": {
+            "载荷": {
+              "data": {
+                "文本": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              }
+            },
+            "最大字节数": 120
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值类型": "字典型",
+              "关键值": {
+                "已塑形": true,
+                "已截断": true
+              }
+            }
+          }
+        }
+      ],
+      "清理步骤": []
+    }
+  ]
+}

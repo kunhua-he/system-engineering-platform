@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 摘要文件名 = "完整性摘要.json"
 排除目录名 = {"__pycache__", "工程缓存"}
@@ -137,13 +137,17 @@ def 扫描正式包(系统根: Path) -> list[Path]:
     return sorted(包目录集合, key=lambda 路径: 路径.relative_to(系统根).as_posix())
 
 
-def 迁移旧格式摘要(系统根: Path) -> list[Path]:
+def 迁移旧格式摘要(系统根: Path, 排除路径: Iterable[Path] = ()) -> list[Path]:
     """扫描全仓正式包，旧格式（缺/空 文件清单）或内容漂移用唯一生成器重算。
 
+    排除路径内的包不参与重算，供并发写盘期间避让。
     返回重算写入的摘要路径列表。
     """
+    排除集 = {Path(路径).resolve() for 路径 in 排除路径}
     重算列表: list[Path] = []
     for 包目录 in 扫描正式包(系统根):
+        if 包目录.resolve() in 排除集:
+            continue
         通过, _ = 校验完整性摘要(包目录)
         if 通过:
             continue

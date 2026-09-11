@@ -56,7 +56,9 @@ def _校验上下文(上下文: Any) -> dict[str, Any]:
 def 查询上下文(主体标识: str, 岗位标识: str, 场景: str | None, as_of: datetime, known_at: datetime) -> dict[str, Any]:
     参数 = 构建上下文请求参数(主体标识=主体标识, 岗位标识=岗位标识, 场景=场景, as_of=as_of, known_at=known_at)
     查询串 = urllib.parse.urlencode(参数)
-    url = f"{_地址()}/接口/v1/人格/当前?{查询串}"
+    # 路径含中文，必须单独编码；urlencode 只处理 query 不处理 path
+    接口路径 = urllib.parse.quote("/接口/v1/人格/当前")
+    url = f"{_地址()}{接口路径}?{查询串}"
     try:
         with urllib.request.urlopen(url, timeout=8) as resp:
             状态码 = resp.status

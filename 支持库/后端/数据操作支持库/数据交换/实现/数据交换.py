@@ -78,8 +78,8 @@ def 反序列化CSV(文本: str = None, 分隔符: str = "", 严格模式: bool 
 def 解析YAML(文本: str = None):
     """把 YAML 文本解析为数据（经适配层 YAML提供者）。"""
     try:
-        from 支持库.适配层.YAML提供者.实现.提供者 import 解析YAML as _解析YAML
-        from 支持库.适配层.YAML提供者.实现.提供者 import YAML解析错误
+        from 支持库.适配层.YAML提供者 import 解析YAML as _解析YAML
+        from 支持库.适配层.YAML提供者 import YAML解析错误
     except ImportError as e:
         return _失败("解析失败", f"PyYAML 不可用: {e}")
     if 文本 is None:
@@ -97,7 +97,7 @@ def 解析YAML(文本: str = None):
 def 序列化YAML(数据: Any = None):
     """把数据序列化为 YAML 文本（经适配层 YAML提供者）。"""
     try:
-        from 支持库.适配层.YAML提供者.实现.提供者 import 序列化YAML as _序列化YAML
+        from 支持库.适配层.YAML提供者 import 序列化YAML as _序列化YAML
     except ImportError as e:
         return _失败("序列化失败", f"PyYAML 不可用: {e}")
     try:
