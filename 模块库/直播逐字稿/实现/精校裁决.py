@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -171,6 +172,17 @@ def 取错误说明(结果对象) -> str:
     return str(getattr(结果对象, "错误说明", "") or "")
 
 
+def 上游瞬时错误(段落: dict) -> bool:
+    """该窗口失败是否属于上游瞬时错误（503/超时/限流/过载）——这类重试即可自愈。
+
+    实测某长场次 69 个裁决窗口失败 18 个，全部是「模型 HTTP 返回 503」与
+    「LLM HTTP调用失败: timed out」，都属于上游瞬时过载，退避重试即可恢复。
+    """
+    错误 = str((段落 or {}).get("错误说明") or "")
+    return any(关键字 in 错误 for 关键字 in
+             ("503", "502", "429", "timed out", "超时", "限流", "过载", "繁忙"))
+
+
 def 句柄失效(段落: dict) -> bool:
     """该窗口失败是否由句柄失效引起（句柄被回收，或网关重启后句柄表变化）。
 
@@ -216,9 +228,12 @@ def 裁决窗口列表(窗口列表: list[dict], 提示词: str, 调用能力,
     def 跑一窗(窗口: dict) -> dict:
         段落 = 裁决窗口(窗口, 提示词, 句柄盒["当前"], 调用能力, 术语表, 前置提示词=前置提示词,
                       输出结构=输出结构, 附加要求=附加要求)
-        for _ in range(重试上限):
+        for 试次 in range(重试上限):
             if 段落.get("状态") == "完成":
                 break
+            # 上游 503/超时多为瞬时过载：退避后再试，避免一口气打满上游
+            退避秒 = min(8.0, 2.0 * (试次 + 1))
+            time.sleep(退避秒 if 上游瞬时错误(段落) else 0.2)
             段落 = 裁决窗口(窗口, 提示词, 句柄盒["当前"], 调用能力, 术语表, 前置提示词=前置提示词,
                           输出结构=输出结构, 附加要求=附加要求)
         return 段落

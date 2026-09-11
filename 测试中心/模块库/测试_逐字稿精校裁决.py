@@ -12,7 +12,7 @@ if str(项目根) not in sys.path:
     sys.path.insert(0, str(项目根))
 
 from 公共契约.基础类型.结果类型 import 结果
-from 模块库.直播逐字稿.实现.精校裁决 import 渲染提示词, 裁决窗口列表
+from 模块库.直播逐字稿.实现.精校裁决 import 上游瞬时错误, 渲染提示词, 裁决窗口列表
 
 
 class 假调用能力:
@@ -115,6 +115,17 @@ class 测试裁决窗口列表(unittest.TestCase):
                         "重连后所有失败窗口都应补跑成功")
         self.assertGreaterEqual(假.连接次数, 2, "应当重新连接拿新句柄")
         self.assertFalse(出["借用句柄"], "重连出来的句柄由底座释放")
+
+    def test_上游瞬时错误可识别且重试自愈(self):
+        """503/超时属上游瞬时过载：应识别出来并重试，不该直接判整场失败。"""
+        self.assertTrue(上游瞬时错误({"错误说明": "前置精校失败: 模型 HTTP 返回 503"}))
+        self.assertTrue(上游瞬时错误({"错误说明": "模型调用失败: LLM HTTP调用失败: timed out"}))
+        self.assertFalse(上游瞬时错误({"错误说明": "模式缺少裁决提示词"}))
+        假 = 假调用能力(失败次数=1)
+        出 = 裁决窗口列表([造窗(1)], "提示词", 假,
+                     {"模型": "假模型", "部署形态": "云端", "url": "http://x", "api_key": "k"},
+                     重试次数=2, 并发数=1)
+        self.assertEqual(出["段落列表"][0]["状态"], "完成", "瞬时错误重试后应完成")
 
     def test_自带配置时连接后必释放(self):
         假 = 假调用能力()
