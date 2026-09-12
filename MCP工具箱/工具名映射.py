@@ -63,5 +63,9 @@
     # 验证命令
     "校验验证命令": "validate_verification_command",
     "判定验证结果": "judge_verification_result",
+    # 后台作业
+    "提交作业": "tool_job_submit",
+    "查询作业": "tool_job_query",
+    "取消作业": "tool_job_cancel",
 }
 协议名到中文名 = {协议名: 中文名 for 中文名, 协议名 in 中文名到协议名.items()}

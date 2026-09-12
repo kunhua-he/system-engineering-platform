@@ -51,6 +51,7 @@ from .验证门禁 import (
 )
 from .角色权限 import 获取角色指南, 网关实例名, 网关角色名, 网关说明
 from .热重载 import 扫描并重载工具模块
+from .作业系统 import 作业系统, 是否终态
 
 项目根目录 = Path(__file__).resolve().parent.parent
 记忆目录 = 项目根目录 / "开发文档" / "项目记忆"
@@ -63,6 +64,8 @@ from .热重载 import 扫描并重载工具模块
 测试资源清单目录 = 项目根目录 / "工程缓存" / "测试资源清单"
 协作状态目录 = 项目根目录 / "工程缓存" / "协作状态"
 平台控制面目录 = 项目根目录 / "工程缓存" / "平台控制面"
+# 后台作业：长工具提交即返回，在线程池跑，不再阻塞事件循环（详见 作业系统.py）。
+作业系统实例 = 作业系统(存储目录=工程缓存目录 / "作业状态")
 服务 = Server("system_engineering_toolkit")
 # 单网关（无角色）模式：8766 单一对外网关，不再读取角色环境变量。
 当前任务名称 = ""
@@ -445,6 +448,9 @@ _工具定义列表 = [
         Tool(name="apply_file_patch", description="写入通道：经底座能力「文本补丁.应用精确替换」改文件，写前带「预期文件摘要」乐观锁，且文件被别的开工id占租约时拒绝。写入=false 只预览不落盘。", inputSchema={"type": "object", "properties": {"文件路径": {"type": "string"}, "旧文本": {"type": "string"}, "新文本": {"type": "string"}, "预期文件摘要": {"type": "string"}, "预期旧文本摘要": {"type": "string"}, "起始行": {"type": "integer"}, "结束行": {"type": "integer"}, "写入": {"type": "boolean", "default": True}, "开工id": {"type": "string"}}, "required": ["文件路径", "旧文本", "新文本"]}),
         Tool(name="validate_verification_command", description="校验验证命令：受控模块验证命令白名单校验（仅允许 unittest 模块入口，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
         Tool(name="judge_verification_result", description="判定验证结果：判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}}, "required": ["退出码", "标准输出"]}),
+    Tool(name="tool_job_submit", description="提交作业：把长工具（发布门禁、合规扫描、跑测试等）丢到后台线程执行并立即返回作业id，不再堵住管理端事件循环、不拖慢其它会话。", inputSchema={"type": "object", "properties": {"工具": {"type": "string"}, "参数": {"type": "object"}, "work_id": {"type": "string"}}, "required": ["工具"]}),
+    Tool(name="tool_job_query", description="查询作业：按作业id查状态、错误、结果与已运行秒数；不给作业id则列出最近作业（不含结果全文）。", inputSchema={"type": "object", "properties": {"作业id": {"type": "string"}, "数量": {"type": "integer", "minimum": 1, "maximum": 100}}}),
+    Tool(name="tool_job_cancel", description="取消作业：未开始的直接取消；运行中的只能标记取消并丢弃产出（阻塞中的子进程无法中断）。", inputSchema={"type": "object", "properties": {"作业id": {"type": "string"}}, "required": ["作业id"]}),
     Tool(name="tool_catalog", description="工具目录：按 分类/关键词 返回全量工具清单（中文名+协议名+描述+分类+当前实例可调用性），用于发现未直接注入的工具。", inputSchema={"type": "object", "properties": {"分类": {"type": "string"}, "关键词": {"type": "string"}}}),
     Tool(name="reload_tool_modules", description="热重载工具模块：比对 MCP工具箱 下工具源码时间戳，重载变化的模块；改工具实现后免重启进程即时生效（新增/删除工具与参数表变更仍需重启）。", inputSchema={"type": "object", "properties": {}}),
 ]
@@ -456,7 +462,7 @@ async def 工具列表() -> list[Tool]:
     return list(_工具定义列表)
 
 
-# 工具目录分类：按 14 个模块域划分，覆盖全部全量工具。
+# 工具目录分类：按 15 个模块域划分，覆盖全部全量工具。
 _工具分类表 = {
     "基础": ["project_context", "role_profile", "mcp_feedback", "feedback_status",
              "feedback_review", "tool_catalog", "reload_tool_modules"],
@@ -476,6 +482,7 @@ _工具分类表 = {
     "临时上下文": ["temporary_context"],
     "任务观测": ["task_observation"],
     "测试资源": ["test_resource"],
+    "作业": ["tool_job_submit", "tool_job_query", "tool_job_cancel"],
 }
 
 
@@ -487,6 +494,69 @@ def _结果转字典(结果: Any) -> dict[str, Any]:
         "消息": 结果.消息,
         "数据": 结果.数据,
     }
+
+
+# ── 后台作业（长工具提交即返回，线程池执行，详见 作业系统.py）────────────
+
+def _作业执行(工具名: str, 参数: dict[str, Any]) -> dict[str, Any]:
+    """作业线程内的执行器：复用同一套工具分发，把 MCP 文本结果还原成字典。
+
+    线程内新建独立事件循环（asyncio.run），不复用管理端主循环——主循环正被别的
+    同步长工具占着时，作业若挂在同一循环上会一起堵死，那就白干了。
+    工具自身已把「参数无效」等错误转成字典返回，此处兜的只是执行器级异常。
+    """
+    try:
+        内容 = asyncio.run(调用工具(工具名, dict(参数)))
+    except Exception as 错误:  # noqa: BLE001 —— 作业线程必须兜住一切，不能拖垮线程池
+        return {"成功": False, "错误码": type(错误).__name__, "错误说明": str(错误)}
+    if not 内容:
+        return {"成功": False, "错误码": "空结果", "错误说明": f"工具 {工具名} 未返回内容"}
+    文本 = getattr(内容[0], "text", "")
+    try:
+        return json.loads(文本)
+    except (json.JSONDecodeError, TypeError):
+        return {"成功": True, "原始输出": 文本}
+
+
+def _提交作业(参数: dict[str, Any]) -> dict[str, Any]:
+    子参数 = 参数.get("参数") or {}
+    if not isinstance(子参数, dict):
+        raise ValueError("参数必须是对象")
+    快照 = 作业系统实例.提交(
+        str(参数.get("工具", "")), 子参数,
+        开工id=str(参数.get("work_id") or 当前开工id),
+    )
+    return {
+        "成功": True,
+        "作业": 快照,
+        "提示": "长活已转入后台；用 tool_job_query 轮询状态，tool_job_cancel 尽力取消。",
+    }
+
+
+def _查询作业(参数: dict[str, Any]) -> dict[str, Any]:
+    作业id = str(参数.get("作业id", "")).strip()
+    if not 作业id:
+        return {
+            "成功": True,
+            "作业列表": [作业系统实例.视图(项, 含结果=False)
+                        for 项 in 作业系统实例.列出(int(参数.get("数量", 20) or 20))],
+        }
+    对象 = 作业系统实例.查询(作业id)
+    数据 = {"成功": True, "作业": 作业系统实例.视图(对象)}
+    if not 是否终态(对象.状态):
+        数据["提示"] = "作业仍在进行，稍后再查"
+    return 数据
+
+
+def _取消作业(参数: dict[str, Any]) -> dict[str, Any]:
+    作业id = str(参数.get("作业id", "")).strip()
+    if not 作业id:
+        raise ValueError("作业id必填")
+    成功, 说明 = 作业系统实例.取消(作业id)
+    return {"成功": 成功, "作业id": 作业id, "说明": 说明}
+
+
+作业系统实例.设置执行器(_作业执行)
 
 
 def _工具目录(分类: str = "", 关键词: str = "") -> dict[str, Any]:
@@ -866,6 +936,12 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                     }
             elif not 判定.get("成功"):
                 数据["判定"] = 判定
+        elif 名称 == "tool_job_submit":
+            数据 = _提交作业(参数)
+        elif 名称 == "tool_job_query":
+            数据 = _查询作业(参数)
+        elif 名称 == "tool_job_cancel":
+            数据 = _取消作业(参数)
         else:
             raise ValueError(f"未知工具：{名称}")
     except (KeyError, ValueError, TypeError) as 异常:

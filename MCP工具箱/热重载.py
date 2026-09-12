@@ -20,10 +20,13 @@ from __future__ import annotations
 import ast
 import importlib
 import sys
+import threading
 from pathlib import Path
 
 # 模块名 → 上次成功重载时的源码纳秒时间戳；失败不更新，故坏源码不会永久卡死后续重载。
 _快照: dict[str, int] = {}
+# 后台作业线程与事件循环会并发进入本模块，重载同一模块与回填全局必须串行。
+_重载锁 = threading.RLock()
 
 
 def 依赖顺序(模块根: Path) -> list[str]:
@@ -69,6 +72,16 @@ def 依赖顺序(模块根: Path) -> list[str]:
 
 
 def 扫描并重载工具模块(
+    模块根: Path,
+    目标全局: dict,
+    排除: set[str] | None = None,
+) -> list[str]:
+    """串行包装：后台作业线程与事件循环会并发调用，重载与回填必须互斥。"""
+    with _重载锁:
+        return _扫描并重载已加锁(模块根, 目标全局, 排除)
+
+
+def _扫描并重载已加锁(
     模块根: Path,
     目标全局: dict,
     排除: set[str] | None = None,
