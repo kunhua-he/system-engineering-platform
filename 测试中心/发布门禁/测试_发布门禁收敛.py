@@ -289,5 +289,36 @@ class Test发布门禁收敛(unittest.TestCase):
             shutil.rmtree(临时根, ignore_errors=True)
 
 
+    def test_英文命名扫描放行AST访问器协议(self) -> None:
+        """AST 回调族（visit_*/generic_visit）必须放行，且真实英文业务名仍被拦住。
+
+        正反对照缺一不可：只断言「visit_ 不报」在门禁整个失效（扫描为空）时也会通过；
+        必须同时断言同文件里的普通英文名仍被检出。
+        """
+        from 开发工具.发布门禁 import 运行发布门禁 as 门禁
+        临时根 = Path(tempfile.mkdtemp(prefix="门禁AST协议_"))
+        try:
+            (临时根 / "支持库").mkdir()
+            (临时根 / "支持库" / "访问器.py").write_text(
+                "class 访问器:\n"
+                "    def generic_visit(self, 节点):\n"
+                "        return None\n"
+                "    def visit_FunctionDef(self, 节点):\n"
+                "        return None\n"
+                "    def visit_ClassDef(self, 节点):\n"
+                "        return None\n"
+                "    def handle_stuff(self, 节点):\n"
+                "        return None\n",
+                encoding="utf-8")
+            with patch.object(门禁, "系统根", 临时根):
+                结果 = 门禁._扫描英文函数命名()
+            self.assertNotIn("generic_visit", 结果)
+            self.assertNotIn("visit_FunctionDef", 结果)
+            self.assertNotIn("visit_ClassDef", 结果)
+            self.assertIn("handle_stuff", 结果)
+        finally:
+            shutil.rmtree(临时根, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

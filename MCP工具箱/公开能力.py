@@ -101,11 +101,26 @@ def _验证状态(包id: str, 验证场景: dict[str, Any] | None,
                验证历史表: list[dict[str, Any]]) -> str:
     段: list[str] = []
     段.append("有验证场景引用" if isinstance(验证场景, dict) else "无验证场景引用")
-    有成功记录 = bool(包id) and any(
-        记录.get("退出码") == 0 and 包id in json.dumps(记录, ensure_ascii=False)
-        for 记录 in 验证历史表
+    # 验证历史记录的 名称/命令 里出现的是**测试模块名与中文标题**，从不含点号包id
+    # （实测 262 条记录 × 120 个包，按包id 子串匹配恒 0 命中）→ 本字段过去恒报
+    # 「无验证成功记录」。改为按 包id 或其末段（即包中文名，正是测试标题里的词）匹配，
+    # 并在文案里写明本次命中的令牌，便于核对，不冒充强绑定。
+    令牌表 = [令牌 for 令牌 in (str(包id).strip(), str(包id).split(".")[-1].strip()) if 令牌]
+    命中令牌 = ""
+    命中文案 = ""
+    for 记录 in 验证历史表:
+        if 记录.get("退出码") != 0 or (记录.get("判定") or {}).get("成功") is False:
+            continue
+        文本 = json.dumps(记录, ensure_ascii=False)
+        命中 = next((令牌 for 令牌 in 令牌表 if 令牌 in 文本), "")
+        if 命中:
+            命中令牌 = 命中
+            命中文案 = str(记录.get("名称", "")).strip()
+            break
+    段.append(
+        f"有验证成功记录（按「{命中令牌}」匹配：{命中文案 or '未记名称'}）"
+        if 命中令牌 else "无验证成功记录"
     )
-    段.append("有验证成功记录" if 有成功记录 else "无验证成功记录")
     return "；".join(段)
 
 

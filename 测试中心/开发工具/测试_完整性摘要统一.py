@@ -145,6 +145,28 @@ class Test校验完整性摘要(unittest.TestCase):
         self.assertFalse(通过)
         self.assertTrue(any("摘要算法不合法" in 问题 for 问题 in 问题列表))
 
+    def test_摘要算法缺省拒绝(self):
+        """缺 摘要算法 字段不得被当成 sha256 放行（唯一格式必须显式声明）。"""
+        目录, _ = 建临时包()
+        摘要 = 生成完整性摘要(目录, 包id="测试.包", 版本="1.0.0")
+        摘要.pop("摘要算法")
+        (目录 / "完整性摘要.json").write_text(
+            json.dumps(摘要, ensure_ascii=False), encoding="utf-8")
+        通过, 问题列表 = 校验完整性摘要(目录)
+        self.assertFalse(通过)
+        self.assertTrue(any("摘要算法不合法" in 问题 for 问题 in 问题列表))
+
+    def test_截断摘要拒绝(self):
+        """截断到 16 位的 sha256 不得被 startswith 当成「一致」。"""
+        目录, _ = 建临时包()
+        摘要 = 生成完整性摘要(目录, 包id="测试.包", 版本="1.0.0")
+        摘要["文件清单"][0]["sha256"] = 摘要["文件清单"][0]["sha256"][:16]
+        (目录 / "完整性摘要.json").write_text(
+            json.dumps(摘要, ensure_ascii=False), encoding="utf-8")
+        通过, 问题列表 = 校验完整性摘要(目录)
+        self.assertFalse(通过)
+        self.assertTrue(any("64 位十六进制" in 问题 for 问题 in 问题列表))
+
     def test_包id与声明不一致拒绝(self):
         目录, _ = 建临时包()
         摘要 = 生成完整性摘要(目录, 包id="测试.包", 版本="1.0.0")
