@@ -1,7 +1,11 @@
-"""第二十九阶段 G3：发布门禁权威合规接入收敛测试。
+"""第二十九阶段 G3：权威合规收敛测试（组件合规 / 逐包合规器 / MCP合规 三方口径一致）。
 
-验证：发布门禁逐包真实调用唯一权威合规验证器（13/13 证据）；
-反向破坏（删除任一要素）→ MCP合规/组件合规/发布门禁 结论一致且失败。
+覆盖：齐全包三方一致通过；反向破坏（删除任一要素）三方结论一致且失败；
+以及发布门禁内部三个私有判据（监听端口快照、工程缓存源码扫描、英文命名扫描）。
+
+注意：发布门禁自 2026-08-29 裁决起不再调用 执行逐包权威合规（逐包13/13 已从发布链移除，
+发布只认 HTML 黑盒验证）。本文件因此只证明“合规器与 MCP 合规两边口径一致”，
+不能当作“门禁仍在做逐包合规”的证据；门禁侧证据以 运行发布门禁 的检查项为准。
 """
 
 from __future__ import annotations
@@ -111,7 +115,7 @@ def _MCP合规(临时根: Path, 模块名: str = "破坏模块") -> dict:
 
 
 class Test发布门禁收敛(unittest.TestCase):
-    """发布门禁逐包权威合规接入与反向破坏一致性。"""
+    """合规器与 MCP 合规口径一致，及门禁内部私有判据（非“门禁已接入逐包合规”）。"""
 
     def test_监听端口快照容忍非UTF8系统输出(self) -> None:
         """系统进程字段可能含非 UTF-8 字节，门禁不能因此误报资源残留。"""
@@ -127,7 +131,7 @@ class Test发布门禁收敛(unittest.TestCase):
             self.assertEqual(门禁._监听端口快照(), {"127.0.0.1:45678"})
 
     def test_齐全包_合规_MCP_门禁三通过(self) -> None:
-        """齐全正式包：组件合规 13/13、MCP 合规成功、门禁逐包 13/13。"""
+        """齐全正式包：组件合规 13/13、MCP 合规成功、逐包合规器 13/13。"""
         临时根, 模块目录 = 建临时模块库()
         try:
             报告 = 组件合规(模块目录).执行()
@@ -143,23 +147,23 @@ class Test发布门禁收敛(unittest.TestCase):
             shutil.rmtree(临时根, ignore_errors=True)
 
     def test_删除实现_三者一致失败(self) -> None:
-        """删除 实现/实现.py → 组件合规/门禁/MCP 结论一致且失败。"""
+        """删除 实现/实现.py → 组件合规/逐包合规器/MCP 结论一致且失败。"""
         临时根, 模块目录 = 建临时模块库()
         try:
             (模块目录 / "实现" / "实现.py").unlink()
             报告 = 组件合规(模块目录).执行()
             self.assertFalse(报告.成功)
             通过, 证据表 = 执行逐包权威合规([模块目录])
-            self.assertFalse(通过, "门禁必须因逐包合规失败而非零退出")
+            self.assertFalse(通过, "逐包合规器必须失败而非零退出")
             self.assertLess(证据表[0][3], 13)
-            self.assertIn("公共入口", 证据表[0][1], "门禁证据必须列明失败场景")
+            self.assertIn("公共入口", 证据表[0][1], "逐包证据必须列明失败场景")
             MCP结果 = _MCP合规(临时根)
             self.assertFalse(MCP结果["成功"], "MCP 合规必须一致失败")
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 
     def test_删除入口_三者一致失败(self) -> None:
-        """删除 __init__.py → 组件合规/门禁/MCP 结论一致且失败。"""
+        """删除 __init__.py → 组件合规/逐包合规器/MCP 结论一致且失败。"""
         临时根, 模块目录 = 建临时模块库()
         try:
             (模块目录 / "__init__.py").unlink()
@@ -173,7 +177,7 @@ class Test发布门禁收敛(unittest.TestCase):
             shutil.rmtree(临时根, ignore_errors=True)
 
     def test_删除验证证据_三者一致失败(self) -> None:
-        """删除 验证场景引用.json → 组件合规/门禁/MCP 结论一致且失败。"""
+        """删除 验证场景引用.json → 组件合规/逐包合规器/MCP 结论一致且失败。"""
         临时根, 模块目录 = 建临时模块库()
         try:
             (模块目录 / "验证场景引用.json").unlink()
@@ -189,7 +193,7 @@ class Test发布门禁收敛(unittest.TestCase):
             shutil.rmtree(临时根, ignore_errors=True)
 
     def test_删除配置契约_合规与门禁一致失败(self) -> None:
-        """删除 配置契约 → 组件合规/门禁一致失败（S0 缺项阻断清单）。"""
+        """删除 配置契约 → 组件合规/逐包合规器一致失败（S0 缺项阻断清单）。"""
         临时根, 模块目录 = 建临时模块库()
         try:
             shutil.rmtree(模块目录 / "配置契约")
@@ -199,7 +203,7 @@ class Test发布门禁收敛(unittest.TestCase):
             self.assertFalse(场景表["配置"], "缺 配置契约 必须使配置场景失败")
             通过, 证据表 = 执行逐包权威合规([模块目录])
             self.assertFalse(通过)
-            self.assertIn("配置", 证据表[0][1], "门禁证据必须列明 配置 失败")
+            self.assertIn("配置", 证据表[0][1], "逐包证据必须列明 配置 失败")
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 

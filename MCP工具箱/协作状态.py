@@ -34,7 +34,7 @@ from MCP工具箱.临时上下文 import 读取临时上下文
 错误_登记失败 = "REGISTRATION_FAILED"
 
 _开工id模式 = re.compile(r"^[0-9a-fA-F]{16}$")
-_排除片段表 = ("pycache", "工程缓存", "测试中心缓存", ".git", "完整性摘要.json", "项目证据", "临时文件")
+_排除片段表 = ("__pycache__", "工程缓存", "测试中心缓存", ".git", "完整性摘要.json", "项目证据", "临时文件")
 
 
 def _校验开工id(work_id: str) -> str:
@@ -66,8 +66,11 @@ def 计算代码指纹(目录: Path) -> dict[str, Any]:
         if not 文件.is_file():
             continue
         相对 = 文件.relative_to(根)
-        if any(片段 in 段 for 片段 in _排除片段表 for 段 in 相对.parts):
-            continue  # 只按相对路径段名（子串）排除缓存，避免 TMPDIR 前缀误匹配
+        if any(段 in _排除片段表 for 段 in 相对.parts):
+            # 按路径段名精确排除缓存/证据目录。子串匹配会把 开发工具/工程缓存回收.py、
+            # 支持库/适配层/Tesseract提供者/实现/临时文件.py 这类真源码一并跳过，
+            # 导致这些文件改了内容指纹也不变，收口比对与证据复用被误判为"已验证"。
+            continue
         摘要器.update(str(相对).encode("utf-8"))
         摘要器.update(文件.read_bytes())
     return {"成功": True, "指纹": 摘要器.hexdigest()[:16]}

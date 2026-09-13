@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import re
 import subprocess
@@ -101,11 +100,17 @@ def _执行(
 
 
 def _代码指纹() -> tuple[str, str]:
+    """提交 + 工作区指纹（内容级，与发布治理同一实现）。
+
+    原实现用 sha256(git status --porcelain=v1 -z)：porcelain 只含文件名与状态字母、
+    不含文件内容，一个已经脏的文件被再次编辑（内容 A→B）指纹不变，正式发布证据会把
+    content B 的工作区当成 content A 已核验过。现委托 发布治理.当前工作区指纹，
+    保证写入侧（本函数写验证账本）与核验侧（正式证据比对）永远同一算法。
+    """
+    from MCP工具箱.发布治理 import 当前工作区指纹
     提交结果 = _执行(["git", "rev-parse", "HEAD"])
-    状态结果 = _执行(["git", "status", "--porcelain=v1", "-z"])
     提交 = 提交结果["标准输出"].strip() if 提交结果["退出码"] == 0 else ""
-    状态 = 状态结果["标准输出"] if 状态结果["退出码"] == 0 else "无版本库"
-    return 提交, hashlib.sha256(状态.encode("utf-8")).hexdigest()
+    return 提交, 当前工作区指纹(项目根目录)
 
 
 def _读取成功记录(数量: int = 3) -> list[dict[str, Any]]:
@@ -113,7 +118,14 @@ def _读取成功记录(数量: int = 3) -> list[dict[str, Any]]:
         证据路径, 最大字节数=默认JSONL读取上限字节,
         最大记录数=默认JSONL读取上限记录,
     )
-    记录列表 = [记录 for 记录 in reversed(全部记录) if 记录.get("退出码") == 0]
+    # 本文件写入侧只在「退出码 0 且 判定成功」时落账（见 _运行验证），读取侧若
+    # 只筛退出码，历史遗留/手工写入的「退出码 0 但判定失败」记录会被当成成功证据
+    # 计入 证据可信度（匹配数×25）。只排除显式判定失败的记录；老记录没有 判定 字段，
+    # 视为未判定而不降级，避免把既有证据一次性打成不可信。
+    记录列表 = [
+        记录 for 记录 in reversed(全部记录)
+        if 记录.get("退出码") == 0 and (记录.get("判定") or {}).get("成功") is not False
+    ]
     return 记录列表[: max(1, min(数量, 3))]
 
 
@@ -248,6 +260,7 @@ def _运行验证(名称: str, 命令: list[str], 超时秒数: int, *, 开工id
         int(结果["退出码"]),
         str(结果.get("标准输出", "")),
         str(结果.get("标准错误", "")),
+        命令,
     )
     记录["判定"] = 判定
     if 结果["退出码"] == 0 and 判定.get("成功") is True:
@@ -447,7 +460,7 @@ _工具定义列表 = [
         Tool(name="file_lease", description="文件占用租约：多会话同仓开发时按文件原子互斥认领（复用平台控制面占用租约，不建新表）。开工自动申请、收口自动释放；本工具做查询、续租、手动释放与过期回收。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["查询", "续租", "释放", "回收过期"]}, "paths": {"type": "array", "items": {"type": "string"}}, "lease_ids": {"type": "array", "items": {"type": "string"}}, "evidence": {"type": "string"}}, "required": ["operation"]}),
         Tool(name="apply_file_patch", description="写入通道：经底座能力「文本补丁.应用精确替换」改文件，写前带「预期文件摘要」乐观锁，且文件被别的开工id占租约时拒绝。写入=false 只预览不落盘。", inputSchema={"type": "object", "properties": {"文件路径": {"type": "string"}, "旧文本": {"type": "string"}, "新文本": {"type": "string"}, "预期文件摘要": {"type": "string"}, "预期旧文本摘要": {"type": "string"}, "起始行": {"type": "integer"}, "结束行": {"type": "integer"}, "写入": {"type": "boolean", "default": True}, "开工id": {"type": "string"}}, "required": ["文件路径", "旧文本", "新文本"]}),
         Tool(name="validate_verification_command", description="校验验证命令：受控模块验证命令白名单校验（仅允许 unittest 模块入口，禁 shell/逃逸/无限超时）。", inputSchema={"type": "object", "properties": {"命令": {"type": "array", "items": {"type": "string"}}}, "required": ["命令"]}),
-        Tool(name="judge_verification_result", description="判定验证结果：判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}}, "required": ["退出码", "标准输出"]}),
+        Tool(name="judge_verification_result", description="判定验证结果：判定验证退出码/输出：收集错误/零测试/未解释跳过检出。", inputSchema={"type": "object", "properties": {"退出码": {"type": "integer"}, "标准输出": {"type": "string"}, "标准错误": {"type": "string"}, "命令": {"type": "array", "items": {"type": "string"}}}, "required": ["退出码", "标准输出"]}),
     Tool(name="tool_job_submit", description="提交作业：把长工具（发布门禁、合规扫描、跑测试等）丢到后台线程执行并立即返回作业id，不再堵住管理端事件循环、不拖慢其它会话。", inputSchema={"type": "object", "properties": {"工具": {"type": "string"}, "参数": {"type": "object"}, "work_id": {"type": "string"}}, "required": ["工具"]}),
     Tool(name="tool_job_query", description="查询作业：按作业id查状态、错误、结果与已运行秒数；不给作业id则列出最近作业（不含结果全文）。", inputSchema={"type": "object", "properties": {"作业id": {"type": "string"}, "数量": {"type": "integer", "minimum": 1, "maximum": 100}}}),
     Tool(name="tool_job_cancel", description="取消作业：未开始的直接取消；运行中的只能标记取消并丢弃产出（阻塞中的子进程无法中断）。", inputSchema={"type": "object", "properties": {"作业id": {"type": "string"}}, "required": ["作业id"]}),
@@ -900,7 +913,12 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         elif 名称 == "validate_verification_command":
             数据 = 校验验证命令受控(list(参数["命令"]))
         elif 名称 == "judge_verification_result":
-            数据 = 判定验证结果(int(参数["退出码"]), str(参数["标准输出"]))
+            命令参数 = 参数.get("命令")
+            数据 = 判定验证结果(
+                int(参数["退出码"]), str(参数["标准输出"]),
+                str(参数.get("标准错误", "")),
+                list(命令参数) if isinstance(命令参数, list) else None,
+            )
         elif 名称 == "verify_and_record":
             证据开工id = str(参数.get("work_id") or 当前开工id)
             if not 证据开工id:

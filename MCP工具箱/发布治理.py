@@ -101,17 +101,57 @@ def 当前提交() -> str:
 
 
 def 当前工作区指纹(工作根参数: str | Path | None = None) -> str:
-    """按真实 git porcelain 状态计算工作区指纹，与 MCP 验证账本同算法。"""
+    """工作区内容级指纹：porcelain 变更清单 + 每个变更/未跟踪文件的真实字节。
+
+    原实现只对 porcelain 文本取 sha256，而 porcelain 只有文件名与状态字母、不含内容：
+    一个已经脏的文件被再次编辑（内容 A→B）指纹不变，正式发布证据会把 content B 的
+    工作区当成 content A 已核验过而放行。现叠加文件内容，并与本模块验证账本
+    （项目服务._代码指纹）共用同一实现，避免写入侧与核验侧各算一套。
+
+    不走 开发工具.项目编译.工作区指纹 的原因：那份唯一字节指纹用
+    `git ls-files --others` 枚举全部未忽略文件（本仓含 GB 级工程缓存，单次约 7 秒），
+    而本函数是 项目开工上下文 / 发布证据核验 的热路径，必须是毫秒级。
+    """
     根 = Path(工作根参数) if 工作根参数 else 系统根目录
     try:
         进程 = subprocess.run(
             ["git", "status", "--porcelain=v1", "-z"], cwd=str(根),
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, timeout=10,
         )
-        状态 = 进程.stdout if 进程.returncode == 0 else "无版本库"
+        原始 = 进程.stdout if 进程.returncode == 0 else b""
     except (OSError, subprocess.TimeoutExpired):
-        状态 = "无版本库"
-    return hashlib.sha256(状态.encode("utf-8")).hexdigest()
+        原始 = b""
+    if not 原始:
+        return hashlib.sha256("无版本库".encode("utf-8")).hexdigest()
+    哈希 = hashlib.sha256(b"STATUS\0" + 原始)
+    记录表 = 原始.split(b"\0")
+    序号 = 0
+    while 序号 < len(记录表):
+        记录 = 记录表[序号]
+        序号 += 1
+        if len(记录) < 4:
+            continue
+        路径表 = [记录[3:]]
+        if 记录[0:1] in (b"R", b"C") and 序号 < len(记录表):
+            # porcelain -z：重命名/复制紧随一条不含状态前缀的旧路径记录。
+            旧路径 = 记录表[序号]
+            序号 += 1
+            if 旧路径:
+                路径表.append(旧路径)
+        for 路径字节 in 路径表:
+            文件 = 根 / 路径字节.decode("utf-8", errors="surrogateescape")
+            try:
+                if 文件.is_symlink():
+                    内容 = os.readlink(文件).encode("utf-8", errors="surrogateescape")
+                elif 文件.is_file():
+                    内容 = 文件.read_bytes()
+                else:
+                    内容 = b""
+            except OSError:
+                内容 = "<不可读>".encode("utf-8")
+            哈希.update(len(路径字节).to_bytes(8, "big") + 路径字节)
+            哈希.update(len(内容).to_bytes(8, "big") + 内容)
+    return 哈希.hexdigest()
 
 
 # ---- 1. 发布门禁运行（真实调用 运行发布门禁.py，禁止复制简化判断） ----
@@ -156,6 +196,8 @@ def 检查发布证据(提交: str, *, 证据路径: str | Path | None = None) -
     """按提交查询 验证历史.jsonl 的成功验证记录（名称/退出码/指纹）。
 
     只认 退出码 == 0 且 提交 相符的记录；无成功记录 → 错误码 无证据 拒绝。
+    写入侧只在「退出码 0 且 判定成功」时落账，故读取侧同样排除显式判定失败的记录
+    （老记录无 判定 字段视为未判定，不降级）。
     """
     文件路径 = Path(证据路径) if 证据路径 else 验证历史路径
     if not 文件路径.is_file():
@@ -166,8 +208,11 @@ def 检查发布证据(提交: str, *, 证据路径: str | Path | None = None) -
             记录 = json.loads(行)
         except json.JSONDecodeError:
             continue
-        if 记录.get("提交") == 提交 and 记录.get("退出码") == 0:
-            记录列表.append(记录)
+        if 记录.get("提交") != 提交 or 记录.get("退出码") != 0:
+            continue
+        if (记录.get("判定") or {}).get("成功") is False:
+            continue
+        记录列表.append(记录)
     if not 记录列表:
         return 结果(False, 无证据,
                     f"提交 {提交[:12]} 无成功验证记录（无发布证据）")

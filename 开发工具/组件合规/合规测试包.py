@@ -61,6 +61,19 @@ def _最小PNG() -> bytes:
     )
 
 
+def _成功标志(返回值: Any) -> bool | None:
+    """提取统一结果的成功标志：dict 取 成功 键、对象取 成功 属性。
+
+    非统一结果（普通业务数据）没有该标志，返回 None，调用方据此退化为
+    “只看是否为空”的判据，与成功/失败两条路径保持同一口径。
+    """
+    if isinstance(返回值, dict):
+        return bool(返回值["成功"]) if "成功" in 返回值 else None
+    if hasattr(返回值, "成功"):
+        return bool(返回值.成功)
+    return None
+
+
 def _参数最小值(能力id: str, 参数: dict[str, Any], 根目录: Path) -> Any:
     """按公开参数契约生成最小合法值，不把占位字符串冒充真实输入。"""
     名称 = str(参数.get("名称", ""))
@@ -98,7 +111,11 @@ def _参数最小值(能力id: str, 参数: dict[str, Any], 根目录: Path) -> 
             return "0" * 40
     if "仓库路径" in 名称:
         return str(根目录)
-    if "受控根目录" in 名称 or 名称 in {"基础目录", "锁目录", "来源目录", "快照目录", "输出目录"}:
+    if "目录" in 名称:
+        # 凡语义为「目录」的文本参数，一律给**真实的临时目录**。原实现只认白名单里的
+        # 若干目录名，其余（技能根目录/目录路径/目标目录/工作目录…）落到下面的文本兜底
+        # 分支拿到字面量"合规测试"，被调用方当成相对路径解析 → 在项目根**凭空建出
+        # 「合规测试/」目录**（技能库写 索引.json 就是这么来的），污染工作树。
         目录 = 能力输入根
         目录.mkdir(parents=True, exist_ok=True)
         if 名称 == "来源目录":
@@ -390,10 +407,12 @@ class 组件合规:
                 except json.JSONDecodeError:
                     问题列表.append("资源预算.json JSON 解析失败")
                     预算 = {}
-                缺失 = [键 for 键 in 资源预算必需键
-                        if isinstance(预算, dict) and 键 not in 预算]
-                if 缺失:
-                    问题列表.append(f"资源预算缺少必需项: {缺失}")
+                if not isinstance(预算, dict):
+                    问题列表.append("资源预算.json 顶层必须是对象")
+                else:
+                    缺失 = [键 for 键 in 资源预算必需键 if 键 not in 预算]
+                    if 缺失:
+                        问题列表.append(f"资源预算缺少必需项: {缺失}")
             复用路径 = self.组件目录 / "复用决策.json"
             if not 复用路径.is_file():
                 问题列表.append("缺少 复用决策.json")
@@ -470,7 +489,7 @@ class 组件合规:
         return not 问题列表, "; ".join(问题列表) or f"聚合契约 {len(能力表)} 个能力逐一遍历通过"
 
     def _场景依赖(self) -> tuple[bool, str]:
-        """依赖：调用真实包发现与依赖解析器，验证包存在/版本/能力/循环。"""
+        """依赖：逐项按声明形状核验——能力项锁真实提供者、包id项经真实包发现确认。"""
         依赖路径 = self.组件目录 / "依赖契约" / "依赖契约.json"
         if not 依赖路径.is_file():
             return False, "缺少 依赖契约/依赖契约.json"
@@ -483,20 +502,47 @@ class 组件合规:
             return False, "依赖必须是列表"
         if not 依赖列表:
             return True, "无依赖（独立组件）"
-        from 运行核心.加载器.包发现.发现器 import 扫描目录
-        系统根 = self._系统根
-        已发现包id表 = {
-            声明.包id for 声明 in
-            扫描目录(系统根 / "支持库", "支持库") + 扫描目录(系统根 / "模块库", "模块")
-        }
-        问题列表 = []
+        # 依赖契约实际有三种形状：能力项（能力/版本）、包id项（包id/版本）、外部依赖项
+        # （模块名/名称，如 Python 标准库 sqlite3）。原实现一律取 依赖["包id"]，能力形状
+        # 恒为空串、`if 依赖包id and ...` 恒短路，等于对所有包一项都不检查却报「经真实包
+        # 发现验证」。现按形状分别核验；外部依赖如实排除在系统内包发现核验范围之外，
+        # 既不冒充通过、也不误判失败。
+        能力项: list[dict[str, Any]] = []
+        包id项: list[dict[str, Any]] = []
+        外部项: list[dict[str, Any]] = []
+        无法核验项: list[Any] = []
         for 依赖 in 依赖列表:
-            依赖包id = 依赖.get("包id", "")
-            if 依赖包id and 依赖包id not in 已发现包id表:
-                问题列表.append(f"依赖包不存在: {依赖包id}")
+            if not isinstance(依赖, dict):
+                无法核验项.append(依赖)
+            elif str(依赖.get("能力", "")).strip():
+                能力项.append(依赖)
+            elif str(依赖.get("包id", "")).strip():
+                包id项.append(依赖)
+            elif str(依赖.get("模块名", "")).strip() or str(依赖.get("名称", "")).strip():
+                外部项.append(依赖)
+            else:
+                无法核验项.append(依赖)
+        if 无法核验项:
+            return False, f"依赖项未声明 能力/包id/模块名，无从核验: {无法核验项[:3]}"
+        问题列表: list[str] = []
+        if 包id项:
+            from 运行核心.加载器.包发现.发现器 import 发现全部
+            发现 = 发现全部(self._系统根 / "支持库", self._系统根 / "模块库", self._系统根 / "技能库")
+            真实包id集 = {声明.包id for 声明 in 发现.声明列表}
+            未发现 = [str(依赖["包id"]) for 依赖 in 包id项 if str(依赖["包id"]) not in 真实包id集]
+            if 未发现:
+                问题列表.append(f"依赖包不存在（经真实包发现）: {未发现}")
+        if 能力项:
+            锁定成功, 锁定证据 = _提供者锁定(self._系统根, self.组件目录, {"依赖": 能力项})
+            if not 锁定成功:
+                问题列表.append(锁定证据)
         if 问题列表:
             return False, "; ".join(问题列表)
-        return True, f"依赖 {len(依赖列表)} 项（经真实包发现验证）"
+        摘要 = f"依赖 {len(依赖列表)} 项：能力 {len(能力项)} 项锁定真实提供者、包 {len(包id项)} 项经真实包发现确认"
+        if 外部项:
+            外部名 = [str(依赖.get("模块名") or 依赖.get("名称") or "") for 依赖 in 外部项]
+            摘要 += f"；外部依赖 {len(外部项)} 项不在系统内包发现核验范围: {外部名}"
+        return True, 摘要
 
     def _场景配置(self) -> tuple[bool, str]:
         """配置：配置契约存在（缺则阻断）并按契约真实执行缺失/类型/未知项检查。"""
@@ -536,8 +582,9 @@ class 组件合规:
         公开能力表 = [能力.get("能力id", "") for 能力 in 能力表 if 能力.get("能力id")]
         if not 公开能力表:
             return False, "无公开能力可校验权限"
-        缺失权限 = [能力id for 能力id in 公开能力表
-                    if isinstance(权限, dict) and 能力id not in 权限]
+        if not isinstance(权限, dict):
+            return False, f"权限契约顶层必须是对象（映射 能力id → 权限声明），实为 {type(权限).__name__}"
+        缺失权限 = [能力id for 能力id in 公开能力表 if 能力id not in 权限]
         if 缺失权限:
             return False, f"公开能力缺权限声明（逐能力遍历检出）: {缺失权限}"
         return True, f"聚合契约 {len(公开能力表)} 个能力全部有权限声明"
@@ -834,6 +881,9 @@ class 组件合规:
                 try:
                     if 成功结果 is None:
                         问题.append(f"{能力id} 成功路径无返回（真实返回为空）")
+                    # 判定只到“非空返回”为止：本场景是合规性检查，用最小参数在无
+                    # 外部资源的环境里跑，文件/服务类能力必然返回 失败(...)。若改判
+                    # 成功标志，等于把编译检查变成环境检查，环境不齐就整包变红。
                 finally:
                     # 浏览器/句柄型能力必须真实释放，防止固定端口和线程残留污染后续包。
                     for 方法名 in ("shutdown", "server_close", "关闭", "释放", "close"):
@@ -850,12 +900,7 @@ class 组件合规:
                                 for 参数 in 参数表 if not 参数.get("必填", True)}
                     try:
                         失败结果 = 实现对象.调用(**失败参数)
-                        是成功 = False
-                        if isinstance(失败结果, dict):
-                            是成功 = bool(失败结果.get("成功"))
-                        elif hasattr(失败结果, "成功"):
-                            是成功 = bool(失败结果.成功)
-                        if 是成功:
+                        if _成功标志(失败结果) is True:
                             问题.append(f"{能力id} 缺必填参数未返回失败（失败语义缺失）")
                     except TypeError:
                         # 缺必填参数被 Python 签名拒绝 = 失败语义成立

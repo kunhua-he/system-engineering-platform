@@ -143,14 +143,27 @@ def _检出收集错误(文本: str) -> bool:
     return bool(re.search(r"\bERROR", 文本)) or "errors=" in 低
 
 
-def _检出零测试(文本: str) -> bool:
-    """零测试：Ran 0 tests / no tests ran / 未发现任何测试用例（真正没跑）。"""
+def _检出零测试(文本: str, 命令: list[str] | None = None) -> bool:
+    """零测试：Ran 0 tests / no tests ran / 未发现任何测试用例（真正没跑）。
+
+    命令为精确 unittest 模块（测试中心.<模块>）时，还必须有真实执行证据：
+    unittest 的 Ran N tests 或 pytest 的 N passed，且 N≥1。否则一个只 import、
+    不跑任何用例的空壳模块（退出码 0、无输出）会被判成"验证通过"。
+    """
     低 = 文本.lower()
-    return (
+    if (
         "no tests ran" in 低
         or "未发现任何测试用例" in 文本
         or "ran 0 tests" in 低
-    )
+    ):
+        return True
+    if 命令 and len(命令) >= 3 and 命令[1] == "-m" and str(命令[2]).startswith(测试模块前缀):
+        if re.search(r"\bRan\s+[1-9]\d*\s+tests?\b", 文本):
+            return False
+        if re.search(r"\b[1-9]\d*\s+passed\b", 文本):
+            return False
+        return True
+    return False
 
 
 def _检出未解释跳过(文本: str) -> bool:
@@ -162,23 +175,31 @@ def _检出未解释跳过(文本: str) -> bool:
     return not 有解释
 
 
-def 判定验证结果(退出码: int, 标准输出: str, 标准错误: str = "") -> dict[str, Any]:
-    """按 退出码非零 → 收集错误 → 零测试 → 未解释跳过 的顺序判定，全部通过才成功。"""
+def 判定验证结果(
+    退出码: int, 标准输出: str, 标准错误: str = "", 命令: list[str] | None = None,
+) -> dict[str, Any]:
+    """按 退出码非零 → 收集错误 → 零测试 → 未解释跳过 的顺序判定，全部通过才成功。
+
+    传入 命令 后，精确 unittest 模块还必须留下真实执行证据（Ran N tests / N passed），
+    否则空壳模块也会以退出码 0 蒙混成通过。
+    """
     文本 = f"{标准输出 or ''}\n{标准错误 or ''}"
     if 退出码 != 0:
         return _结果(False, 错误码_验证失败, f"验证退出码非零: {退出码}")
     if _检出收集错误(文本):
         return _结果(False, 错误码_验证失败, "测试收集错误（ERROR）")
-    if _检出零测试(文本):
+    if _检出零测试(文本, 命令):
         return _结果(False, 错误码_零测试, "未运行任何测试用例（no tests ran / 零测试门禁失败）")
     if _检出未解释跳过(文本):
         return _结果(False, 错误码_未解释跳过, "存在无标记说明的跳过（SKIPPED/skip 无原因）")
     return _结果(True, "", "验证结果判定通过")
 
 
-def 判定正式发布结果(退出码: int, 标准输出: str, 标准错误: str = "") -> dict[str, Any]:
+def 判定正式发布结果(
+    退出码: int, 标准输出: str, 标准错误: str = "", 命令: list[str] | None = None,
+) -> dict[str, Any]:
     """唯一发布入口只有退出码为零且最后状态明确为“通过”才成功。"""
-    基础 = 判定验证结果(退出码, 标准输出, 标准错误)
+    基础 = 判定验证结果(退出码, 标准输出, 标准错误, 命令)
     if not 基础["成功"]:
         return 基础
     文本 = f"{标准输出 or ''}\n{标准错误 or ''}"
