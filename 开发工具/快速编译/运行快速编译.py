@@ -19,7 +19,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 报告根 = 系统根 / "工程缓存" / "快速编译"
 from 公共契约.基础类型.类型表 import 正式类型表
-from 开发工具.项目编译.正式包索引 import 构建索引, 校验显式包引用, 解析依赖闭包
+from 开发工具.项目编译.正式包索引 import 构建索引, 包所属根, 校验显式包引用, 解析依赖闭包
 
 旧类型 = {"文本": "文本型", "整数": "整数型", "布尔": "逻辑型", "浮点数": "双精度数型",
         "数字": "双精度数型", "字典": "字典型", "列表": "列表型", "字节": "字节型",
@@ -134,14 +134,21 @@ def 检查包(目标: Path, *, 执行样例: bool = False, 执行外部: bool = 
         owner = 所有者.get(能力id)
         if owner and (owner != 当前包id or owner.startswith("冲突:")):
             问题.append(f"能力重复 owner: {能力id} -> {owner}")
-    try:
-        解析依赖闭包(
-            系统根,
-            {str(声明.get("包id"))} if str(声明.get("包id", "")).startswith("支持库.") else set(),
-            {str(声明.get("包id"))} if str(声明.get("包id", "")).startswith("模块库.") else set(),
-        )
-    except ValueError as 错误:
-        问题.append(f"依赖闭包无效: {错误}")
+    本包id = str(声明.get("包id", ""))
+    本包根 = 包所属根(本包id)
+    if 本包根:
+        try:
+            解析依赖闭包(
+                系统根,
+                {本包id} if 本包根 == "支持库" else set(),
+                {本包id} if 本包根 == "模块库" else set(),
+            )
+        except ValueError as 错误:
+            问题.append(f"依赖闭包无效: {错误}")
+    else:
+        # 两个集合皆空时 解析依赖闭包 一次 加入() 都不走、直接返回空结果，
+        # 依赖闭包这一项就成了空跑假绿；无法识别所属根的包必须如实报错。
+        问题.append(f"包所属根无法识别: {本包id}")
     问题.extend(_检查模块越界导入(包))
     if 问题:
         退出码 = 20 if any("owner" in 项 or "装配" in 项 for 项 in 问题) else 10

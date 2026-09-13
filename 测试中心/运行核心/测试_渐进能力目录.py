@@ -17,6 +17,16 @@ from 运行核心.统一网关.网关核心 import 网关核心
 
 系统根 = Path(__file__).resolve().parents[2]
 
+桶名表 = ("支持库", "模块库", "技能库", "其他库")
+
+
+def 摊平目录(目录: dict) -> list[dict]:
+    """把目录四桶摊平成条目表：支持库按领域二级分组，其余三桶是平铺列表。"""
+    条目表 = [条目 for 领域块 in 目录["支持库"] for 条目 in 领域块["包"]]
+    for 桶 in 桶名表[1:]:
+        条目表 += 目录[桶]
+    return 条目表
+
 
 class 渐进能力目录测试(unittest.TestCase):
     @classmethod
@@ -69,8 +79,12 @@ class 渐进能力目录测试(unittest.TestCase):
         self.assertEqual(目录["下一偏移"], min(20, 目录["总包数"]))
         self.assertFalse(目录["是否完成"])
         self.assertEqual(目录["使用顺序"], ["选择包", "查看包详情", "查看能力详情", "调用能力"])
-        条目表 = [条目 for 领域 in 目录["支持库"] for 条目 in 领域["包"]] + 目录["模块库"]
+        # 四桶恒存在（默认值填充），消费者无需判键是否存在。
+        for 桶 in 桶名表:
+            self.assertIn(桶, 目录)
+        条目表 = 摊平目录(目录)
         self.assertEqual(len(条目表), 20)
+        self.assertEqual(len(条目表), 目录["包数"])
         for 条目 in 条目表:
             self.assertEqual(set(条目), {"包id", "名称", "简介", "能力数"})
             self.assertLessEqual(len(条目["简介"]), 60)
@@ -81,8 +95,7 @@ class 渐进能力目录测试(unittest.TestCase):
         总包数 = None
         while True:
             页面 = self.请求("能力目录", {"偏移": 偏移, "限制": 7})["值"]
-            当前批 = [条目["包id"] for 领域 in 页面["支持库"] for 条目 in 领域["包"]]
-            当前批 += [条目["包id"] for 条目 in 页面["模块库"]]
+            当前批 = [条目["包id"] for 条目 in 摊平目录(页面)]
             self.assertLessEqual(len(当前批), 7)
             全部包id.extend(当前批)
             总包数 = 页面["总包数"]
@@ -93,6 +106,38 @@ class 渐进能力目录测试(unittest.TestCase):
             偏移 = 页面["下一偏移"]
         self.assertEqual(len(全部包id), 总包数)
         self.assertEqual(len(set(全部包id)), 总包数)
+
+    def test_分页走查不遗漏任何已注册包(self) -> None:
+        """分桶必须完备：四桶摊平总数 == 包数，且分页走查覆盖全部已注册包。
+
+        原实现只认 支持库./模块库. 两个前缀，技能库. 前缀的包被计入 包数
+        却不落桶 → 该包在目录里永不可见、分页走查也永远走不到它。
+        """
+        注册包表 = {
+            self.后端.注册表.获取(能力id).包id
+            for 能力id in self.后端.注册表.能力id列表
+        }
+        偏移 = 0
+        走查包id: list[str] = []
+        while True:
+            页面 = self.请求("能力目录", {"偏移": 偏移, "限制": 7})["值"]
+            条目表 = 摊平目录(页面)
+            self.assertEqual(len(条目表), 页面["包数"])
+            走查包id.extend(条目["包id"] for 条目 in 条目表)
+            if 页面["是否完成"]:
+                break
+            偏移 = 页面["下一偏移"]
+        self.assertEqual(set(走查包id), 注册包表)
+        self.assertEqual(sorted(走查包id), sorted(注册包表))
+
+    def test_技能库作为第三根正式包根可见(self) -> None:
+        """技能库与支持库、模块库平级，必须能被渐进发现走到并展开命令目录。"""
+        页面 = self.请求("能力目录", {"关键词": "技能库"})["值"]
+        包id表 = [条目["包id"] for 条目 in 摊平目录(页面)]
+        self.assertIn("技能库.后端.技能库", 包id表)
+        详情 = self.请求("包详情", {"包id": "技能库.后端.技能库"})["值"]
+        self.assertEqual(详情["包id"], "技能库.后端.技能库")
+        self.assertGreater(len(详情["命令"]), 0)
 
     def test_包详情只返回命令目录(self) -> None:
         响应 = self.请求("包详情", {"包id": "模块库.文档读取"})
