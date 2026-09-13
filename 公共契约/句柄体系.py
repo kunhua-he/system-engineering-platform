@@ -152,6 +152,18 @@ class 句柄体系:
             pass
         return True
 
+    def _端口被占用(self, 端口: int) -> bool:
+        """检查本机端口是否仍被监听占用（与 进程 分支的存活复查对称）。"""
+        if not isinstance(端口, int) or 端口 <= 0:
+            return False
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                return s.connect_ex(("127.0.0.1", 端口)) == 0
+        except Exception:
+            return False
+
     def _回收单个资源(self, 资源: dict) -> tuple[bool, str]:
         """核查单个资源：存活→回收；否则标记已回收（幂等）。"""
         类型 = 资源["资源类型"]
@@ -181,22 +193,32 @@ class 句柄体系:
             elif 类型 == "端口":
                 端口 = 资源["端口"]
                 if not isinstance(端口, int) or 端口 <= 0:
-                    说明 = "无端口"
+                    说明 = "无端口（无泄露）"  # 与 进程 分支「进程已不存在（无泄露）」对称
+                elif not self._端口被占用(端口):
+                    说明 = "端口已释放（无泄露）"
                 else:
-                    import socket
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                        s.settimeout(1)
-                        占用 = s.connect_ex(("127.0.0.1", 端口)) == 0
-                    if 占用:
-                        import subprocess
+                    import subprocess
+                    try:
                         r = subprocess.run(["lsof", "-nP", "-iTCP:%d" % 端口, "-sTCP:LISTEN", "-t"],
                                            capture_output=True, text=True, timeout=5)
-                        for pid_str in r.stdout.strip().split():
-                            try: os.kill(int(pid_str), signal.SIGKILL)
-                            except Exception: pass
-                        说明 = f"端口 {端口} 占用进程已清理"
+                    except Exception as 错误:
+                        说明 = f"端口 {端口} 仍被占用，且无法枚举占用进程: {错误}"
                     else:
-                        说明 = "端口已释放（无泄露）"
+                        占用进程 = [int(文本) for 文本 in r.stdout.strip().split()
+                                    if 文本.strip().isdigit()]
+                        if not 占用进程:
+                            说明 = f"端口 {端口} 仍被占用（未枚举到可清理进程）"
+                        else:
+                            for pid in 占用进程:
+                                try: os.kill(pid, signal.SIGKILL)
+                                except Exception: pass
+                            time.sleep(1)
+                            # 回收后必须复查端口是否真的释放；kill 被吞掉、权限不足或
+                            # 进程忽略 SIGKILL 时不得谎报「已清理」（原实现无条件宣告
+                            # 已清理，与 进程 分支的存活复查口径不一致）。
+                            说明 = (f"端口 {端口} 占用进程已清理"
+                                   if not self._端口被占用(端口)
+                                   else f"端口 {端口} 仍被占用（回收失败）")
             elif 类型 == "临时文件":
                 路径 = 资源["资源路径"]
                 if 路径 and os.path.isfile(路径):
