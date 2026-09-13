@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 import uuid
@@ -67,7 +68,11 @@ class 安全审计:
                     最大文件字节数=默认JSONL文件上限字节,
                     强制落盘=True,
                 )
-        except OSError:
+        except OSError as 错误:
+            # 审计落盘失败必须留痕：调用方（统一网关）丢弃返回值，
+            # 静默返回 "" 会让安全审计链路无声断掉，事后无从发现。
+            # 返回值语义不变，仍以空审计id 表示失败。
+            print(f"[安全审计] 审计记录落盘失败: {错误}", file=sys.stderr)
             return ""
         return 审计id
 

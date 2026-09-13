@@ -75,5 +75,5 @@ def 安装全部支持库(支持库根目录: Path, 注册表: 能力注册表) 
         if getattr(声明, "已废弃", False):
             continue  # 已废弃包保留文件，不参与装配/注册
         安装支持库(声明, 注册表)
-        已注册.extend(声明.包id for 能力 in 声明.能力)
+        已注册.extend(能力.能力id for 能力 in 声明.能力)
     return 已注册

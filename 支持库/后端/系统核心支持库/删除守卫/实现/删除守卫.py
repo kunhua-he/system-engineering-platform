@@ -34,10 +34,12 @@ def 检查删除(目标表: str = None, 删除比例: float = None, 过滤条件
     # 2. 空过滤条件检查
     if not isinstance(过滤条件, str) or not 过滤条件.strip():
         return 结果.成功结果({"通过": False, "原因": "删除必须带过滤条件，拒绝无条件删除"})
-    # 3. 删除比例检查
-    if isinstance(删除比例, (int, float)):
-        if 删除比例 > 上限:
-            return 结果.成功结果({"通过": False, "原因": f"删除比例 {删除比例:.0%} 超过上限 {上限:.0%}，拒绝"})
+    # 3. 删除比例检查（未知即拒绝：拿不到占比就无法证明没超上限，
+    #    默认放行会让「占比>上限→拒绝」这重保护形同虚设，与 docstring 承诺不符）
+    if isinstance(删除比例, bool) or not isinstance(删除比例, (int, float)):
+        return 结果.成功结果({"通过": False, "原因": "删除比例未知，无法判定是否超上限，拒绝"})
+    if 删除比例 > 上限:
+        return 结果.成功结果({"通过": False, "原因": f"删除比例 {删除比例:.0%} 超过上限 {上限:.0%}，拒绝"})
     return 结果.成功结果({"通过": True, "原因": "允许"})
 
 

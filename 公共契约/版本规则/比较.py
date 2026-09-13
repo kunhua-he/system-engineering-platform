@@ -69,10 +69,17 @@ def 比较版本(当前文本: str, 目标文本: str) -> 版本判定:
 
 
 def 满足约束(版本文本: str, 约束文本: str) -> bool:
-    """判断版本是否满足约束（>=、>、==、<=、<；逗号分隔多约束且关系）。"""
-    if not 约束文本 or not 约束文本.strip():
-        return True
+    """判断版本是否满足约束（>=、>、==、<=、<；逗号分隔多约束且关系）。
+
+    空约束（None/空串/只有逗号与空白）一律判不满足：没有可比对的约束就放行，
+    会让依赖绑定校验变成恒真门禁（判据① 空跑）。调用方要表达「无约束」应在
+    调用前判断，不要靠本函数兜底。
+    """
+    if not isinstance(约束文本, str) or not 约束文本.strip():
+        return False
     约束表 = [约束.strip() for 约束 in 约束文本.split(",") if 约束.strip()]
+    if not 约束表:
+        return False
     try:
         版本 = 版本号.解析(版本文本)
     except ValueError:

@@ -177,7 +177,9 @@ def _读已有复核(复核目录: str, 区间id: int) -> dict | None:
     轮次 = 数据.get("轮次")
     if not isinstance(轮次, list) or not 轮次:
         return None
-    完成 = all(bool(条目.get("成功")) for 条目 in 轮次 if isinstance(条目, dict))
+    # 逐条都必须是「成功」的字典；非字典条目按未完成计（不得被过滤掉后
+    # 让空生成器的 all() 恒真，把残缺复核当完成复用）。
+    完成 = all(isinstance(条目, dict) and bool(条目.get("成功")) for 条目 in 轮次)
     return {"区间id": 区间id, "开始秒": 数据.get("开始秒"), "结束秒": 数据.get("结束秒"),
             "轮次": 轮次, "区间音频路径": 数据.get("区间音频路径") or "",
             "状态": "完成" if 完成 else "部分失败", "错误码": "", "错误说明": "",

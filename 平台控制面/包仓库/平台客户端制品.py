@@ -284,17 +284,18 @@ class 平台客户端制品接入:
         # 幂等：已安装同摘要且指针一致
         if self._已安装且一致(制品摘要, 制品名, 摘要16):
             return True, "已安装（幂等复用，不重复复制）", self.环境目录 / "平台客户端"
-        # 临时目录完整写入 + fsync + os.replace 原子替换
+        # 临时目录完整写入 + fsync + os.replace 原子替换（旧安装改名备份，先不删）
         目标 = self.环境目录 / "平台客户端"
         try:
-            self._原子写入安装目录(制品目录, 目标, 制品名, 摘要16)
+            备份 = self._原子写入安装目录(制品目录, 目标, 制品名, 摘要16)
         except OSError as 错误:
             return False, f"安装写入失败: {错误}", None
         # 发布管理 CAS 激活（单调版本+栅栏令牌）
         激活成功, 激活消息 = self._发布激活(摘要16, 制品摘要)
         if not 激活成功:
-            self._回滚安装目录(目标)
+            self._回滚安装目录(目标, 备份)
             return False, f"激活失败（已回滚安装目录）: {激活消息}", None
+        self._清理安装备份(备份)
         # 同步 当前.json（外部调用方稳定路径契约；带版本/栅栏令牌供 CAS 诊断）
         self._写指针文件(制品摘要, 制品名, 摘要16)
         return True, "已安装并经发布管理激活", 目标
@@ -318,8 +319,13 @@ class 平台客户端制品接入:
         return 计算目录摘要16(目标) == 摘要16
 
     def _原子写入安装目录(self, 制品目录: Path, 目标: Path, 制品名: str,
-                            摘要16: str) -> None:
-        """临时目录完整写入 + 逐文件 fsync + 目录 fsync + os.replace 原子替换。"""
+                            摘要16: str) -> Path:
+        """临时目录完整写入 + 逐文件 fsync + 目录 fsync + os.replace 原子替换。
+
+        返回旧安装的备份路径（从未安装时为不存在的路径）。备份**不在此删除**：
+        由调用方在激活成功后清理、激活失败时还原；否则激活失败会同时失去新旧
+        两份安装，指针却仍指旧制品（稳定路径损坏）。
+        """
         self.环境目录.mkdir(parents=True, exist_ok=True)
         临时 = self.环境目录 / f".安装临时_{uuid.uuid4().hex[:8]}"
         临时.mkdir(parents=True)
@@ -340,7 +346,7 @@ class 平台客户端制品接入:
                 os.fsync(目录句柄)
             finally:
                 os.close(目录句柄)
-            # 原子替换：旧目录先改名备份 → 新目录就位 → 删除备份
+            # 原子替换：旧目录先改名备份 → 新目录就位 → 备份交回调用方处置
             备份 = self.环境目录 / f".平台客户端备份_{uuid.uuid4().hex[:8]}"
             if 目标.exists():
                 os.rename(目标, 备份)
@@ -350,20 +356,31 @@ class 平台客户端制品接入:
                 if 备份.exists() and not 目标.exists():
                     os.rename(备份, 目标)
                 raise
-            if 备份.exists():
-                shutil.rmtree(备份, ignore_errors=True)
             目录句柄 = os.open(self.环境目录, os.O_RDONLY)
             try:
                 os.fsync(目录句柄)
             finally:
                 os.close(目录句柄)
+            return 备份
         except Exception:
             shutil.rmtree(临时, ignore_errors=True)
             raise
 
-    def _回滚安装目录(self, 目标: Path) -> None:
-        """激活失败时清理新安装目录（指针未切，旧指针仍指旧制品）。"""
+    def _清理安装备份(self, 备份: Path) -> None:
+        """激活成功后丢弃旧安装备份（从未安装时是无操作）。"""
+        if 备份.exists():
+            shutil.rmtree(备份, ignore_errors=True)
+
+    def _回滚安装目录(self, 目标: Path, 备份: Path) -> None:
+        """激活失败时还原旧安装目录（指针未切，旧指针仍指旧制品）。
+
+        有旧安装 → 删除新目录并把备份改名回稳定路径，稳定路径恢复可读；
+        从未安装 → 只清理新目录（指针本就为空）。只删新目录不还原会让
+        稳定路径彻底消失，与「已回滚」的报称不符。
+        """
         shutil.rmtree(目标, ignore_errors=True)
+        if 备份.exists() and not 目标.exists():
+            os.rename(备份, 目标)
 
     def _发布激活(self, 版本: str, 制品摘要: str) -> tuple[bool, str]:
         """发布管理：登记期望版本（复用进行中发布）→ 灰度 → CAS 激活。"""

@@ -12,6 +12,17 @@ from typing import Any, Callable
 from 公共契约.包声明 import 能力声明
 
 
+def _参数名(参数: Any) -> str:
+    """参数表项取参数名：兼容 dict（{名称,类型}）与字符串参数名两种形态。
+
+    声明一致 与 调用 必须用同一口径取名，否则字符串形态下 声明一致 读到空名、
+    把不一致的声明判成一致（判据③ 非期望类型静默通过）。
+    """
+    if isinstance(参数, dict):
+        return str(参数.get("名称", ""))
+    return str(参数)
+
+
 @dataclass(frozen=True)
 class 能力实现:
     """能力提供方注册的实现句柄。
@@ -32,9 +43,9 @@ class 能力实现:
     制品摘要: str = ""
 
     def 声明一致(self, 声明: 能力声明) -> bool:
-        """实现句柄与声明的参数/返回是否一致。"""
-        声明参数名 = [参数.get("名称", "") for 参数 in 声明.参数]
-        实现参数名 = [参数.get("名称", "") for 参数 in self.参数]
+        """实现句柄与声明的参数/返回是否一致（取名口径与 调用 相同）。"""
+        声明参数名 = [_参数名(参数) for 参数 in 声明.参数]
+        实现参数名 = [_参数名(参数) for 参数 in self.参数]
         return 声明参数名 == 实现参数名 and 声明.返回 == self.返回
 
     def 调用(self, *参数值: Any, **关键字值: Any) -> Any:
@@ -42,10 +53,7 @@ class 能力实现:
 
         参数表兼容两种形态：dict 列表（{名称,类型}）与字符串参数名列表。
         """
-        声明参数名 = {
-            (参数.get("名称") if isinstance(参数, dict) else 参数)
-            for 参数 in self.参数
-        }
+        声明参数名 = {_参数名(参数) for 参数 in self.参数}
         未知关键字 = set(关键字值) - 声明参数名
         if 未知关键字:
             raise TypeError(f"能力 {self.能力id} 收到未知参数: {sorted(未知关键字)}")

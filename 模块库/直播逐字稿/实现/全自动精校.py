@@ -84,11 +84,17 @@ def _场次标题(源文件: Path) -> str:
     return 主名
 
 
-def _有音轨(流列表) -> bool:
-    if not isinstance(流列表, list):
-        return True
-    for 流 in 流列表:
-        if isinstance(流, dict) and str(流.get("编码类型") or 流.get("codec_type") or "").lower() == "audio":
+def _有音轨(流表) -> bool:
+    """源媒体是否有音频轨。流表来自 FFmpeg 提供者 探测媒体 的返回值「流」：
+    每项是 {索引, 类型, 编码, 宽度, 高度, 采样率, 声道数}，类型为 audio 即音轨。
+
+    非列表（含 None/缺失）一律判「无音轨」（fail-closed）：拿不到流表就不
+    放行转写，否则「无音轨」硬门禁形同虚设。
+    """
+    if not isinstance(流表, list):
+        return False
+    for 流 in 流表:
+        if isinstance(流, dict) and str(流.get("类型") or "").strip().lower() == "audio":
             return True
     return False
 
@@ -147,7 +153,7 @@ def 全自动精校(源文件路径: str, 导出路径: str, 缓存目录: str, 
         return _失败(缓存, 探测.错误码 or "媒体探测失败", 探测.错误说明 or "媒体探测失败", "原始转写",
                    写状态=步骤["写状态"])
     探测值 = 探测.值 or {}
-    if not _有音轨(探测值.get("流列表")):
+    if not _有音轨(探测值.get("流")):
         return _失败(缓存, "无音轨", "源文件没有音频轨，无法转写", "原始转写", 写状态=步骤["写状态"])
     时长秒 = float(探测值.get("时长秒") or 0.0)
 
