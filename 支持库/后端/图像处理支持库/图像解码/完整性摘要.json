@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.图像处理支持库.图像解码",
-  "版本": "2.0.0",
+  "版本": "1.0.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
@@ -13,11 +13,11 @@
     },
     {
       "路径": "依赖锁.json",
-      "sha256": "43f86dda992c9c013aabd34276bbdd0e477bc6ab9ccc23ff5256f7c4c4c9465a"
+      "sha256": "a76671ec8b8ff66eb343166e8f52b0cf6f56ffeff892b9c079468dce44d6f844"
     },
     {
       "路径": "包声明.json",
-      "sha256": "0c50ca9074c35b36edb50b27a8592ce5b548cfd53813317b3bead80fbdf3da1c"
+      "sha256": "55526503f64acf3f86cd467654a0bb67b7f1b669fc390b413bdee81f12b450b1"
     },
     {
       "路径": "复用决策.json",
@@ -53,15 +53,15 @@
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "e7deca34968407dca65f5626deed260dc98a2e788509283e4e95a2783546004b"
+      "sha256": "ac888d8c0c587d23c6cbcadfb41a575cf5c882be9ef76d44d0b5150fb29b33b0"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "f168b190e3a835307edf04f75f5c0deb4a82719186741e674404114bf8413401"
+      "sha256": "1881939193ebc44f6c6bee1c7644917455ac6ba8f32489bc280e5cf1e657adbe"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "7a1462ea695f577ef0d0a73454d2ff4f6a7f8c70361d38b0068b1d74acb6f04f"
+      "sha256": "cebfcc09692b62e0b0a4457fd521ae284eec6167e25ed165b11c809b57f8f982"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -69,7 +69,7 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "9bb40ed04dcd6cb333f08873be95135077e6d75ba69806f2f84b8f6a9423d9fe"
+      "sha256": "43b8be84ebe7782bbc4f0da0f8a3ce5db57fdb44659b3ad554b9e14eecbe1a20"
     },
     {
       "路径": "说明/使用说明.md",

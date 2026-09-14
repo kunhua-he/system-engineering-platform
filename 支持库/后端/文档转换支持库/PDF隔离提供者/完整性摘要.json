@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.文档转换支持库.PDF隔离提供者",
-  "版本": "2.0.0",
+  "版本": "1.0.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
@@ -13,11 +13,11 @@
     },
     {
       "路径": "依赖锁.json",
-      "sha256": "93295c286fda6dc0d096f1fddfaa2acea112c226d9d727de6d9c5b663f600321"
+      "sha256": "9846323eb90b2d15c4eefc3291ea7fbb5063fd2de5c3333c6c87b47141405e1e"
     },
     {
       "路径": "包声明.json",
-      "sha256": "f2d301a64f7a1548aaab5da935995c1df1c7301c77dbb64b0f379ac63e86a7e7"
+      "sha256": "ae2d5d8e70e5d09531c0ab263e85aa56d1dde55ad2263fa54fdbc1313504de76"
     },
     {
       "路径": "复用决策.json",
@@ -41,11 +41,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "fc1c1db5c457281458fdb4316738b01dc877251888b0bd381548d53cd9458c96"
+      "sha256": "5ea0ae78bbef3a957c36925ce8de557654a38ef2ac2670fb85ad93743a34abc3"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "73ad6c7225b1f871918f9b3bf5b763fc42e721e191ff3e4e3fa95f810722edae"
+      "sha256": "42b84672a2bcd10ac4928bee4cf506550dc9ee3c35bd40baf3dd239b165578b0"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -53,7 +53,7 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "b74370c2b43ab193c033c96622fdc42a233140efc4d52f320c1ef7a57f0d5154"
+      "sha256": "9ebcbe93d7e7b7cf61e2c4ba22b90e72754226b1ad565dfd1d16ccd8b60fb4e2"
     },
     {
       "路径": "说明/使用说明.md",

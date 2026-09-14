@@ -17,6 +17,7 @@ import uuid
 from pathlib import Path
 
 from 平台控制面.包仓库.版本仓库数据 import 安装记录, 计算目录摘要
+from 公共契约.版本规则.契约版本 import 契约版本
 
 
 class 包仓库:
@@ -87,7 +88,7 @@ class 包仓库:
         # 5. 生成安装记录
         记录 = 安装记录(
             记录id=uuid.uuid4().hex[:16], 包id=包id, 版本=版本,
-            契约版本=str(声明.get("契约版本", "1.0.0")), 完整性摘要=摘要,
+            契约版本=str(声明.get("契约版本", 契约版本)), 完整性摘要=摘要,
             安装路径=str(目标路径), 时间=time.strftime("%Y-%m-%d %H:%M:%S"),
         )
         (self.安装记录目录 / f"{记录.记录id}.json").write_text(

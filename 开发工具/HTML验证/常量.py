@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-验证版本 = "3.1.1"
+验证版本 = "3.1.1"  # HTML 验证器自身迭代版本（工具自己的版本，不跟契约版本走）
 场景契约版本 = "验证场景/v1"
 并发上限 = 64
 默认并发 = min(并发上限, max(8, os.cpu_count() or 1))
