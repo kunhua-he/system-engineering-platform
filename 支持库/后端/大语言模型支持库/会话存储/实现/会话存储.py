@@ -9,6 +9,7 @@
 """
 
 from __future__ import annotations
+from pathlib import Path
 
 import json
 import os
@@ -19,11 +20,12 @@ import uuid
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
+from 公共契约.运行时.运行缓存 import 解析运行数据根
 
 # 补列等容错路径的问题留痕（哲学第 15 条：失败必须可见，不许 except: pass 吞掉）
 补列问题: list[str] = []
 
-默认库路径 = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "工程缓存", "大语言模型支持库.会话存储.db")
+默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "大语言模型支持库.会话存储.db")
 默认超时秒 = 1800   # 华哥口径：不申报默认 30 分钟，模块应主动申报自身需要多久
 锁 = threading.Lock()
 

@@ -79,8 +79,10 @@ def 清理执行记录(执行id: str = None) -> 结果:
 # ═══════════════════════════════════════════════
 import sqlite3 as _sqlite3
 import os as _os
+from pathlib import Path as _Path
+from 公共契约.运行时.运行缓存 import 解析运行数据根 as _解析运行数据根
 
-投递默认库路径 = _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "..", "工程缓存", "认领投递.db")
+投递默认库路径 = str(_解析运行数据根(_Path(__file__).resolve().parents[5]) / "认领投递.db")
 
 
 def _投递连接(库路径: str):

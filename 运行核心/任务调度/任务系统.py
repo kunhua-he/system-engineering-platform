@@ -89,7 +89,9 @@ class 任务系统:
         环境 = os.environ.get("系统库运行库")
         if 环境:
             return 环境
-        return str(Path(__file__).resolve().parents[2] / "工程缓存" / "运行数据" / "底座运行.db")
+        from 公共契约.运行时.运行缓存 import 解析运行数据根
+
+        return str(解析运行数据根(Path(__file__).resolve().parents[2]) / "底座运行.db")
 
     def _运行库调用(self, 能力id: str, 参数: dict[str, Any]) -> Any:
         """经唯一调用入口访问底座运行库；不可用时记入 `同步错误`（可见，不静默）。"""

@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
-from 公共契约.运行时.运行缓存 import 解析运行缓存根
+from 公共契约.运行时.运行缓存 import 解析运行缓存根, 解析运行数据根
 
 锁 = threading.Lock()
-默认库路径 = 解析运行缓存根(Path(__file__).resolve().parents[4]) / "记忆库.db"
+默认库路径 = 解析运行数据根(Path(__file__).resolve().parents[4]) / "记忆库.db"
 
 
 def _连接(库路径: str = None) -> sqlite3.Connection:
