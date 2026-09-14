@@ -139,7 +139,11 @@
               "api_key": "ollama",
               "协议": "chat_completions"
             },
-            "超时秒": 600.0
+            "超时秒": 600.0,
+            "模型配置": {
+              "模型路径": "~/Documents/AI模型/文转音频模型/Whisper/mlx-community-whisper-large-v3",
+              "模型名": "mlx-community/whisper-large-v3-mlx"
+            }
           },
           "预期": {
             "成功": true,

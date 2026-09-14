@@ -971,7 +971,7 @@
               "相对路径": "二进制"
             },
             "相对路径": "data.txt",
-            "最大字节数": 38
+            "最大字节数": 64
           },
           "预期": {
             "成功": true,
@@ -979,7 +979,7 @@
             "返回断言": {
               "值": {
                 "类型": "字节集型",
-                "base64": "5paH5Lu2566h55CG5aS55YW377ya55Sy5LmZCuesrOS6jOihjAo="
+                "base64": "5paH5Lu2566h55CG5aS55YW377ya5rqQ5paH5pysCuesrOS6jOihjAo="
               }
             }
           }
@@ -1168,7 +1168,7 @@
             "成功": true,
             "状态码": 200,
             "返回断言": {
-              "值": "07678d380e8a115bfd19d7c705b991d547f9911e3c501a9a35cba4a47e8f07d9"
+              "值": "fc6c0feee240ec94981c546a04c60b91bbc5ae26e8b62df7daa7a9663da8c74f"
             }
           }
         }
