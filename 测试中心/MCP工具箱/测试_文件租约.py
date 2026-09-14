@@ -30,18 +30,18 @@ class 文件租约测试(unittest.TestCase):
         状态.条件更新("占用租约", {"心跳": 心跳}, "能力id=?", (键,))
 
     def test_申请成功与同文件互斥(self) -> None:
-        首次 = 申请文件租约(self.存储目录, ["支持库/甲.py", "支持库/乙.py"],
-                            所有者="aaaa000000000001", 任务="甲包改造")
+        首次 = 申请文件租约(self.存储目录, ["支持库/包1.py", "支持库/包2.py"],
+                            所有者="aaaa000000000001", 任务="包1改造")
         self.assertTrue(首次["成功"])
         self.assertEqual(首次["数量"], 2)
         self.assertEqual([项["文件路径"] for 项 in 首次["租约"]],
-                         ["支持库/甲.py", "支持库/乙.py"])
+                         ["支持库/包1.py", "支持库/包2.py"])
 
-        冲突 = 申请文件租约(self.存储目录, ["支持库/甲.py"],
-                            所有者="bbbb000000000002", 任务="乙包改造")
+        冲突 = 申请文件租约(self.存储目录, ["支持库/包1.py"],
+                            所有者="bbbb000000000002", 任务="包2改造")
         self.assertFalse(冲突["成功"])
         self.assertEqual(冲突["错误码"], "FILE_LEASE_CONFLICT")
-        self.assertEqual(冲突["文件路径"], "支持库/甲.py")
+        self.assertEqual(冲突["文件路径"], "支持库/包1.py")
         self.assertEqual(冲突["占用者"], "aaaa000000000001")
 
     def test_批量全成功才开工且失败回滚(self) -> None:
@@ -117,9 +117,9 @@ class 文件租约测试(unittest.TestCase):
         self.assertEqual([项["文件路径"] for 项 in 剩余["占用"]], ["B/三.py"])
 
     def test_路径归一化(self) -> None:
-        self.assertEqual(归一化路径("./支持库/甲.py"), "支持库/甲.py")
-        self.assertEqual(归一化路径("支持库\\甲.py"), "支持库/甲.py")
-        self.assertEqual(归一化路径("/支持库/甲.py/"), "支持库/甲.py")
+        self.assertEqual(归一化路径("./支持库/包1.py"), "支持库/包1.py")
+        self.assertEqual(归一化路径("支持库\\包1.py"), "支持库/包1.py")
+        self.assertEqual(归一化路径("/支持库/包1.py/"), "支持库/包1.py")
         with self.assertRaises(ValueError):
             归一化路径("   ")
         self.assertEqual(文件键("./a.py"), "文件::a.py")

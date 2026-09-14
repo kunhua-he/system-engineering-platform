@@ -57,13 +57,13 @@ class TestOpenpyxl提供者(unittest.TestCase):
         self.assertEqual(文档["附加"]["工作表数"], 2)
 
     def test_生成产物可重新打开(self):
-        结果 = 生成表格文档({"工作表列表": [{"表名": "数据", "行": [[{"文本": "甲"}, 1]]}]})
+        结果 = 生成表格文档({"工作表列表": [{"表名": "数据", "行": [[{"文本": "内容1"}, 1]]}]})
         self.assertTrue(结果.成功)
         from openpyxl import load_workbook
         工作簿 = load_workbook(io.BytesIO(base64.b64decode(结果.值["字节b64"])), read_only=True)
         try:
             self.assertEqual(工作簿.sheetnames, ["数据"])
-            self.assertEqual([行 for 行 in 工作簿["数据"].iter_rows(values_only=True)], [("甲", "1")])
+            self.assertEqual([行 for 行 in 工作簿["数据"].iter_rows(values_only=True)], [("内容1", "1")])
         finally:
             工作簿.close()
 
@@ -128,7 +128,7 @@ class TestOpenpyxl提供者(unittest.TestCase):
         路径.write_bytes(b"x")
         with mock.patch.object(解析模块, "加载提供者", return_value=不可用):
             解析结果 = 解析表格文档(str(路径))
-            生成结果 = 生成表格文档({"工作表列表": [{"表名": "甲", "行": [[1]]}]})
+            生成结果 = 生成表格文档({"工作表列表": [{"表名": "表1", "行": [[1]]}]})
         self.assertEqual(解析结果.错误码, "提供者不可用")
         self.assertEqual(生成结果.错误码, "提供者不可用")
 

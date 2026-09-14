@@ -152,20 +152,20 @@ class Test安装与幂等(测试基类):
         self.assertEqual(指针["版本"], 1, "幂等安装不得推进激活版本")
 
     def test_新制品安装推进版本且激活指针CAS生效(self):
-        摘要甲 = self.入库()
-        self.安装(摘要甲)
+        摘要1 = self.入库()
+        self.安装(摘要1)
         # 新内容 → 新摘要 → 新版本入库安装
-        制品乙 = 构造制品(self.根, 内容表={
+        制品2 = 构造制品(self.根, 内容表={
             "平台客户端/__init__.py": '"""平台客户端入口"""\nX = 2\n',
             "平台客户端/公共契约/说明.json": '{"客户端": "平台客户端", "版本": "2"}\n'})
-        成功, _, 摘要乙 = self.接入.入库(
-            制品目录=制品乙, 私钥PEM=self.私钥, 公钥PEM=self.公钥)
+        成功, _, 摘要2 = self.接入.入库(
+            制品目录=制品2, 私钥PEM=self.私钥, 公钥PEM=self.公钥)
         self.assertTrue(成功)
-        self.assertNotEqual(摘要甲, 摘要乙)
-        目标 = self.安装(摘要乙)
+        self.assertNotEqual(摘要1, 摘要2)
+        目标 = self.安装(摘要2)
         self.assertTrue((目标 / "平台客户端" / "__init__.py").read_text(encoding="utf-8").find("X = 2") >= 0)
         指针 = self.接入.发布.当前激活("平台客户端")
-        self.assertEqual(指针["目标"], 摘要乙, "激活指针必须切到新制品")
+        self.assertEqual(指针["目标"], 摘要2, "激活指针必须切到新制品")
         self.assertEqual(指针["版本"], 2)
         # 陈旧监督器用旧令牌（版本1令牌1）切换 → CAS 拒绝
         成功旧, 消息旧 = self.接入.发布.切换激活指针(
@@ -173,7 +173,7 @@ class Test安装与幂等(测试基类):
         self.assertFalse(成功旧, "旧令牌切换必须被拒")
         self.assertIn("陈旧", 消息旧)
         指针 = self.接入.发布.当前激活("平台客户端")
-        self.assertEqual(指针["目标"], 摘要乙, "陈旧监督器不得覆盖激活指针")
+        self.assertEqual(指针["目标"], 摘要2, "陈旧监督器不得覆盖激活指针")
 
 
 class Test拒绝路径(测试基类):

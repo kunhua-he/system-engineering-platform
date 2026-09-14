@@ -304,12 +304,12 @@ class Test计算感知哈希(图像处理装配):
         self.渐变字节 = base64.b64decode(渐变.值["图像b64"])
 
     def test_同输入同哈希确定性(self):
-        结果甲 = 计算感知哈希(self.纯色字节, 哈希类型="pHash")
-        结果乙 = 计算感知哈希(self.纯色字节, 哈希类型="pHash")
-        self.assertTrue(结果甲.成功, 结果甲.错误说明)
-        self.assertEqual(结果甲.值, 结果乙.值)
-        self.assertEqual(结果甲.值["哈希类型"], "pHash")
-        self.assertEqual(len(结果甲.值["哈希"]), 16)
+        结果1 = 计算感知哈希(self.纯色字节, 哈希类型="pHash")
+        结果2 = 计算感知哈希(self.纯色字节, 哈希类型="pHash")
+        self.assertTrue(结果1.成功, 结果1.错误说明)
+        self.assertEqual(结果1.值, 结果2.值)
+        self.assertEqual(结果1.值["哈希类型"], "pHash")
+        self.assertEqual(len(结果1.值["哈希"]), 16)
 
     def test_不同图像哈希不同(self):
         纯色哈希 = 计算感知哈希(self.纯色字节, 哈希类型="aHash")

@@ -45,7 +45,7 @@ class 核心治理测试(unittest.TestCase):
         self._临时.cleanup()
 
     def test_创建核心快照生成时间戳目录清单摘要与文件副本(self) -> None:
-        结果 = 创建核心快照(self.项目根, 说明="测试快照甲")
+        结果 = 创建核心快照(self.项目根, 说明="测试快照1")
         self.assertTrue(结果["成功"], 结果)
         self.assertEqual(结果["错误码"], "")
         快照路径 = Path(结果["快照路径"])
@@ -59,7 +59,7 @@ class 核心治理测试(unittest.TestCase):
         清单 = json.loads((快照路径 / "清单.json").read_text(encoding="utf-8"))
         self.assertEqual(清单["摘要"], 结果["摘要"])
         self.assertEqual(清单["文件数"], 4)
-        self.assertEqual(清单["说明"], "测试快照甲")
+        self.assertEqual(清单["说明"], "测试快照1")
         self.assertEqual(清单["范围"], ["运行核心", "公共契约"])
         摘要文件 = json.loads((快照路径 / "摘要.json").read_text(encoding="utf-8"))
         self.assertEqual(摘要文件["摘要"], 结果["摘要"])
@@ -70,8 +70,8 @@ class 核心治理测试(unittest.TestCase):
             self.assertEqual(副本.read_bytes(), (self.项目根 / 相对路径).read_bytes())
 
     def test_查询核心快照列出时间摘要文件数(self) -> None:
-        创建核心快照(self.项目根, 说明="甲")
-        创建核心快照(self.项目根, 说明="乙")
+        创建核心快照(self.项目根, 说明="快照1")
+        创建核心快照(self.项目根, 说明="快照2")
         结果 = 查询核心快照(self.项目根)
         self.assertTrue(结果["成功"], 结果)
         self.assertEqual(结果["错误码"], "")

@@ -24,7 +24,7 @@ class Test发布者视图(unittest.TestCase):
     def setUp(self):
         self.目录 = Path(tempfile.mkdtemp(prefix="发布者视图测试_"))
         self.服务 = 统一能力服务(self.目录)
-        self.身份id = "发布者甲"
+        self.身份id = "发布者1"
         self.令牌 = self.服务.授权.注册身份(身份id=self.身份id)
         # 引导授予 发布者 角色并切换（受信提权唯一路径）
         成功, 消息 = self.服务.授权.引导授予(身份id=self.身份id, 角色=发布者, 授予者="系统引导")
@@ -142,7 +142,7 @@ class Test发布者视图(unittest.TestCase):
             self.assertFalse(hasattr(self.视图, 方法名),
                              f"视图不得提供非发布操作: {方法名}")
         # 未授予发布者角色（普通用户等级1）执行签名与发布 → 等级不足被拒
-        令牌普通 = self.服务.授权.注册身份(身份id="路人甲")
+        令牌普通 = self.服务.授权.注册身份(身份id="访客1")
         结果 = self.服务.执行操作(令牌=令牌普通, 操作="签名与发布",
                                  参数={"制品摘要": self.制品摘要})
         self.assertFalse(结果["成功"])

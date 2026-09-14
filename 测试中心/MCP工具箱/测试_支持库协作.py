@@ -31,7 +31,7 @@ class 支持库协作测试(unittest.TestCase):
     def test_登记需求写入快照并可读取(self) -> None:
         结果 = 登记需求(self.工程缓存根, 能力id="PDF渲染.检测加密页数",
                        说明="支持库新增 PDF 渲染能力",
-                       来源任务="阶段26-工作包甲", work_id="4efa32325b5b4d25",
+                       来源任务="阶段26-工作包1", work_id="4efa32325b5b4d25",
                        项目根=self.项目根)
         self.assertTrue(结果["成功"], 结果)
         快照 = 结果["值"]
@@ -44,16 +44,16 @@ class 支持库协作测试(unittest.TestCase):
         磁盘 = json.loads(文件.read_text(encoding="utf-8"))
         self.assertEqual(磁盘["需求id"], 快照["需求id"])
         self.assertEqual(磁盘["版本"], "1")
-        self.assertEqual(磁盘["来源任务"], "阶段26-工作包甲")
+        self.assertEqual(磁盘["来源任务"], "阶段26-工作包1")
         self.assertEqual(磁盘["确认状态"], "未确认")
 
     def test_登记需求参数不合法(self) -> None:
-        空说明 = 登记需求(self.工程缓存根, 能力id="能力甲", 说明="",
-                        来源任务="任务甲", work_id="work-a")
+        空说明 = 登记需求(self.工程缓存根, 能力id="能力1", 说明="",
+                        来源任务="任务1", work_id="work-a")
         self.assertFalse(空说明["成功"])
         self.assertEqual(空说明["错误码"], 参数不合法)
-        穿越 = 登记需求(self.工程缓存根, 能力id="能力甲", 说明="说明",
-                       来源任务="任务甲", work_id="../逃逸")
+        穿越 = 登记需求(self.工程缓存根, 能力id="能力1", 说明="说明",
+                       来源任务="任务1", work_id="../逃逸")
         self.assertFalse(穿越["成功"])
         self.assertEqual(穿越["错误码"], 参数不合法)
 
@@ -83,13 +83,13 @@ class 支持库协作测试(unittest.TestCase):
         self.assertEqual(结果["错误码"], 参数不合法)
 
     def test_零残留无临时文件(self) -> None:
-        登记需求(self.工程缓存根, 能力id="能力甲", 说明="说明",
-                来源任务="任务甲", work_id="work-a")
+        登记需求(self.工程缓存根, 能力id="能力1", 说明="说明",
+                来源任务="任务1", work_id="work-a")
         残留 = sorted(self.工程缓存根.rglob("*.tmp"))
         self.assertEqual(残留, [])
         需求文件 = self.工程缓存根 / "需求登记" / "work-a.json"
         磁盘 = json.loads(需求文件.read_text(encoding="utf-8"))
-        self.assertEqual(磁盘["能力id"], "能力甲")
+        self.assertEqual(磁盘["能力id"], "能力1")
 
 
 if __name__ == "__main__":

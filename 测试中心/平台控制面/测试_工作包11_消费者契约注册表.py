@@ -40,14 +40,14 @@ class Test消费者契约注册表(unittest.TestCase):
         shutil.rmtree(self.目录, ignore_errors=True)
 
     def test_登记契约后查询契约返回真实绑定记录(self):
-        结果 = self.注册表.登记契约("消费者甲", "能力A", 能力契约())
+        结果 = self.注册表.登记契约("消费者1", "能力A", 能力契约())
         self.assertTrue(结果["成功"], 结果["消息"])
         self.assertEqual(结果["错误码"], "SUCCESS")
         查询 = self.注册表.查询契约("能力A")
         self.assertTrue(查询["成功"])
         self.assertEqual(len(查询["数据"]), 1, "能力A 应只有一份消费者契约")
         记录 = 查询["数据"][0]
-        self.assertEqual(记录["消费者id"], "消费者甲")
+        self.assertEqual(记录["消费者id"], "消费者1")
         self.assertEqual(记录["能力id"], "能力A")
         self.assertEqual(记录["请求"]["参数列表"], ["能力id", "参数"])
         self.assertEqual(记录["请求"]["示例"], {"能力id": "能力A", "参数": {"关键词": "搜索"}})
@@ -61,23 +61,23 @@ class Test消费者契约注册表(unittest.TestCase):
         self.assertEqual(查询["数据"], 查询["数据"], "绑定记录必须持久化一致")
 
     def test_契约无漂移时门禁判定不阻断(self):
-        self.注册表.登记契约("消费者甲", "能力A", 能力契约())
+        self.注册表.登记契约("消费者1", "能力A", 能力契约())
         结果 = self.注册表.门禁判定("能力A", 能力契约())
         self.assertTrue(结果["成功"])
         self.assertFalse(结果["数据"]["是否阻断"], "无漂移必须放行")
         self.assertEqual(结果["数据"]["漂移列表"], [])
 
     def test_参数漂移导致门禁阻断(self):
-        self.注册表.登记契约("消费者甲", "能力A", 能力契约(请求参数=["能力id", "领域"]))
+        self.注册表.登记契约("消费者1", "能力A", 能力契约(请求参数=["能力id", "领域"]))
         结果 = self.注册表.门禁判定("能力A", 能力契约(请求参数=["能力id"]))
         self.assertTrue(结果["数据"]["是否阻断"], "参数缺失必须阻断")
         漂移 = 结果["数据"]["漂移列表"]
-        self.assertEqual(漂移[0]["消费者id"], "消费者甲")
+        self.assertEqual(漂移[0]["消费者id"], "消费者1")
         self.assertEqual(漂移[0]["漂移类型"], "参数漂移")
         self.assertEqual(漂移[0]["期望值"], "领域")
 
     def test_错误码漂移导致门禁阻断(self):
-        self.注册表.登记契约("消费者甲", "能力A",
+        self.注册表.登记契约("消费者1", "能力A",
                             能力契约(错误码集=["CALL_TIMEOUT", "CALL_FAILED"]))
         结果 = self.注册表.门禁判定("能力A", 能力契约(错误码集=["CALL_TIMEOUT"]))
         self.assertTrue(结果["数据"]["是否阻断"], "错误码缺失必须阻断")
@@ -87,7 +87,7 @@ class Test消费者契约注册表(unittest.TestCase):
 
     def test_超时漂移导致门禁阻断(self):
         # 消费者要求 5 秒时限，能力当前超时变短为 2 秒（不满足消费者要求）→ 阻断
-        self.注册表.登记契约("消费者甲", "能力A", 能力契约(超时=5.0))
+        self.注册表.登记契约("消费者1", "能力A", 能力契约(超时=5.0))
         结果 = self.注册表.门禁判定("能力A", 能力契约(超时=2.0))
         self.assertTrue(结果["数据"]["是否阻断"], "超时变短不满足消费者要求必须阻断")
         漂移 = 结果["数据"]["漂移列表"]
@@ -96,7 +96,7 @@ class Test消费者契约注册表(unittest.TestCase):
         self.assertEqual(漂移[0]["实际值"], 2.0)
 
     def test_返回键缺失导致返回键漂移阻断(self):
-        self.注册表.登记契约("消费者甲", "能力A",
+        self.注册表.登记契约("消费者1", "能力A",
                             能力契约(返回键=["成功", "结果", "错误码", "消息"]))
         结果 = self.注册表.门禁判定("能力A", 能力契约(返回键=["成功", "结果"]))
         self.assertTrue(结果["数据"]["是否阻断"], "返回键缺失必须阻断")
@@ -106,7 +106,7 @@ class Test消费者契约注册表(unittest.TestCase):
         self.assertIn("消息", [项["期望值"] for 项 in 漂移])
 
     def test_释放要求缺失导致释放漂移阻断(self):
-        self.注册表.登记契约("消费者甲", "能力A",
+        self.注册表.登记契约("消费者1", "能力A",
                             能力契约(释放要求=["释放调用信号量", "取消挂起任务"]))
         结果 = self.注册表.门禁判定("能力A", 能力契约(释放要求=["释放调用信号量"]))
         self.assertTrue(结果["数据"]["是否阻断"], "释放要求缺失必须阻断")
@@ -115,22 +115,22 @@ class Test消费者契约注册表(unittest.TestCase):
         self.assertEqual(漂移[0]["期望值"], "取消挂起任务")
 
     def test_多消费者任一漂移即阻断(self):
-        self.注册表.登记契约("消费者甲", "能力A", 能力契约(请求参数=["能力id"]))
-        self.注册表.登记契约("消费者乙", "能力A",
+        self.注册表.登记契约("消费者1", "能力A", 能力契约(请求参数=["能力id"]))
+        self.注册表.登记契约("消费者2", "能力A",
                             能力契约(请求参数=["能力id", "领域"]))
         结果 = self.注册表.门禁判定("能力A", 能力契约(请求参数=["能力id"]))
         self.assertTrue(结果["数据"]["是否阻断"], "任一消费者契约漂移必须阻断")
         漂移列表 = 结果["数据"]["漂移列表"]
-        self.assertEqual(漂移列表[0]["消费者id"], "消费者乙")
+        self.assertEqual(漂移列表[0]["消费者id"], "消费者2")
         self.assertEqual(漂移列表[0]["漂移类型"], "参数漂移")
-        # 删除乙后仅剩满足要求的甲 → 放行
-        删除 = self.注册表.删除契约("消费者乙", "能力A")
+        # 删除消费者2后仅剩满足要求的消费者1 → 放行
+        删除 = self.注册表.删除契约("消费者2", "能力A")
         self.assertTrue(删除["成功"])
         self.assertEqual(删除["错误码"], "SUCCESS")
         结果2 = self.注册表.门禁判定("能力A", 能力契约(请求参数=["能力id"]))
         self.assertFalse(结果2["数据"]["是否阻断"], "删除漂移消费者后必须放行")
         # 重复删除返回未登记
-        重复 = self.注册表.删除契约("消费者乙", "能力A")
+        重复 = self.注册表.删除契约("消费者2", "能力A")
         self.assertFalse(重复["成功"])
         self.assertEqual(重复["错误码"], "NOT_REGISTERED")
 

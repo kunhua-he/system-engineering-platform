@@ -58,16 +58,16 @@ class Test文件系统补齐(unittest.TestCase):
 
     def test_临时资源登记与清理(self):
         """登记→创建→统一清理→路径消失；重复清理幂等。"""
-        资源甲 = self.临时目录 / "临时甲"
-        资源乙 = self.临时目录 / "临时乙.txt"
-        资源甲.mkdir()
-        (资源甲 / "内部.txt").write_text("x")
-        资源乙.write_text("y")
-        self.assertTrue(登记临时资源(str(资源甲)).成功)
-        self.assertTrue(登记临时资源(str(资源乙)).成功)
+        资源1 = self.临时目录 / "临时资源1"
+        资源2 = self.临时目录 / "临时资源2.txt"
+        资源1.mkdir()
+        (资源1 / "内部.txt").write_text("x")
+        资源2.write_text("y")
+        self.assertTrue(登记临时资源(str(资源1)).成功)
+        self.assertTrue(登记临时资源(str(资源2)).成功)
         self.assertTrue(清理全部临时资源().成功)
-        self.assertFalse(资源甲.exists())
-        self.assertFalse(资源乙.exists())
+        self.assertFalse(资源1.exists())
+        self.assertFalse(资源2.exists())
         self.assertTrue(清理全部临时资源().成功)
 
     def test_已有文件系统能力回归(self):

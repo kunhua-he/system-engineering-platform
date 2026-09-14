@@ -69,17 +69,17 @@ class Test能力调用图审计(unittest.TestCase):
         return [项 for 项 in self._审计() if 类型片段 in 项[2]]
 
     def test_支持库导入检出(self) -> None:
-        构造包(self.模块库根, "样本甲",
-               "from 支持库.适配层.Tesseract提供者 import 识别图片\n\ndef 能力甲():\n    return 识别图片()\n",
-               ["样本甲.能力甲"])
+        构造包(self.模块库根, "样本1",
+               "from 支持库.适配层.Tesseract提供者 import 识别图片\n\ndef 能力1():\n    return 识别图片()\n",
+               ["样本1.能力1"])
         命中 = self._检出类型("支持库直连")
         self.assertEqual(len(命中), 1)
         self.assertEqual(命中[0][1], 1)
 
     def test_read_bytes检出(self) -> None:
-        构造包(self.模块库根, "样本乙",
-               "from pathlib import Path\n\ndef 能力乙():\n    return Path('x').read_bytes()\n",
-               ["样本乙.能力乙"])
+        构造包(self.模块库根, "样本2",
+               "from pathlib import Path\n\ndef 能力2():\n    return Path('x').read_bytes()\n",
+               ["样本2.能力2"])
         命中 = self._检出类型("原子旁路-文件读")
         self.assertEqual(len(命中), 1)
 

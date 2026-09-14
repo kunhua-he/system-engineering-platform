@@ -97,7 +97,7 @@ class Test前端描述支持库功能(unittest.TestCase):
 
     def test_基础组件描述全流程(self) -> None:
         from 支持库.前端.基础组件描述 import 创建组件定义, 校验组件属性, 声明事件
-        结果 = 创建组件定义("组件甲", "按钮", {"标签": "点击"})
+        结果 = 创建组件定义("组件1", "按钮", {"标签": "点击"})
         self.assertTrue(结果.成功)
         self.assertEqual(结果.值["组件类型"], "按钮")
         self.assertEqual(结果.值["事件列表"], [])
@@ -123,7 +123,7 @@ class Test前端描述支持库功能(unittest.TestCase):
 
     def test_状态描述全流程(self) -> None:
         from 支持库.前端.状态描述 import 创建窗口状态, 状态流转校验
-        结果 = 创建窗口状态("窗口甲", "关闭")
+        结果 = 创建窗口状态("窗口1", "关闭")
         self.assertTrue(结果.成功)
         self.assertEqual(结果.值["状态"], "关闭")
         self.assertEqual(结果.值["流转记录"], [])
@@ -136,7 +136,7 @@ class Test前端描述支持库功能(unittest.TestCase):
     def test_窗口描述全流程(self) -> None:
         from 支持库.前端.窗口描述 import (
             创建窗口定义, 校验窗口定义, 序列化窗口定义, 反序列化窗口定义)
-        结果 = 创建窗口定义("窗口甲", "标题", 400, 300)
+        结果 = 创建窗口定义("窗口1", "标题", 400, 300)
         self.assertTrue(结果.成功)
         self.assertEqual(结果.值["组件列表"], [])
         校验 = 校验窗口定义(结果.值)
@@ -145,14 +145,14 @@ class Test前端描述支持库功能(unittest.TestCase):
         self.assertTrue(序列化.成功)
         还原 = 反序列化窗口定义(序列化.值)
         self.assertTrue(还原.成功)
-        self.assertEqual(还原.值["窗口id"], "窗口甲")
+        self.assertEqual(还原.值["窗口id"], "窗口1")
         失败 = 反序列化窗口定义("不是JSON")
         self.assertFalse(失败.成功)
         self.assertEqual(失败.错误.错误码, "反序列化失败")
 
     def test_资源描述全流程(self) -> None:
         from 支持库.前端.资源描述 import 创建资源描述, 校验资源引用
-        结果 = 创建资源描述("资源甲", "图片", "示例来源")
+        结果 = 创建资源描述("资源1", "图片", "示例来源")
         self.assertTrue(结果.成功)
         self.assertEqual(结果.值["引用计数"], 0)
         校验 = 校验资源引用(结果.值)

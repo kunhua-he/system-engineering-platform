@@ -58,8 +58,8 @@ class SSE夹具:
                 self.end_headers()
                 if 夹具.模式 == "chat":
                     夹具._写入(self, [
-                        'data: {"choices":[{"delta":{"content":"甲"}}]}\n\n'.encode(),
-                        'data: {"choices":[{"delta":{"content":"乙"}}]}\n\n'.encode(),
+                        'data: {"choices":[{"delta":{"content":"第一段"}}]}\n\n'.encode(),
+                        'data: {"choices":[{"delta":{"content":"第二段"}}]}\n\n'.encode(),
                         b"data: [DONE]\n\n",
                     ])
                 elif 夹具.模式 == "res":
@@ -134,8 +134,8 @@ class 测试节点M1模型连接器流式接线(unittest.TestCase):
         句柄 = self._连接("chat", "chat")
         事件 = list(流式生成对话(句柄, [{"role": "user", "content": "测试"}]))
         self.assertEqual(事件, [
-            {"类型": "增量", "文本": "甲"},
-            {"类型": "增量", "文本": "乙"},
+            {"类型": "增量", "文本": "第一段"},
+            {"类型": "增量", "文本": "第二段"},
             {"类型": "完成", "文本": "", "完成原因": "stop", "用量": {}},
         ])
         请求 = self.夹具.请求[0]

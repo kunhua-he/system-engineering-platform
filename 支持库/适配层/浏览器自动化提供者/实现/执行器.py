@@ -17,22 +17,27 @@ def _截断(文本: str, 上限: int) -> str:
     return 文本[:前] + "\n...[中段省略]...\n" + 文本[-后:]
 
 
+清理问题: list[str] = []
+
+
 def _回收(进程: subprocess.Popen) -> None:
+    """回收子进程：终止失败必须留痕（哲学第 15 条），但不阻塞上层错误上报。"""
     try:
         if os.name == "posix":
             os.killpg(进程.pid, signal.SIGTERM)
         else:
             进程.terminate()
         进程.wait(timeout=1.0)
-    except Exception:
+    except Exception as 错误:
+        清理问题.append(f"SIGTERM 回收失败: {错误}")
         try:
             if os.name == "posix":
                 os.killpg(进程.pid, signal.SIGKILL)
             else:
                 进程.kill()
             进程.wait(timeout=2.0)
-        except Exception:
-            pass
+        except Exception as 终止错误:
+            清理问题.append(f"SIGKILL 回收失败（进程可能残留）: {终止错误}")
     with contextlib.suppress(Exception):
         进程.communicate(timeout=1.0)
 

@@ -33,9 +33,9 @@ class Test调用Agent视图(unittest.TestCase):
         self.目录 = Path(tempfile.mkdtemp(prefix="视图02测试_"))
         self.服务 = 统一能力服务(self.目录)
         self.视图 = 调用Agent视图(self.服务)
-        self.令牌 = self.服务.授权.注册身份(身份id="调用Agent甲")
+        self.令牌 = self.服务.授权.注册身份(身份id="调用Agent1")
         成功, 消息 = self.服务.授权.引导授予(
-            身份id="调用Agent甲", 角色="调用Agent", 授予者="系统引导")
+            身份id="调用Agent1", 角色="调用Agent", 授予者="系统引导")
         self.assertTrue(成功, 消息)
         成功, 消息 = self.服务.授权.切换角色(self.令牌, "调用Agent")
         self.assertTrue(成功, 消息)
@@ -110,7 +110,7 @@ class Test调用Agent视图(unittest.TestCase):
         self.assertEqual(结果3["可用状态"], "不可用")
         self.assertIn("提供者", 结果3["原因"])
         # 普通用户令牌 → 需授权
-        普通令牌 = self.服务.授权.注册身份(身份id="普通用户甲")
+        普通令牌 = self.服务.授权.注册身份(身份id="普通用户1")
         结果4 = self.视图.验证可用(令牌=普通令牌, 能力id=self.能力id)
         self.assertEqual(结果4["可用状态"], "需授权")
 

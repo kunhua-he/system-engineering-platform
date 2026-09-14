@@ -326,6 +326,82 @@ class 协作状态测试(unittest.TestCase):
         条目 = 聚合["结果列表"][0]
         self.assertEqual(条目["子任务列表"], ["aaaa000000000003", "aaaa000000000004"])
 
+    def test_登记与收口落库且不写旧文件(self) -> None:
+        """运行态唯一落点：登记/收口进运行库，旧 `{work_id}.json` 不再产生。"""
+        self.assertTrue(self._登记父()["成功"])
+        记录 = _读库记录(self.运行库)
+        self.assertEqual([项["work_id"] for 项 in 记录], [父id])
+        self.assertEqual(记录[0]["生命周期"], "创建")
+        self.assertFalse((self.状态目录 / f"{父id}.json").exists(),
+                         "入库后不得再写旧协作状态文件")
+        self.assertTrue(已登记(父id, 状态目录=self.状态目录, 运行库路径=self.运行库))
+
+        _写反馈(self.反馈文件, 父id)
+        收口 = 收口登记(父id, 五件套路径="回信.md", 结论="完成",
+                      状态目录=self.状态目录, 反馈文件=self.反馈文件,
+                      验证历史文件=self.验证历史文件)
+        self.assertTrue(收口["成功"], 收口)
+        记录 = _读库记录(self.运行库)
+        self.assertEqual(记录[0]["生命周期"], "完成")
+        self.assertEqual(记录[0]["收口结论"], "完成")
+        self.assertEqual(记录[0]["五件套路径"], "回信.md")
+        self.assertFalse(self.状态目录.exists() and list(self.状态目录.glob("*.json")),
+                         "收口也不得写旧协作状态文件")
+
+    def test_旧文件只读兼容并一次性搬迁(self) -> None:
+        """迁移期口径：库空时读旧文件并一次性搬入库；旧文件保持原样不被改写。"""
+        self.状态目录.mkdir(parents=True, exist_ok=True)
+        旧文件 = self.状态目录 / f"{父id}.json"
+        旧记录 = {
+            "work_id": 父id, "任务": "历史任务（旧文件）", "角色": "平台维护者",
+            "worktree路径": str(self.工作区), "允许路径": [], "基线提交": "old0001",
+            "代码指纹": "0123456789abcdef", "parent_work_id": "", "子任务列表": [],
+            "生命周期": "创建", "登记时间": 1.0,
+        }
+        旧文件.write_text(json.dumps(旧记录, ensure_ascii=False, indent=2), encoding="utf-8")
+        旧字节 = 旧文件.read_bytes()
+
+        # 第一次查询：库空 → 回退旧文件，并一次性搬入库。
+        首次 = 查询协作状态(work_id=父id, 状态目录=self.状态目录,
+                          反馈文件=self.反馈文件, 验证历史文件=self.验证历史文件,
+                          临时上下文目录=self.临时上下文目录)
+        self.assertTrue(首次["成功"], 首次)
+        self.assertEqual(首次["结果列表"][0]["任务"], "历史任务（旧文件）")
+        self.assertEqual([项["work_id"] for 项 in _读库记录(self.运行库)], [父id],
+                         "旧文件必须一次性搬入运行库")
+        self.assertEqual(旧文件.read_bytes(), 旧字节, "旧文件必须保持只读")
+
+        # 搬迁后旧文件不再是事实源：删掉它仍能从库里读回。
+        旧文件.unlink()
+        再次 = 查询协作状态(work_id=父id, 状态目录=self.状态目录,
+                          反馈文件=self.反馈文件, 验证历史文件=self.验证历史文件,
+                          临时上下文目录=self.临时上下文目录)
+        self.assertTrue(再次["成功"], 再次)
+        self.assertEqual(再次["结果列表"][0]["任务"], "历史任务（旧文件）")
+
+    def test_关键词查询与子任务状态读库(self) -> None:
+        """关键词查询与子任务「已登记」判定都以库为准（不再靠文件存在）。"""
+        self.assertTrue(self._登记父(子任务列表=[子id])["成功"])
+        子登记 = 登记任务(子id, 任务="子任务入库", 角色="模块开发者",
+                       worktree路径=str(self.工作区), 允许路径=[], 基线提交="x",
+                      parent_work_id=父id, 状态目录=self.状态目录)
+        self.assertTrue(子登记["成功"], 子登记)
+        self.assertEqual(len(_读库记录(self.运行库)), 2)
+
+        匹配 = 查询协作状态(任务关键词="入库", 状态目录=self.状态目录,
+                         反馈文件=self.反馈文件, 验证历史文件=self.验证历史文件,
+                         临时上下文目录=self.临时上下文目录)
+        self.assertTrue(匹配["成功"], 匹配)
+        self.assertEqual(匹配["数量"], 1)
+        self.assertEqual(匹配["结果列表"][0]["work_id"], 子id)
+
+        父聚合 = 查询协作状态(work_id=父id, 状态目录=self.状态目录,
+                           反馈文件=self.反馈文件, 验证历史文件=self.验证历史文件,
+                           临时上下文目录=self.临时上下文目录)
+        条目 = 父聚合["结果列表"][0]
+        self.assertEqual(条目["子任务列表"], [子id])
+        self.assertEqual(条目["子任务状态"], {子id: "已登记"})
+
     def test_零残留不触碰正式路径(self) -> None:
         self.assertTrue(self._登记父()["成功"])
         _写反馈(self.反馈文件, 父id)

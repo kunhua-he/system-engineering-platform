@@ -76,7 +76,7 @@ class 项目服务测试(unittest.TestCase):
         self.assertTrue(计划["建议命令"][0][2].startswith("测试中心.运行核心.测试_"))
 
     def test_阶段收口只验证指定编译制品(self) -> None:
-        制品 = "工程缓存/编译制品/候选甲"
+        制品 = "工程缓存/编译制品/候选1"
         计划 = 服务模块._验证计划(["运行核心/能力调用"], "阶段收口", 制品=制品)
         self.assertFalse(计划["是否需要全量"])
         self.assertEqual(计划["建议命令"], [[
@@ -195,11 +195,11 @@ class 项目服务测试(unittest.TestCase):
     def test_CodeGraph输出不泄漏范围外源码(self) -> None:
         标记 = chr(96)
         原文 = (
-            f"**{标记}模块库/甲.py{标记}** — 甲\n\n模块内容\n\n"
+            f"**{标记}模块库/示例模块.py{标记}** — 示例模块\n\n模块内容\n\n"
             f"**{标记}支持库/秘密.py{标记}** — 秘密\n\n不应出现\n"
         )
         结果 = 服务模块._过滤代码地图输出(原文, ["模块库"])
-        self.assertIn("模块库/甲.py", 结果)
+        self.assertIn("模块库/示例模块.py", 结果)
         self.assertIn("模块内容", 结果)
         self.assertNotIn("支持库/秘密.py", 结果)
         self.assertNotIn("不应出现", 结果)

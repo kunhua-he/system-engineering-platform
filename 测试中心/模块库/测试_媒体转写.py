@@ -196,7 +196,7 @@ class Test参数错误(媒体转写装配):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_取消令牌id文本放行(self):
-        结果 = 转写音频文件(self.音频路径, 取消令牌id="令牌-甲")
+        结果 = 转写音频文件(self.音频路径, 取消令牌id="令牌1")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "未配置模型")
 

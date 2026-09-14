@@ -22,9 +22,9 @@ class 安全审计有界测试(unittest.TestCase):
     def test_查询默认有界且写入可回读(self) -> None:
         with tempfile.TemporaryDirectory() as 临时目录:
             审计 = 安全审计(Path(临时目录))
-            审计id = 审计.记录(操作="读取", 项目id="项目甲", 用户id="用户甲")
+            审计id = 审计.记录(操作="读取", 项目id="项目1", 用户id="用户1")
             self.assertTrue(审计id)
-            结果 = 审计.查询(项目id="项目甲", 用户id="用户甲")
+            结果 = 审计.查询(项目id="项目1", 用户id="用户1")
             self.assertEqual(len(结果), 1)
             self.assertEqual(结果[0]["审计id"], 审计id)
 

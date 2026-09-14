@@ -49,7 +49,7 @@ DOCX参数 = {
     "内容块列表": [
         {"类型": "标题", "文本": "测试标题", "级别": 1},
         {"类型": "段落", "文本": "第一段中文内容", "加粗": True},
-        {"类型": "表格", "表头": ["列甲", "列乙"], "行": [["值1", "值2"]]},
+        {"类型": "表格", "表头": ["姓名", "数量"], "行": [["值1", "值2"]]},
     ]
 }
 XLSX参数 = {
@@ -130,7 +130,7 @@ class Test生成DOCX(测试基类):
         self.assertIn("测试标题", 文本)
         self.assertIn("第一段中文内容", 文本)
         self.assertEqual(len(文档.tables), 1)
-        self.assertEqual(文档.tables[0].rows[0].cells[0].text, "列甲")
+        self.assertEqual(文档.tables[0].rows[0].cells[0].text, "姓名")
         self.assertEqual(文档.tables[0].rows[1].cells[1].text, "值2")
 
     def test_空内容参数不合法(self):
@@ -175,7 +175,7 @@ class Test生成DOCX(测试基类):
 
 class Test生成XLSX(测试基类):
     def test_最小有效文件与签名(self):
-        结果 = 生成XLSX({"工作表列表": [{"表名": "表", "列": ["列甲"], "行": [["值"]]}]})
+        结果 = 生成XLSX({"工作表列表": [{"表名": "表", "列": ["姓名"], "行": [["值"]]}]})
         self.assertTrue(结果.成功, 结果.错误说明)
         self.断言OOXML签名("xlsx", 结果.值.字节)
 

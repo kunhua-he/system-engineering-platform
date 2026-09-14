@@ -140,7 +140,7 @@ class Test生成演示文稿(unittest.TestCase):
 
     def test_缺python_pptx生成提供者不可用(self):
         with mock.patch.object(实现模块, "pptx", None):
-            结果 = 实现模块.生成演示文稿({"幻灯片列表": [{"标题": "甲"}]})
+            结果 = 实现模块.生成演示文稿({"幻灯片列表": [{"标题": "示例标题"}]})
         self.assertEqual(结果.错误码, "提供者不可用")
 
 

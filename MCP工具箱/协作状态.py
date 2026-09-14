@@ -106,7 +106,7 @@ def _读运行库(运行库路径: str) -> dict[str, dict[str, Any]] | None:
             continue
         键 = str(记录.get("work_id") or 行.get("id") or "").lower()
         if 键:
-            记录表[键] = 记录
+            记录表[键] = _还原清单字段(记录)
     return 记录表 or None
 
 
@@ -125,11 +125,42 @@ def _读旧文件(状态目录: Path) -> dict[str, dict[str, Any]]:
     return 记录表
 
 
+_清单列字段 = ("允许路径", "子任务列表")  # 库表这两列是 TEXT：列表按 JSON 文本落列
+
+
+def _库视图(记录: dict[str, Any]) -> dict[str, Any]:
+    """落库视图：库表列只收 TEXT/REAL，列表类字段转 JSON 文本（读回时还原）。
+
+    运行库 `协作状态` 表的 `允许路径`/`子任务列表` 是 TEXT 列，直接塞 list 会被
+    SQLite 拒绑（表结构属支持库，本批不动）；故此处按 JSON 文本落列，`_读运行库`
+    一律还原回列表——对外契约仍是列表，读回一致。
+    """
+    视图 = dict(记录)
+    for 键 in _清单列字段:
+        if isinstance(视图.get(键), (list, dict)):
+            视图[键] = json.dumps(视图[键], ensure_ascii=False)
+    视图["状态"] = str(视图.get("生命周期") or 视图.get("状态") or "创建")
+    return 视图
+
+
+def _还原清单字段(记录: dict[str, Any]) -> dict[str, Any]:
+    """把落库时转成 JSON 文本的列表字段还原为列表（对外契约一致）。"""
+    for 键 in _清单列字段:
+        值 = 记录.get(键)
+        if isinstance(值, str):
+            try:
+                记录[键] = json.loads(值)
+            except json.JSONDecodeError:
+                continue
+    return 记录
+
+
 def _写运行库(运行库路径: str, 记录: dict[str, Any]) -> bool:
     """把一条协作状态记录写进运行库（主键 work_id）；失败记入 `同步错误` 并返回 False。"""
     结果对象 = _运行库调用(
         "数据库连接支持库.SQLite数据库.写入运行态",
-        {"数据库路径": 运行库路径, "域": "协作状态", "记录": 记录, "超时秒": 10.0},
+        {"数据库路径": 运行库路径, "域": "协作状态",
+         "记录": _库视图(记录), "超时秒": 10.0},
     )
     if 结果对象 is None or not 结果对象.成功:
         说明 = getattr(结果对象, "错误说明", "") or "运行库不可用"

@@ -18,6 +18,8 @@ from 公共契约.基础类型.结果类型 import 结果
 
 默认库路径 = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "工程缓存", "检查点.db")
 锁 = __import__("threading").Lock()
+# 补列等容错路径的问题留痕（哲学第 15 条：失败必须可见，不许 except: pass 吞掉）
+补列问题: list[str] = []
 
 
 def _连接(库路径: str) -> sqlite3.Connection:
@@ -34,13 +36,16 @@ def _连接(库路径: str) -> sqlite3.Connection:
     )""")
     连接.execute("CREATE INDEX IF NOT EXISTS idx_检查点_会话 ON 检查点(会话id, 创建时间)")
     连接.commit()
-    # 兼容旧库：幂等补 中断 列（已有则忽略）
+    # 兼容旧库：幂等补 中断 列。列已存在属预期；**其它错误必须留痕**（哲学第 15 条，不静默）。
     try:
         连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断原因 TEXT")
         连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断状态 TEXT DEFAULT '正常'")
         连接.commit()
-    except Exception:
-        pass
+    except sqlite3.OperationalError as 错误:
+        if "duplicate column" not in str(错误).lower():
+            补列问题.append(f"补列失败: {错误}")
+    except Exception as 错误:
+        补列问题.append(f"补列异常: {错误}")
     return 连接
 
 

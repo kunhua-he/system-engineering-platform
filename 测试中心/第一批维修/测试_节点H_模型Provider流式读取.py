@@ -91,10 +91,10 @@ class SSE夹具:
                         b'event: response.in_progress\ndata: {"type":"response.in_progress","response":{"status":"in_progress"}}\n\n',
                         b'event: response.output_item.added\ndata: {"type":"response.output_item.added","item":{"type":"message"}}\n\n',
                         b'event: response.content_part.added\ndata: {"type":"response.content_part.added","part":{"type":"output_text"}}\n\n',
-                        'data: {"type":"response.output_text.delta","delta":"甲"}\n\n'.encode(),
-                        'data: {"type":"response.output_text.delta","delta":"乙"}\n\n'.encode(),
-                        'event: response.output_text.done\ndata: {"type":"response.output_text.done","text":"甲乙"}\n\n'.encode(),
-                        'event: response.content_part.done\ndata: {"type":"response.content_part.done","part":{"type":"output_text","text":"甲乙"}}\n\n'.encode(),
+                        'data: {"type":"response.output_text.delta","delta":"第一段"}\n\n'.encode(),
+                        'data: {"type":"response.output_text.delta","delta":"第二段"}\n\n'.encode(),
+                        'event: response.output_text.done\ndata: {"type":"response.output_text.done","text":"第一段第二段"}\n\n'.encode(),
+                        'event: response.content_part.done\ndata: {"type":"response.content_part.done","part":{"type":"output_text","text":"第一段第二段"}}\n\n'.encode(),
                         b'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message"}}\n\n',
                         b'event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":1}}}\n\n',
                     ])
@@ -201,8 +201,8 @@ class 测试节点H模型Provider流式读取(unittest.TestCase):
 
     def test_codex协议解析Responses增量和完成事件(self) -> None:
         事件 = self._读取("codex", "codex_responses")
-        self.assertEqual(事件[0], {"类型": "增量", "文本": "甲"})
-        self.assertEqual(事件[1], {"类型": "增量", "文本": "乙"})
+        self.assertEqual(事件[0], {"类型": "增量", "文本": "第一段"})
+        self.assertEqual(事件[1], {"类型": "增量", "文本": "第二段"})
         self.assertEqual(事件[2], {
             "类型": "完成", "文本": "", "完成原因": "completed",
             "用量": {"input_tokens": 1},

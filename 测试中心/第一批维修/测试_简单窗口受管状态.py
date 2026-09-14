@@ -86,17 +86,17 @@ class 测试简单窗口受管状态(unittest.TestCase):
         self.assertEqual(值["窗口id"], "跨调用窗")
 
     def test_不同句柄状态完全隔离(self) -> None:
-        甲 = self._创建("隔离窗甲")
-        乙 = self._创建("隔离窗乙")
-        self.assertTrue(窗口模块.打开窗口(甲).成功)
-        self.assertTrue(窗口模块.传递参数(乙, {"归属": "乙"}).成功)
-        甲描述 = 窗口模块.获取窗口描述(甲).值
-        乙描述 = 窗口模块.获取窗口描述(乙).值
-        assert isinstance(甲描述, dict) and isinstance(乙描述, dict)
-        self.assertEqual(甲描述["状态"], "打开")
-        self.assertNotEqual(乙描述["状态"], "打开")
-        self.assertNotEqual(甲描述.get("参数"), {"归属": "乙"})
-        self.assertEqual(乙描述["参数"], {"归属": "乙"})
+        窗口1 = self._创建("隔离窗1")
+        窗口2 = self._创建("隔离窗2")
+        self.assertTrue(窗口模块.打开窗口(窗口1).成功)
+        self.assertTrue(窗口模块.传递参数(窗口2, {"归属": "窗口2"}).成功)
+        窗口1描述 = 窗口模块.获取窗口描述(窗口1).值
+        窗口2描述 = 窗口模块.获取窗口描述(窗口2).值
+        assert isinstance(窗口1描述, dict) and isinstance(窗口2描述, dict)
+        self.assertEqual(窗口1描述["状态"], "打开")
+        self.assertNotEqual(窗口2描述["状态"], "打开")
+        self.assertNotEqual(窗口1描述.get("参数"), {"归属": "乙"})
+        self.assertEqual(窗口2描述["参数"], {"归属": "乙"})
 
     def test_释放后句柄不可继续访问(self) -> None:
         句柄 = self._创建("释放窗")

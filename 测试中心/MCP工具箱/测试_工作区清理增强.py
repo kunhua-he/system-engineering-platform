@@ -59,14 +59,14 @@ class 工作区清理增强测试(unittest.TestCase):
         return 工作区, 清单
 
     def test_关闭前联动清理登记资源并移除工作区(self) -> None:
-        工作区, 清单 = self.创建真实工作区("任务甲")
+        工作区, 清单 = self.创建真实工作区("任务1")
         临时文件 = 工作区 / "临时文件.txt"
         临时文件.write_text("临时内容", encoding="utf-8")
-        登记资源(清单, 资源路径=str(临时文件), 临时根目录=工作区, work_id="任务甲")
+        登记资源(清单, 资源路径=str(临时文件), 临时根目录=工作区, work_id="任务1")
         子进程 = subprocess.Popen(["sleep", "300"], start_new_session=True)
         try:
             登记资源(清单, 资源路径=f"子进程:{子进程.pid}", 临时根目录=工作区,
-                      资源类型="子进程", 附加信息={"pid": 子进程.pid}, work_id="任务甲")
+                      资源类型="子进程", 附加信息={"pid": 子进程.pid}, work_id="任务1")
             监听 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             监听.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             监听.bind(("127.0.0.1", 0))
@@ -75,9 +75,9 @@ class 工作区清理增强测试(unittest.TestCase):
             try:
                 登记资源(清单, 资源路径=f"端口:{端口号}", 临时根目录=工作区,
                           资源类型="端口", 附加信息={"端口": 端口号, "占用pid": os.getpid()},
-                          work_id="任务甲")
+                          work_id="任务1")
                 监听.close()
-                结果 = 关闭工作区(self.项目根, str(工作区), work_id="任务甲")
+                结果 = 关闭工作区(self.项目根, str(工作区), work_id="任务1")
                 self.assertTrue(结果["成功"], 结果)
                 self.assertFalse(工作区.exists(), "worktree 必须被移除")
                 self.assertFalse(临时文件.exists(), "登记文件必须被清理")
@@ -98,7 +98,7 @@ class 工作区清理增强测试(unittest.TestCase):
                 finally:
                     验证.close()
                 证据目录 = self.项目根 / "工程缓存" / "清理失败证据"
-                self.assertFalse((证据目录 / "任务甲.json").exists(),
+                self.assertFalse((证据目录 / "任务1.json").exists(),
                                  "成功场景不得写失败证据")
             finally:
                 监听.close()
@@ -108,7 +108,7 @@ class 工作区清理增强测试(unittest.TestCase):
                 子进程.wait()
 
     def test_无work_id按工作区路径扫描定位清单(self) -> None:
-        工作区, 清单 = self.创建真实工作区("任务乙")
+        工作区, 清单 = self.创建真实工作区("任务2")
         扫描文件 = 工作区 / "扫描文件.txt"
         扫描文件.write_text("内容", encoding="utf-8")
         登记资源(清单, 资源路径=str(扫描文件), 临时根目录=工作区)

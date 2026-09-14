@@ -9,7 +9,7 @@
           "步骤id": "解析Python语法事实",
           "能力id": "代码解析支持库.语法索引.解析Python语法",
           "参数": {
-            "代码文本": "import os\nfrom pathlib import Path\n\n\nclass 用户表:\n    __tablename__ = \"用户表\"\n\n    def 名称(self):\n        return \"甲\"\n\n\ndef 加法(甲, 乙):\n    结果 = 甲 + 乙\n    print(结果)\n    return 结果\n"
+            "代码文本": "import os\nfrom pathlib import Path\n\n\nclass 用户表:\n    __tablename__ = \"用户表\"\n\n    def 名称(self):\n        return \"示例值\"\n\n\ndef 加法(加数1, 加数2):\n    结果 = 加数1 + 加数2\n    print(结果)\n    return 结果\n"
           },
           "预期": {
             "成功": true,
@@ -39,7 +39,7 @@
           "步骤id": "解析脚本语法事实",
           "能力id": "代码解析支持库.语法索引.解析脚本语法",
           "参数": {
-            "代码文本": "import { call } from \"./协议\"\nexport { x } from \"./模块\"\nconst f = (a) => a\nplatform.modules.call(\"能力甲\", \"方法乙\")\n",
+            "代码文本": "import { call } from \"./协议\"\nexport { x } from \"./模块\"\nconst f = (a) => a\nplatform.modules.call(\"示例能力\", \"示例方法\")\n",
             "语法集": "typescript"
           },
           "预期": {
@@ -60,7 +60,7 @@
               "关键值": {
                 "导入列表.0.路径": "./协议",
                 "调用列表.0.函数名": "platform.modules.call",
-                "调用列表.0.参数字符串.0": "能力甲"
+                "调用列表.0.参数字符串.0": "示例能力"
               }
             }
           }
@@ -76,7 +76,7 @@
               },
               {
                 "路径": "b.ts",
-                "代码文本": "platform.modules.call(\"甲\", \"乙\")\n",
+                "代码文本": "platform.modules.call(\"示例能力\", \"示例方法\")\n",
                 "语法集": "typescript"
               },
               {
@@ -128,7 +128,7 @@
           "步骤id": "脚本语法集不合法",
           "能力id": "代码解析支持库.语法索引.解析脚本语法",
           "参数": {
-            "代码文本": "import { call } from \"./协议\"\nexport { x } from \"./模块\"\nconst f = (a) => a\nplatform.modules.call(\"能力甲\", \"方法乙\")\n",
+            "代码文本": "import { call } from \"./协议\"\nexport { x } from \"./模块\"\nconst f = (a) => a\nplatform.modules.call(\"示例能力\", \"示例方法\")\n",
             "语法集": "java"
           },
           "预期": {

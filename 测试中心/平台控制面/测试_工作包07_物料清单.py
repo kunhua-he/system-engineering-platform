@@ -28,7 +28,7 @@ def 样例构建结果(验证证据id: str = "证据-001") -> dict:
         "依赖锁": "依赖锁-摘要-xyz789",
         "目标平台": "darwin-arm64",
         "构建时间": "2026-08-01T12:00:00Z",
-        "执行身份": "构建机器人-甲",
+        "执行身份": "构建机器人1",
         "输出文件表": {"主.py": "print(1)\n", "工具.py": "def 工具(): return 2\n"},
         "制品摘要": "制品摘要-88位abcdef0123456789",
         "验证证据id": 验证证据id,
@@ -75,7 +75,7 @@ class 测试物料清单与来源证明(unittest.TestCase):
         self.assertTrue(证明["输出摘要"])
         self.assertEqual(证明["验证证据id"], "证据-002")
         self.assertEqual(证明["构建时间"], "2026-08-01T12:00:00Z")
-        self.assertEqual(证明["执行身份"], "构建机器人-甲")
+        self.assertEqual(证明["执行身份"], "构建机器人1")
         json.dumps(证明)  # JSON 可序列化
 
     def test_生成并保存输出两个JSON文件且可解析(self):

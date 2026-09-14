@@ -73,11 +73,11 @@ class Test生成快照模板(unittest.TestCase):
         目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
         建临时范围(工作目录)
         结果 = 生成快照清单模板(目标目录, ["范围一", "范围二"],
-                                工作目录=工作目录, 版本="2.1.0", 栅栏令牌="令牌-甲")
+                                工作目录=工作目录, 版本="2.1.0", 栅栏令牌="令牌1")
         self.assertTrue(结果["成功"], str(结果))
         激活指针 = json.loads((目标目录 / 激活指针文件名).read_text(encoding="utf-8"))
         self.assertEqual(激活指针["版本"], "2.1.0")
-        self.assertEqual(激活指针["栅栏令牌"], "令牌-甲")
+        self.assertEqual(激活指针["栅栏令牌"], "令牌1")
 
 
 class Test校验快照模板(unittest.TestCase):

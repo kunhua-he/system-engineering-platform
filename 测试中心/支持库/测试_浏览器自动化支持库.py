@@ -19,11 +19,17 @@ if str(系统根) not in sys.path:
     "浏览器自动化.页面操作",
     "浏览器自动化.获取截图",
     "浏览器自动化.关闭会话",
+    "浏览器自动化.读取截图",
+}
+# 句柄名按真实契约分两种：会话类能力用 句柄，资源类能力用 资源句柄（都是整数型）。
+句柄参数表 = {
+    "浏览器自动化.创建会话": ("会话模式", "文本型"),
+    "浏览器自动化.读取截图": ("资源句柄", "整数型"),
 }
 
 
 class 测试浏览器自动化支持库契约(unittest.TestCase):
-    def test_包级入口注册六项公开能力(self) -> None:
+    def test_包级入口注册七项公开能力(self) -> None:
         from 支持库.后端.浏览器自动化支持库 import 注册能力
 
         class 注册表:
@@ -37,7 +43,7 @@ class 测试浏览器自动化支持库契约(unittest.TestCase):
         注册能力(表)
         self.assertEqual({能力.能力id for 能力 in 表.能力表}, 能力id表)
 
-    def test_契约文件声明六项公开能力(self) -> None:
+    def test_契约文件声明七项公开能力(self) -> None:
         数据 = json.loads(
             (包目录 / "能力定义.json").read_text(encoding="utf-8")
         )
@@ -51,10 +57,9 @@ class 测试浏览器自动化支持库契约(unittest.TestCase):
             (包目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8")
         )
         for 能力 in 数据["能力契约"]:
-            if 能力["能力id"] in {"浏览器自动化.创建会话"}:
-                continue
-            self.assertEqual(能力["参数"][0]["名称"], "句柄")
-            self.assertEqual(能力["参数"][0]["类型"], "整数型")
+            首参名, 首参类型 = 句柄参数表.get(能力["能力id"], ("句柄", "整数型"))
+            self.assertEqual(能力["参数"][0]["名称"], 首参名, 能力["能力id"])
+            self.assertEqual(能力["参数"][0]["类型"], 首参类型, 能力["能力id"])
 
     def test_包入口不暴露Provider实现对象(self) -> None:
         from 支持库.后端 import 浏览器自动化支持库

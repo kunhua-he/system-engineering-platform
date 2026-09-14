@@ -21,7 +21,7 @@
     },
     {
       "路径": "夹具/最小目录.xml",
-      "sha256": "3300d448234f50c0b345565dcbadfb00280d94ac25f3e7a03d77a44a5755fdf3"
+      "sha256": "35f2b8c9623be6b037b9dc67ab0dcd83e62f6d2b0fe06d82c367ffe4a507fe95"
     },
     {
       "路径": "实现/XML解析.py",
@@ -61,7 +61,7 @@
     },
     {
       "路径": "验证场景/正向HTTP场景.json",
-      "sha256": "69702ed3d0247d893198412f91dbcc78ccc1e149493db96eb82fce59db07f12b"
+      "sha256": "9a0da2440a85c60a29685c97d9631afea73a54b15a8fec119bd639cec8f18788"
     },
     {
       "路径": "验证场景引用.json",

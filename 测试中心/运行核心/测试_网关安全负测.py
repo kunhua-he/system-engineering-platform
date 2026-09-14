@@ -79,14 +79,14 @@ class 网关身份负测(unittest.TestCase):
     def test_携带项目id被403拒绝(self):
         状态码, 返回 = _POST(self.网关, {
             "操作": "资源状态", "句柄": 1,
-            "项目id": "项目甲", "用户id": "用户甲",
+            "项目id": "项目1", "用户id": "用户1",
         })
         self.assertEqual(状态码, 403)
         self.assertEqual(返回["错误码"], "权限不足")
 
     def test_携带用户id被403拒绝(self):
         状态码, 返回 = _POST(self.网关, {
-            "操作": "资源状态", "句柄": 1, "用户id": "用户甲",
+            "操作": "资源状态", "句柄": 1, "用户id": "用户1",
         })
         self.assertEqual(状态码, 403)
         self.assertIn("身份必须由网关凭证注入", 返回["错误说明"])
@@ -125,7 +125,7 @@ class 网关内部夹具放行(unittest.TestCase):
     def test_内部夹具携带身份放行(self):
         状态码, 返回 = _POST(self.网关, {
             "操作": "资源状态", "句柄": 1,
-            "项目id": "项目甲", "用户id": "用户甲",
+            "项目id": "项目1", "用户id": "用户1",
         })
         self.assertEqual(状态码, 200)
         self.assertTrue(返回["成功"])

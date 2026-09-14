@@ -44,8 +44,8 @@ def 搭建(秘密: str = ""):
         资源={"参数说明": [{"名称": "数值", "说明": "要计算的数值"}]})
     服务.注册提供者(能力id="计算.求值", 函数=lambda 数值: 42, 预算=完整预算())
     if 秘密:
-        服务.导入签名密钥(身份id="发布者甲", 私钥PEM=秘密)
-    令牌 = 服务.授权.注册身份(身份id="普通用户甲")
+        服务.导入签名密钥(身份id="发布者1", 私钥PEM=秘密)
+    令牌 = 服务.授权.注册身份(身份id="普通用户1")
     return 普通用户视图(服务), 令牌, 服务
 
 
@@ -81,7 +81,7 @@ class Test普通用户视图(unittest.TestCase):
             self.assertNotIn(禁词, 文案, f"详情不得出现: {禁词}")
 
     def test_调用能力真实返回结果(self):
-        agent令牌 = 提权(self.服务, "调用Agent甲", "调用Agent")
+        agent令牌 = 提权(self.服务, "调用Agent1", "调用Agent")
         结果 = self.视图.调用能力(agent令牌, "计算.求值", {"数值": 5})
         self.assertTrue(结果["成功"])
         self.assertEqual(结果["结果"], 42, "真实调用提供者返回结果")
@@ -94,7 +94,7 @@ class Test普通用户视图(unittest.TestCase):
         self.assertEqual(普通结果["错误码"], "PERMISSION_DENIED")
         self.assertEqual(普通结果["处理建议"], "当前账号没有该操作权限")
         self.assertEqual(普通结果["消息"], "当前账号没有该操作权限")
-        agent令牌 = 提权(self.服务, "调用Agent乙", "调用Agent")
+        agent令牌 = 提权(self.服务, "调用Agent2", "调用Agent")
         结果 = self.视图.调用能力(agent令牌, "不存在的能力", {})
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "CAPABILITY_NOT_FOUND")

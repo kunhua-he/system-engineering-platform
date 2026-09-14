@@ -61,7 +61,7 @@ class 测试_清理引用门(unittest.TestCase):
         迁移 = self._播种迁移()
         旧目录 = self._旧快照目录(迁移)
         self.assertTrue(旧目录.is_dir(), "前置：旧快照目录应真实存在")
-        self.状态.增加引用(包id="资源甲", 版本="1")
+        self.状态.增加引用(包id="资源1", 版本="1")
         结果 = self.版本兼容.清理(迁移id=迁移id)
         self.assertFalse(结果["成功"], "引用未归零时清理必须被拒")
         self.assertTrue(结果.get("禁止删除"))
@@ -71,8 +71,8 @@ class 测试_清理引用门(unittest.TestCase):
 
     def test_引用归零后残留行不阻塞清理(self):
         迁移 = self._播种迁移()
-        self.状态.增加引用(包id="资源甲", 版本="1")
-        self.assertEqual(self.状态.减少引用(包id="资源甲", 版本="1"), 0)
+        self.状态.增加引用(包id="资源1", 版本="1")
+        self.assertEqual(self.状态.减少引用(包id="资源1", 版本="1"), 0)
         self.assertTrue(self.状态.查询记录("引用计数", "", ()),
                         "前置：计数=0 的引用行仍留在表里（权威状态不删行）")
         结果 = self.版本兼容.清理(迁移id=迁移id)
@@ -88,7 +88,7 @@ class 测试_清理引用门(unittest.TestCase):
 
     def test_阶段不允许仍被拒(self):
         迁移 = self._播种迁移(阶段="开始")
-        self.状态.增加引用(包id="资源甲", 版本="1")
+        self.状态.增加引用(包id="资源1", 版本="1")
         结果 = self.版本兼容.清理(迁移id=迁移id)
         self.assertFalse(结果["成功"])
         self.assertIn("阶段不允许", 结果["错误"])

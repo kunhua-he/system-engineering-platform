@@ -36,7 +36,7 @@ def _生成表格PDF(路径: Path) -> Path:
     from reportlab.platypus import Table
     from reportlab.platypus.tableofcontents import TableStyle
     画布 = canvas.Canvas(str(路径))
-    表 = Table([["列甲", "列乙"], ["甲1", "乙1"], ["甲2", "乙2"]])
+    表 = Table([["姓名", "数量"], ["张三", "1"], ["李四", "2"]])
     表.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black)]))
     表.wrapOn(画布, 300, 100)
     表.drawOn(画布, 72, 650)

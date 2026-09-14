@@ -50,20 +50,20 @@ class 测试统一运行缓存根(unittest.TestCase):
         return 制品, 提供者
 
     def test_两个不同平台客户端制品解析到同一外部稳定缓存(self) -> None:
-        制品甲, 提供者甲 = self._建制品("平台客户端制品-a1")
-        制品乙, 提供者乙 = self._建制品("平台客户端制品-b2")
+        制品1, 提供者1 = self._建制品("平台客户端制品-a1")
+        制品2, 提供者2 = self._建制品("平台客户端制品-b2")
         环境 = {"HOME": str(self.用户目录)}
 
         with mock.patch.dict(os.environ, 环境, clear=True):
-            缓存甲 = 解析运行缓存根(制品甲 / "平台客户端")
-            缓存乙 = 解析运行缓存根(制品乙 / "平台客户端")
-            环境目录甲 = 环境模块.环境目录(提供者甲, "相同环境摘要")
-            环境目录乙 = 环境模块.环境目录(提供者乙, "相同环境摘要")
+            缓存1 = 解析运行缓存根(制品1 / "平台客户端")
+            缓存2 = 解析运行缓存根(制品2 / "平台客户端")
+            环境目录1 = 环境模块.环境目录(提供者1, "相同环境摘要")
+            环境目录2 = 环境模块.环境目录(提供者2, "相同环境摘要")
 
-        self.assertEqual(缓存甲, 缓存乙)
-        self.assertEqual(环境目录甲, 环境目录乙)
-        self.assertFalse(缓存甲.is_relative_to(制品甲.resolve()))
-        self.assertFalse(缓存乙.is_relative_to(制品乙.resolve()))
+        self.assertEqual(缓存1, 缓存2)
+        self.assertEqual(环境目录1, 环境目录2)
+        self.assertFalse(缓存1.is_relative_to(制品1.resolve()))
+        self.assertFalse(缓存2.is_relative_to(制品2.resolve()))
 
     def test_显式环境覆盖优先且源码开发保持工程缓存语义(self) -> None:
         源码根 = self.临时根 / "源码工程"

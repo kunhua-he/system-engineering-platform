@@ -29,7 +29,7 @@ class 文件补丁测试(unittest.TestCase):
         self.项目根 = Path(self._临时.name) / "项目根"
         self.存储目录 = Path(self._临时.name) / "平台控制面"
         (self.项目根 / "样例").mkdir(parents=True)
-        self.文件 = self.项目根 / "样例" / "甲.txt"
+        self.文件 = self.项目根 / "样例" / "待补丁.txt"
         self.文件.write_text(原文, encoding="utf-8")
 
     def tearDown(self) -> None:
@@ -37,7 +37,7 @@ class 文件补丁测试(unittest.TestCase):
 
     def _调用(self, **覆盖):
         参数 = {
-            "文件路径": "样例/甲.txt", "旧文本": "待替换的旧文本", "新文本": "已经替换过的新文本",
+            "文件路径": "样例/待补丁.txt", "旧文本": "待替换的旧文本", "新文本": "已经替换过的新文本",
         }
         参数.update(覆盖)
         return 应用文件补丁(self.项目根, self.存储目录, **参数)
@@ -46,7 +46,7 @@ class 文件补丁测试(unittest.TestCase):
         结果 = self._调用()
         self.assertTrue(结果["成功"], str(结果))
         self.assertTrue(结果["值"]["已写入"])
-        self.assertEqual(结果["文件路径"], "样例/甲.txt")
+        self.assertEqual(结果["文件路径"], "样例/待补丁.txt")
         self.assertEqual(self.文件.read_text(encoding="utf-8"), 新文)
         self.assertEqual(结果["值"]["新增行数"], 1)
         self.assertEqual(结果["值"]["删除行数"], 1)
@@ -89,8 +89,8 @@ class 文件补丁测试(unittest.TestCase):
         self.assertEqual(结果["错误码"], "文件不存在")
 
     def test_异开工id占租约拒绝(self) -> None:
-        占用 = 申请文件租约(self.存储目录, ["样例/甲.txt"],
-                            所有者="bbbb000000000002", 任务="乙包改造")
+        占用 = 申请文件租约(self.存储目录, ["样例/待补丁.txt"],
+                            所有者="bbbb000000000002", 任务="包2改造")
         self.assertTrue(占用["成功"], str(占用))
         结果 = self._调用(开工id="aaaa000000000001")
         self.assertFalse(结果["成功"])
@@ -99,8 +99,8 @@ class 文件补丁测试(unittest.TestCase):
         self.assertEqual(self.文件.read_text(encoding="utf-8"), 原文)
 
     def test_同开工id放行且预览不受租约限制(self) -> None:
-        申请文件租约(self.存储目录, ["样例/甲.txt"],
-                    所有者="aaaa000000000001", 任务="甲包改造")
+        申请文件租约(self.存储目录, ["样例/待补丁.txt"],
+                    所有者="aaaa000000000001", 任务="包1改造")
         写入 = self._调用(开工id="aaaa000000000001")
         self.assertTrue(写入["成功"], str(写入))
         self.assertEqual(self.文件.read_text(encoding="utf-8"), 新文)

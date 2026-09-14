@@ -107,17 +107,17 @@ class 可复现构建器:
         return 摘要表
 
     def 双工作区验证(self, 冻结输入: dict) -> tuple[bool, dict, dict, str]:
-        """两个全新临时工作区分别构建，返回(是否一致, 摘要甲, 摘要乙, 消息)。"""
-        工作区甲 = Path(tempfile.mkdtemp(prefix="可复现甲_"))
-        工作区乙 = Path(tempfile.mkdtemp(prefix="可复现乙_"))
+        """两个全新临时工作区分别构建，返回(是否一致, 摘要1, 摘要2, 消息)。"""
+        工作区1 = Path(tempfile.mkdtemp(prefix="可复现1_"))
+        工作区2 = Path(tempfile.mkdtemp(prefix="可复现2_"))
         try:
-            _, 摘要甲 = self.构建(冻结输入, 工作区甲)
-            _, 摘要乙 = self.构建(冻结输入, 工作区乙)
+            _, 摘要1 = self.构建(冻结输入, 工作区1)
+            _, 摘要2 = self.构建(冻结输入, 工作区2)
         finally:
-            shutil.rmtree(工作区甲, ignore_errors=True)
-            shutil.rmtree(工作区乙, ignore_errors=True)
-        if 摘要甲 != 摘要乙:
-            差异 = next((路径 for 路径 in set(摘要甲) | set(摘要乙)
-                         if 摘要甲.get(路径) != 摘要乙.get(路径)), "未知")
-            return False, 摘要甲, 摘要乙, f"两个工作区摘要不一致，首个差异文件: {差异}"
-        return True, 摘要甲, 摘要乙, "两个工作区摘要完全一致"
+            shutil.rmtree(工作区1, ignore_errors=True)
+            shutil.rmtree(工作区2, ignore_errors=True)
+        if 摘要1 != 摘要2:
+            差异 = next((路径 for 路径 in set(摘要1) | set(摘要2)
+                         if 摘要1.get(路径) != 摘要2.get(路径)), "未知")
+            return False, 摘要1, 摘要2, f"两个工作区摘要不一致，首个差异文件: {差异}"
+        return True, 摘要1, 摘要2, "两个工作区摘要完全一致"

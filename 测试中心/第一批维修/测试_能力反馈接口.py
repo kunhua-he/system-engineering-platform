@@ -112,7 +112,7 @@ class Test能力反馈接口(unittest.TestCase):
         self.assertEqual(状态, 400)
         self.assertEqual(返回["错误码"], "参数不合法")
         数据 = self.基础反馈()
-        数据.update({"请求id": "请求-003", "复现标识": "复现-003", "请求摘要": {"超大": "甲" * 20000}})
+        数据.update({"请求id": "请求-003", "复现标识": "复现-003", "请求摘要": {"超大": "填充" * 20000}})
         状态, 返回 = self.反馈(数据)
         self.assertEqual(状态, 400)
         self.assertEqual(返回["错误码"], "参数不合法")
