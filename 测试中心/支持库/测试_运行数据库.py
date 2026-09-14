@@ -1,4 +1,4 @@
-"""底座运行库回归：七个域表初始化、写入查询闭环、并发写入、参数口径。
+"""底座运行库回归：八个域表初始化、写入查询闭环、并发写入、参数口径。
 
 华哥定盘（`开发文档/临时文档/57_底座收口总清单_审计.md` 第四节）：运行态一律入库，
 库文件统一放 `工程缓存/运行数据/`，且一律经唯一 SQLite 支持库访问（禁止各包自己连库）。
@@ -23,7 +23,7 @@ from 支持库.后端.数据库连接支持库.SQLite数据库 import (
     初始化运行数据库, 写入运行态, 查询运行态,
 )
 
-七个域 = ["任务", "作业", "协作状态", "能力占用", "检查点索引", "会话", "缓存索引"]
+八个域 = ["任务", "作业", "协作状态", "能力占用", "检查点索引", "会话", "缓存索引", "发布"]
 
 
 def 取成功值(用例: unittest.TestCase, 结果对象: Any) -> dict[str, Any]:
@@ -42,11 +42,11 @@ class 运行数据库回归(unittest.TestCase):
     def tearDown(self):
         self.临时目录.cleanup()
 
-    def test_初始化建出七个域表且幂等(self):
+    def test_初始化建出八个域表且幂等(self):
         第一次 = 取成功值(self, 初始化运行数据库(self.库路径))
-        self.assertEqual(sorted(第一次["表清单"]), sorted(七个域))
+        self.assertEqual(sorted(第一次["表清单"]), sorted(八个域))
         第二次 = 取成功值(self, 初始化运行数据库(self.库路径))
-        self.assertEqual(sorted(第二次["表清单"]), sorted(七个域), "重复初始化必须幂等")
+        self.assertEqual(sorted(第二次["表清单"]), sorted(八个域), "重复初始化必须幂等")
 
     def test_写入后可按域查询(self):
         初始化运行数据库(self.库路径)
