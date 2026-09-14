@@ -79,6 +79,32 @@ def _解析多步骤场景(原始: Any, 包目录: Path, 制品摘要: str) -> �
         场景id.strip(), 包目录.resolve(), 分段["前置步骤"], 分段["目标步骤"], 分段["清理步骤"],
     )
 
+def _声明豁免正向场景的能力(场景原始表: list[tuple[dict[str, Any], Path]]) -> set[str]:
+    """读取包内 `能力定义.json` 的「外部依赖」声明：**显式可审计**地豁免正向场景要求。
+
+    用途（唯一合法场景）：某公开能力依赖**底座之外的上游服务**，而上游当前不可用——
+    按哲学第 15 条「上游坏由上游修」，底座不该因此永久红着发布门禁；同时也不许偷偷放行。
+    因此要求：① 声明写在能力定义里（谁都能看见）；② 必须写明上游地址与理由；
+    ③ 上游恢复后**删除声明并补正向场景**（本函数只认显式 `豁免正向场景: true`）。
+    """
+    豁免 = set()
+    for 原始, 包目录 in 场景原始表:
+        定义路径 = 包目录 / "能力定义.json"
+        if not 定义路径.is_file():
+            continue
+        try:
+            定义 = json.loads(定义路径.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for 能力 in 定义.get("能力列表", []):
+            if not isinstance(能力, dict):
+                continue
+            声明 = 能力.get("外部依赖")
+            if isinstance(声明, dict) and 声明.get("豁免正向场景") is True and 声明.get("地址"):
+                豁免.add(str(能力.get("能力id", "")))
+    return 豁免
+
+
 def _校验场景全集(
     公开能力: set[str], 场景原始表: list[tuple[dict[str, Any], Path]], 制品摘要: str,
 ) -> 验证场景束:
@@ -100,10 +126,13 @@ def _校验场景全集(
     正向目标能力 = {
         步骤.能力id for 场景 in 场景列表 for 步骤 in 场景.目标步骤 if 步骤.预期成功
     }
-    if 正向目标能力 != 公开能力:
+    豁免能力 = _声明豁免正向场景的能力(场景原始表) & 公开能力
+    if 正向目标能力 != 公开能力 - 豁免能力:
         raise ValueError(
             "正式公开能力全集 != 正向目标步骤能力全集: "
-            f"缺目标={sorted(公开能力 - 正向目标能力)} 多目标={sorted(正向目标能力 - 公开能力)}"
+            f"缺目标={sorted(公开能力 - 豁免能力 - 正向目标能力)} "
+            f"多目标={sorted(正向目标能力 - 公开能力)} "
+            f"已声明豁免={sorted(豁免能力)}"
         )
     return 验证场景束(场景列表, set(公开能力), 制品摘要)
 
