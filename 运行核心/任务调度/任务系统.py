@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -58,9 +59,12 @@ class 任务系统:
 
     def __init__(self, 存储目录: Path | None = None, *,
                  最大活动数: int = 4, 最大排队数: int = 16,
-                 提交截止秒: float = 30.0) -> None:
+                 提交截止秒: float = 30.0, 运行库路径: str | None = None) -> None:
         self.存储目录 = 存储目录 or Path(self.默认存储目录())
         self.存储目录.mkdir(parents=True, exist_ok=True)
+        # 运行态唯一落点（华哥 2026-09-15 定盘：运行态一律入库，不再写 JSONL）。
+        self.运行库路径 = 运行库路径 or self.默认运行库路径()
+        self.上次落盘指纹: dict[str, str] = {}
         self.任务表: dict[str, 任务] = {}
         self.执行函数表: dict[str, Callable] = {}
         self.锁 = threading.RLock()
@@ -79,47 +83,112 @@ class 任务系统:
     def 默认存储目录() -> str:
         return os.environ.get("系统库任务目录", str(Path(tempfile.gettempdir()) / "系统级支持库_任务"))
 
-    def 加载(self) -> None:
+    @staticmethod
+    def 默认运行库路径() -> str:
+        """底座运行库路径（运行态唯一落点；可用 `系统库运行库` 环境变量覆盖）。"""
+        环境 = os.environ.get("系统库运行库")
+        if 环境:
+            return 环境
+        return str(Path(__file__).resolve().parents[2] / "工程缓存" / "运行数据" / "底座运行.db")
+
+    def _运行库调用(self, 能力id: str, 参数: dict[str, Any]) -> Any:
+        """经唯一调用入口访问底座运行库；不可用时记入 `同步错误`（可见，不静默）。"""
+        try:
+            from 公共契约.能力契约.调用器 import 获取能力调用器
+
+            return 获取能力调用器().调用能力(能力id, 参数)
+        except Exception as 错误:  # noqa: BLE001 —— 运行库不可用必须可见，见 同步错误
+            self.同步错误 = f"运行库不可用：{错误}"
+            return None
+
+    def _读运行库(self) -> list[dict[str, Any]] | None:
+        """从运行库读回任务记录；库不可用或为空时返回 None（交给旧账本回退）。"""
+        结果对象 = self._运行库调用(
+            "数据库连接支持库.SQLite数据库.查询运行态",
+            {"数据库路径": self.运行库路径, "域": "任务", "限制": 1000, "超时秒": 10.0},
+        )
+        if 结果对象 is None or not 结果对象.成功:
+            return None
+        值 = 结果对象.值 if isinstance(结果对象.值, dict) else {}
+        行列表 = 值.get("行列表") or []
+        if not 行列表:
+            return None
+        记录表 = []
+        for 行 in 行列表:
+            载荷 = 行.get("载荷") if isinstance(行, dict) else None
+            try:
+                记录 = json.loads(载荷) if isinstance(载荷, str) and 载荷 else {}
+            except json.JSONDecodeError:
+                continue
+            if isinstance(记录, dict) and 记录:
+                记录表.append(记录)
+        return 记录表 or None
+
+    def _读旧账本(self) -> list[dict[str, Any]]:
+        """迁移期只读兼容：读旧 `任务.jsonl`（首次加载后会一次性搬入运行库）。"""
         文件 = self.存储目录 / "任务.jsonl"
         if not 文件.is_file():
+            return []
+        记录表 = []
+        for 行 in 文件.read_text(encoding="utf-8").splitlines():
+            try:
+                记录表.append(json.loads(行))
+            except json.JSONDecodeError:
+                continue
+        return 记录表
+
+    def 加载(self) -> None:
+        """先读运行库；库空时回退读旧账本，并把旧账本一次性搬进运行库（不双写）。"""
+        记录表 = self._读运行库()
+        需搬迁 = 记录表 is None
+        if 需搬迁:
+            记录表 = self._读旧账本()
+        if not 记录表:
             return
         with self.锁:
-            for 行 in 文件.read_text(encoding="utf-8").splitlines():
+            for 数据 in 记录表:
                 try:
-                    数据 = json.loads(行)
                     任务对象 = 任务(**{键: 值 for 键, 值 in 数据.items() if 键 in 任务.__dataclass_fields__})
-                    if 任务对象.状态 in (状态_等待中, 状态_运行中, 状态_取消中):
-                        任务对象.状态 = 状态_崩溃
-                        任务对象.错误码 = "崩溃"
-                        任务对象.错误说明 = "进程重启，任务未完成"
-                        任务对象.完成时间 = time.strftime("%Y-%m-%d %H:%M:%S")
-                    self.任务表[任务对象.任务id] = 任务对象
-                except (json.JSONDecodeError, TypeError):
+                except TypeError:
                     continue
-            self._保存已加锁()
+                if 任务对象.状态 in (状态_等待中, 状态_运行中, 状态_取消中):
+                    任务对象.状态 = 状态_崩溃
+                    任务对象.错误码 = "崩溃"
+                    任务对象.错误说明 = "进程重启，任务未完成"
+                    任务对象.完成时间 = time.strftime("%Y-%m-%d %H:%M:%S")
+                self.任务表[任务对象.任务id] = 任务对象
+            if 需搬迁:
+                self._保存已加锁()
 
     def 保存(self) -> None:
         with self.锁:
             self._保存已加锁()
 
     def _保存已加锁(self) -> None:
-        # 调用者销毁临时存储后，后台同步线程必须结束，不能重建已清理目录。
-        if not self.存储目录.is_dir():
+        """落盘到运行库（运行态唯一落点）；不再写 `任务.jsonl`，避免两条腿。"""
+        if not self.任务表:
             return
-        目标 = self.存储目录 / "任务.jsonl"
-        临时路径: str | None = None
-        try:
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.存储目录,
-                                             prefix=".任务.", suffix=".tmp", delete=False) as 输出:
-                临时路径 = 输出.name
-                for 任务对象 in self.任务表.values():
-                    输出.write(json.dumps(任务对象.转字典(), ensure_ascii=False) + "\n")
-                输出.flush()
-                os.fsync(输出.fileno())
-            os.replace(临时路径, 目标)
-        finally:
-            if 临时路径 and os.path.exists(临时路径):
-                os.unlink(临时路径)
+        需要写 = {}
+        for 任务对象 in self.任务表.values():
+            记录 = 任务对象.转字典()
+            记录["id"] = 任务对象.任务id
+            指纹 = hashlib.sha256(
+                json.dumps(记录, ensure_ascii=False, sort_keys=True, default=str).encode()
+            ).hexdigest()
+            if self.上次落盘指纹.get(任务对象.任务id) != 指纹:
+                需要写[任务对象.任务id] = (记录, 指纹)
+        if not 需要写:
+            return
+        for 任务id, (记录, 指纹) in 需要写.items():
+            结果对象 = self._运行库调用(
+                "数据库连接支持库.SQLite数据库.写入运行态",
+                {"数据库路径": self.运行库路径, "域": "任务", "记录": 记录, "超时秒": 10.0},
+            )
+            if 结果对象 is None or not 结果对象.成功:
+                说明 = getattr(结果对象, "错误说明", "") or "运行库不可用"
+                self.同步错误 = f"任务落库失败（任务 {任务id}）：{说明}"
+                return
+            self.上次落盘指纹[任务id] = 指纹
 
     def 注册执行函数(self, 能力id: str, 函数: Callable) -> None:
         with self.锁:
