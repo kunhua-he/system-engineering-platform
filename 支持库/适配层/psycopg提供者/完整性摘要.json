@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "f8a3bb96c871b1c8c13676378e05f0c5777645b90328e194487eb077dad2cdf5"
+      "sha256": "96b0a652e35fb97e40fda6dd54828eeefc089454385fb9f0bbd303ca1ca9135b"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -17,19 +17,19 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "98f4cc9638462c49d085f032866d726b5ba68a274d7bc657c1fc0ecedfdd664e"
+      "sha256": "b42d76f3e9e128808439a14ab24b867f0bd2c91bb459f1cbfe108cc342a93c7f"
     },
     {
       "路径": "复用决策.json",
-      "sha256": "1117547ee62d4f8fcd06210c5387f5386c49754d088c9355f7e8d5202053472d"
+      "sha256": "b9d1a03592cace3bf38dccc66e5f9b9afd045d84b994e0ab762c6ee464ced26d"
     },
     {
       "路径": "实现/提供者.py",
-      "sha256": "7f53a0de42d1bb5af2a7033bad0a7610588cb5b1c13073bb4e4c7bcf1d86b24e"
+      "sha256": "32c047fb16b0af5f5aa6b1344ea195d90372097cd5fbb4810220c3957ad68d5c"
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "9853bef16060805d773c780814f31b53d5288b407590c117b89eae70547522e5"
+      "sha256": "b2530cbcf338938eca072fb02ef4299fb4e4a7684e76bb08ec50fe71b904ea2e"
     },
     {
       "路径": "生命周期契约.json",
@@ -37,19 +37,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "dcbc4bfa391e84c070f98954ac5c66e18e6f0f545858b714668ee7a5d6c96a96"
+      "sha256": "cf063ea4b32a6bd695518a73e79646399747cc671dedd902650e11442da97ac1"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "0cb71038ba11f1f29cdd53639af8b4f8356e7e7e8cd9b2ef70b8691187d5a92e"
+      "sha256": "3d585e3fc098db388149d2fc95e35b45bb80c65372607076d17496f3dca695b3"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "90ea78fe96c58ac25b81b600fd712be09673c57e785e2609c7a052cbaf133a33"
+      "sha256": "07f5391eddf871ff90e9230335326bd2e8e27f03367667224cea28e0b5f6fdab"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "5bd56d052cac860a82ec17d83e171fb6d2d1ef1d5e9f25980d1765ac4c07c581"
+      "sha256": "05882631b9ab4c7acb7cb09e9917227e4eb788e1e29a2b22b3cb3e9ca6e92415"
     },
     {
       "路径": "说明/使用说明.md",
@@ -69,7 +69,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "771b76045c63e3b12fcf63bde4987e230089b7fa4512b4f790077b909fac3b05"
+      "sha256": "24ec33619357775033d60248a5455042c6be8eb2196ab9c149952f79b3975ec1"
     }
   ]
 }

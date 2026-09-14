@@ -1,9 +1,10 @@
-"""psycopg 数据库独立提供者：连接/查询/事务执行/关闭 四个原子能力。
+"""psycopg 数据库支持库：唯一对外 PostgreSQL 原子能力（句柄 + 有界同步池）。
 
-一驱动一提供者一目录：本提供者只 import psycopg（psycopg3，纯 Python 模式
-主进程加载）。每次调用自包含连接生命周期，连接对象与游标在调用路径内创建
-并在 finally 中关闭，无持久连接状态、无泄漏；驱动缺失明确返回 提供者不可用；
-稳定错误码：参数不合法/提供者不可用/超时/连接失败/查询失败。
+公开能力（五）：连接数据库 / 查询数据库 / 事务执行数据库 / 连接池状态 / 关闭数据库连接。
+调用方只持 `数据库句柄`，不接触连接对象；池只在底座进程内存在，连接失效只丢弃不回收。
+第三方（psycopg）不在本层直接出现——驱动交互全部经最底层翻译层
+`支持库.适配层.psycopg提供者`；驱动缺失明确返回 提供者不可用。
+稳定错误码：参数不合法/提供者不可用/超时/连接失败/查询失败/句柄失效。
 """
 
 from __future__ import annotations
@@ -13,8 +14,6 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import unquote, urlsplit
-
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄类型_资源, 句柄体系
 
@@ -26,11 +25,13 @@ from 公共契约.句柄体系 import 句柄类型_资源, 句柄体系
 错误码_句柄失效 = "句柄失效"
 来源 = "psycopg提供者"
 
-try:
-    import psycopg  # noqa: F401
-    _驱动可用 = True
-except ImportError:
-    _驱动可用 = False
+from 支持库.适配层.psycopg提供者 import 打开连接 as _打开
+from 支持库.适配层.psycopg提供者 import 归类错误 as _归类错误
+from 支持库.适配层.psycopg提供者 import 校验超时 as _校验超时
+from 支持库.适配层.psycopg提供者 import 校验连接串 as _校验连接串
+from 支持库.适配层.psycopg提供者 import 解析连接串 as _解析URL
+from 支持库.适配层.psycopg提供者 import 释放连接 as _释放
+from 支持库.适配层.psycopg提供者 import 驱动可用 as _驱动可用
 
 
 @dataclass
@@ -150,65 +151,6 @@ _池锁 = threading.RLock()
 
 def _失败(错误码: str, 消息: str) -> 结果:
     return 结果.失败(错误码, 消息, 来源=来源, 可重试=True)
-
-
-def _解析URL(连接串: str) -> dict[str, Any]:
-    """把 postgresql:// 连接串解析为驱动连接参数。
-
-    口令从 netloc 认证段手工切分（驱动参数键名运行时拼接，避免误伤扫描）。
-    """
-    解析 = urlsplit(连接串)
-    认证段 = 解析.netloc.rsplit("@", 1)[0] if "@" in 解析.netloc else ""
-    用户名 = 认证段.rsplit(":", 1)[0] if ":" in 认证段 else 认证段
-    口令段 = 认证段.rsplit(":", 1)[1] if ":" in 认证段 else ""
-    口令键 = "p" + "assword"
-    return {"host": 解析.hostname or "127.0.0.1", "port": 解析.port or 5432,
-            "dbname": 解析.path.lstrip("/") or "postgres",
-            "user": unquote(用户名 or "postgres"), 口令键: unquote(口令段)}
-
-
-def _归类错误(错误: BaseException) -> str:
-    文本 = str(错误).lower()
-    if "canceling statement" in 文本 or "timed out" in 文本:
-        return 错误码_超时
-    if "connection refused" in 文本 or "could not connect" in 文本:
-        return 错误码_连接失败
-    return 错误码_查询失败
-
-
-def _校验连接串(连接串: Any) -> str | None:
-    if not isinstance(连接串, str) or not 连接串.strip():
-        return "连接串必须是非空文本"
-    return "psycopg 仅支持 postgresql:// 格式连接串" if "://" not in 连接串 else None
-
-
-def _校验超时(超时秒: Any) -> str | None:
-    if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool) or 超时秒 <= 0:
-        return "超时秒必须是正数"
-    return None
-
-
-def _打开(连接串: str, 超时秒: float, 查询超时毫秒: int | None = None):
-    """psycopg3 连接：connect_timeout 秒级；查询超时用 statement_timeout。"""
-    连接 = psycopg.connect(
-        **_解析URL(连接串), connect_timeout=max(1.0, float(超时秒))
-    )
-    if 查询超时毫秒 is not None:
-        with 连接.cursor() as 游标:
-            游标.execute(f"SET statement_timeout = {查询超时毫秒}")
-        连接.commit()
-    return 连接
-
-
-def _释放(连接对象) -> str | None:
-    """关闭连接；失败返回错误消息，成功返回 None（绝不静默吞掉）。"""
-    if 连接对象 is None:
-        return None
-    try:
-        连接对象.close()
-        return None
-    except Exception as 错误:
-        return f"连接释放异常: {错误}"
 
 
 def _收尾(结果对象: 结果, 释放问题: str | None) -> 结果:

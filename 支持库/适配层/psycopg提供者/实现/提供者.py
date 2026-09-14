@@ -1,9 +1,8 @@
-"""psycopg 数据库独立提供者：连接/查询/事务执行/关闭 四个原子能力。
+"""psycopg 驱动翻译层（第三方库边界，唯一直接接触 psycopg 的地方）。
 
-一驱动一提供者一目录：本提供者只 import psycopg（psycopg3，纯 Python 模式
-主进程加载）。每次调用自包含连接生命周期，连接对象与游标在调用路径内创建
-并在 finally 中关闭，无持久连接状态、无泄漏；驱动缺失明确返回 提供者不可用；
-稳定错误码：参数不合法/提供者不可用/超时/连接失败/查询失败。
+把驱动的英文 API 翻译成中文原语，供支持库调用；本层**不对注册表贡献公开能力**，
+对外能力统一归支持库 `支持库.后端.数据库连接支持库.psycopg数据库`。
+稳定：任一步失败返回中文错误码，绝不假装成功。
 """
 
 from __future__ import annotations
@@ -104,85 +103,51 @@ def _收尾(结果对象: 结果, 释放问题: str | None) -> 结果:
     )
 
 
-def 连接(连接串: str, 超时秒: float = 10) -> 结果:
-    """连接测试：成功返回 {已连接: true, 提供者版本}。"""
-    if (问题 := _校验连接串(连接串)) or (问题 := _校验超时(超时秒)):
-        return _失败(错误码_参数不合法, 问题)
+def 驱动可用() -> bool:
+    """翻译层健康探针：psycopg 驱动是否可用。"""
+    return _驱动可用
+
+
+def 驱动版本() -> dict[str, str]:
+    """返回 psycopg 版本字典。"""
+    return _提供者版本()
+
+
+def 打开连接(连接串: str, 超时秒: float, 查询超时毫秒: int | None = None):
+    """打开一条 psycopg3 连接；连接超时秒级，语句超时用毫秒。"""
+    return _打开(连接串, 超时秒, 查询超时毫秒)
+
+
+def 释放连接(连接对象) -> str | None:
+    """关闭连接，返回释放过程中的问题（None 表示干净释放）。"""
+    return _释放(连接对象)
+
+
+def 归类错误(错误: BaseException) -> str:
+    """把驱动异常翻译成中文错误码。"""
+    return _归类错误(错误)
+
+
+def 解析连接串(连接串: str) -> dict[str, Any]:
+    """把 postgresql:// 连接串翻译成驱动连接参数。"""
+    return _解析URL(连接串)
+
+
+def 校验连接串(连接串: Any) -> str | None:
+    """连接串形状校验（非空、postgresql://）。"""
+    return _校验连接串(连接串)
+
+
+def 校验超时(超时秒: Any) -> str | None:
+    """超时形状校验（正数）。"""
+    return _校验超时(超时秒)
+
+
+def 检查可用性() -> 结果:
+    """驱动健康探针：返回 psycopg 是否可用与本机驱动版本；不连数据库、无副作用。"""
     if not _驱动可用:
-        return _失败(错误码_提供者不可用, "psycopg 驱动未安装，提供者不可用")
-    连接对象 = None
-    try:
-        连接对象 = _打开(连接串, 超时秒)
-        结果对象 = 结果.成功结果({"已连接": True, "提供者版本": _提供者版本()})
-    except Exception as 错误:
-        结果对象 = _失败(_归类错误(错误), f"连接失败：{错误}")
-    finally:
-        释放问题 = _释放(连接对象)
-    return _收尾(结果对象, 释放问题)
-
-
-def 查询(连接串: str, SQL: str, 参数: list | None = None, 超时秒: float = 30) -> 结果:
-    """查询：返回 {行列表: [{列名: 值}...]}。"""
-    if (问题 := _校验连接串(连接串)) or (问题 := _校验超时(超时秒)):
-        return _失败(错误码_参数不合法, 问题)
-    if not isinstance(SQL, str) or not SQL.strip():
-        return _失败(错误码_参数不合法, "SQL 必须是非空文本")
-    if not isinstance(参数, (list, tuple)) and 参数 is not None:
-        return _失败(错误码_参数不合法, "参数必须是列表或元组")
-    if not _驱动可用:
-        return _失败(错误码_提供者不可用, "psycopg 驱动未安装，提供者不可用")
-    连接对象 = None
-    try:
-        连接对象 = _打开(连接串, 超时秒, 查询超时毫秒=int(float(超时秒) * 1000))
-        with 连接对象.cursor() as 游标:
-            游标.execute(SQL, 参数 or ())
-            行列表 = 游标.fetchall()
-            列名表 = [描述[0] for 描述 in 游标.description] if 游标.description else []
-        结果对象 = 结果.成功结果({"行列表": [dict(zip(列名表, 行)) for 行 in 行列表]})
-    except Exception as 错误:
-        结果对象 = _失败(_归类错误(错误), f"查询失败：{错误}")
-    finally:
-        释放问题 = _释放(连接对象)
-    return _收尾(结果对象, 释放问题)
-
-
-def 事务执行(连接串: str, SQL列表: list, 超时秒: float = 30) -> 结果:
-    """事务执行：全部成功提交；任一失败回滚。"""
-    if (问题 := _校验连接串(连接串)) or (问题 := _校验超时(超时秒)):
-        return _失败(错误码_参数不合法, 问题)
-    if not isinstance(SQL列表, list) or not SQL列表 or \
-            any(not isinstance(条, str) or not 条.strip() for 条 in SQL列表):
-        return _失败(错误码_参数不合法, "SQL列表 必须是非空文本列表")
-    if not _驱动可用:
-        return _失败(错误码_提供者不可用, "psycopg 驱动未安装，提供者不可用")
-    连接对象 = None
-    try:
-        连接对象 = _打开(连接串, 超时秒, 查询超时毫秒=int(float(超时秒) * 1000))
-        with 连接对象.cursor() as 游标:
-            for 条 in SQL列表:
-                游标.execute(条)
-        连接对象.commit()
-        结果对象 = 结果.成功结果({"已提交": True})
-    except Exception as 错误:
-        回滚消息 = ""
-        if 连接对象 is not None:
-            try:
-                连接对象.rollback()
-            except Exception as 回滚错误:
-                回滚消息 = f"（回滚失败: {回滚错误}）"
-        结果对象 = _失败(_归类错误(错误), f"事务执行失败，已回滚{回滚消息}：{错误}")
-    finally:
-        释放问题 = _释放(连接对象)
-    return _收尾(结果对象, 释放问题)
-
-
-def 关闭(连接串: str, 超时秒: float = 5) -> 结果:
-    """关闭：本提供者每次调用自包含连接，无持久连接，关闭为空操作。"""
-    if (问题 := _校验连接串(连接串)) or (问题 := _校验超时(超时秒)):
-        return _失败(错误码_参数不合法, 问题)
-    if not _驱动可用:
-        return _失败(错误码_提供者不可用, "psycopg 驱动未安装，提供者不可用")
-    return 结果.成功结果({"已关闭": True, "说明": "每次调用自包含连接，无持久连接可关闭"})
+        return _失败(错误码_提供者不可用, "psycopg 驱动未安装")
+    return 结果.成功结果({"驱动可用": True, "驱动版本": _提供者版本()})
 
 
 def _提供者版本() -> dict[str, str]:

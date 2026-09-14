@@ -26,10 +26,8 @@ from typing import Any
     "PyMuPDF": "fitz",
     "openpyxl": "openpyxl",
     "pdfplumber": "pdfplumber",
-    "pg8000": "pg8000",
     "python-pptx": "pptx",
     "psycopg": "psycopg",
-    "psycopg2": "psycopg2",
     "reportlab": "reportlab",
 }
 
