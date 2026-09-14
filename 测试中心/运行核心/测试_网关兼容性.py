@@ -104,5 +104,39 @@ class 网关能力入参兼容(unittest.TestCase):
         self.assertIn("必须是", 响应.错误说明)
 
 
+class 网关版本回报(unittest.TestCase):
+    """哲学第 21 条：带旧版本号请求照常放行，并回报请求版本/当前版本/差异原因。"""
+
+    def setUp(self):
+        self.后端 = 假后端()
+        self.网关 = 网关核心(self.后端)
+
+    def _请求(self, 版本: str = ""):
+        return self.网关.处理(网关请求(
+            操作="调用能力", 能力id="示例.包.示例能力",
+            参数={"输入文本": "值"}, 权限范围=["全部"], 请求版本=版本,
+        ))
+
+    def test_旧版本号不失败且回报三项信息(self):
+        响应 = self._请求("1.0.0")
+        self.assertTrue(响应.成功, 响应.错误说明)
+        self.assertEqual(响应.请求版本, "1.0.0")
+        self.assertTrue(响应.当前版本)
+        self.assertIn("不一致", 响应.版本差异)
+
+    def test_版本一致时差异为空(self):
+        from 公共契约.版本规则.契约版本 import 契约版本
+
+        响应 = self._请求(契约版本)
+        self.assertTrue(响应.成功)
+        self.assertEqual(响应.当前版本, 契约版本)
+        self.assertEqual(响应.版本差异, "")
+
+    def test_响应信封带版本三键(self):
+        信封 = self._请求().转字典()
+        for 键 in ("请求版本", "当前版本", "版本差异"):
+            self.assertIn(键, 信封, f"信封必须包含 {键}（只增不改不删）")
+
+
 if __name__ == "__main__":
     unittest.main()
