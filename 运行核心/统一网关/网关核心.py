@@ -200,6 +200,21 @@ class 网关核心:
                 return False
         return True
 
+    def _过滤能力参数(self, 能力id: str, 参数: dict[str, Any]) -> dict[str, Any]:
+        """按能力契约剔除未知参数（协议兼容：未知字段一律忽略，不转给实现）。
+
+        边界归一化放在网关做，实现永远看不到未知字段——否则上游多传一个字段
+        会让实现收到 `TypeError`，等于把兼容性问题推给每个能力作者。
+        """
+        注册表 = getattr(self.后端核心, "注册表", None)
+        获取 = getattr(注册表, "获取", None)
+        实现 = 获取(能力id) if callable(获取) else None
+        声明参数 = getattr(实现, "参数", None)
+        if not isinstance(声明参数, list):
+            return dict(参数)
+        参数名 = {项.get("名称") if isinstance(项, dict) else 项 for 项 in 声明参数}
+        return {键: 值 for 键, 值 in 参数.items() if 键 in 参数名}
+
     def _能力参数错误(self, 能力id: str, 参数: dict[str, Any]) -> str:
         """按已注册能力契约校验参数名、必填项和冻结的数值类型。"""
         注册表 = getattr(self.后端核心, "注册表", None)
@@ -214,9 +229,11 @@ class 网关核心:
             项.get("名称") if isinstance(项, dict) else 项
             for 项 in 声明参数
         }
-        未知参数 = sorted(set(参数) - 参数名)
-        if 未知参数:
-            return f"参数不合法：能力 {能力id} 收到未知参数 {', '.join(map(str, 未知参数))}"
+        # 协议兼容口径（哲学第 21 条）：能力入参里的**未知参数一律忽略**，
+        # 只有「必填缺失」与「类型不符」才失败。旧行为是「未知参数即 400」——
+        # 上游多传一个字段就整条调用失败，与「新增非必填字段不得影响旧调用」相冲，已废止。
+        # 真正的剔除在 _过滤能力参数 里做（边界归一化，实现永远看不到未知字段）。
+        _ = sorted(set(参数) - 参数名)
         for 项 in 声明参数:
             if not isinstance(项, dict):
                 continue
@@ -489,7 +506,7 @@ class 网关核心:
                     self._设置失败(响应, "句柄无效")
                     return
             结果对象 = self.后端核心.调用(
-                能力id, 请求.参数,
+                能力id, self._过滤能力参数(能力id, 请求.参数),
                 上下文=运行上下文(
                     请求id=响应.请求id, 项目id=请求.项目id, 用户id=请求.用户id,
                     会话id=请求.会话id, 任务id=请求.任务id, 能力id=能力id,
@@ -535,7 +552,7 @@ class 网关核心:
             # 追踪上下文随任务参数过管道，执行器取出后立即弹出，能力看不到该键。
             from 运行核心.任务调度.任务接入 import 任务追踪键
 
-            提交参数 = dict(请求.参数)
+            提交参数 = self._过滤能力参数(能力id, 请求.参数)
             提交参数[任务追踪键] = {
                 "请求id": 响应.请求id, "来源地址": 请求.来源地址,
                 "权限范围": list(请求.权限范围),

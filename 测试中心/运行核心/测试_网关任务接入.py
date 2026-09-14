@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from 运行核心.统一网关.网关核心 import 网关核心, 网关请求
+from 运行核心.统一网关.网关核心 import 网关核心, 网关请求, 网关响应
 from 运行核心.任务调度.任务接入 import 构造任务系统, 任务追踪键
 
 终态 = {"成功", "失败", "已取消", "超时", "崩溃"}
@@ -75,7 +75,7 @@ class 网关任务接入测试(unittest.TestCase):
         cls.任务系统实例.关闭全部()
         cls._临时目录.cleanup()
 
-    def 处理(self, **字段) -> 网关请求:
+    def 处理(self, **字段) -> 网关响应:
         return self.网关.处理(网关请求(**字段))
 
     def 等到终态(self, 任务id: str, 超时秒: float = 15.0) -> dict:
@@ -120,16 +120,23 @@ class 网关任务接入测试(unittest.TestCase):
         self.assertEqual(响应.错误码, "能力不存在")
 
     def test_参数不合契约提交前就被拒绝(self) -> None:
+        """兼容口径（哲学第 21 条）：未知字段被边界剔除后照常提交，只有强制参数不满足才拒。
+
+        旧行为是「未知参数即 400」，已废止——上游多传一个字段不该让长任务提交失败。
+        """
         未知参数 = self.处理(操作="任务提交", 能力id="示例.快",
                             参数={"文本": "你好", "不认识": 1}, 超时秒=30)
-        self.assertFalse(未知参数.成功)
-        self.assertEqual(未知参数.错误码, "参数不合法")
-        self.assertIn("不认识", 未知参数.错误说明)
+        self.assertTrue(未知参数.成功, 未知参数.错误说明)
 
         缺必填 = self.处理(操作="任务提交", 能力id="示例.快", 参数={}, 超时秒=30)
         self.assertFalse(缺必填.成功)
         self.assertEqual(缺必填.错误码, "参数不合法")
         self.assertIn("文本", 缺必填.错误说明)
+
+        类型不符 = self.处理(操作="任务提交", 能力id="示例.快",
+                            参数={"文本": 123}, 超时秒=30)
+        self.assertFalse(类型不符.成功)
+        self.assertEqual(类型不符.错误码, "参数不合法")
 
     def test_取消长任务进入已取消(self) -> None:
         响应 = self.处理(操作="任务提交", 能力id="示例.慢", 参数={}, 超时秒=60)

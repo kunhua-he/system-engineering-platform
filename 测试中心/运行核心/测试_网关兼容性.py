@@ -50,5 +50,59 @@ class 网关兼容性回归(unittest.TestCase):
         self.assertEqual(响应.错误码, "返回结果不符合契约")
 
 
+class 假实现:
+    """最小能力声明：一个必填文本参数。"""
+
+    参数 = [{"名称": "输入文本", "类型": "文本型", "必填": True}]
+
+
+class 假注册表:
+    def 获取(self, 能力id):
+        return 假实现() if 能力id == "示例.包.示例能力" else None
+
+
+class 假后端:
+    """记录能力的真实入参，用于验证未知字段没有透给实现。"""
+
+    def __init__(self):
+        self.注册表 = 假注册表()
+        self.收到参数 = None
+
+    def 调用(self, 能力id, 参数, 上下文=None, 超时秒=None):
+        from 公共契约.基础类型.结果类型 import 结果
+
+        self.收到参数 = dict(参数)
+        return 结果.成功结果({"收到": dict(参数)})
+
+
+class 网关能力入参兼容(unittest.TestCase):
+    """能力调用层同样只拦「必填缺失/类型不符」，未知字段在边界被剔除。"""
+
+    def setUp(self):
+        self.后端 = 假后端()
+        self.网关 = 网关核心(self.后端)
+
+    def _调用(self, 参数: dict):
+        return self.网关.处理(网关请求(
+            操作="调用能力", 能力id="示例.包.示例能力", 参数=参数,
+            权限范围=["全部"],
+        ))
+
+    def test_未知参数被剔除而不是报错(self):
+        响应 = self._调用({"输入文本": "真实值", "未来字段": "以后新增"})
+        self.assertTrue(响应.成功, 响应.错误说明)
+        self.assertEqual(self.后端.收到参数, {"输入文本": "真实值"})
+
+    def test_必填缺失仍明确失败(self):
+        响应 = self._调用({"未来字段": "以后新增"})
+        self.assertFalse(响应.成功)
+        self.assertIn("缺少必填参数", 响应.错误说明)
+
+    def test_类型不符仍明确失败(self):
+        响应 = self._调用({"输入文本": 123})
+        self.assertFalse(响应.成功)
+        self.assertIn("必须是", 响应.错误说明)
+
+
 if __name__ == "__main__":
     unittest.main()
