@@ -20,6 +20,9 @@ import uuid
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 
+# 补列等容错路径的问题留痕（哲学第 15 条：失败必须可见，不许 except: pass 吞掉）
+补列问题: list[str] = []
+
 默认库路径 = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "工程缓存", "大语言模型支持库.会话存储.db")
 默认超时秒 = 1800   # 华哥口径：不申报默认 30 分钟，模块应主动申报自身需要多久
 锁 = threading.Lock()
@@ -86,12 +89,15 @@ def _连接(库路径: str) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(库路径), exist_ok=True)
     连接 = sqlite3.connect(库路径, timeout=10)
     连接.executescript(_建表语句)
-    # 兼容旧库：幂等补 父会话id 列（已有则忽略）
+    # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 15 条）。
     try:
         连接.execute("ALTER TABLE 会话表 ADD COLUMN 父会话id TEXT")
         连接.commit()
-    except Exception:
-        pass
+    except sqlite3.OperationalError as 错误:
+        if "duplicate column" not in str(错误).lower():
+            补列问题.append(f"补列失败: {错误}")
+    except Exception as 错误:
+        补列问题.append(f"补列异常: {错误}")
     return 连接
 
 

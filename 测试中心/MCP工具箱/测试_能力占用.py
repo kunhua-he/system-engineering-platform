@@ -250,6 +250,17 @@ class 能力占用测试(unittest.TestCase):
         self.assertEqual(再次["数量"], 1)
         self.assertEqual(再次["记录"][0]["能力id"], "浏览器自动化.创建会话")
 
+        # 库非空时仍按 能力id 缺页补齐：新出现的旧 JSON 不能漏。
+        (self.旧账本目录 / "浏览器自动化.读取页面.json").write_text(json.dumps({
+            "能力id": "浏览器自动化.读取页面", "提供包id": "支持库.后端.浏览器自动化支持库",
+            "开工id": "982baca487dd44f4", "占用时间": "2026-09-05 19:58:32",
+        }, ensure_ascii=False), encoding="utf-8")
+        补齐 = 查询占用账本(运行库路径=self.运行库, 旧账本目录=self.旧账本目录)
+        self.assertEqual(sorted(项["能力id"] for 项 in 补齐["记录"]),
+                         ["浏览器自动化.创建会话", "浏览器自动化.读取页面"])
+        self.assertEqual(sorted(项["能力id"] for 项 in _读库载荷(self.运行库)),
+                         ["浏览器自动化.创建会话", "浏览器自动化.读取页面"])
+
     def test_搬迁旧账本返回真实计数(self) -> None:
         self.旧账本目录.mkdir(parents=True, exist_ok=True)
         for 序号 in range(3):

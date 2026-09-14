@@ -187,13 +187,15 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
                                 "标准输出": (stdout or b"").decode("utf-8", errors="replace"),
                                 "错误输出": (stderr or b"").decode("utf-8", errors="replace")})
     except Exception as 错误:
-        # 超时/异常后强制回收独立进程组，避免子孙进程残留
+        # 超时/异常后强制回收独立进程组，避免子孙进程残留；
+        # 回收失败必须随失败说明一起回报（哲学第 15 条：失败要明确，不允许静默吞掉）
+        清理说明 = ""
         if 进程 is not None:
             try:
                 _终止进程组(进程, 强制=True)
-            except Exception:
-                pass
-        return 结果.失败("执行失败", str(错误), 来源="进程管理")
+            except Exception as 清理错误:
+                清理说明 = f"（强制回收失败：{清理错误}）"
+        return 结果.失败("执行失败", f"{错误}{清理说明}", 来源="进程管理")
 
 
 def 检查命令可用(命令: str = None) -> 结果:

@@ -89,7 +89,7 @@
     },
     {
       "路径": "会话存储/实现/会话存储.py",
-      "sha256": "de8eaea9263a474edacec1ceb85a52258a0b97287a3363b860b905898e0b3351"
+      "sha256": "b087b757059c0257230b96eb57af1fbd8ed820776d5156be44a05855cf9d76b5"
     },
     {
       "路径": "会话存储/权限契约/权限契约.json",
@@ -225,11 +225,11 @@
     },
     {
       "路径": "模型连接器/能力契约/参数契约.json",
-      "sha256": "4f32fa29435ee8b0ce1fac609166b17324fde78b9c752046cfe6bc784eadc716"
+      "sha256": "47fc99ab590dc9e4ef851162f5ecb5ed5cd2de9cd532af6de49b3735bb14c7ee"
     },
     {
       "路径": "模型连接器/能力定义.json",
-      "sha256": "6f4bc39fc358b3069d50e0027393b114d26fdee9a5cadd080f6baaa6f4ae429c"
+      "sha256": "c2196b7a4f4f211a7feedf3619598a26d382bbb7c632fc308db7ec3002ec83ae"
     },
     {
       "路径": "模型连接器/能力数据/Agent查询数据.json",
