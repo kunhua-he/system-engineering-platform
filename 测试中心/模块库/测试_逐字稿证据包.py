@@ -54,16 +54,16 @@ class Test证据包结构(unittest.TestCase):
 
     def test_多区间各自渲染(self):
         复核列表 = [
-            {"区间id": 1, "开始秒": 10.2, "结束秒": 14.8, "轮次": 造轮次(2, "甲")},
-            {"区间id": 2, "开始秒": 65.0, "结束秒": 70.0, "轮次": 造轮次(2, "乙")},
+            {"区间id": 1, "开始秒": 10.2, "结束秒": 14.8, "轮次": 造轮次(2, "A")},
+            {"区间id": 2, "开始秒": 65.0, "结束秒": 70.0, "轮次": 造轮次(2, "B")},
         ]
         文本 = 生成证据包(底稿行, 复核列表, [], "")
         self.assertIn("## 第1区间 00:10.2-00:14.8", 文本)
         self.assertIn("## 第2区间 01:05.0-01:10.0", 文本)
         标题行 = [行 for 行 in 文本.splitlines() if 行.startswith("## 第")]
         self.assertEqual(len(标题行), 2)
-        self.assertIn("甲1轮识别文本", 文本)
-        self.assertIn("乙1轮识别文本", 文本)
+        self.assertIn("A1轮识别文本", 文本)
+        self.assertIn("B1轮识别文本", 文本)
         self.assertLess(文本.index("## 第1区间"), 文本.index("## 第2区间"))
 
     def test_死循环区间渲染(self):

@@ -71,7 +71,7 @@ def 成功场景(能力id="样例.相加", 场景id="相加成功", 参数=None)
         "能力id": 能力id,
         "方法": "POST",
         "路径": "/网关/调用",
-        "参数": 参数 or {"甲": 1, "乙": 2},
+        "参数": 参数 or {"加数1": 1, "加数2": 2},
         "预期": {"成功": True, "值类型": "字典型", "关键值": {"和": 3}},
     }
 
@@ -127,7 +127,7 @@ class Test场景事实源与阻断(unittest.TestCase):
         with tempfile.TemporaryDirectory() as 临时:
             制品 = Path(临时)
             嵌套根 = 制品 / "平台客户端"
-            建制品(嵌套根, [("样例.相加", {"甲": {"必填": True}})], [成功场景()])
+            建制品(嵌套根, [("样例.相加", {"加数1": {"必填": True}})], [成功场景()])
             场景 = 场景加载._加载场景(制品, None)
             self.assertEqual([项.能力id for 项 in 场景], ["样例.相加"])
             self.assertEqual(
@@ -137,10 +137,10 @@ class Test场景事实源与阻断(unittest.TestCase):
 
     def test_包级引用提供真实成功参数且不从契约猜输入(self):
         with tempfile.TemporaryDirectory() as 临时:
-            制品 = 建制品(Path(临时), [("样例.相加", {"甲": {"必填": True}})], [成功场景()])
+            制品 = 建制品(Path(临时), [("样例.相加", {"加数1": {"必填": True}})], [成功场景()])
             场景 = 场景加载._加载场景(制品, None)
             self.assertEqual(len(场景), 1)
-            self.assertEqual(场景[0].参数, {"甲": 1, "乙": 2})
+            self.assertEqual(场景[0].参数, {"加数1": 1, "加数2": 2})
             self.assertTrue(场景[0].预期成功)
             self.assertEqual(场景[0].预期关键值, {"和": 3})
             self.assertEqual(场景[0].制品摘要, 制品事实._制品全文件摘要(制品)["制品摘要"])
@@ -247,9 +247,9 @@ class TestP020多步骤场景契约(unittest.TestCase):
 
     def test_独立场景按并发执行且场景内步骤保持顺序(self):
         with tempfile.TemporaryDirectory() as 临时:
-            制品 = 建新制品(Path(临时), ["样例.甲", "样例.乙"], [
-                新场景("场景甲", [新步骤("目标甲", "样例.甲")]),
-                新场景("场景乙", [新步骤("目标乙", "样例.乙")]),
+            制品 = 建新制品(Path(临时), ["样例.包1", "样例.包2"], [
+                新场景("场景1", [新步骤("目标1", "样例.包1")]),
+                新场景("场景2", [新步骤("目标2", "样例.包2")]),
             ])
             活跃 = 0
             峰值 = 0
@@ -291,7 +291,7 @@ class TestP020多步骤场景契约(unittest.TestCase):
         for 引用文件 in (False, True):
             with self.subTest(引用文件=引用文件), tempfile.TemporaryDirectory() as 临时:
                 制品 = 建新制品(Path(临时), ["样例.相加"], [
-                    新场景("静态", [新步骤("相加", "样例.相加", {"甲": 1, "乙": 2}, 返回断言={"关键值": {"和": 3}})])
+                    新场景("静态", [新步骤("相加", "样例.相加", {"加数1": 1, "加数2": 2}, 返回断言={"关键值": {"和": 3}})])
                 ], 引用文件=引用文件)
                 场景束 = 场景加载._加载场景(制品, None)
                 self.assertEqual(场景束.目标能力全集, {"样例.相加"})
@@ -322,7 +322,7 @@ class TestP020多步骤场景契约(unittest.TestCase):
                     "句柄": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.值.资源.句柄"},
                     "种子": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.参数.种子"},
                 }, 返回断言={"关键值": {"内容": "已读取"}})], 前置步骤=[
-                    新步骤("创建", "样例.创建", {"种子": "甲"}, 返回断言={"关键值": {"资源.句柄": "句柄-1"}}),
+                    新步骤("创建", "样例.创建", {"种子": "示例种子"}, 返回断言={"关键值": {"资源.句柄": "句柄-1"}}),
                 ], 清理步骤=[新步骤("释放", "样例.创建", {
                     "句柄": {"$动态": "步骤返回", "步骤id": "创建", "JSON路径": "$.值.资源.句柄"},
                 })]),
@@ -336,7 +336,7 @@ class TestP020多步骤场景契约(unittest.TestCase):
                 return 200, 统一成功返回(值), 1
             报告 = self._执行(制品, 返回)
             self.assertEqual(dict(收到)["读取"]["句柄"], "句柄-1")
-            self.assertEqual(dict(收到)["读取"]["种子"], "甲")
+            self.assertEqual(dict(收到)["读取"]["种子"], "示例种子")
             self.assertEqual(dict(收到)["释放"]["句柄"], "句柄-1")
             self.assertEqual(报告.失败数, 0)
 
@@ -423,17 +423,17 @@ class TestP020多步骤场景契约(unittest.TestCase):
 
     def test_前置和清理步骤不能冒充目标覆盖(self):
         with tempfile.TemporaryDirectory() as 临时:
-            制品 = 建新制品(Path(临时), ["样例.甲", "样例.乙"], [
-                新场景("伪覆盖", [新步骤("甲", "样例.甲")], 前置步骤=[新步骤("乙前置", "样例.乙")],
-                    清理步骤=[新步骤("乙清理", "样例.乙")]),
+            制品 = 建新制品(Path(临时), ["样例.包1", "样例.包2"], [
+                新场景("伪覆盖", [新步骤("调用样例包1", "样例.包1")], 前置步骤=[新步骤("样例包2前置", "样例.包2")],
+                    清理步骤=[新步骤("样例包2清理", "样例.包2")]),
             ])
             with self.assertRaisesRegex(ValueError, "正向目标步骤能力全集"):
                 场景加载._加载场景(制品, None)
 
     def test_每能力缺正向目标步骤阻断(self):
         with tempfile.TemporaryDirectory() as 临时:
-            制品 = 建新制品(Path(临时), ["样例.甲"], [
-                新场景("只有负向", [新步骤("甲失败", "样例.甲", 成功=False, 状态码=400,
+            制品 = 建新制品(Path(临时), ["样例.包1"], [
+                新场景("只有负向", [新步骤("样例包1失败", "样例.包1", 成功=False, 状态码=400,
                     返回断言={"错误码": "预期失败"})]),
             ])
             with self.assertRaisesRegex(ValueError, "正向目标步骤能力全集"):
@@ -555,9 +555,9 @@ class Test直连异常与证据(unittest.TestCase):
     def test_制品全文件摘要前后漂移阻断(self):
         with tempfile.TemporaryDirectory() as 临时:
             制品 = Path(临时)
-            (制品 / "a.txt").write_text("甲", encoding="utf-8")
+            (制品 / "a.txt").write_text("第一版", encoding="utf-8")
             前 = 制品事实._制品全文件摘要(制品)
-            (制品 / "a.txt").write_text("乙", encoding="utf-8")
+            (制品 / "a.txt").write_text("第二版", encoding="utf-8")
             后 = 制品事实._制品全文件摘要(制品)
             self.assertNotEqual(前["制品摘要"], 后["制品摘要"])
             报告 = 验证报告(制品摘要前=前, 制品摘要后=后)

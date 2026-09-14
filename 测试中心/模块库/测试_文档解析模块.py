@@ -38,7 +38,7 @@ def _生成xlsx(路径: Path) -> None:
     工作表 = 工作簿.active
     工作表.title = "数据"
     工作表.append(["列1", "列2"])
-    工作表.append(["甲", 1])
+    工作表.append(["张三", 1])
     工作簿.save(str(路径))
 
 

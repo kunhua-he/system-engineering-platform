@@ -871,7 +871,7 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
                            基线提交=str(参数.get("基线提交", "")), parent_work_id=str(参数.get("parent_work_id", "")))
         elif 名称 == "collaboration_status":
             协作开工id = _有效开工id(参数.get("work_id"))
-            数据 = 查询协作状态(协作开工id, 任务=str(参数.get("任务", "")))
+            数据 = 查询协作状态(协作开工id, 任务关键词=str(参数.get("任务", "")))
         elif 名称 == "delivery_closeout":
             收口开工id = _有效开工id(参数.get("work_id"))
             数据 = 收口登记(收口开工id, 五件套路径=str(参数.get("五件套路径", "")), 结论=str(参数.get("结论", "")))

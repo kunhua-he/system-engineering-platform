@@ -190,13 +190,19 @@ class 作业系统:
         return 记录表
 
     def 加载(self) -> None:
-        """先读运行库；库空时回退读旧账本，并把旧账本一次性搬进运行库（不双写）。"""
-        记录表 = self._读运行库()
-        需搬迁 = 记录表 is None
-        if 需搬迁:
-            记录表 = self._读旧账本()
+        """先读运行库；旧账本里库里没有的作业按 作业id 缺页补齐一次（不双写）。
+
+        库不可用或为空时按旧账本构造（迁移期只读兼容）；非终态作业一律收敛为「崩溃」。
+        """
+        库记录表 = self._读运行库() or []
+        已知 = {str(记录.get("作业id", "")) for 记录 in 库记录表 if isinstance(记录, dict)}
+        缺失 = [记录 for 记录 in self._读旧账本()
+                if isinstance(记录, dict) and str(记录.get("作业id", ""))
+                and str(记录.get("作业id", "")) not in 已知]
+        记录表 = list(库记录表) + 缺失
         if not 记录表:
             return
+        需落库 = bool(缺失)
         with self.锁:
             for 数据 in 记录表:
                 try:
@@ -209,8 +215,9 @@ class 作业系统:
                     对象.错误码 = "崩溃"
                     对象.错误说明 = "管理端重启，作业未完成"
                     对象.完成时间 = _现在()
+                    需落库 = True
                 self.作业表[对象.作业id] = 对象
-            if 需搬迁:
+            if 需落库:
                 self._保存已加锁()
 
     def _保存已加锁(self) -> None:

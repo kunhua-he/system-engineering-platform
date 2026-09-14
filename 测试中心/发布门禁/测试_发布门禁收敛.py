@@ -27,21 +27,21 @@ from 开发工具.组件合规.合规测试包 import 组件合规
 from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
 from 开发工具.发布门禁.运行发布门禁 import 执行逐包权威合规
 
-能力甲 = {
-    "能力id": "破坏模块.能力甲", "版本": "1.0.0", "说明": "门禁收敛能力甲",
+破坏能力1 = {
+    "能力id": "破坏模块.破坏能力1", "版本": "1.0.0", "说明": "门禁收敛破坏能力1",
     "参数": [{"名称": "文本", "类型": "文本", "必填": True,
               "默认值": None, "说明": "待处理文本"}],
     "返回": {"类型": "结果", "值结构": {}},
     "错误码": ["参数不合法"],
-    "调用示例": {"能力id": "破坏模块.能力甲", "参数": {"文本": "示例"}},
+    "调用示例": {"能力id": "破坏模块.破坏能力1", "参数": {"文本": "示例"}},
 }
 
 入口源码 = '''"""破坏模块包级中文入口。"""
 from __future__ import annotations
 
-from 实现.实现 import 能力甲
+from 实现.实现 import 破坏能力1
 
-__all__ = ["能力甲"]
+__all__ = ["破坏能力1"]
 
 
 def 注册能力(注册表) -> None:
@@ -49,7 +49,7 @@ def 注册能力(注册表) -> None:
     from 公共契约.能力契约.契约 import 能力实现
 
     注册表.注册(能力实现(
-        能力id="破坏模块.能力甲", 包id="模块库.破坏模块", 实现函数=能力甲,
+        能力id="破坏模块.破坏能力1", 包id="模块库.破坏模块", 实现函数=破坏能力1,
         参数=[{"名称": "文本", "类型": "文本"}], 返回="结果", 说明="门禁收敛能力",
     ))
 '''
@@ -58,7 +58,7 @@ def 注册能力(注册表) -> None:
 from __future__ import annotations
 
 
-def 能力甲(文本: str) -> dict:
+def 破坏能力1(文本: str) -> dict:
     if not 文本:
         return {"成功": False, "错误码": "参数不合法"}
     return {"成功": True, "值": {"长度": len(文本)}}
@@ -72,14 +72,14 @@ def 建临时模块库() -> tuple[Path, Path]:
     for 子目录 in ("能力契约", "依赖契约", "配置契约", "权限契约", "实现", "说明"):
         (模块目录 / 子目录).mkdir(parents=True)
     (模块目录 / "能力契约" / "参数契约.json").write_text(
-        json.dumps({"契约版本": "1.0.0", "能力契约": [能力甲]},
+        json.dumps({"契约版本": "1.0.0", "能力契约": [破坏能力1]},
                    ensure_ascii=False, indent=2), encoding="utf-8")
     (模块目录 / "依赖契约" / "依赖契约.json").write_text(
         json.dumps({"依赖": []}, ensure_ascii=False), encoding="utf-8")
     (模块目录 / "配置契约" / "配置契约.json").write_text(
         json.dumps({"默认超时秒": 10}, ensure_ascii=False), encoding="utf-8")
     (模块目录 / "权限契约" / "权限契约.json").write_text(
-        json.dumps({"破坏模块.能力甲": {"允许用户": ["*"]}}, ensure_ascii=False),
+        json.dumps({"破坏模块.破坏能力1": {"允许用户": ["*"]}}, ensure_ascii=False),
         encoding="utf-8")
     (模块目录 / "资源预算.json").write_text(
         json.dumps({"内存上限": 50, "线程上限": 2, "子进程上限": 1,
@@ -88,7 +88,7 @@ def 建临时模块库() -> tuple[Path, Path]:
                     "每分钟重启次数": 2, "空闲回收时间": 30}, ensure_ascii=False),
         encoding="utf-8")
     (模块目录 / "复用决策.json").write_text(
-        json.dumps({"搜索词": "破坏", "候选能力id": ["破坏模块.能力甲"]},
+        json.dumps({"搜索词": "破坏", "候选能力id": ["破坏模块.破坏能力1"]},
                    ensure_ascii=False), encoding="utf-8")
     (模块目录 / "验证场景引用.json").write_text(
         json.dumps({"验证场景引用": [{"场景id": "模块.装配验证",
@@ -102,7 +102,7 @@ def 建临时模块库() -> tuple[Path, Path]:
     (模块目录 / "__init__.py").write_text(入口源码, encoding="utf-8")
     (模块目录 / "实现" / "实现.py").write_text(实现源码, encoding="utf-8")
     (模块目录 / "说明" / "使用说明.md").write_text(
-        "# 破坏模块说明书\n\n能力甲，错误码：参数不合法。\n", encoding="utf-8")
+        "# 破坏模块说明书\n\n破坏能力1，错误码：参数不合法。\n", encoding="utf-8")
     摘要 = 生成完整性摘要(模块目录, 包id="模块库.破坏模块", 版本="1.0.0")
     (模块目录 / "完整性摘要.json").write_text(
         json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -171,19 +171,22 @@ def _写运行库(运行库路径: str, 记录: dict[str, Any]) -> bool:
 
 def 协作状态记录表(*, 状态目录: Path | None = None, 运行库路径: str | None = None,
               一次性搬迁: bool = True) -> dict[str, dict[str, Any]]:
-    """协作状态记录表：**库优先**；库空时回退读旧文件，并把旧文件一次性搬入库（不双写）。
+    """协作状态记录表：**库优先**；库空回退旧文件；旧文件里库里没有的记录按 work_id 缺页补齐。
 
-    返回 {work_id: 记录}（work_id 一律小写）。库不可用且旧文件也没有时返回空表。
+    返回 {work_id: 记录}（work_id 一律小写）。旧文件只读、不删、不覆盖库记录；
+    补齐只在库里确实缺该 work_id 时发生（幂等，不双写）。
     """
     状态目录 = Path(状态目录) if 状态目录 else 默认状态目录
     库路径 = str(运行库路径) if 运行库路径 else 默认运行库路径()
     记录表 = _读运行库(库路径)
-    if 记录表 is not None:
-        return 记录表
-    记录表 = _读旧文件(状态目录)
-    if 记录表 and 一次性搬迁:
-        for 记录 in 记录表.values():
-            _写运行库(库路径, 记录)
+    旧记录表 = _读旧文件(状态目录) if 一次性搬迁 else {}
+    缺失 = {键: 记录 for 键, 记录 in 旧记录表.items()
+            if 记录表 is None or 键 not in 记录表}
+    for 记录 in 缺失.values():
+        _写运行库(库路径, 记录)
+    if 记录表 is None:
+        return dict(旧记录表)
+    记录表.update(缺失)
     return 记录表
 
 

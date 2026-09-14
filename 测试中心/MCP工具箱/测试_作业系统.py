@@ -336,6 +336,32 @@ class 作业系统测试(unittest.TestCase):
         self.assertGreater(落库["原字节数"], 1024)
         重开.关闭()
 
+    def test_库非空时旧账本仍按缺页补齐(self) -> None:
+        """库里已有别的作业，也不能漏掉旧账本里的历史作业（按 作业id 缺页补齐）。"""
+        # 先让库里真实存在一条别的作业（走模块自身写入，不用桩）。
+        首建 = self._建系统()
+        首建.设置执行器(lambda 工具名, 参数: {"成功": True})
+        库里作业 = _提交(首建, "role_profile")
+        _等待终态(首建, 库里作业)
+        首建.关闭()
+        self.assertEqual([记录["作业id"] for 记录 in _读库载荷(self.运行库)], [库里作业])
+
+        self.存储目录.mkdir(parents=True, exist_ok=True)
+        旧账本 = self.存储目录 / "作业.jsonl"
+        旧账本.write_text(json.dumps({
+            "作业id": "dddddddddddddddd", "工具": "verify_and_record", "状态": 状态_成功,
+            "结果": {"成功": True}, "错误码": "", "错误说明": "", "开工id": "",
+            "创建时间": "2026-09-12 10:00:00", "开始时间": "", "完成时间": "",
+            "取消标记": False, "结果已截断": False,
+        }, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        系统 = self._建系统()
+        self.assertEqual(系统.查询("dddddddddddddddd").状态, 状态_成功)
+        系统.关闭()
+        库id表 = sorted(记录["作业id"] for 记录 in _读库载荷(self.运行库))
+        self.assertEqual(库id表, sorted([库里作业, "dddddddddddddddd"]),
+                         "库里缺的历史作业必须补齐，且不得覆盖已有行")
+
     # ── 列出 ───────────────────────────────────────────────────────────
 
     def test_列出按创建时间倒序并支持限量(self) -> None:

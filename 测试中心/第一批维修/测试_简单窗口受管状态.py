@@ -95,8 +95,8 @@ class 测试简单窗口受管状态(unittest.TestCase):
         assert isinstance(窗口1描述, dict) and isinstance(窗口2描述, dict)
         self.assertEqual(窗口1描述["状态"], "打开")
         self.assertNotEqual(窗口2描述["状态"], "打开")
-        self.assertNotEqual(窗口1描述.get("参数"), {"归属": "乙"})
-        self.assertEqual(窗口2描述["参数"], {"归属": "乙"})
+        self.assertNotEqual(窗口1描述.get("参数"), {"归属": "窗口2"})
+        self.assertEqual(窗口2描述["参数"], {"归属": "窗口2"})
 
     def test_释放后句柄不可继续访问(self) -> None:
         句柄 = self._创建("释放窗")

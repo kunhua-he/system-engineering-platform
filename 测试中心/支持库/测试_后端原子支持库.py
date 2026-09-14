@@ -29,11 +29,11 @@ class Test文件系统(unittest.TestCase):
 
     def test_写入读取往返(self):
         路径 = str(Path(self.临时目录) / "往返.txt")
-        写入结果 = 写入文件(路径, "内容甲")
+        写入结果 = 写入文件(路径, "内容1")
         self.assertTrue(写入结果.成功)
         读取结果 = 读取文件(路径)
         self.assertTrue(读取结果.成功)
-        self.assertEqual(读取结果.值, "内容甲")
+        self.assertEqual(读取结果.值, "内容1")
 
     def test_缺失文件返回失败(self):
         结果 = 读取文件("/不存在的路径/文件.txt")
@@ -75,9 +75,9 @@ class Test文件系统(unittest.TestCase):
 
 class Test文本处理(unittest.TestCase):
     def test_分割合并(self):
-        结果 = 分割文本("甲,乙", ",")
+        结果 = 分割文本("苹果,香蕉", ",")
         self.assertTrue(结果.成功)
-        self.assertEqual(结果.值, ["甲", "乙"])
+        self.assertEqual(结果.值, ["苹果", "香蕉"])
 
     def test_替换(self):
         结果 = 替换文本("abcabc", "a", "X")
@@ -88,7 +88,7 @@ class Test文本处理(unittest.TestCase):
         self.assertEqual(查找文本("abcdef", "zzz").值, -1)
 
     def test_去空白大小写长度行分割(self):
-        self.assertEqual(去空白("  甲  ").值, "甲")
+        self.assertEqual(去空白("  苹果  ").值, "苹果")
         self.assertEqual(转大写("abc").值, "ABC")
         self.assertEqual(统计长度("系统级").值, 3)
         self.assertEqual(按行分割("a\nb").值, ["a", "b"])
@@ -102,7 +102,7 @@ class Test数据集合(unittest.TestCase):
         self.assertEqual(列表查找([10, 20], 99).值, -1)
 
     def test_字典获取默认值(self):
-        结果 = 字典获取({"甲": 1}, "乙", 默认值=0)
+        结果 = 字典获取({"编号": 1}, "标签", 默认值=0)
         self.assertEqual(结果.值, 0)
 
 
@@ -138,10 +138,10 @@ class Test数据交换(unittest.TestCase):
         self.assertFalse(结果.成功)
 
     def test_CSV往返(self):
-        序列化 = 序列化CSV([["名称", "数量"], ["甲", 1]])
+        序列化 = 序列化CSV([["名称", "数量"], ["张三", 1]])
         反序列化 = 反序列化CSV(序列化.值)
         self.assertEqual(反序列化.值[0], ["名称", "数量"])
-        self.assertEqual(反序列化.值[1], ["甲", "1"])
+        self.assertEqual(反序列化.值[1], ["张三", "1"])
 
 
 if __name__ == "__main__":

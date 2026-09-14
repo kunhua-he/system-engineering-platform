@@ -25,11 +25,11 @@
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "474cc88f16aa794f242f3a4ff462331362b9ba79257155c78e4bdfadd61b30e7"
+      "sha256": "87b351fbdcb6d0717ea68de30db321c1f6cfdf36739e768827b77ad1aa41134d"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "5ca8b8bed9584a2df41fdfaada8e633e8dac9284aeda96721b88c3b1b114d812"
+      "sha256": "c252107d1bae95058a68bd7054dd8cd3cc55bdb158ef598e6115de44135d0108"
     },
     {
       "路径": "能力定义.json",

@@ -29,23 +29,23 @@
     },
     {
       "路径": "上下文压缩/权限契约/权限契约.json",
-      "sha256": "b0ef1affb16e4aaca4ff8cac96e9c4767a6ef0594221b8d7d84f342dc0ec2215"
+      "sha256": "9911d89c92cfa2bbe06a27fab936d1525b29c1376c12b847b7b2c9de78b37ab3"
     },
     {
       "路径": "上下文压缩/能力契约/参数契约.json",
-      "sha256": "e67fd1a08b05885b690b03f0c0402de1c98561d6fc88dd5444813cfe662af146"
+      "sha256": "82b9af6d30c7aa1751e2136f7b6cad085c00a8f98009d405e15d7fbbb40e66f5"
     },
     {
       "路径": "上下文压缩/能力定义.json",
-      "sha256": "0566bd5ad289b5b2faeddaffda672d902625a54bb531694b0bbf731206d453aa"
+      "sha256": "382fdc3f75aa5e50f79253ac1c273b3391bf5be370213cb54ed3cb8ccde1262a"
     },
     {
       "路径": "上下文压缩/能力数据/Agent查询数据.json",
-      "sha256": "98a67e731ccc2aa395fa4f5f7c729ae58e73aa49a7513364e108bedce6a0d438"
+      "sha256": "037ca767f6b34208fec872f71547f21bf8a69130acfcf3a25cf4aa5fc8dea465"
     },
     {
       "路径": "上下文压缩/能力数据/能力搜索数据.json",
-      "sha256": "6704cf2f7f4d45fd1f381572e21d0b4407ce03c5983e69af982bc5069a1cd74b"
+      "sha256": "a038f28d767f1eb3f30e657a30af7e0f3c42650db4ebbb03658ab3b92f875264"
     },
     {
       "路径": "上下文压缩/说明/使用说明.md",
@@ -77,7 +77,7 @@
     },
     {
       "路径": "会话存储/包声明.json",
-      "sha256": "aafe5a7fedb49f457090bb9a18cee8d0d40d66008b39944bb1bfed2b03529349"
+      "sha256": "0c44e9fbee97f51e8335bf601883be75df0f7b7db17d71d35803a8fa534a69f2"
     },
     {
       "路径": "会话存储/复用决策.json",
@@ -93,11 +93,11 @@
     },
     {
       "路径": "会话存储/权限契约/权限契约.json",
-      "sha256": "c1a3f7d73f386b05d2391d5c17c3dee21e99f4bfda5237b48a7a2d2f694ff2b7"
+      "sha256": "8c4676936d56b4db80b85ccf87684f18520e5946e51d4e99e6fbe9a26edf0d1d"
     },
     {
       "路径": "会话存储/能力契约/参数契约.json",
-      "sha256": "3a588dcfd70c28bf063abca8af6519254dd071d99b35c986d8ccad86958740ec"
+      "sha256": "f9c0742712954349e966859d1ef2532fe687f3ef591bcdbfb5b585a47a76c8ef"
     },
     {
       "路径": "会话存储/能力定义.json",
@@ -221,11 +221,11 @@
     },
     {
       "路径": "模型连接器/权限契约/权限契约.json",
-      "sha256": "d2ec0a59b3a73dd7be68b97326d5a842ebdbfa6012309dcf7b85f700dcdaee5a"
+      "sha256": "39b214933ac8baef91405f72cd59a9377083337b0ced92f5451154ff864805f8"
     },
     {
       "路径": "模型连接器/能力契约/参数契约.json",
-      "sha256": "5bcbad64f4ede4b581b48d9ce57dbb10b6ee003c80bb95c2ca5256f29babc04f"
+      "sha256": "4f32fa29435ee8b0ce1fac609166b17324fde78b9c752046cfe6bc784eadc716"
     },
     {
       "路径": "模型连接器/能力定义.json",
@@ -281,7 +281,7 @@
     },
     {
       "路径": "流式推理/包声明.json",
-      "sha256": "a2627a25c5c906fbb553797a359163172cf8a79a472acc50e2f637e6b81e14d7"
+      "sha256": "ae472370472026fad9b8c32af665636000241488dc8a0f10e03cefcfa87ec2d4"
     },
     {
       "路径": "流式推理/复用决策.json",
@@ -293,11 +293,11 @@
     },
     {
       "路径": "流式推理/权限契约/权限契约.json",
-      "sha256": "c8a9c4fa5ab52943a2bde3dd6397b6aac8cca205767cf9583fdab8080d4e1542"
+      "sha256": "5f1e64f4110811e34a5f99055808b1ac16e3c5162f1cd4c82fdd357102556efe"
     },
     {
       "路径": "流式推理/能力契约/参数契约.json",
-      "sha256": "f2548f07bb7a9e64fd3140cece6c8317a6d91bd156cb57699cddd61e5f18fbb2"
+      "sha256": "8a294cea124f5bbca450dc5aa5c70db98d00413ee12adac8ff53ce52b6b83a1e"
     },
     {
       "路径": "流式推理/能力定义.json",

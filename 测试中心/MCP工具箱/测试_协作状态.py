@@ -402,6 +402,32 @@ class 协作状态测试(unittest.TestCase):
         self.assertEqual(条目["子任务列表"], [子id])
         self.assertEqual(条目["子任务状态"], {子id: "已登记"})
 
+    def test_库非空时旧文件仍按缺页补齐(self) -> None:
+        """库里已有别的记录，也不能漏掉旧文件里的历史任务（按 work_id 缺页补齐）。"""
+        其他id = "ffff000000000009"
+        self.assertTrue(登记任务(其他id, 任务="库里已有的任务", 角色="平台维护者",
+                             worktree路径=str(self.工作区), 允许路径=[],
+                             基线提交="x", 状态目录=self.状态目录)["成功"])
+        self.assertEqual(len(_读库记录(self.运行库)), 1)
+
+        self.状态目录.mkdir(parents=True, exist_ok=True)
+        旧文件 = self.状态目录 / f"{父id}.json"
+        旧文件.write_text(json.dumps({
+            "work_id": 父id, "任务": "旧文件历史任务", "角色": "调用者",
+            "worktree路径": str(self.工作区), "允许路径": [], "基线提交": "old0002",
+            "代码指纹": "0123456789abcdef", "parent_work_id": "", "子任务列表": [],
+            "生命周期": "创建", "登记时间": 1.0,
+        }, ensure_ascii=False), encoding="utf-8")
+
+        聚合 = 查询协作状态(work_id=父id, 状态目录=self.状态目录,
+                          反馈文件=self.反馈文件, 验证历史文件=self.验证历史文件,
+                          临时上下文目录=self.临时上下文目录)
+        self.assertTrue(聚合["成功"], 聚合)
+        self.assertEqual(聚合["结果列表"][0]["任务"], "旧文件历史任务")
+        库id表 = sorted(项["work_id"] for 项 in _读库记录(self.运行库))
+        self.assertIn(父id, 库id表, "库里缺的历史任务必须补齐")
+        self.assertEqual(库id表, sorted([父id, 其他id]))
+
     def test_零残留不触碰正式路径(self) -> None:
         self.assertTrue(self._登记父()["成功"])
         _写反馈(self.反馈文件, 父id)
