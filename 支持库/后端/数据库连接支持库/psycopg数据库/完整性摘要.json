@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.数据库连接支持库.psycopg数据库",
-  "版本": "1.0.0",
+  "版本": "2.0.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
@@ -13,11 +13,11 @@
     },
     {
       "路径": "依赖锁.json",
-      "sha256": "3df521ddd7bac3966ba19be2b73c0b428d550e705b7c4bb8c23045207b2fe80e"
+      "sha256": "dc9b5ab844f50669e4b3d7e210ba3d33edece7f21f880ae59bd9220873d340d1"
     },
     {
       "路径": "包声明.json",
-      "sha256": "061f1aeb0a7c5c27fb6dea4a3937db94d39f213b3e355f2d20bf9dbd158dfa05"
+      "sha256": "9da031cbc217a3321329d84d28139650bde7a6ddfa34a7da2c481e131bcb9b0b"
     },
     {
       "路径": "复用决策.json",
@@ -33,15 +33,15 @@
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "f54fd6ea140817389e08adde018cffc6d50b382d58e7d465a5b374843f1fe63f"
+      "sha256": "1d72562028cc5e605b19ee53f17a487a81df72748c086487d12ff31d74a98641"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "efc230291cf96702eafb9efe8680f9a6fc297a2722bba2dc94c81d1644284392"
+      "sha256": "1618422ad82d643dbfd4d9e54d1b387ecde2f12c79a9cbec1bb2aa358d884ff1"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "d2190ecdc9612b2ad842e2bd82846010c78df5092cd9430d7838c105f8f87340"
+      "sha256": "5c5e85bb56a8d716d44d6dc63faaaeab18c4d2b2b223fee24e9fb6e942362871"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -49,7 +49,7 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "451d3ca4d4066e559eb763f9c33e8819e6205e5f9c513ac0974bb93ea0bdbd00"
+      "sha256": "9b1ab5b80e3b2b47c8bc927246094586525fc048aba09d0bbb44fc673f45ba39"
     },
     {
       "路径": "说明/使用说明.md",

@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.文档转换支持库.python_pptx提供者",
-  "版本": "1.0.0",
+  "版本": "2.0.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
@@ -13,11 +13,11 @@
     },
     {
       "路径": "依赖锁.json",
-      "sha256": "f05307ad562c5696fb27214514c05b1e730459c5ee3be872cf545f053530f7ba"
+      "sha256": "1448c748c80b1d84bb34ecdf2f9c0b4836848395face8167f79e30269c2eef25"
     },
     {
       "路径": "包声明.json",
-      "sha256": "cce54a8ac6c4fbfea3bc9fb05cd1e9416507ad0a561540c2e70a94d6bdb8ceaf"
+      "sha256": "ace8248720c4b2892d3b9ae1bd214ef4864db72b66b49e5a78309c6b69e58d1d"
     },
     {
       "路径": "复用决策.json",
@@ -33,15 +33,15 @@
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "fdc0d9f07eaf2d4bc51a3f4a61fb3bd7b4cc76401eb4f2316cd3a7456c5a77fc"
+      "sha256": "d1d4f24a15fbd0a9d80d4a1a5930aa7a114d45924fd50673c31174e368a84015"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "2fa8789ab4d9b0fab0473d400c1544c48ee5a4047b9d08ac65895c6333c9ab60"
+      "sha256": "94ceeac0a6ec34c8c96636901934bda9606f68fe378a7f800f37ef9cf7d12b35"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "82233d081d4f44c4be9e41ab345fe314f05d985c1be0fc03e5b064b6d042b4b6"
+      "sha256": "6f994ab7e2c909e15d6603ef1bab4ba8778457f3896e3eb7abbcaf054e194429"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -49,7 +49,7 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "08805c520e5f0f8ed47cc83f3a6f772a812aa47fdce97eebf0d6bbec27bb3ded"
+      "sha256": "87d500d52e07235f1c310667fa49585db95da19f1e9ce51d4ce98bd134c1fd89"
     },
     {
       "路径": "说明/使用说明.md",

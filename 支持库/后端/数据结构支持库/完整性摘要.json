@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.数据结构支持库",
-  "版本": "1.0.0",
+  "版本": "2.0.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "8bc6427c4a933c084add241ba091d720cafbcc2d1822f5d7f0dcfc352758abc3"
+      "sha256": "05f6174aed6526d8f6d9fd28438124bebf2b960bb3c54237d982d32cf7d5f05f"
     },
     {
       "路径": "复用决策.json",
@@ -29,15 +29,15 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "af7ea8197f86458c92826ba25889eed3f92ec04b25c98f2b5108e3afb164f724"
+      "sha256": "38a1ee3cde7cd51e6b38a3bfdc5a7932dce0af946c3ffdcd9fc135913907af1d"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "0f361f2b59ceefc6d44258f3f822a77bb207cccec6866fd3c0675ad5d1c8ab8e"
+      "sha256": "325bca8107827c6b0aecfbeb070e2954eab244aca4e4b9c9d9832b330bf7914a"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "f211e18bc90659602e1c2f06962c0cd21ea5cd3e239a1bc1d91649cf0688d281"
+      "sha256": "04b9fef6dc538855653014f15d231ffd44fc3124f5f6d6f9073f25e2e377cdc3"
     },
     {
       "路径": "说明/使用说明.md",
