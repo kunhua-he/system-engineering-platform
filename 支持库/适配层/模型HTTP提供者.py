@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -15,7 +16,7 @@ from 公共契约.运行时.有界IO import 受限读取
 
 来源 = "模型HTTP提供者"
 默认协议 = "chat_completions"
-# 与 大语言模型支持库.模型连接器.协议别名 同表：公开短值 chat/res 与内部长值一一对应。
+# 与 大语言模型支持库.模型连接器.协议别名 同表：公开短值 chat/res/anthropic 与内部长值一一对应。
 # 适配层与连接器是两个层，不能互相导入；此处镜像该表，并由
 # 测试中心.支持库.测试_模型协议别名 断言两份取值一致，防止漂移。
 协议别名表 = {
@@ -23,6 +24,23 @@ from 公共契约.运行时.有界IO import 受限读取
     "chat_completions": "chat_completions",
     "res": "codex_responses",
     "codex_responses": "codex_responses",
+    "anthropic": "anthropic_messages",
+    "anthropic_messages": "anthropic_messages",
+}
+协议取值说明 = "协议必须是 chat_completions、codex_responses 或 anthropic_messages"
+# anthropic Messages 协议：端点 /v1/messages、认证 x-api-key、版本头固定、max_tokens 必填。
+# 工具名规范来自协议定义（^[a-zA-Z0-9_-]{1,64}$）；探针实测中文工具名会被上游拒为 502，
+# 故在本层前置拒绝，不把非法工具名发给上游。
+anthropic协议版本 = "2023-06-01"
+anthropic默认最大令牌数 = 4096
+anthropic工具名规范 = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+anthropic完成原因表 = {
+    "end_turn": "stop",
+    "stop_sequence": "stop",
+    "max_tokens": "length",
+    "tool_use": "tool_calls",
+    "pause_turn": "stop",
+    "refusal": "stop",
 }
 响应上限字节 = 1024 * 1024
 流式响应上限字节 = 1024 * 1024
@@ -41,11 +59,17 @@ def _失败(错误码: str, 消息: str, *, 可重试: bool = False,
     return 结果.失败(错误码, 消息, 来源=来源, 可重试=可重试, 详情=详情)
 
 
-def _端点(配置: dict[str, Any], 后缀: str) -> str:
+def 归一模型端点(配置: dict[str, Any], 后缀: str) -> str:
+    """把配置里的 url 与目标后缀合成完整端点，两层共用同一套归一。
+
+    归一规则：剥掉 url 里可能已写全的已知后缀、保证以 /v1 结尾、再拼目标后缀。
+    连接器 `_HTTP调用模型` 与适配层调用路径都走这里，避免同一份配置在两层得到
+    不同地址（历史上连接器只做 `基址 + 路径`，url 不带 /v1 时整条链路必失败）。
+    """
     地址 = str(配置.get("url") or "").strip().rstrip("/")
     if not 地址:
         return ""
-    for 已有后缀 in ("/chat/completions", "/responses", "/embeddings", "/rerank"):
+    for 已有后缀 in ("/chat/completions", "/responses", "/messages", "/embeddings", "/rerank"):
         if 地址.endswith(已有后缀):
             地址 = 地址[: -len(已有后缀)]
             break
@@ -54,18 +78,44 @@ def _端点(配置: dict[str, Any], 后缀: str) -> str:
     return 地址 + 后缀
 
 
+def 检查不可发送请求头(请求头: dict[str, Any]) -> str:
+    """返回第一个不可发送的请求头说明；全部可发送时返回空串。
+
+    HTTP 头只能承载 latin-1 文本：api_key 或额外请求头里出现非 ASCII 字符时，
+    出站会在 http.client 里抛 UnicodeEncodeError（历史上会逃逸或被笼统归为调用失败）。
+    这里前置判定，把它变成可诊断的失败；连接器侧同一口径复用本函数。
+    """
+    for 键, 值 in 请求头.items():
+        for 项 in (键, 值):
+            try:
+                str(项).encode("latin-1")
+            except UnicodeEncodeError:
+                return f"请求头 {键} 含非 ASCII 字符，无法作为 HTTP 头发送"
+    return ""
+
+
 def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any],
-         附加请求头: dict[str, Any] | None = None) -> tuple[int, dict[str, Any] | None, str]:
-    地址 = _端点(配置, 后缀)
+         附加请求头: dict[str, Any] | None = None, *,
+         协议: str = "chat_completions") -> tuple[int, dict[str, Any] | None, str]:
+    地址 = 归一模型端点(配置, 后缀)
     if not 地址:
         return 0, None, "未配置模型 HTTP 地址"
     请求头 = {"Content-Type": "application/json"}
     if 配置.get("api_key"):
-        请求头["Authorization"] = f"Bearer {配置['api_key']}"
+        if 协议 == "anthropic_messages":
+            # anthropic 按协议规范走 x-api-key + 版本头（探针实测 Bearer 亦可通过，
+            # 但规范认证是 x-api-key，故只发规范头，不双发两套认证）。
+            请求头["x-api-key"] = str(配置["api_key"])
+            请求头["anthropic-version"] = anthropic协议版本
+        else:
+            请求头["Authorization"] = f"Bearer {配置['api_key']}"
     if isinstance(配置.get("额外请求头"), dict):
         请求头.update(配置["额外请求头"])
     if isinstance(附加请求头, dict):
         请求头.update(附加请求头)
+    非法头 = 检查不可发送请求头(请求头)
+    if 非法头:
+        return 400, None, 非法头
     请求 = urllib.request.Request(
         地址,
         data=json.dumps(载荷, ensure_ascii=False).encode("utf-8"),
@@ -86,6 +136,9 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any],
             错误.close()
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:
         return 0, None, str(错误)
+    except UnicodeEncodeError as 错误:
+        # 兜底：任何遗漏在请求头/URL 里的非 latin-1 字符都不得逃逸到调用方。
+        return 400, None, f"出站请求含无法编码的字符：{错误}"
     except (json.JSONDecodeError, UnicodeDecodeError) as 错误:
         return 200, None, f"响应不是有效 JSON：{错误}"
 
@@ -115,9 +168,84 @@ def _消息列表(消息: list[dict[str, Any]], 系统提示词: str | None) -> 
     return 结果列表
 
 
+def _anthropic工具列表(工具列表: list) -> tuple[list[dict[str, Any]], str]:
+    """把工具声明转成 anthropic 形态：{name, description, input_schema}。
+
+    兼容两种入参形态：OpenAI 形态（type=function + function.{name,parameters}）
+    与 anthropic 原生形态（直接含 input_schema）。工具名按协议规范前置校验，
+    非法名（如中文名）在本层拒绝，不把必然被上游拒绝的请求发出去。
+    """
+    结果列表: list[dict[str, Any]] = []
+    for 项 in 工具列表:
+        if not isinstance(项, dict):
+            return [], "工具列表每一项都必须是字典型"
+        函数 = 项.get("function") if isinstance(项.get("function"), dict) else None
+        名称 = str((函数 or 项).get("name") or "")
+        说明 = (函数 or 项).get("description")
+        参数 = (函数 or 项).get("parameters") or 项.get("input_schema") or {"type": "object", "properties": {}}
+        if not anthropic工具名规范.match(名称):
+            return [], f"anthropic 协议的工具名必须匹配 {anthropic工具名规范.pattern}，收到：{名称!r}"
+        条目: dict[str, Any] = {"name": 名称, "input_schema": 参数 if isinstance(参数, dict) else {}}
+        if isinstance(说明, str) and 说明:
+            条目["description"] = 说明
+        结果列表.append(条目)
+    return 结果列表, ""
+
+
+def _anthropic消息(消息列表: list, 系统提示词: str | None) -> list[dict[str, Any]]:
+    """构造 anthropic messages：只保留 user/assistant，system 由调用方放顶层。"""
+    结果列表: list[dict[str, Any]] = []
+    for 项 in 消息列表:
+        角色 = str(项.get("role") or 项.get("角色") or "user")
+        if 角色 == "system":
+            # anthropic 不接受 messages 里的 system 角色；调用方负责顶层 system。
+            continue
+        内容 = 项.get("content", 项.get("内容处理", 项.get("内容", "")))
+        结果列表.append({"role": 角色, "content": 内容})
+    return 结果列表
+
+
+def 构造anthropic载荷(配置: dict[str, Any], 消息列表: list, 系统提示词: str | None, *,
+                 流式: bool, 温度: float | None, 最大令牌数: int | None,
+                 工具: list | None, 响应格式: dict | None) -> tuple[dict[str, Any] | None, str]:
+    """按 anthropic Messages 协议构造出站载荷；返回 (载荷, 错误说明)。
+
+    这是 anthropic 载荷的唯一实现：适配层两条调用路径（流式/非流式）与连接器
+    `_HTTP调用模型` 都复用它，避免同一协议映射在多处各写一套而漂移。
+    """
+    if 响应格式:
+        # anthropic 无 response_format 语义；静默丢弃会让调用方误以为生效。
+        return None, "anthropic 协议不支持 响应格式，请改用 chat_completions 或 codex_responses"
+    工具表, 工具错误 = _anthropic工具列表(工具 or [])
+    if 工具错误:
+        return None, 工具错误
+    载荷: dict[str, Any] = {
+        "model": 配置.get("模型名", ""),
+        # max_tokens 在 anthropic 是必填项；未指定时用协议默认值，保证请求合法。
+        "max_tokens": 最大令牌数 if 最大令牌数 is not None else anthropic默认最大令牌数,
+        "messages": _anthropic消息(消息列表, 系统提示词),
+    }
+    if 系统提示词:
+        载荷["system"] = 系统提示词
+    if 温度 is not None:
+        载荷["temperature"] = 温度
+    if 工具表:
+        载荷["tools"] = 工具表
+    if 流式:
+        载荷["stream"] = True
+    return 载荷, ""
+
+
 def _文本(数据: dict[str, Any]) -> str:
     if isinstance(数据.get("output_text"), str):
         return 数据["output_text"]
+    # anthropic Messages：顶层 content[] 块数组，文本块是 {type:text,text}
+    块列表 = 数据.get("content")
+    if isinstance(块列表, list) and not 数据.get("choices"):
+        return "".join(
+            str(块.get("text", "")) for 块 in 块列表
+            if isinstance(块, dict) and 块.get("type") == "text"
+        )
     选择 = (数据.get("choices") or [{}])[0]
     消息 = 选择.get("message") or 选择.get("delta") or {}
     内容 = 消息.get("content", "")
@@ -168,6 +296,36 @@ def _流式事件内容(数据: dict[str, Any], 协议: str) -> tuple[str, str |
         错误 = 数据["error"]
         raise ValueError(f"上游错误：{错误.get('message') or 错误}")  # noqa: TRY004
     类型 = 数据.get("type")
+    if 协议 == "anthropic_messages":
+        # anthropic SSE：事件名在 data.type 上（event: 行由读取层忽略）。
+        # 文本增量在 content_block_delta.delta.text；完成原因在 message_delta.delta.stop_reason；
+        # message_stop 是终态；message_start/content_block_start/content_block_stop/ping 是结构事件。
+        if 类型 == "error":
+            错误 = 数据.get("error") or {}
+            raise ValueError(f"上游错误：{错误.get('message') or 错误 or 'anthropic 流式错误'}")
+        if 类型 == "content_block_delta":
+            增量对象 = 数据.get("delta") or {}
+            if not isinstance(增量对象, dict):
+                raise TypeError("anthropic 流式 delta 必须是对象")
+            增量类型 = 增量对象.get("type")
+            if 增量类型 == "text_delta":
+                文本 = 增量对象.get("text", "")
+                if not isinstance(文本, str):
+                    raise TypeError("anthropic text_delta.text 必须是字符串")
+                return 文本, None, {}
+            # thinking_delta / input_json_delta 等不产生可见文本增量，跳过。
+            return "", None, {}
+        if 类型 == "message_delta":
+            增量对象 = 数据.get("delta") or {}
+            原始原因 = 增量对象.get("stop_reason") if isinstance(增量对象, dict) else None
+            用量 = 数据.get("usage") if isinstance(数据.get("usage"), dict) else {}
+            原因 = anthropic完成原因表.get(str(原始原因)) if 原始原因 else None
+            return "", 原因, 用量 or {}
+        if 类型 == "message_stop":
+            return "", "stop", {}
+        if 类型 in {"message_start", "content_block_start", "content_block_stop", "ping"}:
+            return "", None, {}
+        raise LookupError(f"未知 anthropic SSE 事件类型：{类型!r}")
     if 协议 == "codex_responses":
         if 类型 == "response.error":
             错误 = 数据.get("error") or {}
@@ -369,7 +527,7 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
         return iter((_流式错误("参数不合法", "响应格式必须是字典型"),))
     协议 = _规范化协议(配置.get("协议", 默认协议))
     if 协议 is None:
-        return iter((_流式错误("参数不合法", "协议必须是 chat_completions 或 codex_responses"),))
+        return iter((_流式错误("参数不合法", 协议取值说明),))
     try:
         超时时间 = float(配置.get("请求超时秒") or 120)
         响应上限 = int(配置.get("流式响应上限字节") or 流式响应上限字节)
@@ -379,33 +537,50 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
         return iter((_流式错误("参数不合法", "流式超时和响应上限必须是正数"),))
     if 超时时间 <= 0 or 响应上限 <= 0 or 事件上限 <= 0 or 数量上限 <= 0:
         return iter((_流式错误("参数不合法", "流式超时和响应上限必须是正数"),))
-    地址 = _端点(配置, "/responses" if 协议 == "codex_responses" else "/chat/completions")
+    if 协议 == "anthropic_messages":
+        地址 = 归一模型端点(配置, "/messages")
+    elif 协议 == "codex_responses":
+        地址 = 归一模型端点(配置, "/responses")
+    else:
+        地址 = 归一模型端点(配置, "/chat/completions")
     if not 地址:
         return iter((_流式错误("提供者不可用", "未配置模型 HTTP 地址", 可重试=True),))
-    消息 = _消息列表(消息列表, 系统提示词)
-    if 协议 == "codex_responses":
-        载荷 = {"model": 配置.get("模型名", ""), "input": 消息, "stream": True}
-        令牌键 = "max_output_tokens"
-        if 响应格式:
-            载荷["text"] = {"format": 响应格式}
+    if 协议 == "anthropic_messages":
+        载荷, 载荷错误 = 构造anthropic载荷(
+            配置, 消息列表, 系统提示词, 流式=True,
+            温度=温度, 最大令牌数=最大令牌数, 工具=工具, 响应格式=响应格式,
+        )
+        if 载荷错误 or 载荷 is None:
+            return iter((_流式错误("参数不合法", 载荷错误 or "参数不合法"),))
     else:
-        # chat 协议流式默认不回传 usage；显式索取，用量追踪才有数（与迁移前 V3 实现一致）。
-        # codex/responses 协议自带用量，不加此键。
-        载荷 = {"model": 配置.get("模型名", ""), "messages": 消息, "stream": True,
-                "stream_options": {"include_usage": True}}
-        令牌键 = "max_tokens"
-        if 响应格式:
-            载荷["response_format"] = 响应格式
-    # 生成参数按 `调用对话` 同一张映射表落地；None/空即不写入，保证不传时载荷不变。
-    if 温度 is not None:
-        载荷["temperature"] = 温度
-    if 最大令牌数 is not None:
-        载荷[令牌键] = 最大令牌数
-    if 工具:
-        载荷["tools"] = 工具
+        消息 = _消息列表(消息列表, 系统提示词)
+        if 协议 == "codex_responses":
+            载荷 = {"model": 配置.get("模型名", ""), "input": 消息, "stream": True}
+            令牌键 = "max_output_tokens"
+            if 响应格式:
+                载荷["text"] = {"format": 响应格式}
+        else:
+            # chat 协议流式默认不回传 usage；显式索取，用量追踪才有数（与迁移前 V3 实现一致）。
+            # codex/responses 协议自带用量，不加此键。
+            载荷 = {"model": 配置.get("模型名", ""), "messages": 消息, "stream": True,
+                    "stream_options": {"include_usage": True}}
+            令牌键 = "max_tokens"
+            if 响应格式:
+                载荷["response_format"] = 响应格式
+        # 生成参数按 `调用对话` 同一张映射表落地；None/空即不写入，保证不传时载荷不变。
+        if 温度 is not None:
+            载荷["temperature"] = 温度
+        if 最大令牌数 is not None:
+            载荷[令牌键] = 最大令牌数
+        if 工具:
+            载荷["tools"] = 工具
     请求头 = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if 配置.get("api_key"):
-        请求头["Authorization"] = f"Bearer {配置['api_key']}"
+        if 协议 == "anthropic_messages":
+            请求头["x-api-key"] = str(配置["api_key"])
+            请求头["anthropic-version"] = anthropic协议版本
+        else:
+            请求头["Authorization"] = f"Bearer {配置['api_key']}"
     if isinstance(配置.get("额外请求头"), dict):
         请求头.update(配置["额外请求头"])
     if isinstance(附加请求头, dict):
@@ -484,27 +659,34 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
         return _失败("参数不合法", "响应格式必须是字典型")
     协议 = _规范化协议(配置.get("协议", 默认协议))
     if 协议 is None:
-        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
-    消息 = _消息列表(消息列表, 系统提示词)
-    if 协议 == "codex_responses":
-        路径, 载荷 = "/responses", {"model": 配置.get("模型名", ""), "input": 消息, "stream": False}
-        令牌键 = "max_output_tokens"
-        if 响应格式:
-            载荷["text"] = {"format": 响应格式}
-    elif 协议 == "chat_completions":
-        路径, 载荷 = "/chat/completions", {"model": 配置.get("模型名", ""), "messages": 消息, "stream": False}
-        令牌键 = "max_tokens"
-        if 响应格式:
-            载荷["response_format"] = 响应格式
+        return _失败("参数不合法", 协议取值说明)
+    if 协议 == "anthropic_messages":
+        路径 = "/messages"
+        载荷, 载荷错误 = 构造anthropic载荷(
+            配置, 消息列表, 系统提示词, 流式=False,
+            温度=温度, 最大令牌数=最大令牌数, 工具=工具, 响应格式=响应格式,
+        )
+        if 载荷错误 or 载荷 is None:
+            return _失败("参数不合法", 载荷错误 or "参数不合法")
     else:
-        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
-    if 温度 is not None:
-        载荷["temperature"] = 温度
-    if 最大令牌数 is not None:
-        载荷[令牌键] = 最大令牌数
-    if 工具:
-        载荷["tools"] = 工具
-    状态码, 数据, 说明 = _请求(配置, 路径, 载荷, 附加请求头)
+        消息 = _消息列表(消息列表, 系统提示词)
+        if 协议 == "codex_responses":
+            路径, 载荷 = "/responses", {"model": 配置.get("模型名", ""), "input": 消息, "stream": False}
+            令牌键 = "max_output_tokens"
+            if 响应格式:
+                载荷["text"] = {"format": 响应格式}
+        else:
+            路径, 载荷 = "/chat/completions", {"model": 配置.get("模型名", ""), "messages": 消息, "stream": False}
+            令牌键 = "max_tokens"
+            if 响应格式:
+                载荷["response_format"] = 响应格式
+        if 温度 is not None:
+            载荷["temperature"] = 温度
+        if 最大令牌数 is not None:
+            载荷[令牌键] = 最大令牌数
+        if 工具:
+            载荷["tools"] = 工具
+    状态码, 数据, 说明 = _请求(配置, 路径, 载荷, 附加请求头, 协议=协议)
     if 状态码 >= 400 or not 数据:
         return _错误响应(状态码, 说明)
     归一 = _归一化响应(数据)

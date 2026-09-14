@@ -253,9 +253,24 @@ def 校验能力定义(定义: dict[str, Any]) -> list[str]:
     return 问题列表
 
 
-def 生成能力契约(定义: dict[str, Any]) -> str:
-    """生成 能力契约/参数契约.json（S0 唯一聚合格式：契约版本+能力契约）。"""
+当前契约版本 = "1.0.0"
+契约条目自有键 = {"能力id", "版本", "说明", "参数", "返回", "错误码", "调用示例", "行为", "提供者"}
+契约条目可保留键 = ("中文名称", "名称")
+
+
+def 生成能力契约(定义: dict[str, Any], 既有契约: dict[str, Any] | None = None) -> str:
+    """生成 能力契约/参数契约.json（S0 唯一聚合格式：契约版本+能力契约）。
+
+    非破坏性口径（不降级、不丢手写内容）：
+    - 契约版本取「既有文件实际版本」与 当前契约版本 的较高者，绝不下调；
+    - 既有条目里的 中文名称/名称 等编译器不产出的键原样保留；
+    - 既有条目里的 调用示例 若与默认拼装结果不同（人工维护），保留人工版本。
+    """
     能力列表 = 提取能力列表(定义)
+    既有条目表 = {}
+    if isinstance(既有契约, dict) and isinstance(既有契约.get("能力契约"), list):
+        既有条目表 = {条目.get("能力id"): 条目 for 条目 in 既有契约["能力契约"]
+                  if isinstance(条目, dict) and 条目.get("能力id")}
     契约条目表 = []
     for 能力 in 能力列表:
         参数表 = []
@@ -267,12 +282,16 @@ def 生成能力契约(定义: dict[str, Any]) -> str:
                 "默认值": 参数.get("默认值"),
                 "说明": 参数.get("说明", ""),
             })
-        调用示例 = {
+        默认示例 = {
             "能力id": 能力["能力id"],
             "参数": {参数["名称"]: 参数["默认值"]
                      for 参数 in 参数表 if 参数["默认值"] is not None},
         }
-        契约条目表.append({
+        既有条目 = 既有条目表.get(能力["能力id"], {})
+        调用示例 = 既有条目.get("调用示例", 默认示例)
+        if not isinstance(调用示例, dict) or 调用示例 == {}:
+            调用示例 = 默认示例
+        条目 = {
             "能力id": 能力["能力id"],
             "版本": 能力.get("版本", "1.0.0"),
             "说明": 能力.get("说明", ""),
@@ -282,9 +301,32 @@ def 生成能力契约(定义: dict[str, Any]) -> str:
             "调用示例": 调用示例,
             "行为": 能力.get("行为", {}),
             "提供者": 能力.get("提供者", {}),
-        })
-    return json.dumps({"契约版本": "1.0.0", "能力契约": 契约条目表},
+        }
+        for 可保留键 in 契约条目可保留键:
+            if 可保留键 in 既有条目 and 可保留键 not in 条目:
+                条目[可保留键] = 既有条目[可保留键]
+        for 自定义键, 值 in 既有条目.items():
+            if 自定义键 not in 契约条目自有键 and 自定义键 not in 条目:
+                条目[自定义键] = 值
+        契约条目表.append(条目)
+    版本 = 当前契约版本
+    if isinstance(既有契约, dict):
+        既有版本 = 既有契约.get("契约版本")
+        if isinstance(既有版本, str) and 版本序(既有版本) > 版本序(当前契约版本):
+            版本 = 既有版本
+    return json.dumps({"契约版本": 版本, "能力契约": 契约条目表},
                       ensure_ascii=False, indent=1)
+
+
+def 版本序(版本: str) -> tuple[int, ...]:
+    """把 主.次.修 文本版本转成可比较元组；非法版本一律视为最低。"""
+    段 = []
+    for 片段 in str(版本).split("."):
+        try:
+            段.append(int(片段))
+        except ValueError:
+            return (0,)
+    return tuple(段) or (0,)
 
 
 def 生成包声明(定义: dict[str, Any], 包id: str, 包名称: str, 包类型: str,
@@ -449,7 +491,13 @@ def 编译能力定义(定义文件: Path, 包目录: Path, 包id: str, 包名�
     契约目录.mkdir(parents=True, exist_ok=True)
     # 1. 能力契约（S0 唯一聚合格式；生成物经唯一聚合契约解析器自检）
     契约路径 = 契约目录 / "参数契约.json"
-    契约文本 = 生成能力契约(定义)
+    既有契约 = None
+    if 契约路径.is_file():
+        try:
+            既有契约 = json.loads(契约路径.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            既有契约 = None
+    契约文本 = 生成能力契约(定义, 既有契约)
     _写产物(契约路径, 契约文本, 结果)
     _契约数据, 契约问题 = 解析聚合契约(契约文本)
     if 契约问题:

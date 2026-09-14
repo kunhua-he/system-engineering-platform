@@ -39,12 +39,17 @@ except Exception:  # pragma: no cover - 环境无 psutil 时降级
 内存安全阈值 = 0.80                              # 系统内存占用安全阈值（80%）
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
 默认协议 = "chat_completions"
-允许协议 = frozenset(("chat_completions", "codex_responses"))
+允许协议 = frozenset(("chat_completions", "codex_responses", "anthropic_messages"))
+协议取值说明 = "协议必须是 chat_completions、codex_responses 或 anthropic_messages"
+# 与 支持库/适配层/模型HTTP提供者.协议别名表 同表；测试中心.支持库.测试_模型协议别名
+# 断言两份取值一致，防止漂移。
 协议别名 = {
     "chat": "chat_completions",
     "chat_completions": "chat_completions",
     "res": "codex_responses",
     "codex_responses": "codex_responses",
+    "anthropic": "anthropic_messages",
+    "anthropic_messages": "anthropic_messages",
 }
 
 
@@ -230,6 +235,13 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
     import json
     import urllib.error
     import urllib.request
+    # 端点归一、anthropic 载荷、请求头可发送性三件事都由适配层唯一实现，
+    # 此处延迟导入复用（适配层做响应归一化时也反查本模块，延迟导入避免环形依赖）。
+    from 支持库.适配层.模型HTTP提供者 import (
+        归一模型端点,
+        构造anthropic载荷,
+        检查不可发送请求头,
+    )
     基址 = str(配置.get("url") or "").rstrip("/")
     if not 基址:
         return _失败("提供者不可用", f"{连接类型}连接未配置url")
@@ -243,42 +255,75 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
                 详情={"流式输出": True, "协议": 配置.get("协议", 默认协议), "网关": "40007"},
             )
         消息 = list(参数.get("消息列表") or [])
-        if 参数.get("系统提示词"):
-            消息.insert(0, {"role": "system", "content": 参数["系统提示词"]})
-        协议 = 配置.get("协议", 默认协议)
+        # 协议短值/长值必须与适配层同一裁决：`连接LLM` 存进配置的是归一后的长值，
+        # 但直接调用本函数或配置手写短值（anthropic/chat/res）时也必须认，
+        # 否则短值会静默落到 chat 分支（历史缺陷同类）。
+        协议 = _规范化协议(配置.get("协议", 默认协议))
+        if 协议 is None:
+            return _失败("参数不合法", 协议取值说明)
         温度 = 参数.get("温度")
         最大令牌数 = 参数.get("最大令牌数")
         工具 = 参数.get("工具")
         响应格式 = 参数.get("响应格式")
-        if 协议 == "codex_responses":
-            路径, 请求体 = "/responses", {"model": 模型, "input": 消息, "stream": False}
-            令牌键 = "max_output_tokens"
-            if 响应格式:
-                请求体["text"] = {"format": 响应格式}
+        系统提示词 = 参数.get("系统提示词")
+        if 协议 == "anthropic_messages":
+            # anthropic 的 system 是顶层字段，不能作为 messages 里的 role；
+            # 载荷构造复用适配层唯一实现（与流式侧同一份），不在此处另写一套映射。
+            请求体, 载荷错误 = 构造anthropic载荷(
+                配置, 消息, 系统提示词, 流式=False,
+                温度=温度, 最大令牌数=最大令牌数, 工具=工具, 响应格式=响应格式,
+            )
+            if 载荷错误 or 请求体 is None:
+                return _失败("参数不合法", 载荷错误 or "参数不合法")
+            路径 = "/messages"
         else:
-            路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息, "stream": False}
-            令牌键 = "max_tokens"
-            if 响应格式:
-                请求体["response_format"] = 响应格式
-        if 温度 is not None:
-            请求体["temperature"] = 温度
-        if 最大令牌数 is not None:
-            请求体[令牌键] = 最大令牌数
-        if 工具:
-            请求体["tools"] = 工具
+            if 系统提示词:
+                消息.insert(0, {"role": "system", "content": 系统提示词})
+            if 协议 == "codex_responses":
+                路径, 请求体 = "/responses", {"model": 模型, "input": 消息, "stream": False}
+                令牌键 = "max_output_tokens"
+                if 响应格式:
+                    请求体["text"] = {"format": 响应格式}
+            else:
+                路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息, "stream": False}
+                令牌键 = "max_tokens"
+                if 响应格式:
+                    请求体["response_format"] = 响应格式
+            if 温度 is not None:
+                请求体["temperature"] = 温度
+            if 最大令牌数 is not None:
+                请求体[令牌键] = 最大令牌数
+            if 工具:
+                请求体["tools"] = 工具
     elif 连接类型 == "向量":
         路径, 请求体 = "/embeddings", {"model": 模型, "input": 参数.get("文本")}
     else:
         路径, 请求体 = "/rerank", {"model": 模型, "query": 参数.get("查询"), "documents": 参数.get("文档列表")}
     出站请求头 = {"Content-Type": "application/json"}
     if 配置.get("api_key"):
-        出站请求头["Authorization"] = f"Bearer {配置['api_key']}"
+        if _规范化协议(配置.get("协议", 默认协议)) == "anthropic_messages":
+            # anthropic 按协议规范走 x-api-key + 版本头，与适配层同一口径。
+            from 支持库.适配层.模型HTTP提供者 import anthropic协议版本
+            出站请求头["x-api-key"] = str(配置["api_key"])
+            出站请求头["anthropic-version"] = anthropic协议版本
+        else:
+            出站请求头["Authorization"] = f"Bearer {配置['api_key']}"
     if isinstance(配置.get("额外请求头"), dict):
         出站请求头.update(配置["额外请求头"])
     if isinstance(参数.get("附加请求头"), dict):
         出站请求头.update(参数["附加请求头"])
+    # 与适配层同一口径：HTTP 头只能承载 latin-1，非 ASCII 的密钥/头在此给出明确失败，
+    # 不让它退化成笼统的「模型调用失败」。
+    非法头 = 检查不可发送请求头(出站请求头)
+    if 非法头:
+        return _失败("参数不合法", 非法头)
+    # 端点归一两层共用：url 不带 /v1 或已把后缀写全时，都能得到正确地址
+    # （历史实现只做 基址 + 路径，url 不带 /v1 时整条链路必失败）。
+    地址 = 归一模型端点(配置, 路径)
+    if not 地址:
+        return _失败("提供者不可用", f"{连接类型}连接未配置url")
     请求 = urllib.request.Request(
-        基址 + 路径, data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"), method="POST",
+        地址, data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"), method="POST",
         headers=出站请求头,
     )
     try:
@@ -356,7 +401,7 @@ def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = Non
     if not isinstance(模型, str) or not 模型.strip():
         return _失败("参数不合法", "模型必须是非空字符串（env 未配置默认LLM模型）")
     if 规范协议 is None:
-        return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+        return _失败("参数不合法", 协议取值说明)
     if 额外请求头 is not None and not isinstance(额外请求头, dict):
         return _失败("参数不合法", "额外请求头必须是字典型或空值")
     协议 = 规范协议
@@ -640,7 +685,7 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
     if 类型 == "LLM":
         启动协议 = _规范化协议(启动参数.get("协议", 默认协议))
         if 启动协议 is None:
-            return _失败("参数不合法", "协议必须是 chat_completions 或 codex_responses")
+            return _失败("参数不合法", 协议取值说明)
         启动参数["协议"] = 启动协议
     启动器名 = str(启动器 or "")
     if not isinstance(模型大小字节, (int, float)) or 模型大小字节 <= 0:

@@ -77,7 +77,7 @@
           "类型": "文本型",
           "必填": false,
           "默认值": "chat_completions",
-          "说明": "请求协议：chat_completions 或 codex_responses"
+          "说明": "请求协议：chat_completions、codex_responses 或 anthropic_messages"
         },
         {
           "名称": "额外请求头",
@@ -547,7 +547,7 @@
           "类型": "整数型",
           "必填": false,
           "默认值": null,
-          "说明": "最大输出令牌数；按协议映射为 max_output_tokens/max_tokens"
+          "说明": "最大输出令牌数；按协议映射为 max_output_tokens/max_tokens（anthropic 为必填 max_tokens，未指定时用协议默认值）"
         },
         {
           "名称": "工具",
