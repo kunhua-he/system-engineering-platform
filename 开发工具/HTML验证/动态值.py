@@ -1,6 +1,7 @@
 """受管动态值展开。"""
 from __future__ import annotations
-import copy, shutil
+import copy
+import os, shutil
 from pathlib import Path
 from typing import Any
 from 开发工具.HTML验证.常量 import 未指定
@@ -50,4 +51,12 @@ def _展开动态值(
         if 结果值 is 未指定:
             raise ValueError(f"动态JSON路径不存在: {步骤id} {值['JSON路径']}")
         return copy.deepcopy(结果值)
+    if 类型 == "环境变量":
+        # 本地环境依赖（哲学第 7 条）：模型文件、外部应用这类**环境依赖**不进场景静态路径，
+        # 由运行环境提供环境变量；场景只声明「读哪个环境变量」，缺变量即明确失败。
+        名称 = str(值.get("名称") or "")
+        取值 = os.environ.get(名称, "")
+        if not 名称 or not 取值:
+            raise ValueError(f"环境依赖未就绪：环境变量 {名称 or '(未命名)'} 未设置或为空")
+        return 取值
     raise ValueError(f"未知动态值类型: {类型}")

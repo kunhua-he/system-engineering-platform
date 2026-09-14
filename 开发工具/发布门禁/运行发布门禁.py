@@ -448,6 +448,37 @@ def 校验制品来源绑定(
         return False, str(错误), 身份
 
 
+
+# 本地环境依赖变量（哲学第 7 条：模型文件、外部应用这类「环境依赖」由运行环境提供，
+# 不进场景静态路径）。取值顺序：① 当前进程环境；② 本机 40007 网关 launchd 配置
+# （本机就是在这里声明这些提供者环境依赖的）。取不到就不注入——相关场景会以
+# 「环境依赖未就绪：环境变量 X 未设置或为空」明确失败，不会被静默跳过。
+环境依赖变量表 = ("MLXWhisper提供者_模型路径", "MLXWhisper提供者_模型名")
+环境依赖注入问题: list[str] = []
+
+
+def 环境依赖注入() -> dict[str, str]:
+    """返回要注入到 HTML 验证子进程的环境依赖变量。"""
+    注入 = {名称: os.environ[名称] for 名称 in 环境依赖变量表 if os.environ.get(名称)}
+    缺失 = [名称 for 名称 in 环境依赖变量表 if 名称 not in 注入]
+    if not 缺失:
+        return 注入
+    plist = Path.home() / "Library/LaunchAgents/com.huashi.gateway-40007.plist"
+    if not plist.is_file():
+        环境依赖注入问题.append(f"缺少 launchd 配置，无法取环境依赖: {plist}")
+        return 注入
+    try:
+        import plistlib
+
+        环境 = plistlib.loads(plist.read_bytes()).get("EnvironmentVariables", {})
+    except Exception as 错误:  # noqa: BLE001 —— 读取失败必须留痕，不静默
+        环境依赖注入问题.append(f"读取 launchd 环境失败: {错误}")
+        return 注入
+    for 名称 in 缺失:
+        if 环境.get(名称):
+            注入[名称] = str(环境[名称])
+    return 注入
+
 def 读取制品字节快照(制品目录: Path) -> dict[str, bytes]:
     """读取制品全部文件原始字节，用于前后逐路径精确比较。"""
     快照: dict[str, bytes] = {}
@@ -1015,7 +1046,7 @@ def 执行门禁(*, 包目录: Path | None = None, 制品目录: Path | None = N
                         sys.executable, "-u", "-m", "开发工具.HTML验证.验证器", "--制品", str(待验证制品),
                         "--并发", str(max(1, int(测试并行数))),
                         "--端口", str(门禁HTML端口),
-                    ], 超时秒=600, 实时输出=True, 环境覆盖=缓存环境)
+                    ], 超时秒=600, 实时输出=True, 环境覆盖={**缓存环境, **环境依赖注入()})
                     失败项 = "\n".join(
                         行 for 行 in 输出.splitlines()
                         if "失败" in 行 or "✗" in 行 or "阻断" in 行
