@@ -1,7 +1,9 @@
 """开工id父子映射与协作状态：登记任务、聚合查询、收口登记与代码指纹计算。
 
 数据源：
-- 协作状态：工程缓存/协作状态/{work_id}.json（本模块）
+- 协作状态：**底座运行库** `工程缓存/运行数据/底座运行.db` 的 `协作状态` 域（本模块；
+  经唯一 SQLite 支持库访问）；旧 `工程缓存/协作状态/{work_id}.json` 只做只读兼容 +
+  首次搬迁，不再写文件（华哥 2026-09-15 定盘：运行态一律入库、不搞双写）。
 - 临时上下文：工程缓存/MCP临时上下文/{work_id}.json（临时上下文.py）
 - 反馈：开发文档/项目证据/MCP使用反馈.jsonl
 - 验证证据：开发文档/项目证据/验证历史.jsonl
@@ -11,7 +13,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -33,8 +37,19 @@ from MCP工具箱.临时上下文 import 读取临时上下文
 错误_证据不匹配 = "EVIDENCE_MISMATCH"
 错误_登记失败 = "REGISTRATION_FAILED"
 
+# 最近一次运行库访问失败：失败必须可见（模块级字段 + stderr），不许静默吞异常。
+同步错误 = ""
+
 _开工id模式 = re.compile(r"^[0-9a-fA-F]{16}$")
 _排除片段表 = ("__pycache__", "工程缓存", "测试中心缓存", ".git", "完整性摘要.json", "项目证据", "临时文件")
+
+
+def 默认运行库路径() -> str:
+    """底座运行库路径（运行态唯一落点；可用 `系统库运行库` 环境变量覆盖）。"""
+    环境 = os.environ.get("系统库运行库", "").strip()
+    if 环境:
+        return 环境
+    return str(系统根 / "工程缓存" / "运行数据" / "底座运行.db")
 
 
 def _校验开工id(work_id: str) -> str:
@@ -45,15 +60,113 @@ def _校验开工id(work_id: str) -> str:
     return 文本.lower()
 
 
-def _记录路径(状态目录: Path, work_id: str) -> Path:
-    return 状态目录 / f"{work_id}.json"
+def _记同步错误(说明: str) -> None:
+    """记录运行库访问失败：写模块级 `同步错误` 并落 stderr（不静默）。"""
+    global 同步错误
+    同步错误 = 说明
+    print(f"协作状态-运行库同步失败：{说明}", file=sys.stderr)
 
 
-def _原子写入(路径: Path, 记录: dict[str, Any]) -> None:
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    临时路径 = 路径.with_suffix(".json.tmp")
-    临时路径.write_text(json.dumps(记录, ensure_ascii=False, indent=2), encoding="utf-8")
-    临时路径.replace(路径)
+def _运行库调用(能力id: str, 参数: dict[str, Any]) -> Any:
+    """经唯一调用入口访问底座运行库；不可用时记入 `同步错误` 并返回 None。"""
+    try:
+        # 注册惰性装配钩子：MCP 管理端进程不经加载器装配，缺这步会恒「未装配」。
+        import 运行核心.能力调用.唯一能力调用  # noqa: F401
+
+        from 公共契约.能力契约.调用器 import 获取能力调用器
+
+        return 获取能力调用器().调用能力(能力id, 参数)
+    except Exception as 错误:  # noqa: BLE001 —— 运行库不可用必须可见，见 同步错误
+        _记同步错误(f"运行库不可用：{错误}")
+        return None
+
+
+def _读运行库(运行库路径: str) -> dict[str, dict[str, Any]] | None:
+    """从运行库读回全部协作状态记录；库不可用或为空时返回 None（交给旧文件回退）。"""
+    结果对象 = _运行库调用(
+        "数据库连接支持库.SQLite数据库.查询运行态",
+        {"数据库路径": 运行库路径, "域": "协作状态", "限制": 1000, "超时秒": 10.0},
+    )
+    if 结果对象 is None or not 结果对象.成功:
+        return None
+    值 = 结果对象.值 if isinstance(结果对象.值, dict) else {}
+    行列表 = 值.get("行列表") or []
+    if not 行列表:
+        return None
+    记录表: dict[str, dict[str, Any]] = {}
+    for 行 in 行列表:
+        if not isinstance(行, dict):
+            continue
+        载荷 = 行.get("载荷")
+        try:
+            记录 = json.loads(载荷) if isinstance(载荷, str) and 载荷 else {}
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(记录, dict) or not 记录:
+            continue
+        键 = str(记录.get("work_id") or 行.get("id") or "").lower()
+        if 键:
+            记录表[键] = 记录
+    return 记录表 or None
+
+
+def _读旧文件(状态目录: Path) -> dict[str, dict[str, Any]]:
+    """迁移期只读兼容：读旧 `{work_id}.json`（首次读到时一次性搬入运行库，此后只读）。"""
+    记录表: dict[str, dict[str, Any]] = {}
+    if not 状态目录.is_dir():
+        return 记录表
+    for 路径 in sorted(状态目录.glob("*.json")):
+        try:
+            记录 = json.loads(路径.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(记录, dict) and 记录:
+            记录表[路径.stem.lower()] = 记录
+    return 记录表
+
+
+def _写运行库(运行库路径: str, 记录: dict[str, Any]) -> bool:
+    """把一条协作状态记录写进运行库（主键 work_id）；失败记入 `同步错误` 并返回 False。"""
+    结果对象 = _运行库调用(
+        "数据库连接支持库.SQLite数据库.写入运行态",
+        {"数据库路径": 运行库路径, "域": "协作状态", "记录": 记录, "超时秒": 10.0},
+    )
+    if 结果对象 is None or not 结果对象.成功:
+        说明 = getattr(结果对象, "错误说明", "") or "运行库不可用"
+        _记同步错误(f"协作状态落库失败（work_id {记录.get('work_id', '')}）：{说明}")
+        return False
+    return True
+
+
+def 协作状态记录表(*, 状态目录: Path | None = None, 运行库路径: str | None = None,
+              一次性搬迁: bool = True) -> dict[str, dict[str, Any]]:
+    """协作状态记录表：**库优先**；库空时回退读旧文件，并把旧文件一次性搬入库（不双写）。
+
+    返回 {work_id: 记录}（work_id 一律小写）。库不可用且旧文件也没有时返回空表。
+    """
+    状态目录 = Path(状态目录) if 状态目录 else 默认状态目录
+    库路径 = str(运行库路径) if 运行库路径 else 默认运行库路径()
+    记录表 = _读运行库(库路径)
+    if 记录表 is not None:
+        return 记录表
+    记录表 = _读旧文件(状态目录)
+    if 记录表 and 一次性搬迁:
+        for 记录 in 记录表.values():
+            _写运行库(库路径, 记录)
+    return 记录表
+
+
+def 搬迁旧文件(*, 状态目录: Path | None = None, 运行库路径: str | None = None) -> dict[str, Any]:
+    """首次搬迁入口：把旧 `{work_id}.json` 一次性搬入运行库；旧文件保留不删。"""
+    状态目录 = Path(状态目录) if 状态目录 else 默认状态目录
+    库路径 = str(运行库路径) if 运行库路径 else 默认运行库路径()
+    旧记录表 = _读旧文件(状态目录)
+    已搬 = 0
+    for 记录 in 旧记录表.values():
+        if _写运行库(库路径, 记录):
+            已搬 += 1
+    return {"成功": 已搬 == len(旧记录表), "旧文件数": len(旧记录表), "已搬迁": 已搬,
+            "运行库路径": 库路径, "同步错误": 同步错误}
 
 
 def 计算代码指纹(目录: Path) -> dict[str, Any]:
@@ -80,11 +193,12 @@ def 登记任务(
     work_id: str, *, 任务: str, 角色: str, worktree路径: str,
     允许路径: list[str], 基线提交: str, parent_work_id: str = "",
     子任务列表: list[str] | None = None, 代码指纹: str = "",
-    状态目录: Path | None = None,
+    状态目录: Path | None = None, 运行库路径: str | None = None,
 ) -> dict[str, Any]:
-    """登记任务（父或子）：写入工程缓存/协作状态/{work_id}.json。
+    """登记任务（父或子）：写入底座运行库 `协作状态` 域（主键 work_id）。
 
     子任务登记时自动追加到父任务的子任务列表；父任务可预声明子任务列表。
+    旧 `工程缓存/协作状态/{work_id}.json` 仅供只读兼容，不再写。
     """
     try:
         规范化id = _校验开工id(work_id)
@@ -93,10 +207,11 @@ def 登记任务(
     except ValueError:
         return {"成功": False, "错误码": 错误_work_id非法, "消息": "work_id 必须为 16 位十六进制"}
     状态目录 = 状态目录 or 默认状态目录
+    库路径 = str(运行库路径) if 运行库路径 else 默认运行库路径()
     if not str(任务).strip() or not str(角色).strip():
         return {"成功": False, "错误码": 错误_登记失败, "消息": "任务和角色不能为空"}
-    路径 = _记录路径(状态目录, 规范化id)
-    if 路径.is_file():
+    已登记表 = 协作状态记录表(状态目录=状态目录, 运行库路径=库路径)
+    if 规范化id in 已登记表:
         return {"成功": False, "错误码": 错误_登记失败, "消息": f"{规范化id} 已登记，禁止重复登记"}
     指纹 = str(代码指纹).strip()
     if not 指纹:
@@ -110,27 +225,35 @@ def 登记任务(
         "生命周期": "创建", "登记时间": time.time(),
     }
     if 规范化父id:
-        父路径 = _记录路径(状态目录, 规范化父id)
-        if not 父路径.is_file():
+        父记录 = 已登记表.get(规范化父id)
+        if 父记录 is None:
             return {"成功": False, "错误码": 错误_登记失败, "消息": f"父任务 {规范化父id} 未登记"}
-        父记录 = json.loads(父路径.read_text(encoding="utf-8"))
         父子表 = list(父记录.get("子任务列表", []))
         if 规范化id not in 父子表:
             父子表.append(规范化id)
         父记录["子任务列表"] = 父子表
-        _原子写入(父路径, 父记录)
-    _原子写入(路径, 记录)
+        if not _写运行库(库路径, 父记录):
+            return {"成功": False, "错误码": 错误_登记失败,
+                    "消息": f"父任务 {规范化父id} 子任务列表落库失败", "同步错误": 同步错误}
+    if not _写运行库(库路径, 记录):
+        return {"成功": False, "错误码": 错误_登记失败,
+                "消息": f"{规范化id} 协作状态落库失败", "同步错误": 同步错误}
     return {"成功": True, "work_id": 规范化id, "parent_work_id": 规范化父id, "生命周期": "创建"}
 
 
-def _读取记录(状态目录: Path, work_id: str) -> dict[str, Any] | None:
-    路径 = _记录路径(状态目录, work_id)
-    if not 路径.is_file():
-        return None
-    try:
-        return json.loads(路径.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
+def _读取记录(状态目录: Path, work_id: str, *,
+             运行库路径: str | None = None) -> dict[str, Any] | None:
+    记录表 = 协作状态记录表(状态目录=状态目录, 运行库路径=运行库路径)
+    return 记录表.get(str(work_id).strip().lower())
+
+
+def 已登记(work_id: str, *, 状态目录: Path | None = None,
+         运行库路径: str | None = None) -> bool:
+    """该开工id是否已登记：先查运行库，库空再查旧文件（与 查询协作状态 同口径）。"""
+    文本 = str(work_id).strip().lower()
+    if not _开工id模式.fullmatch(文本):
+        return False
+    return 文本 in 协作状态记录表(状态目录=状态目录, 运行库路径=运行库路径)
 
 
 def _读取反馈状态(反馈文件: Path, work_id: str) -> str:
@@ -165,15 +288,15 @@ def _读取验证证据(验证历史文件: Path, work_id: str) -> list[dict[str
 
 
 def _聚合一条(
-    状态目录: Path, work_id: str, 反馈文件: Path, 验证历史文件: Path, 临时上下文目录: Path,
+    记录: dict[str, Any], work_id: str, 已登记表: dict[str, dict[str, Any]],
+    反馈文件: Path, 验证历史文件: Path, 临时上下文目录: Path,
 ) -> dict[str, Any] | None:
     """聚合单个任务：任务信息 + 子任务 + 反馈 + 验证证据 + 生命周期 + 阻断标记。"""
-    记录 = _读取记录(状态目录, work_id)
-    if 记录 is None:
+    if not 记录:
         return None
     子任务列表 = [str(项) for 项 in 记录.get("子任务列表", [])]
     子任务状态 = {
-        子id: ("已登记" if _记录路径(状态目录, 子id).is_file() else "未登记")
+        子id: ("已登记" if 子id.strip().lower() in 已登记表 else "未登记")
         for 子id in 子任务列表
     }
     反馈状态 = _读取反馈状态(反馈文件, work_id)
@@ -206,18 +329,21 @@ def 查询协作状态(
     work_id: str = "", 任务关键词: str = "", *,
     状态目录: Path | None = None, 反馈文件: Path | None = None,
     验证历史文件: Path | None = None, 临时上下文目录: Path | None = None,
+    运行库路径: str | None = None,
 ) -> dict[str, Any]:
-    """按开工id或任务关键词聚合查询协作状态。"""
+    """按开工id或任务关键词聚合查询协作状态（记录取自运行库，库空回退旧文件）。"""
     状态目录 = 状态目录 or 默认状态目录
     反馈文件 = 反馈文件 or 默认反馈文件
     验证历史文件 = 验证历史文件 or 默认验证历史文件
     临时上下文目录 = 临时上下文目录 or 默认临时上下文目录
+    记录表 = 协作状态记录表(状态目录=状态目录, 运行库路径=运行库路径)
     if work_id:
         try:
             规范化id = _校验开工id(work_id)
         except ValueError:
             return {"成功": False, "错误码": 错误_work_id非法, "消息": "work_id 必须为 16 位十六进制"}
-        聚合 = _聚合一条(状态目录, 规范化id, 反馈文件, 验证历史文件, 临时上下文目录)
+        聚合 = _聚合一条(记录表.get(规范化id, {}), 规范化id, 记录表,
+                        反馈文件, 验证历史文件, 临时上下文目录)
         if 聚合 is None:
             return {"成功": False, "错误码": 错误_任务不存在, "work_id": 规范化id,
                     "阻断标记": ["未登记"], "消息": f"{规范化id} 未登记"}
@@ -227,15 +353,11 @@ def 查询协作状态(
         if not 关键词:
             return {"成功": False, "错误码": 错误_work_id非法, "消息": "查询条件为空"}
         结果列表: list[dict[str, Any]] = []
-        if 状态目录.is_dir():
-            for 路径 in sorted(状态目录.glob("*.json")):
-                记录 = _读取记录(状态目录, 路径.stem)
-                if 记录 is None:
-                    continue
-                if 关键词.lower() in str(记录.get("任务", "")).lower():
-                    聚合 = _聚合一条(状态目录, 路径.stem, 反馈文件, 验证历史文件, 临时上下文目录)
-                    if 聚合 is not None:
-                        结果列表.append(聚合)
+        for 键, 记录 in sorted(记录表.items()):
+            if 关键词.lower() in str(记录.get("任务", "")).lower():
+                聚合 = _聚合一条(记录, 键, 记录表, 反馈文件, 验证历史文件, 临时上下文目录)
+                if 聚合 is not None:
+                    结果列表.append(聚合)
         if not 结果列表:
             return {"成功": False, "错误码": 错误_任务不存在, "消息": f"未找到任务包含关键词：{关键词}"}
         return {"成功": True, "查询方式": "任务关键词", "数量": len(结果列表), "结果列表": 结果列表}
@@ -245,22 +367,24 @@ def 查询协作状态(
 def 收口登记(
     work_id: str, *, 五件套路径: str, 结论: str,
     状态目录: Path | None = None, 反馈文件: Path | None = None,
-    验证历史文件: Path | None = None,
+    验证历史文件: Path | None = None, 运行库路径: str | None = None,
 ) -> dict[str, Any]:
     """收口登记（delivery_closeout）：生命周期置为完成，写入五件套路径与结论。
 
     校验：未提交 MCP 反馈阻断拒绝；存在验证证据且指纹与当前代码不一致时阻断。
+    落点是底座运行库 `协作状态` 域（不再写旧 `{work_id}.json`）。
     """
     try:
         规范化id = _校验开工id(work_id)
     except ValueError:
         return {"成功": False, "错误码": 错误_work_id非法, "消息": "work_id 必须为 16 位十六进制"}
     状态目录 = 状态目录 or 默认状态目录
+    库路径 = str(运行库路径) if 运行库路径 else 默认运行库路径()
     反馈文件 = 反馈文件 or 默认反馈文件
     验证历史文件 = 验证历史文件 or 默认验证历史文件
     if not str(五件套路径).strip() or not str(结论).strip():
         return {"成功": False, "错误码": 错误_登记失败, "消息": "五件套路径和结论不能为空"}
-    记录 = _读取记录(状态目录, 规范化id)
+    记录 = _读取记录(状态目录, 规范化id, 运行库路径=库路径)
     if 记录 is None:
         return {"成功": False, "错误码": 错误_任务不存在, "work_id": 规范化id,
                 "阻断标记": ["未登记"], "消息": f"{规范化id} 未登记，无法收口"}
@@ -277,6 +401,8 @@ def 收口登记(
     记录["五件套路径"] = str(五件套路径).strip()
     记录["收口结论"] = str(结论).strip()
     记录["收口时间"] = time.time()
-    _原子写入(_记录路径(状态目录, 规范化id), 记录)
+    if not _写运行库(库路径, 记录):
+        return {"成功": False, "错误码": 错误_登记失败, "work_id": 规范化id,
+                "消息": f"{规范化id} 收口落库失败", "同步错误": 同步错误}
     return {"成功": True, "work_id": 规范化id, "生命周期": "完成",
             "五件套路径": 记录["五件套路径"], "收口结论": 记录["收口结论"]}
