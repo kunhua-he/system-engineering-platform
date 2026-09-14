@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "69d22723ef7fba2fdb80ac99e96fc99b12a99997c75153cc0c3de920ff33d39c"
+      "sha256": "c33e739c00e080c64feea29dc04f61f08cf962db7ce1efa9d34bc05402c0d3dc"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "b9329dcdce7c19764dba225b038cde8f8eb4a02945c6a97c88ba96752ad991b8"
+      "sha256": "5ef1d79b99706bf55632e3837ca6a147c5c7f62f2a57908ab679adc19104650d"
     },
     {
       "路径": "复用决策.json",
@@ -25,7 +25,7 @@
     },
     {
       "路径": "实现/提供者.py",
-      "sha256": "4f03ca0bb8884a4f1a241326a5beb7d88149d5a5adb99132e8737d53f29bb45c"
+      "sha256": "5eba299bb4709f68991e3a8e2b5c431784e1d1590ad1a61012d2c3cad3bac106"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -37,23 +37,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "23f3859b6011ca511ff1378ded0d3f5b5b7e16ee883242a03dc63e960a6550f8"
+      "sha256": "61dc32b8b9b4271b91c5db7053e10a5d3f21bdecb0f19adeebf50a67500d406f"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "14ff53e35940dc6a367c6621680043fbac659fc95202a7913685f23a470f6e11"
+      "sha256": "caa6a00d36d2718cda3d9ccc6ff05fff4223d426916e56afb631f2861d9c4609"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "9d3c50152196c69e75b5802375d745389008d5f007d13a4aa03a316b3d11755d"
+      "sha256": "58bc171a09d88d1f96a673aa549456badd6df4b2641b46f5a4f6351348a066c9"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "bdb96d35e86252df66e8325609933a1b74c1d9fee5d13cee253b4b414ff2b1c9"
+      "sha256": "d4b5bf6e7202ca2cfde28471a821a8490cbeae44c88242ff3fdc7f5038fbc83c"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "2e84dc66b7a5aa28840556269ccd8aa86fe1d2e365e96ab030393cab0dfaf181"
+      "sha256": "8a64f9efb037267ba2d972fc160109e68ab8048e13ba34173b1d0a68c100aaa9"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -69,7 +69,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "e840b125027bb72dd9070849945299e68f75d94fd9216c27205855453b6f02a9"
+      "sha256": "7a0d92f1940e71cc565ee9be040b32cd3b0984ce059314492e8ea6197f1f6def"
     },
     {
       "路径": "验证夹具/基础数据.db",
