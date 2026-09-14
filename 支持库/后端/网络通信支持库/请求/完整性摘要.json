@@ -37,23 +37,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "fc095d63537abca4ad2252b53329cf187545a5d34b9d269108a164c575eb654a"
+      "sha256": "68f7a010e8019f5a2e21a6308b6ede7a3806328dc4ef840b7a63a7802504eb87"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "4e4d7293bb7eb4fe1c40689046da1ebb352e788f3d9f75ebcf0e98af0242dcfe"
+      "sha256": "352cb45b457b6f6336675ddeba2a74423ce7c416a6a0f5aa2aeddc149fed6db8"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "1fad052b898749c9293f89a8b7439383b06850dc2e2c456e8a4a1e56a63d9a30"
+      "sha256": "de9963486350c0f11ebcc2b0fe4d7541091c901785d0a09f42e0f959c4ef2a1c"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "852f19baad2c0a95ef8157a8a243a6a635f94eef1412904db0053e44f05721ba"
+      "sha256": "a3544e7cb6b000a4b2bdb689b91194eaa62565c2f8ce0525f961ed6739d1aef4"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "30461d4ca5fd6100f0346e14f98d6537780135a63048aa93c89febe97f9883e0"
+      "sha256": "21fc95ceff4d6e0179d47a19cca12c43f862e7ad9e83f07af978226aacf4b0df"
     },
     {
       "路径": "说明/目录树与命令.md",
