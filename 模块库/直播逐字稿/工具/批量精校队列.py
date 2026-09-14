@@ -28,6 +28,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 网关 = "http://127.0.0.1:40007/" + urllib.parse.quote("网关/调用")
+# 容错路径留痕（哲学第 15 条：不许 except: pass 吞掉；句柄释放失败要能查到）
+释放问题: list[str] = []
 凭证 = os.environ.get("系统库网关凭证", "html-blackbox-verifier")
 密钥 = os.environ.get("HERMES_CUSTOM_CUSTOM_API_KEY", "").strip()
 
@@ -212,8 +214,9 @@ def 主() -> int:
                     urllib.request.urlopen(urllib.request.Request(网关, data=体, headers={
                         "Content-Type": "application/json",
                         "Authorization": f"Bearer {凭证}"}), timeout=60).read()
-                except Exception:
-                    pass
+                except Exception as 释放错误:
+                    # 句柄释放失败必须留痕（哲学第 15 条：失败要明确，不许 except: pass）
+                    释放问题.append(f"句柄 {局部句柄} 释放失败: {释放错误}")
 
     任务表 = list(enumerate(视频表, start=1))
     if 并发 > 1:

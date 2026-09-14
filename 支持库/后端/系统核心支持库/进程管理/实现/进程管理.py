@@ -19,6 +19,9 @@ from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出�
 
 句柄系统 = 句柄体系()
 进程表: dict[int, dict] = {}
+# 容错路径留痕（哲学第 15 条：不许 except: pass 吞掉）
+临时文件问题: list[str] = []
+
 锁 = threading.Lock()
 
 
@@ -361,18 +364,20 @@ def 沙箱执行命令(
             "沙箱": "macOS sandbox-exec",
         })
     except Exception as 错误:
+        # 强制回收失败必须随失败说明回报（哲学第 15 条：失败要明确，不许静默吞掉）
+        清理说明 = ""
         if 进程 is not None:
             try:
                 _终止进程组(进程, 强制=True)
-            except Exception:
-                pass
-        return 结果.失败("执行失败", str(错误), 来源="进程管理")
+            except Exception as 清理错误:
+                清理说明 = f"（强制回收失败：{清理错误}）"
+        return 结果.失败("执行失败", f"{错误}{清理说明}", 来源="进程管理")
     finally:
         for 文件 in (输出文件, 错误文件):
             try:
                 文件.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as 删除错误:
+                临时文件问题.append(f"{文件} 删除失败: {删除错误}")
 
 
 def _读受限(路径, 上限字节: int) -> str:
