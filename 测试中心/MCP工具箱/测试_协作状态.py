@@ -1,19 +1,45 @@
-"""开工id父子映射与协作状态：登记、聚合查询、收口、指纹与阻断测试。"""
+"""开工id父子映射与协作状态：登记、聚合查询、收口、指纹与阻断测试。
+
+测试全程使用临时隔离状态目录与临时隔离运行库（`系统库运行库` 指向临时库），
+不写真实 `工程缓存/协作状态/` 与 `工程缓存/运行数据/底座运行.db`。
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from MCP工具箱.协作状态 import (
     计算代码指纹, 登记任务, 查询协作状态, 收口登记, 默认状态目录, _排除片段表,
+    协作状态记录表, 已登记,
 )
 from MCP工具箱.临时上下文 import 写入临时上下文
 
 父id = "aaaa000000000001"
 子id = "aaaa000000000002"
+
+
+def _读库记录(库路径: str) -> list[dict]:
+    """经唯一能力调用入口读运行库 `协作状态` 域（与模块同一条通道，不用桩）。"""
+    import 运行核心.能力调用.唯一能力调用  # noqa: F401 —— 注册惰性装配钩子
+
+    from 公共契约.能力契约.调用器 import 获取能力调用器
+
+    结果对象 = 获取能力调用器().调用能力(
+        "数据库连接支持库.SQLite数据库.查询运行态",
+        {"数据库路径": 库路径, "域": "协作状态", "限制": 100, "超时秒": 10.0})
+    if not 结果对象.成功:
+        raise AssertionError(f"运行库查询失败：{getattr(结果对象, '错误说明', '')}")
+    行列表 = (结果对象.值 or {}).get("行列表") or []
+    记录表: list[dict] = []
+    for 行 in 行列表:
+        载荷 = 行.get("载荷") if isinstance(行, dict) else None
+        if isinstance(载荷, str) and 载荷:
+            记录表.append(json.loads(载荷))
+    return 记录表
 
 
 def _写反馈(路径: Path, 开工id: str) -> None:
@@ -55,8 +81,16 @@ class 协作状态测试(unittest.TestCase):
         self.工作区 = 根 / "工作区"
         self.工作区.mkdir()
         (self.工作区 / "源码.txt").write_text("内容", encoding="utf-8")
+        # 运行库隔离：走 `系统库运行库` 环境变量（与生产同一入口，不写真实库）。
+        self.运行库 = str(根 / "运行数据" / "底座运行.db")
+        self._原运行库环境 = os.environ.get("系统库运行库")
+        os.environ["系统库运行库"] = self.运行库
 
     def tearDown(self) -> None:
+        if self._原运行库环境 is None:
+            os.environ.pop("系统库运行库", None)
+        else:
+            os.environ["系统库运行库"] = self._原运行库环境
         self._临时.cleanup()
 
     def _登记父(self, work_id: str = 父id, *, 任务: str = "父子映射",

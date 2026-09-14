@@ -68,12 +68,13 @@ class 作业系统测试(unittest.TestCase):
     def setUp(self) -> None:
         self._临时 = tempfile.TemporaryDirectory()
         self.存储目录 = Path(self._临时.name) / "作业状态"
+        self.运行库 = str(Path(self._临时.name) / "运行数据" / "底座运行.db")
 
     def tearDown(self) -> None:
         self._临时.cleanup()
 
     def _建系统(self, **参数) -> 作业系统:
-        return 作业系统(存储目录=self.存储目录, **参数)
+        return 作业系统(存储目录=self.存储目录, 运行库路径=self.运行库, **参数)
 
     # ── 提交与执行 ─────────────────────────────────────────────────────
 
@@ -241,30 +242,32 @@ class 作业系统测试(unittest.TestCase):
             系统.查询("查无此作业")
         系统.关闭()
 
-    # ── 持久化与重启收敛 ───────────────────────────────────────────────
+    # ── 持久化（运行库为唯一落点）与重启收敛 ────────────────────────────
 
-    def test_终态作业落盘并可重新加载(self) -> None:
+    def test_终态作业落库并可重新加载(self) -> None:
         系统 = self._建系统()
         系统.设置执行器(lambda 工具名, 参数: {"成功": True, "回执": "干完了"})
         作业id = _提交(系统, "run_release_gate")
         _等待终态(系统, 作业id)
         系统.关闭()
 
-        账本 = self.存储目录 / "作业.jsonl"
-        self.assertTrue(账本.is_file())
-        记录 = [json.loads(行) for 行 in 账本.read_text(encoding="utf-8").splitlines() if 行.strip()]
+        # 落点是运行库：库里能查到该作业，且旧 `作业.jsonl` 不再产生。
+        记录 = _读库载荷(self.运行库)
         self.assertEqual(len(记录), 1)
         self.assertEqual(记录[0]["状态"], 状态_成功)
         self.assertEqual(记录[0]["作业id"], 作业id)
+        self.assertFalse((self.存储目录 / "作业.jsonl").exists(),
+                         "运行态入库后不得再写旧账本文件")
 
-        重开 = 作业系统(存储目录=self.存储目录)
+        重开 = self._建系统()
         查回 = 重开.查询(作业id)
         self.assertEqual(查回.状态, 状态_成功)
         self.assertEqual(查回.结果["回执"], "干完了")
+        self.assertEqual(重开.同步错误, "")
         重开.关闭()
 
     def test_重启后未完成作业收敛为崩溃(self) -> None:
-        # 手工构造「上次进程死在运行中」的账本，模拟断电/重启。
+        # 手工构造「上次进程死在运行中」的旧账本，模拟断电/重启（迁移期只读兼容）。
         半截 = {
             "作业id": "aaaaaaaaaaaaaaaa", "工具": "run_release_gate",
             "状态": 状态_运行中, "结果": None, "错误码": "", "错误说明": "",
@@ -277,15 +280,46 @@ class 作业系统测试(unittest.TestCase):
             json.dumps(半截, ensure_ascii=False) + "\n", encoding="utf-8",
         )
 
-        系统 = 作业系统(存储目录=self.存储目录)
+        系统 = self._建系统()
         收敛 = 系统.查询("aaaaaaaaaaaaaaaa")
         self.assertEqual(收敛.状态, 状态_崩溃)
         self.assertEqual(收敛.错误码, "崩溃")
         self.assertIn("重启", 收敛.错误说明)
         self.assertTrue(收敛.完成时间)
+        self.assertEqual(系统.同步错误, "")
         系统.关闭()
 
-    def test_结果超限落盘截断但内存仍完整(self) -> None:
+        # 一次性搬迁成立：搬完后旧账本已不是事实源，删掉它仍能从库里读回。
+        (self.存储目录 / "作业.jsonl").unlink()
+        重开 = self._建系统()
+        self.assertEqual(重开.查询("aaaaaaaaaaaaaaaa").状态, 状态_崩溃)
+        重开.关闭()
+
+    def test_库空回退旧账本且旧账本不再增长(self) -> None:
+        """迁移期只读兼容：库空时读旧账本；此后写入只进库，旧文件大小/内容不变。"""
+        记录行 = {
+            "作业id": "bbbbbbbbbbbbbbbb", "工具": "verify_and_record",
+            "状态": 状态_成功, "结果": {"成功": True}, "错误码": "", "错误说明": "",
+            "开工id": "开工00000000002", "创建时间": "2026-09-12 10:00:00",
+            "开始时间": "2026-09-12 10:00:01", "完成时间": "2026-09-12 10:00:02",
+            "取消标记": False, "结果已截断": False,
+        }
+        self.存储目录.mkdir(parents=True, exist_ok=True)
+        旧账本 = self.存储目录 / "作业.jsonl"
+        旧账本.write_text(json.dumps(记录行, ensure_ascii=False) + "\n", encoding="utf-8")
+        旧内容 = 旧账本.read_text(encoding="utf-8")
+
+        系统 = self._建系统()
+        系统.设置执行器(lambda 工具名, 参数: {"成功": True})
+        self.assertEqual(系统.查询("bbbbbbbbbbbbbbbb").状态, 状态_成功)  # 旧账本可读
+        _等待终态(系统, _提交(系统, "run_release_gate"))
+        系统.关闭()
+
+        self.assertEqual(旧账本.read_text(encoding="utf-8"), 旧内容,
+                         "旧账本必须保持只读：内容不得被改写")
+        self.assertEqual(len(_读库载荷(self.运行库)), 2, "旧账本记录 + 新作业都应入库")
+
+    def test_结果超限落库截断但内存仍完整(self) -> None:
         大结果 = {"成功": True, "输出": "长" * 5000}
         系统 = self._建系统(结果落盘上限字节=1024)
         系统.设置执行器(lambda 工具名, 参数: 大结果)
@@ -296,10 +330,10 @@ class 作业系统测试(unittest.TestCase):
         self.assertTrue(完成.结果已截断)
         系统.关闭()
 
-        重开 = 作业系统(存储目录=self.存储目录)
-        落盘 = 重开.查询(作业id).结果
-        self.assertTrue(落盘["截断"])
-        self.assertGreater(落盘["原字节数"], 1024)
+        重开 = self._建系统()
+        落库 = 重开.查询(作业id).结果
+        self.assertTrue(落库["截断"])
+        self.assertGreater(落库["原字节数"], 1024)
         重开.关闭()
 
     # ── 列出 ───────────────────────────────────────────────────────────
