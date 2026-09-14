@@ -77,18 +77,18 @@ def 字典获取(字典: dict = None, 键: str = None, 默认值: Any = None) ->
     return _成功(字典.get(键, 默认值))
 
 
-def 集合取并集(集合甲: list = None, 集合乙: list = None) -> 结果:
+def 集合取并集(集合1: list = None, 集合2: list = None) -> 结果:
     """返回两个列表的去重并集（排序稳定）。"""
-    if not isinstance(集合甲, list) or not isinstance(集合乙, list):
-        return _失败("参数不合法", "集合甲与集合乙必须是列表")
-    return _成功(sorted(set(集合甲) | set(集合乙)))
+    if not isinstance(集合1, list) or not isinstance(集合2, list):
+        return _失败("参数不合法", "集合1与集合2必须是列表")
+    return _成功(sorted(set(集合1) | set(集合2)))
 
 
-def 集合取交集(集合甲: list = None, 集合乙: list = None) -> 结果:
+def 集合取交集(集合1: list = None, 集合2: list = None) -> 结果:
     """返回两个列表的去重交集（排序稳定）。"""
-    if not isinstance(集合甲, list) or not isinstance(集合乙, list):
-        return _失败("参数不合法", "集合甲与集合乙必须是列表")
-    return _成功(sorted(set(集合甲) & set(集合乙)))
+    if not isinstance(集合1, list) or not isinstance(集合2, list):
+        return _失败("参数不合法", "集合1与集合2必须是列表")
+    return _成功(sorted(set(集合1) & set(集合2)))
 
 
 def 统计数量(列表: list = None) -> 结果:
