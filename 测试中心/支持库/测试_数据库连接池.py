@@ -26,6 +26,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 公共契约.能力契约.契约 import 能力注册表
+from 公共契约.版本规则.契约版本 import 契约版本
 from 支持库.后端.数据库连接支持库.psycopg数据库 import (
     关闭数据库连接, 注册能力, 查询数据库, 事务执行数据库, 连接池状态, 连接数据库,
 )
@@ -216,7 +217,9 @@ class 测试_契约一致(unittest.TestCase):
 
     def test_参数契约完整(self):
         契约 = json.loads((包目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
-        self.assertEqual(契约["契约版本"], "1.0.0")
+        # 契约版本恒等于唯一事实源（哲学第 20 条）——**断言事实源，不写死字面量**，
+        # 否则每次平台版本变化都要回来改测试（「一改全改」的根源）。
+        self.assertEqual(契约["契约版本"], 契约版本)
         for 条目 in 契约["能力契约"]:
             for 参数 in 条目["参数"]:
                 self.assertIn("必填", 参数, f"{条目['能力id']} 参数 {参数['名称']} 缺 必填")
