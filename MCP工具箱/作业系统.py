@@ -14,15 +14,16 @@
   确认某类工具可并发后，可用 `最大并发数` 显式调大。排队中的作业状态是「等待中」。
 - 取消是尽力取消——未开始的可真取消；已运行中的只能标记并丢弃产出（线程无法中断
   阻塞中的 subprocess.run）。超时由目标工具自身参数负责，本模块不假装能中断线程。
-- 作业表落 `作业.jsonl`（默认在 工程缓存/ 下，已被 .gitignore 覆盖），重启后
-  非终态作业收敛为「崩溃」，与 40007 同语义。
+- 作业表落**底座运行库**（`工程缓存/运行数据/底座运行.db` 的 `作业` 域，经唯一 SQLite
+  支持库访问），重启后非终态作业收敛为「崩溃」，与 40007 同语义。旧 `作业.jsonl`
+  只做只读兼容与首次搬迁，不再写文件（华哥 2026-09-15 定盘：运行态一律入库、不搞双写）。
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import tempfile
 import threading
 import time
 import uuid
@@ -30,6 +31,8 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+
+系统根 = Path(__file__).resolve().parents[1]
 
 状态_等待中 = "等待中"
 状态_运行中 = "运行中"
@@ -46,12 +49,20 @@ _终态 = frozenset({状态_成功, 状态_失败, 状态_已取消, 状态_超�
 
 
 def 默认存储目录() -> Path:
-    """作业账本目录：`系统作业目录` 优先，否则 `工程缓存/作业状态`。"""
+    """旧作业账本目录：`系统作业目录` 优先，否则 `工程缓存/作业状态`（只读兼容用）。"""
     环境目录 = os.environ.get("系统作业目录", "").strip()
     if 环境目录:
         return Path(环境目录)
     缓存根 = os.environ.get("系统底座_工程缓存根", "工程缓存")
     return Path(缓存根) / "作业状态"
+
+
+def 默认运行库路径() -> str:
+    """底座运行库路径（运行态唯一落点；可用 `系统库运行库` 环境变量覆盖）。"""
+    环境 = os.environ.get("系统库运行库", "").strip()
+    if 环境:
+        return 环境
+    return str(系统根 / "工程缓存" / "运行数据" / "底座运行.db")
 
 
 def 是否终态(状态: str) -> bool:
@@ -93,13 +104,16 @@ class 作业:
 
 
 class 作业系统:
-    """作业门面：线程池执行、原子快照持久化、查询与尽力取消。"""
+    """作业门面：线程池执行、运行库持久化、查询与尽力取消。"""
 
     def __init__(self, 存储目录: Path | None = None, *,
                  最大并发数: int = 默认最大并发数,
-                 结果落盘上限字节: int = 默认结果落盘上限字节) -> None:
+                 结果落盘上限字节: int = 默认结果落盘上限字节,
+                 运行库路径: str | None = None) -> None:
+        # 存储目录 只用于迁移期读旧 `作业.jsonl`（只读兼容），不再是写入落点。
         self.存储目录 = Path(存储目录) if 存储目录 else 默认存储目录()
-        self.存储目录.mkdir(parents=True, exist_ok=True)
+        # 运行态唯一落点（华哥 2026-09-15 定盘：运行态一律入库，不再写 JSONL）。
+        self.运行库路径 = str(运行库路径).strip() if 运行库路径 else 默认运行库路径()
         self.结果落盘上限字节 = max(1024, int(结果落盘上限字节))
         self.作业表: dict[str, 作业] = {}
         self.参数表: dict[str, dict[str, Any]] = {}
@@ -108,6 +122,8 @@ class 作业系统:
         self.线程池 = ThreadPoolExecutor(max_workers=max(1, int(最大并发数)),
                                           thread_name_prefix="作业")
         self.执行器: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+        self.上次落盘指纹: dict[str, str] = {}
+        self.同步错误: str = ""
         self.加载()
 
     # ── 执行器注入（由 项目服务.py 提供，避免循环 import）──────────────────
@@ -115,23 +131,78 @@ class 作业系统:
     def 设置执行器(self, 执行器: Callable[[str, dict[str, Any]], dict[str, Any]]) -> None:
         self.执行器 = 执行器
 
-    # ── 持久化 ─────────────────────────────────────────────────────────
+    # ── 持久化（运行库为唯一落点；旧 JSONL 只读兼容 + 首次搬迁）────────────
 
     @property
-    def _账本路径(self) -> Path:
+    def _旧账本路径(self) -> Path:
+        """迁移期只读兼容的旧账本（`作业.jsonl`）：不删、不再写。"""
         return self.存储目录 / "作业.jsonl"
 
-    def 加载(self) -> None:
-        文件 = self._账本路径
+    def _运行库调用(self, 能力id: str, 参数: dict[str, Any]) -> Any:
+        """经唯一调用入口访问底座运行库；不可用时记入 `同步错误`（可见，不静默）。"""
+        try:
+            # 注册惰性装配钩子：MCP 管理端进程不经加载器装配，缺这步会恒「未装配」。
+            import 运行核心.能力调用.唯一能力调用  # noqa: F401
+
+            from 公共契约.能力契约.调用器 import 获取能力调用器
+
+            return 获取能力调用器().调用能力(能力id, 参数)
+        except Exception as 错误:  # noqa: BLE001 —— 运行库不可用必须可见，见 同步错误
+            self.同步错误 = f"运行库不可用：{错误}"
+            return None
+
+    def _读运行库(self) -> list[dict[str, Any]] | None:
+        """从运行库读回作业记录；库不可用或为空时返回 None（交给旧账本回退）。"""
+        结果对象 = self._运行库调用(
+            "数据库连接支持库.SQLite数据库.查询运行态",
+            {"数据库路径": self.运行库路径, "域": "作业", "限制": 1000, "超时秒": 10.0},
+        )
+        if 结果对象 is None or not 结果对象.成功:
+            return None
+        值 = 结果对象.值 if isinstance(结果对象.值, dict) else {}
+        行列表 = 值.get("行列表") or []
+        if not 行列表:
+            return None
+        记录表: list[dict[str, Any]] = []
+        for 行 in 行列表:
+            载荷 = 行.get("载荷") if isinstance(行, dict) else None
+            try:
+                记录 = json.loads(载荷) if isinstance(载荷, str) and 载荷 else {}
+            except json.JSONDecodeError:
+                continue
+            if isinstance(记录, dict) and 记录:
+                记录表.append(记录)
+        return 记录表 or None
+
+    def _读旧账本(self) -> list[dict[str, Any]]:
+        """迁移期只读兼容：读旧 `作业.jsonl`（首次加载后一次性搬入运行库）。"""
+        文件 = self._旧账本路径
         if not 文件.is_file():
+            return []
+        记录表: list[dict[str, Any]] = []
+        for 行 in 文件.read_text(encoding="utf-8").splitlines():
+            if not 行.strip():
+                continue
+            try:
+                记录表.append(json.loads(行))
+            except json.JSONDecodeError:
+                continue
+        return 记录表
+
+    def 加载(self) -> None:
+        """先读运行库；库空时回退读旧账本，并把旧账本一次性搬进运行库（不双写）。"""
+        记录表 = self._读运行库()
+        需搬迁 = 记录表 is None
+        if 需搬迁:
+            记录表 = self._读旧账本()
+        if not 记录表:
             return
         with self.锁:
-            for 行 in 文件.read_text(encoding="utf-8").splitlines():
+            for 数据 in 记录表:
                 try:
-                    数据 = json.loads(行)
                     对象 = 作业(**{键: 值 for 键, 值 in 数据.items()
                                    if 键 in 作业.__dataclass_fields__})
-                except (json.JSONDecodeError, TypeError):
+                except TypeError:
                     continue
                 if 对象.状态 not in _终态:
                     对象.状态 = 状态_崩溃
@@ -139,30 +210,42 @@ class 作业系统:
                     对象.错误说明 = "管理端重启，作业未完成"
                     对象.完成时间 = _现在()
                 self.作业表[对象.作业id] = 对象
-            self._保存已加锁()
+            if 需搬迁:
+                self._保存已加锁()
 
     def _保存已加锁(self) -> None:
-        if not self.存储目录.is_dir():
+        """落库到运行库（运行态唯一落点）；不再写 `作业.jsonl`，避免两条腿。
+
+        按 `sha256(记录)` 指纹做增量 upsert：只写变化的行，不重写全表。
+        """
+        if not self.作业表:
             return
-        目标 = self._账本路径
-        临时路径: str | None = None
-        try:
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.存储目录,
-                                             prefix=".作业.", suffix=".tmp", delete=False) as 输出:
-                临时路径 = 输出.name
-                for 对象 in self.作业表.values():
-                    输出.write(json.dumps(self._落盘视图(对象), ensure_ascii=False) + "\n")
-                输出.flush()
-                os.fsync(输出.fileno())
-            os.replace(临时路径, 目标)
-        finally:
-            if 临时路径 and os.path.exists(临时路径):
-                os.unlink(临时路径)
+        需要写: dict[str, tuple[dict[str, Any], str]] = {}
+        for 对象 in self.作业表.values():
+            记录 = self._落盘视图(对象)
+            记录["id"] = 对象.作业id
+            指纹 = hashlib.sha256(
+                json.dumps(记录, ensure_ascii=False, sort_keys=True, default=str).encode()
+            ).hexdigest()
+            if self.上次落盘指纹.get(对象.作业id) != 指纹:
+                需要写[对象.作业id] = (记录, 指纹)
+        if not 需要写:
+            return
+        for 作业id, (记录, 指纹) in 需要写.items():
+            结果对象 = self._运行库调用(
+                "数据库连接支持库.SQLite数据库.写入运行态",
+                {"数据库路径": self.运行库路径, "域": "作业", "记录": 记录, "超时秒": 10.0},
+            )
+            if 结果对象 is None or not 结果对象.成功:
+                说明 = getattr(结果对象, "错误说明", "") or "运行库不可用"
+                self.同步错误 = f"作业落库失败（作业 {作业id}）：{说明}"
+                return
+            self.上次落盘指纹[作业id] = 指纹
 
     def _落盘视图(self, 对象: 作业) -> dict[str, Any]:
-        """落盘结果超限即替换为摘要，避免账本被大输出撑爆（内存仍留完整结果）。
+        """落库结果超限即替换为摘要，避免库里的载荷被大输出撑爆（内存仍留完整结果）。
 
-        截断同时把 `结果已截断` 标记回写内存对象：查询方能如实看到「只在账本里被截断」。
+        截断同时把 `结果已截断` 标记回写内存对象：查询方能如实看到「只在库/账本里被截断」。
         """
         视图 = 对象.转字典()
         结果 = 视图.get("结果")

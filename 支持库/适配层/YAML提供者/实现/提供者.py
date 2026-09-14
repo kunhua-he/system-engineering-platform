@@ -26,3 +26,13 @@ def 解析YAML(文本: str) -> Any:
 def 序列化YAML(数据: Any) -> str:
     """把数据序列化为 YAML 文本。"""
     return _yaml.safe_dump(数据, allow_unicode=True, sort_keys=False)
+
+
+def 依赖版本() -> str:
+    """读取 PyYAML 版本（不可读取时返回空文本）。"""
+    return str(getattr(_yaml, "__version__", "") or "")
+
+
+def 检查可用性() -> dict[str, Any]:
+    """探针：PyYAML 是否可导入及版本；供健康检查与依赖审计使用。"""
+    return {"可用": True, "版本": 依赖版本(), "说明": "PyYAML 可导入"}
