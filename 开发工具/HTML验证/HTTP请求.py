@@ -24,12 +24,8 @@ def _校验直连地址(地址: str) -> str:
         raise ValueError("直连地址不得包含凭据、业务路径、查询或片段")
     return 地址.rstrip("/")
 
-def _发送请求(地址: str, 场景: 验证场景, 超时秒: float) -> tuple[int, dict[str, Any], float]:
-    开始 = time.monotonic()
-    拆分 = urllib.parse.urlsplit(地址)
-    基址 = f"{拆分.scheme}://{拆分.netloc}"
-    路径 = 场景.路径 if 场景.路径.startswith("/") else "/" + 场景.路径
-    目标 = 基址 + urllib.parse.quote(路径, safe="/:@._-")
+def _单次请求(目标: str, 场景: 验证场景, 超时秒: float) -> tuple[int, dict[str, Any]]:
+    """发一次真实 HTTP 请求并把响应归一成 (状态码, 数据)。"""
     if 场景.方法 == "GET":
         请求 = urllib.request.Request(目标, method="GET")
     else:
@@ -44,12 +40,12 @@ def _发送请求(地址: str, 场景: 验证场景, 超时秒: float) -> tuple[
         with urllib.request.urlopen(请求, timeout=超时秒) as 响应:
             正文 = 响应.read(请求上限字节 + 1)
             if len(正文) > 请求上限字节:
-                return 响应.status, {"成功": False, "错误码": "返回过大", "错误说明": "响应超过读取上限"}, (time.monotonic() - 开始) * 1000
+                return 响应.status, {"成功": False, "错误码": "返回过大", "错误说明": "响应超过读取上限"}
             try:
                 数据 = json.loads(正文.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 数据 = {"成功": False, "错误码": "返回非JSON", "错误说明": 正文[:200].decode("utf-8", errors="replace")}
-            return 响应.status, 数据, (time.monotonic() - 开始) * 1000
+            return 响应.status, 数据
     except urllib.error.HTTPError as 错误:
         try:
             正文 = 错误.read(请求上限字节 + 1)
@@ -57,8 +53,30 @@ def _发送请求(地址: str, 场景: 验证场景, 超时秒: float) -> tuple[
                 数据 = json.loads(正文[:请求上限字节].decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 数据 = {"成功": False, "错误码": "返回非JSON", "错误说明": 正文[:200].decode("utf-8", errors="replace")}
-            return 错误.code, 数据, (time.monotonic() - 开始) * 1000
+            return 错误.code, 数据
         finally:
             错误.close()
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:
-        return 502, {"成功": False, "错误码": "网关断开", "错误说明": str(错误)}, (time.monotonic() - 开始) * 1000
+        return 502, {"成功": False, "错误码": "网关断开", "错误说明": str(错误)}
+
+
+def _发送请求(地址: str, 场景: 验证场景, 超时秒: float) -> tuple[int, dict[str, Any], float]:
+    """回环真实 HTTP 请求；**传输层无响应断连重试一次**（写进证据，不掩盖语义失败）。
+
+    历史现象（2026-09-15 实测）：制品在 64 路并发下偶发
+    `Remote end closed connection without response`——连接建立后被对端关闭、**一个字节响应都没有**。
+    这属传输抖动，不是能力语义失败；因此只对「无任何响应」重试一次并把 `传输重试` 记进证据。
+    **有响应的失败**（4xx/5xx/非 JSON/返回过大）一律不重试，保持真实口径。
+    """
+    开始 = time.monotonic()
+    拆分 = urllib.parse.urlsplit(地址)
+    基址 = f"{拆分.scheme}://{拆分.netloc}"
+    路径 = 场景.路径 if 场景.路径.startswith("/") else "/" + 场景.路径
+    目标 = 基址 + urllib.parse.quote(路径, safe="/:@._-")
+    状态码, 数据 = _单次请求(目标, 场景, 超时秒)
+    if 状态码 == 502 and 数据.get("错误码") == "网关断开":
+        time.sleep(0.2)
+        状态码, 数据 = _单次请求(目标, 场景, 超时秒)
+        数据 = dict(数据)
+        数据["传输重试"] = 1
+    return 状态码, 数据, (time.monotonic() - 开始) * 1000
