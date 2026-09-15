@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -304,7 +306,69 @@ def 格式化能力记录(包数据: dict, 能力声明: dict, 记录表: list[d
     return 记录
 
 
+_索引缓存: dict[str, tuple[float, tuple, list[dict], list[str]]] = {}
+
+
+def 索引缓存有效期() -> float:
+    """缓存有效期（秒）：`系统底座_能力索引缓存秒` 可覆盖，`0` 关闭缓存。"""
+    原文 = os.environ.get("系统底座_能力索引缓存秒", "").strip()
+    if not 原文:
+        return 300.0
+    try:
+        值 = float(原文)
+    except ValueError:
+        return 300.0
+    return 0.0 if 值 <= 0 else 值
+
+
+def 索引缓存指纹(项目根: Path) -> tuple:
+    """缓存指纹：只 stat，不解析 —— 包声明/能力定义/参数契约 的 路径+大小+mtime。
+
+    任何一条被改、增加或删除都会改变指纹，从而强制重建索引；
+    缓存只省「重复解析」，不承担「数据可能已变」的风险。
+    """
+    条目: list[tuple[str, int, int]] = []
+    for 目录 in 扫描包目录(项目根):
+        for 名字 in ("包声明.json", "能力定义.json"):
+            文件 = 目录 / 名字
+            try:
+                状态 = 文件.stat()
+            except OSError:
+                continue
+            条目.append((文件.as_posix(), 状态.st_size, 状态.st_mtime_ns))
+        契约目录 = 目录 / "能力契约"
+        if 契约目录.is_dir():
+            for 文件 in sorted(契约目录.glob("*.json")):
+                try:
+                    状态 = 文件.stat()
+                except OSError:
+                    continue
+                条目.append((文件.as_posix(), 状态.st_size, 状态.st_mtime_ns))
+    return tuple(条目)
+
+
 def 构建能力索引(项目根: Path) -> tuple[list[dict], list[str]]:
+    """带指纹缓存的索引入口（对外唯一口径）。
+
+    性能口径（2026-09-15 实测）：原本每次调用都全量重建（单次 **1.39 秒**，
+    一轮用例数百次调用累计到 **166 秒**）。改为「stat 指纹 + TTL」缓存后：
+    指纹一致且未过期 → 直接复用；指纹一变 → 必然重建。缓存只省重复解析。
+    """
+    键 = str(项目根)
+    有效期 = 索引缓存有效期()
+    if 有效期 <= 0:
+        return _构建能力索引原始(项目根)
+    现在 = time.monotonic()
+    已有 = _索引缓存.get(键)
+    指纹 = 索引缓存指纹(项目根)
+    if 已有 is not None and 已有[1] == 指纹 and (现在 - 已有[0]) < 有效期:
+        return 已有[2], 已有[3]
+    记录, 问题 = _构建能力索引原始(项目根)
+    _索引缓存[键] = (现在, 指纹, 记录, 问题)
+    return 记录, 问题
+
+
+def _构建能力索引原始(项目根: Path) -> tuple[list[dict], list[str]]:
     """构建全部公开能力记录（按 能力id、包id 排序）+ 扫描问题列表。
 
     去重口径：同一 能力id 同时出现在聚合父包与子包声明时，保留带 能力定义.json 的

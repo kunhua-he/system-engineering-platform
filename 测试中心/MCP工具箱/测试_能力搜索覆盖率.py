@@ -62,12 +62,14 @@ def 读取公开能力(项目根=None, 能力id=""):
 )
 
 
-def _契约调用示例(能力id: str):
-    """从该能力的 参数契约.json 读契约声明的 调用示例（没有则返回 None）。
+# 契约示例表：只扫一次（2026-09-15 实测：原来每个能力调一次 rglob，101 次调用
+# 全树扫描累计 179 秒，被误当成"平台检索慢"；缓存后一次扫描 + 查表）。
+_契约示例表: dict[str, object] | None = None
 
-    收敛后：记录里的 调用示例 必须**等于契约声明值**，契约没声明才允许是「无」——
-    不允许实现自己合成一个假示例（这正是本覆盖率测试要守的底线）。
-    """
+
+def _契约示例表构建() -> dict[str, object]:
+    """一次扫描全部 参数契约.json，建 {能力id: 调用示例} 表。"""
+    表: dict[str, object] = {}
     for 契约路径 in 项目根.rglob("参数契约.json"):
         if "工程缓存" in str(契约路径):
             continue
@@ -76,9 +78,21 @@ def _契约调用示例(能力id: str):
         except Exception:
             continue
         for 条目 in 数据.get("能力契约", []) or []:
-            if isinstance(条目, dict) and 条目.get("能力id") == 能力id:
-                return 条目.get("调用示例") or None
-    return None
+            if isinstance(条目, dict) and 条目.get("能力id"):
+                表.setdefault(str(条目["能力id"]), 条目.get("调用示例") or None)
+    return 表
+
+
+def _契约调用示例(能力id: str):
+    """从契约读该能力的 调用示例（没有则 None）。
+
+    收敛后：记录里的 调用示例 必须**等于契约声明值**，契约没声明才允许是「无」——
+    不允许实现自己合成一个假示例（这正是本覆盖率测试要守的底线）。
+    """
+    global _契约示例表
+    if _契约示例表 is None:
+        _契约示例表 = _契约示例表构建()
+    return _契约示例表.get(能力id)
 
 class 能力搜索覆盖率测试(unittest.TestCase):
     def setUp(self) -> None:
