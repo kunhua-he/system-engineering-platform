@@ -24,6 +24,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 进程状态_已创建 = "已创建"
 进程状态_启动中 = "启动中"
@@ -196,8 +197,8 @@ class 独立进程:
             self.状态 = 进程状态_故障
             try:
                 self._关闭管道()
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('独立进程.启动', 错误)
             return False, f"启动失败: {错误}"
         开始 = time.monotonic()
         while time.monotonic() - 开始 < self.启动超时秒:

@@ -38,6 +38,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
     计算制品摘要, 计算文件清单摘要, 获取镜像清单, 镜像不可用,
     镜像下载失败, 读取远程镜像配置, 下载镜像制品, 签名清单, 原子落盘,
 )
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 测试指纹 = "测试信任指纹-7f3a"
 
@@ -134,8 +135,8 @@ def _真实系统版本() -> str:
         结果 = subprocess.run(["sw_vers"], capture_output=True, timeout=10)
         if 结果.returncode == 0:
             return 结果.stdout.decode("utf-8", "ignore").strip()
-    except Exception:
-        pass
+    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+        记录忽略('测试_镜像下载._真实系统版本', 错误)
     return f"{platform.system()} {platform.release()}"
 
 

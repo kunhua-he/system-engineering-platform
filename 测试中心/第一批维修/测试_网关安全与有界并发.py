@@ -30,6 +30,7 @@ from 运行核心.能力调用.唯一能力调用 import 唯一能力调用服�
 from 运行核心.统一网关.本地网关 import 本地网关服务器
 from 运行核心.统一网关.流式HTTP import 流式HTTP服务器
 from 运行核心.统一网关.网关核心 import 网关响应, 网关核心
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 
 测试凭证变量 = "第一批网关测试凭证"
@@ -69,8 +70,8 @@ class 网关用例(unittest.TestCase):
         for 服务 in reversed(self.待停止):
             try:
                 服务.优雅停止()
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('测试_网关安全与有界并发.tearDown', 错误)
 
     def _启动主网关(self, 后端: 可控后端 | None = None, **覆盖):
         后端 = 后端 or 可控后端()

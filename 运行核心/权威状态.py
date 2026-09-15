@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from 运行核心.进程身份 import 创建进程身份
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 状态结构版本 = "1.2.0"  # 1.1.0：栅栏令牌列；1.2.0：结构化锁表+租约/句柄/事务进程身份键+迁移器重构
 
@@ -90,8 +91,8 @@ def _退出时关闭状态连接() -> None:
     for 状态 in list(_活动状态实例):
         try:
             状态.关闭()
-        except Exception:
-            pass
+        except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            记录忽略('权威状态._退出时关闭状态连接', 错误)
 
 
 atexit.register(_退出时关闭状态连接)
@@ -936,12 +937,12 @@ class 权威状态:
             for 连接 in list(连接表.values()):
                 try:
                     连接.close()
-                except Exception:
-                    pass
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    记录忽略('权威状态.__del__', 错误)
             连接表.clear()
             getattr(self, "_连接线程表", {}).clear()
-        except Exception:
-            pass
+        except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            记录忽略('权威状态.__del__', 错误)
 
     def 校验结构(self) -> tuple[bool, str]:
         """结构校验：版本一致 + 必需列齐全 + integrity_check 返回 ok。"""

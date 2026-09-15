@@ -10,6 +10,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 
 def _契约() -> dict:
@@ -153,8 +154,8 @@ def _项5_双迁移互斥(系统根: Path) -> tuple[str, bool, str]:
             结果, _ = 编排.执行迁移(任务id)
             try:
                 编排.清理()
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('第十四阶段门禁._并发迁移', 错误)
         except Exception as 错误:
             结果 = f"异常:{错误}"
         with 结果锁:

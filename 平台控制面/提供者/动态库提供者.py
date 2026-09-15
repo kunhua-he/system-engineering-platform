@@ -16,6 +16,7 @@ import sys
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 try:
     import ctypes
@@ -62,8 +63,8 @@ def 查找库路径(库名: str) -> str | None:
         路径 = ctypes.util.find_library(库名)
         if 路径:
             return 路径
-    except Exception:
-        pass
+    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+        记录忽略('动态库提供者.查找库路径', 错误)
     for 候选 in 候选名表.get(库名, []):
         try:
             已加载缓存.setdefault(库名, ctypes.CDLL(候选))

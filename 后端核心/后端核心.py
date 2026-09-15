@@ -27,6 +27,7 @@ from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
 from 运行核心.能力调用.唯一能力调用 import 设置全局唯一服务, 唯一能力调用服务
 from 运行核心.资源协调 import 资源句柄服务, 设置受管状态服务
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 _装配模板: 能力注册表 | None = None
 _装配锁 = threading.Lock()
@@ -391,8 +392,8 @@ class 后端核心:
                     self._包轻量指纹表[声明.包id] = self.计算包轻量指纹(声明)
                     try:
                         self._包目录表[声明.包id] = Path(声明.来源路径).parent.resolve()
-                    except Exception:
-                        pass
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                        记录忽略('后端核心.排序键', 错误)
                     成功包表.append(f"{声明.包id}（{'新增' if 声明 in 新增声明 else '变更'}）")
                 except Exception as 错误:
                     失败表.append(f"{声明.包id}: {错误}")
@@ -412,8 +413,8 @@ class 后端核心:
                 if 解析.成功:
                     新锁 = 构建装配锁(活跃声明, 提供者表, 解析.顺序列表)
                     记录装配状态(self.注册表, 新锁)
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('后端核心.排序键', 错误)
 
             self.状态.能力数 = len(self.注册表.能力id列表)
             # 指纹基线已随本次热接入刷新，清掉校验缓存避免沿用旧判定。

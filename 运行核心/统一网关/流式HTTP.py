@@ -17,6 +17,7 @@ from typing import Any, Callable, Iterator
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器
 from 公共契约.运行时.端口策略 import 校验应用监听端口
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 日志 = logging.getLogger("流式HTTP")
 
@@ -127,8 +128,8 @@ class HTTP流式通道:
                 try:
                     日志.error("流式通道结束回调异常 请求id=%s 原因=%s: %s",
                                self.请求id, 原因, 错误, exc_info=True)
-                except Exception:
-                    pass
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    记录忽略('流式HTTP._执行结束回调', 错误)
 
     def 完成(self, 数据: Any = None) -> dict[str, Any]:
         return self._终止("完成事件", 数据, "完成")
@@ -287,8 +288,8 @@ class HTTP流式管理器:
                 if 生成器 is not None and hasattr(生成器, "close"):
                     try:
                         生成器.close()
-                    except Exception:
-                        pass
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                        记录忽略('流式HTTP.执行', 错误)
 
         线程 = threading.Thread(target=执行, name=f"流式-{通道.请求id}", daemon=True)
         线程.start()

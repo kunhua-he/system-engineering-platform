@@ -13,6 +13,7 @@ import signal
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 句柄类型_读取 = "读取句柄"
 句柄类型_修改事务 = "修改事务句柄"
@@ -148,8 +149,8 @@ class 句柄体系:
             r = subprocess.run(["ps", "-o", "state=", "-p", str(pid)], capture_output=True, text=True, timeout=3)
             if r.stdout.strip() and r.stdout.strip()[0] in ("Z", "X"):
                 return False
-        except Exception:
-            pass
+        except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            记录忽略('句柄体系._检查进程存活', 错误)
         return True
 
     def _端口被占用(self, 端口: int) -> bool:
@@ -174,21 +175,21 @@ class 句柄体系:
                 if pid and self._检查进程存活(pid):
                     try:
                         os.killpg(pid, signal.SIGTERM) if os.getpgid(pid) == pid else os.kill(pid, signal.SIGTERM)
-                    except Exception:
-                        pass
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                        记录忽略('句柄体系._回收单个资源', 错误)
                     time.sleep(1)
                     try:
                         if self._检查进程存活(pid):
                             os.killpg(pid, signal.SIGKILL) if os.getpgid(pid) == pid else os.kill(pid, signal.SIGKILL)
-                    except Exception:
-                        pass
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                        记录忽略('句柄体系._回收单个资源', 错误)
                     说明 = "已终止进程（含进程组）" if not self._检查进程存活(pid) else "进程仍存活（回收失败）"
                 else:
                     # 进程不在（含 zombie 已死）→ 补杀一次确保回收干净
                     try:
                         os.kill(pid, signal.SIGKILL) if isinstance(pid, int) else None
-                    except Exception:
-                        pass
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                        记录忽略('句柄体系._回收单个资源', 错误)
                     说明 = "进程已不存在（无泄露）"
             elif 类型 == "端口":
                 端口 = 资源["端口"]

@@ -35,6 +35,7 @@ from 运行核心.加载器.提供者隔离.独立进程 import (
     进程状态_运行中,
 )
 from 运行核心.运行环境管理器.环境管理器 import 确保环境, 读取依赖锁
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 默认最大进程数 = 8
 默认日志上限 = 200
@@ -530,8 +531,8 @@ class 提供者生命周期管理器:
                         失败表.append(str(目录))
                         with self._锁:
                             self._临时目录表.append(Path(目录))
-                except Exception:
-                    pass
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    记录忽略('提供者生命周期.清理临时目录', 错误)
         return 失败表
 
     def 清理全部(self) -> list[str]:

@@ -13,6 +13,7 @@ import uuid
 from typing import Any
 
 from 运行核心.句柄体系 import 句柄体系, 失效原因_超时
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 
 class 租约:
@@ -94,8 +95,8 @@ class 租约管理器:
         if 句柄id:
             try:
                 self.句柄体系.失效(句柄id, 原因 or 失效原因_超时)
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('租约管理.回收', 错误)
         return True, f"租约已回收（{原因 or '主动回收'}）"
 
     def 扫描过期(self, 现在时间: float | None = None) -> list[str]:

@@ -21,6 +21,7 @@ from 运行核心.加载器.提供者隔离.独立进程 import 提供者进程�
 
 工作器源码 = r'''
 import json, os, signal, subprocess, sys, time
+from 公共契约.诊断.忽略记录 import 记录忽略
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 print("READY", flush=True)
 for 行 in sys.stdin:
@@ -86,8 +87,8 @@ class Provider进程维修测试(unittest.TestCase):
         for 对象 in self.对象表:
             try:
                 对象.重试关闭()
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('测试_Provider进程.tearDown', 错误)
         self.临时对象.cleanup()
 
     def _运行核心池(self, 池大小=3):

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from 运行核心.加载器.版本系统.版本注册表 import 版本包, 版本注册表
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 灰度指标阈值 = {"失败率上限": 0.05, "超时率上限": 0.10, "成功率下限": 0.95}
 
@@ -303,8 +304,8 @@ class 热切换管理器:
         if 停止进程 is not None and 停止进程 is not 恢复进程:
             try:
                 停止进程.优雅停止()
-            except Exception:
-                pass
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('热切换._真实回滚', 错误)
         回滚记录 = {
             "回滚id": _uuid.uuid4().hex[:16],
             "时间": _时间.strftime("%Y-%m-%d %H:%M:%S"),
