@@ -7,6 +7,8 @@ UTF-8 / GBK / Unicode(UTF-16) 互转 + 编码检测。
 
 from __future__ import annotations
 
+import codecs
+
 from 公共契约.基础类型.结果类型 import 结果
 
 _编码映射 = {"utf8": "utf-8", "utf-8": "utf-8", "gbk": "gbk", "gb2312": "gbk",
@@ -17,11 +19,27 @@ def _规范编码(编码: str) -> str:
     return _编码映射.get((编码 or "utf-8").lower().replace("_", "-"), (编码 or "utf-8"))
 
 
+def _校验编码(编码: str) -> tuple[str, str]:
+    """返回 (规范编码, 错误说明)。编码名不可识别属**参数不合法**（不是运行故障）。
+
+    2026-09-15 修：原先无法识别的编码名会落到 `UnicodeEncodeError/LookupError` →
+    被记为「编码失败」→ 网关按未声明错误码映射成 HTTP 500。参数错就该 400。
+    """
+    目标 = _规范编码(编码)
+    try:
+        codecs.lookup(目标)
+    except LookupError:
+        return 目标, f"无法识别的编码名: {编码!r}（支持 utf-8/gbk/big5/unicode/latin1 等）"
+    return 目标, ""
+
+
 def 文本转字节(文本: str = None, 编码: str = None) -> 结果:
     """文本 → 字节序列。返回 {字节b64, 编码}。"""
     if not isinstance(文本, str):
         return 结果.失败("参数不合法", "文本必须是非空字符串", 来源="编码转换")
-    目标编码 = _规范编码(编码)
+    目标编码, 编码问题 = _校验编码(编码)
+    if 编码问题:
+        return 结果.失败("参数不合法", 编码问题, 来源="编码转换")
     try:
         字节 = 文本.encode(目标编码)
     except (UnicodeEncodeError, LookupError) as 错误:
@@ -39,7 +57,9 @@ def 字节转文本(字节b64: str = None, 编码: str = None) -> 结果:
         字节 = base64.b64decode(字节b64)
     except Exception as 错误:
         return 结果.失败("参数不合法", f"字节b64解码失败: {错误}", 来源="编码转换")
-    目标编码 = _规范编码(编码)
+    目标编码, 编码问题 = _校验编码(编码)
+    if 编码问题:
+        return 结果.失败("参数不合法", 编码问题, 来源="编码转换")
     try:
         文本 = 字节.decode(目标编码)
     except (UnicodeDecodeError, LookupError) as 错误:
@@ -83,8 +103,12 @@ def 转码(字节b64: str = None, 源编码: str = None, 目标编码: str = Non
         字节 = base64.b64decode(字节b64)
     except Exception as 错误:
         return 结果.失败("参数不合法", f"字节b64解码失败: {错误}", 来源="编码转换")
-    源 = _规范编码(源编码)
-    目标 = _规范编码(目标编码)
+    源, 源问题 = _校验编码(源编码)
+    if 源问题:
+        return 结果.失败("参数不合法", 源问题, 来源="编码转换")
+    目标, 目标问题 = _校验编码(目标编码)
+    if 目标问题:
+        return 结果.失败("参数不合法", 目标问题, 来源="编码转换")
     try:
         文本 = 字节.decode(源)
         新字节 = 文本.encode(目标)
