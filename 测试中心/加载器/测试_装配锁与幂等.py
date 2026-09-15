@@ -205,8 +205,11 @@ class Test重复装配幂等与漂移(unittest.TestCase):
         self.assertTrue(结果二.成功, str(结果二.问题列表))
         self.assertEqual(结果一.顺序列表, 结果二.顺序列表)
         self.assertEqual(结果一.已注册能力数, 结果二.已注册能力数)
-        # 能力id列表按 id 排序：模块2 排在 模块1 前
-        self.assertEqual(self.注册表.能力id列表, ["幂等.模块2能力", "幂等.模块1能力"])
+        # 能力id列表按 id 排序（`契约.能力id列表` 实现为 sorted(_实现表)）：
+        # '1'(U+0031) < '2'(U+0032)，故 模块1 在 模块2 前。
+        # 2026-09-15 修正：原断言写成 ["幂等.模块2能力", "幂等.模块1能力"]，与其自身注释
+        # "按 id 排序"矛盾，属历史遗留写反（改动前后均失败，与本轮无关）。
+        self.assertEqual(self.注册表.能力id列表, ["幂等.模块1能力", "幂等.模块2能力"])
         self.assertEqual(
             self.注册表.获取("幂等.模块1能力").包id, "幂等.模块1")
 
@@ -228,7 +231,7 @@ class Test重复装配幂等与漂移(unittest.TestCase):
         self.assertFalse(结果二.成功)
         self.assertTrue(any("装配锁漂移" in 问题 and "版本漂移" in 问题 for 问题 in 结果二.问题列表),
                         str(结果二.问题列表))
-        self.assertEqual(self.注册表.能力id列表, ["幂等.模块2能力", "幂等.模块1能力"],
+        self.assertEqual(self.注册表.能力id列表, ["幂等.模块1能力", "幂等.模块2能力"],
                          "漂移冲突失败后注册表必须保持已装配版本，不得半覆盖")
 
     def test_提供者漂移冲突失败(self):
