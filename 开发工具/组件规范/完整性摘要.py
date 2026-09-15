@@ -44,14 +44,19 @@ def 计算文件摘要(文件: Path) -> str:
 
 
 def 生成完整性摘要(包目录: Path, *, 包id: str, 版本: str) -> dict[str, Any]:
-    """生成文件清单格式完整性摘要（路径有序、与时间无关）。"""
+    """生成完整性摘要（**唯一生成器**：路径有序、与时间无关）。
+
+    能力字段（能力数/能力清单/能力定义摘要）也由本函数产出，保证全平台只有一种形状——
+    原先编译器在委托本函数后自行追加字段，导致"编译器写的摘要"与"重算的摘要"形状不一，
+    依赖生命周期审计按唯一生成器重算即报「摘要漂移」（2026-09-15 审计修复）。
+    """
     文件列表 = sorted(
         (文件 for 文件 in 包目录.rglob("*") if 是否应当收录(文件, 包目录)),
         key=lambda 文件: 文件.relative_to(包目录).as_posix(),
     )
     if not 文件列表:
         raise ValueError(f"包内没有可纳入摘要的正式文件: {包目录}")
-    return {
+    数据: dict[str, Any] = {
         "包id": 包id,
         "版本": 版本,
         "摘要算法": "sha256",
@@ -63,6 +68,20 @@ def 生成完整性摘要(包目录: Path, *, 包id: str, 版本: str) -> dict[s
             for 文件 in 文件列表
         ],
     }
+    定义路径 = 包目录 / "能力定义.json"
+    if 定义路径.is_file():
+        try:
+            定义 = json.loads(定义路径.read_text(encoding="utf-8"))
+            能力列表 = 定义.get("能力列表") or []
+            数据["能力数"] = len(能力列表)
+            数据["能力清单"] = [能力["能力id"] for 能力 in 能力列表 if 能力.get("能力id")]
+            数据["能力定义摘要"] = hashlib.sha256(
+                json.dumps(定义, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest()[:16]
+        except (json.JSONDecodeError, OSError, KeyError, TypeError):
+            # 能力定义不可读时只省略附加字段，不影响文件清单这一权威部分
+            pass
+    return 数据
 
 
 def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
