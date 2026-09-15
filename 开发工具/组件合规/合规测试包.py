@@ -543,7 +543,9 @@ class 组件合规:
         """依赖：逐项按声明形状核验——能力项锁真实提供者、包id项经真实包发现确认。"""
         依赖路径 = self.组件目录 / "依赖契约" / "依赖契约.json"
         if not 依赖路径.is_file():
-            return False, "缺少 依赖契约/依赖契约.json"
+            # 无文件 = 无内部依赖（2026-09-15 定：空白的内部依赖声明一并删掉，不留占位文件；
+            # 判据与实现同源 —— 声明缺失即独立组件，不再要求空文件存在）
+            return True, "无依赖（未声明内部依赖）"
         try:
             依赖数据 = json.loads(依赖路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

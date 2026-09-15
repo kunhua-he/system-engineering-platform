@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.系统核心支持库.协议白名单",
-  "版本": "1.0.1",
+  "版本": "1.0.2",
   "说明": "LLM API 端点协议白名单校验（借鉴 OpenCode runner/model.ts）：只允许 openai/anthropic/openai-compatible，且 openai-compatible 必须有 http/https url。只校验不请求。",
   "能力列表": [
     {

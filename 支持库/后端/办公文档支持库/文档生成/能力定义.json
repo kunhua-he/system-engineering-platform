@@ -1,6 +1,6 @@
 {
   "包id": "支持库.后端.办公文档支持库.文档生成",
-  "版本": "1.0.1",
+  "版本": "1.0.2",
   "说明": "文档原子生成能力：DOCX/XLSX/PPTX/PDF 四格式生成（python-docx/openpyxl/python-pptx/reportlab）+ 生成后签名校验（OOXML 有效 ZIP 与必要成员 / PDF 头尾与重开）。",
   "能力列表": [
     {
