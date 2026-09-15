@@ -197,11 +197,11 @@
     },
     {
       "路径": "模型连接器/__init__.py",
-      "sha256": "9d02d4b04ae1a4c584b82647f8e14c3ecec358d212e1bad05b2f85837676f89f"
+      "sha256": "8952628e17e2fc2feffac2937cf924cc2a99b81b5d1cd8af177b3e731dbb3de1"
     },
     {
       "路径": "模型连接器/包声明.json",
-      "sha256": "629a7262c73290826c9fbd4a0d2d9bfe41e47fb47bf48f3ada3d826f9c7903df"
+      "sha256": "b2921d2197891b55d57fb5159df58a953779ede4e73eaf6f5b92ca4530ae4646"
     },
     {
       "路径": "模型连接器/复用决策.json",
@@ -213,7 +213,7 @@
     },
     {
       "路径": "模型连接器/实现/模型连接器.py",
-      "sha256": "23118f910b8f61b1a1bb6cbfa9d7db1b99d822d3bbae96b7c0ee319c15976a48"
+      "sha256": "d5c7be9bd12ea444ee44516a8e9827ab3646f038a14180dd5416e7efa6a3d0f2"
     },
     {
       "路径": "模型连接器/权限契约/权限契约.json",
@@ -221,23 +221,23 @@
     },
     {
       "路径": "模型连接器/能力契约/参数契约.json",
-      "sha256": "47fc99ab590dc9e4ef851162f5ecb5ed5cd2de9cd532af6de49b3735bb14c7ee"
+      "sha256": "41cc9308f6ce61faa251801efa26d48f9c62fa46de6d4a29190a8076dc63a9c6"
     },
     {
       "路径": "模型连接器/能力定义.json",
-      "sha256": "72caa0136d87a0a71362ec11513b2859dcb4863d42dc277d7af94d1425eab83c"
+      "sha256": "13221551d6728f914f155cc965d306ab18b59a8c470db0e21dc951e23a52f01f"
     },
     {
       "路径": "模型连接器/能力数据/Agent查询数据.json",
-      "sha256": "14d7e9d890cb565868819c3f670bc2ac4b8564bc289536df158bd4a0f87446dc"
+      "sha256": "1036e66c8e6f3a6aff9bc2637881bfc044800196268f51dd31a4b277d0c1e3bb"
     },
     {
       "路径": "模型连接器/能力数据/能力搜索数据.json",
-      "sha256": "1dc3d720729f7b0b43c5d05a000c6379da3270e63bc1d6c781f3f4ed0315a5c2"
+      "sha256": "ca6c051824db7875d7fff50f8787e36f76c7a10efe1c2968f1ea8597417f935a"
     },
     {
       "路径": "模型连接器/说明/使用说明.md",
-      "sha256": "9b54d00e7e93ea5ce865b8f3253f8964b42b211f6f0b87dc424ccd4835dcaea9"
+      "sha256": "bd3899c4f4e1e6543fe39029595d74e83bfe91429117141a3231de4237232880"
     },
     {
       "路径": "模型连接器/说明/设计说明.md",
