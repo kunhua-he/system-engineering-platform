@@ -72,7 +72,7 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
             try:
                 self.send_error(500, "处理器异常")
             except OSError as 错误:
-                # 连接已断开（客户端取消）时无法再写响应：允许忽略，但留痕（哲学第 15 条）。
+                # 连接已断开（客户端取消）时无法再写响应：允许忽略，但留痕（哲学第 3 条 2 项）。
                 记录忽略('HTTP提供者.异常响应', 错误)
 
     def log_message(self, 格式, *参数):

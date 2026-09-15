@@ -87,7 +87,7 @@ class Provider进程维修测试(unittest.TestCase):
         for 对象 in self.对象表:
             try:
                 对象.重试关闭()
-            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                 记录忽略('测试_Provider进程.tearDown', 错误)
         self.临时对象.cleanup()
 

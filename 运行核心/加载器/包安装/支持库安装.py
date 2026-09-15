@@ -14,31 +14,15 @@ from typing import Any
 
 from 公共契约.包声明 import 包声明, 加载声明文件
 from 公共契约.能力契约 import 能力注册表
+from 运行核心.加载器.包安装.入口路径 import 解析入口路径
 
 声明文件名 = "包声明.json"
 入口文件名 = "入口.py"
 
 
 def 加载入口模块(声明: 包声明) -> Any:
-    """按声明.入口 加载入口模块（支持相对系统根路径）。"""
-    系统根 = Path(__file__).resolve().parents[2]
-    for _祖先 in 系统根.parents:
-        if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
-            系统根 = _祖先
-            break
-    相对入口 = Path(声明.入口)
-    if 相对入口.is_absolute() or ".." in 相对入口.parts:
-        raise ValueError(f"支持库入口路径越界: {声明.入口}")
-    包根 = Path(声明.来源路径).parent.resolve()
-    入口路径 = (包根 / 相对入口).resolve()
-    使用系统根回退 = False
-    if not 入口路径.is_file() or not 入口路径.is_relative_to(包根):
-        入口路径 = (系统根 / 相对入口).resolve()
-        使用系统根回退 = True
-    if 使用系统根回退 and not 入口路径.is_relative_to(系统根.resolve()):
-        raise ValueError(f"支持库入口路径越界: {声明.入口}")
-    if not 入口路径.is_file():
-        raise FileNotFoundError(f"支持库 {声明.包id} 缺少入口文件: {声明.入口}")
+    """按声明.入口 加载入口模块（路径解析见 入口路径.解析入口路径）。"""
+    入口路径 = 解析入口路径(声明, "支持库")
     模块名 = f"支持库运行时_{声明.包id.replace('.', '_')}"
     if 模块名 in sys.modules:
         return sys.modules[模块名]

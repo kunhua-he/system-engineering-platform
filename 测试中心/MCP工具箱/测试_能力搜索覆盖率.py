@@ -8,16 +8,52 @@ import sys
 import unittest
 from pathlib import Path
 
-公开能力路径 = Path(__file__).resolve().parents[2] / "MCP工具箱" / "公开能力.py"
-sys.path.insert(0, str(公开能力路径.parent))
-规格 = importlib.util.spec_from_file_location("公开能力覆盖率模块", 公开能力路径)
+# 收敛后：公开能力检索的唯一实现 = 模块库/能力目录 的两个能力（MCP工具箱 已整目录删除）。
+# 新实现自己定位项目根，因此下面两个适配器忽略 项目根 参数，只保持旧测试调用形状。
+实现目录 = Path(__file__).resolve().parents[2] / "模块库" / "能力目录" / "实现"
+sys.path.insert(0, str(实现目录.parent.parent.parent))          # 项目根入 path（新实现按包路径导入）
+规格 = importlib.util.spec_from_file_location("能力目录实现", 实现目录 / "能力目录.py")
 assert 规格 and 规格.loader
 公开能力模块 = importlib.util.module_from_spec(规格)
+sys.modules["能力目录实现"] = 公开能力模块
 规格.loader.exec_module(公开能力模块)
+
+索引规格 = importlib.util.spec_from_file_location("能力索引实现", 实现目录 / "能力索引.py")
+索引模块 = importlib.util.module_from_spec(索引规格)
+索引规格.loader.exec_module(索引模块)
+
+
+def 搜索公开能力(项目根=None, 关键词="", 限制=10):
+    """适配旧调用形状：新实现是统一结果信封，旧实现直接返回记录列表。
+
+    新实现：`搜索能力(关键词, 限制)` → 结果{值: {能力列表: [...], 总数, ...}}；
+    旧实现：`搜索公开能力(项目根, 关键词, 限制)` → [记录, ...]。
+    """
+    结果 = 公开能力模块.搜索能力(关键词, 限制)
+    if not getattr(结果, "成功", False):
+        return []
+    值 = 结果.值
+    if isinstance(值, dict):
+        return 值.get("能力列表") or []
+    return 值 or []
+
+
+def 读取公开能力(项目根=None, 能力id=""):
+    """适配旧调用形状：拆掉统一结果信封，返回单条记录字典。"""
+    结果 = 公开能力模块.读取能力(能力id)
+    if not getattr(结果, "成功", False):
+        return {}
+    值 = 结果.值
+    return 值 if isinstance(值, dict) else {}
+
+
+# 测试按「模块.函数」调用（旧实现是模块自带函数），这里把适配器挂回模块对象。
+公开能力模块.搜索公开能力 = 搜索公开能力
+公开能力模块.读取公开能力 = 读取公开能力
 
 项目根 = Path(__file__).resolve().parents[2]
 
-十字段 = list(公开能力模块.搜索字段表)
+十字段 = list(索引模块.搜索字段表)
 
 第三方实现包表 = (
     "Pillow", "PIL", "pdfplumber", "fitz", "pypdf", "docx", "pptx",
@@ -25,6 +61,24 @@ assert 规格 and 规格.loader
     "whisper", "ffmpeg", "Crypto", "Cryptodome",
 )
 
+
+def _契约调用示例(能力id: str):
+    """从该能力的 参数契约.json 读契约声明的 调用示例（没有则返回 None）。
+
+    收敛后：记录里的 调用示例 必须**等于契约声明值**，契约没声明才允许是「无」——
+    不允许实现自己合成一个假示例（这正是本覆盖率测试要守的底线）。
+    """
+    for 契约路径 in 项目根.rglob("参数契约.json"):
+        if "工程缓存" in str(契约路径):
+            continue
+        try:
+            数据 = json.loads(契约路径.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for 条目 in 数据.get("能力契约", []) or []:
+            if isinstance(条目, dict) and 条目.get("能力id") == 能力id:
+                return 条目.get("调用示例") or None
+    return None
 
 class 能力搜索覆盖率测试(unittest.TestCase):
     def setUp(self) -> None:
@@ -62,7 +116,9 @@ class 能力搜索覆盖率测试(unittest.TestCase):
         结果 = 公开能力模块.搜索公开能力(项目根, "", 100)
         self.assertGreater(len(结果), 0)
         for 能力 in 结果:
-            self.assertEqual(能力["调用示例"], "无", f"{能力['能力id']} 无示例须标注为无")
+            契约示例 = _契约调用示例(能力["能力id"])
+            self.assertIn(能力["调用示例"], ("无", 契约示例),
+                          f"{能力['能力id']} 的 调用示例 必须等于契约声明值或如实标「无」，不得合成")
             self.assertIn("验证场景引用", 能力["验证状态"])
             self.assertIn("验证成功记录", 能力["验证状态"])
         # 模块库能力搜索数据已生成：提供者如实落到包自身、必填为明确布尔值（不再标"未声明"）
@@ -111,7 +167,9 @@ class 能力搜索覆盖率测试(unittest.TestCase):
         self.assertEqual(解码图像["提供者"], "模块库.图像处理")
         self.assertIsInstance(解码图像["返回结构"], dict)
         self.assertIn("参数不合法", 解码图像["错误码"])
-        self.assertEqual(解码图像["调用示例"], "无")
+        契约示例 = _契约调用示例(解码图像["能力id"])
+        self.assertIn(解码图像["调用示例"], ("无", 契约示例),
+                      "调用示例 必须等于契约声明值或如实标「无」，不得合成")
 
     def test_验证状态如实标注当前真实状态(self) -> None:
         解码图像 = 公开能力模块.读取公开能力(项目根, "图像处理.识别图像格式")

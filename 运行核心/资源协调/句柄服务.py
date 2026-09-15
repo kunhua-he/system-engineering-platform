@@ -353,7 +353,7 @@ class 资源账本维护循环:
         with self._清扫锁:
             try:
                 self.状态账本.刷新心跳()
-            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                 记录忽略('资源账本维护循环.刷新心跳', 错误)
             清理列表 = list(self.状态账本.清理死亡进程资源(
                 心跳超时秒=self.心跳超时秒, 保留窗口秒=self.保留窗口秒))
@@ -374,7 +374,7 @@ class 资源账本维护循环:
             finally:
                 try:
                     self.状态账本.释放当前线程连接()
-                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                     记录忽略('资源账本维护循环.释放连接', 错误)
             self._停止事件.wait(self.间隔秒)
 

@@ -110,7 +110,7 @@ def 建临时模块库() -> tuple[Path, Path]:
 
 
 def _MCP合规(临时根: Path, 模块名: str = "破坏模块") -> dict:
-    from MCP工具箱.模块合规 import 校验模块合规
+    from 开发工具.组件合规.模块合规 import 校验模块合规
     return 校验模块合规(临时根, 模块名)
 
 

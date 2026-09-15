@@ -1,0 +1,102 @@
+"""反馈语义公共件：非空文本 / 大小上限 / 敏感脱敏 / 内容摘要的**唯一实现**。
+
+B5 落点裁决（第 1 条 3 项「结果唯一即收口」+ 第 2 条 1 项「分层与归属固定」）：
+
+- `能力反馈` 与 `开发反馈` **对象不同**（运行时诊断：能力id + 契约版本 + 错误码 +
+  8 态状态机 ↔ 开发过程：开工id + 五字段 + 反馈门禁），按第 1 条 3 项**不构成重复**，
+  不合并成一条腿、不互相吞并。
+- 但两者用到的**机制完全相同**（非空文本校验、长度上限、大小上限、敏感字段脱敏、
+  去重用的内容摘要）。按第 1 条 3 项 + 第 8 条 3 项「能参数化成一个能力的绝不分家」，
+  机制只允许一份实现 → 全部收进本模块；各反馈服务只保留自己的字段与状态语义。
+
+行为冻结：本模块的 `文本` / `脱敏` 与收敛前 `反馈服务.py` 内的 `_文本` / `_脱敏`
+逐字等价（含字典键脱敏、Bearer 与 sk-/xai-/ghp_ 令牌掩码、字符串 2048 截断、
+递归深度 6、列表与字典各取前 100 项），`摘要上限字节` 与 `说明上限` 数值不变，
+所以「能力反馈」对外返回值不变。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from typing import Any
+
+文本上限 = 256
+说明上限 = 2048
+摘要上限字节 = 16 * 1024
+敏感键 = {"api_key", "apikey", "authorization", "cookie", "password", "secret", "token",
+          "密码", "令牌", "密钥", "私钥", "连接串", "凭证"}
+敏感片段 = ("password", "token", "secret", "cookie")
+脱敏文本上限 = 2048
+递归上限 = 6
+容器上限 = 100
+
+
+def 文本(值: Any, 名称: str, 上限: int = 文本上限) -> str:
+    """非空文本校验：必须是非空字符串、不超过长度上限、不含 NUL。"""
+    if not isinstance(值, str) or not 值.strip():
+        raise ValueError(f"{名称}必须是非空文本")
+    if len(值) > 上限 or "\x00" in 值:
+        raise ValueError(f"{名称}超过长度上限")
+    return 值.strip()
+
+
+def 脱敏(值: Any, 深度: int = 0) -> Any:
+    """递归脱敏：命中敏感键名置 `[已脱敏]`；文本掩码 Bearer 与 sk-/xai-/ghp_ 令牌。"""
+    if 深度 > 递归上限:
+        return "[已脱敏]"
+    if isinstance(值, dict):
+        返回 = {}
+        for 键, 子值 in list(值.items())[:容器上限]:
+            键文本 = str(键)[:128]
+            if 键文本.lower() in 敏感键 or any(词 in 键文本.lower() for 词 in 敏感片段):
+                返回[键文本] = "[已脱敏]"
+            else:
+                返回[键文本] = 脱敏(子值, 深度 + 1)
+        return 返回
+    if isinstance(值, list):
+        return [脱敏(子值, 深度 + 1) for 子值 in 值[:容器上限]]
+    if isinstance(值, str):
+        结果 = 值[:脱敏文本上限]
+        结果 = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [已脱敏]", 结果)
+        结果 = re.sub(r"(?i)(sk-|xai-|ghp_)[A-Za-z0-9_-]{8,}", "[已脱敏]", 结果)
+        return 结果
+    if isinstance(值, (bool, int, float)) or 值 is None:
+        return 值
+    return str(值)[:256]
+
+
+def 键值脱敏(文本: str) -> str:
+    """文本形态的键值型敏感词掩码：`password: xxx` / `密钥=xxx` → 值置 `[已脱敏]`。
+
+    `脱敏` 只按**键名**脱敏（字典场景）；开发反馈的五个字段是自由文本，
+    旧 `使用反馈._脱敏` 对这类文本另有键值型掩码，故单独提供、单独调用，
+    不改变 `脱敏` 的既有行为（避免「能力反馈」返回值漂移）。
+    """
+    return re.sub(r"(?i)(password|token|secret|密钥|密码)\s*[:=]\s*\S+", r"\1=[已脱敏]", 文本)
+
+
+def 摘要(值: Any, 名称: str) -> str:
+    """摘要字段规范化为脱敏后的 JSON 文本；原文与脱敏后都必须在上限内。"""
+    if 值 is None:
+        值 = {}
+    if not isinstance(值, dict):
+        raise ValueError(f"{名称}必须是对象")
+    原始文本 = json.dumps(值, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if len(原始文本.encode("utf-8")) > 摘要上限字节:
+        raise ValueError(f"{名称}超过大小上限 {摘要上限字节} 字节")
+    结果 = json.dumps(脱敏(值), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if len(结果.encode("utf-8")) > 摘要上限字节:
+        raise ValueError(f"{名称}超过大小上限 {摘要上限字节} 字节")
+    return 结果
+
+
+def 内容摘要(内容: dict[str, Any]) -> str:
+    """内容摘要（幂等/去重判据）：sha256 全量十六进制，字段与值都参与、稳定排序。
+
+    长度**保持全量**（不截断）：`能力反馈` 的历史记录里存的就是全量摘要，
+    截断会让「同一条反馈重复提交」被判成 `幂等键冲突` 而不是 `是否重复`。
+    """
+    return hashlib.sha256(
+        json.dumps(内容, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()

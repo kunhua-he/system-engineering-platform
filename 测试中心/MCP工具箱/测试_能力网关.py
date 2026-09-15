@@ -19,7 +19,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from MCP工具箱.能力网关 import 能力网关请求处理器, 启动网关
+from 开发工具.能力网关.能力网关 import 能力网关请求处理器, 启动网关
 
 
 class 能力网关测试(unittest.TestCase):

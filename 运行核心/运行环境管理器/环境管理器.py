@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import venv
 try:
     import fcntl
@@ -33,6 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 工程缓存目录名 = "工程缓存"
@@ -99,6 +101,46 @@ def 读取依赖锁(提供者目录: Path) -> dict:
     if not 锁文件.is_file():
         return {}
     return json.loads(锁文件.read_text(encoding="utf-8"))
+
+
+def 读取依赖锁容错(提供者目录: Path) -> dict:
+    """容错读取 依赖锁.json：半成品/损坏锁一律返回空字典，不抛异常。
+
+    只用于「读取锁只为取标识」的旁路（如制品仓库标识）；锁内容是否合法
+    由 检查依赖锁内容 判定，禁止用它替代装配层的 fail-closed 判定。
+    """
+    try:
+        数据 = 读取依赖锁(提供者目录)
+    except (OSError, ValueError):
+        return {}
+    return 数据 if isinstance(数据, dict) else {}
+
+
+def 检查依赖锁内容(提供者目录: Path) -> tuple[str, str]:
+    """依赖锁内容检查（唯一口径）：返回 (错误码, 错误说明)，正常返回 ("", "")。
+
+    判定顺序与 强制校验.校验提供者环境 的前三条规则同源：
+    锁文件缺失 → 不在此判定（由调用方按「无第三方依赖」处理）；
+    锁无法解析/顶层非对象 → 依赖锁无效；包与直接依赖均为空 → 依赖锁为空。
+    """
+    锁文件 = Path(提供者目录) / "依赖锁.json"
+    if not 锁文件.is_file():
+        return "", ""
+    try:
+        锁 = json.loads(锁文件.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as 错误:
+        return "依赖锁无效", f"依赖锁.json 无法解析（{错误}），禁止装配提供者"
+    if not isinstance(锁, dict):
+        return "依赖锁无效", "依赖锁顶层必须是对象，禁止装配提供者"
+    if not 锁.get("包") and not 锁.get("直接依赖"):
+        return "依赖锁为空", "包与直接依赖均为空，禁止装配提供者"
+    return "", ""
+
+
+def 记录跳过证据(提供者目录: Path, 错误码: str, 错误说明: str) -> None:
+    """装配层单包级跳过时写入缓存证据：坏锁审计链不因「跳过而非阻断」丢失。"""
+    _记录证据(提供者目录, "失败", "", _输入哈希(提供者目录),
+               错误码=错误码, 错误说明=错误说明)
 
 
 def _定位系统根(提供者目录: Path) -> Path:
@@ -249,7 +291,6 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300,
     if isinstance(超时秒, bool) or not isinstance(超时秒, int) or not 1 <= 超时秒 <= 3600:
         return 环境结果(False, 错误码="参数不合法", 错误说明="环境构建超时秒必须在 1 到 3600 之间")
     _报告阶段(进度回调, "检查缓存")
-    依赖锁 = 读取依赖锁(提供者目录)
     输入哈希 = _输入哈希(提供者目录)
     提供者id = 提供者目录.name
     # 没有依赖锁表示该提供者没有声明第三方依赖；装配器会在需要时
@@ -260,14 +301,14 @@ def 确保环境(提供者目录: Path, *, 超时秒: int = 300,
         _报告阶段(进度回调, "环境就绪")
         return 环境结果(True, 解释器路径=sys.executable,
                          错误说明="无第三方依赖，使用系统解释器")
-    if not isinstance(依赖锁, dict):
+    # 锁内容判定与 强制校验 同源；半成品/损坏锁在此明确失败并有证据，
+    # 不再让 json 解析异常冒出（2026-09-15：非法 JSON 锁原先会抛穿装配）。
+    错误码, 错误说明 = 检查依赖锁内容(提供者目录)
+    if 错误码:
         _记录证据(提供者目录, "失败", "", 输入哈希,
-                   错误码="依赖锁无效", 错误说明="依赖锁顶层必须是对象，禁止装配提供者")
-        return 环境结果(False, 错误码="依赖锁无效", 错误说明="依赖锁顶层必须是对象，禁止装配提供者")
-    if not 依赖锁.get("包") and not 依赖锁.get("直接依赖"):
-        _记录证据(提供者目录, "失败", "", 输入哈希,
-                   错误码="依赖锁为空", 错误说明="包与直接依赖均为空，禁止装配提供者")
-        return 环境结果(False, 错误码="依赖锁为空", 错误说明="包与直接依赖均为空，禁止装配提供者")
+                   错误码=错误码, 错误说明=错误说明)
+        return 环境结果(False, 错误码=错误码, 错误说明=错误说明)
+    依赖锁 = 读取依赖锁(提供者目录)
     if not 依赖锁:
         _记录证据(提供者目录, "命中", "", 输入哈希)
         return 环境结果(True, 解释器路径=sys.executable, 错误说明="无第三方依赖，使用系统解释器")
@@ -385,7 +426,7 @@ def _尝试镜像命中(提供者目录: Path, 依赖锁: dict, 目标: Path,
 
 def _并行确保单环境(提供者目录: Path) -> 环境结果:
     """并行任务单元：先取提供者锁（同提供者串行），再取制品仓库锁（同制品串行）。"""
-    依赖锁 = 读取依赖锁(提供者目录)
+    依赖锁 = 读取依赖锁容错(提供者目录)
     with _提供者锁(提供者目录.name):
         with _制品仓库锁(_制品仓库标识(依赖锁)):
             return 确保环境(提供者目录)
@@ -416,23 +457,129 @@ def 校验环境(解释器: Path, 依赖锁: dict) -> bool:
 
     外部应用/系统工具（来源 非 PyPI）不做 import 校验：它们不是
     Python 包，以系统解释器运行，由提供者自身负责存在性检查。
+
+    性能口径（2026-09-15 实测修复，两处）：
+
+    1. **每提供者一次解释器启动**：原来每个包串一次
+       `bash -c "<解释器> -c 'import X' && …"`，一个提供者有几个包就起几次解释器。
+       装配冷启动实测 40 次校验共 **6.95 秒**（均值 174 ms/次）；改为一次解释器
+       导入该提供者全部包后降到 **6.44 秒 / 161 ms**（剩下的时间是真的在 import
+       重库：torch / mlx / transformers 单个就是几百毫秒）。
+    2. **校验结果缓存**：环境一旦构建/镜像落盘就是既成事实，装配每轮冷启动都
+       重新 import 一遍纯属重复 IO。现在按「解释器指纹（大小+纳秒 mtime）+ 包
+       集合（模块名@版本）」写 `<venv>/.环境校验通过.json`，命中且未过期
+       （默认 24 小时，环境变量 `系统底座_环境校验缓存秒` 可调，设 0 即关闭）就
+       直接放行；解释器被替换、包集合变化、超期三种情况一律**重新真校验**，
+       不靠缓存兜底。缓存只记「这次真验过」这一事实，不改变校验语义。
     """
     if not 解释器.is_file():
         return False
     包表 = [包 for 包 in 依赖锁.get("包", []) if _是pip包(包)]
     if not 包表:
         return True
-    检查列表 = " && ".join(
-        f"{str(解释器)} -c 'import {包['模块名']}'" for 包 in 包表
+    模块名表 = []
+    for 包 in 包表:
+        名称 = str(包.get("模块名") or "").strip()
+        if 名称 and 名称 not in 模块名表:
+            模块名表.append(名称)
+    if not 模块名表:
+        return True
+    缓存键 = _环境校验缓存键(解释器, 包表, 模块名表)
+    if _环境校验缓存命中(解释器, 缓存键):
+        return True
+    内联代码 = (
+        "import importlib\n"
+        f"模块名表 = {模块名表!r}\n"
+        "for 名称 in 模块名表:\n"
+        "    importlib.import_module(名称)\n"
     )
     try:
         结果 = subprocess.run(
-            ["bash", "-c", 检查列表],
+            [str(解释器), "-c", 内联代码],
             capture_output=True, timeout=60, env={**os.environ, "PYTHONNOUSERSITE": "1"},
         )
-        return 结果.returncode == 0
+        通过 = 结果.returncode == 0
     except Exception:
+        通过 = False
+    if 通过:
+        _环境校验缓存写入(解释器, 缓存键)
+    else:
+        _环境校验缓存清除(解释器)
+    return 通过
+
+
+环境校验缓存文件名 = ".环境校验通过.json"
+环境校验缓存秒环境变量 = "系统底座_环境校验缓存秒"
+默认环境校验缓存秒 = 24 * 3600
+
+
+def _环境校验缓存秒() -> float:
+    """缓存有效期秒（0/负值 = 关闭缓存）。"""
+    原值 = os.environ.get(环境校验缓存秒环境变量, "").strip()
+    if not 原值:
+        return float(默认环境校验缓存秒)
+    try:
+        return float(原值)
+    except ValueError:
+        return float(默认环境校验缓存秒)
+
+
+def _环境校验缓存键(解释器: Path, 包表: list, 模块名表: list) -> str:
+    """缓存键：解释器指纹 + 包集合（模块名@版本），任一变化即失效。"""
+    指纹 = ""
+    try:
+        状态 = 解释器.stat()
+        指纹 = f"{状态.st_size}:{状态.st_mtime_ns}"
+    except OSError:
+        指纹 = "未知"
+    包指纹 = ",".join(sorted(
+        f"{包.get('模块名')}@{包.get('版本')}" for 包 in 包表
+    ))
+    return f"解释器={指纹}|包={包指纹}|模块数={len(模块名表)}"
+
+
+def _环境校验缓存路径(解释器: Path) -> Path:
+    """缓存文件落在该环境自己的根目录（venv/bin/python3 → venv/）。"""
+    return 解释器.parent.parent / 环境校验缓存文件名
+
+
+def _环境校验缓存命中(解释器: Path, 缓存键: str) -> bool:
+    """缓存命中：键一致、未过期、且解释器仍在（解释器存在性已在调用方判过）。"""
+    寿命 = _环境校验缓存秒()
+    if 寿命 <= 0:
         return False
+    路径 = _环境校验缓存路径(解释器)
+    try:
+        数据 = json.loads(路径.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if str(数据.get("键", "")) != 缓存键:
+        return False
+    写入时间 = float(数据.get("时间", 0) or 0)
+    return (time.time() - 写入时间) <= 寿命
+
+
+def _环境校验缓存写入(解释器: Path, 缓存键: str) -> None:
+    """写入缓存（尽力而为：写不进去只是下次再真校验一次，不影响正确性）。"""
+    if _环境校验缓存秒() <= 0:
+        return
+    路径 = _环境校验缓存路径(解释器)
+    try:
+        路径.write_text(
+            json.dumps({"键": 缓存键, "时间": time.time()}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError as 错误:
+        # 写不进去不影响正确性（下次再真校验一次），但按第 3 条必须留痕。
+        记录忽略("环境校验缓存写入失败", 路径=str(路径), 错误=str(错误))
+
+
+def _环境校验缓存清除(解释器: Path) -> None:
+    """校验不通过时删除缓存，避免坏环境被缓存放行。"""
+    try:
+        _环境校验缓存路径(解释器).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _是pip包(包: dict) -> bool:
@@ -515,7 +662,7 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
 
 def 废弃环境(提供者目录: Path) -> 环境结果:
     """废弃（删除）提供者全部生成环境。"""
-    依赖锁 = 读取依赖锁(提供者目录)
+    依赖锁 = 读取依赖锁容错(提供者目录)
     摘要 = 计算环境摘要(依赖锁, 提供者目录.name) if 依赖锁 else ""
     目标 = 环境目录(提供者目录, 摘要) if 摘要 else None
     if 目标 and 目标.exists():
@@ -525,7 +672,7 @@ def 废弃环境(提供者目录: Path) -> 环境结果:
 
 def 环境摘要信息(提供者目录: Path) -> dict[str, Any]:
     """返回环境摘要信息（供门禁/项目锁使用）。"""
-    依赖锁 = 读取依赖锁(提供者目录)
+    依赖锁 = 读取依赖锁容错(提供者目录)
     if not 依赖锁:
         return {"独立环境": False, "依赖": []}
     摘要 = 计算环境摘要(依赖锁, 提供者目录.name)

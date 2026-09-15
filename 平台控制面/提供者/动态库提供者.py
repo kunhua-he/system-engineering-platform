@@ -63,7 +63,7 @@ def 查找库路径(库名: str) -> str | None:
         路径 = ctypes.util.find_library(库名)
         if 路径:
             return 路径
-    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+    except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
         记录忽略('动态库提供者.查找库路径', 错误)
     for 候选 in 候选名表.get(库名, []):
         try:

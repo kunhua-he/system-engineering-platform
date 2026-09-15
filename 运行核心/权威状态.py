@@ -98,7 +98,7 @@ def _退出时关闭状态连接() -> None:
     for 状态 in list(_活动状态实例):
         try:
             状态.关闭()
-        except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+        except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
             记录忽略('权威状态._退出时关闭状态连接', 错误)
 
 
@@ -186,7 +186,7 @@ class 权威状态:
             return
         try:
             连接.close()
-        except sqlite3.Error as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+        except sqlite3.Error as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
             记录忽略('权威状态.释放当前线程连接', 错误)
 
     # ---- 结构迁移器（初始化/迁移分离） ----
@@ -1061,11 +1061,11 @@ class 权威状态:
             for 连接 in list(连接表.values()):
                 try:
                     连接.close()
-                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                     记录忽略('权威状态.__del__', 错误)
             连接表.clear()
             getattr(self, "_连接线程表", {}).clear()
-        except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+        except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
             记录忽略('权威状态.__del__', 错误)
 
     def 校验结构(self) -> tuple[bool, str]:

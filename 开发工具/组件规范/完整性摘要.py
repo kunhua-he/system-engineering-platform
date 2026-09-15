@@ -18,6 +18,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from 公共契约.正式根 import 存在根名
+
 摘要文件名 = "完整性摘要.json"
 排除目录名 = {"__pycache__", "工程缓存"}
 排除文件后缀 = {".pyc", ".pyo"}
@@ -156,7 +158,7 @@ def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
 def 扫描正式包(系统根: Path) -> list[Path]:
     """查找全部拥有包声明的正式支持库、模块与技能库包目录。"""
     包目录集合: set[Path] = set()
-    for 根目录名 in ("支持库", "模块库", "技能库"):
+    for 根目录名 in 存在根名(系统根):
         根目录 = 系统根 / 根目录名
         if not 根目录.is_dir():
             continue

@@ -23,7 +23,7 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 
-# 补列等容错路径的问题留痕（哲学第 15 条：失败必须可见，不许 except: pass 吞掉）
+# 补列等容错路径的问题留痕（哲学第 3 条 2 项：失败必须可见，不许 except: pass 吞掉）
 补列问题: list[str] = []
 
 默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "大语言模型支持库.会话存储.db")
@@ -125,7 +125,7 @@ def _连接(库路径: str) -> sqlite3.Connection:
                 os.makedirs(目录, exist_ok=True)
             新建 = sqlite3.connect(目标, timeout=10, check_same_thread=False)
             新建.executescript(_建表语句)
-            # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 15 条）。
+            # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 3 条 2 项）。
             try:
                 新建.execute("ALTER TABLE 会话表 ADD COLUMN 父会话id TEXT")
                 新建.commit()

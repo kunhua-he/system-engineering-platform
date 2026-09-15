@@ -19,6 +19,10 @@
 - 资源预算：RLIMIT_CPU / RLIMIT_FSIZE。
 - 导入审计（AST）：禁止 shell=True、eval/exec/compile、__import__/importlib 动态加载、
   subprocess/os 命令执行、第三方库；调用方可用「禁止导入前缀」追加项目级禁入项。
+- 可调能力白名单（默认空 = 行为与历史版本完全一致，技能脚本只能纯标准库）：非空时把
+  合成模块 `技能底座能力` 注入子进程并**只对它一个模块名放行导入**，技能脚本经它走
+  唯一网关 HTTP（`POST /网关/调用`，操作=调用能力）调用白名单内的底座能力；
+  白名单外一律拒绝，不放第三方、不放进程派生、不放项目模块导入。
 """
 
 from __future__ import annotations
@@ -29,9 +33,11 @@ import json
 import os
 import resource
 import select
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -75,18 +81,189 @@ from 公共契约.基础类型.结果类型 import 结果
 默认脚本大小上限 = 1_048_576
 
 
+# ── 可调能力白名单（技能脚本唯一的底座能力调用腿） ────────────────────
+# 默认空 = 行为与历史版本完全一致：技能脚本只能纯标准库。
+# 非空时才把下面的合成模块写进临时目录、注入子进程，并对该模块名放行导入。
+# 凭证只经环境变量传递，绝不写进代码、日志或返回结构。
+合成模块名 = "技能底座能力"
+合成模块目录前缀 = "技能底座能力注入-"
+默认网关地址 = "http://127.0.0.1:40007"
+网关地址环境变量 = "技能库_网关地址"
+网关凭证环境变量 = "系统库网关凭证"
+默认网关超时秒 = 20.0
+
+合成模块模板 = '''"""技能底座能力：平台为本次受控执行注入的唯一底座能力调用腿（合成模块）。
+
+技能脚本只能用本模块的 调用底座能力()；请求交给唯一网关 POST /网关/调用（操作=调用能力）。
+可调能力白名单在注入时冻结在 可用能力白名单 里：白名单外的能力 id 一律拒绝，
+不改走别的通道、不降级。凭证从环境变量读取，不落盘、不回传、不打印。
+"""
+
+import http.client
+import json
+import os
+from urllib.parse import quote as _路径编码
+from urllib.parse import urlsplit as _拆地址
+
+可用能力白名单 = __注入白名单__
+网关地址 = "__注入网关地址__"
+凭证变量名 = "__注入凭证变量名__"
+默认超时秒 = __注入超时秒__
+
+
+def 查询白名单() -> list:
+    """返回本次运行的可调能力白名单（只读副本）。"""
+    return list(可用能力白名单)
+
+
+def 调用底座能力(能力id, 参数=None, 超时秒=None) -> dict:
+    """经唯一网关调用白名单内的底座能力。
+
+    返回 {"成功", "值", "错误码", "错误说明", "状态码", "请求id"}；
+    失败如实返回，不抛异常、不静默降级。
+    """
+    名称 = str(能力id or "").strip()
+    if not 名称:
+        return _失败("能力id不合法", "能力id 不能为空")
+    if 名称 not in 可用能力白名单:
+        return _失败("能力不在白名单", "能力 %s 不在本次可调能力白名单内（白名单: %s）" % (名称, 可用能力白名单))
+    凭证 = str(os.environ.get(凭证变量名) or "")
+    if not 凭证:
+        return _失败("网关凭证缺失", "环境变量 %s 未设置，无法经唯一网关调用" % 凭证变量名)
+    if not 凭证.isascii():
+        return _失败("网关凭证非ASCII", "网关凭证含非 ASCII 字符，HTTP 请求头无法传输")
+    载荷 = json.dumps(
+        {"操作": "调用能力", "能力id": 名称, "参数": 参数 if isinstance(参数, dict) else {}},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    地址 = _拆地址(网关地址)
+    if 地址.scheme != "http" or not 地址.hostname:
+        return _失败("网关地址不合法", "只支持 http://主机:端口 形式的网关地址: %s" % 网关地址)
+    连接 = None
+    try:
+        连接 = http.client.HTTPConnection(地址.hostname, 地址.port or 80, timeout=float(超时秒 or 默认超时秒))
+        连接.request(
+            "POST",
+            "/" + _路径编码("网关/调用"),
+            body=载荷,
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": "Bearer " + 凭证,
+            },
+        )
+        响应 = 连接.getresponse()
+        状态码 = int(响应.status)
+        正文 = 响应.read().decode("utf-8", "replace")
+    except Exception as 错误:
+        return _失败("网关不可达", "%s: %s" % (type(错误).__name__, 错误))
+    finally:
+        if 连接 is not None:
+            try:
+                连接.close()
+            except Exception:
+                pass
+    try:
+        信封 = json.loads(正文)
+    except ValueError:
+        return _失败("网关返回格式错误", "HTTP %s 返回不是合法 JSON: %s" % (状态码, 正文[:200]))
+    if not isinstance(信封, dict):
+        return _失败("网关返回格式错误", "HTTP %s 返回不是信封对象" % 状态码)
+    返回 = {
+        "成功": bool(信封.get("成功")),
+        "值": 信封.get("值"),
+        "错误码": str(信封.get("错误码") or ""),
+        "错误说明": str(信封.get("错误说明") or ""),
+        "状态码": 状态码,
+        "请求id": str(信封.get("请求id") or ""),
+    }
+    return 返回
+
+
+def _失败(错误码, 错误说明) -> dict:
+    返回 = {"成功": False, "值": None, "错误码": 错误码, "错误说明": 错误说明, "状态码": 0, "请求id": ""}
+    return 返回
+'''
+
+
+class 能力注入:
+    """可调能力白名单的合成模块注入物：临时目录 + 子进程环境附加；用完必须 清理()。"""
+
+    def __init__(self, 目录: Path, 白名单: tuple[str, ...], 环境附加: dict) -> None:
+        self.目录 = 目录
+        self.模块名 = 合成模块名
+        self.白名单 = 白名单
+        self.环境附加 = 环境附加
+
+    def 清理(self) -> None:
+        shutil.rmtree(self.目录, ignore_errors=True)
+
+
+def 校验可调能力白名单(可调能力白名单) -> tuple[tuple[str, ...], str]:
+    """归一化可调能力白名单；返回 (白名单, 错误说明)。空输入 → ((), "")，行为零变化。"""
+    if 可调能力白名单 is None:
+        return (), ""
+    if isinstance(可调能力白名单, (str, bytes)) or not isinstance(可调能力白名单, (list, tuple)):
+        return (), f"可调能力白名单 必须是列表型，收到 {type(可调能力白名单).__name__}"
+    项列表: list[str] = []
+    for 项 in 可调能力白名单:
+        if not isinstance(项, str) or not 项.strip():
+            return (), f"可调能力白名单 的元素必须是非空文本型能力 id，收到 {项!r}"
+        项列表.append(项.strip())
+    return tuple(sorted(set(项列表))), ""
+
+
+def 解析网关地址() -> str:
+    """网关地址：环境变量可覆盖（运维），否则用平台唯一对外端口默认值。"""
+    return (os.environ.get(网关地址环境变量) or "").strip() or 默认网关地址
+
+
+def 组装合成模块源码(白名单: tuple[str, ...], 网关地址: str,
+                    凭证变量名: str, 超时秒: float) -> str:
+    """把冻结好的白名单与网关参数写进合成模块源码（占位符替换，不用格式化以防注入）。"""
+    return (
+        合成模块模板
+        .replace("__注入白名单__", repr(list(白名单)))
+        .replace("__注入网关地址__", str(网关地址))
+        .replace("__注入凭证变量名__", str(凭证变量名))
+        .replace("__注入超时秒__", repr(float(超时秒)))
+    )
+
+
+def 创建能力注入(白名单: tuple[str, ...], 凭证: str, 超时秒: int = 默认超时秒) -> 能力注入:
+    """写合成模块到临时目录并准备子进程环境附加；失败必须由调用方保证 清理()。"""
+    目录 = Path(tempfile.mkdtemp(prefix=合成模块目录前缀))
+    网关超时秒 = max(1.0, min(float(超时秒), 默认网关超时秒))
+    try:
+        (目录 / f"{合成模块名}.py").write_text(
+            组装合成模块源码(白名单, 解析网关地址(), 网关凭证环境变量, 网关超时秒),
+            encoding="utf-8",
+        )
+    except OSError:
+        shutil.rmtree(目录, ignore_errors=True)
+        raise
+    return 能力注入(目录, 白名单, {网关凭证环境变量: str(凭证)})
+
+
 # ── 环境与资源 ────────────────────────────────────────────────────
 
-def 构造白名单环境(技能根目录: Path, 调用方环境: dict | None = None) -> dict:
-    """只透传白名单内环境变量；调用方传入白名单外变量时抛 ValueError。"""
+def 构造白名单环境(技能根目录: Path, 调用方环境: dict | None = None, *,
+                注入路径: tuple[str, ...] = (), 注入环境: dict | None = None) -> dict:
+    """只透传白名单内环境变量；调用方传入白名单外变量时抛 ValueError。
+
+    注入路径/注入环境 只由本模块内部（可调能力白名单的合成模块与凭证注入）传入：
+    调用方到不了这两个参数，走 `环境变量` 的键仍逐键过白名单（fail-closed）。
+    """
     环境 = {键: 值 for 键, 值 in os.environ.items() if 键 in 环境变量白名单}
-    环境["PYTHONPATH"] = str(技能根目录)
+    # 注入目录排在技能根目录之前：技能包内若出现同名文件，也不能顶替平台注入的合成模块。
+    环境["PYTHONPATH"] = os.pathsep.join([*[str(路径) for 路径 in 注入路径], str(技能根目录)])
     环境["PYTHONUTF8"] = "1"
     环境["PYTHONDONTWRITEBYTECODE"] = "1"
     for 键, 值 in (调用方环境 or {}).items():
         if 键 not in 环境变量白名单:
             raise ValueError(f"非法环境变量（不在白名单）: {键}")
         环境[键] = str(值)
+    for 键, 值 in (注入环境 or {}).items():
+        环境[str(键)] = str(值)
     return 环境
 
 
@@ -156,21 +333,27 @@ def _解析调用真名(节点: ast.AST, 别名: dict[str, str]) -> str:
     return ""
 
 
-def _审计导入(模块名: str, 禁止导入前缀: tuple[str, ...]) -> list[str]:
-    """审计单个导入：标准库放行，硬禁止与调用方禁入前缀一律拦截，其余（第三方/项目模块）拦截。"""
+def _审计导入(模块名: str, 禁止导入前缀: tuple[str, ...],
+             允许导入模块: frozenset[str] = frozenset()) -> list[str]:
+    """审计单个导入：标准库与本次注入的合成模块放行，硬禁止、调用方禁入前缀、其余非标准库一律拦截。"""
     顶层 = (模块名 or "").split(".")[0]
     违规: list[str] = []
     if 顶层 in 硬禁止导入模块:
         违规.append(f"禁止导入模块: {模块名}")
     elif any(模块名 == 前缀 or 模块名.startswith(前缀 + ".") for 前缀 in 禁止导入前缀):
         违规.append(f"禁止导入项目模块: {模块名}")
-    elif 顶层 and 顶层 not in 标准库模块集合:
+    elif 顶层 and 顶层 not in 标准库模块集合 and 顶层 not in 允许导入模块:
         违规.append(f"禁止导入非标准库模块: {模块名}")
     return 违规
 
 
-def 审计脚本源码(脚本源码: str, 禁止导入前缀: tuple[str, ...] = ()) -> list[str]:
-    """静态审计技能脚本：返回违规说明列表（空列表 = 通过）。"""
+def 审计脚本源码(脚本源码: str, 禁止导入前缀: tuple[str, ...] = (),
+             允许导入模块: frozenset[str] = frozenset()) -> list[str]:
+    """静态审计技能脚本：返回违规说明列表（空列表 = 通过）。
+
+    `允许导入模块` 只有「可调能力白名单非空」这一种来源，且只含平台注入的合成模块名；
+    默认空集 = 历史行为（技能脚本只能纯标准库）。
+    """
     try:
         树 = ast.parse(脚本源码)
     except SyntaxError as 错误:
@@ -182,9 +365,9 @@ def 审计脚本源码(脚本源码: str, 禁止导入前缀: tuple[str, ...] = 
             模块名 = 节点.module if isinstance(节点, ast.ImportFrom) else None
             if isinstance(节点, ast.Import):
                 for 项 in 节点.names:
-                    违规.extend(_审计导入(项.name, 禁止导入前缀))
+                    违规.extend(_审计导入(项.name, 禁止导入前缀, 允许导入模块))
             elif 模块名:
-                违规.extend(_审计导入(模块名, 禁止导入前缀))
+                违规.extend(_审计导入(模块名, 禁止导入前缀, 允许导入模块))
         elif isinstance(节点, ast.Call):
             调用真名 = _解析调用真名(节点.func, 别名)
             if isinstance(节点.func, ast.Name) and 节点.func.id in 硬禁止调用标记:
@@ -271,14 +454,24 @@ def 运行受控脚本(
     输出上限: int = 默认输出上限,
     环境变量: dict | None = None,
     资源预算: dict | None = None,
+    能力注入: 能力注入 | None = None,
 ) -> dict:
-    """受控运行单个脚本，返回 {"成功": bool, ...}；违规输入一律 fail-closed。"""
+    """受控运行单个脚本，返回 {"成功": bool, ...}；违规输入一律 fail-closed。
+
+    `能力注入` 非空时：合成模块目录进 PYTHONPATH 首位、网关凭证进子进程环境；
+    默认 None = 与历史版本完全一致（子进程只见白名单环境变量与技能根目录）。
+    """
     脚本路径 = Path(脚本路径).resolve()
     根 = Path(技能根目录).resolve()
     if 脚本路径 != 根 and 根 not in 脚本路径.parents:
         return {"成功": False, "错误码": "脚本路径逃逸", "错误信息": f"脚本不在技能根目录内: {脚本路径}"}
     try:
-        环境 = 构造白名单环境(根, 环境变量)
+        环境 = 构造白名单环境(
+            根,
+            环境变量,
+            注入路径=(str(能力注入.目录),) if 能力注入 else (),
+            注入环境=能力注入.环境附加 if 能力注入 else None,
+        )
     except ValueError as 错误:
         return {"成功": False, "错误码": "非法环境变量", "错误信息": str(错误)}
     预算 = dict(资源预算 or {})
@@ -415,10 +608,20 @@ def 运行技能包(
     环境变量: dict | None = None,
     禁止导入前缀: list | None = None,
     项目根目录: str | None = None,
+    可调能力白名单: list | None = None,
 ) -> 结果:
-    """能力 技能库.受控执行.运行技能包：结构校验 → 定位入口 → 导入审计 → 受控运行。"""
+    """能力 技能库.受控执行.运行技能包：结构校验 → 定位入口 → 导入审计 → 受控运行。
+
+    `可调能力白名单`（可选，默认空）：空 = 技能脚本只能纯标准库，行为与历史版本完全一致；
+    非空 = 把合成模块 `技能底座能力` 注入子进程并放行其导入，技能脚本经它走唯一网关
+    HTTP 调用白名单内的底座能力；白名单外一律拒绝（不降级），第三方/进程派生/项目模块
+    导入一并不放开。
+    """
     if not 技能根目录 or not 能力标识:
         return 结果.失败("参数不合法", "技能根目录 与 能力标识 必填", 来源=来源标识)
+    白名单, 白名单问题 = 校验可调能力白名单(可调能力白名单)
+    if 白名单问题:
+        return 结果.失败("参数不合法", 白名单问题, 来源=来源标识)
     根 = Path(技能根目录).resolve()
     if not 根.is_dir():
         return 结果.失败("目录不存在", f"技能根目录不存在: {根}", 来源=来源标识)
@@ -444,17 +647,40 @@ def 运行技能包(
         源码 = 脚本路径.read_text(encoding="utf-8")
     except OSError as 错误:
         return 结果.失败("脚本读取失败", str(错误), 来源=来源标识)
-    违规 = 审计脚本源码(源码, tuple(禁止导入前缀 or ()))
+    违规 = 审计脚本源码(
+        源码,
+        tuple(禁止导入前缀 or ()),
+        frozenset({合成模块名}) if 白名单 else frozenset(),
+    )
     if 违规:
         return 结果.失败("脚本审计未通过", "脚本未通过导入审计", 来源=来源标识, 详情={"违规": 违规})
-    运行结果 = 运行受控脚本(
-        脚本路径,
-        参数,
-        技能根目录=Path(项目根目录).resolve() if 项目根目录 else 根,
-        超时秒=超时秒,
-        输出上限=输出上限,
-        环境变量=环境变量,
-    )
+    注入物: 能力注入 | None = None
+    if 白名单:
+        凭证 = (os.environ.get(网关凭证环境变量) or "").strip()
+        if not 凭证:
+            return 结果.失败(
+                "能力调用凭证缺失",
+                f"可调能力白名单非空时必须经唯一网关调用，环境变量 {网关凭证环境变量} 未设置",
+                来源=来源标识,
+                详情={"可调能力白名单": list(白名单), "凭证环境变量": 网关凭证环境变量},
+            )
+        try:
+            注入物 = 创建能力注入(白名单, 凭证, 超时秒)
+        except OSError as 错误:
+            return 结果.失败("启动失败", f"合成模块注入失败: {错误}", 来源=来源标识)
+    try:
+        运行结果 = 运行受控脚本(
+            脚本路径,
+            参数,
+            技能根目录=Path(项目根目录).resolve() if 项目根目录 else 根,
+            超时秒=超时秒,
+            输出上限=输出上限,
+            环境变量=环境变量,
+            能力注入=注入物,
+        )
+    finally:
+        if 注入物 is not None:
+            注入物.清理()
     if not 运行结果.get("成功"):
         return 结果.失败(
             运行结果.get("错误码") or "脚本执行失败",

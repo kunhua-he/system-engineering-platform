@@ -64,7 +64,7 @@ from pathlib import Path
     "输出结构": "逐字稿输出结构",
     "附加要求": "逐字稿附加要求",
 }
-# 容错路径留痕（哲学第 15 条：不许 except: pass 吞掉；句柄释放失败要能查到）
+# 容错路径留痕（哲学第 3 条 2 项：不许 except: pass 吞掉；句柄释放失败要能查到）
 释放问题: list[str] = []
 模式名 = {1: "还原稿", 9: "总结稿"}
 _日志锁 = threading.Lock()
@@ -317,7 +317,7 @@ def 主() -> int:
                         "Content-Type": "application/json",
                         "Authorization": f"Bearer {配置.网关凭证}"}), timeout=60).read()
                 except Exception as 释放错误:
-                    # 句柄释放失败必须留痕（哲学第 15 条：失败要明确，不许 except: pass）
+                    # 句柄释放失败必须留痕（哲学第 3 条 2 项：失败要明确，不许 except: pass）
                     释放问题.append(f"句柄 {局部句柄} 释放失败: {释放错误}")
 
     任务表 = list(enumerate(视频表, start=1))

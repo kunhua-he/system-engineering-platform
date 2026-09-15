@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from 公共契约.正式根 import 存在根名
 from 运行核心.加载器.包发现.发现器 import 发现全部
 from 运行核心.加载器.依赖解析.解析器 import 解析依赖
 from 运行核心.加载器.提供者选择.选择器 import 选择全部提供者
@@ -90,7 +91,7 @@ def _提供者目录(系统根目录: Path, 提供者id: str) -> Path | None:
     去掉 支持库./模块库./技能库. 前缀后，剩余段即为相对根目录的路径。
     """
     段路径 = Path(*提供者id.split(".")[1:])
-    for 根 in ("支持库", "模块库", "技能库"):
+    for 根 in 存在根名(系统根目录):
         候选 = 系统根目录 / 根 / 段路径
         if (候选 / "能力定义.json").is_file():
             return 候选

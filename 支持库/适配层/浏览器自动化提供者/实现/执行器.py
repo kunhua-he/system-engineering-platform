@@ -21,7 +21,7 @@ def _截断(文本: str, 上限: int) -> str:
 
 
 def _回收(进程: subprocess.Popen) -> None:
-    """回收子进程：终止失败必须留痕（哲学第 15 条），但不阻塞上层错误上报。"""
+    """回收子进程：终止失败必须留痕（哲学第 3 条 2 项），但不阻塞上层错误上报。"""
     try:
         if os.name == "posix":
             os.killpg(进程.pid, signal.SIGTERM)

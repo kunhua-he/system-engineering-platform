@@ -145,7 +145,7 @@ x64 Debug/Release 同样缺少 `__E_STATIC_LIB` 和 `__E_FNENAME=codestyleedit` 
 - `m_pfnNotify` 指向 `codestyleedit_ProcessNotifyLib_codestyleedit`；
 - 依赖文件列表为 `NULL`。
 
-`GetNewInf()` 返回 `LIB_INFO` 地址，并在返回前把第 18 条命令（索引 17）的英文名从宏表中的 `FindTextW` 改写为 `FindText`，注释说明这是为了避免宏名称转换造成兼容问题。`Source_codestyleedit.def` 只导出 `GetNewInf`。
+`GetNewInf()` 返回 `LIB_INFO` 地址，并在返回前把第 6 条 1 项命令（索引 17）的英文名从宏表中的 `FindTextW` 改写为 `FindText`，注释说明这是为了避免宏名称转换造成兼容问题。`Source_codestyleedit.def` 只导出 `GetNewInf`。
 
 ### 6.2 命令声明、参数和分组
 

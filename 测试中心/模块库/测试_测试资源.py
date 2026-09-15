@@ -1,0 +1,238 @@
+"""测试资源 模块定向测试：骨架（模板产出）+ 单能力定向冒烟（经 后端核心 真实装配）。
+
+冒烟范围（不跑门禁、不跑全量）：
+- 两个能力经 `后端核心` 装配后真实调用（真实文件删除、真实清单读写、真实进程句柄终止）；
+- 安全边界真实拒绝：临时根越界、临时根=工程缓存自身、资源越界；
+- 缺能力如实失败：端口/线程/句柄 回收留失败表 + 真实证据文件。
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sys
+import unittest
+from pathlib import Path
+
+系统根 = Path(__file__).resolve().parents[2]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
+
+from 公共契约.基础类型.结果类型 import 结果
+from 模块库.测试资源 import 申请资源, 回收资源, 注册能力
+
+
+class Test测试资源模块(unittest.TestCase):
+    """装配冒烟：公开入口可导入、注册能力齐全、调用返回统一结果。"""
+
+    def test_公开入口可导入(self):
+        for 能力名 in ['申请资源', '回收资源']:
+            self.assertTrue(callable(globals()[能力名]), f"{能力名} 未从公开入口导出")
+
+    def test_注册能力齐全(self):
+        from 公共契约.能力契约.契约 import 能力注册表
+        注册表 = 能力注册表()
+        注册能力(注册表)
+        for 能力id in ['测试资源.申请资源', '测试资源.回收资源']:
+            self.assertIn(能力id, 注册表.能力id列表)
+
+    def test_申请资源_返回统一结果(self):
+        返回值 = 申请资源("", "", "", "", False, "", 0)
+        self.assertIsInstance(返回值, 结果)
+
+    def test_回收资源_返回统一结果(self):
+        返回值 = 回收资源("", "", "", "")
+        self.assertIsInstance(返回值, 结果)
+
+
+class Test测试资源定向冒烟(unittest.TestCase):
+    """经 后端核心 装配后的真实调用冒烟（单能力定向，不起长期进程）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        from 后端核心.后端核心 import 后端核心
+        cls.后端 = 后端核心()
+        启动 = cls.后端.启动()
+        if not 启动.成功:
+            raise RuntimeError(f"后端核心装配失败：{启动.错误码} {启动.错误说明}")
+        cls.工程缓存 = Path(cls.后端.系统根目录) / "工程缓存"
+        cls.临时根 = cls.工程缓存 / "测试临时" / "测试资源定向冒烟"
+        cls.临时根.mkdir(parents=True, exist_ok=True)
+        cls.清单 = cls.临时根 / "冒烟清单.jsonl"
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.临时根, ignore_errors=True)
+        cls.后端.优雅关闭()
+
+    def setUp(self):
+        self.清单.unlink(missing_ok=True)
+        证据 = self.临时根 / "清理失败.json"
+        证据.unlink(missing_ok=True)
+
+    def _调用(self, 能力id: str, 参数: dict) -> 结果:
+        return self.后端.调用(能力id, 参数)
+
+    def _新资源文件(self, 名称: str = "样本.txt") -> Path:
+        文件 = self.临时根 / 名称
+        文件.parent.mkdir(parents=True, exist_ok=True)
+        文件.write_text("冒烟样本", encoding="utf-8")
+        return 文件
+
+    def test_01_装配后能力已注册且真实返回(self):
+        self.assertIn("测试资源.申请资源", self.后端.注册表.能力id列表)
+        self.assertIn("测试资源.回收资源", self.后端.注册表.能力id列表)
+        文件 = self._新资源文件()
+        登记 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": str(文件), "资源类型": "文件", "开工id": "冒烟开工id",
+        })
+        self.assertTrue(登记.成功, 登记.错误说明)
+        self.assertEqual(登记.值["类型"], "文件")
+        self.assertEqual(登记.值["保留"], False)
+        self.assertEqual(登记.值["work_id"], "冒烟开工id")
+        记录 = json.loads(self.清单.read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(记录["路径"], str(文件))
+        self.assertEqual(记录["类型"], "文件")
+
+    def test_02_回收资源_真实删除文件并删清单(self):
+        文件 = self._新资源文件()
+        self.assertTrue(self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": str(文件),
+        }).成功)
+        self.assertTrue(文件.exists())
+        回收 = self._调用("测试资源.回收资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+        })
+        self.assertTrue(回收.成功, 回收.错误说明)
+        self.assertEqual(回收.值["清理数"], 1)
+        self.assertEqual(回收.值["保留数"], 0)
+        self.assertEqual(回收.值["失败表"], [])
+        self.assertFalse(文件.exists(), "文件必须被真实删除")
+        self.assertFalse(self.清单.exists(), "清单必须被真实删除")
+
+    def test_03_回收资源_目录与保留跳过(self):
+        目录 = self.临时根 / "样本目录"
+        (目录 / "内层").mkdir(parents=True, exist_ok=True)
+        (目录 / "内层" / "深层.txt").write_text("深层", encoding="utf-8")
+        保留文件 = self._新资源文件("保留.txt")
+        for 路径, 保留 in ((目录, False), (保留文件, True)):
+            self.assertTrue(self._调用("测试资源.申请资源", {
+                "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+                "资源路径": str(路径), "资源类型": "目录" if 路径.is_dir() else "文件",
+                "保留": 保留,
+            }).成功)
+        回收 = self._调用("测试资源.回收资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+        })
+        self.assertTrue(回收.成功, 回收.错误说明)
+        self.assertEqual(回收.值["清理数"], 1)
+        self.assertEqual(回收.值["保留数"], 1)
+        self.assertFalse(目录.exists())
+        self.assertTrue(保留文件.exists(), "标记保留的资源不得被回收")
+
+    def test_04_安全边界_临时根越界拒绝(self):
+        文件 = self._新资源文件()
+        越界 = self._调用("测试资源.申请资源", {
+            "临时根目录": "/tmp", "清单路径": str(self.清单), "资源路径": str(文件),
+        })
+        self.assertFalse(越界.成功)
+        self.assertEqual(越界.错误码, "临时根越界")
+        self.assertFalse(self.清单.exists(), "越界请求不得写任何清单")
+
+    def test_05_安全边界_临时根不能是工程缓存自身(self):
+        self.assertIn("/工程缓存", str(self.工程缓存))
+        结果值 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.工程缓存), "清单路径": str(self.清单),
+            "资源路径": str(self.工程缓存 / "x.txt"),
+        })
+        self.assertFalse(结果值.成功)
+        self.assertEqual(结果值.错误码, "临时根越界")
+
+    def test_06_安全边界_资源越界拒绝(self):
+        外部 = 系统根 / "README.md"
+        self.assertTrue(外部.is_file())
+        越界 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": str(外部),
+        })
+        self.assertFalse(越界.成功)
+        self.assertEqual(越界.错误码, "资源越界")
+        self.assertFalse(self.清单.exists())
+
+    def test_07_待补类型_回收如实失败并留证据(self):
+        登记 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": "端口:18080", "资源类型": "端口",
+        })
+        self.assertTrue(登记.成功, 登记.错误说明)
+        self.assertEqual(登记.值["标识"], "18080")
+        回收 = self._调用("测试资源.回收资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+        })
+        self.assertFalse(回收.成功)
+        self.assertEqual(回收.错误码, "资源清理失败")
+        失败表 = 回收.详细信息.get("失败表") or []
+        self.assertEqual(len(失败表), 1)
+        self.assertIn("待补能力", 失败表[0]["原因"])
+        证据 = self.临时根 / "清理失败.json"
+        self.assertTrue(证据.is_file(), "失败必须留结构化证据")
+        证据内容 = json.loads(证据.read_text(encoding="utf-8"))
+        self.assertEqual(len(证据内容["失败"]), 1)
+        self.assertEqual(证据内容["失败"][0]["类型"], "端口")
+
+    def test_08_子进程_经受管句柄申请与回收(self):
+        启动 = self._调用("系统核心支持库.进程管理.启动进程", {
+            "命令": "/bin/sleep", "参数": ["30"],
+        })
+        self.assertTrue(启动.成功, 启动.错误说明)
+        句柄 = 启动.值["句柄"]
+        self.addCleanup(lambda: self._调用("系统核心支持库.进程管理.释放句柄", {"句柄": 句柄}))
+        登记 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": f"子进程:{句柄}", "资源类型": "子进程", "句柄": 句柄,
+        })
+        self.assertTrue(登记.成功, 登记.错误说明)
+        self.assertEqual(登记.值["标识"], str(句柄))
+        状态 = self._调用("系统核心支持库.进程管理.查询进程状态", {"句柄": 句柄})
+        self.assertTrue(状态.成功 and 状态.值["运行中"], "被登记的子进程应在运行中")
+        回收 = self._调用("测试资源.回收资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+        })
+        self.assertTrue(回收.成功, 回收.错误说明)
+        self.assertEqual(回收.值["清理数"], 1)
+        释放后 = self._调用("系统核心支持库.进程管理.查询进程状态", {"句柄": 句柄})
+        self.assertFalse(释放后.成功, "句柄应已随回收失效")
+        self.assertEqual(释放后.错误码, "句柄失效")
+
+    def test_09_子进程_无句柄登记被拒(self):
+        被拒 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": "子进程:123456", "资源类型": "子进程",
+        })
+        self.assertFalse(被拒.成功)
+        self.assertEqual(被拒.错误码, "参数不合法")
+        self.assertFalse(self.清单.exists())
+
+    def test_10_边界与幂等_清单不存在与未知类型(self):
+        回收 = self._调用("测试资源.回收资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+        })
+        self.assertTrue(回收.成功, 回收.错误说明)
+        self.assertEqual(回收.值["清理数"], 0)
+        未知 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单),
+            "资源路径": str(self.临时根 / "x.txt"), "资源类型": "未知类型",
+        })
+        self.assertFalse(未知.成功)
+        self.assertEqual(未知.错误码, "参数不合法")
+        空路径 = self._调用("测试资源.申请资源", {
+            "临时根目录": str(self.临时根), "清单路径": str(self.清单), "资源路径": "",
+        })
+        self.assertFalse(空路径.成功)
+        self.assertEqual(空路径.错误码, "参数不合法")
+
+
+if __name__ == "__main__":
+    unittest.main()

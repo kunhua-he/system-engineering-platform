@@ -1,4 +1,8 @@
-"""能力反馈登记、查询和状态迁移；唯一写入平台状态 SQLite。"""
+"""能力反馈登记、查询和状态迁移；唯一写入平台状态 SQLite。
+
+机制（非空文本 / 大小上限 / 敏感脱敏 / 内容摘要）统一取自同目录 `反馈语义.py`，
+本模块只保留**能力反馈自己的**字段、去重键与 8 态状态机；对外返回值与收敛前逐字一致。
+"""
 from __future__ import annotations
 
 import hashlib
@@ -6,10 +10,13 @@ import json
 import re
 import time
 import uuid
-from typing import Any, Callable
 from pathlib import Path
+from typing import Any, Callable
 
 from 平台控制面.平台状态 import 平台状态
+# 机制收口（第 1 条 3 项）：文本校验 / 敏感脱敏 / 摘要上限 / 内容摘要由 反馈语义.py 唯一实现。
+from 平台控制面.能力反馈.反馈语义 import 文本, 文本上限, 摘要, 说明上限
+from 平台控制面.能力反馈.反馈语义 import 内容摘要 as 计算内容摘要
 
 状态表 = {
     "已登记": {"已确认", "重复反馈", "无法复现", "修复中"},
@@ -23,58 +30,7 @@ from 平台控制面.平台状态 import 平台状态
 }
 优先级表 = {"普通", "高", "紧急"}
 必填字段 = ("来源系统", "来源版本", "请求id", "能力id", "契约版本", "错误码", "错误说明")
-文本上限 = 256
-说明上限 = 2048
-摘要上限字节 = 16 * 1024
 契约格式 = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-敏感键 = {"api_key", "apikey", "authorization", "cookie", "password", "secret", "token",
-          "密码", "令牌", "密钥", "私钥", "连接串", "凭证"}
-
-
-def _文本(值: Any, 名称: str, 上限: int = 文本上限) -> str:
-    if not isinstance(值, str) or not 值.strip():
-        raise ValueError(f"{名称}必须是非空文本")
-    if len(值) > 上限 or "\x00" in 值:
-        raise ValueError(f"{名称}超过长度上限")
-    return 值.strip()
-
-
-def _脱敏(值: Any, 深度: int = 0) -> Any:
-    if 深度 > 6:
-        return "[已脱敏]"
-    if isinstance(值, dict):
-        返回 = {}
-        for 键, 子值 in list(值.items())[:100]:
-            键文本 = str(键)[:128]
-            if 键文本.lower() in 敏感键 or any(词 in 键文本.lower() for 词 in ("password", "token", "secret", "cookie")):
-                返回[键文本] = "[已脱敏]"
-            else:
-                返回[键文本] = _脱敏(子值, 深度 + 1)
-        return 返回
-    if isinstance(值, list):
-        return [_脱敏(子值, 深度 + 1) for 子值 in 值[:100]]
-    if isinstance(值, str):
-        文本 = 值[:2048]
-        文本 = re.sub(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [已脱敏]", 文本)
-        文本 = re.sub(r"(?i)(sk-|xai-|ghp_)[A-Za-z0-9_-]{8,}", "[已脱敏]", 文本)
-        return 文本
-    if isinstance(值, (bool, int, float)) or 值 is None:
-        return 值
-    return str(值)[:256]
-
-
-def _摘要(值: Any, 名称: str) -> str:
-    if 值 is None:
-        值 = {}
-    if not isinstance(值, dict):
-        raise ValueError(f"{名称}必须是对象")
-    原始文本 = json.dumps(值, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    if len(原始文本.encode("utf-8")) > 摘要上限字节:
-        raise ValueError(f"{名称}超过大小上限 {摘要上限字节} 字节")
-    文本 = json.dumps(_脱敏(值), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    if len(文本.encode("utf-8")) > 摘要上限字节:
-        raise ValueError(f"{名称}超过大小上限 {摘要上限字节} 字节")
-    return 文本
 
 
 def _公开记录(记录: dict[str, Any]) -> dict[str, Any]:
@@ -104,7 +60,7 @@ class 能力反馈服务:
             for 字段 in 必填字段:
                 if 字段 not in 请求:
                     raise ValueError(f"缺少必填字段: {字段}")
-            字段值 = {字段: _文本(请求[字段], 字段) for 字段 in 必填字段}
+            字段值 = {字段: 文本(请求[字段], 字段) for 字段 in 必填字段}
             if not 契约格式.fullmatch(字段值["契约版本"]):
                 raise ValueError("契约版本必须是 主版本.次版本.修订版本")
             能力id = 字段值["能力id"]
@@ -116,8 +72,8 @@ class 能力反馈服务:
             优先级 = 请求.get("优先级", "普通")
             if 优先级 not in 优先级表:
                 raise ValueError("优先级必须是 普通、高、紧急")
-            请求摘要 = _摘要(请求.get("请求摘要"), "请求摘要")
-            响应摘要 = _摘要(请求.get("响应摘要"), "响应摘要")
+            请求摘要 = 摘要(请求.get("请求摘要"), "请求摘要")
+            响应摘要 = 摘要(请求.get("响应摘要"), "响应摘要")
             复现标识 = 请求.get("复现标识", "")
             if 复现标识 and (not isinstance(复现标识, str) or len(复现标识) > 文本上限):
                 raise ValueError("复现标识超过长度上限")
@@ -125,7 +81,7 @@ class 能力反馈服务:
             去重键 = hashlib.sha256(去重原文.encode("utf-8")).hexdigest()
             内容 = {**字段值, "HTTP状态码": 状态码, "请求摘要": 请求摘要,
                     "响应摘要": 响应摘要, "复现标识": 复现标识, "优先级": 优先级}
-            内容摘要 = hashlib.sha256(json.dumps(内容, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            内容摘要 = 计算内容摘要(内容)
             反馈id = uuid.uuid4().hex[:20]
             时间 = time.strftime("%Y-%m-%d %H:%M:%S")
             记录 = {"反馈id": 反馈id, "去重键": 去重键, **字段值,
@@ -170,9 +126,9 @@ class 能力反馈服务:
             未知字段 = sorted(set(请求) - 允许字段)
             if 未知字段:
                 raise ValueError("状态请求包含未知字段: " + ", ".join(未知字段))
-            目标 = _文本(请求.get("状态"), "状态")
-            处理者 = _文本(请求.get("处理者"), "处理者")
-            原因 = _文本(请求.get("原因"), "原因", 说明上限)
+            目标 = 文本(请求.get("状态"), "状态")
+            处理者 = 文本(请求.get("处理者"), "处理者")
+            原因 = 文本(请求.get("原因"), "原因", 说明上限)
             if 目标 not in 状态表:
                 raise ValueError("状态不合法")
             记录 = self.状态.读取记录("能力反馈", "反馈id", 反馈id)
@@ -182,9 +138,9 @@ class 能力反馈服务:
             if 目标 not in 状态表.get(当前, set()):
                 return False, "状态迁移不允许", {"当前状态": 当前, "目标状态": 目标}
             字段 = {"处理者": 处理者, "状态原因": 原因,
-                    "关联提交": _文本(请求.get("关联提交", ""), "关联提交") if 请求.get("关联提交") else "",
-                    "验证证据": _文本(请求.get("验证证据", ""), "验证证据", 说明上限) if 请求.get("验证证据") else "",
-                    "发布制品": _文本(请求.get("发布制品", ""), "发布制品", 说明上限) if 请求.get("发布制品") else "",
+                    "关联提交": 文本(请求.get("关联提交", ""), "关联提交") if 请求.get("关联提交") else "",
+                    "验证证据": 文本(请求.get("验证证据", ""), "验证证据", 说明上限) if 请求.get("验证证据") else "",
+                    "发布制品": 文本(请求.get("发布制品", ""), "发布制品", 说明上限) if 请求.get("发布制品") else "",
                     "状态": 目标, "更新时间": time.strftime("%Y-%m-%d %H:%M:%S")}
             if 目标 == "已修复" and (not 字段["验证证据"] or not 字段["发布制品"]):
                 return False, "已修复必须提供验证证据和发布制品", {}

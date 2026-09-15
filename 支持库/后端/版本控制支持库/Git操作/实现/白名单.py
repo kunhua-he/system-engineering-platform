@@ -92,6 +92,13 @@ def 校验提交消息(消息: object) -> 结果 | None:
     return None
 
 
+def 校验逻辑值(值: object, 名称: str = "开关") -> 结果 | None:
+    """逻辑型参数必须是真布尔（不接受 0/1/\"true\" 等替代）。"""
+    if type(值) is not bool:
+        return 失败结果("参数不合法", f"{名称}必须是逻辑值（真/假）")
+    return None
+
+
 def 校验超时(超时秒: object) -> 结果 | None:
     """超时秒必须是正数。"""
     if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool) or 超时秒 <= 0:

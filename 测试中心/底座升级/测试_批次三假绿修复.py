@@ -31,7 +31,7 @@ class Test批次三假绿修复(unittest.TestCase):
         self.assertIn("保留端口", 消息)
 
     def test_能力网关拒绝4780(self):
-        from MCP工具箱.能力网关 import 启动网关
+        from 开发工具.能力网关.能力网关 import 启动网关
 
         with self.assertRaises(ValueError) as 上下文:
             启动网关(端口=4780)

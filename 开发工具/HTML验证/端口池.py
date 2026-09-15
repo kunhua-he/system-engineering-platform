@@ -39,6 +39,12 @@ def _场景资源键(场景: 多步骤验证场景) -> tuple[str, ...]:
         for 步骤 in 阶段
     }
     键表 = set()
+    # Git 场景独占：创建工作区/提交/切换分支/合并分支 都对**同一个底座仓库**做
+    # worktree/引用写操作；3 个制品实例默认并发跑同一场景时互相抢 index.lock 与分支，
+    # 实测表现是「写入文件 断言值缺失」等连带失败（2026-09-15：单跑 37 步全绿，
+    # 并发跑固定红 4 步）。加资源键后同键场景固定同实例并按键串行。
+    if any(能力.startswith("版本控制支持库.Git操作.") for 能力 in 能力表):
+        键表.add("Git仓库")
     if any(能力.startswith(("文档转换支持库.", "LibreOffice转换.")) for 能力 in 能力表):
         键表.add("LibreOffice")
     if any(能力.startswith("大语言模型支持库.模型连接器.") for 能力 in 能力表):

@@ -1,15 +1,15 @@
 {
   "包id": "技能库.后端.技能库",
-  "版本": "1.0.2",
+  "版本": "1.1.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "ecf8306d9097d5cbc8093fd0cbbe98ba0b2591a12f42fb6f41dcdec516329409"
+      "sha256": "befe7681d0fe589f92462f1efe96f38dfa96a328cc653f57cfd5a79676b0a727"
     },
     {
       "路径": "包声明.json",
-      "sha256": "1c8420d1c7fd51116d57d583963147eb41761e270307b6ecbba7627fa12944bb"
+      "sha256": "8a440aa04f592daa2b529c429587e8cc2904401254441be0774cd4481ebde3b7"
     },
     {
       "路径": "复用决策.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "实现/技能库.py",
-      "sha256": "76ec8101484d4574392b4d958beecd2a302f96bae98ac8863d6c0f8fc8b2dac3"
+      "sha256": "51db1121a0b9ba9de3518d5bfa4bb936e62c632587749e9a3e15bcc76ba53e37"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -25,27 +25,27 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "aa43708cd57512d6926586e32bf945c43e81c0597ef52cd9b1d8f8a35b043878"
+      "sha256": "04f81510c01b8c1143670a55f4633015a213f3f018637b1a41c0f825d894261e"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "4aa89b4399d7ff4bf1c106370a8540990c97b06858a8af14dd5f3cb14268af18"
+      "sha256": "7463617140bf906bf0eca17cd7768e8011d82b470c3c1adc8e452024700fffb9"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "193d95b1fbc15be87a7c68a8ddc096b5b7a94dbee286a6137a9d2571ccb4b175"
+      "sha256": "20154d53cf8ca5dd63e808c6da7fc01f2ee8e79aeba950d693b1c4eed1b48209"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "39eba61c0e05308e43e74fd55328269c2381f38fc2bdf12d6a60f4633a168b11"
+      "sha256": "3065ba5d8db9a47f582f70cda28affb1a8344096d5d65d4f06ccd3942e2dea47"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "0b40b4fe550e572de4b59989e190ecaa672763573be4c526ec4ddd5b9ccfd6d0"
+      "sha256": "c507fdbed04929b72ea7ff358220c48077a5721741dcdd1f1ca1eee84bb50f62"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "56f47da668fd00fb3a5847dbb342bff03598cc61b036ad5b9f7ca4c665d8b819"
+      "sha256": "ff054db662fd56659b2724d74ae6eae3503fcce7ed53a2f1ed6bfae8c6b9e9d1"
     },
     {
       "路径": "资源预算.json",
@@ -57,7 +57,7 @@
     },
     {
       "路径": "验证场景.json",
-      "sha256": "9a9e16bea6b72a33f6d30feafcdc42f799769c5a32a0156dabf90b47a7ee24f8"
+      "sha256": "0fff0e41523170966897c1a3bbfdfdc1a85f3b994d6a1081b11c4d18b256207c"
     },
     {
       "路径": "验证场景引用.json",
@@ -127,5 +127,5 @@
     "技能库.技能索引.扫描技能包",
     "技能库.技能索引.生成索引"
   ],
-  "能力定义摘要": "bd7f426a356ad0b0"
+  "能力定义摘要": "f4f9d35609229fe7"
 }

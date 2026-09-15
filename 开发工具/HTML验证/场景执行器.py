@@ -1,6 +1,7 @@
 """多步骤场景顺序执行、资源键并发和 finally 清理。"""
 from __future__ import annotations
-import copy, json, tempfile, threading
+import copy, json, shutil, tempfile, threading
+from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
@@ -14,6 +15,40 @@ from 开发工具.HTML验证.返回判定 import _判定
 from 开发工具.HTML验证.动态值 import _展开动态值
 from 开发工具.HTML验证.端口池 import _场景资源键
 from 开发工具.HTML验证.验证证据 import _校验制品前后绑定
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
+class _受管临时根:
+    """场景临时根句柄（与 tempfile.TemporaryDirectory 同形：.name / .cleanup）。"""
+
+    def __init__(self, 路径: Path) -> None:
+        self.路径 = 路径
+        self.name = str(路径)
+
+    def cleanup(self) -> None:
+        shutil.rmtree(self.路径, ignore_errors=True)
+
+
+def _安全场景名(场景id: str) -> str:
+    """场景 id → 安全目录名（只留字母数字与 . _ -，中文等一律替换为下划线）。"""
+    出 = "".join(字符 if (字符.isalnum() and 字符.isascii()) or 字符 in "._-" else "_" for 字符 in 场景id)
+    return (出 or "场景")[:24]
+
+
+def _建场景临时根(场景id: str) -> _受管临时根:
+    """场景受管临时根：落在**平台自己的缓存根（工程缓存）之下**的 `HTML验证临时/`。
+
+    为什么不落系统临时目录（2026-09-15 实测修复）：`模块库/测试资源.申请资源` 的安全边界
+    要求临时根位于 `工程缓存/` 之下（MCP 时代 S2 边界，能力侧真实判定，不是本验证器的
+    约定），落 `tempfile` 的系统临时目录会被判 `临时根越界`，导致该包的**正向场景永远
+    无法通过 HTML 黑盒**。验证链自己的受管目录与 `工程缓存/HTML验证证据/` 同源，
+    仍在受管范围；每个场景一个独立目录，场景结束在 finally 里整体删除（清理语义不变）。
+    """
+    系统根 = Path(__file__).resolve().parents[2]
+    缓存根 = 解析运行缓存根(系统根)
+    根 = 缓存根 / "HTML验证临时" / f"{_安全场景名(场景id)}-{uuid4().hex[:8]}"
+    根.mkdir(parents=True, exist_ok=True)
+    return _受管临时根(根)
+
+
 def _执行场景束(制品目录: Path, 场景束: 验证场景束, 地址: str, *,
              超时秒: float = 默认超时秒, 并发: int = 默认并发) -> 验证报告:
     """按场景执行前置→目标并finally清理；每个能力步骤只经正式HTTP通道。"""
@@ -53,7 +88,7 @@ def _执行场景束(制品目录: Path, 场景束: 验证场景束, 地址: str
 
     def 执行场景(场景: 多步骤验证场景) -> tuple[list[验证结果], set[str], int, list[str]]:
         """每个场景独立临时根；场景内仍严格保持步骤顺序。"""
-        临时对象 = tempfile.TemporaryDirectory(prefix="HTML黑盒场景_")
+        临时对象 = _建场景临时根(场景.场景id)
         临时根 = Path(临时对象.name).resolve()
         返回表: dict[str, dict[str, Any]] = {}
         结果表: list[验证结果] = []

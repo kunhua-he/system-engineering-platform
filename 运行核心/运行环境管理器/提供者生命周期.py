@@ -531,7 +531,7 @@ class 提供者生命周期管理器:
                         失败表.append(str(目录))
                         with self._锁:
                             self._临时目录表.append(Path(目录))
-                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                     记录忽略('提供者生命周期.清理临时目录', 错误)
         return 失败表
 

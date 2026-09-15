@@ -159,7 +159,7 @@ class 句柄体系:
             r = subprocess.run(["ps", "-o", "state=", "-p", str(pid)], capture_output=True, text=True, timeout=3)
             if r.stdout.strip() and r.stdout.strip()[0] in ("Z", "X"):
                 return False
-        except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+        except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
             记录忽略('句柄体系._检查进程存活', 错误)
         return True
 
@@ -185,20 +185,20 @@ class 句柄体系:
                 if pid and self._检查进程存活(pid):
                     try:
                         os.killpg(pid, signal.SIGTERM) if os.getpgid(pid) == pid else os.kill(pid, signal.SIGTERM)
-                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('句柄体系._回收单个资源', 错误)
                     time.sleep(1)
                     try:
                         if self._检查进程存活(pid):
                             os.killpg(pid, signal.SIGKILL) if os.getpgid(pid) == pid else os.kill(pid, signal.SIGKILL)
-                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('句柄体系._回收单个资源', 错误)
                     说明 = "已终止进程（含进程组）" if not self._检查进程存活(pid) else "进程仍存活（回收失败）"
                 else:
                     # 进程不在（含 zombie 已死）→ 补杀一次确保回收干净
                     try:
                         os.kill(pid, signal.SIGKILL) if isinstance(pid, int) else None
-                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('句柄体系._回收单个资源', 错误)
                     说明 = "进程已不存在（无泄露）"
             elif 类型 == "端口":
@@ -223,7 +223,7 @@ class 句柄体系:
                             for pid in 占用进程:
                                 try: os.kill(pid, signal.SIGKILL)
                                 except (ProcessLookupError, PermissionError) as 错误:
-                                    # 允许忽略，但留痕（哲学第 15 条）：进程刚退出 / 无权限杀，
+                                    # 允许忽略，但留痕（哲学第 3 条 2 项）：进程刚退出 / 无权限杀，
                                     # 后果由紧随其后的端口复查兜住。
                                     记录忽略('句柄体系.回收端口占用进程', 错误)
                             time.sleep(1)

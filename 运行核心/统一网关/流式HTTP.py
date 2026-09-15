@@ -128,7 +128,7 @@ class HTTP流式通道:
                 try:
                     日志.error("流式通道结束回调异常 请求id=%s 原因=%s: %s",
                                self.请求id, 原因, 错误, exc_info=True)
-                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                     记录忽略('流式HTTP._执行结束回调', 错误)
 
     def 完成(self, 数据: Any = None) -> dict[str, Any]:
@@ -288,7 +288,7 @@ class HTTP流式管理器:
                 if 生成器 is not None and hasattr(生成器, "close"):
                     try:
                         生成器.close()
-                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('流式HTTP.执行', 错误)
 
         线程 = threading.Thread(target=执行, name=f"流式-{通道.请求id}", daemon=True)

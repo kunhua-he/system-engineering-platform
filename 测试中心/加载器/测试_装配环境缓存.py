@@ -1,11 +1,12 @@
 """装配系统接入环境缓存测试：默认路径调用批量入口、命中/重建/失败证据、fail-closed 保留。
 
-装配系统（管理器.py）在支持库批次装配前，收集含 依赖锁.json 的提供者目录，
+装配系统（管理器.py）在支持库批次装配前，收集含 依赖锁.json 的第三方提供者目录，
 经 批量确保环境（≤8 并行）真实确保环境就绪，随后保留 校验提供者环境 终检。
 本测试对临时迷你系统根（支持库+模块库）构造装配场景，验证：
 - 装配默认路径真实调用缓存批量入口（证据写 缓存证据.jsonl）
 - 命中复用/输入变化重建/失败清理 三态真实发生
-- 任一失败整体阻断（装配失败语义不变）
+- 环境确保失败（构建/就绪）仍整体阻断；依赖锁内容为空/非法按单包级跳过
+  （只跳过该包 + 失败证据照落），见「架构项A」口径
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.能力契约.契约 import 能力注册表
 from 运行核心.环境指纹 import 计算环境指纹
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
 from 运行核心.运行环境管理器.环境管理器 import 环境结果
@@ -180,21 +182,35 @@ class Test装配接入环境缓存(unittest.TestCase):
         self.assertEqual(证据[-1]["错误码"], "提供者不可用")
         self.assertIn("模拟构建失败", 证据[-1]["错误说明"])
 
-    def test_空锁fail_closed终检保留(self):
-        """环境确保可用（系统解释器命中）但锁空 → fail-closed 终检拒绝装配。"""
-        self.新支持库提供者("装配提供者", {
+    def test_空锁只跳过该包并留失败证据(self):
+        """空锁是单包自己的半成品问题：只跳过该包并告警，其余包照常装配。
+
+        新规（架构项A，2026-09-15）：依赖锁内容为空/非法只跳过该包并告警，
+        不再整体阻断；但坏锁的失败证据必须照落（缓存证据 类型=失败、错误码=依赖锁为空），
+        审计链不因「跳过而非阻断」而丢；被跳过的包不得留下任何半装配能力。
+        """
+        self.新支持库提供者("半成品提供者", {
             "包": [], "直接依赖": [], "环境": {}, "依赖闭包": [],
         })
-        结果 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
-        self.assertFalse(结果.成功)
-        self.assertTrue(
-            any("提供者环境校验失败（装配阻断）" in 问题 for 问题 in 结果.问题列表),
-            str(结果.问题列表),
-        )
-        证据 = self.证据行()
-        self.assertEqual(证据[-1]["类型"], "失败", "空锁必须走 fail-closed 失败路径")
-        self.assertEqual(证据[-1]["错误码"], "依赖锁为空")
-        self.assertEqual(证据[-1]["摘要"], "")
+        self.新支持库提供者("正常提供者", 合法锁("正常提供者"))
+        注册表 = 能力注册表()
+        with self.放行构建()[0], self.放行构建()[1], self.放行构建()[2]:
+            结果 = 装配系统(self.临时 / "支持库", self.临时 / "模块库", 注册表)
+        self.assertTrue(结果.成功, str(结果.问题列表))
+        self.assertEqual(结果.问题列表, [], "空锁不得整体阻断")
+        self.assertEqual(len(结果.跳过包列表), 1, str(结果.跳过包列表))
+        self.assertIn("半成品提供者.包", 结果.跳过包列表[0])
+        self.assertIn("依赖锁为空", 结果.跳过包列表[0])
+        # 被跳过的包零残留；其余包照常注册能力
+        self.assertEqual(注册表.能力id列表, ["正常提供者.能力"])
+        self.assertEqual(结果.声明能力数, 1)
+        self.assertEqual(结果.已注册能力数, 1)
+        # 坏锁仍按失败落证据（审计链不丢）
+        失败行 = [行 for 行 in self.证据行() if 行["类型"] == "失败"]
+        self.assertEqual(len(失败行), 1, str(self.证据行()))
+        self.assertEqual(失败行[0]["错误码"], "依赖锁为空")
+        self.assertEqual(失败行[0]["提供者id"], "半成品提供者")
+        self.assertEqual(失败行[0]["摘要"], "")
 
     def test_仅外部应用提供者真实命中路径(self):
         """仅外部应用（非 pip 包）提供者 → 无构建真实命中系统解释器，装配成功。"""

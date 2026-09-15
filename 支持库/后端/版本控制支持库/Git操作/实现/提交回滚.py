@@ -13,31 +13,48 @@ from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.版本控制支持库.Git操作.实现.白名单 import (
     失败结果, 校验仓库路径, 校验提交哈希, 校验提交消息, 校验路径在仓库内, 校验超时,
 )
+from 支持库.后端.版本控制支持库.Git操作.实现.仓库根白名单 import 校验提交根
 from 支持库.后端.版本控制支持库.Git操作.实现.受管执行 import 默认超时秒, 执行git, 命令结果
 
 
-def 提交(仓库路径: str, 路径列表: list[str], 消息: str,
+def 提交(仓库路径: str, 路径列表: list[str] | None = None, 消息: str | None = None,
         超时秒: float = 默认超时秒) -> 结果:
-    """git add 指定路径 + git commit 原子提交（路径越界拒绝）。"""
-    校验 = 校验仓库路径(仓库路径) or 校验提交消息(消息) or 校验超时(超时秒)
+    """git add（指定路径 或 全量 -A）+ git commit 原子提交。
+
+    路径语义（与 MCP `工作区管理.py:_工作区提交` 同口径）：
+    - 路径列表 为空/未给（None 或 []）→ `git add -A` 全量暂存（新增/修改/删除全部纳入），
+      返回值 全量暂存=真、路径列表=[]；
+    - 路径列表 非空 → 逐条过 路径在仓库内 校验（越界 → 路径越界）后 `git add -- 路径...`。
+    安全边界：仓库根先过 仓库根白名单（实现/仓库根白名单.py，M1 高危漏洞修复口径），
+    白名单外一律 路径越界——禁止对任意 Git 仓执行越界提交。
+    """
+    校验 = (校验仓库路径(仓库路径) or 校验提交根(仓库路径)
+            or 校验提交消息(消息) or 校验超时(超时秒))
     if 校验:
         return 校验
-    if not isinstance(路径列表, list) or not 路径列表:
-        return 失败结果("参数不合法", "路径列表必须为非空列表")
     相对列表: list[str] = []
-    for 路径 in 路径列表:
-        校验 = 校验路径在仓库内(仓库路径, 路径)
-        if 校验:
-            return 校验
-        相对列表.append(str(Path(路径).resolve().relative_to(Path(仓库路径).resolve())))
+    全量暂存 = 路径列表 is None or (isinstance(路径列表, list) and not 路径列表)
+    if 全量暂存:
+        暂存参数 = ["add", "-A"]
+    elif isinstance(路径列表, list):
+        for 路径 in 路径列表:
+            校验 = 校验路径在仓库内(仓库路径, 路径)
+            if 校验:
+                return 校验
+            相对列表.append(str(Path(路径).resolve().relative_to(Path(仓库路径).resolve())))
+        暂存参数 = ["add", "--"] + 相对列表
+    else:
+        return 失败结果("参数不合法", "路径列表必须是列表（空列表=全量暂存）")
+    命令列表 = [暂存参数, ["commit", "-m", 消息], ["rev-parse", "HEAD"]]
     执行列表: list[结果] = []
-    for 参数 in (["add", "--"] + 相对列表, ["commit", "-m", 消息], ["rev-parse", "HEAD"]):
+    for 参数 in 命令列表:
         执行 = 命令结果(执行git(仓库路径, 参数, 超时秒))
         if not 执行.成功:
             return 执行
         执行列表.append(执行)
     return 结果.成功结果({
         "提交": 执行列表[2].值["标准输出"].strip(), "消息": 消息, "路径列表": 相对列表,
+        "全量暂存": 全量暂存,
     })
 
 

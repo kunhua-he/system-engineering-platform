@@ -2,12 +2,15 @@
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
     "system_engineering_toolkit": {
-      "type": "remote",
-      "url": "http://127.0.0.1:8766/mcp/",
+      "type": "local",
+      "command": [
+        "/opt/homebrew/bin/python3.14",
+        "~/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
+      ],
+      "cwd": "~/Documents/Agent/PHP/系统工程平台",
       "enabled": true,
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {env:MCP工具箱_访问令牌}"
+      "environment": {
+        "系统库网关凭证": "{env:MCP_GATEWAY_TOKEN}"
       }
     }
   }

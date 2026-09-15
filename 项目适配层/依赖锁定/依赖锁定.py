@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from 公共契约.包声明 import 包声明, 加载声明文件
+from 公共契约.正式根 import 存在根名
 from 公共契约.版本规则.契约版本 import 契约版本 as 契约版本常量
 from 运行核心.加载器.包发现.发现器 import 发现全部
 from 运行核心.加载器.依赖解析.解析器 import 解析依赖
@@ -56,7 +57,7 @@ def _提供者锁定信息(声明: 包声明, 系统根目录: Path) -> dict:
     # 包id 形如 支持库.后端.支持库名.子包 或 支持库.适配层.提供者名：
     # 去掉 支持库./模块库./技能库. 前缀后，剩余段即为相对根目录的路径
     包目录 = None
-    for 根 in ("支持库", "模块库", "技能库"):
+    for 根 in 存在根名(系统根目录):
         候选 = 系统根目录 / 根 / Path(*声明.包id.split(".")[1:])
         if (候选 / "能力定义.json").is_file():
             包目录 = 候选

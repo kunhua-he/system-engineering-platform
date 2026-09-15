@@ -70,7 +70,7 @@ class 网关用例(unittest.TestCase):
         for 服务 in reversed(self.待停止):
             try:
                 服务.优雅停止()
-            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                 记录忽略('测试_网关安全与有界并发.tearDown', 错误)
 
     def _启动主网关(self, 后端: 可控后端 | None = None, **覆盖):

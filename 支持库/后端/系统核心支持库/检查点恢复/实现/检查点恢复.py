@@ -21,7 +21,7 @@ from 公共契约.运行时.运行缓存 import 解析运行数据根
 
 默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "检查点.db")
 锁 = __import__("threading").Lock()
-# 补列等容错路径的问题留痕（哲学第 15 条：失败必须可见，不许 except: pass 吞掉）
+# 补列等容错路径的问题留痕（哲学第 3 条 2 项：失败必须可见，不许 except: pass 吞掉）
 补列问题: list[str] = []
 # 连接关闭等容错路径的问题留痕（同上：不许静默）
 连接问题: list[str] = []
@@ -45,7 +45,7 @@ _检查点缓存标识: tuple[int, int] | None = None
 
 
 def _关闭并记录(连接, 场景: str) -> None:
-    """尽力关闭连接；失败只留痕不抛出（哲学第 15 条）。"""
+    """尽力关闭连接；失败只留痕不抛出（哲学第 3 条 2 项）。"""
     if 连接 is None:
         return
     try:
@@ -103,10 +103,10 @@ def _连接(库路径: str) -> sqlite3.Connection:
             连接.execute("CREATE INDEX IF NOT EXISTS idx_检查点_会话 ON 检查点(会话id, 创建时间)")
             连接.commit()
         except Exception:
-            # 建连/建表失败不留半开连接（哲学第 15 条：不留脏状态，原异常照抛）
+            # 建连/建表失败不留半开连接（哲学第 3 条 2 项：不留脏状态，原异常照抛）
             _关闭并记录(连接, "检查点库建连失败")
             raise
-        # 兼容旧库：幂等补 中断 列。列已存在属预期；**其它错误必须留痕**（哲学第 15 条，不静默）。
+        # 兼容旧库：幂等补 中断 列。列已存在属预期；**其它错误必须留痕**（哲学第 3 条 2 项，不静默）。
         try:
             连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断原因 TEXT")
             连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断状态 TEXT DEFAULT '正常'")

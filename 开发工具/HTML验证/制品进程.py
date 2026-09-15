@@ -4,6 +4,7 @@ import os, queue, re, signal, subprocess, sys, threading, time
 from pathlib import Path
 from typing import Any
 from 开发工具.HTML验证.常量 import 默认启动超时秒, 输出上限字节
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 class _有界输出:
     def __init__(self, 上限字节: int) -> None:
         self.上限 = max(128, int(上限字节))
@@ -110,6 +111,23 @@ def _回收进程组(进程: subprocess.Popen[Any] | None) -> dict[str, Any]:
         "进程组残留": 残留,
     }
 
+受管临时根目录名 = "HTML验证临时"
+
+
+def _受管临时根目录() -> Path | None:
+    """验证链的受管临时根父目录（`<缓存根>/HTML验证临时`）。
+
+    与 `场景执行器._建场景临时根` 同源：场景临时目录就建在这里，本函数把它
+    显式授权给制品子进程的 Git 仓库根白名单（见下方 `工作区允许提交根` 说明）。
+    """
+    try:
+        系统根 = Path(__file__).resolve().parents[2]
+        目录 = 解析运行缓存根(系统根) / 受管临时根目录名
+    except Exception:
+        return None
+    return 目录 if 目录.is_dir() else None
+
+
 def _启动制品(
     启动器: Path,
     制品目录: Path,
@@ -121,6 +139,18 @@ def _启动制品(
     # HTML 黑盒是本地受管验证链；制品默认要求凭证时，为验证子进程
     # 注入非生产测试凭证，真实请求仍由网关按自身策略校验。
     环境.setdefault("系统库网关凭证", "html-blackbox-verifier")
+    # Git 能力（提交/切换分支/合并分支）的仓库根白名单只认「制品自己的仓库根 +
+    # 环境变量显式授权 + 系统临时目录」。而黑盒的场景受管临时根现在落在
+    # `<源码仓库>/工程缓存/HTML验证临时/`（见 场景执行器._建场景临时根），
+    # 制品看不到它 → 场景里的临时 Git 仓被判 `路径越界`（HTTP 400），
+    # `Git操作.临时仓库完整正向链` 19 步全红（2026-09-15 实测）。
+    # 这里把验证链自己的受管目录显式授权给制品子进程——只授权本验证链的
+    # 临时目录与源码仓库根，不放开任意路径。
+    受管临时根 = _受管临时根目录()
+    if 受管临时根 is not None:
+        已有 = 环境.get("工作区允许提交根", "")
+        环境["工作区允许提交根"] = os.pathsep.join(
+            [x for x in (已有, str(受管临时根)) if x])
     进程 = subprocess.Popen(
         [sys.executable, "-u", str(启动器), "--端口", str(端口), "--不自动打开"],
         cwd=str(制品目录),
