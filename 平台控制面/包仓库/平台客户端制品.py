@@ -344,7 +344,18 @@ class 平台客户端制品接入:
             return False
         if 指针.get("制品摘要") != 制品摘要:
             return False
-        return 计算目录摘要16(目标) == 摘要16
+        if 计算目录摘要16(目标) != 摘要16:
+            return False
+        # 溯源元数据也要一致：它们不参与内容摘要（见 读取制品文件表），若只按内容摘要判"已安装"，
+        # 安装目录会留着**旧提交号/旧工作区指纹**的 制品来源.json → 发布门禁报
+        # 「来源提交与当前 HEAD 不一致」（2026-09-15 实测踩坑）。
+        来源目录 = self.制品根目录 / 制品摘要
+        for 文件名 in ("制品来源.json", "编译清单.json"):
+            源 = 来源目录 / 文件名
+            现状 = 目标 / 文件名
+            if 源.is_file() and (not 现状.is_file() or 源.read_bytes() != 现状.read_bytes()):
+                return False
+        return True
 
     def _原子写入安装目录(self, 制品目录: Path, 目标: Path, 制品名: str,
                             摘要16: str) -> Path:
