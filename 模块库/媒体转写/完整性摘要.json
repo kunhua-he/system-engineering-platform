@@ -1,93 +1,91 @@
 {
- "包id": "模块库.媒体转写",
- "版本": "1.0.2",
- "摘要算法": "sha256",
- "文件清单": [
-  {
-   "路径": "__init__.py",
-   "sha256": "dcd035664ddd004af693af4a34d5f65a67f5eae9ff438727c77b05af5081dc7f"
-  },
-  {
-   "路径": "依赖契约/依赖契约.json",
-   "sha256": "75a0190b9112d1095bea9c43b8f2a876325cce0ca08d94599a8eeaff3a0b9c20"
-  },
-  {
-   "路径": "包声明.json",
-   "sha256": "c71f5c17234597ec45beb15c70767936f0c09676495a7d9dc35a9326e9a757f1"
-  },
-  {
-   "路径": "复用决策.json",
-   "sha256": "9be4694665d115c12176024f456f4c337066b580ef549f816ba479b7d4dbfa35"
-  },
-  {
-   "路径": "实现/媒体转写.py",
-   "sha256": "e46fe587367341a1a2b9923ab6156a6e0fe506c9cb899d01e89c09b1332a53dd"
-  },
-  {
-   "路径": "权限契约/权限契约.json",
-   "sha256": "751dfe05dee3afba74490c8eac56bea2be268ec1f50531e7227d6a8b8dd565f6"
-  },
-  {
-   "路径": "能力契约/参数契约.json",
-   "sha256": "1ec411e0cf5ca45ec62475f5a07f99b52a09115a238176c7187663a43e97dafc"
-  },
-  {
-   "路径": "能力定义.json",
-   "sha256": "fc215ffeaa45ca29c88acabc15570153761e05dcdf5c3eb2f3ac40b5d149c1b1"
-  },
-  {
-   "路径": "能力数据/Agent查询数据.json",
-   "sha256": "eb1f07807898d3aa14f745baf4573b3b397e55d23d370e9c51ed4fd6e551e07c"
-  },
-  {
-   "路径": "能力数据/能力搜索数据.json",
-   "sha256": "d04f684033019b1a63db1c71714207afbb5fbbf9d59af558d927852c15a5005b"
-  },
-  {
-   "路径": "说明/使用说明.md",
-   "sha256": "381ec30bcd23637fbd6fe98ce4f764280899b8f909f4bdabbc9a033c8b9a34ca"
-  },
-  {
-   "路径": "说明/目录树与命令.md",
-   "sha256": "6a3d66cf46582a90baf02a594ab07b3a19c6b85a70d4da1703a366698b96f618"
-  },
-  {
-   "路径": "说明/设计说明.md",
-   "sha256": "8bd1f9eaac248faf9c326e42ce66b7a80a0f89acdcae8950c3dd0922dd1e78db"
-  },
-  {
-   "路径": "资源预算.json",
-   "sha256": "d66f307b003237e6a6fd0e30c46335753b184fa484d1c27c519af67a03f99560"
-  },
-  {
-   "路径": "配置契约/配置契约.json",
-   "sha256": "1b2a58a19d236f9c60499f93cc3ae3ed1d7a190512975ab3fa74b3f8dd74e83d"
-  },
-  {
-   "路径": "验证场景/正向HTTP场景.json",
-   "sha256": "6d5eb31c594656dbf960b04aa84bf9aee35f3fbf69405cbb48f57ec06195ae1f"
-  },
-  {
-   "路径": "验证场景引用.json",
-   "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
-  },
-  {
-   "路径": "验证夹具/transcription_success.mp4",
-   "sha256": "cb4463bea2fe9237b8d1b8ed438f6b744d4569919840c0b3c71c6bae693fcf52"
-  },
-  {
-   "路径": "验证夹具/transcription_success.wav",
-   "sha256": "67e376d03ff1f665dfae2f63cba6d3ff0ebc2b27a8380b52856ba21f5ee6f7c4"
-  }
- ],
- "能力数": 4,
- "能力清单": [
-  "媒体转写.转写视频文件",
-  "媒体转写.转写音频文件",
-  "媒体转写.检查可用性",
-  "媒体转写.获取模型版本"
- ],
- "实现摘要": "实现",
- "能力定义摘要": "cc7681da5b8cf5bd",
- "生成时间": "由能力定义编译器生成"
+  "包id": "模块库.媒体转写",
+  "版本": "1.0.2",
+  "摘要算法": "sha256",
+  "文件清单": [
+    {
+      "路径": "__init__.py",
+      "sha256": "dcd035664ddd004af693af4a34d5f65a67f5eae9ff438727c77b05af5081dc7f"
+    },
+    {
+      "路径": "依赖契约/依赖契约.json",
+      "sha256": "75a0190b9112d1095bea9c43b8f2a876325cce0ca08d94599a8eeaff3a0b9c20"
+    },
+    {
+      "路径": "包声明.json",
+      "sha256": "c71f5c17234597ec45beb15c70767936f0c09676495a7d9dc35a9326e9a757f1"
+    },
+    {
+      "路径": "复用决策.json",
+      "sha256": "9be4694665d115c12176024f456f4c337066b580ef549f816ba479b7d4dbfa35"
+    },
+    {
+      "路径": "实现/媒体转写.py",
+      "sha256": "e46fe587367341a1a2b9923ab6156a6e0fe506c9cb899d01e89c09b1332a53dd"
+    },
+    {
+      "路径": "权限契约/权限契约.json",
+      "sha256": "751dfe05dee3afba74490c8eac56bea2be268ec1f50531e7227d6a8b8dd565f6"
+    },
+    {
+      "路径": "能力契约/参数契约.json",
+      "sha256": "1ec411e0cf5ca45ec62475f5a07f99b52a09115a238176c7187663a43e97dafc"
+    },
+    {
+      "路径": "能力定义.json",
+      "sha256": "fc215ffeaa45ca29c88acabc15570153761e05dcdf5c3eb2f3ac40b5d149c1b1"
+    },
+    {
+      "路径": "能力数据/Agent查询数据.json",
+      "sha256": "eb1f07807898d3aa14f745baf4573b3b397e55d23d370e9c51ed4fd6e551e07c"
+    },
+    {
+      "路径": "能力数据/能力搜索数据.json",
+      "sha256": "d04f684033019b1a63db1c71714207afbb5fbbf9d59af558d927852c15a5005b"
+    },
+    {
+      "路径": "说明/使用说明.md",
+      "sha256": "381ec30bcd23637fbd6fe98ce4f764280899b8f909f4bdabbc9a033c8b9a34ca"
+    },
+    {
+      "路径": "说明/目录树与命令.md",
+      "sha256": "6a3d66cf46582a90baf02a594ab07b3a19c6b85a70d4da1703a366698b96f618"
+    },
+    {
+      "路径": "说明/设计说明.md",
+      "sha256": "8bd1f9eaac248faf9c326e42ce66b7a80a0f89acdcae8950c3dd0922dd1e78db"
+    },
+    {
+      "路径": "资源预算.json",
+      "sha256": "d66f307b003237e6a6fd0e30c46335753b184fa484d1c27c519af67a03f99560"
+    },
+    {
+      "路径": "配置契约/配置契约.json",
+      "sha256": "1b2a58a19d236f9c60499f93cc3ae3ed1d7a190512975ab3fa74b3f8dd74e83d"
+    },
+    {
+      "路径": "验证场景/正向HTTP场景.json",
+      "sha256": "6d5eb31c594656dbf960b04aa84bf9aee35f3fbf69405cbb48f57ec06195ae1f"
+    },
+    {
+      "路径": "验证场景引用.json",
+      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
+    },
+    {
+      "路径": "验证夹具/transcription_success.mp4",
+      "sha256": "cb4463bea2fe9237b8d1b8ed438f6b744d4569919840c0b3c71c6bae693fcf52"
+    },
+    {
+      "路径": "验证夹具/transcription_success.wav",
+      "sha256": "67e376d03ff1f665dfae2f63cba6d3ff0ebc2b27a8380b52856ba21f5ee6f7c4"
+    }
+  ],
+  "能力数": 4,
+  "能力清单": [
+    "媒体转写.转写视频文件",
+    "媒体转写.转写音频文件",
+    "媒体转写.检查可用性",
+    "媒体转写.获取模型版本"
+  ],
+  "能力定义摘要": "cc7681da5b8cf5bd"
 }
