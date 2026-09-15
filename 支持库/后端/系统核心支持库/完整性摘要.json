@@ -709,7 +709,7 @@
     },
     {
       "路径": "进程管理/包声明.json",
-      "sha256": "5a9ccd5cd7414345b7cd4326fc033c4035c62961a6660b1e4155646f6cd48fce"
+      "sha256": "9d732a7bd60d74903e6445466f9a6d4abd0378e556c36e90b6d79e5060bd1cea"
     },
     {
       "路径": "进程管理/复用决策.json",
@@ -733,7 +733,7 @@
     },
     {
       "路径": "进程管理/能力定义.json",
-      "sha256": "a6b8eddc4f89eac25a83404d7d8ac291a3bb3b521579af4fde6fdda408a9656e"
+      "sha256": "b7e18ffee61778c6dbb8b6ba80628ec794c02162a017ebd9ddcbefc80cb388fe"
     },
     {
       "路径": "进程管理/能力数据/Agent查询数据.json",
@@ -761,7 +761,7 @@
     },
     {
       "路径": "进程管理/验证场景.json",
-      "sha256": "4ab575381191eb29c6c55a3fadfb57cb67ff2bc670abe20e53676cc851cfb12b"
+      "sha256": "11770a8df4d6b7a782831ea47b9bd9ab343e3063713a068f569d12a25bb03862"
     },
     {
       "路径": "进程管理/验证场景/正向HTTP场景.json",
