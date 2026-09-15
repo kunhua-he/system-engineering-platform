@@ -472,6 +472,42 @@ def 生成来源元数据(制品根: Path) -> None:
         json.dumps(_制品文件摘要(制品根), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def 清理过期制品(仓库根: Path, 当前摘要: str, 当前身份: str) -> None:
+    """只留当前制品：过期就删（内容寻址目录/身份目录/信任链历史各留一份）。
+
+    为什么放进构建脚本：每次重编都会落一份新制品（约 30MB），不自动清理会越堆越多；
+    源码与历史都在 git，删错可取回，因此不需要本地保留历史副本。
+    """
+    删目录数 = 0
+    释放 = 0
+    for 目录 in 仓库根.iterdir():
+        if not 目录.is_dir():
+            continue
+        是内容寻址 = len(目录.name) == 32 and all(c in '0123456789abcdef' for c in 目录.name)
+        是身份目录 = 目录.name.startswith(f"{客户端前缀}-")
+        if not (是内容寻址 or 是身份目录):
+            continue
+        是当前 = 目录.name == 当前摘要 or 目录.name == f"{客户端前缀}-{当前身份}"
+        if 是当前:
+            continue
+        大小 = sum(p.stat().st_size for p in 目录.rglob('*') if p.is_file())
+        shutil.rmtree(目录)
+        删目录数 += 1
+        释放 += 大小
+    # 信任链：快照/目标/签名制品包各留最新一份
+    信任根 = 仓库根 / "平台客户端信任"
+    for 目录, 模式 in ((信任根 / "元数据", "快照_*.json"), (信任根 / "元数据", "目标_*.json"),
+                     (信任根 / "制品", "*.bin")):
+        if not 目录.is_dir():
+            continue
+        文件 = sorted(目录.glob(模式), key=lambda p: p.stat().st_mtime)
+        for 过期 in 文件[:-1]:
+            释放 += 过期.stat().st_size
+            过期.unlink()
+            删目录数 += 1
+    print(f"过期制品清理：删 {删目录数} 项，释放 {释放 / 1024 / 1024:.1f} MB")
+
+
 def 构建(安装: bool = False) -> Path:
     """构建平台客户端制品目录；构建前后都拒绝任何符号链接。"""
     源根列表: list[tuple[str, Path]] = []
@@ -584,6 +620,8 @@ def 安装到环境(制品根: Path) -> Path:
         有效, 校验消息, _ = 接入.校验稳定路径()
         if not 有效:
             raise RuntimeError(f"稳定路径校验失败: {校验消息}")
+        记录 = 接入.状态.读取记录("制品", "制品摘要", 制品摘要)
+        清理过期制品(接入.制品根目录, 制品摘要, (记录 or {}).get("版本", ""))
         print(f"已经包仓库安装并激活：{目标}")
         print(f"入库：{入库消息}")
         return 目标
