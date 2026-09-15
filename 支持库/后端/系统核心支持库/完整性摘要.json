@@ -709,7 +709,7 @@
     },
     {
       "路径": "进程管理/包声明.json",
-      "sha256": "9d732a7bd60d74903e6445466f9a6d4abd0378e556c36e90b6d79e5060bd1cea"
+      "sha256": "6359ed916dbba22e4fd7bcf459852732c451d1517de9bf03d02cb05964d4a53a"
     },
     {
       "路径": "进程管理/复用决策.json",
@@ -729,11 +729,11 @@
     },
     {
       "路径": "进程管理/能力契约/参数契约.json",
-      "sha256": "d87ef4ee190a5c8a28c4538facd67d01c8529916d515d4e7de41bdefd44e5ebe"
+      "sha256": "e2bf2a66a67e5ac28ddb1c3d05d5d1e88c0de40a8e194655c7f873a5d04a53c6"
     },
     {
       "路径": "进程管理/能力定义.json",
-      "sha256": "b7e18ffee61778c6dbb8b6ba80628ec794c02162a017ebd9ddcbefc80cb388fe"
+      "sha256": "2da184779058a4652bc23a5c033e8e7b14f3bfabd690f0c464b69aa786315f94"
     },
     {
       "路径": "进程管理/能力数据/Agent查询数据.json",
@@ -777,7 +777,7 @@
     },
     {
       "路径": "限流/包声明.json",
-      "sha256": "908e2dd2c5b6149b3a38e9a68e5e4c672a86608c3148c17a0036d2cda8fe0027"
+      "sha256": "37978dfc3369ea5edc72f52db5908edf9e8bd97e09e5c0ada0f402fe63c2151b"
     },
     {
       "路径": "限流/复用决策.json",
@@ -793,11 +793,11 @@
     },
     {
       "路径": "限流/能力契约/参数契约.json",
-      "sha256": "d592ae1bc0860be337480fe69035cbce972b8e224c3ea5d5808ab8625eed41c2"
+      "sha256": "d63f4d76a7f7d90f6365ef68133f921054276f5bdd23c4154803f632e6fb632e"
     },
     {
       "路径": "限流/能力定义.json",
-      "sha256": "bbe5f8a672e51749e567c5a4e939670309b2b888bcf08ef154175ebfe916b7b4"
+      "sha256": "49f0d755d28ce9264e455c700520d4b2ddf7f9f1890c8aa756e1f58bba8e759f"
     },
     {
       "路径": "限流/能力数据/Agent查询数据.json",

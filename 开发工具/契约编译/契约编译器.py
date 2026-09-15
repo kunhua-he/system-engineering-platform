@@ -115,29 +115,34 @@ async function 调用{能力id.split(".")[-1]}({参数对象行}) {{
 
 
 def 生成网关参数校验(契约: dict[str, Any]) -> str:
-    """生成网关参数校验函数（Python）。"""
+    """生成网关参数校验函数（Python）。
+
+    校验逻辑**不在这里重新实现**：唯一校验点是
+    ``运行核心/统一网关/网关核心.py::校验能力参数``（网关参数校验层），
+    本函数只生成一层薄委托，参数类型表随契约声明一起带过去。
+    历史实现自带「整数/文本/逻辑型」三类型表，等于每个能力各写一遍校验，
+    正是「两端不对称」的裂缝来源（也是文本型漏校的老根），已废止。
+    """
     能力id = 契约["能力id"]
-    校验行 = []
-    for 参数 in 契约.get("参数", []):
-        名称 = 参数["名称"]
-        必填 = 参数.get("必填", True)
-        参数类型 = 参数.get("类型", "")
-        条件 = f"参数表.get({名称!r}) is None" if 必填 else "False"
-        校验行.append(f'    if {条件}:\n        return "参数不合法", f"缺少必填参数: {名称}"')
-        类型检查 = {
-            "整数": f"isinstance(参数表.get({名称!r}), int)",
-            "文本": f"isinstance(参数表.get({名称!r}), str)",
-            "逻辑型": f"isinstance(参数表.get({名称!r}), bool)",
-        }.get(参数类型)
-        if 类型检查 and 必填:
-            校验行.append(f'    if 参数表.get({名称!r}) is not None and not {类型检查}:\n        return "参数不合法", f"参数类型错误: {名称}（应为 {参数类型}）"')
-    校验体 = "\n".join(校验行) if 校验行 else "    pass"
+    声明 = 契约.get("参数", [])
+    # 生成的是 Python 源码，声明必须用 Python 字面量（repr），
+    # 不能用 json.dumps——JSON 的 true/false/null 在 Python 里是语法错误。
+    声明字面量 = repr(声明)
     return f'''# {生成标记}
-# 契约编译产物：{能力id} 网关参数校验
+# 契约编译产物：{能力id} 网关参数校验（委托唯一校验点，不自带类型表）
+from typing import Any
+
+参数声明: list[dict[str, Any]] = {声明字面量}
+
+
 def 校验参数(参数表: dict) -> tuple[str, str]:
     """参数校验；返回 (错误码, 错误说明)；空错误码=通过。"""
-{校验体}
-    return "", ""
+    from 运行核心.统一网关.网关核心 import 校验能力参数
+    错误 = 校验能力参数({能力id!r}, 参数声明, dict(参数表 or {{}}))
+    if not 错误:
+        return "", ""
+    错误码, _, 说明 = 错误.partition("：")
+    return 错误码, 说明
 '''
 
 

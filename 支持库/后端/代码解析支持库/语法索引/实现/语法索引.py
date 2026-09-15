@@ -3,6 +3,10 @@
 把调用方自持的 Python(ast) / TypeScript(tree-sitter) / Vue 语法遍历下沉为底座
 原子能力：无状态、无副作用，一律返回统一结果，不抛异常（语法错误转稳定错误码）。
 
+tree-sitter 是第三方，边界只归 支持库.适配层.TreeSitter提供者：本库不导入第三方，
+只消费它的**中性语法树**（中文节点种类 + 中文字段名），第三方 grammar 英文不出适配层。
+「遍历哪些节点、产出哪类语法事实」是业务语义，留在本库；提供者不可用时退回正则降级。
+
 底座只回答「这段代码里有哪些语法事实」——导入、符号定义、调用、字符串常量、
 字符串型类属性赋值；事实在调用方项目里意味着什么（跨模块判定、表名规范化、
 能力边筛选、调用者归属）留在调用方。
@@ -41,8 +45,8 @@ _正则_平台调用 = re.compile(
 # Vue 单文件组件：抽取 <script> 块
 _正则_Vue脚本 = re.compile(r"""<script\b[^>]*>(.*?)</script>""", re.DOTALL)
 
-# 惰性加载的 tree-sitter 解析器（线程安全双检锁）
-_ts解析器 = None
+# 惰性取得的适配层解析入口（线程安全双检锁）：值为提供者的 解析语法树 函数，False 表示不可用
+_ts解析入口 = None
 _ts锁 = threading.Lock()
 
 
@@ -210,31 +214,42 @@ def _解析Python事实(代码文本: str) -> dict:
 
 
 def _确保TS解析器():
-    """惰性初始化 tree-sitter TypeScript 解析器；不可用返回 None。"""
-    global _ts解析器
-    if _ts解析器 is not None:
-        return _ts解析器
+    """惰性取得适配层 TreeSitter提供者 的「解析语法树」入口；不可用返回 None。
+
+    tree-sitter 是第三方，只活在 支持库.适配层.TreeSitter提供者 内；本库拿到的是它的
+    中性语法树（中文种类 + 中文字段名）。返回假值即走正则降级（单测用 mock 顶替本函数）。
+    """
+    global _ts解析入口
+    if _ts解析入口 is not None:
+        return _ts解析入口
     with _ts锁:
-        if _ts解析器 is not None:
-            return _ts解析器
-        try:
-            import tree_sitter_typescript
-            from tree_sitter import Language, Parser
-        except ImportError:
-            _ts解析器 = False
-            return None
-        try:
-            语言 = Language(tree_sitter_typescript.language_typescript())
-            _ts解析器 = Parser(语言)
-        except Exception:
-            _ts解析器 = False
-            return None
-    return _ts解析器
+        if _ts解析入口 is None:
+            try:
+                from 支持库.适配层.TreeSitter提供者 import 解析语法树
+            except Exception:
+                _ts解析入口 = False
+            else:
+                _ts解析入口 = 解析语法树
+    return _ts解析入口
 
 
-def _TS字符串值(节点, 源码: bytes) -> str:
-    """提取 tree-sitter 字符串节点的内部值。"""
-    文本 = 源码[节点.start_byte:节点.end_byte].decode()
+def _取字段(节点: dict, 字段名: str) -> dict | None:
+    """按中文字段名取子节点（与第三方 child_by_field_name 同口径：同名字段取第一个）。"""
+    下标 = (节点.get("字段") or {}).get(字段名)
+    子节点列表 = 节点.get("子节点") or []
+    if 下标 is None or not 0 <= 下标 < len(子节点列表):
+        return None
+    return 子节点列表[下标]
+
+
+def _取原文(节点: dict, 源码: bytes) -> str:
+    """按字节区间取原文本（口径与旧直连实现一致）。"""
+    return 源码[节点["起始字节"]:节点["结束字节"]].decode()
+
+
+def _TS字符串值(节点: dict, 源码: bytes) -> str:
+    """提取中性语法树里的字符串字面量内部值。"""
+    文本 = _取原文(节点, 源码)
     if len(文本) >= 2:
         if 文本[0] in ("'", '"') and 文本[-1] == 文本[0]:
             return 文本[1:-1]
@@ -243,141 +258,142 @@ def _TS字符串值(节点, 源码: bytes) -> str:
     return 文本
 
 
-def _TS获取调用路径(节点, 源码: bytes) -> list[str] | None:
+def _TS获取调用路径(节点: dict, 源码: bytes) -> list[str] | None:
     """解析点号调用路径，如 platform.modules.call → ['platform','modules','call']。"""
-    if 节点.type == "identifier":
-        return [源码[节点.start_byte:节点.end_byte].decode()]
-    if 节点.type == "member_expression":
-        对象 = 节点.child_by_field_name("object")
-        属性 = 节点.child_by_field_name("property")
-        if 对象 and 属性:
+    if 节点["种类"] == "标识符":
+        return [_取原文(节点, 源码)]
+    if 节点["种类"] == "成员访问":
+        对象 = _取字段(节点, "对象")
+        属性 = _取字段(节点, "属性")
+        if 对象 is not None and 属性 is not None:
             对象片段 = _TS获取调用路径(对象, 源码)
-            属性名 = 源码[属性.start_byte:属性.end_byte].decode()
+            属性名 = _取原文(属性, 源码)
             if 对象片段:
                 return 对象片段 + [属性名]
             return [属性名]
     return None
 
 
-def _TS获取参数字符串(参数节点, 源码: bytes) -> list[str]:
+def _TS获取参数字符串(参数节点: dict, 源码: bytes) -> list[str]:
     """从调用参数节点提取字符串字面量参数（含模板字符串）。"""
     结果列表: list[str] = []
-    for 子节点 in 参数节点.children:
-        if 子节点.type in ("string", "template_string"):
+    for 子节点 in 参数节点.get("子节点") or []:
+        if 子节点["种类"] in ("字符串字面量", "模板字符串"):
             值 = _TS字符串值(子节点, 源码)
             if 值:
                 结果列表.append(值)
     return 结果列表
 
 
-def _遍历TS类正文(正文节点, 源码: bytes, 类名: str, 收集: dict) -> None:
+def _遍历TS类正文(正文节点: dict, 源码: bytes, 类名: str, 收集: dict) -> None:
     """遍历类体内的方法定义（嵌套类递归，与调用方现实现一致）。"""
-    for 子节点 in 正文节点.children:
-        if 子节点.type == "method_definition":
-            名称节点 = 子节点.child_by_field_name("name")
-            if 名称节点:
-                方法名 = 源码[名称节点.start_byte:名称节点.end_byte].decode()
+    for 子节点 in 正文节点.get("子节点") or []:
+        if 子节点["种类"] == "方法定义":
+            名称节点 = _取字段(子节点, "名称")
+            if 名称节点 is not None:
+                方法名 = _取原文(名称节点, 源码)
                 完整名称 = f"{类名}.{方法名}"
                 收集["符号列表"].append({
                     "名称": 完整名称,
                     "类别": "method",
-                    "行号": 名称节点.start_point[0] + 1,
-                    "结束行号": 子节点.end_point[0] + 1,
+                    "行号": 名称节点["起始行"],
+                    "结束行号": 子节点["结束行"],
                 })
-        for 孙节点 in 子节点.children:
-            if 孙节点.type == "class_declaration":
+        for 孙节点 in 子节点.get("子节点") or []:
+            if 孙节点["种类"] == "类声明":
                 _遍历TS树(孙节点, 源码, 收集)
 
 
-def _遍历TS树(节点, 源码: bytes, 收集: dict) -> None:
-    """递归遍历 tree-sitter AST，收集导入 / 定义 / 调用 / 字符串事实。"""
-    if 节点.type == "import_statement":
-        来源子句 = 节点.child_by_field_name("source")
-        if 来源子句 and 来源子句.type == "string":
+def _遍历TS树(节点: dict, 源码: bytes, 收集: dict) -> None:
+    """递归遍历中性语法树，收集导入 / 定义 / 调用 / 字符串事实。"""
+    种类 = 节点["种类"]
+    if 种类 == "导入语句":
+        来源子句 = _取字段(节点, "来源")
+        if 来源子句 is not None and 来源子句["种类"] == "字符串字面量":
             规格 = _TS字符串值(来源子句, 源码)
             if 规格:
                 收集["导入列表"].append({
                     "路径": 规格,
-                    "行号": 节点.start_point[0] + 1,
+                    "行号": 节点["起始行"],
                     "类别": "import",
                 })
 
-    elif 节点.type == "export_statement":
-        来源子句 = 节点.child_by_field_name("source")
-        if 来源子句 and 来源子句.type == "string":
+    elif 种类 == "导出语句":
+        来源子句 = _取字段(节点, "来源")
+        if 来源子句 is not None and 来源子句["种类"] == "字符串字面量":
             规格 = _TS字符串值(来源子句, 源码)
             if 规格:
                 收集["导入列表"].append({
                     "路径": 规格,
-                    "行号": 节点.start_point[0] + 1,
+                    "行号": 节点["起始行"],
                     "类别": "export-from",
                 })
 
-    elif 节点.type == "function_declaration":
-        名称节点 = 节点.child_by_field_name("name")
-        if 名称节点:
-            名称 = 源码[名称节点.start_byte:名称节点.end_byte].decode()
+    elif 种类 == "函数声明":
+        名称节点 = _取字段(节点, "名称")
+        if 名称节点 is not None:
+            名称 = _取原文(名称节点, 源码)
             收集["符号列表"].append({
                 "名称": 名称,
                 "类别": "function",
-                "行号": 名称节点.start_point[0] + 1,
-                "结束行号": 节点.end_point[0] + 1,
+                "行号": 名称节点["起始行"],
+                "结束行号": 节点["结束行"],
             })
 
-    elif 节点.type == "lexical_declaration":
-        for 子节点 in 节点.children:
-            if 子节点.type == "variable_declarator":
-                名称节点 = 子节点.child_by_field_name("name")
-                值节点 = 子节点.child_by_field_name("value")
-                if (名称节点 and 值节点
-                        and 值节点.type in ("arrow_function", "function_expression")):
-                    名称 = 源码[名称节点.start_byte:名称节点.end_byte].decode()
+    elif 种类 == "词法声明":
+        for 子节点 in 节点.get("子节点") or []:
+            if 子节点["种类"] == "变量声明符":
+                名称节点 = _取字段(子节点, "名称")
+                值节点 = _取字段(子节点, "值")
+                if (名称节点 is not None and 值节点 is not None
+                        and 值节点["种类"] in ("箭头函数", "函数表达式")):
+                    名称 = _取原文(名称节点, 源码)
                     收集["符号列表"].append({
                         "名称": 名称,
                         "类别": "function",
-                        "行号": 名称节点.start_point[0] + 1,
-                        "结束行号": 子节点.end_point[0] + 1,
+                        "行号": 名称节点["起始行"],
+                        "结束行号": 子节点["结束行"],
                     })
 
-    elif 节点.type == "class_declaration":
-        名称节点 = 节点.child_by_field_name("name")
+    elif 种类 == "类声明":
+        名称节点 = _取字段(节点, "名称")
         类名 = ""
-        if 名称节点:
-            类名 = 源码[名称节点.start_byte:名称节点.end_byte].decode()
+        if 名称节点 is not None:
+            类名 = _取原文(名称节点, 源码)
             收集["符号列表"].append({
                 "名称": 类名,
                 "类别": "class",
-                "行号": 名称节点.start_point[0] + 1,
-                "结束行号": 节点.end_point[0] + 1,
+                "行号": 名称节点["起始行"],
+                "结束行号": 节点["结束行"],
             })
-        正文节点 = 节点.child_by_field_name("body")
-        if 正文节点:
+        正文节点 = _取字段(节点, "正文")
+        if 正文节点 is not None:
             _遍历TS类正文(正文节点, 源码, 类名, 收集)
 
-    elif 节点.type == "call_expression":
-        函数节点 = 节点.child_by_field_name("function")
-        if 函数节点:
+    elif 种类 == "调用表达式":
+        函数节点 = _取字段(节点, "调用目标")
+        if 函数节点 is not None:
             片段 = _TS获取调用路径(函数节点, 源码)
             if 片段:
                 参数字符串: list[str] = []
-                参数节点 = 节点.child_by_field_name("arguments")
-                if 参数节点:
+                参数节点 = _取字段(节点, "实参")
+                if 参数节点 is not None:
                     参数字符串 = _TS获取参数字符串(参数节点, 源码)
                 收集["调用列表"].append({
                     "函数名": ".".join(片段),
-                    "行号": 节点.start_point[0] + 1,
+                    "行号": 节点["起始行"],
                     "参数字符串": 参数字符串,
                 })
 
-    elif 节点.type == "string":
+    elif 种类 == "字符串字面量":
         值 = _TS字符串值(节点, 源码)
         if 值:
             收集["字符串列表"].append({
                 "值": 值,
-                "行号": 节点.start_point[0] + 1,
+                "行号": 节点["起始行"],
             })
 
-    for 子节点 in 节点.children:
+    for 子节点 in 节点.get("子节点") or []:
         _遍历TS树(子节点, 源码, 收集)
 
 
@@ -405,13 +421,17 @@ def _解析TS正则降级(源代码: str, 收集: dict) -> None:
 
 def _解析脚本来源(源代码: str, 收集: dict) -> str:
     """解析一段 TypeScript 源码，返回实际使用的解析器名。"""
-    解析器 = _确保TS解析器()
-    if not 解析器:
+    解析入口 = _确保TS解析器()
+    if not 解析入口:
         _解析TS正则降级(源代码, 收集)
         return "正则降级"
-    源码字节 = 源代码.encode("utf-8")
-    树 = 解析器.parse(源码字节)
-    _遍历TS树(树.root_node, 源码字节, 收集)
+    try:
+        根节点 = 解析入口(源代码)
+    except Exception:
+        # 提供者不可用 / 解析失败一律降级（与旧直连 ImportError 分支同口径，不抛异常）
+        _解析TS正则降级(源代码, 收集)
+        return "正则降级"
+    _遍历TS树(根节点, 源代码.encode("utf-8"), 收集)
     return "tree-sitter"
 
 

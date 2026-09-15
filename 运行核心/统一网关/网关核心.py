@@ -9,6 +9,7 @@ import json
 import base64
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from 运行核心.运行诊断.安全审计.安全审计 import 安全审计
@@ -122,6 +123,140 @@ def _是JSON值(值: Any) -> bool:
         return True
     except (TypeError, ValueError):
         return False
+
+
+def _是数值(值: Any) -> bool:
+    """数值型：整数或浮点；布尔不算（Python 里 bool 是 int 的子类）。"""
+    return isinstance(值, (int, float)) and not isinstance(值, bool)
+
+
+def _是字节集值(值: Any) -> bool:
+    """字节集型：真实二进制，或网关约定的冻结字节集 / base64 文本表示。
+
+    HTTP 边界只能传文本：本地网关已把 ``{"类型":"字节集型","base64":...}``
+    还原成 ``bytes``，实现层（如图像解码）另接受 base64 文本，两者都算合法。
+    整数 / 浮点 / 布尔 / 列表一律不是字节集。
+    """
+    if isinstance(值, (bytes, bytearray, memoryview)):
+        return True
+    if isinstance(值, str):
+        return True
+    return (isinstance(值, dict)
+            and 值.get("类型") == "字节集型"
+            and isinstance(值.get("base64"), str))
+
+
+def _是日期时间值(值: Any) -> bool:
+    """日期时间型：datetime 对象，或 ISO 8601 文本（JSON 只表达文本）。"""
+    return isinstance(值, datetime) or isinstance(值, str)
+
+
+def _是资源引用值(值: Any) -> bool:
+    """资源引用型：进程内资源对象；任何 JSON 值（含 null）都不是。
+
+    JSON 表达不了资源引用，所以走 HTTP 传这个参数本身就是类型不符——
+    只有进程内直调才可能合法。显式 null 不等于「未提供」：口径与文本型一致，
+    要省略就不传这个键。
+    """
+    return 值 is not None and not isinstance(值, (bool, int, float, str, list, dict))
+
+
+def _是句柄值(值: Any) -> bool:
+    """句柄型：整数句柄、文本句柄，或进程内可调用句柄。"""
+    if isinstance(值, bool):
+        return False
+    return isinstance(值, int) or isinstance(值, str) or callable(值)
+
+
+def _是结果值(值: Any) -> bool:
+    """结果型：至少带布尔 ``成功`` 字段的结果对象。"""
+    return isinstance(值, dict) and isinstance(值.get("成功"), bool)
+
+
+# 历史短名 → 正式类型名（正式表见 `公共契约/基础类型/类型表.py`）。
+类型短名映射 = {
+    "文本": "文本型", "整数": "整数型", "长整数": "长整数型",
+    "单精度数": "单精度数型", "双精度数": "双精度数型",
+    "浮点数": "双精度数型", "逻辑": "逻辑型", "布尔": "逻辑型",
+    "列表": "列表型", "字典": "字典型", "映射": "字典型",
+    "字节": "字节型", "字节集": "字节集型", "日期时间": "日期时间型",
+    "资源引用": "资源引用型", "句柄": "句柄型", "结果": "结果型",
+    "空值": "空值型", "数值": "数值型",
+}
+
+# 类型匹配表必须与平台正式类型表等宽：少一种类型，就是「声明了类型却谁都
+# 不校验」——两端不对称的裂缝。此前 字节集型/空值型/资源引用型/句柄型/数值型
+# 等全部落进「未校验」分支（任何值都放行，假绿），而文本型/整数型却严格拒绝，
+# 同一个网关两套强度。
+类型匹配表 = {
+    "逻辑型": lambda 值: isinstance(值, bool),
+    "文本型": lambda 值: isinstance(值, str),
+    "列表型": lambda 值: isinstance(值, list),
+    "字典型": lambda 值: isinstance(值, dict),
+    "JSON值型": _是JSON值,
+    "字节型": lambda 值: (isinstance(值, int) and not isinstance(值, bool)
+                          and 0 <= 值 <= 255),
+    "字节集型": _是字节集值,
+    "日期时间型": _是日期时间值,
+    "资源引用型": _是资源引用值,
+    "句柄型": _是句柄值,
+    "结果型": _是结果值,
+    "空值型": lambda 值: 值 is None,
+    "数值型": _是数值,
+}
+
+数值类型名 = frozenset({"整数型", "长整数型", "单精度数型", "双精度数型"})
+
+
+def 校验能力参数(能力id: str, 声明参数: Any, 参数: dict[str, Any]) -> str:
+    """按能力参数声明校验必填与类型；返回错误说明，空串=通过。
+
+    **唯一校验点**：网关参数校验层与契约编译产物都只能调这里，任何地方
+    都不得再写第二套类型表——两套类型表就是两端不对称的裂缝来源。
+    """
+    if not isinstance(声明参数, list):
+        return f"参数不合法：能力 {能力id} 的参数契约不是列表"
+    参数名 = {
+        项.get("名称") if isinstance(项, dict) else 项
+        for 项 in 声明参数
+    }
+    # 协议兼容口径（哲学第 21 条）：能力入参里的**未知参数一律忽略**，
+    # 只有「必填缺失」与「类型不符」才失败。旧行为是「未知参数即 400」——
+    # 上游多传一个字段就整条调用失败，与「新增非必填字段不得影响旧调用」相冲，已废止。
+    # 真正的剔除在 _过滤能力参数 里做（边界归一化，实现永远看不到未知字段）。
+    _ = sorted(set(参数) - 参数名)
+    for 项 in 声明参数:
+        if not isinstance(项, dict):
+            continue
+        名称 = 项.get("名称")
+        if 项.get("必填") is True and 名称 not in 参数:
+            return f"参数不合法：能力 {能力id} 缺少必填参数 {名称}"
+        if 名称 not in 参数:
+            continue
+        类型值 = 项.get("类型")
+        类型 = 类型值 if isinstance(类型值, str) else ""
+        if not 类型:
+            # 没声明类型 = 没有可执行的类型承诺，不拦（声明了才校验）。
+            continue
+        # 旧包声明仍可能携带历史短名；先在边界归一化再严格校验，
+        # 避免未知类型直接落入「未校验」分支形成假绿。
+        类型 = 类型短名映射.get(类型, 类型)
+        if 类型 in 数值类型名:
+            try:
+                合法 = 校验数值类型(参数[名称], 类型)
+            except (TypeError, ValueError):
+                合法 = False
+            if not 合法:
+                return f"参数不合法：能力 {能力id} 的参数 {名称} 必须是 {类型}"
+            continue
+        类型匹配 = 类型匹配表.get(类型)
+        if 类型匹配 is None:
+            # 声明了平台不认识的类型：宁可明确拒绝，也不能静默放行——
+            # 放行等于这个参数永远不受任何校验，比报错危险得多。
+            return f"参数不合法：能力 {能力id} 的参数 {名称} 声明了未知类型 {类型}"
+        if not 类型匹配(参数[名称]):
+            return f"参数不合法：能力 {能力id} 的参数 {名称} 必须是 {类型}"
+    return ""
 
 
 @dataclass
@@ -283,59 +418,13 @@ class 网关核心:
         return {键: 值 for 键, 值 in 已归一.items() if 键 in 参数名}
 
     def _能力参数错误(self, 能力id: str, 参数: dict[str, Any]) -> str:
-        """按已注册能力契约校验参数名、必填项和冻结的数值类型。"""
+        """查注册表拿参数声明，委托唯一校验点 校验能力参数。"""
         注册表 = getattr(self.后端核心, "注册表", None)
         获取 = getattr(注册表, "获取", None)
         实现 = 获取(能力id) if callable(获取) else None
         if 实现 is None:
             return ""
-        声明参数 = getattr(实现, "参数", [])
-        if not isinstance(声明参数, list):
-            return f"参数不合法：能力 {能力id} 的参数契约不是列表"
-        参数名 = {
-            项.get("名称") if isinstance(项, dict) else 项
-            for 项 in 声明参数
-        }
-        # 协议兼容口径（哲学第 21 条）：能力入参里的**未知参数一律忽略**，
-        # 只有「必填缺失」与「类型不符」才失败。旧行为是「未知参数即 400」——
-        # 上游多传一个字段就整条调用失败，与「新增非必填字段不得影响旧调用」相冲，已废止。
-        # 真正的剔除在 _过滤能力参数 里做（边界归一化，实现永远看不到未知字段）。
-        _ = sorted(set(参数) - 参数名)
-        for 项 in 声明参数:
-            if not isinstance(项, dict):
-                continue
-            名称 = 项.get("名称")
-            if 项.get("必填") is True and 名称 not in 参数:
-                return f"参数不合法：能力 {能力id} 缺少必填参数 {名称}"
-            if 名称 not in 参数:
-                continue
-            类型值 = 项.get("类型")
-            类型 = 类型值 if isinstance(类型值, str) else ""
-            # 旧包声明仍可能携带历史短名；先在边界归一化并执行严格
-            # 校验，避免未知类型直接落入“未校验”分支形成假绿。
-            类型 = {
-                "文本": "文本型", "整数": "整数型", "长整数": "长整数型",
-                "单精度数": "单精度数型", "双精度数": "双精度数型",
-                "浮点数": "双精度数型", "逻辑": "逻辑型", "布尔": "逻辑型",
-                "列表": "列表型", "字典": "字典型", "映射": "字典型",
-            }.get(类型, 类型)
-            类型匹配 = {
-                "逻辑型": lambda 值: isinstance(值, bool),
-                "文本型": lambda 值: isinstance(值, str),
-                "列表型": lambda 值: isinstance(值, list),
-                "字典型": lambda 值: isinstance(值, dict),
-                "JSON值型": _是JSON值,
-            }.get(类型)
-            if 类型 in ("整数型", "长整数型", "单精度数型", "双精度数型"):
-                try:
-                    合法 = 校验数值类型(参数[名称], 类型)
-                except (TypeError, ValueError):
-                    合法 = False
-                if not 合法:
-                    return f"参数不合法：能力 {能力id} 的参数 {名称} 必须是 {类型}"
-            elif 类型匹配 is not None and not 类型匹配(参数[名称]):
-                return f"参数不合法：能力 {能力id} 的参数 {名称} 必须是 {类型}"
-        return ""
+        return 校验能力参数(能力id, getattr(实现, "参数", []), 参数)
 
     @staticmethod
     def _操作参数错误(请求: 网关请求) -> str:

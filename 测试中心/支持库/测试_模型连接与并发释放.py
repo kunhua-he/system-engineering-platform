@@ -17,6 +17,7 @@ if str(系统根) not in sys.path:
 
 from 支持库.后端.并发控制支持库.实现 import 并发控制
 from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型连接器
+from 支持库.适配层 import 系统探针
 
 
 class 测试模型连接器释放(unittest.TestCase):
@@ -80,7 +81,9 @@ class 测试模型连接器释放(unittest.TestCase):
         self.assertEqual(再次.值["状态"], "已结束并已释放")
         self.assertNotIn(句柄, 模型连接器.连接表)
     def test_内存探针不可用时拒绝新连接(self) -> None:
-        with mock.patch.object(模型连接器, "psutil", None):
+        # 第三方 psutil 现只活在适配层（系统探针），注入点必须跟着走；
+        # 仍 patch 模型连接器.psutil 会 AttributeError（该属性已按依赖防火墙口径删除）。
+        with mock.patch.object(系统探针, "psutil", None):
             结果 = 模型连接器._内存守卫("LLM", {})
         self.assertIsNotNone(结果)
         assert 结果 is not None

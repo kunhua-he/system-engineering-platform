@@ -83,7 +83,7 @@ def 探测(根: Path, 文件: Path) -> dict:
         sys.path.insert(0, str(根))
     开始 = time.perf_counter()
     try:
-        模块 = importlib.import_module(记录["模块名"])
+        模块 = importlib.import_module(记录["模块名"])  # 依赖门禁豁免：子进程探针按绝对路径加载测试模块
         套件 = unittest.TestLoader().loadTestsFromModule(模块)
         记录["用例数"] = 套件.countTestCases()
         记录["测试类数"] = 统计测试类(模块)

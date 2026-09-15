@@ -83,8 +83,8 @@
      "图片字节": "iVBORw0KGgoAAAANSUhEUgAAASwAAABaCAAAAAAnGjTBAAACkElEQVR4nO3aT0iTcRzH8a91MOywEQjmiCCLgohqk/6w9kddMvHQJQoyKgov0S2yS7dAkW5dI62dIozqUIkGIaQtj0HoxchiDgp0Um0um5/YeHgCYbAP3R4/r8PDl/1+v8ub38ZzWB1MarWp5p2iWAzdLIJiERSLoFgExSIoFkGxCIpFUCyCYhEUi6BYBMUiKBZBsQiKRVAsgmIRFIugWATFIigWQbEIikVQLIJiERSLoFgExfqfWH734QzubMOh46GHZveCse6vZg3xWHDCzHKXfGY2FDk0Zvmz8dAL8zCs43MfzuDOo+ElLIXHx9ryeNle+fzDAQAn7vqAb9HSzD4M3sHCTnhXtViLPR2R906sbFekKwt0TAGYTHS+A9D7u7y0tg1AtjzNPMbPRiwWMb4bGy/WlTTmDzqxzqWQ6gGaCwAKzYEVd+Po6X9H8OAygPMNr+Fddev/U9pwxMym8ztazDKzm/058+cCn+qLuzIWmNtiVthT+lzvbFyd/dhUnvw5M5s79abRzJ4/SZl3VblZTQWUJpybtX0FK81AYhLA285oGli7UFkaHHCP/AilgWur+FP+ZnpVtVeH8FN7NeDMbSM2Eje70bdsuZt9V28V7VGxsnBy2k1+8fpRs+VnNrXXPKzKzfqSjLbPAa39aO3PJCPJBQD3Dx8LDgO398fPfK9s/NVSco4MbY3FujEfjyZmsIF+s6Q6vcETFIugWATFIigWQbEIikVQLIJiERSLoFgExSIoFkGxCIpFUCyCYhEUi6BYBMUiKBZBsQiKRVAsgmIRFIugWATFIigWQbEIikVQLIJiERSLoFgExSIoFkGxCIpFUCyCYhEUi6BYBMUiKBZBsQiKRVAsgmJZ7f4CRN+yYt7YtJcAAAAASUVORK5CYII=",
      "语言": "eng",
      "词级数据": false,
-     "超时秒": 60,
-     "输出上限字节": 33554432
+     "超时秒": 60.0,
+     "输出上限字节": 33554432.0
     }
    },
    "行为": {
@@ -147,7 +147,7 @@
    "调用示例": {
     "能力id": "OCR识别支持库.OCR识别.语言包列表",
     "参数": {
-     "超时秒": 10
+     "超时秒": 10.0
     }
    },
    "行为": {
@@ -211,7 +211,7 @@
    "调用示例": {
     "能力id": "OCR识别支持库.OCR识别.版本探针",
     "参数": {
-     "超时秒": 10
+     "超时秒": 10.0
     }
    },
    "行为": {

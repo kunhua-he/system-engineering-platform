@@ -197,7 +197,7 @@
      "背景颜色": "#CCCCCC",
      "前景颜色": "#333333",
      "文本": "",
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {
@@ -268,7 +268,7 @@
     "参数": {
      "字节": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
      "最大边长": 32,
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {
@@ -331,7 +331,7 @@
     "能力id": "图像解码.图像EXIF转置",
     "参数": {
      "字节": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {
@@ -402,7 +402,7 @@
     "参数": {
      "字节": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
      "背景颜色": "#FFFFFF",
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {
@@ -473,7 +473,7 @@
     "参数": {
      "字节": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
      "哈希类型": "aHash",
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {
@@ -551,7 +551,7 @@
     "参数": {
      "字节": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
      "宽度": 64,
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {
@@ -630,7 +630,7 @@
      "字节": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
      "格式": "PNG",
      "质量": 90,
-     "超时秒": 60
+     "超时秒": 60.0
     }
    },
    "行为": {

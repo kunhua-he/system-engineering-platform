@@ -38,6 +38,12 @@
 
 ### MCP 连接与阻断
 
+访问守卫（`项目服务.py` 的 `访问守卫` 中间件）分两层：**B 层 = 回环 + Host/Origin，始终生效**；**A 层 = 令牌，默认不启用**，设置环境变量 `MCP工具箱_访问令牌` 后生效，缺失或错误返回 401（同时接受 `Authorization: Bearer <令牌>` 与 `X-MCP-Token: <令牌>`）。
+
+- **启用（A 层）**：`env "MCP工具箱_访问令牌=<ASCII 令牌>" ./MCP工具箱/启动HTTP服务.sh 8766`。令牌必须是 ASCII（如 `openssl rand -hex 32`）：两个客户端都会拒绝非 ASCII 头值（客户端侧直接报 `Header ... has invalid value`，请求发不出去）。bash 既不能 `export` 中文变量名，也不能写 `${中文名:-默认}`（`bad substitution`），故一律用 `env` 传入、脚本内用 `printenv` 读取。
+- **客户端 header**：两个客户端配置已按环境变量引用写死，不含任何字面量密钥。`opencode.json` 用 `Bearer {env:MCP工具箱_访问令牌}`（opencode 语法是 `{env:变量名}`，写成 `${变量名}` 会被当字面量发送并被拒绝）；`.mcp.json` 只能用 ASCII 变量名 `${MCP_TOOLKIT_TOKEN}`——Claude Code 的 `${变量名}` 不解析中文变量名，写中文名会连不上。故启用令牌时需**同名同值**额外导出 ASCII 别名 `MCP_TOOLKIT_TOKEN`。
+- **回退口径**：未设 `MCP工具箱_访问令牌` 即不强制，保持向后兼容——两处 header 展开为空值，实测对未启令牌的 8766 仍是 200 且客户端连通；此时 8766 只由 B 层保护，**本机任意进程仍可无凭证调用全部 50 个工具**。
+
 `MCP工具箱/项目服务.py` 是唯一权威实现。服务未监听时先运行
 `./MCP工具箱/启动HTTP服务.sh 8766`；服务未注入时可直接运行编译制品 HTML 黑盒。
 HTML 结果只证明真实 HTTP 功能，不替代治理账本、反馈和正式发布证据。

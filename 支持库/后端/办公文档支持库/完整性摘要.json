@@ -33,7 +33,7 @@
     },
     {
       "路径": "PDF文档/能力契约/参数契约.json",
-      "sha256": "0708e1db92c96fbd9e598543e29d54e4b40f50d0ffa580e0a68f857d008232a5"
+      "sha256": "991c4fed40d08f9b3b534b69307876532a37ea19266a801ccde64aaf4332ed40"
     },
     {
       "路径": "PDF文档/能力定义.json",
@@ -113,7 +113,7 @@
     },
     {
       "路径": "文字文档/能力契约/参数契约.json",
-      "sha256": "cdcde96a889ed0c8eacbdf80cfc86c8f15c39224b816afa15c0cbf0ba4d089cf"
+      "sha256": "099af7e3a89dc0b3293e5eb04d8685ba6ea3ce27750681f63e44df94faa48026"
     },
     {
       "路径": "文字文档/能力定义.json",
@@ -169,7 +169,7 @@
     },
     {
       "路径": "文档生成/包声明.json",
-      "sha256": "77924c4ccf61eacfbba36c8d20832760d1e06e55d69ac15a2f31859dfeaf47a7"
+      "sha256": "080bf9df6ba1ca3fbd0d74be3370185595d1a9a44cbf0280fca2f6ce1b548ef7"
     },
     {
       "路径": "文档生成/复用决策.json",
@@ -205,19 +205,19 @@
     },
     {
       "路径": "文档生成/能力契约/参数契约.json",
-      "sha256": "b0b27fcafd29677c4e2f49ca62dce29f0452a4bba1564d5d8fc083be47ba99fc"
+      "sha256": "7cb14c4194a64f6e608b222d4daa217d94bef7a7800a4d4aa96c5d98fa80b9c3"
     },
     {
       "路径": "文档生成/能力定义.json",
-      "sha256": "29a3ced50cefb36b1dab5c7254eddffaf3ed19ed61ab3b2c7db31b78348e07ee"
+      "sha256": "49405a15c776ddcfdfefcf892d9e144a8ad11ffa3b7f184d5c869eb1d6670dc2"
     },
     {
       "路径": "文档生成/能力数据/Agent查询数据.json",
-      "sha256": "58658fceba831f6f8d0334633d7b46b7681e189b04bd467148723b8d0b567504"
+      "sha256": "483d5db1f0786ca6c71041564aad90b678242bba363f4b568b27c48168462d76"
     },
     {
       "路径": "文档生成/能力数据/能力搜索数据.json",
-      "sha256": "bf2222a5c1fa68951e567d06d29edbfa7f1ec1010ac56d56bd632dd67cd4b483"
+      "sha256": "9ab26ae517cf71bdd78aebe7390b4f588b5d140d356d539bd1d879f58d5b8061"
     },
     {
       "路径": "文档生成/说明/使用说明.md",
@@ -341,7 +341,7 @@
     },
     {
       "路径": "演示文稿/能力契约/参数契约.json",
-      "sha256": "c50ae386cb9480ec9c15696b89462b6825a4b74f9184346c664a21c310c20b0b"
+      "sha256": "b5547d177f41c5a663c98d11adce93bde575bebedba545529f9fc097deef5536"
     },
     {
       "路径": "演示文稿/能力定义.json",
@@ -469,7 +469,7 @@
     },
     {
       "路径": "表格文档/能力契约/参数契约.json",
-      "sha256": "1c3a49fc67c6fc18ab456206a675e4d563b7a018e3e9c37d4d7901d26709f8ea"
+      "sha256": "f74a90bebf7dd41da3640552b1748ae832248e0545aaf834426e75ff78b50e74"
     },
     {
       "路径": "表格文档/能力定义.json",

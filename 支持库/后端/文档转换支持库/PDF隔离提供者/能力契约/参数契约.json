@@ -52,7 +52,7 @@
      "文件路径": "支持库/适配层/PDF隔离提供者/验证数据/示例.pdf",
      "最大页数": 500,
      "最大字节数": 0,
-     "超时秒": 90
+     "超时秒": 90.0
     }
    },
    "行为": {
@@ -113,7 +113,7 @@
     "能力id": "文档转换支持库.PDF隔离提供者.校验PDF",
     "参数": {
      "字节": "JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgNjEyIDc5Ml0+PmVuZG9iagp4cmVmCjAgNAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTE1IDAwMDAwIG4gCnRyYWlsZXI8PC9TaXplIDQvUm9vdCAxIDAgUj4+CnN0YXJ0eHJlZgoxOTAKJSVFb0YK",
-     "超时秒": 30
+     "超时秒": 30.0
     }
    },
    "行为": {
@@ -165,7 +165,7 @@
    "调用示例": {
     "能力id": "文档转换支持库.PDF隔离提供者.检查提供者",
     "参数": {
-     "超时秒": 30
+     "超时秒": 30.0
     }
    },
    "行为": {
