@@ -1,155 +1,172 @@
 {
-  "包id": "支持库.后端.版本控制支持库.Git操作",
-  "版本": "1.1.0",
-  "摘要算法": "sha256",
-  "文件清单": [
-    {
-      "路径": "__init__.py",
-      "sha256": "50fba5b44a5993698042648da6f4ff4b0615709b3edaf51f41d3aec8eb78740c"
-    },
-    {
-      "路径": "依赖契约/依赖契约.json",
-      "sha256": "1bee3ea50c023869ab9315843f8f06fe723055adc75c60de19e489f6e5ffa4af"
-    },
-    {
-      "路径": "依赖锁.json",
-      "sha256": "13a15295469cbbfac13bdd59f5e31b02e77e33271fa99aec28e6770c2e766ca4"
-    },
-    {
-      "路径": "包声明.json",
-      "sha256": "042612f59805b52b7ed908a4142159b34e416e493e83434bc69715c0a9df045d"
-    },
-    {
-      "路径": "复用决策.json",
-      "sha256": "eb1683033cce39a814364be0bb3d59f10d4cef50d68f264a746ada5a80686442"
-    },
-    {
-      "路径": "实现/Git提供者.py",
-      "sha256": "d17b546be4a2a33ed1026e2c18b859a03898a46e92b92ad1232977a7ad8622e9"
-    },
-    {
-      "路径": "实现/分支名安全.py",
-      "sha256": "cb6ef64dae266faf0cbc5b4b09f7a635fd15a54d0f789ab7aca45da945fda10b"
-    },
-    {
-      "路径": "实现/受管执行.py",
-      "sha256": "560f7dde272a1622528509bba3bb5baf230fd84aef138ad9c112881ecdd42b0f"
-    },
-    {
-      "路径": "实现/提交回滚.py",
-      "sha256": "92c6365e967740a4eb5e099e546affce32fcd9b5d0408f7882d2a3e39c67a542"
-    },
-    {
-      "路径": "实现/白名单.py",
-      "sha256": "5821f136c6f0eeb0cc6b9cf30823bd74ea05ee3e6861d75e76ca07298740dbef"
-    },
-    {
-      "路径": "权限契约/权限契约.json",
-      "sha256": "1bc6170ad33c1c6729b8766c7230c5df54be9ddb7b55be72f4b82673db84ebbc"
-    },
-    {
-      "路径": "能力契约/参数契约.json",
-      "sha256": "1d5d88c0e41bde7cad8316b186c422318795cb476ce42bf1bfc5ffe4d06c6935"
-    },
-    {
-      "路径": "能力定义.json",
-      "sha256": "2415257a9907732650b0a51f8165696b11eec204cda559735ddbbe37ce94c0bb"
-    },
-    {
-      "路径": "能力数据/Agent查询数据.json",
-      "sha256": "5e9db5b63b005b2b162392e6a2b58a430330b740838a3eb369636ce26bdf8ea1"
-    },
-    {
-      "路径": "能力数据/能力搜索数据.json",
-      "sha256": "cacad66327181c7c2e5fda589a5bd60a83af6adf122d6c1878dd00feed3bb1ff"
-    },
-    {
-      "路径": "说明/使用说明.md",
-      "sha256": "f876dc48335e4aec32b52cabaaab17ecfeaebd9a6834d68bcce88a7aa64f11a5"
-    },
-    {
-      "路径": "说明/目录树与命令.md",
-      "sha256": "4d220b84539a414557244c4d9afe69387a48be0088a6fb0766d1e20bec7aca90"
-    },
-    {
-      "路径": "资源预算.json",
-      "sha256": "fdb68f188de79d407405a352aae039b82a4efb20ec4cdaffc0c1540f42804054"
-    },
-    {
-      "路径": "配置契约/配置契约.json",
-      "sha256": "737bcf06e71e8acb664e709f4a2cfd2fe91939a64aa6b241b287a55526853f35"
-    },
-    {
-      "路径": "验证场景.json",
-      "sha256": "9f08849712e178e42ae99a466a28657c00153aa8b6c9439b4ba76cad862a66c9"
-    },
-    {
-      "路径": "验证场景引用.json",
-      "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/HEAD",
-      "sha256": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/config",
-      "sha256": "80d4c0e6baebdd4753ea20fde06933bc4b6d415e1dd202d935a818782bfbc33f"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/index",
-      "sha256": "810b8c5b475c63b5302b215e1f00e74f6d7ad05661d3fe639340b5dae3c7dac7"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/1a/d50e82db36b2a74974fa9be90ec0c91198ac2f",
-      "sha256": "43b474bb3502b3ba0ca109f940df7198a846a68f75e56485501c8616f50fcd77"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/5d/7422a8c2cf6f278780c8eb322774994e2c3666",
-      "sha256": "4fb5ae4d095110c2d693ceee170de97a5d95bcefc4a187fdecc4c19be83af5c2"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/5f/7c5209972fdb8db1d665895a432e8f733c79bc",
-      "sha256": "acd78fff8fbbe9d746565107d607b96ab75bdbde6bcf1d05223847489694cbcf"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/69/d5734cf5c27737b05ac0eebf1bcaa85b7479ea",
-      "sha256": "6664816241db1697f563f6c01ca9988a93f26f3c95759d8573d91cb178dd7df2"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/83/c5cad1948203cd1592b4912373d6b7b82cfa2a",
-      "sha256": "7faf96ae91f488bb24a6a8be8965ac38cf4d83576cc47d7b33bd944027cd7de1"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/b2/57e476f6a74693017b01db252becc7261e0634",
-      "sha256": "eab9b7db45ad8158d7cdab4edd25ab338fb6edeb9f8b5ba87dbbce7b08fbc631"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/c5/425b365a3afd57786529b5ddd2232b93557789",
-      "sha256": "941622973f6666befa48228c14198d2753ff9288467ef5bb19fef6234a7857c9"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/cc/b714e4318b49c07aa1034f35e679294ebd878b",
-      "sha256": "c0437fae28ba02afc08fa27cc4c3d05fe465bf85be358afe5074afd75d8ab381"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/objects/dc/b02404414dd03ce213c1343ad30e863d6e58a9",
-      "sha256": "7bb31170af70486db7921f95ac0fd46ca168678df4e39d26345564a5fc302d95"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/refs/heads/main",
-      "sha256": "72f6db12cf66715cadea78236a3084f3da60376b55a0943e1c760f4f4da17249"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/git目录/refs/heads/source",
-      "sha256": "a77c840fcf15f9a989af4f850075c1d12db3e86e10d9f8e969add6bf9b50db9c"
-    },
-    {
-      "路径": "验证夹具/临时仓库模板/工作区/基线.txt",
-      "sha256": "a5de2203f29c80796bbf4f47469de41c24b92891a2e770f9112db89db9f81e9d"
-    },
-    {
-      "路径": "验证夹具/新增.txt",
-      "sha256": "74bb1f5cacd3c282abcb42ce4f2a99ed4d8e9e5dc25c08e824578acce6e5e551"
-    }
-  ]
+ "包id": "支持库.后端.版本控制支持库.Git操作",
+ "版本": "1.1.1",
+ "摘要算法": "sha256",
+ "文件清单": [
+  {
+   "路径": "__init__.py",
+   "sha256": "50fba5b44a5993698042648da6f4ff4b0615709b3edaf51f41d3aec8eb78740c"
+  },
+  {
+   "路径": "依赖契约/依赖契约.json",
+   "sha256": "1bee3ea50c023869ab9315843f8f06fe723055adc75c60de19e489f6e5ffa4af"
+  },
+  {
+   "路径": "依赖锁.json",
+   "sha256": "13a15295469cbbfac13bdd59f5e31b02e77e33271fa99aec28e6770c2e766ca4"
+  },
+  {
+   "路径": "包声明.json",
+   "sha256": "534ee4648459b166036131985b3f39ae038831ab9cb0f647d66009d4a2fc60d7"
+  },
+  {
+   "路径": "复用决策.json",
+   "sha256": "eb1683033cce39a814364be0bb3d59f10d4cef50d68f264a746ada5a80686442"
+  },
+  {
+   "路径": "实现/Git提供者.py",
+   "sha256": "d17b546be4a2a33ed1026e2c18b859a03898a46e92b92ad1232977a7ad8622e9"
+  },
+  {
+   "路径": "实现/分支名安全.py",
+   "sha256": "cb6ef64dae266faf0cbc5b4b09f7a635fd15a54d0f789ab7aca45da945fda10b"
+  },
+  {
+   "路径": "实现/受管执行.py",
+   "sha256": "560f7dde272a1622528509bba3bb5baf230fd84aef138ad9c112881ecdd42b0f"
+  },
+  {
+   "路径": "实现/提交回滚.py",
+   "sha256": "92c6365e967740a4eb5e099e546affce32fcd9b5d0408f7882d2a3e39c67a542"
+  },
+  {
+   "路径": "实现/白名单.py",
+   "sha256": "5821f136c6f0eeb0cc6b9cf30823bd74ea05ee3e6861d75e76ca07298740dbef"
+  },
+  {
+   "路径": "权限契约/权限契约.json",
+   "sha256": "1bc6170ad33c1c6729b8766c7230c5df54be9ddb7b55be72f4b82673db84ebbc"
+  },
+  {
+   "路径": "能力契约/参数契约.json",
+   "sha256": "1d5d88c0e41bde7cad8316b186c422318795cb476ce42bf1bfc5ffe4d06c6935"
+  },
+  {
+   "路径": "能力定义.json",
+   "sha256": "70d93a63c65adc27b7573c812ec606f7027c5fa590aac17e4451bf9ce0a9d8d2"
+  },
+  {
+   "路径": "能力数据/Agent查询数据.json",
+   "sha256": "5e9db5b63b005b2b162392e6a2b58a430330b740838a3eb369636ce26bdf8ea1"
+  },
+  {
+   "路径": "能力数据/能力搜索数据.json",
+   "sha256": "cacad66327181c7c2e5fda589a5bd60a83af6adf122d6c1878dd00feed3bb1ff"
+  },
+  {
+   "路径": "说明/使用说明.md",
+   "sha256": "f876dc48335e4aec32b52cabaaab17ecfeaebd9a6834d68bcce88a7aa64f11a5"
+  },
+  {
+   "路径": "说明/目录树与命令.md",
+   "sha256": "4d220b84539a414557244c4d9afe69387a48be0088a6fb0766d1e20bec7aca90"
+  },
+  {
+   "路径": "资源预算.json",
+   "sha256": "fdb68f188de79d407405a352aae039b82a4efb20ec4cdaffc0c1540f42804054"
+  },
+  {
+   "路径": "配置契约/配置契约.json",
+   "sha256": "737bcf06e71e8acb664e709f4a2cfd2fe91939a64aa6b241b287a55526853f35"
+  },
+  {
+   "路径": "验证场景.json",
+   "sha256": "9f08849712e178e42ae99a466a28657c00153aa8b6c9439b4ba76cad862a66c9"
+  },
+  {
+   "路径": "验证场景引用.json",
+   "sha256": "a99845ba802d38772a055aff4b7391ce0641da8fc129516ccedc18cd3c2c3e25"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/HEAD",
+   "sha256": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/config",
+   "sha256": "80d4c0e6baebdd4753ea20fde06933bc4b6d415e1dd202d935a818782bfbc33f"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/index",
+   "sha256": "810b8c5b475c63b5302b215e1f00e74f6d7ad05661d3fe639340b5dae3c7dac7"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/1a/d50e82db36b2a74974fa9be90ec0c91198ac2f",
+   "sha256": "43b474bb3502b3ba0ca109f940df7198a846a68f75e56485501c8616f50fcd77"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/5d/7422a8c2cf6f278780c8eb322774994e2c3666",
+   "sha256": "4fb5ae4d095110c2d693ceee170de97a5d95bcefc4a187fdecc4c19be83af5c2"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/5f/7c5209972fdb8db1d665895a432e8f733c79bc",
+   "sha256": "acd78fff8fbbe9d746565107d607b96ab75bdbde6bcf1d05223847489694cbcf"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/69/d5734cf5c27737b05ac0eebf1bcaa85b7479ea",
+   "sha256": "6664816241db1697f563f6c01ca9988a93f26f3c95759d8573d91cb178dd7df2"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/83/c5cad1948203cd1592b4912373d6b7b82cfa2a",
+   "sha256": "7faf96ae91f488bb24a6a8be8965ac38cf4d83576cc47d7b33bd944027cd7de1"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/b2/57e476f6a74693017b01db252becc7261e0634",
+   "sha256": "eab9b7db45ad8158d7cdab4edd25ab338fb6edeb9f8b5ba87dbbce7b08fbc631"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/c5/425b365a3afd57786529b5ddd2232b93557789",
+   "sha256": "941622973f6666befa48228c14198d2753ff9288467ef5bb19fef6234a7857c9"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/cc/b714e4318b49c07aa1034f35e679294ebd878b",
+   "sha256": "c0437fae28ba02afc08fa27cc4c3d05fe465bf85be358afe5074afd75d8ab381"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/objects/dc/b02404414dd03ce213c1343ad30e863d6e58a9",
+   "sha256": "7bb31170af70486db7921f95ac0fd46ca168678df4e39d26345564a5fc302d95"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/refs/heads/main",
+   "sha256": "72f6db12cf66715cadea78236a3084f3da60376b55a0943e1c760f4f4da17249"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/git目录/refs/heads/source",
+   "sha256": "a77c840fcf15f9a989af4f850075c1d12db3e86e10d9f8e969add6bf9b50db9c"
+  },
+  {
+   "路径": "验证夹具/临时仓库模板/工作区/基线.txt",
+   "sha256": "a5de2203f29c80796bbf4f47469de41c24b92891a2e770f9112db89db9f81e9d"
+  },
+  {
+   "路径": "验证夹具/新增.txt",
+   "sha256": "74bb1f5cacd3c282abcb42ce4f2a99ed4d8e9e5dc25c08e824578acce6e5e551"
+  }
+ ],
+ "能力数": 11,
+ "能力清单": [
+  "版本控制支持库.Git操作.检查提供者",
+  "版本控制支持库.Git操作.创建工作区",
+  "版本控制支持库.Git操作.查询工作区",
+  "版本控制支持库.Git操作.关闭工作区",
+  "版本控制支持库.Git操作.提交",
+  "版本控制支持库.Git操作.回滚",
+  "版本控制支持库.Git操作.挑拣合入",
+  "版本控制支持库.Git操作.当前状态",
+  "版本控制支持库.Git操作.获取当前提交哈希",
+  "版本控制支持库.Git操作.校验分支名",
+  "版本控制支持库.Git操作.建议分支名"
+ ],
+ "实现摘要": "实现",
+ "能力定义摘要": "bc83535886819ae3",
+ "生成时间": "由能力定义编译器生成"
 }

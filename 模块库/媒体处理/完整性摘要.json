@@ -1,71 +1,82 @@
 {
-  "包id": "模块库.媒体处理",
-  "版本": "1.0.0",
-  "摘要算法": "sha256",
-  "文件清单": [
-    {
-      "路径": "__init__.py",
-      "sha256": "37b863d54cb4e511b417d29b770713d23de193880ff6ddc8bae46ede20a2a1aa"
-    },
-    {
-      "路径": "依赖契约/依赖契约.json",
-      "sha256": "df0ad4d60f38bee44c35b522d416cc7a5de4f3fb88cca3712adeec0cf77ed6dd"
-    },
-    {
-      "路径": "包声明.json",
-      "sha256": "124557600acca8cb632b1fb6e822f7f2e6d094f9e3a231f5d003d64597eed3b7"
-    },
-    {
-      "路径": "复用决策.json",
-      "sha256": "8d819f6127ef1f3a59d8fc7ec73dab922ea24758972c9ee69b3c8db4ef6ae5d7"
-    },
-    {
-      "路径": "实现/媒体处理.py",
-      "sha256": "fc91735a94d3ddc2e54ae9f9147fc85b33432a83724b657536161272939f89fb"
-    },
-    {
-      "路径": "权限契约/权限契约.json",
-      "sha256": "55976db057f949bd4631fab17bcb6a95491da3d1393aeab6dcf9d816ab0a4808"
-    },
-    {
-      "路径": "能力契约/参数契约.json",
-      "sha256": "de81c2a7e0228659b11e7132eb1877439c48d9572957126ef321e20cf15ab43d"
-    },
-    {
-      "路径": "能力定义.json",
-      "sha256": "d8cba9ac13a4b19d6f84d7b028041a022e0c59661a03afb679e985aa13de51d1"
-    },
-    {
-      "路径": "能力数据/Agent查询数据.json",
-      "sha256": "906cf97c76d7260e75d0896ea5d936fd574251f7d547ece2ad7c8c10d5fe1bbd"
-    },
-    {
-      "路径": "能力数据/能力搜索数据.json",
-      "sha256": "c39e5ed8fd3a0b18d3beafadf9050a7b6fac9029186d753a7a97aba270730bce"
-    },
-    {
-      "路径": "说明/使用说明.md",
-      "sha256": "978280ec4d5b33d1decc198b5b375e42f882502aa7c09d49525fa40c4fc4aab0"
-    },
-    {
-      "路径": "说明/目录树与命令.md",
-      "sha256": "df8e1daeacb542f995721fa08e196ae56a21cc9f8a7b6d0355cb5c1f897c4c44"
-    },
-    {
-      "路径": "资源预算.json",
-      "sha256": "41fcba3e759456846a6dcb036ad5df492fde3c2df6457e4457b41f3b2c70a138"
-    },
-    {
-      "路径": "配置契约/配置契约.json",
-      "sha256": "88ba80a4821e4b785b78e371c3c79c599a6dd7eaab7ceb824333bc5c26accc7f"
-    },
-    {
-      "路径": "验证场景引用.json",
-      "sha256": "c737396618d92a0e321c4d5ca4d93b25f33b8930ce781d9664fb310f48d12488"
-    },
-    {
-      "路径": "验证夹具/彩色音视频.mp4",
-      "sha256": "e8b48615b09d5f681686bea7388ee1ca917bdab64013ca956c3e9afff2e6ca4b"
-    }
-  ]
+ "包id": "模块库.媒体处理",
+ "版本": "1.0.1",
+ "摘要算法": "sha256",
+ "文件清单": [
+  {
+   "路径": "__init__.py",
+   "sha256": "37b863d54cb4e511b417d29b770713d23de193880ff6ddc8bae46ede20a2a1aa"
+  },
+  {
+   "路径": "依赖契约/依赖契约.json",
+   "sha256": "df0ad4d60f38bee44c35b522d416cc7a5de4f3fb88cca3712adeec0cf77ed6dd"
+  },
+  {
+   "路径": "包声明.json",
+   "sha256": "96da8a4da6f03c45a712dee879a5c7d791d9e40a0a8eeb2869e2705a22391c23"
+  },
+  {
+   "路径": "复用决策.json",
+   "sha256": "8d819f6127ef1f3a59d8fc7ec73dab922ea24758972c9ee69b3c8db4ef6ae5d7"
+  },
+  {
+   "路径": "实现/媒体处理.py",
+   "sha256": "fc91735a94d3ddc2e54ae9f9147fc85b33432a83724b657536161272939f89fb"
+  },
+  {
+   "路径": "权限契约/权限契约.json",
+   "sha256": "55976db057f949bd4631fab17bcb6a95491da3d1393aeab6dcf9d816ab0a4808"
+  },
+  {
+   "路径": "能力契约/参数契约.json",
+   "sha256": "6e9e3ffca490ce57b1054ff76bc21fa3cf332c50072fc05540aae4d40845f033"
+  },
+  {
+   "路径": "能力定义.json",
+   "sha256": "feaa9ff166c36a86675b287c7c861b9a6fa3a1b07f05ea3ca0cddcee9b61f291"
+  },
+  {
+   "路径": "能力数据/Agent查询数据.json",
+   "sha256": "906cf97c76d7260e75d0896ea5d936fd574251f7d547ece2ad7c8c10d5fe1bbd"
+  },
+  {
+   "路径": "能力数据/能力搜索数据.json",
+   "sha256": "c39e5ed8fd3a0b18d3beafadf9050a7b6fac9029186d753a7a97aba270730bce"
+  },
+  {
+   "路径": "说明/使用说明.md",
+   "sha256": "978280ec4d5b33d1decc198b5b375e42f882502aa7c09d49525fa40c4fc4aab0"
+  },
+  {
+   "路径": "说明/目录树与命令.md",
+   "sha256": "df8e1daeacb542f995721fa08e196ae56a21cc9f8a7b6d0355cb5c1f897c4c44"
+  },
+  {
+   "路径": "资源预算.json",
+   "sha256": "41fcba3e759456846a6dcb036ad5df492fde3c2df6457e4457b41f3b2c70a138"
+  },
+  {
+   "路径": "配置契约/配置契约.json",
+   "sha256": "88ba80a4821e4b785b78e371c3c79c599a6dd7eaab7ceb824333bc5c26accc7f"
+  },
+  {
+   "路径": "验证场景引用.json",
+   "sha256": "c737396618d92a0e321c4d5ca4d93b25f33b8930ce781d9664fb310f48d12488"
+  },
+  {
+   "路径": "验证夹具/彩色音视频.mp4",
+   "sha256": "e8b48615b09d5f681686bea7388ee1ca917bdab64013ca956c3e9afff2e6ca4b"
+  }
+ ],
+ "能力数": 5,
+ "能力清单": [
+  "媒体处理.检查提供者",
+  "媒体处理.探测媒体",
+  "媒体处理.提取音频",
+  "媒体处理.转码",
+  "媒体处理.抽取帧"
+ ],
+ "实现摘要": "实现",
+ "能力定义摘要": "3ad396d80c016f30",
+ "生成时间": "由能力定义编译器生成"
 }

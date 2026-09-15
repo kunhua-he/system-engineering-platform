@@ -1,71 +1,78 @@
 {
-  "包id": "模块库.网页分析",
-  "版本": "1.0.0",
-  "摘要算法": "sha256",
-  "文件清单": [
-    {
-      "路径": "__init__.py",
-      "sha256": "3927cd0f09eac2bce6bf19008d7e35d3674365a07ca1be69a5fefb81c9e35196"
-    },
-    {
-      "路径": "依赖契约/依赖契约.json",
-      "sha256": "aed0785cdc3d652ac4f584f9e2d931fb32fb10b41cbef19a24cd3a9d24b27a6d"
-    },
-    {
-      "路径": "包声明.json",
-      "sha256": "d0b5060e63c74897e823bcadba6c4ff474edaec0fdb1af95a42ca4a481e72faf"
-    },
-    {
-      "路径": "复用决策.json",
-      "sha256": "b6ad8cc3e8706bc6f6bfce9e70a038dda315c2d3ebaf4ba3884ed4976b6c58c0"
-    },
-    {
-      "路径": "实现/网页分析.py",
-      "sha256": "75c52f197cc6ed4105bee348cd25d21ed2453ce4e7e0a4ea6e29e08384de93e4"
-    },
-    {
-      "路径": "权限契约/权限契约.json",
-      "sha256": "7ecf0a733c4e7ad0c62b86091c145295002dc30b8c44ded2d41a586c7499ae96"
-    },
-    {
-      "路径": "能力契约/参数契约.json",
-      "sha256": "971e1032dc3ad243ca56f56a96d3043461466c1c2124b7f75235a4995399e8d1"
-    },
-    {
-      "路径": "能力定义.json",
-      "sha256": "020546c521d40d359c6f20631ce19dce5aa011b063f52cd94b415d37b9b18a37"
-    },
-    {
-      "路径": "能力数据/Agent查询数据.json",
-      "sha256": "66351852ff3bcfb048d89d9cab40c59a952c3b6a700afe1c80fec9454589ece4"
-    },
-    {
-      "路径": "能力数据/能力搜索数据.json",
-      "sha256": "48741d2745472a4ae9c56887e524cca2a79094bc525a9db357ebcf343171c72a"
-    },
-    {
-      "路径": "说明/使用说明.md",
-      "sha256": "62bb3ce15635d42065c5a1989bcb1f6d9ccedb5721a711e1ac99f101cd66cdc9"
-    },
-    {
-      "路径": "说明/目录树与命令.md",
-      "sha256": "9eefa54a93d68dbf9750325bb1d1be60a666b624f838f69f249531b8efbb861f"
-    },
-    {
-      "路径": "资源预算.json",
-      "sha256": "c892d77b123811094da11ee51abcc5a85ba172753e5270c052c3693f5126e191"
-    },
-    {
-      "路径": "配置契约/配置契约.json",
-      "sha256": "9797f6e4e34e5679efef73068bebaed63df59a9e7138add02bd4f0a10fcd259f"
-    },
-    {
-      "路径": "验证场景/正向HTTP场景.json",
-      "sha256": "74ca3ef80e272bda28f664bc2b0d172da8ad166b5868335afbda3ff6d3226ac6"
-    },
-    {
-      "路径": "验证场景引用.json",
-      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
-    }
-  ]
+ "包id": "模块库.网页分析",
+ "版本": "1.0.1",
+ "摘要算法": "sha256",
+ "文件清单": [
+  {
+   "路径": "__init__.py",
+   "sha256": "3927cd0f09eac2bce6bf19008d7e35d3674365a07ca1be69a5fefb81c9e35196"
+  },
+  {
+   "路径": "依赖契约/依赖契约.json",
+   "sha256": "aed0785cdc3d652ac4f584f9e2d931fb32fb10b41cbef19a24cd3a9d24b27a6d"
+  },
+  {
+   "路径": "包声明.json",
+   "sha256": "de4bdf5dff8df4f0aa207cf37ff54608cabc7365b70316ed2dc2a4aaa3402a84"
+  },
+  {
+   "路径": "复用决策.json",
+   "sha256": "b6ad8cc3e8706bc6f6bfce9e70a038dda315c2d3ebaf4ba3884ed4976b6c58c0"
+  },
+  {
+   "路径": "实现/网页分析.py",
+   "sha256": "75c52f197cc6ed4105bee348cd25d21ed2453ce4e7e0a4ea6e29e08384de93e4"
+  },
+  {
+   "路径": "权限契约/权限契约.json",
+   "sha256": "7ecf0a733c4e7ad0c62b86091c145295002dc30b8c44ded2d41a586c7499ae96"
+  },
+  {
+   "路径": "能力契约/参数契约.json",
+   "sha256": "538826f1e9b390f8e179a3f32fe63b7b838fafd25966db7f81a6bdab2a434ae6"
+  },
+  {
+   "路径": "能力定义.json",
+   "sha256": "2f0d05114c5b83746ecdbfe532cb1e8689530f8154ad4df8bba933413350970c"
+  },
+  {
+   "路径": "能力数据/Agent查询数据.json",
+   "sha256": "513af37b9232f18c9536bfb230df43394c442ea997e8da3791ba224cfadd12a4"
+  },
+  {
+   "路径": "能力数据/能力搜索数据.json",
+   "sha256": "48741d2745472a4ae9c56887e524cca2a79094bc525a9db357ebcf343171c72a"
+  },
+  {
+   "路径": "说明/使用说明.md",
+   "sha256": "62bb3ce15635d42065c5a1989bcb1f6d9ccedb5721a711e1ac99f101cd66cdc9"
+  },
+  {
+   "路径": "说明/目录树与命令.md",
+   "sha256": "9eefa54a93d68dbf9750325bb1d1be60a666b624f838f69f249531b8efbb861f"
+  },
+  {
+   "路径": "资源预算.json",
+   "sha256": "c892d77b123811094da11ee51abcc5a85ba172753e5270c052c3693f5126e191"
+  },
+  {
+   "路径": "配置契约/配置契约.json",
+   "sha256": "9797f6e4e34e5679efef73068bebaed63df59a9e7138add02bd4f0a10fcd259f"
+  },
+  {
+   "路径": "验证场景/正向HTTP场景.json",
+   "sha256": "74ca3ef80e272bda28f664bc2b0d172da8ad166b5868335afbda3ff6d3226ac6"
+  },
+  {
+   "路径": "验证场景引用.json",
+   "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
+  }
+ ],
+ "能力数": 1,
+ "能力清单": [
+  "网页分析.提取网页信息"
+ ],
+ "实现摘要": "实现",
+ "能力定义摘要": "4dc5a31cc1f47f27",
+ "生成时间": "由能力定义编译器生成"
 }
