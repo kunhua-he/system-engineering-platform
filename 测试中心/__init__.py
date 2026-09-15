@@ -1,60 +1,33 @@
-"""测试中心包入口：load_tests 协议。
+"""测试中心包入口：测试资产的发现口径与执行入口约定。
 
-unittest discover 的 VALID_MODULE_NAME 只认 ASCII 标识符，无法直接
-加载中文测试文件名（测试_*.py）。本包通过官方 load_tests 协议手动
-加载全部测试文件，保证任务书命令可用：
+**执行入口（唯一）**——与 `AGENTS.md:125-139` 完全一致：
 
-    python3.14 -m unittest discover -s 测试中心 -p '测试_*.py' -v
+    python3.14 -m unittest 测试中心.<模块路径>       # 开发期定向回归
 
-导入失败必须失败（禁止当作跳过），资源未清理视为失败。
+**发现口径**（供门禁使用，不是执行入口）：本目录下全部 `测试_*.py` 由
+`开发工具/测试体系门禁.py` 以 `rglob("测试_*.py")` 发现，逐文件在独立子进程里
+真实导入并统计用例数；导入失败、零用例、未解释跳过一律阻断。理由见
+`开发文档/临时文档/20260915_底座专业审计/落点清单_02_测试体系.md` 问题 1。
+
+**已退役**：本包此前的 `load_tests` 协议（原 `加载测试模块()` 与
+`load_tests()`，其文档给出的命令是
+`python3.14 -m unittest discover -s 测试中心 -p '测试_*.py' -v`）已删除，原因两条：
+
+1. `AGENTS.md:138` 明令「不使用 unittest discover 或不存在的聚合测试脚本」，
+   而 `load_tests` 协议唯一的作用就是让 `discover` 生效——保留它等于保留一条
+   被文档禁止的第二入口（归档契约 `需求快照.json:35` 亦禁止第二测试入口）；
+2. 中文测试文件名的全量守护已由 `开发工具/测试体系门禁.py` 承担（导入 +
+   用例计数 + 跳过检查），它只导入与收集、**不执行用例**，不构成第二个测试入口。
+
+本模块保持最小：只做 `sys.path` 自举，不注册测试、不加载任何测试文件、不打印。
 """
-
 from __future__ import annotations
 
-import importlib.util
 import sys
-import unittest
 from pathlib import Path
 
 测试中心目录 = Path(__file__).resolve().parent
 系统根目录 = 测试中心目录.parent
-sys.path.insert(0, str(系统根目录))  # 无条件置顶，防同名测试目录遮蔽真实包
-
-
-def 加载测试模块(文件路径: Path, 序号: int):
-    """加载单个中文测试文件；失败抛出原异常（不静默跳过）。"""
-    模块名 = f"系统级测试_{序号}_{文件路径.stem}"
-    sys.modules.pop(模块名, None)
-    规格 = importlib.util.spec_from_file_location(模块名, 文件路径)
-    if 规格 is None or 规格.loader is None:
-        raise ImportError(f"无法创建测试模块规格: {文件路径}")
-    模块 = importlib.util.module_from_spec(规格)
-    sys.modules[模块名] = 模块
-    规格.loader.exec_module(模块)
-    return 模块
-
-
-def load_tests(loader: unittest.TestLoader, 已有测试, 模式: str):
-    """加载测试中心下全部 测试_*.py 文件。"""
-    套件 = unittest.TestSuite()
-    文件列表 = sorted(测试中心目录.rglob("测试_*.py"))
-    for 序号, 文件路径 in enumerate(文件列表):
-        try:
-            模块 = 加载测试模块(文件路径, 序号)
-        except Exception as 错误:
-            import traceback as _追踪
-            print(f"!! 导入失败 {文件路径.name}: {错误}", file=sys.stderr)
-            _追踪.print_exc()
-            失败用例 = unittest.FunctionTestCase(
-                lambda 错误=错误: (_ for _ in ()).throw(AssertionError(f"测试导入失败: {文件路径.name}: {错误}"))
-            )
-            套件.addTest(失败用例)
-            continue
-        套件.addTests(loader.loadTestsFromModule(模块))
-    return 套件
-
-
-if __name__ == "__main__":
-    加载器 = unittest.TestLoader()
-    结果 = unittest.TextTestRunner(verbosity=2).run(load_tests(加载器, None, None))
-    raise SystemExit(0 if 结果.wasSuccessful() else 1)
+# 置顶系统根：防同名测试目录遮蔽真实包（原行为保留，仅改为幂等插入）。
+if str(系统根目录) not in sys.path:
+    sys.path.insert(0, str(系统根目录))

@@ -2,7 +2,10 @@
   "mcpServers": {
     "system_engineering_toolkit": {
       "type": "http",
-      "url": "http://127.0.0.1:8766/mcp/"
+      "url": "http://127.0.0.1:8766/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${MCP_TOOLKIT_TOKEN}"
+      }
     }
   }
 }

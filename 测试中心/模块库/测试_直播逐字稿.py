@@ -185,7 +185,7 @@ class Test附加术语传递(直播逐字稿装配):
                 return 结果类型.成功结果({"时长秒": 1.0, "格式": "wav"})
             if 能力id == "转写支持库.转写.转写音频文件":
                 记录.append((能力id, 请求参数))
-                return 结果类型.成功结果({"文本": "华世王镞", "语言": "zh"})
+                return 结果类型.成功结果({"文本": "示例品牌", "语言": "zh"})
             raise AssertionError(f"出现未预期的能力调用: {能力id}")
 
         with patch.object(实现, "_调用", side_effect=假调用):
@@ -193,12 +193,12 @@ class Test附加术语传递(直播逐字稿装配):
                 self.音频路径,
                 str(self.临时目录 / "输出"),
                 模型配置={"模型路径": "/模型"},
-                附加术语="华世王镞、合作店",
+                附加术语="示例品牌、示例门店",
             )
 
         self.assertTrue(结果.成功)
         self.assertEqual(len(记录), 1)
-        self.assertEqual(记录[0][1]["附加术语"], "华世王镞、合作店")
+        self.assertEqual(记录[0][1]["附加术语"], "示例品牌、示例门店")
 
 
 class Test读取项目状态(直播逐字稿装配):

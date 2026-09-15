@@ -65,12 +65,12 @@ class TestReportlab提供者(unittest.TestCase):
 
     def test_中文可提取(self):
         """中文内容真实写入 PDF 且可被平台解析提供者提取。"""
-        结果 = 生成PDF({"标题": "华世王镞", "段落列表": ["支持库报告生成测试。"]})
+        结果 = 生成PDF({"标题": "示例品牌", "段落列表": ["支持库报告生成测试。"]})
         self.assertTrue(结果.成功, 结果.错误说明)
         路径 = self.临时目录 / "中文.pdf"
         路径.write_bytes(base64.b64decode(结果.值["字节b64"]))
         文本 = _提取文本(路径)
-        self.assertIn("华世王镞", 文本)
+        self.assertIn("示例品牌", 文本)
         self.assertIn("支持库报告生成测试", 文本)
 
     def test_段落渲染全部可提取(self):

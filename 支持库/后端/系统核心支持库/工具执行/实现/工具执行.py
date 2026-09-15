@@ -78,17 +78,64 @@ def 清理执行记录(执行id: str = None) -> 结果:
 # 0加密0限制：负载原文存取，脱敏由业务端自理。
 # ═══════════════════════════════════════════════
 import sqlite3 as _sqlite3
+import atexit as _atexit
 import os as _os
 from pathlib import Path as _Path
 from 公共契约.运行时.运行缓存 import 解析运行数据根 as _解析运行数据根
 
 投递默认库路径 = str(_解析运行数据根(_Path(__file__).resolve().parents[5]) / "认领投递.db")
 
+# ---- 建连工厂缓存槽（照抄 嵌入缓存.py:27-29 / :36-49 / :55-74 的正确写法）----
+# 为什么必须缓存：调用点写的是 `with 锁, _投递连接(路径) as 连接:`，而
+# sqlite3.Connection 的 `with` 只承担事务（commit/rollback）语义、不是关闭器；
+# 每次新建连接会严格 1:1 泄漏 fd（要等 __del__ 被 GC 触发才释放）。
+# 改为工厂内部缓存后，4 个调用点源码一行都不用动，`with 连接:` 语义不变。
+_投递缓存连接 = None
+_投递缓存路径 = None
+_投递缓存锁 = threading.RLock()  # 独立于模块级 锁（不可重入，调用点已持有）
+投递降级记录表: list = []  # 关闭/切换连接时的异常留痕（不阻断主流程）
+
+
+def _关闭投递连接() -> None:
+    """进程退出时关闭缓存的投递连接，避免泄漏资源。"""
+    global _投递缓存连接, _投递缓存路径
+    with _投递缓存锁:
+        if _投递缓存连接 is None:
+            return
+        try:
+            _投递缓存连接.close()
+        finally:
+            _投递缓存连接 = None
+            _投递缓存路径 = None
+
+
+_atexit.register(_关闭投递连接)
+
 
 def _投递连接(库路径: str):
-    _os.makedirs(_os.path.dirname(库路径), exist_ok=True)
-    连接 = _sqlite3.connect(库路径, timeout=5)
-    连接.execute("""CREATE TABLE IF NOT EXISTS 投递表 (
+    """按 库路径 复用模块级缓存连接：同路径命中直接返回；换路径先关旧再建新。
+
+    连接缓存在模块级 锁 内被跨线程使用，故 check_same_thread=False。
+    首次为某路径建连时建表 + 建索引。
+    """
+    global _投递缓存连接, _投递缓存路径
+    目标 = str(库路径)
+    if _投递缓存连接 is not None and _投递缓存路径 == 目标:
+        return _投递缓存连接
+    with _投递缓存锁:
+        if _投递缓存连接 is not None and _投递缓存路径 == 目标:
+            return _投递缓存连接
+        if _投递缓存连接 is not None:
+            try:
+                _投递缓存连接.close()
+            except Exception as 错误:
+                投递降级记录表.append(str(错误))
+            finally:
+                _投递缓存连接 = None
+                _投递缓存路径 = None
+        _os.makedirs(_os.path.dirname(目标), exist_ok=True)
+        连接 = _sqlite3.connect(目标, timeout=5, check_same_thread=False)
+        连接.execute("""CREATE TABLE IF NOT EXISTS 投递表 (
         投递id TEXT PRIMARY KEY,
         队列名 TEXT NOT NULL,
         负载 TEXT NOT NULL,
@@ -99,9 +146,11 @@ def _投递连接(库路径: str):
         结果 TEXT,
         创建时间 TEXT NOT NULL
     )""")
-    连接.execute("CREATE INDEX IF NOT EXISTS idx_投递_队列 ON 投递表(队列名, 状态, 创建时间)")
-    连接.commit()
-    return 连接
+        连接.execute("CREATE INDEX IF NOT EXISTS idx_投递_队列 ON 投递表(队列名, 状态, 创建时间)")
+        连接.commit()
+        _投递缓存连接 = 连接
+        _投递缓存路径 = 目标
+        return 连接
 
 
 def 登记投递(*, 队列名: str = None, 负载: dict = None, 库路径: str = None) -> 结果:

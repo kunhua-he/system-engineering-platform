@@ -10,6 +10,9 @@
 - 子进程/端口登记时校验 pid 归属：只允许本进程派生集合内的 pid
   （父进程链可达当前进程或已注入 _已启动子进程pid集合），防止登记任意第三方进程；
 - 清理前复核 pid 仍属于本进程派生集合，否则拒绝清理（防清单伪造）。
+- 子进程分支额外拒绝「本进程自身 pid / 与本进程同进程组的 pid」（M2）：子进程清理走
+  killpg 整个进程组，放行自身 pid 会连带打死本进程与其 shell 包装（自杀网关）；端口分支
+  仍允许自身 pid，因为它只做端口释放验证、不杀自身（_释放端口 已跳过自身）。
 """
 
 from __future__ import annotations
@@ -99,6 +102,14 @@ def _是当前进程后代(pid: int) -> bool:
     return False
 
 
+def _进程组(pid: int) -> int | None:
+    """查询 pid 所属进程组 id；进程不存在或无权限时返回 None（不抛异常）。"""
+    try:
+        return os.getpgid(int(pid))
+    except (ProcessLookupError, PermissionError, OSError, TypeError, ValueError):
+        return None
+
+
 def _校验进程归属(pid: int, 资源类型: str) -> int:
     """子进程/端口登记：pid 必须属于本进程派生集合，否则拒绝登记。"""
     pid = int(pid)
@@ -143,6 +154,9 @@ def 登记资源(清单路径: Path, *, 资源路径: str, 临时根目录: Path
         raise ValueError("只能登记临时根目录内的资源")
     if 资源类型 == "子进程":
         pid = _推导pid(附加信息, 目标)
+        # M2 卡口（登记）：自身 pid / 自身进程组内的 pid 一律拒绝——清理走 killpg 整个进程组。
+        if int(pid) == os.getpid() or _进程组(pid) == os.getpgid(0):
+            raise ValueError(f"拒绝登记子进程: pid {pid} 属于本进程或本进程组")
         _校验进程归属(pid, "子进程")
     elif 资源类型 == "端口":
         占用pid = _端口占用pid(附加信息, 目标)
@@ -237,6 +251,9 @@ def 清理单项(记录: dict[str, Any], 根: Path) -> None:
     if 类型 == "子进程":
         if not 标识:
             raise OSError("子进程登记缺少 pid 标识")
+        # M2 卡口（清理）：清单被伪造/历史遗留指向自身 pid 时也拒绝，不进入 killpg。
+        if int(标识) == os.getpid() or _进程组(int(标识)) == os.getpgid(0):
+            raise OSError(f"拒绝清理子进程: pid {标识} 属于本进程或本进程组")
         _复核清理归属(int(标识), f"子进程:{标识}")
         _终止子进程组(int(标识))
         return
@@ -280,6 +297,10 @@ def _冒号后(名称: str) -> str:
 
 def _终止子进程组(pid: int) -> None:
     """终止进程组防残留：先探测进程，再 killpg 整组终止。"""
+    # M2 最深卡口：killpg 本进程自身进程组 = 自杀（连带网关进程与其 shell 包装）；
+    # 这里是唯一收口点，任何新增调用方都绕不过。
+    if _进程组(pid) == os.getpgid(0):
+        raise OSError("拒绝对本进程自身进程组执行 killpg")
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

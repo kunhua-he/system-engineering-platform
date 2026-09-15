@@ -60,19 +60,33 @@ class 统一编译器安全边界测试(unittest.TestCase):
                         校验输出目录(项目, 输出)
 
     def test_rmtree前执行最终校验且失败时不删除(self):
+        """真实临时目录 + 真实校验拒绝：拒绝必须发生在任何递归删除之前。
+
+        不 patch 校验入口，也不 patch shutil.rmtree（后者是进程级全局屏蔽，
+        会让「未删除」恒真且掩盖真实删除缺陷）。
+        """
         with tempfile.TemporaryDirectory(prefix=f"隔离用例_{os.getpid()}_", dir="/tmp") as 临时:
             项目 = Path(临时) / "项目"
             输出 = Path(临时) / "制品"
             项目.mkdir(); 输出.mkdir()
             哨兵 = 输出 / "不可删除.txt"
             哨兵.write_text("保留", encoding="utf-8")
-            with mock.patch("开发工具.项目编译.项目编译器.校验输出目录", side_effect=ValueError("最终边界变化")) as 校验:
-                with mock.patch("开发工具.项目编译.项目编译器.shutil.rmtree") as 删除:
-                    with self.assertRaisesRegex(ValueError, "最终边界变化"):
-                        _准备输出目录(项目, 输出)
-            校验.assert_called_once_with(项目, 输出)
-            删除.assert_not_called()
-            self.assertTrue(哨兵.is_file())
+            # 真实触发最终校验拒绝：输出目录落在项目源码目录内（生产校验真判危险）
+            危险输出 = 项目 / "前端"
+            危险输出.mkdir()
+            源码哨兵 = 危险输出 / "源码保留.txt"
+            源码哨兵.write_text("源码", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "输出目录危险"):
+                _准备输出目录(项目, 危险输出)
+            # 真实副作用断言：若生产先删除后校验，源码目录与其内容会真的消失
+            self.assertTrue(危险输出.is_dir(), "被拒绝的危险输出目录不得被删除")
+            self.assertTrue(源码哨兵.is_file(), "最终校验失败后源码哨兵必须原样存在")
+            self.assertEqual(源码哨兵.read_text(encoding="utf-8"), "源码")
+            # 对照：合法输出目录必须真实清理并重建（证明删除路径本身仍生效）
+            返回 = _准备输出目录(项目, 输出)
+            self.assertEqual(返回, 输出.resolve())
+            self.assertFalse(哨兵.is_file(), "合法输出目录的旧内容必须被真实删除")
+            self.assertTrue(输出.is_dir())
 
     def test_项目id必须是字符串和点分标识符(self):
         self.assertEqual(校验项目id("示例项目.可双击演示"), "示例项目.可双击演示")

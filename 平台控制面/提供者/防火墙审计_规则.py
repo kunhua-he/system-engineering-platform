@@ -112,7 +112,9 @@ def 审计文件(文件路径: Path, 登记表: set[str]) -> 依赖审计结果:
             for 参数 in 节点.args:
                 if isinstance(参数, ast.Constant) and isinstance(参数.value, str) \
                         and "import" in 参数.value:
-                    结果.违规列表.append(依赖违规("平台控制面", 节点.func.id,
+                    # 用 _函数名 结果，兼容属性调用（re.compile(...) 这类曾抛
+                    # AttributeError: 'Attribute' object has no attribute 'id'）
+                    结果.违规列表.append(依赖违规("平台控制面", 函数名,
                                                   "反射导入绕过依赖审计", 相对, 节点.lineno))
                     break
         if isinstance(节点, (ast.Import, ast.ImportFrom)):

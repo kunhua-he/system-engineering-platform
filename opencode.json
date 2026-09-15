@@ -4,7 +4,11 @@
     "system_engineering_toolkit": {
       "type": "remote",
       "url": "http://127.0.0.1:8766/mcp/",
-      "enabled": true
+      "enabled": true,
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:MCP工具箱_访问令牌}"
+      }
     }
   }
 }

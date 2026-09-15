@@ -43,7 +43,12 @@ def _取进程(句柄: int | None) -> tuple[subprocess.Popen | None, str]:
 def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = None,
              环境变量: dict = None, 超时秒: int = None,
              就绪地址: str = None, 就绪超时秒: float = None) -> 结果:
-    """启动外部进程。返回 {句柄, PID}。"""
+    """启动外部进程。返回 {句柄, PID}。
+
+    本能力按「可执行文件 + 参数列表」直启（不经 shell），因此**不内建**危险命令
+    检测：策略拦截落在 执行命令 / 沙箱执行命令 两条 shell 文本入口（S-06 接线），
+    需要策略前置的调用方请走那两条能力，或在调用本能力前自行做策略判定。
+    """
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
     try:
@@ -160,9 +165,16 @@ def 等待进程结束(句柄: int | None = None, 超时秒: float = None) -> �
 
 
 def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str = None) -> 结果:
-    """执行命令并等待完成。返回 {退出码, 标准输出, 错误输出}。"""
+    """执行命令并等待完成。返回 {退出码, 标准输出, 错误输出}。
+
+    执行前经能力调用服务取 `命令安全.检测危险命令`（S-06 接线）：命中危险命令
+    返回失败（错误码 `危险命令`），不发起进程；检测器不可用时留痕降级放行。
+    """
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
+    危险命中 = _前置危险命令检测(命令)
+    if 危险命中 is not None:
+        return 危险命中
     # shell=True 时无法 killpg 进程组；改用参数列表方式，超时由独立
     # 进程组统一回收，避免 shell 子孙进程泄漏。
     import shlex
@@ -241,34 +253,132 @@ def 释放句柄(句柄: int | None = None) -> 结果:
 
 默认沙箱输出上限字节 = 1 * 1024 * 1024
 
+# SBPL profile 结构安全（S-01 / S-12）：
+# 1) 结构化拼装：插进 profile 的路径一律先经 _sbpl字面量 变成「已转义的字面量」，
+#    再与固定子句用 join 拼行 —— 任何原始路径字符串都不进 profile 文本；
+# 2) 入口拒绝：工作目录含引号/反斜杠/换行/右括号即 fail-closed 失败，
+#    不让 sandbox-exec 退出 65 之后再由调用方猜（历史实现该场景仍报「成功」）。
+沙箱路径非法字符 = ('"', "\\", "\n", "\r", ")")
 
-def _构建沙箱配置(工作目录: str) -> str:
+# SBPL profile 编译预检用的固定探针命令（沙箱内必然放行：/usr 只读 + process-exec）。
+沙箱配置预检命令 = "/usr/bin/true"
+
+# 危险命令前置检测（S-06）：经唯一能力调用服务取 命令安全.检测危险命令。
+命令安全检测能力id = "系统核心支持库.命令安全.检测危险命令"
+危险命令检测问题: list[str] = []  # 检测不可用/异常留痕（哲学第 15 条：不许静默吞掉）
+
+
+def _命中非法沙箱字符(路径文本: str) -> str | None:
+    """返回路径中第一个 SBPL 非法字符；全部合法返回 None。"""
+    for 字符 in 沙箱路径非法字符:
+        if 字符 in 路径文本:
+            return 字符
+    return None
+
+
+def _sbpl字面量(路径) -> str:
+    """把路径拼成 SBPL 字符串字面量（profile 内唯一转义点）。"""
+    文本 = os.fspath(路径)
+    return '"' + (文本.replace("\\", "\\\\").replace('"', '\\"')
+                  .replace("\n", "\\n").replace("\r", "\\r")) + '"'
+
+
+def _构建沙箱配置(工作目录) -> str:
     """返回 sandbox-exec profile：系统只读 + 仅工作目录可读写。
+
+    结构化拼装：路径只经 `_sbpl字面量` 变成字面量，再与固定子句逐行 join；
+    函数体内不再出现「把原始路径插值进 profile 文本」的写法（历史实现用
+    f-string 直拼整个 SBPL，构成注入面）。
+    参数只接受 `pathlib.Path`（唯一调用点传的是已 resolve 的工作区）；为避免
+    异常穿透能力边界，这里对非 Path 输入同样按路径文本处理并一律转义。
 
     只读放开的位置限定为系统工具/动态库目录与 Python 解释器自身 prefix，
     不放开整个 /Users，避免越出工作区读用户其他文件。
     """
     import sys as _sys
-    py_prefix = os.path.realpath(_sys.prefix)
-    py_base = os.path.realpath(_sys.base_prefix)
-    return f"""(version 1)
-(import "system.sb")
-(allow process-fork)
-(allow process-exec)
-(allow network*)
-(allow mach-lookup)
-(allow sysctl-read)
-(allow file-read-metadata)
-(allow file-read*
-  (subpath "/usr") (subpath "/bin") (subpath "/sbin")
-  (subpath "/System") (subpath "/Library") (subpath "/opt/homebrew")
-  (subpath "/private/var/db/dyld") (subpath "/private/var/folders")
-  (subpath "/private/var/select") (subpath "/dev")
-  (subpath "/private/etc/ssl")
-  (subpath "{py_prefix}") (subpath "{py_base}")
-  (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf"))
-(allow file-read* file-write* (subpath "{工作目录}"))
-"""
+    只读子路径 = (
+        "/usr", "/bin", "/sbin", "/System", "/Library", "/opt/homebrew",
+        "/private/var/db/dyld", "/private/var/folders", "/private/var/select",
+        "/dev", "/private/etc/ssl",
+        os.path.realpath(_sys.prefix), os.path.realpath(_sys.base_prefix),
+    )
+    只读文件 = ("/private/etc/hosts", "/private/etc/resolv.conf")
+    行列表 = [
+        "(version 1)",
+        '(import "system.sb")',
+        "(allow process-fork)",
+        "(allow process-exec)",
+        "(allow network*)",
+        "(allow mach-lookup)",
+        "(allow sysctl-read)",
+        "(allow file-read-metadata)",
+        "(allow file-read*",
+        "  " + " ".join("(subpath " + _sbpl字面量(路径) + ")" for 路径 in 只读子路径),
+        "  " + " ".join("(literal " + _sbpl字面量(路径) + ")" for 路径 in 只读文件),
+        ")",
+        "(allow file-read* file-write* (subpath " + _sbpl字面量(工作目录) + "))",
+        "",
+    ]
+    return "\n".join(行列表)
+
+
+def _预检沙箱配置(配置: str, 超时秒: float = 10.0) -> 结果:
+    """profile 编译预检（fail-closed）：编译不过就绝不带着坏 profile 去跑用户命令。
+
+    sandbox-exec 在 profile 编译失败时**一条命令都不执行**并以 65 退出；历史实现
+    把这种「根本没跑」的结果当成 `结果.成功=True` 回报给调用方（S-12 伪绿）。
+    这里在发起真实命令之前先用固定探针命令编译一次 profile：编译失败 → 直接
+    返回失败（错误码 `执行失败`，沙箱执行命令契约已声明）；编译通过 → 才允许
+    跑真实命令。命令自身的非零退出码仍由 `值.成功执行` 如实表达，不被误判。
+    """
+    try:
+        预检 = subprocess.run(
+            ["sandbox-exec", "-p", 配置, 沙箱配置预检命令],
+            capture_output=True, timeout=超时秒)
+    except (OSError, subprocess.SubprocessError) as 错误:
+        return 结果.失败("沙箱不可用", f"沙箱 profile 预检无法执行: {错误}", 来源="进程管理")
+    if 预检.returncode != 0:
+        详情 = (预检.stderr or b"").decode("utf-8", "replace").strip()
+        return 结果.失败(
+            "执行失败",
+            f"沙箱 profile 编译失败（退出码 {预检.returncode}），已拒绝执行: {详情[:500]}",
+            来源="进程管理",
+        )
+    return 结果.成功结果({"配置字节数": len(配置.encode("utf-8"))})
+
+
+def _前置危险命令检测(命令: str) -> 结果 | None:
+    """经唯一能力调用服务取 `命令安全.检测危险命令`，做执行前策略判定（S-06）。
+
+    - 命中危险命令 → 返回失败结果（错误码 `危险命令`），调用方必须直接拒绝执行；
+    - 未命中 → 返回 None；
+    - 检测器不可用（调用器未装配 / 能力缺失 / 调用异常）→ 返回 None 并留痕。
+
+    降级口径：危险命令检测是纵向加固层，内核沙箱与进程组回收才是边界；未经
+    加载器装配的直连场景（单测、脚本、工具链）取不到调用器，此时若 fail-closed
+    会把既有的正常调用全面打断。因此「检测器不可用」按留痕降级处理，
+    「检测器明确报危险」一律 fail-closed。
+    """
+    try:
+        from 公共契约.能力契约.调用器 import 获取能力调用器
+        检测结果 = 获取能力调用器().调用能力(命令安全检测能力id, {"命令": 命令}, 调用方="进程管理")
+    except Exception as 错误:  # noqa: BLE001 —— 装配状态异常/装配失败均需留痕降级
+        危险命令检测问题.append(f"{命令安全检测能力id} 不可用: {type(错误).__name__}: {错误}")
+        return None
+    if not getattr(检测结果, "成功", False):
+        危险命令检测问题.append(
+            f"{命令安全检测能力id} 返回失败: "
+            f"{getattr(检测结果, '错误码', '')} {getattr(检测结果, '错误说明', '')}")
+        return None
+    值 = getattr(检测结果, "值", None)
+    if isinstance(值, dict) and 值.get("危险"):
+        return 结果.失败(
+            "危险命令",
+            str(值.get("原因") or "命中危险命令规则"),
+            来源="进程管理",
+            详情={"检测能力id": 命令安全检测能力id},
+        )
+    return None
 
 
 def _沙箱安全环境(工作目录: str) -> dict:
@@ -297,10 +407,11 @@ def 沙箱执行命令(
 
     - 内核级隔离：系统目录只读，只有「工作目录」可读写；
     - Linux 等无 sandbox-exec 的平台 **fail-closed**（拒绝执行，不降级为无沙箱）；
+    - 工作目录含 `"`/`\\`/换行/`)` 直接 `参数不合法`（这些字符会改写 SBPL 结构）；
+    - profile 先做编译预检，编译不过 → `执行失败`（绝不把「没跑」报成成功）；
+    - 执行前经能力调用服务取 `命令安全.检测危险命令`，命中 → `危险命令`；
     - 输出上限内截断；超时用 killpg 回收整棵进程树；
     - 环境变量走白名单，可用 环境变量 追加白名单内的键。
-
-    注意：危险命令检测不在此能力内（那是策略不是机制），由调用方先做。
     """
     from pathlib import Path as _Path
 
@@ -309,6 +420,15 @@ def 沙箱执行命令(
     if not isinstance(工作目录, str) or not 工作目录.strip():
         return 结果.失败("参数不合法", "工作目录必填（沙箱唯一可读写目录）", 来源="进程管理")
     工作区 = _Path(工作目录).resolve()
+    非法字符 = _命中非法沙箱字符(str(工作区))
+    if 非法字符 is not None:
+        return 结果.失败(
+            "参数不合法",
+            f"工作目录含非法字符 {非法字符!r}：沙箱 profile 只接受不含双引号、反斜杠、"
+            "换行、右括号的路径",
+            来源="进程管理",
+            详情={"非法字符": 非法字符},
+        )
     if not 工作区.is_dir():
         return 结果.失败("目录不存在", f"工作目录不存在: {工作区}", 来源="进程管理")
     上限字节 = int(输出上限字节) if isinstance(输出上限字节, int) and 输出上限字节 > 0 \
@@ -324,11 +444,18 @@ def 沙箱执行命令(
             来源="进程管理",
         )
 
+    危险命中 = _前置危险命令检测(命令)
+    if 危险命中 is not None:
+        return 危险命中
+
     环境 = _沙箱安全环境(str(工作区))
     for 键, 值 in (环境变量 or {}).items():
         if 键 in 环境:
             环境[键] = str(值)
-    配置 = _构建沙箱配置(str(工作区))
+    配置 = _构建沙箱配置(工作区)
+    预检结果 = _预检沙箱配置(配置)
+    if not 预检结果.成功:
+        return 预检结果
     argv = ["sandbox-exec", "-p", 配置, "/bin/sh", "-c", 命令]
 
     import tempfile as _tempfile

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
+import os
 import re
 import subprocess
 import time
@@ -439,7 +441,7 @@ _工具定义列表 = [
         Tool(name="development_start", description="开发统一开工入口：一次返回项目上下文、代码地图状态、可信证据和受影响测试计划。", inputSchema={"type": "object", "properties": {"task": {"type": "string"}, "modified_paths": {"type": "array", "items": {"type": "string"}}, "level": {"type": "string", "enum": ["工作包", "合并波次", "阶段收口", "正式发布"], "default": "工作包"}, "artifact": {"type": "string"}, "history_limit": {"type": "integer", "minimum": 1, "maximum": 3, "default": 3}}, "required": ["task"]}),
         Tool(name="temporary_context", description="读取、写入、核对或清理子任务临时上下文。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["写入", "读取", "核对范围", "清理"]}, "work_id": {"type": "string"}, "parent_task": {"type": "string"}, "role": {"type": "string"}, "allowed_paths": {"type": "array", "items": {"type": "string"}}, "actual_paths": {"type": "array", "items": {"type": "string"}}, "memory_queries": {"type": "array", "items": {"type": "string"}}, "confirmed_facts": {"type": "array", "items": {"type": "string"}}, "verification_commands": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}, "ttl_seconds": {"type": "integer"}}, "required": ["operation", "work_id"]}),
         Tool(name="task_observation", description="被动记录任务、阶段与工具耗时，并生成效率报告；不记录提示词或源码。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["开始", "结束", "查询", "阶段开始", "阶段结束", "报告"]}, "task_id": {"type": "string"}, "work_id": {"type": "string"}, "parent_task_id": {"type": "string"}, "success": {"type": "boolean"}, "error_code": {"type": "string"}, "child_count": {"type": "integer"}, "phase": {"type": "string", "enum": ["探索", "开发", "子代理", "测试", "等待", "合并", "收口"]}, "phase_id": {"type": "string"}, "note": {"type": "string"}}, "required": ["operation", "task_id"]}),
-        Tool(name="workspace", description="创建、查询、提交、合并和关闭隔离Git worktree。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "提交", "合并", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "target_branch": {"type": "string"}, "source_branch": {"type": "string"}, "message": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "force": {"type": "boolean"}}, "required": ["operation"]}),
+        Tool(name="workspace", description="创建、查询、提交、合并和关闭隔离Git worktree；提交/合并的 path 必须是底座仓库根或其内路径（默认白名单，可用环境变量 工作区允许提交根 加白）。", inputSchema={"type": "object", "properties": {"operation": {"type": "string", "enum": ["创建", "查询", "提交", "合并", "关闭"]}, "task_id": {"type": "string"}, "path": {"type": "string"}, "base": {"type": "string"}, "target_branch": {"type": "string"}, "source_branch": {"type": "string"}, "message": {"type": "string"}, "paths": {"type": "array", "items": {"type": "string"}}, "force": {"type": "boolean"}}, "required": ["operation"]}),
         Tool(name="test_resource", description="按开工id登记或清理测试临时资源；只允许清理临时根目录内且未标记保留的资源。", inputSchema={"type": "object", "properties": {"work_id": {"type": "string"}, "operation": {"type": "string", "enum": ["登记", "清理"]}, "resource_path": {"type": "string"}, "temp_root": {"type": "string"}, "resource_type": {"type": "string"}, "keep": {"type": "boolean"}}, "required": ["operation", "temp_root"]}),
         Tool(name="register_requirement", description="登记需求：登记平台能力需求快照（能力id/说明/来源任务）。", inputSchema={"type": "object", "properties": {"能力id": {"type": "string"}, "说明": {"type": "string"}, "来源任务": {"type": "string"}, "work_id": {"type": "string"}}, "required": ["能力id", "说明"]}),
         Tool(name="reuse_search", description="复用搜索：扫描既有支持库能力，返回可复用候选或标记无现成。", inputSchema={"type": "object", "properties": {"关键词": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["关键词"]}),
@@ -980,11 +982,99 @@ async def 主程序() -> None:
         )
 
 
+# M3 8766 访问守卫：回环 + Host/Origin 层始终生效；令牌层在设置环境变量后强制启用。
+访问令牌环境变量 = "MCP工具箱_访问令牌"
+_回环主机集合 = frozenset({"127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"})
+
+
+def _请求头(作用域: dict[str, Any], 名称: str) -> str:
+    """从 ASGI 作用域取首个同名请求头（头名大小写不敏感；值按 UTF-8 → latin-1 逐级解码）。"""
+    目标名 = 名称.lower().encode("ascii")
+    for 键, 值 in 作用域.get("headers") or []:
+        if 键.lower() == 目标名:
+            try:
+                return 值.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                return 值.decode("latin-1").strip()
+    return ""
+
+
+async def _拒绝请求(发送: Any, 状态码: int, 说明: str) -> None:
+    """ASGI 层直接拒绝：返回 JSON 体，不进入会话管理、不消耗请求体。"""
+    体 = json.dumps({"成功": False, "错误码": f"访问拒绝{状态码}", "错误说明": 说明},
+                    ensure_ascii=False).encode("utf-8")
+    await 发送({"type": "http.response.start", "status": 状态码,
+                "headers": [(b"content-type", b"application/json; charset=utf-8"),
+                            (b"content-length", str(len(体)).encode("ascii"))]})
+    await 发送({"type": "http.response.body", "body": 体})
+
+
+class 访问守卫:
+    """MCP 网关 ASGI 访问守卫：只校验请求头，不读取/改写请求体与响应体。
+
+    ① 令牌层：设置环境变量 MCP工具箱_访问令牌 后强制校验
+       `Authorization: Bearer <令牌>`（兼容 ASCII 头 `X-MCP-Token: <令牌>`），缺失或错误返回 401。
+       未设置令牌时该层不生效（向后兼容），仅由 ② 兜底。建议令牌用 ASCII（如 openssl rand -hex 32）。
+    ② 回环层（始终生效）：对端必须是回环地址；`Host` 头必须是本机地址（127.0.0.1/localhost/[::1]）；
+       `Origin` 头若存在必须是本机来源 —— 拦 DNS 重绑定与浏览器跨站调用。
+    mcp-session-id 会话恢复不受影响：本中间件在会话管理之前只做头部判定。
+    """
+
+    def __init__(self, 应用: Any, *, 端口: int, 令牌: str = "") -> None:
+        self.应用 = 应用
+        self.令牌 = 令牌
+        self.主机白名单 = frozenset({
+            f"127.0.0.1:{端口}", f"localhost:{端口}", f"[::1]:{端口}",
+            "127.0.0.1", "localhost", "[::1]",
+        })
+
+    async def __call__(self, 作用域: dict[str, Any], 接收: Any, 发送: Any) -> None:
+        if 作用域.get("type") != "http":
+            await self.应用(作用域, 接收, 发送)
+            return
+        对端 = str((作用域.get("client") or ("", 0))[0] or "")
+        if 对端 not in _回环主机集合:
+            await _拒绝请求(发送, 403, f"只允许回环地址调用，收到对端 {对端 or '未知'}")
+            return
+        主机 = _请求头(作用域, "host")
+        if 主机 and 主机 not in self.主机白名单:
+            await _拒绝请求(发送, 403, f"Host 头不在允许列表：{主机}")
+            return
+        来源 = _请求头(作用域, "origin")
+        if 来源 and not self._是本地来源(来源):
+            await _拒绝请求(发送, 403, f"Origin 不是本机来源：{来源}")
+            return
+        if self.令牌 and not self._令牌正确(作用域):
+            await _拒绝请求(发送, 401, "缺少或错误的访问令牌（Authorization: Bearer <令牌>）")
+            return
+        await self.应用(作用域, 接收, 发送)
+
+    def _是本地来源(self, 来源: str) -> bool:
+        文本 = 来源.strip().lower().rstrip("/")
+        for 前缀 in ("http://", "https://"):
+            if 文本.startswith(前缀):
+                主机 = 文本[len(前缀):].split("/", 1)[0]
+                return 主机 in self.主机白名单 or 主机.split(":", 1)[0] in _回环主机集合
+        return False
+
+    def _令牌正确(self, 作用域: dict[str, Any]) -> bool:
+        凭证 = _请求头(作用域, "authorization")
+        if 凭证.lower().startswith("bearer "):
+            凭证 = 凭证[7:].strip()
+        if not 凭证:
+            凭证 = _请求头(作用域, "x-mcp-token")
+        if not 凭证:
+            return False
+        # hmac.compare_digest 不接受含非 ASCII 字符的 str（令牌常含中文），统一按 UTF-8 字节比较。
+        return hmac.compare_digest(凭证.encode("utf-8"), self.令牌.encode("utf-8"))
+
+
 async def 主程序HTTP(端口: int = 8766) -> None:
     """以 Streamable HTTP 协议提供 MCP 服务（opencode remote 接入）。"""
     from 公共契约.运行时.端口策略 import 校验应用监听端口
     校验应用监听端口(端口)
     from starlette.applications import Starlette
+    from starlette.middleware import Middleware
     from starlette.routing import Route
     import uvicorn
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
@@ -997,8 +1087,16 @@ async def 主程序HTTP(端口: int = 8766) -> None:
         async def __call__(self, 作用域: object, 接收: object, 发送: object) -> None:
             await 会话管理.handle_request(作用域, 接收, 发送)  # type: ignore[arg-type]
 
+    令牌 = os.environ.get(访问令牌环境变量, "").strip()
+    if not 令牌:
+        print(
+            f"[M3] 未设置环境变量 {访问令牌环境变量}：8766 当前仅由回环 + Host/Origin 守卫保护，"
+            "本机任意进程仍可无凭证调用全部工具。启用令牌鉴权需设置该变量并给 MCP 客户端加 header。",
+            flush=True,
+        )
     应用 = Starlette(
         routes=[Route("/mcp/", endpoint=_流式HTTP应用())],
+        middleware=[Middleware(访问守卫, 端口=端口, 令牌=令牌)],
         lifespan=lambda 应用对象: 会话管理.run(),
     )
     配置 = uvicorn.Config(应用, host="127.0.0.1", port=端口, log_level="info")

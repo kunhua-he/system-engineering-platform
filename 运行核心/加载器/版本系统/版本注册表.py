@@ -14,6 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.版本规则.契约版本 import 取契约版本
 
 发布状态_已发布 = "已发布"
 发布状态_灰度中 = "灰度中"
@@ -28,7 +29,9 @@ class 版本包:
 
     包id: str
     版本: str
-    契约版本: str = "1.0.0"
+    # 契约版本只能来自唯一事实源（公共契约/版本规则/契约版本.py），不写字面量：
+    # 它记录的是「这条版本记录生成时平台契约的版本」，不是本包的迭代版本。
+    契约版本: str = field(default_factory=取契约版本)
     提供者版本: str = ""
     完整性摘要: str = ""
     发布时间: str = ""
@@ -91,10 +94,15 @@ class 版本注册表:
             json.dump({"版本表": [包.转字典() for 包 in self.版本表.values()]},
                       输出, ensure_ascii=False, indent=2)
 
-    def 注册版本(self, 包id: str, 版本: str, *, 契约版本: str = "1.0.0",
+    def 注册版本(self, 包id: str, 版本: str, *, 契约版本: str | None = None,
                  提供者版本: str = "", 声明字典: dict | None = None,
                  能力清单: list[str] | None = None) -> tuple[bool, str]:
-        """注册一个新版本；版本包不可覆盖（同键已存在必须失败）。"""
+        """注册一个新版本；版本包不可覆盖（同键已存在必须失败）。
+
+        契约版本 缺省取唯一事实源（公共契约/版本规则/契约版本.py）；
+        不在形参默认值里写字面量——默认值在定义时求值，会被下一次升级遗漏。
+        """
+        契约版本 = 契约版本 or 取契约版本()
         键 = f"{包id}@{版本}"
         if 键 in self.版本表:
             return False, f"版本包不可覆盖: {键} 已存在"

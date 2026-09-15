@@ -7,8 +7,11 @@
 不一致、契约破坏但未升级主版本。
 
 其余检测器（检测实现无声明 / 检测生成文件被改 / 检测完整性摘要格式 /
-检测能力定义漂移）供调用方按场景单独选用，不并入 全面漂移检测——其中
-检测实现无声明 见其文档串（函数级粒度无法区分能力入口与内部辅助函数）。
+检测能力定义漂移 / 检测注册口径漂移）供调用方按场景单独选用，不并入
+全面漂移检测——检测实现无声明 见其文档串（函数级粒度无法区分能力入口与内部
+辅助函数）；注册口径 见 检测注册口径漂移（按包整包比对，且必须先按
+契约.归一注册口径 归一口径，否则约 300 条「注册 `结果` / 契约 `结果型`」的
+写法噪声会把真问题淹掉）。
 """
 
 from __future__ import annotations
@@ -20,7 +23,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.类型表 import 正式类型表
+from 公共契约.能力契约.契约 import 归一注册口径
+
 生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
+
+
+class _未解析哨兵类型:
+    """AST 静态求值的「不可判定」哨兵类型（与 None / 空串等合法值区分开）。"""
+
+
+未解析哨兵 = _未解析哨兵类型()
+"""不可静态判定的表达式的唯一哨兵值（单例，用 `is` 比较）。"""
 
 
 @dataclass
@@ -321,6 +335,340 @@ def 检测能力定义漂移(包目录: Path) -> list[str]:
     else:
         问题列表.append(f"注册入口缺失: {入口文件}")
     return 问题列表
+
+
+def _静态字面量(节点: ast.AST, 绑定: dict[str, Any], 深度: int = 0) -> Any:
+    """把 AST 表达式求值为字面量；不可静态判定的返回 未解析哨兵。
+
+    绑定表里既可能是字面量，也可能是**赋值语句的 AST 节点**（注册表四元组里含
+    函数引用，预先整体求值必然失败，所以赋值只登记节点、按需解引用）。
+    """
+    if 深度 > 8:
+        return 未解析哨兵
+    if isinstance(节点, ast.Constant):
+        return 节点.value
+    if isinstance(节点, ast.Name):
+        if 节点.id not in 绑定:
+            return 未解析哨兵
+        值 = 绑定[节点.id]
+        if isinstance(值, ast.AST):
+            return _静态字面量(值, 绑定, 深度 + 1)
+        return 值
+    if isinstance(节点, (ast.List, ast.Tuple)):
+        值表 = []
+        for 元素 in 节点.elts:
+            值 = _静态字面量(元素, 绑定, 深度 + 1)
+            if 值 is 未解析哨兵:
+                return 未解析哨兵
+            值表.append(值)
+        return tuple(值表) if isinstance(节点, ast.Tuple) else 值表
+    if isinstance(节点, ast.Dict):
+        字典: dict[Any, Any] = {}
+        for 键节点, 值节点 in zip(节点.keys, 节点.values):
+            if 键节点 is None:
+                return 未解析哨兵
+            键 = _静态字面量(键节点, 绑定, 深度 + 1)
+            值 = _静态字面量(值节点, 绑定, 深度 + 1)
+            if 键 is 未解析哨兵 or 值 is 未解析哨兵:
+                return 未解析哨兵
+            字典[键] = 值
+        return 字典
+    if isinstance(节点, ast.Subscript):
+        # `返回表[能力id]` 形态：先解析容器（多为模块内字面量表），再按键取值。
+        容器 = _静态字面量(节点.value, 绑定, 深度 + 1)
+        if 容器 is 未解析哨兵 or not isinstance(容器, (dict, list, tuple)):
+            return 未解析哨兵
+        键 = _静态字面量(节点.slice, 绑定, 深度 + 1)
+        if 键 is 未解析哨兵:
+            return 未解析哨兵
+        try:
+            return 容器[键]
+        except (KeyError, IndexError, TypeError):
+            return 未解析哨兵
+    return 未解析哨兵
+
+
+def _注册参数表(节点: ast.AST, 绑定: dict[str, Any]) -> list[dict[str, str]] | None:
+    """注册 `参数=` 的四种实际写法 → [{名称,类型}]；不全静态可判定时返回 None。
+
+    写法：① [{名称,类型}]；② [("名称","类型")]；③ ["名称", ...]（只有名）；
+    ④ [{...} for 参数名, 类型 in 参数类型表]（列表推导 + 循环变量表）。
+    """
+    if isinstance(节点, ast.ListComp):
+        return _列表推导参数表(节点, 绑定)
+    值 = _静态字面量(节点, 绑定)
+    if 值 is 未解析哨兵 or not isinstance(值, (list, tuple)):
+        return None
+    表: list[dict[str, str]] = []
+    for 项 in 值:
+        if isinstance(项, dict) and "名称" in 项:
+            表.append({"名称": str(项.get("名称", "")), "类型": str(项.get("类型") or "")})
+        elif isinstance(项, str):
+            表.append({"名称": 项, "类型": ""})
+        elif isinstance(项, tuple) and len(项) == 2:
+            表.append({"名称": str(项[0]), "类型": str(项[1])})
+        else:
+            return None
+    return 表
+
+
+def _列表推导参数表(节点: ast.ListComp, 绑定: dict[str, Any]) -> list[dict[str, str]] | None:
+    """`[{名称,类型} for 参数名, 类型 in 参数类型表]` 形态（前端描述型包装用）。"""
+    if len(节点.generators) != 1:
+        return None
+    生成器 = 节点.generators[0]
+    序列 = _静态字面量(生成器.iter, 绑定)
+    if 序列 is 未解析哨兵 or not isinstance(序列, (list, tuple)):
+        return None
+    if isinstance(生成器.target, ast.Tuple):
+        目标名 = [元素.id for 元素 in 生成器.target.elts if isinstance(元素, ast.Name)]
+    elif isinstance(生成器.target, ast.Name):
+        目标名 = [生成器.target.id]
+    else:
+        return None
+    if not 目标名:
+        return None
+    表: list[dict[str, str]] = []
+    for 元素 in 序列:
+        子绑定 = dict(绑定)
+        if isinstance(元素, (list, tuple)) and len(元素) == len(目标名):
+            子绑定.update(dict(zip(目标名, 元素)))
+        elif len(目标名) == 1:
+            子绑定[目标名[0]] = 元素
+        else:
+            return None
+        行 = _静态字面量(节点.elt, 子绑定)
+        if isinstance(行, dict) and "名称" in 行:
+            表.append({"名称": str(行.get("名称", "")), "类型": str(行.get("类型") or "")})
+        elif isinstance(行, tuple) and len(行) == 2:
+            表.append({"名称": str(行[0]), "类型": str(行[1])})
+        else:
+            return None
+    return 表
+
+
+def _收集注册调用(调用: ast.Call, 绑定: dict[str, Any], 表: dict[str, dict[str, Any]]) -> None:
+    """从 注册表.注册(能力实现(...)) 调用里抽出注册口径。"""
+    if isinstance(调用.func, ast.Name):
+        函数名 = 调用.func.id
+    elif isinstance(调用.func, ast.Attribute):
+        函数名 = 调用.func.attr
+    else:
+        函数名 = ""
+    关键字 = {关键字节点.arg: 关键字节点.value for 关键字节点 in 调用.keywords if 关键字节点.arg}
+    if 函数名 == "注册":
+        for 实参 in list(调用.args) + list(关键字.values()):
+            if isinstance(实参, ast.Call):
+                _收集注册调用(实参, 绑定, 表)
+        return
+    if 函数名 != "能力实现":
+        return
+    能力id = _静态字面量(关键字["能力id"], 绑定) if "能力id" in 关键字 else 未解析哨兵
+    if not isinstance(能力id, str) or "." not in 能力id:
+        return
+    if "返回" not in 关键字:
+        返回口径: str | None = ""      # 未传 返回 → 能力实现 默认空串，属真实空口径
+    else:
+        返回值 = _静态字面量(关键字["返回"], 绑定)
+        返回口径 = 返回值 if isinstance(返回值, str) else None   # None=不可静态判定，跳过比对
+    表[能力id] = {
+        "返回": 返回口径,
+        "参数": _注册参数表(关键字["参数"], 绑定) if "参数" in 关键字 else [],
+    }
+
+
+def _扫描注册语句(语句列表: list[ast.stmt], 绑定: dict[str, Any],
+                表: dict[str, dict[str, Any]]) -> None:
+    """按语句顺序维护名字绑定（赋值只登记节点），逐条抽出注册口径。
+
+    `for 能力id, 函数, 参数表[, 返回类型|说明] in 表名:` 是仓库主流写法，且
+    循环变量名各不相同（返回类型 / 返回 / 说明 / 参数名 / 参数类型表），所以必须
+    按**位置绑定循环变量名**再解引用，不能假定第 4 项就是返回。
+    """
+    for 语句 in 语句列表:
+        if isinstance(语句, ast.Assign) and len(语句.targets) == 1 \
+                and isinstance(语句.targets[0], ast.Name):
+            绑定[语句.targets[0].id] = 语句.value
+        elif isinstance(语句, ast.For):
+            序列节点: ast.AST = 语句.iter
+            if isinstance(序列节点, ast.Name) and 序列节点.id in 绑定 \
+                    and isinstance(绑定[序列节点.id], ast.AST):
+                序列节点 = 绑定[序列节点.id]
+            if isinstance(语句.target, ast.Tuple):
+                目标名 = [元素.id for 元素 in 语句.target.elts
+                         if isinstance(元素, ast.Name)]
+            elif isinstance(语句.target, ast.Name):
+                目标名 = [语句.target.id]
+            else:
+                目标名 = []
+            元素表 = 序列节点.elts if isinstance(序列节点, ast.List) else None
+            if 元素表 is None or len(目标名) < 2 or not 元素表:
+                _扫描注册语句(语句.body, 绑定, 表)
+                continue
+            for 元素 in 元素表:
+                子绑定 = dict(绑定)
+                if isinstance(元素, ast.Tuple) and len(元素.elts) == len(目标名):
+                    for 名, 值节点 in zip(目标名, 元素.elts):
+                        子绑定[名] = 值节点
+                elif isinstance(元素, ast.Dict):
+                    for 键节点, 值节点 in zip(元素.keys, 元素.values):
+                        键 = _静态字面量(键节点, 绑定) if 键节点 is not None else None
+                        if isinstance(键, str):
+                            子绑定[键] = 值节点
+                _扫描注册语句(语句.body, 子绑定, 表)
+        elif isinstance(语句, ast.If):
+            _扫描注册语句(语句.body, dict(绑定), 表)
+            _扫描注册语句(语句.orelse, dict(绑定), 表)
+        elif isinstance(语句, ast.Expr) and isinstance(语句.value, ast.Call):
+            _收集注册调用(语句.value, 绑定, 表)
+
+
+def 读取注册口径(入口文件: Path) -> dict[str, dict[str, Any]]:
+    """AST 抽取包入口 `注册能力` 的真实注册口径：能力id → {返回, 参数}。
+
+    只静态解析，不导入实现模块（零副作用、零依赖）。仓库实测的三种数据流都覆盖：
+    ① 四元组表 `("能力id", 函数, [参数表], "返回")`（循环变量名各异）；
+    ② 三元组表 + 函数体内 `能力实现(..., 返回="结果")`；
+    ③ inline `能力实现(能力id="…", 参数=[…], 返回="…")`。
+    解析不出的（动态拼装）能力不进返回表，由 全仓注册口径统计 如实登记「未解析」。
+    """
+    if not 入口文件.is_file():
+        return {}
+    try:
+        树 = ast.parse(入口文件.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return {}
+    表: dict[str, dict[str, Any]] = {}
+    注册函数表 = [节点 for 节点 in ast.walk(树)
+                if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and 节点.name == "注册能力"]
+    if 注册函数表:
+        for 函数 in 注册函数表:
+            _扫描注册语句(函数.body, {}, 表)
+    else:
+        _扫描注册语句(树.body, {}, 表)
+    return 表
+
+
+def 读取契约口径(契约文件: Path) -> dict[str, dict[str, Any]]:
+    """读 `能力契约/参数契约.json` → 能力id → {返回, 参数:[{名称,类型}]}。
+
+    契约侧 返回 有两种写法：`{"类型": "结果型", ...}` 与纯文本串（结构描述），
+    两者都归一成「口径名」再比对。
+    """
+    if not 契约文件.is_file():
+        return {}
+    try:
+        数据 = json.loads(契约文件.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    表: dict[str, dict[str, Any]] = {}
+    for 条目 in 数据.get("能力契约") or []:
+        if not isinstance(条目, dict) or not 条目.get("能力id"):
+            continue
+        返回 = 条目.get("返回")
+        返回口径 = str(返回.get("类型", "")) if isinstance(返回, dict) else str(返回 or "")
+        表[str(条目["能力id"])] = {
+            "返回": 返回口径,
+            "参数": [{"名称": str(项.get("名称", "")), "类型": str(项.get("类型") or "")}
+                   for 项 in 条目.get("参数") or [] if isinstance(项, dict)],
+        }
+    return 表
+
+
+def 比对注册口径(契约表: dict[str, dict[str, Any]],
+                注册表: dict[str, dict[str, Any]]) -> list[str]:
+    """逐条比对注册口径与契约口径，返回不一致清单（与 契约.校验声明一致 同口径）。
+
+    - 返回：两边经 `契约.归一注册口径` 归一后比较（注册 `结果` ≡ 契约 `结果型`）；
+      不归一的话全仓首报约 300 条纯写法噪声，会把真问题淹掉。
+    - 参数：① 参数名序；② 参数类型——**只比对两侧都是正式类型名**的项
+      （历史短名 布尔/文本/字典/数值 属批次4「注册元数据-类型名非正式」治理范围，
+      不是本检测的口径漂移，混进来会造出第二套清单）。
+    只在两侧都解析出的能力上比对；未解析的能力由调用方按覆盖率如实登记。
+    """
+    问题列表: list[str] = []
+    for 能力id, 契约项 in sorted(契约表.items()):
+        注册项 = 注册表.get(能力id)
+        if 注册项 is None:
+            continue
+        注册返回 = 注册项.get("返回")
+        契约返回 = str(契约项.get("返回", ""))
+        # 返回口径解析不出（动态拼装）时跳过，不伪造「空返回」的假红。
+        if 注册返回 is not None and 归一注册口径(str(注册返回)) != 归一注册口径(契约返回):
+            问题列表.append(f"{能力id}: 注册返回 {注册返回} ≠ 契约返回 {契约返回}")
+        注册参数 = 注册项.get("参数")
+        if 注册参数 is None:
+            continue
+        注册名 = [项["名称"] for 项 in 注册参数]
+        契约名 = [项["名称"] for 项 in 契约项.get("参数", [])]
+        if 注册名 and 契约名 and 注册名 != 契约名:
+            问题列表.append(f"{能力id}: 注册参数名序 {注册名} ≠ 契约参数名序 {契约名}")
+        契约类型 = {项["名称"]: 项["类型"] for 项 in 契约项.get("参数", [])}
+        for 项 in 注册参数:
+            类型 = str(项.get("类型", ""))
+            期望 = str(契约类型.get(项["名称"], ""))
+            if 类型 in 正式类型表 and 期望 in 正式类型表 and 类型 != 期望:
+                问题列表.append(
+                    f"{能力id}: 注册参数 {项['名称']} 类型 {类型} ≠ 契约类型 {期望}"
+                )
+    return 问题列表
+
+
+def 检测注册口径漂移(包目录: Path) -> list[str]:
+    """「注册口径」子检测：包入口注册表 ↔ `能力契约/参数契约.json` 的不一致清单。
+
+    落点清单_03 重要-10：`契约.校验声明一致` 曾零生产调用点，注册口径漂移长期
+    无人发现；本检测是它的**编译期**落点（运行期落点见批次0-4 接线说明）。
+    """
+    问题列表 = 比对注册口径(读取契约口径(包目录 / "能力契约" / "参数契约.json"),
+                        读取注册口径(包目录 / "__init__.py"))
+    if not 问题列表:
+        return []
+    相对路径 = 包目录.name
+    return [f"{相对路径}: {问题}" for 问题 in 问题列表]
+
+
+def 全仓注册口径统计(系统根: Path) -> dict[str, Any]:
+    """全仓注册口径检测（只读）：遍历 支持库/模块库/技能库 下全部 参数契约.json。
+
+    返回 `{包数, 契约能力数, 已解析注册数, 未解析注册数, 返回未解析数,
+    参数未解析数, 问题列表}`：问题列表每条都带「包相对路径」便于定位；
+    三个「未解析」计数如实暴露 AST 静态解析覆盖率与跳过比对的项，不假装 100%。
+    """
+    包数 = 契约能力数 = 已解析 = 未解析注册 = 返回未解析 = 参数未解析 = 0
+    问题列表: list[str] = []
+    for 顶层 in ("支持库", "模块库", "技能库"):
+        根目录 = 系统根 / 顶层
+        if not 根目录.is_dir():
+            continue
+        for 契约文件 in sorted(根目录.glob("**/能力契约/参数契约.json")):
+            包目录 = 契约文件.parent.parent
+            契约表 = 读取契约口径(契约文件)
+            注册表 = 读取注册口径(包目录 / "__init__.py")
+            包数 += 1
+            契约能力数 += len(契约表)
+            for 能力id in 契约表:
+                注册项 = 注册表.get(能力id)
+                if 注册项 is None:
+                    未解析注册 += 1
+                    continue
+                已解析 += 1
+                if 注册项.get("返回") is None:
+                    返回未解析 += 1
+                if 注册项.get("参数") is None:
+                    参数未解析 += 1
+            相对路径 = 包目录.relative_to(系统根) if 包目录.is_relative_to(系统根) else 包目录
+            for 问题 in 比对注册口径(契约表, 注册表):
+                问题列表.append(f"{相对路径}: {问题}")
+    return {"包数": 包数, "契约能力数": 契约能力数, "已解析注册数": 已解析,
+            "未解析注册数": 未解析注册, "返回未解析数": 返回未解析,
+            "参数未解析数": 参数未解析, "问题列表": 问题列表}
+
+
+def 全仓注册口径检测(系统根: Path) -> list[str]:
+    """全仓注册口径漂移清单（只读；拦还是只报由调用方决定）。"""
+    return 全仓注册口径统计(系统根)["问题列表"]
 
 
 def 全面漂移检测(*, 契约: dict[str, Any], 实现目录: Path,

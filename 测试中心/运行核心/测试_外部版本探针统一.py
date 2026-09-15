@@ -4,7 +4,7 @@
 独立逻辑；本测试锁定统一后行为：
 
 - 统一版本来源：探测外部应用版本 经 检查系统工具 获取版本，
-  不再独立 subprocess 逻辑（patch 生效即证明调用统一入口）
+  不再独立 subprocess 逻辑（只替换外部命令层，生产探针本体原样执行）
 - 探针结果字段完整：成功/版本/退出码/耗时秒/错误摘要/可重试
 - 失败语义：工具缺失/探针超时/退出码非零 → "失败:<错误码>" 明确失败，
   绝不返回伪造版本（如"未知"或路径冒充）
@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -51,18 +52,56 @@ def _成功探针(版本: str) -> 探针结果:
 
 
 class Test统一版本来源(unittest.TestCase):
-    """探测外部应用版本 经 系统探针 获取版本（patch 生效即证明）。"""
+    """探测外部应用版本 经 系统探针 获取版本：只替换外部命令层。"""
+
+    def _造外部命令层(self, 目录: Path, 输出表: dict[str, str],
+                      退出码: int = 0, 标准错误: str = "") -> None:
+        """在 目录 下写受控真实可执行桩（PATH 注入用）。
+
+        桩只接受生产清单里给该工具的版本参数（`--version` / `-help`），
+        参数不符即以退出码 2 失败——这样「版本参数透传」由真实行为验证。
+        """
+        目录.mkdir(parents=True, exist_ok=True)
+        for 工具, 版本参数 in (("soffice", "--version"), ("textutil", "-help")):
+            主体 = (f'echo "{标准错误}" 1>&2\nexit {退出码}\n' if 退出码
+                    else f'echo "{输出表[工具]}"\n')
+            脚本 = 目录 / 工具
+            脚本.write_text(
+                "#!/bin/sh\n"
+                f'if [ "$1" != "{版本参数}" ]; then echo "参数错误" 1>&2; exit 2; fi\n'
+                + 主体,
+                encoding="utf-8",
+            )
+            脚本.chmod(0o755)
+
+    def _探测(self, 桩目录: Path) -> dict[str, str]:
+        """把受控命令目录前置到 PATH 后真调生产入口（不改写任何生产命名空间）。"""
+        from 运行核心.环境指纹 import 探测外部应用版本
+        with mock.patch.dict(os.environ, {
+            "PATH": f"{桩目录}{os.pathsep}{os.environ.get('PATH', '')}",
+        }):
+            return 探测外部应用版本()
 
     def test_探测外部应用版本经系统探针(self):
-        from 运行核心.环境指纹 import 探测外部应用版本
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=_成功探针("26.2.2.2"),
-        ) as 探针函数:
-            结果 = 探测外部应用版本()
-        self.assertEqual(结果["LibreOffice"], "26.2.2.2")
-        self.assertEqual(结果["textutil"], _macOS版本())
-        self.assertEqual(探针函数.call_count, 2)  # LibreOffice + textutil 同一入口
+        """只替换外部命令层，生产探针本体（参数校验/退出码/版本提取）原样执行。"""
+        with tempfile.TemporaryDirectory(prefix=f"外部命令_{os.getpid()}_") as 临时:
+            成功目录 = Path(临时) / "成功"
+            失败目录 = Path(临时) / "失败"
+            self._造外部命令层(成功目录, {
+                "soffice": "LibreOffice 26.2.2.2 (X86_64)",
+                "textutil": "textutil 桩输出 9.9.9",
+            })
+            self._造外部命令层(失败目录, {}, 退出码=3, 标准错误="boom")
+            成功结果 = self._探测(成功目录)
+            失败结果 = self._探测(失败目录)
+        # 版本字符串由受控真实命令输出经生产探针解析得到（桩只在参数正确时成功）
+        self.assertEqual(成功结果["LibreOffice"], "26.2.2.2")
+        self.assertEqual(成功结果["textutil"], _macOS版本())
+        self.assertNotIn("9.9.9", 成功结果["textutil"],
+                         "textutil 版本必须取 macOS 系统版本，不得采信探针输出")
+        # 生产探针逻辑未被改写：同一入口退出码非零必须收敛为明确失败，绝不伪造版本
+        self.assertEqual(失败结果["LibreOffice"], "失败:退出码非零")
+        self.assertEqual(失败结果["textutil"], "失败:退出码非零")
 
     def test_环境指纹详情含统一版本(self):
         with mock.patch(

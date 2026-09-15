@@ -3,6 +3,10 @@
 关闭工作区前自动联动清理：释放 ps 匹配工作区路径的残留子进程、
 调用 测试资源.清理资源 清理登记资源（未标记保留）；清理失败必须写结构化证据到
 工程缓存/清理失败证据/{work_id}.json 并返回 清理失败（非零语义）。
+
+提交/合并的仓库根白名单（M1）：`工作区提交` 与 `合并分支` 的入参路径先过 `_校验提交根`，
+默认只放行底座仓库根（含 工程缓存/任务工作区 下的 worktree）与系统临时目录内的一次性仓，
+其余路径一律拒绝；可用环境变量 工作区允许提交根 显式加白。
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -36,6 +41,49 @@ def _校验分支(分支: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_\u4e00-\u9fff-]+(/[A-Za-z0-9_\u4e00-\u9fff-]+)*", 结果):
         raise ValueError("分支名无效")
     return 结果
+
+
+_提交根白名单环境变量 = "工作区允许提交根"
+_严格提交根环境变量 = "工作区严格提交根"
+
+
+def _严格提交根() -> bool:
+    """严格模式：工作区严格提交根=1/true/yes/on 时，系统临时目录也不再放行。"""
+    return os.environ.get(_严格提交根环境变量, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _提交根白名单() -> list[Path]:
+    """提交/合并允许的仓库根白名单（全部 resolve 后比较）。
+
+    - 底座仓库根（本文件上一级目录）：本仓自身与 工程缓存/任务工作区/** 下的 worktree 全部命中；
+    - 系统临时目录：只用于「自建一次性 Git 仓」的测试与一次性工作区场景（业务仓库位于用户
+      目录，不落在系统临时目录），严格模式下关闭该放行；
+    - 环境变量 工作区允许提交根（os.pathsep 分隔）：显式授权其他仓库，需人工决定。
+    """
+    白名单 = [Path(__file__).resolve().parent.parent]
+    for 项 in os.environ.get(_提交根白名单环境变量, "").split(os.pathsep):
+        if 项.strip():
+            白名单.append(Path(项.strip()).resolve())
+    if not _严格提交根():
+        白名单.append(Path(tempfile.gettempdir()).resolve())
+    return 白名单
+
+
+def _校验提交根(项目根目录: Path) -> Path:
+    """提交/合并入口的仓库根校验：白名单外路径一律拒绝（M1）。
+
+    修复前这两个入口把调用者传入的 path 直接当项目根，可对任意 Git 仓执行
+    `git add -A` + `commit`、`switch` + `merge`（越界提交/合并）。
+    """
+    目标 = Path(项目根目录).resolve()
+    白名单 = _提交根白名单()
+    if any(目标 == 根 or 目标.is_relative_to(根) for 根 in 白名单):
+        return 目标
+    允许文本 = os.pathsep.join(str(根) for 根 in 白名单)
+    raise ValueError(
+        f"提交/合并只允许白名单内路径（默认底座仓库根）：{目标}；"
+        f"授权其他仓库请设置环境变量 {_提交根白名单环境变量}，当前白名单：{允许文本}"
+    )
 
 
 def _运行(根目录: Path, 命令: list[str]) -> dict[str, Any]:
@@ -304,7 +352,7 @@ def 合并分支(项目根目录: Path, 目标分支: str, 来源分支: str, *,
           提交消息: str = "") -> dict[str, Any]:
     目标分支 = _校验分支(目标分支)
     来源分支 = _校验分支(来源分支)
-    操作目录 = Path(项目根目录).resolve()
+    操作目录 = _校验提交根(项目根目录)
     切换 = _运行(操作目录, ["git", "switch", 目标分支])
     if 切换["退出码"] != 0:
         return {"成功": False, "错误码": "MERGE_SWITCH_FAILED", "目标分支": 目标分支,
@@ -330,7 +378,7 @@ def 工作区提交(项目根目录: Path, 提交消息: str, *, 路径列表: l
     消息 = str(提交消息).strip()
     if not 消息:
         raise ValueError("提交消息不能为空")
-    操作目录 = Path(项目根目录).resolve()
+    操作目录 = _校验提交根(项目根目录)
     命令 = ["git", "add"]
     if 路径列表:
         for 路径 in 路径列表:

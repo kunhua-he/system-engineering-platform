@@ -63,7 +63,8 @@ class Test模块模板收敛(unittest.TestCase):
             self.assertEqual(声明["包id"], f"模块库.{类型}示例")
             self.assertEqual(声明["依赖"], 依赖清单)
             契约 = json.loads((模块目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
-            self.assertEqual(契约["契约版本"], "1.0.0")
+            from 公共契约.版本规则.契约版本 import 契约版本 as 当前契约版本
+            self.assertEqual(契约["契约版本"], 当前契约版本, "契约版本必须等于唯一事实源，禁止写死字面量")
             self.assertEqual([e["能力id"] for e in 契约["能力契约"]],
                              [f"{类型}示例.检查可用性", f"{类型}示例.读取文件"])
 

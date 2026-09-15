@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.版本规则.契约版本 import 取契约版本
 
 进程状态_已创建 = "已创建"
 进程状态_启动中 = "启动中"
@@ -234,8 +235,12 @@ class 独立进程:
             return 响应
 
     def 调用(self, *, 能力id: str, 参数: dict | None = None,
-             契约版本: str = "1.0.0") -> 进程调用结果:
-        """按统一中文协议调用能力（请求id/能力id/契约版本/参数/超时）。"""
+             契约版本: str | None = None) -> 进程调用结果:
+        """按统一中文协议调用能力（请求id/能力id/契约版本/参数/超时）。
+
+        契约版本 缺省取唯一事实源（公共契约/版本规则/契约版本.py），不写死字面量。
+        """
+        契约版本 = 契约版本 or 取契约版本()
         if self.状态 != 进程状态_运行中:
             return 进程调用结果(False, 错误码="外部不可访问", 错误说明=f"进程未运行（状态 {self.状态}）")
         请求 = {
@@ -466,7 +471,8 @@ class 提供者进程池:
             return self.成员表[索引]
 
     def 调用(self, *, 能力id: str, 参数: dict | None = None,
-             契约版本: str = "1.0.0", 资源键: str | None = None) -> 进程调用结果:
+             契约版本: str | None = None, 资源键: str | None = None) -> 进程调用结果:
+        契约版本 = 契约版本 or 取契约版本()
         键 = str(资源键 or 能力id)
         成员 = self._分配成员(键)
         if 成员 is None:

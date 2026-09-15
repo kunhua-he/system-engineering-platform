@@ -1,27 +1,29 @@
 """逐字稿队列常驻（LaunchAgent）安装 / 卸载 / 状态。
 
-为什么要常驻：批量队列要跑十几小时，挂在 Hermes 会话的后台进程上会被会话变化 SIGTERM 打断；
+为什么要常驻：批量队列要跑十几小时，挂在交互式会话的后台进程上会被会话变化 SIGTERM 打断；
 LaunchAgent 由系统托管，异常退出自动拉起，机器重启也会回来；队列本身支持断点续跑，不重复劳动。
 
+LaunchAgent 定义由本脚本按调用方参数渲染（包内不留某次部署的 plist 运行产物，也不带任何
+品牌标签与业务绝对路径）：标签 / Python 可执行 / 队列脚本 / 配置包 / 日志路径全部传参。
+
 用法：
-    python3.14 安装或卸载队列常驻.py 安装
+    python3.14 安装或卸载队列常驻.py 安装 --配置 队列配置.json
+    python3.14 安装或卸载队列常驻.py 状态 --配置 队列配置.json
     python3.14 安装或卸载队列常驻.py 卸载
-    python3.14 安装或卸载队列常驻.py 状态
 """
 from __future__ import annotations
 
+import argparse
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+from xml.sax.saxutils import escape
 
-标签 = "com.huashi.zizhugao-queue"
-工具目录 = Path("~/Documents/Hermes工作区/录音分析/直播逐字稿/工具")
-源文件 = 工具目录 / f"{标签}.plist"
-目标文件 = Path.home() / "Library" / "LaunchAgents" / f"{标签}.plist"
+默认标签 = "com.example.zizhugao-queue"
+本目录 = Path(__file__).resolve().parent
+默认队列脚本 = 本目录 / "批量精校队列.py"
 用户域 = f"gui/{os.getuid()}"
-业务日志 = Path("~/Documents/Hermes工作区/录音分析/直播逐字稿/00_批量日志.log")
 
 
 def 执行(命令: list[str]) -> tuple[int, str]:
@@ -30,41 +32,104 @@ def 执行(命令: list[str]) -> tuple[int, str]:
     return 完成.returncode, (完成.stdout + 完成.stderr).strip()
 
 
-def 安装() -> int:
-    if not 源文件.is_file():
-        print(f"缺 plist：{源文件}")
+def 渲染plist(标签: str, Python可执行: str, 队列脚本: Path, 配置路径: str,
+            工作目录: Path, 输出日志: str, 错误日志: str) -> str:
+    """按参数渲染 LaunchAgent plist（KeepAlive + RunAtLoad，与历史部署键一致）。"""
+    参数行 = [Python可执行, str(队列脚本)]
+    if 配置路径.strip():
+        参数行 += ["--配置", 配置路径.strip()]
+    参数元素 = "\n".join(f"        <string>{escape(元素)}</string>" for 元素 in 参数行)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{escape(标签)}</string>
+    <key>ProgramArguments</key>
+    <array>
+{参数元素}
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{escape(str(工作目录))}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+    <key>StandardOutPath</key>
+    <string>{escape(输出日志)}</string>
+    <key>StandardErrorPath</key>
+    <string>{escape(错误日志)}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string></string>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin</string>
+    </dict>
+</dict>
+</plist>
+"""
+
+
+def 目标文件(标签: str) -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{标签}.plist"
+
+
+def 安装(参数: argparse.Namespace) -> int:
+    队列脚本 = Path(参数.安装源).expanduser().resolve()
+    if not 队列脚本.is_file():
+        print(f"缺队列脚本：{队列脚本}（用 --安装源 指定）")
         return 1
-    shutil.copy2(源文件, 目标文件)
-    执行(["launchctl", "bootout", f"{用户域}/{标签}"])
-    码, 输出 = 执行(["launchctl", "bootstrap", 用户域, str(目标文件)])
+    配置路径 = str(参数.配置).strip()
+    if 配置路径 and not Path(配置路径).expanduser().is_file():
+        print(f"缺配置包：{配置路径}（队列要求的口径见 批量精校队列.py 头部）")
+        return 1
+    目标 = 目标文件(参数.标签)
+    目标.parent.mkdir(parents=True, exist_ok=True)
+    目标.write_text(渲染plist(
+        标签=参数.标签, Python可执行=str(参数.Python可执行),
+        队列脚本=队列脚本, 配置路径=配置路径, 工作目录=队列脚本.parent,
+        输出日志=str(参数.输出日志), 错误日志=str(参数.错误日志)), encoding="utf-8")
+    执行(["launchctl", "bootout", f"{用户域}/{参数.标签}"])
+    码, 输出 = 执行(["launchctl", "bootstrap", 用户域, str(目标)])
     if 码 != 0:
         print(f"装载失败：{输出}")
         return 1
-    执行(["launchctl", "kickstart", "-k", f"{用户域}/{标签}"])
-    print(f"已安装并启动：{标签}")
-    print("  业务日志：", 业务日志)
-    print("  系统输出：/tmp/逐字稿队列.log   系统错误：/tmp/逐字稿队列.err")
-    print("  卸载：python3.14 安装或卸载队列常驻.py 卸载")
+    执行(["launchctl", "kickstart", "-k", f"{用户域}/{参数.标签}"])
+    print(f"已安装并启动：{参数.标签}（定义：{目标}）")
+    print("  队列脚本：", 队列脚本)
+    print("  配置包：", 配置路径 or "（未指定：队列需自行读到环境变量）")
+    if str(参数.日志路径).strip():
+        print("  业务日志：", 参数.日志路径)
+    print(f"  系统输出：{参数.输出日志}   系统错误：{参数.错误日志}")
+    print(f"  卸载：python3.14 {Path(__file__).name} 卸载 --标签 {参数.标签}")
     return 0
 
 
-def 卸载() -> int:
-    执行(["launchctl", "bootout", f"{用户域}/{标签}"])
-    if 目标文件.is_file():
-        目标文件.unlink()
-    print(f"已卸载：{标签}（已出的稿子与缓存都不受影响）")
+def 卸载(参数: argparse.Namespace) -> int:
+    执行(["launchctl", "bootout", f"{用户域}/{参数.标签}"])
+    目标 = 目标文件(参数.标签)
+    if 目标.is_file():
+        目标.unlink()
+    print(f"已卸载：{参数.标签}（已出的稿子与缓存都不受影响）")
     return 0
 
 
-def 状态() -> int:
-    码, 输出 = 执行(["launchctl", "print", f"{用户域}/{标签}"])
+def 状态(参数: argparse.Namespace) -> int:
+    码, 输出 = 执行(["launchctl", "print", f"{用户域}/{参数.标签}"])
     if 码 != 0:
         print("未安装或未运行")
         return 1
     for 行 in 输出.splitlines():
         if any(键 in 行 for 键 in ("state =", "pid =", "runs =", "last exit")):
             print(" ", 行.strip())
-    if 业务日志.is_file():
+    业务日志 = Path(str(参数.日志路径)).expanduser() if str(参数.日志路径).strip() else None
+    if 业务日志 is not None and 业务日志.is_file():
         尾部 = 业务日志.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
         print("  业务日志尾部：")
         for 行 in 尾部:
@@ -72,10 +137,25 @@ def 状态() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    操作 = sys.argv[1] if len(sys.argv) > 1 else "状态"
+def 命令行入口() -> int:
+    解析 = argparse.ArgumentParser(description="逐字稿队列常驻（LaunchAgent）安装 / 卸载 / 状态")
+    解析.add_argument("操作", nargs="?", default="状态", choices=["安装", "卸载", "状态"])
+    解析.add_argument("--标签", default=默认标签,
+                    help=f"LaunchAgent 标签（默认中性占位 {默认标签}；正式部署时传自己的标签）")
+    解析.add_argument("--安装源", default=str(默认队列脚本),
+                    help="队列脚本绝对路径（默认：与本脚本同目录的 批量精校队列.py）")
+    解析.add_argument("--配置", default="", help="队列配置包 JSON 路径（安装时写进 ProgramArguments）")
+    解析.add_argument("--日志路径", default="", help="队列业务日志绝对路径（状态时打印尾部）")
+    解析.add_argument("--Python可执行", default=sys.executable, help="跑队列的 Python 绝对路径")
+    解析.add_argument("--输出日志", default="", help="标准输出日志路径（默认 /tmp/<标签>.log）")
+    解析.add_argument("--错误日志", default="", help="标准错误日志路径（默认 /tmp/<标签>.err）")
+    参数 = 解析.parse_args()
+    参数.输出日志 = 参数.输出日志.strip() or f"/tmp/{参数.标签}.log"
+    参数.错误日志 = 参数.错误日志.strip() or f"/tmp/{参数.标签}.err"
+    参数.配置 = str(参数.配置).strip()
     表 = {"安装": 安装, "卸载": 卸载, "状态": 状态}
-    if 操作 not in 表:
-        print("用法：python3.14 安装或卸载队列常驻.py [安装|卸载|状态]")
-        sys.exit(2)
-    sys.exit(表[操作]())
+    return 表[参数.操作](参数)
+
+
+if __name__ == "__main__":
+    sys.exit(命令行入口())

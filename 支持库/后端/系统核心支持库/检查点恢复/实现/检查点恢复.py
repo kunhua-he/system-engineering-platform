@@ -9,6 +9,7 @@
 from __future__ import annotations
 from pathlib import Path
 
+import atexit
 import json
 import os
 import sqlite3
@@ -22,12 +23,75 @@ from 公共契约.运行时.运行缓存 import 解析运行数据根
 锁 = __import__("threading").Lock()
 # 补列等容错路径的问题留痕（哲学第 15 条：失败必须可见，不许 except: pass 吞掉）
 补列问题: list[str] = []
+# 连接关闭等容错路径的问题留痕（同上：不许静默）
+连接问题: list[str] = []
+
+# ── 建连层：模块级缓存连接，调用点一行不改（照 嵌入缓存.py:27-74）──────────────
+# 为什么必须收敛到这里：sqlite3.Connection 的 `with` 是**事务**上下文（__exit__ 只
+# commit/rollback），不是关闭器 —— 原实现每次调用都新建连接且永不 close，fd 只能等
+# GC（严格 1:1 泄漏）。改为「按 库路径 缓存连接」后：
+#   · 调用点 `with 锁, _连接(路径) as 连接:` 形态与事务语义完全不变（退出即 commit、
+#     异常即 rollback），因此本模块 10 个调用点一行都不用改；
+#   · 连接由本层持有，进程内 fd 不再随调用次数增长，进程退出由 atexit 收口。
+# 三条护栏：① 换库路径先关旧连接（检查点库/任务库各自独立一槽，互不干扰）；
+# ② 记录缓存所属进程 id，fork 出的子进程不复用父进程连接（sqlite 连接跨进程不安全）;
+# ③ 缓存库文件被外部删除或**被替换**（换 inode，如从备份恢复覆盖）时重开，
+#    绝不把连接挂在旧 inode 上读到过期数据（原实现每次新建连接，本护栏保持等价语义）。
+_缓存锁 = __import__("threading").RLock()
+_检查点缓存连接: sqlite3.Connection | None = None
+_检查点缓存路径: str | None = None
+_检查点缓存进程id: int | None = None
+_检查点缓存标识: tuple[int, int] | None = None
+
+
+def _关闭并记录(连接, 场景: str) -> None:
+    """尽力关闭连接；失败只留痕不抛出（哲学第 15 条）。"""
+    if 连接 is None:
+        return
+    try:
+        连接.close()
+    except Exception as 错误:
+        连接问题.append(f"{场景}关闭失败: {错误}")
+
+
+def _库文件标识(库路径: str):
+    """库文件身份 (设备号, inode)；文件不存在返回 None。
+
+    只比身份不比 mtime：本进程自己的写入也会改 mtime，比 mtime 会让缓存每次都失效。
+    """
+    try:
+        文件状态 = os.stat(库路径)
+    except OSError:
+        return None
+    return (文件状态.st_dev, 文件状态.st_ino)
+
+
+def _关闭检查点缓存连接() -> None:
+    """关闭检查点库缓存连接并复位缓存槽（调用方必须持有 _缓存锁）。"""
+    global _检查点缓存连接, _检查点缓存路径, _检查点缓存进程id, _检查点缓存标识
+    try:
+        _关闭并记录(_检查点缓存连接, "检查点库旧连接")
+    finally:
+        _检查点缓存连接 = None
+        _检查点缓存路径 = None
+        _检查点缓存进程id = None
+        _检查点缓存标识 = None
 
 
 def _连接(库路径: str) -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(库路径), exist_ok=True)
-    连接 = sqlite3.connect(库路径, timeout=5)
-    连接.execute("""CREATE TABLE IF NOT EXISTS 检查点 (
+    """取检查点库连接（按 库路径 缓存复用；命中即返回，不新建、不泄漏）。"""
+    global _检查点缓存连接, _检查点缓存路径, _检查点缓存进程id, _检查点缓存标识
+    with _缓存锁:
+        当前标识 = _库文件标识(库路径)
+        if (_检查点缓存连接 is not None and 库路径 == _检查点缓存路径
+                and _检查点缓存进程id == os.getpid()
+                and 当前标识 is not None and 当前标识 == _检查点缓存标识):
+            return _检查点缓存连接
+        _关闭检查点缓存连接()
+        os.makedirs(os.path.dirname(库路径), exist_ok=True)
+        连接 = sqlite3.connect(库路径, timeout=5, check_same_thread=False)
+        try:
+            连接.execute("""CREATE TABLE IF NOT EXISTS 检查点 (
         检查点id TEXT PRIMARY KEY,
         会话id TEXT NOT NULL,
         状态快照 TEXT NOT NULL,
@@ -36,19 +100,27 @@ def _连接(库路径: str) -> sqlite3.Connection:
         中断原因 TEXT,
         中断状态 TEXT DEFAULT '正常'
     )""")
-    连接.execute("CREATE INDEX IF NOT EXISTS idx_检查点_会话 ON 检查点(会话id, 创建时间)")
-    连接.commit()
-    # 兼容旧库：幂等补 中断 列。列已存在属预期；**其它错误必须留痕**（哲学第 15 条，不静默）。
-    try:
-        连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断原因 TEXT")
-        连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断状态 TEXT DEFAULT '正常'")
-        连接.commit()
-    except sqlite3.OperationalError as 错误:
-        if "duplicate column" not in str(错误).lower():
-            补列问题.append(f"补列失败: {错误}")
-    except Exception as 错误:
-        补列问题.append(f"补列异常: {错误}")
-    return 连接
+            连接.execute("CREATE INDEX IF NOT EXISTS idx_检查点_会话 ON 检查点(会话id, 创建时间)")
+            连接.commit()
+        except Exception:
+            # 建连/建表失败不留半开连接（哲学第 15 条：不留脏状态，原异常照抛）
+            _关闭并记录(连接, "检查点库建连失败")
+            raise
+        # 兼容旧库：幂等补 中断 列。列已存在属预期；**其它错误必须留痕**（哲学第 15 条，不静默）。
+        try:
+            连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断原因 TEXT")
+            连接.execute("ALTER TABLE 检查点 ADD COLUMN 中断状态 TEXT DEFAULT '正常'")
+            连接.commit()
+        except sqlite3.OperationalError as 错误:
+            if "duplicate column" not in str(错误).lower():
+                补列问题.append(f"补列失败: {错误}")
+        except Exception as 错误:
+            补列问题.append(f"补列异常: {错误}")
+        _检查点缓存连接 = 连接
+        _检查点缓存路径 = 库路径
+        _检查点缓存进程id = os.getpid()
+        _检查点缓存标识 = _库文件标识(库路径)
+        return _检查点缓存连接
 
 
 def 保存检查点(会话id: str = None, 状态快照: dict = None, 版本: str = None, 库路径: str = None, 中断原因: str = None) -> 结果:
@@ -182,11 +254,39 @@ import os as _os
 
 任务默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "任务状态机.db")
 
+# 任务库建连层缓存（与检查点库各自独立一槽，两库互不干扰；护栏同 _连接）
+_任务缓存连接: sqlite3.Connection | None = None
+_任务缓存路径: str | None = None
+_任务缓存进程id: int | None = None
+_任务缓存标识: tuple[int, int] | None = None
 
-def _任务连接(库路径: str):
-    _os.makedirs(_os.path.dirname(库路径), exist_ok=True)
-    连接 = _sqlite3.connect(库路径, timeout=5)
-    连接.execute("""CREATE TABLE IF NOT EXISTS 任务表 (
+
+def _关闭任务缓存连接() -> None:
+    """关闭任务库缓存连接并复位缓存槽（调用方必须持有 _缓存锁）。"""
+    global _任务缓存连接, _任务缓存路径, _任务缓存进程id, _任务缓存标识
+    try:
+        _关闭并记录(_任务缓存连接, "任务库旧连接")
+    finally:
+        _任务缓存连接 = None
+        _任务缓存路径 = None
+        _任务缓存进程id = None
+        _任务缓存标识 = None
+
+
+def _任务连接(库路径: str) -> sqlite3.Connection:
+    """取任务状态机库连接（按 库路径 缓存复用；命中即返回，不新建、不泄漏）。"""
+    global _任务缓存连接, _任务缓存路径, _任务缓存进程id, _任务缓存标识
+    with _缓存锁:
+        当前标识 = _库文件标识(库路径)
+        if (_任务缓存连接 is not None and 库路径 == _任务缓存路径
+                and _任务缓存进程id == _os.getpid()
+                and 当前标识 is not None and 当前标识 == _任务缓存标识):
+            return _任务缓存连接
+        _关闭任务缓存连接()
+        _os.makedirs(_os.path.dirname(库路径), exist_ok=True)
+        连接 = _sqlite3.connect(库路径, timeout=5, check_same_thread=False)
+        try:
+            连接.execute("""CREATE TABLE IF NOT EXISTS 任务表 (
         任务id TEXT PRIMARY KEY,
         任务名 TEXT NOT NULL,
         归属人 TEXT,
@@ -197,9 +297,16 @@ def _任务连接(库路径: str):
         创建时间 TEXT NOT NULL,
         更新时间 TEXT NOT NULL
     )""")
-    连接.execute("CREATE INDEX IF NOT EXISTS idx_任务_归属 ON 任务表(归属人, 状态)")
-    连接.commit()
-    return 连接
+            连接.execute("CREATE INDEX IF NOT EXISTS idx_任务_归属 ON 任务表(归属人, 状态)")
+            连接.commit()
+        except Exception:
+            _关闭并记录(连接, "任务库建连失败")
+            raise
+        _任务缓存连接 = 连接
+        _任务缓存路径 = 库路径
+        _任务缓存进程id = _os.getpid()
+        _任务缓存标识 = _库文件标识(库路径)
+        return _任务缓存连接
 
 
 def 创建任务(*, 任务名: str = None, 归属人: str = None, 库路径: str = None) -> 结果:
@@ -341,3 +448,18 @@ def 超时重排队(*, 任务id: str = None, 超时秒: int = None, 库路径: s
         return 结果.成功结果({"重排队": True, "任务id": 任务id, "状态": "排队", "说明": "超时已重排队"})
     except Exception as 错误:
         return 结果.失败("超时重排队失败", str(错误), 来源="检查点恢复")
+
+
+def 关闭连接() -> None:
+    """关闭检查点库与任务库的缓存连接（幂等，可重复调用）。
+
+    连接不再随每次调用新建/丢弃，而由本模块建连层持有，因此需要一个显式收口入口：
+    长驻进程优雅退出、测试收尾、验证探针计数前调用它，即可确认零残留 fd。
+    进程退出时由 atexit 自动调用一次。
+    """
+    with _缓存锁:
+        _关闭检查点缓存连接()
+        _关闭任务缓存连接()
+
+
+atexit.register(关闭连接)

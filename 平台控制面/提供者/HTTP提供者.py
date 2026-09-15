@@ -18,6 +18,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from 公共契约.诊断.忽略记录 import 记录忽略
+
 
 class 请求处理器(http.server.BaseHTTPRequestHandler):
     """真实请求处理器：转发处理器函数，支持任意状态码/JSON/延迟/大响应。"""
@@ -69,8 +71,9 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
         except Exception:
             try:
                 self.send_error(500, "处理器异常")
-            except Exception:
-                pass  # 连接已断开（客户端取消），无需再响应
+            except OSError as 错误:
+                # 连接已断开（客户端取消）时无法再写响应：允许忽略，但留痕（哲学第 15 条）。
+                记录忽略('HTTP提供者.异常响应', 错误)
 
     def log_message(self, 格式, *参数):
         pass  # 静默访问日志

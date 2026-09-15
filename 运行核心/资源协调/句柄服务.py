@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 import json
@@ -12,6 +13,7 @@ from typing import Any
 from 公共契约.句柄体系 import (
     句柄, 句柄类型_资源, 句柄体系, 是合法句柄id, 状态_已失效,
 )
+from 公共契约.诊断.忽略记录 import 记录忽略
 from 运行核心.权威状态 import 权威状态
 
 
@@ -22,18 +24,37 @@ class 资源句柄服务:
         self.句柄体系 = 句柄体系()
         self.默认超时秒 = 默认超时秒
         self.权威状态 = 权威状态(存储目录 or Path("工程缓存") / "权威状态")
+        # 启动恢复统计（现场口径：账本 有效行 8972 / 全量灌入 3.03s / 13.14MB）
+        self.启动恢复统计 = {"恢复": 0, "格式不合法": 0, "无可用租约": 0, "已过期": 0}
         self._恢复账本句柄()
 
     def _恢复账本句柄(self) -> None:
-        """启动时从 SQLite 恢复有效句柄；账本不完整时拒绝恢复（fail-closed）。"""
-        for 记录 in self.权威状态.全部句柄(仅有效=True):
+        """启动时从 SQLite 恢复有效句柄；账本不完整时拒绝恢复（fail-closed）。
+
+        只恢复「未回收且未过期」的句柄：过期句柄在所有入口（状态/续租）
+        都已不可用（状态() 判超时即失效、续租() 拒绝复活），把它们灌进内存
+        只白占内存与启动耗时。过期行仍留在账本供审计，由权威状态的
+        清理器按保留窗口真删（回收过期资源行）。
+        取数走 有效句柄与租约() 一次查询：逐行 读取租约 的 N+1 才是启动耗时主因
+        （现场 8983 行 ≈ 2.99s），句柄与租约的配对口径与 读取租约 完全一致。
+        """
+        现在 = time.time()
+        for 记录 in self.权威状态.有效句柄与租约():
             原句柄id = 记录["句柄id"]
             账本句柄id = self._规范化句柄id(原句柄id)
             if 账本句柄id is None:
                 # 历史测试/崩溃残留不得阻断新实例启动；该记录仍留在账本供审计。
+                self.启动恢复统计["格式不合法"] += 1
                 continue
-            租约 = self.权威状态.读取租约(原句柄id)
+            租约 = 记录.get("租约")
             if not 租约 or 租约["已回收"]:
+                self.启动恢复统计["无可用租约"] += 1
+                continue
+            截止 = 租约.get("硬截止时间")
+            if 截止 is None or float(截止) <= 现在:
+                # 过期即不恢复：硬截止时间为 epoch 秒（写入方 创建 用
+                # time.time()+默认超时秒），可直接与 time.time() 比较。
+                self.启动恢复统计["已过期"] += 1
                 continue
             对象 = 句柄(
                 句柄id=账本句柄id, 句柄类型=记录["句柄类型"],
@@ -46,6 +67,7 @@ class 资源句柄服务:
                         "最后心跳": float(租约["最后心跳"])},
             )
             self.句柄体系.恢复句柄(对象)
+            self.启动恢复统计["恢复"] += 1
 
     def _加载句柄(self, 句柄id: str | int) -> Any | None:
         """按需从账本加载句柄，避免多个网关实例之间只看各自内存。"""
@@ -295,4 +317,88 @@ class 资源句柄服务:
         }
 
 
-__all__ = ["资源句柄服务"]
+class 资源账本维护循环:
+    """权威状态账本的周期维护：自身心跳 → 判死回收 → 过期真删 → 让出连接。
+
+    背景（落点清单_05 R2）：句柄/租约/进程三表只增不删（现场 18 天
+    9130/9166/3633 行），而已有的回收器 `清理死亡进程资源` /
+    `扫描过期租约` 生产调用方为 0（仅在发布门禁里被调用过）。本类给
+    它们真实的生产调用方，并让「判死 → 终态 → 按保留窗口真删」在长驻
+    网关里周期推进。
+
+    两个必须的自我保护：
+    - 每轮先 `刷新心跳`：判死判据含「心跳过期即视为失联」，不刷新自身
+      心跳会把仍在运行的自己判成死亡进程，进而回收自己创建的有效句柄；
+    - 每轮收尾 `释放当前线程连接`：长驻线程若一直持有线程级连接，会让
+      `权威状态.关闭()` 的「仍有工作线程正在使用权威状态」判据误报。
+    """
+
+    def __init__(self, 状态账本: Any, *, 间隔秒: float = 300.0,
+                 心跳超时秒: float = 15.0, 保留窗口秒: float | None = None) -> None:
+        if not 间隔秒 or float(间隔秒) <= 0:
+            raise ValueError("间隔秒必须大于 0")
+        self.状态账本 = 状态账本
+        self.间隔秒 = float(间隔秒)
+        self.心跳超时秒 = float(心跳超时秒)
+        self.保留窗口秒 = 保留窗口秒
+        self.清扫次数 = 0
+        self.最近清扫: list[str] = []
+        self.最近错误 = ""
+        self._停止事件 = threading.Event()
+        self._清扫锁 = threading.Lock()
+        self._线程: threading.Thread | None = None
+
+    def 清扫一次(self) -> list[str]:
+        """一轮清扫：刷新心跳 → 判死回收（末尾含真删）→ 扫过期租约 → 再真删新终态行。"""
+        with self._清扫锁:
+            try:
+                self.状态账本.刷新心跳()
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                记录忽略('资源账本维护循环.刷新心跳', 错误)
+            清理列表 = list(self.状态账本.清理死亡进程资源(
+                心跳超时秒=self.心跳超时秒, 保留窗口秒=self.保留窗口秒))
+            清理列表.extend(self.状态账本.扫描过期租约())
+            # 扫描过期租约 刚把一批租约/句柄改成终态，同轮补一次真删。
+            清理列表.extend(self.状态账本.回收过期资源行(保留窗口秒=self.保留窗口秒))
+            self.清扫次数 += 1
+            self.最近清扫 = 清理列表[-20:]
+            return 清理列表
+
+    def _循环(self) -> None:
+        while not self._停止事件.is_set():
+            try:
+                self.清扫一次()
+            except Exception as 错误:  # 维护失败不得中断网关，但必须留痕
+                self.最近错误 = str(错误)
+                记录忽略('资源账本维护循环.清扫', 错误)
+            finally:
+                try:
+                    self.状态账本.释放当前线程连接()
+                except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+                    记录忽略('资源账本维护循环.释放连接', 错误)
+            self._停止事件.wait(self.间隔秒)
+
+    def 启动(self) -> None:
+        """启动后台维护线程（幂等）；首轮清扫立即执行，不阻塞调用方返回。"""
+        if self._线程 is not None and self._线程.is_alive():
+            return
+        self._停止事件.clear()
+        self._线程 = threading.Thread(target=self._循环, name="权威状态账本维护", daemon=True)
+        self._线程.start()
+
+    def 停止(self, 超时秒: float = 5.0) -> None:
+        """停止维护线程并等它退出（幂等）；退出路径必须先停线程再关数据库连接。"""
+        self._停止事件.set()
+        线程 = self._线程
+        self._线程 = None
+        if 线程 is not None and 线程.is_alive() and 线程 is not threading.current_thread():
+            线程.join(超时秒)
+
+    def 状态快照(self) -> dict[str, Any]:
+        return {"运行中": bool(self._线程 and self._线程.is_alive()),
+                "间隔秒": self.间隔秒, "心跳超时秒": self.心跳超时秒,
+                "保留窗口秒": self.保留窗口秒, "清扫次数": self.清扫次数,
+                "最近清扫条数": len(self.最近清扫), "最近错误": self.最近错误}
+
+
+__all__ = ["资源句柄服务", "资源账本维护循环"]

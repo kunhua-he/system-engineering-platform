@@ -34,7 +34,7 @@ class 灰度指标入库测试(unittest.TestCase):
         self.旧目录.mkdir(parents=True, exist_ok=True)
         self._旧环境 = os.environ.get("系统库运行库")
         os.environ["系统库运行库"] = str(self.运行库)
-        # 初始化运行库（建十个域表）
+        # 初始化运行库（建六个域表）
         from 公共契约.能力契约.调用器 import 获取能力调用器
         import 运行核心.能力调用.唯一能力调用  # noqa: F401  惰性装配钩子
         结果对象 = 获取能力调用器().调用能力(

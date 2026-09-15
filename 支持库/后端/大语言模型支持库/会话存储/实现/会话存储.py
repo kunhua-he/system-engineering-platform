@@ -11,6 +11,7 @@
 from __future__ import annotations
 from pathlib import Path
 
+import atexit
 import json
 import os
 import sqlite3
@@ -28,6 +29,16 @@ from 公共契约.运行时.运行缓存 import 解析运行数据根
 默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "大语言模型支持库.会话存储.db")
 默认超时秒 = 1800   # 华哥口径：不申报默认 30 分钟，模块应主动申报自身需要多久
 锁 = threading.Lock()
+
+# ── SQLite 连接缓存（R1 资源生命周期收口）──────────────────────────
+# 原实现每次调用都 sqlite3.connect 且从不 close：`with sqlite3.Connection:` 是事务
+# 上下文管理器（只 commit/rollback），不是关闭器 ⇒ 严格 1:1 泄漏 fd。这里把「建连
+# 函数」改成缓存工厂：按 库路径 复用模块级连接，换路径先关旧的，进程退出统一收口。
+# 调用点 0 改动：`with 锁, _连接(路径) as 连接:` 里的 `with 连接` 继续只承担事务语义。
+# 样板：大语言模型支持库/嵌入缓存/实现/嵌入缓存.py:27-74。
+_缓存连接: sqlite3.Connection | None = None
+_缓存路径: str | None = None
+_连接锁 = threading.RLock()
 
 
 
@@ -88,19 +99,86 @@ CREATE INDEX IF NOT EXISTS idx_输入_会话 ON 输入表(会话id, 受理序);
 
 
 def _连接(库路径: str) -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(库路径), exist_ok=True)
-    连接 = sqlite3.connect(库路径, timeout=10)
-    连接.executescript(_建表语句)
-    # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 15 条）。
-    try:
-        连接.execute("ALTER TABLE 会话表 ADD COLUMN 父会话id TEXT")
-        连接.commit()
-    except sqlite3.OperationalError as 错误:
-        if "duplicate column" not in str(错误).lower():
-            补列问题.append(f"补列失败: {错误}")
-    except Exception as 错误:
-        补列问题.append(f"补列异常: {错误}")
-    return 连接
+    """取本包 SQLite 连接（按 库路径 缓存复用）—— R1 连接 1:1 泄漏的建连函数层落点。
+
+    命中同路径直接返回缓存连接；换路径先关闭旧连接；新建时若建表/补列失败，
+    必须 try/finally 关掉半成品再抛出，绝不把未关闭连接留在缓存里（否则换种泄漏）。
+    check_same_thread=False 配合模块级 锁 串行化（同库 嵌入缓存 同款约定）。
+    """
+    global _缓存连接, _缓存路径
+    目标 = str(库路径)
+    with _连接锁:
+        if _缓存连接 is not None and _缓存路径 == 目标:
+            return _缓存连接
+        if _缓存连接 is not None:
+            try:
+                _缓存连接.close()
+            except Exception as 错误:
+                降级记录表.append(str(错误))
+            finally:
+                _缓存连接 = None
+                _缓存路径 = None
+        新建: sqlite3.Connection | None = None
+        try:
+            目录 = os.path.dirname(目标)
+            if 目录:
+                os.makedirs(目录, exist_ok=True)
+            新建 = sqlite3.connect(目标, timeout=10, check_same_thread=False)
+            新建.executescript(_建表语句)
+            # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 15 条）。
+            try:
+                新建.execute("ALTER TABLE 会话表 ADD COLUMN 父会话id TEXT")
+                新建.commit()
+            except sqlite3.OperationalError as 错误:
+                if "duplicate column" not in str(错误).lower():
+                    补列问题.append(f"补列失败: {错误}")
+            except Exception as 错误:
+                补列问题.append(f"补列异常: {错误}")
+            _缓存连接 = 新建
+            _缓存路径 = 目标
+            return 新建
+        except Exception:
+            if 新建 is not None:
+                try:
+                    新建.close()
+                except Exception as 错误:
+                    降级记录表.append(str(错误))
+            _缓存连接 = None
+            _缓存路径 = None
+            raise
+
+
+def _关闭缓存连接() -> None:
+    """进程退出收口：关闭缓存里的 SQLite 连接（样板 嵌入缓存.py:36-49）。"""
+    global _缓存连接, _缓存路径
+    with _连接锁:
+        if _缓存连接 is None:
+            return
+        try:
+            _缓存连接.close()
+        except Exception as 错误:
+            降级记录表.append(str(错误))
+        finally:
+            _缓存连接 = None
+            _缓存路径 = None
+
+
+atexit.register(_关闭缓存连接)
+
+
+def _释放路径连接(库路径: str) -> None:
+    """句柄失效时的资源回收：仅当缓存连接正是该路径时关闭并清缓存（幂等、不抛）。"""
+    global _缓存连接, _缓存路径
+    with _连接锁:
+        if _缓存连接 is None or _缓存路径 != str(库路径):
+            return
+        try:
+            _缓存连接.close()
+        except Exception as 错误:
+            降级记录表.append(str(错误))
+        finally:
+            _缓存连接 = None
+            _缓存路径 = None
 
 
 def _当前时间() -> str:
@@ -139,10 +217,10 @@ def 连接会话存储(库路径: str = None, 超时秒: int = None) -> 结果:
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id="会话存储", 所有者="")
         连接表[对象.句柄id] = {"库路径": 路径, "最后活动时间": time.time(),
                                "超时秒": 超时秒 if isinstance(超时秒, int) and 超时秒 > 0 else _包申报超时()}
-        # 登记 SQLite 资源到状态机：失效时统一回收（close 连接）
+        # 登记 SQLite 资源到状态机：失效时统一回收（真正关闭缓存连接，非空实现）
         try:
             句柄系统.登记资源(对象.句柄id, 资源类型="SQLite连接", 资源路径=路径,
-                              清理函数=(lambda 连接对象=连接表[对象.句柄id]: None))
+                              清理函数=(lambda 目标路径=路径: _释放路径连接(目标路径)))
         except Exception as 错误:
             降级记录表.append(str(错误))
     return 结果.成功结果({"句柄": 对象.句柄id, "超时秒": 连接表[对象.句柄id]["超时秒"],

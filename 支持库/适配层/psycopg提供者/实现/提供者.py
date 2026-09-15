@@ -18,6 +18,9 @@ from 公共契约.基础类型.结果类型 import 结果
 错误码_连接失败 = "连接失败"
 错误码_查询失败 = "查询失败"
 来源 = "psycopg提供者"
+# libpq 认可的两种 URI 形式；白名单之外（mysql:// 等）一律拒绝，绝不交给驱动试探。
+合法协议 = ("postgresql", "postgres")
+连接串格式说明 = "psycopg 仅支持 postgresql:// 或 postgres:// 格式连接串"
 
 try:
     import psycopg  # noqa: F401
@@ -33,6 +36,8 @@ def _失败(错误码: str, 消息: str) -> 结果:
 def _解析URL(连接串: str) -> dict[str, Any]:
     """把 postgresql:// 连接串解析为驱动连接参数。
 
+    用户/口令/主机/库名**统一做 URL 反转义**（`%XX` 形态的库名原样下传会让驱动按字面量找库，
+    连接必然失败），缺省分量按驱动惯例回填。
     口令从 netloc 认证段手工切分（驱动参数键名运行时拼接，避免误伤扫描）。
     """
     解析 = urlsplit(连接串)
@@ -40,9 +45,10 @@ def _解析URL(连接串: str) -> dict[str, Any]:
     用户名 = 认证段.rsplit(":", 1)[0] if ":" in 认证段 else 认证段
     口令段 = 认证段.rsplit(":", 1)[1] if ":" in 认证段 else ""
     口令键 = "p" + "assword"
-    return {"host": 解析.hostname or "127.0.0.1", "port": 解析.port or 5432,
-            "dbname": 解析.path.lstrip("/") or "postgres",
-            "user": unquote(用户名 or "postgres"), 口令键: unquote(口令段)}
+    return {"host": unquote(解析.hostname) if 解析.hostname else "127.0.0.1",
+            "port": 解析.port or 5432,
+            "dbname": unquote(解析.path.lstrip("/")) or "postgres",
+            "user": unquote(用户名) or "postgres", 口令键: unquote(口令段)}
 
 
 def _归类错误(错误: BaseException) -> str:
@@ -55,9 +61,15 @@ def _归类错误(错误: BaseException) -> str:
 
 
 def _校验连接串(连接串: Any) -> str | None:
+    """连接串形状校验：非空文本 + scheme 必须落在 合法协议 白名单内。"""
     if not isinstance(连接串, str) or not 连接串.strip():
         return "连接串必须是非空文本"
-    return "psycopg 仅支持 postgresql:// 格式连接串" if "://" not in 连接串 else None
+    if "://" not in 连接串:
+        return 连接串格式说明
+    协议 = 连接串.split("://", 1)[0].strip().lower()
+    if 协议 not in 合法协议:
+        return f"{连接串格式说明}（实得协议: {协议}）"
+    return None
 
 
 def _校验超时(超时秒: Any) -> str | None:
@@ -129,12 +141,12 @@ def 归类错误(错误: BaseException) -> str:
 
 
 def 解析连接串(连接串: str) -> dict[str, Any]:
-    """把 postgresql:// 连接串翻译成驱动连接参数。"""
+    """把 postgresql:// 连接串翻译成驱动连接参数（各 URL 分量统一反转义）。"""
     return _解析URL(连接串)
 
 
 def 校验连接串(连接串: Any) -> str | None:
-    """连接串形状校验（非空、postgresql://）。"""
+    """连接串形状校验（非空、scheme 必须是 postgresql/postgres 之一）。"""
     return _校验连接串(连接串)
 
 

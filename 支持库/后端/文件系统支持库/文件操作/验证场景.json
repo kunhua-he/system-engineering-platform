@@ -440,6 +440,210 @@
         }
       ],
       "清理步骤": []
+    },
+    {
+      "场景id": "文件系统.解压上限三分支拒绝与默认上限正向",
+      "前置步骤": [],
+      "目标步骤": [
+        {
+          "步骤id": "写上限夹具甲",
+          "能力id": "文件系统支持库.文件操作.写入文件",
+          "参数": {
+            "文件路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具/甲.txt"
+            },
+            "内容": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "编码": "utf-8"
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值": true
+            }
+          }
+        },
+        {
+          "步骤id": "写上限夹具乙",
+          "能力id": "文件系统支持库.文件操作.写入文件",
+          "参数": {
+            "文件路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具/乙.txt"
+            },
+            "内容": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            "编码": "utf-8"
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值": true
+            }
+          }
+        },
+        {
+          "步骤id": "写上限夹具丙",
+          "能力id": "文件系统支持库.文件操作.写入文件",
+          "参数": {
+            "文件路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具/丙.txt"
+            },
+            "内容": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+            "编码": "utf-8"
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "值": true
+            }
+          }
+        },
+        {
+          "步骤id": "压缩上限夹具",
+          "能力id": "文件系统支持库.文件操作.压缩文件",
+          "参数": {
+            "源路径": {
+              "$动态": "受管临时目录",
+              "相对路径": "文件系统工作区/上限夹具"
+            },
+            "目标路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具.zip"
+            }
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "关键值": {
+                "条目数": 3
+              },
+              "字段类型": {
+                "目标路径": "文本型"
+              }
+            }
+          }
+        },
+        {
+          "步骤id": "体积上限拒绝",
+          "能力id": "文件系统支持库.文件操作.解压文件",
+          "参数": {
+            "源路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具.zip"
+            },
+            "目标目录": {
+              "$动态": "受管临时目录",
+              "相对路径": "文件系统工作区/上限出_体积"
+            },
+            "最大字节数": 1
+          },
+          "预期": {
+            "成功": false,
+            "状态码": 400,
+            "返回断言": {
+              "错误码": "超过解压上限"
+            }
+          }
+        },
+        {
+          "步骤id": "条目上限拒绝",
+          "能力id": "文件系统支持库.文件操作.解压文件",
+          "参数": {
+            "源路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具.zip"
+            },
+            "目标目录": {
+              "$动态": "受管临时目录",
+              "相对路径": "文件系统工作区/上限出_条目"
+            },
+            "最大条目数": 2
+          },
+          "预期": {
+            "成功": false,
+            "状态码": 400,
+            "返回断言": {
+              "错误码": "超过条目上限"
+            }
+          }
+        },
+        {
+          "步骤id": "压缩比上限拒绝",
+          "能力id": "文件系统支持库.文件操作.解压文件",
+          "参数": {
+            "源路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具.zip"
+            },
+            "目标目录": {
+              "$动态": "受管临时目录",
+              "相对路径": "文件系统工作区/上限出_压缩比"
+            },
+            "最大压缩比": 1.0
+          },
+          "预期": {
+            "成功": false,
+            "状态码": 400,
+            "返回断言": {
+              "错误码": "超过压缩比上限"
+            }
+          }
+        },
+        {
+          "步骤id": "上限零值参数不合法",
+          "能力id": "文件系统支持库.文件操作.解压文件",
+          "参数": {
+            "源路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具.zip"
+            },
+            "目标目录": {
+              "$动态": "受管临时目录",
+              "相对路径": "文件系统工作区/上限出_零值"
+            },
+            "最大字节数": 0
+          },
+          "预期": {
+            "成功": false,
+            "状态码": 400,
+            "返回断言": {
+              "错误码": "参数不合法"
+            }
+          }
+        },
+        {
+          "步骤id": "默认上限正常解压",
+          "能力id": "文件系统支持库.文件操作.解压文件",
+          "参数": {
+            "源路径": {
+              "$动态": "受管临时路径",
+              "相对路径": "文件系统工作区/上限夹具.zip"
+            },
+            "目标目录": {
+              "$动态": "受管临时目录",
+              "相对路径": "文件系统工作区/上限出_正常"
+            }
+          },
+          "预期": {
+            "成功": true,
+            "状态码": 200,
+            "返回断言": {
+              "关键值": {
+                "条目数": 3
+              },
+              "字段类型": {
+                "目标目录": "文本型"
+              }
+            }
+          }
+        }
+      ],
+      "清理步骤": []
     }
   ]
 }
