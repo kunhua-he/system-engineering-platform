@@ -1,4 +1,4 @@
-"""底座运行库回归：八个域表初始化、写入查询闭环、并发写入、参数口径。
+"""底座运行库回归：十个域表初始化、写入查询闭环、并发写入、参数口径。
 
 华哥定盘（`开发文档/临时文档/57_底座收口总清单_审计.md` 第四节）：运行态一律入库，
 库文件统一放 `工程缓存/运行数据/`，且一律经唯一 SQLite 支持库访问（禁止各包自己连库）。
@@ -23,7 +23,7 @@ from 支持库.后端.数据库连接支持库.SQLite数据库 import (
     初始化运行数据库, 写入运行态, 查询运行态,
 )
 
-八个域 = ["任务", "作业", "协作状态", "能力占用", "检查点索引", "会话", "缓存索引", "发布"]
+十个域 = ["任务", "作业", "协作状态", "能力占用", "检查点索引", "会话", "缓存索引", "发布", "灰度观测", "灰度状态"]
 
 
 def 取成功值(用例: unittest.TestCase, 结果对象: Any) -> dict[str, Any]:
@@ -42,11 +42,11 @@ class 运行数据库回归(unittest.TestCase):
     def tearDown(self):
         self.临时目录.cleanup()
 
-    def test_初始化建出八个域表且幂等(self):
+    def test_初始化建出十个域表且幂等(self):
         第一次 = 取成功值(self, 初始化运行数据库(self.库路径))
-        self.assertEqual(sorted(第一次["表清单"]), sorted(八个域))
+        self.assertEqual(sorted(第一次["表清单"]), sorted(十个域))
         第二次 = 取成功值(self, 初始化运行数据库(self.库路径))
-        self.assertEqual(sorted(第二次["表清单"]), sorted(八个域), "重复初始化必须幂等")
+        self.assertEqual(sorted(第二次["表清单"]), sorted(十个域), "重复初始化必须幂等")
 
     def test_写入后可按域查询(self):
         初始化运行数据库(self.库路径)
@@ -98,6 +98,25 @@ class 运行数据库回归(unittest.TestCase):
     def test_运行库不落仓库内(self):
         """库文件由调用方显式给定路径；本测试用的必须是临时目录。"""
         self.assertTrue(self.库路径.startswith(tempfile.gettempdir()))
+
+
+    def test_逻辑与数值字段落真实类型(self):
+        """逻辑型必须 INTEGER（0/1）、数值型必须 REAL —— TEXT 存 "0"/"0.25" 会让统计口径算错。"""
+        import sqlite3 as _sqlite3
+        类型库 = str(Path(self.临时目录.name) / "类型校验.db")
+        取成功值(self, 初始化运行数据库(类型库))
+        连接对象 = _sqlite3.connect(类型库)
+        try:
+            列类型 = {行[1]: (行[2] or "").upper() for 行 in
+                    连接对象.execute('PRAGMA table_info("灰度观测")')}
+            状态列 = {行[1]: (行[2] or "").upper() for 行 in
+                    连接对象.execute('PRAGMA table_info("灰度状态")')}
+        finally:
+            连接对象.close()
+        self.assertEqual(列类型.get("成功"), "INTEGER")
+        self.assertEqual(列类型.get("超时"), "INTEGER")
+        self.assertEqual(列类型.get("耗时毫秒"), "REAL")
+        self.assertEqual(状态列.get("灰度比例"), "REAL")
 
 
 if __name__ == "__main__":
