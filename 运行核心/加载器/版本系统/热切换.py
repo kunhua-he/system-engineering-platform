@@ -304,7 +304,7 @@ class 热切换管理器:
         if 停止进程 is not None and 停止进程 is not 恢复进程:
             try:
                 停止进程.优雅停止()
-            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条）
                 记录忽略('热切换._真实回滚', 错误)
         回滚记录 = {
             "回滚id": _uuid.uuid4().hex[:16],

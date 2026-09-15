@@ -198,7 +198,7 @@ class 独立进程:
             self.状态 = 进程状态_故障
             try:
                 self._关闭管道()
-            except Exception as 错误:  # 允许忽略，但留痕（哲学第 15 条）
+            except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条）
                 记录忽略('独立进程.启动', 错误)
             return False, f"启动失败: {错误}"
         开始 = time.monotonic()
