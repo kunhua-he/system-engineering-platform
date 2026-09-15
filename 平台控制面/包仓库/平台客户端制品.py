@@ -74,7 +74,11 @@ def 读取制品文件表(制品目录: Path) -> dict[str, str]:
     for 文件 in sorted(Path(制品目录).rglob("*")):
         if 文件.is_dir() or "__pycache__" in 文件.parts:
             continue
-        if 文件.name in _身份排除文件名表:
+        if 文件.name == "物料清单.json":
+            # 物料清单由包仓库在入库时生成；其余生成性元数据（制品摘要/制品来源/制品完整性摘要/
+            # 编译清单）**照常入库与安装**——它们不参与身份计算（见 计算目录摘要16），
+            # 但安装后的稳定路径必须带溯源，发布门禁要读（2026-09-15 修：原实现一并排除，
+            # 导致已安装环境缺 制品来源.json 而门禁失败）
             continue
         相对 = 文件.relative_to(制品目录).as_posix()
         if 文件.suffix.lower() in _二进制文件后缀表:
