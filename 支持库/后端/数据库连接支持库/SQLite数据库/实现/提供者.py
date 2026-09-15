@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 来源 = "SQLite数据库提供者"
 错误码_参数不合法 = "参数不合法"
@@ -16,6 +17,42 @@ from 公共契约.基础类型.结果类型 import 结果
 错误码_连接失败 = "连接失败"
 错误码_查询失败 = "查询失败"
 错误码_事务失败 = "事务失败"
+
+
+def 压缩数据库(数据库路径: str = None, 超时秒: float = 30) -> 结果:
+    """压缩 SQLite 数据库文件并回收空闲页（VACUUM），返回压缩前后字节与释放量。
+
+    为什么单列能力：VACUUM **不能在事务内执行**，而本库其余写能力都跑在显式事务里，
+    调用方无法用它们完成压缩；"缺什么补什么"——缺的原子能力就补进对应的库。
+
+    连接以**自动提交模式**（isolation_level=None）打开，只执行 VACUUM，不改业务数据。
+    """
+    路径 = _校验路径(数据库路径)
+    if 路径 is None:
+        return _失败(错误码_参数不合法, "数据库路径必须是非空文本")
+    if (问题 := _校验超时(超时秒)):
+        return _失败(错误码_参数不合法, 问题)
+    文件 = Path(路径)
+    if not 文件.is_file():
+        return _失败(错误码_参数不合法, f"数据库文件不存在: {文件.name}")
+    压缩前 = 文件.stat().st_size
+    连接 = None
+    try:
+        连接 = sqlite3.connect(路径, timeout=float(超时秒), isolation_level=None)
+        连接.execute("VACUUM")
+    except sqlite3.Error as 错误:
+        return _失败(错误码_事务失败, f"压缩失败: {错误}", 可重试=True)
+    finally:
+        if 连接 is not None:
+            try:
+                连接.close()
+            except sqlite3.Error as 错误:
+                记录忽略("SQLite数据库.压缩数据库.关闭连接", 错误)
+    压缩后 = 文件.stat().st_size
+    return 结果.成功结果({
+        "数据库路径": 路径, "压缩前字节": 压缩前, "压缩后字节": 压缩后,
+        "释放字节": max(压缩前 - 压缩后, 0),
+    })
 
 
 def _失败(错误码: str, 说明: str, *, 可重试: bool = False) -> 结果:
