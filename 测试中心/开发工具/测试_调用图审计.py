@@ -2,7 +2,8 @@
 
 构造违规样本（支持库导入/read_bytes/tempfile/subprocess/网络/数据库/动态import）
 逐一检出；四者漂移检出；重复能力检出；允许 能力调用器 与 公共契约 不误报；
-真实 模块库.OCR 审计如实报出当前支持库静态导入（第二波迁移后清零）。
+真实 模块库.OCR 审计如实报出当前支持库静态导入（第二波迁移后清零）；
+A-2：提供者直连规则注册表与本事审计对同一份坏源码统一记「解析失败」。
 """
 
 from __future__ import annotations
@@ -160,6 +161,53 @@ class Test能力调用图审计(unittest.TestCase):
         OCR违规 = [违规 for 违规 in 报告.违规列表
                  if "OCR" in 违规.文件 and 违规.类型 in ("支持库直连", "原子旁路", "四者漂移")]
         self.assertFalse(OCR违规, f"OCR 迁移后必须清零，实际违规: {[违规.详情 for 违规 in OCR违规]}")
+
+
+class Test提供者直连规则解析失败口径(unittest.TestCase):
+    """A-2：解析失败必须与 能力调用图审计 同口径 —— 产出违规/阻断，不是放行。
+
+    修前 `直连规则注册表.审计源码` 是 `except SyntaxError: return []`（fail-open）：
+    语法坏掉的提供者源码在门禁里等于「零直连」，改坏源码反而放行。
+    """
+
+    def setUp(self) -> None:
+        self.临时根 = Path(tempfile.mkdtemp(prefix="直连规则样本_"))
+        self.模块库根 = self.临时根 / "模块库"
+        self.模块库根.mkdir()
+        self.坏源码 = "def 坏(:\n    return 1\n"
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.临时根, ignore_errors=True)
+
+    def test_解析失败产出命中并阻断(self) -> None:
+        from 开发工具.复用审计.提供者直连规则 import 解析失败模式, 直连规则注册表
+
+        注册表 = 直连规则注册表()
+        命中 = 注册表.审计源码(self.坏源码)
+        self.assertEqual([项["模式"] for 项 in 命中], [解析失败模式])
+        self.assertGreater(命中[0]["行号"], 0)
+        阻断, 未声明 = 注册表.门禁判定(self.坏源码)
+        self.assertTrue(阻断, "解析失败必须阻断，不得 fail-open")
+        self.assertEqual([项["模式"] for 项 in 未声明], [解析失败模式])
+
+    def test_同源码能力调用图审计也记解析失败(self) -> None:
+        """口径对照：两个审计器对同一份坏源码都必须记「解析失败」。"""
+        构造包(self.模块库根, "坏包", self.坏源码, ["坏包.能力坏"])
+        类型表 = [违规.类型 for 违规 in 审计模块库(self.模块库根).违规列表]
+        self.assertIn("解析失败", 类型表)
+
+    def test_解析失败是保留模式不可登记(self) -> None:
+        from 开发工具.复用审计.提供者直连规则 import 直连规则注册表
+
+        with self.assertRaises(ValueError):
+            直连规则注册表().登记规则("提供者X", "解析失败", {"模块": [], "函数名": []})
+
+    def test_合法源码判定不受影响(self) -> None:
+        from 开发工具.复用审计.提供者直连规则 import 直连规则注册表
+
+        注册表 = 直连规则注册表()
+        self.assertEqual(注册表.审计源码("def 好(x):\n    return x + 1\n"), [])
+        self.assertEqual(注册表.门禁判定(""), (False, []))
 
 
 if __name__ == "__main__":

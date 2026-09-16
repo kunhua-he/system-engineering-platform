@@ -300,5 +300,27 @@ class 测试非法入参(unittest.TestCase):
         self.assertEqual(响应.值["失败列表"][0]["错误码"], "参数不合法")
 
 
+class 测试适配层解析器缓存停止入口(unittest.TestCase):
+    """F-2 回归：适配层 TreeSitter提供者.停止() 是真入口（清空进程内解析器缓存）。
+
+    契约状态为「预留」：加载器尚无包级释放钩子调用链，故这里用真实调用证明入口
+    可用、清空可复现、清空后可重建缓存（不是空函数、也不是一次性自毁）。
+    """
+
+    def test_停止清空缓存且可重入(self):
+        from 支持库.适配层.TreeSitter提供者.实现 import 提供者 as 适配提供者
+
+        try:
+            适配提供者.解析语法树("const a: number = 1;\n", "typescript")
+        except 适配提供者.TreeSitter解析错误 as 错误:
+            self.skipTest(f"tree-sitter 不可用（如实跳过，不伪装）：{错误}")
+        self.assertTrue(适配提供者._解析器缓存, "解析后进程内应有解析器缓存")
+        适配提供者.停止()
+        self.assertEqual(适配提供者._解析器缓存, {}, "停止() 必须清空解析器缓存")
+        再解析 = 适配提供者.解析语法树("const a: number = 1;\n", "typescript")
+        self.assertIn("子节点", 再解析)
+        self.assertTrue(适配提供者._解析器缓存, "停止后再次解析应重建缓存（可重入）")
+
+
 if __name__ == "__main__":
     unittest.main()

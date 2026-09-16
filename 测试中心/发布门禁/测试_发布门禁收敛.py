@@ -320,5 +320,67 @@ class Test发布门禁收敛(unittest.TestCase):
             shutil.rmtree(临时根, ignore_errors=True)
 
 
+class Test模块合规口径对齐(unittest.TestCase):
+    """E-f：模块合规的同包判定必须与 依赖防火墙/能力调用图审计 同一结论。
+
+    修前实测：`_分类导入('模块库.能力目录.实现.能力索引')` → `{'类别': '白名单外导入'}`
+    （集成运行时真实报出），而同一条 import 在防火墙与调用图审计里放行 —— 三处审计
+    对同一行代码两个结论。修后三处共用 `运行核心/依赖防火墙.py::同包实现导入`。
+    """
+
+    def setUp(self) -> None:
+        临时根, self.模块目录 = 建临时模块库()
+        self.临时根 = 临时根
+        self.addCleanup(shutil.rmtree, 临时根, ignore_errors=True)
+
+    def _边界(self) -> list[dict]:
+        from 开发工具.组件合规.模块合规 import 审计模块边界
+
+        return 审计模块边界(self.临时根, "破坏模块")["违规列表"]
+
+    def test_同包实现导入放行(self) -> None:
+        """同包 `实现/` 导入放行：修前落到「白名单外导入」，修后与防火墙同一结论。
+
+        `实现.实现`（包目录被塞进 sys.path 的短名）与 `模块库.破坏模块.实现.实现`
+        （仓库全名）两种写法都要放行 —— 前者是 `组件合规._加载入口` 的加载约定。
+        """
+        (self.模块目录 / "实现" / "实现.py").write_text(
+            "from 模块库.破坏模块.实现.实现 import 破坏能力1\n"
+            "from 实现.实现 import 破坏能力1\n", encoding="utf-8")
+        self.assertEqual(self._边界(), [])
+
+    def test_跨包实现导入判红且用同一缺口词(self) -> None:
+        """跨包 `实现/` 直连照旧阻断，类别与防火墙同一个词（实现目录导入）。
+
+        修前这条落在「白名单外导入」——同一个违规在两个审计器里连名字都不一样。
+        断言到**具体条目**（文件/行/模块/类别）：只断言「类别表里有实现目录导入」
+        在漏判整行、或误报到别处时也会通过。
+        """
+        (self.模块目录 / "实现" / "实现.py").write_text(
+            "from 模块库.别的模块.实现.内部 import 东西\n", encoding="utf-8")
+        self.assertIn(
+            {"文件": "模块库/破坏模块/实现/实现.py", "行": 1,
+             "模块": "模块库.别的模块.实现.内部", "类别": "实现目录导入"},
+            self._边界())
+
+    def test_跨包实现判定与权威函数同源(self) -> None:
+        """判据同源：换掉权威函数即换掉本审计器的结论（防止又长出一份私有副本）。"""
+        from 开发工具.组件合规 import 模块合规
+        from 运行核心 import 依赖防火墙
+
+        调用次数 = []
+        原函数 = 依赖防火墙.同包实现导入
+
+        def 计数(文件, 模块名):
+            调用次数.append((文件, 模块名))
+            return 原函数(文件, 模块名)
+
+        (self.模块目录 / "实现" / "实现.py").write_text(
+            "from 模块库.破坏模块.实现.实现 import 破坏能力1\n", encoding="utf-8")
+        with patch.object(模块合规, "同包实现导入", side_effect=计数):
+            模块合规.审计模块边界(self.临时根, "破坏模块")
+        self.assertTrue(调用次数, "审计必须真的走权威函数，不得本地复判")
+
+
 if __name__ == "__main__":
     unittest.main()

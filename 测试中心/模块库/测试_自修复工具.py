@@ -289,7 +289,13 @@ class Test自修复工具(unittest.TestCase):
             self.assertEqual(结果.错误码, "参数不合法")
 
     def test_零残留(self):
-        """创建全程后：无 worktree、登记临时资源已可清理（宿主目录由清理方/运行器 teardown 兜底）。"""
+        """创建全程后：无 worktree、宿主临时目录已自释放、登记表不留残留（F-4 回归）。
+
+        修复前：成功路径只 `登记临时资源`，而 `清理全部临时资源` 全仓非测试代码无调用方
+        → 宿主目录 + 登记项都留在进程里没人清（目录越积越多）。
+        修复后：关闭工作区成功即在收口处自释放（真删目录 + 清登记项）；只有关闭失败
+        （可能有残留，如未提交修改）才登记留痕交兜底收口。
+        """
         from 支持库.后端.文件系统支持库.文件操作.实现.文件系统 import _临时资源登记表
         登记前 = list(_临时资源登记表)
         创建 = 创建修复工作区(
@@ -298,9 +304,14 @@ class Test自修复工具(unittest.TestCase):
         清单 = 运行命令(["git", "worktree", "list"], str(self.仓库))
         # 创建成功后 worktree 已关闭，仅主工作区
         self.assertEqual(len(清单.stdout.strip().splitlines()), 1)
-        # 本次创建登记了宿主临时资源（清理方统一释放；运行器 teardown 兜底删临时根）
-        新增登记 = [项 for 项 in _临时资源登记表 if 项 not in 登记前]
-        self.assertTrue(新增登记, "创建修复工作区应登记宿主临时资源")
+        # 零残留：宿主临时目录被真删（不是「登记了等人清」）
+        工作区路径 = (创建.值 or {}).get("路径", "")
+        self.assertTrue(工作区路径, "成功结果必须带工作区路径")
+        宿主目录 = Path(工作区路径).parent
+        self.assertFalse(宿主目录.exists(),
+                         f"成功路径必须自释放宿主临时目录，仍存在: {宿主目录}")
+        self.assertFalse([项 for 项 in _临时资源登记表 if 项 not in 登记前],
+                         "成功路径不得留下临时资源登记项")
         清理 = 清理全部临时资源()
         self.assertTrue(清理.成功, 清理.错误说明)
         self.assertFalse(_临时资源登记表, "清理后登记表应为空")

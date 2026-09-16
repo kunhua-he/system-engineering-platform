@@ -16,6 +16,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时 import 进程终止
 from 公共契约.运行时.进程终止 import 按组号探活
 from 支持库.适配层.FFmpeg提供者 import 检查提供者, 探测媒体, 提取音频, 转码, 抽取帧
 from 支持库.适配层.FFmpeg提供者.实现 import 进程管理 as 进程模块
@@ -57,6 +58,86 @@ class Test未配置语义(unittest.TestCase):
             结果 = 检查提供者()
         self.assertEqual(结果.错误码, "提供者不可用")
         self.assertIn("未配置", 结果.错误说明)
+
+
+class Test受管命令异常路径零残留(unittest.TestCase):
+    """F-1 回归：Popen 之后的异常路径（取消函数抛出 / 读取线程 start 失败）
+    也必须回收子进程组与管道——修复前这些路径会跳过 强制结束子进程 → 子进程泄漏。
+
+    用真实 /bin/sh 挂起脚本 + ps/按组号探活 判定残留，不用打桩假成功。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.临时目录 = Path(tempfile.mkdtemp(prefix="测试_FFmpeg受管异常_"))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.临时目录, ignore_errors=True)
+
+    def _记录Popen(self, 记录: list):
+        真实Popen = subprocess.Popen
+
+        def 包装(*参数, **关键字):
+            进程 = 真实Popen(*参数, **关键字)
+            记录.append(进程)
+            return 进程
+
+        return 包装
+
+    def _兜底清场(self, 记录: list) -> None:
+        """断言失败时不留挂起脚本：把记录到的子进程整组强杀（幂等）。"""
+        for 进程 in 记录:
+            try:
+                if 进程.poll() is None:
+                    进程终止.按组号终止(进程.pid, 信号="强杀")
+            except (OSError, ValueError):
+                pass
+
+    def test_取消函数抛出后进程组零残留(self):
+        挂起脚本 = _写脚本(self.临时目录 / "挂起取消异常.sh", "#!/bin/sh\nsleep 30\n")
+        记录: list = []
+        self.addCleanup(self._兜底清场, 记录)
+
+        def 抛错取消() -> bool:
+            raise RuntimeError("取消函数注入异常")
+
+        with mock.patch.object(subprocess, "Popen", self._记录Popen(记录)):
+            with self.assertRaises(RuntimeError):
+                进程模块.执行受管命令([挂起脚本], 超时秒=10,
+                                     最大输出字节=1024, 取消函数=抛错取消)
+        self.assertEqual(len(记录), 1, "本场景只应启动一个受管子进程")
+        进程 = 记录[0]
+        self.assertIsNotNone(进程.poll(), "异常路径必须已回收子进程（poll 非空）")
+        self.assertFalse(按组号探活(进程.pid),
+                         "取消函数抛出后进程组必须零残留（修复前此处为 True）")
+
+    def test_线程启动失败后进程组零残留(self):
+        挂起脚本 = _写脚本(self.临时目录 / "挂起线程失败.sh", "#!/bin/sh\nsleep 30\n")
+        记录: list = []
+        self.addCleanup(self._兜底清场, 记录)
+
+        class _爆炸线程:
+            """读取线程替身：start() 第一次调用即抛出。"""
+
+            def __init__(self, *参数, **关键字):
+                pass
+
+            def start(self):
+                raise RuntimeError("读取线程启动失败")
+
+            def join(self, timeout=None):
+                return None
+
+        with mock.patch.object(subprocess, "Popen", self._记录Popen(记录)), \
+                mock.patch.object(threading, "Thread", _爆炸线程):
+            with self.assertRaises(RuntimeError):
+                进程模块.执行受管命令([挂起脚本], 超时秒=10, 最大输出字节=1024)
+        self.assertEqual(len(记录), 1, "本场景只应启动一个受管子进程")
+        进程 = 记录[0]
+        self.assertIsNotNone(进程.poll(), "线程启动失败路径必须已回收子进程（poll 非空）")
+        self.assertFalse(按组号探活(进程.pid),
+                         "读取线程启动失败后进程组必须零残留")
 
 
 class TestFFmpeg提供者(unittest.TestCase):
