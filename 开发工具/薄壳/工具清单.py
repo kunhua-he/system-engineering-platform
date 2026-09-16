@@ -8,7 +8,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp.types import Tool
+import sys as _sys
+from pathlib import Path as _Path
+
+_项目根 = _Path(__file__).resolve().parents[2]
+if str(_项目根) not in _sys.path:
+    _sys.path.insert(0, str(_项目根))
+
+from 支持库.适配层.MCP协议提供者 import 构造工具定义
+
 
 # 唯一转发目标：网关操作名（与 开发文档/网关调用最小示例.md 一致）。
 调用能力操作 = "调用能力"
@@ -17,15 +25,15 @@ from mcp.types import Tool
 # `能力目录.搜索能力`；写 `模块库.能力目录.搜索能力` 会被网关判 404 能力未注册）。
 搜索能力目标 = "能力目录.搜索能力"
 
-三个工具定义: tuple[Tool, ...] = (
-    Tool(
-        name="capability_search",
-        description=(
+三个工具定义: tuple = (
+    构造工具定义(
+        "capability_search",
+        (
             "查询能力（薄壳工具）：经唯一网关查询平台已注册能力。"
             f"只转发网关操作「{调用能力操作}」到能力 id「{搜索能力目标}」，"
             "薄壳不实现任何搜索逻辑；该能力未注册时明确返回 能力未注册 并登记待补能力清单。"
         ),
-        inputSchema={
+        {
             "type": "object",
             "properties": {
                 "关键词": {"type": "string", "description": "搜索关键词，例如 读取文件"},
@@ -34,14 +42,14 @@ from mcp.types import Tool
             "required": ["关键词"],
         },
     ),
-    Tool(
-        name="capability_call",
-        description=(
+    构造工具定义(
+        "capability_call",
+        (
             "调用能力（薄壳主体）：入参「能力id」+「参数」，"
             f"经唯一网关 HTTP POST /网关/调用（操作={调用能力操作}）转发执行。"
             "薄壳不解析业务参数、不做业务判断、不落业务数据，只回传网关信封。"
         ),
-        inputSchema={
+        {
             "type": "object",
             "properties": {
                 "能力id": {"type": "string", "description": "能力 id，例如 技能库.技能索引.扫描技能包"},
@@ -50,13 +58,13 @@ from mcp.types import Tool
             "required": ["能力id"],
         },
     ),
-    Tool(
-        name="tool_catalog",
-        description=(
+    构造工具定义(
+        "tool_catalog",
+        (
             "工具目录（薄壳工具）：返回薄壳自身当前暴露的工具清单"
             "（协议名/中文名/入参/转发目标）。只读元数据，不扫描仓库、不转发网关。"
         ),
-        inputSchema={"type": "object", "properties": {}},
+        {"type": "object", "properties": {}},
     ),
 )
 

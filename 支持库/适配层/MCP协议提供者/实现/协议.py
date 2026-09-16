@@ -5,8 +5,9 @@
 
 分工：
 - 探针（检查可用性）注册为能力，供健康检查与依赖审计；
-- 构造服务/构造初始化选项/构造工具定义/构造文本内容/标准输入输出上下文
-  返回的是第三方对象（不可契约化），只作为包级入口导出的翻译函数。
+- 服务端侧：构造服务/构造初始化选项/构造工具定义/构造文本内容/标准输入输出上下文；
+- 客户端侧：构造标准输入输出参数/标准输入输出客户端/构造客户端会话（自测客户端用）；
+  以上返回的都是第三方对象（不可契约化），只作为包级入口导出的翻译函数。
 """
 
 from __future__ import annotations
@@ -22,6 +23,9 @@ try:
     from mcp.server.stdio import stdio_server as _标准输入输出函数
     from mcp.types import ServerCapabilities as _服务能力类
     from mcp.types import TextContent as _文本内容类
+    from mcp import ClientSession as _客户端会话类
+    from mcp import StdioServerParameters as _标准输入输出参数类
+    from mcp.client.stdio import stdio_client as _标准输入输出客户端函数
     from mcp.types import Tool as _工具类
 except Exception as _导入异常:  # 依赖缺失与版本不兼容都在此收口，原因留痕
     _导入失败原因 = f"{type(_导入异常).__name__}: {_导入异常}"
@@ -85,3 +89,23 @@ def 标准输入输出上下文():
     """返回 mcp 标准输入输出传输的上下文管理器（stdio，不监听任何端口）。"""
     _确保可用()
     return _标准输入输出函数()
+
+
+def 构造标准输入输出参数(*, 命令: str, 参数表: list[str], 环境: dict, 工作目录: str):
+    """构造客户端侧 stdio 启动参数（第三方对象，不契约化）。"""
+    _确保可用()
+    return _标准输入输出参数类(
+        command=命令, args=[str(项) for 项 in 参数表], env=dict(环境), cwd=str(工作目录),
+    )
+
+
+def 标准输入输出客户端(参数):
+    """返回客户端侧 stdio 传输的上下文管理器（第三方对象，不契约化）。"""
+    _确保可用()
+    return _标准输入输出客户端函数(参数)
+
+
+def 构造客户端会话(读取流, 写入流):
+    """构造客户端会话对象（第三方对象，不契约化）。"""
+    _确保可用()
+    return _客户端会话类(读取流, 写入流)

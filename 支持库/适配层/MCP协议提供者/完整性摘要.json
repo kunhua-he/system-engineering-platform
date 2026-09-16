@@ -5,7 +5,7 @@
  "文件清单": [
   {
    "路径": "__init__.py",
-   "sha256": "8484fcc3b1d5ec79fe2c46ed8194b7494dc94c6c8ca06b60f68e6de363675a38"
+   "sha256": "7ca1858b497a9e63c9828661c232d056dba67494369ac4dbe942527f2d4fe7d5"
   },
   {
    "路径": "依赖锁.json",
@@ -21,7 +21,7 @@
   },
   {
    "路径": "实现/协议.py",
-   "sha256": "119f907f4ee0525f2ed5bcb42f5bef3fbc619bbf44923428c9ebece465451bb7"
+   "sha256": "5e66f3e4a750aee07bfe0ecef70fdfa68fca5f4748f95f62fef161ecea5db03c"
   },
   {
    "路径": "权限契约/权限契约.json",

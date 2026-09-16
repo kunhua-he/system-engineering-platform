@@ -25,17 +25,20 @@ def _截断(文本: str, 上限: int = 300) -> str:
 
 
 async def 主程序() -> int:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-
-    参数 = StdioServerParameters(
-        command=sys.executable,
-        args=[str(_薄壳目录 / "薄壳服务.py")],
-        env=dict(os.environ),
-        cwd=str(_项目根),
+    if str(_项目根) not in sys.path:
+        sys.path.insert(0, str(_项目根))
+    from 支持库.适配层.MCP协议提供者 import (
+        构造客户端会话, 构造标准输入输出参数, 标准输入输出客户端,
     )
-    async with stdio_client(参数) as (读取流, 写入流):
-        async with ClientSession(读取流, 写入流) as 会话:
+
+    参数 = 构造标准输入输出参数(
+        命令=sys.executable,
+        参数表=[str(_薄壳目录 / "薄壳服务.py")],
+        环境=dict(os.environ),
+        工作目录=str(_项目根),
+    )
+    async with 标准输入输出客户端(参数) as (读取流, 写入流):
+        async with 构造客户端会话(读取流, 写入流) as 会话:
             初始化 = await 会话.initialize()
             print("[1] initialize 成功:", 初始化.serverInfo.name, 初始化.serverInfo.version)
 
