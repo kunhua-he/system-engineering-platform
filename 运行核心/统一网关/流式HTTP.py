@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any, Callable, Iterator
 
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
-from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器
+from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器  # 网关域唯一有界实现（429 结构化拒绝），勿改用 公共契约.运行时.有界HTTP 那份（满载不回响应）
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 from 公共契约.诊断.忽略记录 import 记录忽略
 
@@ -30,6 +30,27 @@ from 公共契约.诊断.忽略记录 import 记录忽略
 最大持续秒上限 = 3600.0
 最小持续秒下限 = 0.01
 最大并发通道上限 = 256
+
+
+class 上行数据超限(Exception):
+    """客户端在事件流连接上持续上行数据，超过请求体上限（视为协议异常连接）。"""
+
+
+def 消费上行字节(连接: Any, 缓冲: bytearray, *, 上限字节: int = 请求体上限字节) -> bytes:
+    """非阻塞真读一次连接，把读到的字节**取走**并追加进 缓冲；返回本次读到的字节。
+
+    返回 `b""` 表示对端已关闭（EOF）。**禁止 MSG_PEEK**：偷看只把数据复制出来，
+    不从内核缓冲区移除 —— 同一个字节会被反复读到（`select` 恒判可读 → 监视线程
+    100% 占核空转），而且正式读取会多读/错位。这里真读，数据一字节不丢地留在
+    调用方的缓冲里供后续消费；只有累计超过 上限字节 才按协议异常拒绝。
+    """
+    本次 = 连接.recv(4096, socket.MSG_DONTWAIT)
+    if 本次:
+        缓冲.extend(本次)
+        if len(缓冲) > 上限字节:
+            raise 上行数据超限(
+                f"客户端上行数据累计 {len(缓冲)} 字节，超过上限 {上限字节} 字节")
+    return 本次
 
 
 class HTTP流式通道:
@@ -438,6 +459,20 @@ class 流式HTTP服务器:
                     return None
                 return 数据
 
+            def _取出预读字节(self) -> bytes:
+                """一次性取走断开监视线程已从本连接读出的上行字节（未建立时为 b""）。
+
+                这是这些字节的**唯一消费出口**：`消费上行字节` 真读出来的数据存在
+                `预读缓冲` 里，任何要续读本连接的代码必须从这里取，不能自己再 recv
+                （那会与监视线程抢同一份数据）。事件流连接结束时关闭、不复用，所以
+                收尾取走即可；取走并留痕是为了「读出来的数据不悄悄消失」。
+                """
+                数据 = bytes(getattr(self, "预读缓冲", b""))
+                缓冲 = getattr(self, "预读缓冲", None)
+                if 缓冲 is not None:
+                    缓冲.clear()
+                return 数据
+
             def _写JSON(self, 状态码: int, 数据: dict[str, Any]) -> None:
                 try:
                     正文 = json.dumps(
@@ -552,6 +587,10 @@ class 流式HTTP服务器:
                 # 生成器可能长时间没有新事件，单靠下一次 wfile.write 无法发现
                 # 客户端已断开。独立监视连接 EOF，统一走管理器断开清理路径。
                 断开监视停止 = threading.Event()
+                # 上行字节缓冲：断开检测必须**真读**（见 消费上行字节 的说明）。
+                # 客户端在事件流上行的字节只由本监视线程写入，连接结束即随请求回收；
+                # 需要消费时用 _取出预读字节 一次性取走。
+                self.预读缓冲 = bytearray()
 
                 def 监视客户端断开() -> None:
                     while not 断开监视停止.is_set() and not 通道.停止事件.is_set():
@@ -559,10 +598,19 @@ class 流式HTTP服务器:
                             可读, _, _ = select.select([self.connection], [], [], 0.1)
                             if not 可读:
                                 continue
-                            数据 = self.connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT)
-                            if not 数据:
-                                管理器.断开(通道.请求id)
-                                return
+                            # 真读一次：读到的字节存进 预读缓冲 供后续消费，绝不用
+                            # MSG_PEEK 偷看（偷看不消费 → select 恒判可读 →
+                            # 本线程 100% 占核空转，且数据永久滞留在内核缓冲区）。
+                            本次 = 消费上行字节(self.connection, self.预读缓冲)
+                            if 本次:
+                                continue
+                            管理器.断开(通道.请求id)
+                            return
+                        except 上行数据超限:
+                            if isinstance(self.server, 有界线程HTTP服务器):
+                                self.server.记录连接诊断("流式客户端上行超限")
+                            管理器.断开(通道.请求id)
+                            return
                         except (BlockingIOError, InterruptedError):
                             continue
                         except (OSError, ValueError):
@@ -596,6 +644,9 @@ class 流式HTTP服务器:
                     管理器.断开(通道.请求id)
                 finally:
                     断开监视停止.set()
+                    上行字节 = self._取出预读字节()
+                    if 上行字节 and isinstance(self.server, 有界线程HTTP服务器):
+                        self.server.记录连接诊断(f"流式客户端上行{len(上行字节)}字节")
                     管理器.清理(通道.请求id)
                     self.close_connection = True
 

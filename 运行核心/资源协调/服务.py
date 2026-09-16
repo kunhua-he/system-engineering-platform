@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
 import uuid
@@ -122,7 +123,20 @@ class 资源协调器:
         self.状态.减少引用(包id=资源id, 版本=版本)
 
     def _发布快照(self, 资源id: str, 版本: str, 值: Any) -> None:
-        """发布快照：唯一临时目录写入 + fsync + 原子改名；已发布只读不可覆盖。"""
+        """发布快照：唯一临时目录写入 + fsync + 同目录 os.rename 原子改名；已发布只读不可覆盖。
+
+        为什么改用 os.rename 而不是 shutil.move（现场取证结论）：
+        - 临时目录由 创建唯一运行目录（`tempfile.mkdtemp(dir=快照目录)`）建在 **快照目录之下**，
+          与目标「资源id@版本」是**同一个父目录** → 恒定同一文件系统，os.rename 必然是原子
+          改名，不存在「跨文件系统退化为复制+删除」的可能（跨设备复制只发生在源/目标不同
+          设备时，而同父目录已排除该可能）。
+        - shutil.move 在目标已存在时会把源**移进**目标目录：并发竞争窗口里会把临时目录
+          塞进已发布快照、污染只读快照；os.rename 对非空目标目录直接报错，正好落进
+          「丢弃临时」分支。
+        落盘顺序：值.json 写入（原子写入 内部已 fsync 文件与父目录=临时目录，值.json 的
+        目录项已落盘）→ os.rename → fsync 快照目录（让「资源id@版本」这个新目录项落盘）。
+        真正缺的只有改名后的父目录 fsync；它失败必须显式报错，不允许静默降级成假承诺。
+        """
         快照 = self.快照目录 / f"{资源id}@{版本}"
         if 快照.exists():
             return  # 已发布快照只读不可覆盖
@@ -130,16 +144,33 @@ class 资源协调器:
         try:
             值文件 = 临时 / "值.json"
             原子写入(值文件, json.dumps({"值": 值, "版本": 版本}, ensure_ascii=False))
-            # fsync 目录（原子改名后确保目录元数据落盘）
-            目录fd = 临时.open() if False else None
             try:
-                shutil.move(临时, 快照)
-            except (FileExistsError, shutil.Error):
-                # 并发下另一进程已发布 → 丢弃临时
-                shutil.rmtree(临时, ignore_errors=True)
+                os.rename(临时, 快照)
+            except OSError:
+                if 快照.exists():
+                    # 并发下另一进程已发布 → 丢弃临时（只读快照不可覆盖）
+                    shutil.rmtree(临时, ignore_errors=True)
+                    return
+                raise
+            # 原子改名后同步父目录：确保「资源id@版本」目录项落盘
+            self._同步目录(self.快照目录)
         except Exception:
             shutil.rmtree(临时, ignore_errors=True)
             raise
+
+    @staticmethod
+    def _同步目录(目录: Path) -> None:
+        """fsync 目录元数据（保证改名结果落盘）；失败显式报错，不静默降级。"""
+        try:
+            目录fd = os.open(str(目录), os.O_RDONLY)
+        except OSError as 错误:
+            raise RuntimeError(f"目录 fsync 失败（无法打开目录 {目录}）: {错误}") from 错误
+        try:
+            os.fsync(目录fd)
+        except OSError as 错误:
+            raise RuntimeError(f"目录 fsync 失败（{目录}）: {错误}") from 错误
+        finally:
+            os.close(目录fd)
 
     def 读取快照值(self, 资源id: str, 版本: str) -> Any:
         """读取句柄按版本读取快照（旧句柄读旧值）。"""
