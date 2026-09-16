@@ -259,8 +259,8 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
             if not python一致:
                 结果.问题列表.append(校验问题(
                     提供者id,
-                    f"锁内 Python {环境.get('Python')!r} ≠ 当前 {当前python}，判定依据：主次版本不一致"
-                    f"（请按当前环境重建依赖锁）",
+                    f"环境指纹不符：锁内 Python {环境.get('Python')!r} ≠ 当前 {当前python}"
+                    f"，判定依据：主次版本不一致（请按当前环境重建依赖锁）",
                     str(锁文件),
                 ))
         if not 系统匹配(环境.get("操作系统"), 当前系统):
