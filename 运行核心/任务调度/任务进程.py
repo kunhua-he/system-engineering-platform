@@ -264,27 +264,44 @@ class 任务进程池:
                 # 拿到槽位：先归还排队槽再建进程（归还与建进程都不得中断在途，
                 # 故放在同一临界区内，异常由下面的 except 统一兜底）
                 self._退出排队(任务对象)
-                接收连接, 发送连接 = self.进程上下文.Pipe(duplex=False)
-                取消事件 = self.进程上下文.Event()
-                进程组就绪事件 = self.进程上下文.Event()
-                请求 = {"任务id": 任务对象.任务id, "能力id": 能力id, "参数": 参数 or {}}
-                执行器 = self._准备执行器(能力id, 函数)
-                进程 = self.进程上下文.Process(
-                    target=_执行任务进程入口,
-                    args=(进程组就绪事件, 发送连接, 执行器, 请求, 取消事件),
-                    name=f"系统级任务-{任务对象.任务id}",
-                    daemon=True,
-                )
+                # 「先改共享状态再抛」禁止项①：`进程.start()` 会抛（fork 失败/资源耗尽
+                # 时的 `OSError`），所以**进程真正起来之前不写任何状态、不登记任何表**：
+                # 状态与 `本会话活动` 一律等 start 成功后再写。旧实现先写「运行中/本会话
+                # 活动」再 start，start 抛错时对象会对外谎报「运行中」而进程根本不存在。
+                接收连接: Any = None
+                发送连接: Any = None
+                进程: Any = None
+                try:
+                    接收连接, 发送连接 = self.进程上下文.Pipe(duplex=False)
+                    取消事件 = self.进程上下文.Event()
+                    进程组就绪事件 = self.进程上下文.Event()
+                    请求 = {"任务id": 任务对象.任务id, "能力id": 能力id, "参数": 参数 or {}}
+                    执行器 = self._准备执行器(能力id, 函数)
+                    进程 = self.进程上下文.Process(
+                        target=_执行任务进程入口,
+                        args=(进程组就绪事件, 发送连接, 执行器, 请求, 取消事件),
+                        name=f"系统级任务-{任务对象.任务id}",
+                        daemon=True,
+                    )
+                    进程.start()
+                except BaseException:
+                    # 异常路径不得泄漏句柄/连接：start 抛错时进程**可能已经 fork**
+                    # （两侧管道都还开着、子进程已在跑能力），而它没进活动账本就没有
+                    # 任何回收路径（`_监视循环` 只遍历活动任务表）—— 必须就地终止，
+                    # 再关掉两条管道，绝不把半成品留给调用方。
+                    self._终止未登记工作器(进程)
+                    self._关闭连接(接收连接)
+                    self._关闭连接(发送连接)
+                    raise
                 任务对象.接收连接 = 接收连接
                 任务对象.取消事件 = 取消事件
                 任务对象.进程组就绪事件 = 进程组就绪事件
                 任务对象.进程 = 进程
                 任务对象.截止时刻 = time.monotonic() + 任务对象.超时秒
+                任务对象.进程组id = 进程.pid
                 任务对象.状态 = 任务状态_运行中
                 # 本会话真实起了工作进程：该对象才有状态话语权（B-08）
                 任务对象.本会话活动 = True
-                进程.start()
-                任务对象.进程组id = 进程.pid
                 发送连接.close()
                 self.任务表[任务对象.任务id] = 任务对象
                 self.活动任务表[任务对象.任务id] = 任务对象
@@ -310,6 +327,39 @@ class 任务进程池:
         self.等待队列.remove(任务对象)
         self.提交条件.notify_all()
         return True
+
+    @staticmethod
+    def _关闭连接(连接: Any) -> None:
+        """尽力关闭一条管道连接；幂等，已关闭/句柄已被回收一律不抛。"""
+        if 连接 is None:
+            return
+        try:
+            连接.close()
+        except (OSError, ValueError):
+            pass
+
+    @staticmethod
+    def _终止未登记工作器(进程: Any) -> None:
+        """终止 `进程.start()` 抛错时**可能已经 fork** 但未登记进账本的工作器。
+
+        未登记进活动任务表的进程没有任何回收路径（`_监视循环` 只遍历活动账本），
+        留着就是一个跑着能力、却没人能取消/回收的幽灵进程。平台差异走收口层
+        （POSIX 按组 / Windows 进程树），收口失败再退到进程句柄 —— **调用点不做平台判断**。
+        """
+        if 进程 is None or getattr(进程, "pid", None) is None:
+            return
+        if not 进程终止.终止进程组(进程.pid, 信号=信号_强杀).成功:
+            try:
+                if hasattr(进程, "kill"):
+                    进程.kill()
+                else:
+                    进程.terminate()
+            except (OSError, ValueError, ProcessLookupError):
+                pass
+        try:
+            进程.join(timeout=0.2)
+        except (OSError, ValueError, AssertionError):
+            pass
 
 
     def _确保监视线程(self) -> None:
@@ -646,11 +696,19 @@ class 任务进程池:
             任务对象 = self.查询(任务id)
             if 任务对象.状态 in _终态:
                 return True, f"任务已处于终态 {任务对象.状态}（取消幂等）"
+            # 「先改共享状态再抛」禁止项②：`_持久化` 会抛（`OSError`）。顺序必须是
+            # 「先落盘成功、再发出不可撤销的取消请求」—— 落盘失败时内存状态回滚成原值，
+            # 内存与磁盘始终一致，且取消事件未置位（取消请求确实没发出去，调用方可重试）。
+            原状态 = 任务对象.状态
             任务对象.状态 = 任务状态_取消中
+            try:
+                self._持久化(任务对象)
+            except BaseException:
+                任务对象.状态 = 原状态
+                raise
             if 任务对象.取消事件 is not None:
                 任务对象.取消事件.set()
             等待秒 = self.终止截止秒 if 等待截止秒 is None else max(0.0, float(等待截止秒))
-            self._持久化(任务对象)
             self.监视唤醒事件.set()
             if 等待秒 <= 0:
                 return False, "取消请求已发出，工作进程尚未确认退出，活动账本已保留供重试"
@@ -693,10 +751,28 @@ class 任务进程池:
             self.监视唤醒事件.wait(timeout=min(0.02, 剩余秒))
 
     def _拒绝等待队列(self, 原因: str) -> None:
-        for 任务对象 in list(self.等待队列):
-            self._完成失败(任务对象, 任务状态_已取消, "已取消", 原因)
-        self.等待队列.clear()
-        self.提交条件.notify_all()
+        """把等待队列里的任务统一拒绝成「已取消」终态，并**无论成败都清空队列**。
+
+        「先改共享状态再抛」禁止项③：`_完成失败` 要落盘（可抛 `OSError`）。旧实现把
+        `clear()/notify_all()` 放在循环之后：只要有一条落盘失败，整队清空就被跳过，
+        而 `已停止` 已置位 —— 死条目永久留在队列里，且没有任何调用方还能再清理它
+        （只有 `停止`/`排空` 会整队清空，而它们已经走过去了）。现在逐条兜住异常
+        （一条落盘失败不再连累其余任务拿不到终态），清空与唤醒放进 `finally`，
+        最后把第一个异常如实上抛：**不吞掉落盘失败，也不留残留**。
+        """
+        首个异常: BaseException | None = None
+        try:
+            for 任务对象 in list(self.等待队列):
+                try:
+                    self._完成失败(任务对象, 任务状态_已取消, "已取消", 原因)
+                except BaseException as 错误:  # noqa: BLE001 —— 逐条兜底，最后统一上抛
+                    if 首个异常 is None:
+                        首个异常 = 错误
+        finally:
+            self.等待队列.clear()
+            self.提交条件.notify_all()
+        if 首个异常 is not None:
+            raise 首个异常
 
     def _停止监视(self, 截止时刻: float) -> bool:
         self.监视停止事件.set()
