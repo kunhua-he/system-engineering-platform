@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from 支持库.适配层 import 生成密钥对, 内容摘要, 签名 as 真实签名, 验证签名 as 真实验签
-from 支持库.适配层.密钥提供者.密钥提供者 import 密钥提供者
+from 支持库.适配层 import 密钥提供者
 
 
 def _签名正文(元数据: dict) -> bytes:
