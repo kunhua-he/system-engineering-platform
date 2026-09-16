@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.运行时 import 进程终止
 
 句柄类型_读取 = "读取句柄"
 句柄类型_修改事务 = "修改事务句柄"
@@ -205,20 +206,22 @@ class 句柄体系:
                 pid = 资源["PID"]
                 if pid and self._检查进程存活(pid):
                     try:
-                        os.killpg(pid, signal.SIGTERM) if os.getpgid(pid) == pid else os.kill(pid, signal.SIGTERM)
+                        # 组长判定与「整组 / 单进程」的选择全部由收口层负责，调用点不判平台
+                        进程终止.终止进程组(pid, 信号="终止")
                     except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('句柄体系._回收单个资源', 错误)
                     time.sleep(1)
                     try:
                         if self._检查进程存活(pid):
-                            os.killpg(pid, signal.SIGKILL) if os.getpgid(pid) == pid else os.kill(pid, signal.SIGKILL)
+                            进程终止.终止进程组(pid, 信号="强杀")
                     except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('句柄体系._回收单个资源', 错误)
                     说明 = "已终止进程（含进程组）" if not self._检查进程存活(pid) else "进程仍存活（回收失败）"
                 else:
                     # 进程不在（含 zombie 已死）→ 补杀一次确保回收干净
                     try:
-                        os.kill(pid, signal.SIGKILL) if isinstance(pid, int) else None
+                        # 非整数 PID 由收口层按「参数错误」明确拒绝（不静默跳过）
+                        进程终止.终止进程组(pid, 信号="强杀")
                     except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
                         记录忽略('句柄体系._回收单个资源', 错误)
                     说明 = "进程已不存在（无泄露）"
@@ -249,7 +252,7 @@ class 句柄体系:
                             if 越权:
                                 记录忽略('句柄体系.回收端口占用进程', f"端口 {端口} 存在非本句柄归属进程 {越权}，跳过")
                             for pid in [pid for pid in 占用进程 if pid in 归属表]:
-                                try: os.kill(pid, signal.SIGKILL)
+                                try: 进程终止.终止进程组(pid, 信号="强杀")
                                 except (ProcessLookupError, PermissionError) as 错误:
                                     # 允许忽略，但留痕（哲学第 3 条 2 项）：进程刚退出 / 无权限杀，
                                     # 后果由紧随其后的端口复查兜住。

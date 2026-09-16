@@ -11,6 +11,7 @@
 - CLI 注册身份默认最低角色，不得把参数当可信角色。
 """
 from __future__ import annotations
+from 公共契约.运行时 import 平台适配, 进程终止
 
 import json
 import os
@@ -279,7 +280,7 @@ class 统一能力服务:
         超时秒 = float(参数.get("超时秒", 30))
         进程 = subprocess.Popen(
             [命令] + 参数表, cwd=str(工作区), stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, start_new_session=True)
+            stderr=subprocess.STDOUT, **平台适配.子进程组启动标志())
         try:
             输出块, 超时发生, 输出超限 = self._受限读取验证输出(进程, 超时秒)
             if 超时发生:
@@ -350,24 +351,9 @@ class 统一能力服务:
         返回是否确认收敛（进程组已退出）；两次等待仍超时返回 False，
         调用方不得按“已终止”处理。
         """
-        try:
-            os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-        except (OSError, ProcessLookupError):
-            pass
-        try:
-            进程.wait(timeout=5)
-            return True
-        except subprocess.TimeoutExpired:
-            pass
-        try:
-            os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
-        try:
-            进程.wait(timeout=5)
-            return True
-        except subprocess.TimeoutExpired:
-            return False
+        # 先 SIGTERM 温柔、再 SIGKILL 兜底、每轮各等 5 秒 —— 语义与实现都收口到收口层
+        进程终止.强制结束子进程(进程, 宽限秒=5.0, 等待秒=5.0)
+        return not 进程终止.进程存活(进程.pid)
 
     def _调用能力(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
         """真实调用：授权 → 契约校验 → 注册表（资源监督+真实执行）→ 证据。"""

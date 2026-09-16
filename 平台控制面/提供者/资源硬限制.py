@@ -22,7 +22,7 @@ import threading
 import signal
 from pathlib import Path
 
-from 公共契约.运行时 import 平台适配
+from 公共契约.运行时 import 平台适配, 进程终止
 
 模块路径 = str(Path(__file__).resolve())
 未强制 = "UNENFORCEABLE"
@@ -88,13 +88,7 @@ class _惰性限制类型表:
 
 
 def _终止进程组(进程: subprocess.Popen) -> None:
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        try:
-            进程.kill()
-        except (OSError, ProcessLookupError):
-            pass
+    进程终止.强制结束子进程(进程, 宽限秒=2.0, 等待秒=2.0)
     try:
         进程.wait(timeout=2.0)
     except subprocess.TimeoutExpired:
@@ -189,7 +183,13 @@ def 验证文件句柄() -> tuple[bool, str]:
 
 
 def 验证进程数() -> tuple[bool, str]:
-    """RLIMIT_NPROC 验证：fork 超过同用户进程上限被拒（EAGAIN）。"""
+    """RLIMIT_NPROC 验证：fork 超过同用户进程上限被拒（EAGAIN）。
+
+    非 POSIX（Windows）没有 ``os.fork``，此处**如实返回探测不通过**（不抛异常）——
+    探测函数的契约是「能不能强制」，不是「能不能跑」，崩掉会让整条探测链失真。
+    """
+    if not hasattr(os, "fork"):
+        return False, "平台无 os.fork（非 POSIX），RLIMIT_NPROC 不可强制"
     try:
         子进程号 = os.fork()
     except OSError as 错误:
@@ -270,7 +270,7 @@ def 在独立进程组中运行(命令列表: list[str], 预算: dict, 超时秒
         return {"成功": False, "错误码": 未强制, "值": None,
                 "错误说明": f"以下预算项不具备硬限制能力，拒绝启动（不能假装正常）: {被拒 or 探测['错误说明']}"}
     try:
-        进程 = subprocess.Popen(命令列表, start_new_session=True,
+        进程 = subprocess.Popen(命令列表, **平台适配.子进程组启动标志(),
                                 preexec_fn=lambda: _子进程应用预算(预算),
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except Exception as 错误:

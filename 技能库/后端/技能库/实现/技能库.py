@@ -326,15 +326,8 @@ def 设置资源预算(预算: dict):
 
 
 def 进程组终止(进程: subprocess.Popen) -> None:
-    """向进程组发 SIGKILL 并等待回收；子进程与孙进程一并清理。"""
-    with contextlib.suppress(ProcessLookupError, PermissionError, AttributeError):
-        os.killpg(进程.pid, signal.SIGKILL)
-    try:
-        进程.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        进程.kill()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            进程.wait(timeout=5)
+    """向进程组发强杀信号并等待回收；子进程与孙进程一并清理（跨平台收口在收口层）。"""
+    进程终止.强制结束子进程(进程, 宽限秒=5.0, 等待秒=5.0)
 
 
 # ── 脚本源码审计（AST） ────────────────────────────────────────────
@@ -528,7 +521,7 @@ def 运行受控脚本(
             stderr=subprocess.PIPE,
             cwd=str(根),
             env=环境,
-            start_new_session=True,
+            **平台适配.子进程组启动标志(),
             preexec_fn=设置资源预算(预算),
         )
     except OSError as 错误:
