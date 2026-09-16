@@ -3,7 +3,7 @@
 密钥值只在调用内存出现：读取后的值仅保存在本对象内存表中，绝不写入
 任何文件；日志、说明书、Agent 数据、制品文本一律经 脱敏/泄漏检查
 拦截。钥匙串读取为真实 security 命令子进程调用，失败如实记录
-KEYCHAIN_UNAVAILABLE，禁止桩实现。
+钥匙串不可用，禁止桩实现。
 """
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from pathlib import Path
 钥匙串前缀 = "钥匙串:"
 掩码 = "***"
 错误码_成功 = ""
-错误码_引用不合法 = "REFERENCE_INVALID"
-错误码_密钥缺失 = "SECRET_MISSING"
-错误码_钥匙串不可用 = "KEYCHAIN_UNAVAILABLE"
+错误码_引用不合法 = "引用无效"
+错误码_密钥缺失 = "密钥缺失"
+错误码_钥匙串不可用 = "钥匙串不可用"
 引用模式 = re.compile(r"\{([^{}]*)\}")
 
 
@@ -34,7 +34,7 @@ class 环境变量句柄:
 
     def 读取(self, 变量名: str) -> tuple[bool, str, str]:
         if self._已关闭:
-            return (False, "", "HANDLE_CLOSED")
+            return (False, "", "句柄已关闭")
         if not isinstance(变量名, str) or not 变量名 or not 变量名.isidentifier():
             return (False, "", 错误码_引用不合法)
         值 = self._变量表.get(变量名)

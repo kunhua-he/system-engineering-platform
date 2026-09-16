@@ -76,7 +76,7 @@ class HTTP连接器:
             return self._失败(错误码_参数不合法, "获取句柄必须是逻辑型", "")
         实际超时 = 超时秒 if 超时秒 is not None else self.默认超时秒
         if isinstance(实际超时, bool) or not isinstance(实际超时, (int, float)):
-            return self._失败(错误码_参数不合法, "超时秒必须是数值型", "")
+            return self._失败(错误码_参数不合法, "超时秒必须是数值（正式类型：整数型 或 双精度数型；布尔不算）", "")
         if not math.isfinite(float(实际超时)) or float(实际超时) <= 0:
             return self._失败(错误码_参数不合法, "超时秒必须是正的有限数值", "")
         # 2. 构造请求（请求id 作幂等键）

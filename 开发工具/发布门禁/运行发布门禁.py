@@ -51,6 +51,12 @@ from 公共契约.运行时.有界IO import 受限读取
 # 不再出现「按平台名分支 / 直接杀进程组」这类裸平台调用。
 from 公共契约.运行时 import 平台适配
 from 公共契约.运行时 import 进程终止
+# 本地环境依赖变量（哲学第 1 条 1 项：模型文件、外部应用这类「环境依赖」由运行环境
+# 提供，不进场景静态路径）。**唯一实现在 `开发工具/HTML验证/环境依赖.py`**——本门禁
+# 是 HTML 验证链的调用方，只消费那一份，不再自持第二份（避免「同一条链两条注入线」：
+# 门禁注入的是自己拉起的验证子进程，而主开发文档记载的全量验收入口是直接跑验证器）。
+from 开发工具.HTML验证.环境依赖 import (环境依赖变量表, 环境依赖注入,
+                                       环境依赖注入问题)
 
 
 _门禁临时目录表: set[Path] = set()
@@ -499,35 +505,7 @@ def 校验制品来源绑定(
 
 
 
-# 本地环境依赖变量（哲学第 1 条 1 项：模型文件、外部应用这类「环境依赖」由运行环境提供，
-# 不进场景静态路径）。取值顺序：① 当前进程环境；② 本机 40007 网关 launchd 配置
-# （本机就是在这里声明这些提供者环境依赖的）。取不到就不注入——相关场景会以
-# 「环境依赖未就绪：环境变量 X 未设置或为空」明确失败，不会被静默跳过。
-环境依赖变量表 = ("MLXWhisper提供者_模型路径", "MLXWhisper提供者_模型名")
-环境依赖注入问题: list[str] = []
-
-
-def 环境依赖注入() -> dict[str, str]:
-    """返回要注入到 HTML 验证子进程的环境依赖变量。"""
-    注入 = {名称: os.environ[名称] for 名称 in 环境依赖变量表 if os.environ.get(名称)}
-    缺失 = [名称 for 名称 in 环境依赖变量表 if 名称 not in 注入]
-    if not 缺失:
-        return 注入
-    plist = Path.home() / "Library/LaunchAgents/com.huashi.gateway-40007.plist"
-    if not plist.is_file():
-        环境依赖注入问题.append(f"缺少 launchd 配置，无法取环境依赖: {plist}")
-        return 注入
-    try:
-        import plistlib
-
-        环境 = plistlib.loads(plist.read_bytes()).get("EnvironmentVariables", {})
-    except Exception as 错误:  # noqa: BLE001 —— 读取失败必须留痕，不静默
-        环境依赖注入问题.append(f"读取 launchd 环境失败: {错误}")
-        return 注入
-    for 名称 in 缺失:
-        if 环境.get(名称):
-            注入[名称] = str(环境[名称])
-    return 注入
+# 本地环境依赖变量（哲学第 1 条 1 项）：见文件头 `开发工具.HTML验证.环境依赖` 的唯一实现导入。
 
 def 读取制品字节快照(制品目录: Path) -> dict[str, bytes]:
     """读取制品全部文件原始字节，用于前后逐路径精确比较。"""

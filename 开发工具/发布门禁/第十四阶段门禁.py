@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import tempfile
@@ -302,20 +303,146 @@ def _项6_二阶恢复幂等(系统根: Path) -> tuple[str, bool, str]:
     return "第十四阶段-二阶恢复幂等", 通过, 详情
 
 
+def _遍历适配层源码(系统根: Path) -> list[Path]:
+    """真实适配层实现源码清单（独立枚举真实磁盘，排除 __pycache__）。
+
+    A-3：本函数是门禁「真实扫描面」的唯一来源 —— 必须来自磁盘枚举，不能由
+    注册表自己报数；扫描面为空（目录被移走/改名）时本项直接判红，禁止恒绿。
+    """
+    根 = 系统根 / "支持库" / "适配层"
+    if not 根.is_dir():
+        return []
+    return sorted(路径 for 路径 in 根.rglob("*.py") if "__pycache__" not in 路径.parts)
+
+
+def _直连对照复算(源码文本: str, 特征表: dict[str, dict[str, list[str]]]) -> list[dict] | None:
+    """按导出的检测特征表独立复算一遍（不调用注册表的 审计源码）。
+
+    为什么要有对照：真实扫描若与检测器共用同一份实现，「检测器整体哑火
+    （返回空）」时会双方同时为空而照样通过 —— 又一重恒绿。这里自己走一遍
+    AST，与注册表结果逐条比对；解析失败返回 None（由解析失败计数单独判定）。
+    """
+    try:
+        树 = ast.parse(源码文本)
+    except (SyntaxError, ValueError):
+        return None
+    命中: list[dict] = []
+    for 节点 in ast.walk(树):
+        if isinstance(节点, (ast.Import, ast.ImportFrom)):
+            模块候选 = ([别名.name for 别名 in 节点.names]
+                      if isinstance(节点, ast.Import) else [节点.module or ""])
+            for 模块名 in 模块候选:
+                for 模式, 规则 in 特征表.items():
+                    for 已知模块 in 规则["模块"]:
+                        if 模块名 == 已知模块 or 模块名.startswith(已知模块 + "."):
+                            命中.append({"模式": 模式, "模块或函数": 已知模块, "行号": 节点.lineno})
+                            break
+        elif isinstance(节点, ast.Call):
+            函数对象 = 节点.func
+            if isinstance(函数对象, ast.Name):
+                函数名 = 函数对象.id
+            elif isinstance(函数对象, ast.Attribute):
+                函数名 = 函数对象.attr
+            else:
+                continue
+            for 模式, 规则 in 特征表.items():
+                if 函数名 in 规则["函数名"]:
+                    命中.append({"模式": 模式, "模块或函数": 函数名, "行号": 节点.lineno})
+                    break
+    去重后: list[dict] = []
+    for 项 in 命中:
+        if 项 not in 去重后:
+            去重后.append(项)
+    return 去重后
+
+
+# 真实适配层是第三方/实现边界：HTTP、数据库、动态库、进程 四类直连是它存在的
+# 理由，属平台已内置的**已知**直连模式。其余任何模式（含内置但默认未登记的
+# rpc：grpc/thrift/zeromq，以及注册表还不认识的模式）在真实适配层出现即等于
+# 「新对外通道未登记」，本项判红。适配层是否要逐个 provider 走 登记规则 声明
+# 这四类已知模式，属另一条设计债（无 per-provider 声明源），故这四类只做
+# **如实计数上报**，不并入通过判定 —— 上报数字含在详情里，不得隐去。
+适配层已知直连模式 = ("HTTP", "数据库", "动态库", "进程")
+
+
 def _项7_直连规则(系统根: Path) -> tuple[str, bool, str]:
-    """直连规则：未登记直连模式必须阻断（正向=阻断生效）。"""
-    from 开发工具.复用审计.提供者直连规则 import 直连规则注册表
+    """直连规则：真实适配层扫描为主、样例自测降为辅助（A-3 修复，2026-09-16）。
+
+    修前本项只用两段硬编码字符串验自造样例（grpc 样例 + 纯净样例），全仓
+    ``直连规则注册表`` 的唯一调用点就在这里，从未跑在真实 ``支持库/适配层/**``
+    源码上：注册表整体坏掉、适配层真实直连漂移都不会被发现，属**恒绿**。
+    """
+    from 开发工具.复用审计.提供者直连规则 import 解析失败模式, 直连规则注册表
     注册表 = 直连规则注册表()
-    # 反向样例：grpc 直连未登记 → 必须阻断
-    源码 = 'import grpc\n通道 = grpc.insecure_channel("localhost:50051")\n'
-    阻断, 未声明表 = 注册表.门禁判定(源码)
-    反向通过 = 阻断 and any(项["模式"] == "grpc" for 项 in 未声明表)
-    # 正向样例：无直连调用 → 放行
-    纯净源码 = "def 计算(x):\n    return x + 1\n"
-    阻断2, 未声明2 = 注册表.门禁判定(纯净源码)
-    正向通过 = not 阻断2 and not 未声明2
-    通过 = 反向通过 and 正向通过
-    详情 = f"grpc未声明阻断:{反向通过}({len(未声明表)}处) 纯净放行:{正向通过}"
+    # —— 辅助：样例自测（保留，但不再作为本项唯一证据）——
+    阻断, 未声明表 = 注册表.门禁判定('import grpc\n通道 = grpc.insecure_channel("localhost:50051")\n')
+    样例反向 = 阻断 and any(项["模式"] == "grpc" for 项 in 未声明表)
+    阻断2, 未声明2 = 注册表.门禁判定("def 计算(x):\n    return x + 1\n")
+    样例正向 = not 阻断2 and not 未声明2
+
+    # —— 真实扫描：注册表跑在真实 支持库/适配层 实现源码上 ——
+    文件表 = _遍历适配层源码(系统根)
+    特征表 = 注册表.导出规则()["内置规则"]
+    命中总数 = 0
+    命中文件数 = 0
+    未登记总数 = 0
+    模式统计: dict[str, int] = {}
+    未登记统计: dict[str, int] = {}
+    读失败: list[str] = []
+    解析失败条数 = 0
+    对照不一致: list[str] = []
+    for 文件 in 文件表:
+        try:
+            文本 = 文件.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as 错误:
+            读失败.append(f"{文件.name}({type(错误).__name__})")
+            continue
+        命中 = 注册表.审计源码(文本)
+        对照 = _直连对照复算(文本, 特征表)
+        if 对照 is not None and 命中 != 对照:
+            对照不一致.append(文件.name)
+        本文件有命中 = False
+        for 项 in 命中:
+            if 项["模式"] == 解析失败模式:
+                解析失败条数 += 1
+                continue
+            本文件有命中 = True
+            命中总数 += 1
+            模式统计[项["模式"]] = 模式统计.get(项["模式"], 0) + 1
+            if 项["模式"] not in 注册表.已登记规则:
+                未登记总数 += 1
+                未登记统计[项["模式"]] = 未登记统计.get(项["模式"], 0) + 1
+        命中文件数 += 1 if 本文件有命中 else 0
+    白名单外模式 = sorted(模式 for 模式 in 未登记统计 if 模式 not in 适配层已知直连模式)
+    白名单外未登记 = sum(未登记统计[模式] for 模式 in 白名单外模式)
+
+    问题: list[str] = []
+    if not 样例反向:
+        问题.append("样例-grpc未阻断")
+    if not 样例正向:
+        问题.append("样例-纯净未放行")
+    if not 文件表:
+        问题.append("真实适配层扫描面为空")
+    if 读失败:
+        问题.append(f"真实源码读取失败{len(读失败)}个: {读失败[:3]}")
+    if 解析失败条数:
+        问题.append(f"真实源码解析失败{解析失败条数}条")
+    if 对照不一致:
+        问题.append(f"检测器与对照复算不一致{len(对照不一致)}个: {对照不一致[:3]}")
+    if 命中总数 == 0:
+        问题.append("真实扫描零命中（检测器可能哑火，需人工确认适配层是否已无直连）")
+    if 白名单外未登记:
+        问题.append(f"适配层出现白名单外未登记直连{白名单外未登记}条: {白名单外模式}")
+    通过 = not 问题
+
+    模式文本 = "、".join(f"{模式}{条数}" for 模式, 条数 in sorted(模式统计.items(), key=lambda 项: (-项[1], 项[0]))) or "无"
+    未登记文本 = "、".join(f"{模式}{条数}" for 模式, 条数 in sorted(未登记统计.items(), key=lambda 项: (-项[1], 项[0]))) or "无"
+    详情 = (f"真实适配层: 文件{len(文件表)}(命中{命中文件数}) 命中{命中总数}条[{模式文本}] "
+            f"未登记{未登记总数}条[{未登记文本}] 白名单外未登记:{白名单外未登记} "
+            f"解析失败:{解析失败条数} 对照复算一致:{not 对照不一致} "
+            f"样例grpc阻断:{样例反向} 样例纯净放行:{样例正向}")
+    if 问题:
+        详情 += " 红因: " + "；".join(问题)
     return "第十四阶段-未声明提供者直连规则", 通过, 详情
 
 

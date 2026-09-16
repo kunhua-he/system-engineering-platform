@@ -15,6 +15,7 @@ from 开发工具.HTML验证.多实例制品池 import _验证全部多实例
 from 开发工具.HTML验证.制品进程 import _回收进程组
 from 开发工具.HTML验证.验证证据 import _校验制品前后绑定, 保存证据, 生成场景文件
 from 开发工具.HTML验证.验证服务 import 服务模式
+from 开发工具.HTML验证.环境依赖 import 报告环境依赖
 
 
 def _解析制品目录(参数: argparse.Namespace) -> Path:
@@ -102,6 +103,10 @@ def 主函数(参数: argparse.Namespace) -> int:
             print(f"阻断: 场景生成失败: {错误}")
             return 2
 
+    # 场景声明的「环境依赖」由运行环境提供（哲学第 1 条 1 项）：本机声明在 40007
+    # 网关 launchd 配置里。验证器自己补上——否则直接跑验证器这条线（主开发文档记载的
+    # 全量验收入口）恒定以「环境依赖未就绪」变红，把环境问题报成能力红。
+    报告环境依赖()
     报告 = 验证报告(制品路径=str(制品目录))
     进程: subprocess.Popen[Any] | None = None
     进程表: list[subprocess.Popen[Any]] = []

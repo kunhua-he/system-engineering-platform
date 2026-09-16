@@ -509,6 +509,7 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
              系统提示词: str | None = None,
              温度: float | None = None, 最大令牌数: int | None = None,
              工具: list | None = None, 响应格式: dict | None = None,
+             chat_template_kwargs: dict | None = None,
              附加请求头: dict[str, Any] | None = None) -> Iterator[dict[str, Any]]:
     """读取模型 Provider SSE；调用方必须消费或显式 close 返回的有限迭代器。
 
@@ -545,6 +546,9 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
         地址 = 归一模型端点(配置, "/chat/completions")
     if not 地址:
         return iter((_流式错误("提供者不可用", "未配置模型 HTTP 地址", 可重试=True),))
+    if 协议 == "anthropic_messages" and chat_template_kwargs:
+        return iter((_流式错误("参数不合法",
+                          "anthropic 协议不支持 chat_template_kwargs，请改用 chat_completions"),))
     if 协议 == "anthropic_messages":
         载荷, 载荷错误 = 构造anthropic载荷(
             配置, 消息列表, 系统提示词, 流式=True,
@@ -567,6 +571,8 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
             令牌键 = "max_tokens"
             if 响应格式:
                 载荷["response_format"] = 响应格式
+            if chat_template_kwargs:
+                载荷["chat_template_kwargs"] = chat_template_kwargs
         # 生成参数按 `调用对话` 同一张映射表落地；None/空即不写入，保证不传时载荷不变。
         if 温度 is not None:
             载荷["temperature"] = 温度
@@ -637,7 +643,8 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
            系统提示词: str | None = None, 流式输出: bool = False,
            温度: float | None = None, 最大令牌数: int | None = None,
            工具: list | None = None, 响应格式: dict | None = None,
-           附加请求头: dict[str, Any] | None = None) -> 结果:
+           附加请求头: dict[str, Any] | None = None,
+           chat_template_kwargs: dict | None = None) -> 结果:
     """与连接器 `_HTTP调用模型` 同一协议契约：生成参数按协议映射，响应统一归一化。"""
     if not isinstance(消息列表, list) or not 消息列表:
         return _失败("参数不合法", "消息列表必须是非空列表")
@@ -657,9 +664,14 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
         return _失败("参数不合法", "工具必须是列表")
     if 响应格式 is not None and not isinstance(响应格式, dict):
         return _失败("参数不合法", "响应格式必须是字典型")
+    if chat_template_kwargs is not None and not isinstance(chat_template_kwargs, dict):
+        return _失败("参数不合法", "chat_template_kwargs 必须是字典型或空值")
     协议 = _规范化协议(配置.get("协议", 默认协议))
     if 协议 is None:
         return _失败("参数不合法", 协议取值说明)
+    if 协议 == "anthropic_messages" and chat_template_kwargs:
+        return _失败("参数不合法",
+                     "anthropic 协议不支持 chat_template_kwargs，请改用 chat_completions 或 codex_responses")
     if 协议 == "anthropic_messages":
         路径 = "/messages"
         载荷, 载荷错误 = 构造anthropic载荷(
@@ -680,6 +692,9 @@ def 调用对话(*, 配置: dict[str, Any], 消息列表: list,
             令牌键 = "max_tokens"
             if 响应格式:
                 载荷["response_format"] = 响应格式
+            if chat_template_kwargs:
+                # 关闭思考等聊天模板开关；不传即不下发，由上游取默认
+                载荷["chat_template_kwargs"] = chat_template_kwargs
         if 温度 is not None:
             载荷["temperature"] = 温度
         if 最大令牌数 is not None:

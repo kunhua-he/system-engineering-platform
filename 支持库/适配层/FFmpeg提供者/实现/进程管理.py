@@ -59,6 +59,13 @@ def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输�
     """受管执行外部命令：超时/取消触发强制结束子进程；输出超限截断；失败不抛异常。
 
     失败映射稳定错误码：提供者不可用（启动失败）/ 超时 / 取消 / 进程崩溃（退出码非零）。
+
+    零残留（与 Tesseract提供者/实现/受管进程.py、PDF隔离提供者 同口径）：`Popen` 之后的
+    每一步（读取线程构造与 `start()`、轮询里的 `取消函数()`、超时判定）都在 try 内，进程组
+    回收与管道 `close()` 全在 finally —— 取消函数自身抛出、读取线程启动失败等异常路径同样
+    先回收进程组再让异常如实逸出，不留下孤儿子进程。
+    `finally` 只 join **真正启动成功过**的线程：`threading.Thread.join()` 对未 `start()` 的
+    线程会抛 `RuntimeError`（实测），在 finally 里抛会顶掉真实异常并跳过管道 `close()`。
     """
     开始 = time.monotonic()
     try:
@@ -77,33 +84,36 @@ def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输�
         if 截断:
             共享["截断"] = True
 
-    线程列表 = [
-        threading.Thread(target=读取流, args=(进程.stdout, "标准输出"), daemon=True),
-        threading.Thread(target=读取流, args=(进程.stderr, "标准错误"), daemon=True),
-    ]
-    for 线程 in 线程列表:
-        线程.start()
-    截止 = time.monotonic() + 超时秒
     触发 = ""
-    while 进程.poll() is None:
-        if 取消函数 is not None and 取消函数():
-            触发 = "取消"
-            break
-        if time.monotonic() >= 截止:
-            触发 = "超时"
-            break
-        time.sleep(轮询间隔秒)
-    if 触发:
-        进程终止.强制结束子进程(进程, 宽限秒=终止宽限秒, 等待秒=终止宽限秒)
+    已启动线程: list[threading.Thread] = []
+    try:
+        for 键, 流 in (("标准输出", 进程.stdout), ("标准错误", 进程.stderr)):
+            线程 = threading.Thread(target=读取流, args=(流, 键), daemon=True)
+            线程.start()
+            已启动线程.append(线程)
+        截止 = time.monotonic() + 超时秒
+        while 进程.poll() is None:
+            if 取消函数 is not None and 取消函数():
+                触发 = "取消"
+                break
+            if time.monotonic() >= 截止:
+                触发 = "超时"
+                break
+            time.sleep(轮询间隔秒)
+    finally:
+        # 零残留：正常结束/超时/取消/取消函数抛出/线程启动失败，全部路径必回收进程组与管道。
+        # 子进程已自行退出时 poll() 非空 → 不重复发信号（强制结束子进程本身幂等）。
+        if 进程.poll() is None:
+            进程终止.强制结束子进程(进程, 宽限秒=终止宽限秒, 等待秒=终止宽限秒)
+        for 线程 in 已启动线程:
+            线程.join(timeout=终止宽限秒 + 1.0)
+        for 流 in (进程.stdout, 进程.stderr):
+            if 流:
+                try:
+                    流.close()
+                except (OSError, ValueError):
+                    pass
     退出码 = 进程.poll()
-    for 线程 in 线程列表:
-        线程.join(timeout=终止宽限秒 + 1.0)
-    for 流 in (进程.stdout, 进程.stderr):
-        if 流:
-            try:
-                流.close()
-            except (OSError, ValueError):
-                pass
     标准错误 = 共享["标准错误"]
     错误摘要 = (标准错误.decode("utf-8", errors="replace").strip() or "")[-300:]
     耗时秒 = time.monotonic() - 开始
