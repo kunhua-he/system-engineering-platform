@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -244,9 +245,26 @@ def _示例项目验证(报告: 验证报告) -> None:
         报告.记录失败("示例项目.运行", (进程.stderr or 进程.stdout)[-500:])
 
 
+def _执行grep(命令: list[str]) -> tuple[bool, str, str]:
+    """执行一次 grep 扫描，返回 (命令是否成功, 标准输出, 故障说明)。
+
+    退出码 0=有匹配、1=无匹配——**两者都算命令成功**，结论可用；其余退出码
+    （2=grep 自身出错、目标目录不存在或不可读）与命令根本起不来，一律算
+    **命令失败**：绝不能因为 stdout 为空就当成「没有匹配」，那等于把工具故障
+    判成通过（故障即绿）。失败时把 stderr 摘要回带，让报告能说清真实原因。
+    """
+    try:
+        进程 = subprocess.run(命令, cwd=str(系统根), capture_output=True, text=True)
+    except OSError as 错误:
+        return False, "", f"{type(错误).__name__}: {错误}"
+    if 进程.returncode not in (0, 1):
+        错误信息 = (进程.stderr or "").strip()[:200]
+        return False, 进程.stdout or "", f"grep 退出码 {进程.returncode}: {错误信息 or '无 stderr'}"
+    return True, 进程.stdout or "", ""
+
+
 def _项目适配验证(报告: 验证报告) -> None:
     """项目适配验证：声明/绑定/锁定/公开入口/边界/零第三方/零外部项目耦合。"""
-    import subprocess as _子进程
 
     from 运行核心.加载器.包发现.发现器 import 发现全部
     from 项目适配层.能力适配.能力适配 import 从项目声明构建映射
@@ -397,44 +415,52 @@ def _项目适配验证(报告: 验证报告) -> None:
             后端.优雅关闭()
 
     # 6. 适配层不直接导入内部实现（边界铁律，只查代码导入语句）
-    越界导入 = _子进程.run(
-        ["grep", "-rn", "^from .*支持库.*实现\\|^from .*模块库.*实现\\|^import .*支持库.*实现\\|^import .*模块库.*实现", "--include=*.py", "项目适配层"],
-        cwd=str(系统根), capture_output=True, text=True,
-    ).stdout.strip()
-    if 越界导入:
+    #    命令失败（grep 报错/目录不可读）≠ 无匹配：前者记失败，不许静默当通过。
+    扫描成功, 越界导入, 故障说明 = _执行grep([
+        "grep", "-rn",
+        "^from .*支持库.*实现\\|^from .*模块库.*实现\\|^import .*支持库.*实现\\|^import .*模块库.*实现",
+        "--include=*.py", "项目适配层",
+    ])
+    if not 扫描成功:
+        报告.记录失败("边界越界扫描", f"grep 未能取得证据（故障不许当通过）: {故障说明}")
+    elif 越界导入.strip():
         报告.记录失败("边界越界", f"项目适配层存在深入实现目录的导入:\n{越界导入[:400]}")
     else:
         报告.记录通过("项目适配.边界无越界")
 
     # 7. 适配层无第三方依赖（标准库与本项目包均允许，其余判可疑）
     import sys as _sys
-    第三方 = _子进程.run(
-        ["grep", "-rn", "^import \\|^from ", "项目适配层"],
-        cwd=str(系统根), capture_output=True, text=True,
-    ).stdout
-    本项目根 = {"公共契约", "运行核心", "项目适配层", "支持库", "模块库", "技能库"}
-    非法行 = []
-    for 行 in 第三方.splitlines():
-        代码 = 行.split(":", 2)[-1].strip() if 行.count(":") >= 2 else 行.strip()
-        if 代码.startswith("from ."):  # 包内相对导入
-            continue
-        if not (代码.startswith("import ") or 代码.startswith("from ")):
-            continue
-        根模块 = 代码.split()[1].split(".")[0]
-        if 根模块 in _sys.stdlib_module_names or 根模块 in 本项目根:
-            continue
-        非法行.append(行)
-    if 非法行:
-        报告.记录失败("第三方依赖", f"项目适配层存在可疑导入:\n{'; '.join(非法行[:5])}")
+    扫描成功, 第三方, 故障说明 = _执行grep([
+        "grep", "-rn", "^import \\|^from ", "--include=*.py", "项目适配层",
+    ])
+    if not 扫描成功:
+        报告.记录失败("第三方依赖扫描", f"grep 未能取得证据（故障不许当通过）: {故障说明}")
     else:
-        报告.记录通过("项目适配.零第三方依赖")
+        本项目根 = {"公共契约", "运行核心", "项目适配层", "支持库", "模块库", "技能库"}
+        非法行 = []
+        for 行 in 第三方.splitlines():
+            代码 = 行.split(":", 2)[-1].strip() if 行.count(":") >= 2 else 行.strip()
+            if 代码.startswith("from ."):  # 包内相对导入
+                continue
+            if not (代码.startswith("import ") or 代码.startswith("from ")):
+                continue
+            根模块 = 代码.split()[1].split(".")[0]
+            if 根模块 in _sys.stdlib_module_names or 根模块 in 本项目根:
+                continue
+            非法行.append(行)
+        if 非法行:
+            报告.记录失败("第三方依赖", f"项目适配层存在可疑导入:\n{'; '.join(非法行[:5])}")
+        else:
+            报告.记录通过("项目适配.零第三方依赖")
 
     # 8. 项目可脱离外部业务项目独立运行
-    项目耦合命中 = _子进程.run(
-        ["grep", "-rn", "华世王镞\\|MCP工具箱/\\|功能模块/\\|后端服务/\\|应用软件/", "示例项目/适配层示例", "项目适配层"],
-        cwd=str(系统根), capture_output=True, text=True,
-    ).stdout.strip()
-    if 项目耦合命中:
+    扫描成功, 项目耦合命中, 故障说明 = _执行grep([
+        "grep", "-rn", "华世王镞\\|MCP工具箱/\\|功能模块/\\|后端服务/\\|应用软件/",
+        "示例项目/适配层示例", "项目适配层",
+    ])
+    if not 扫描成功:
+        报告.记录失败("外部项目依赖扫描", f"grep 未能取得证据（故障不许当通过）: {故障说明}")
+    elif 项目耦合命中.strip():
         报告.记录失败("外部项目依赖", f"存在外部项目专属引用:\n{项目耦合命中[:400]}")
     else:
         报告.记录通过("项目适配.零外部项目依赖")
