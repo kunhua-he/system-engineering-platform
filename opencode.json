@@ -4,7 +4,7 @@
     "system_engineering_toolkit": {
       "type": "local",
       "command": [
-        "/opt/homebrew/bin/python3.14",
+        "python3.14",
         "{env:HOME}/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
       ],
       "cwd": "{env:HOME}/Documents/Agent/PHP/系统工程平台",

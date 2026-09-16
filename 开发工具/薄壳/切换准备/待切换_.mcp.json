@@ -2,7 +2,7 @@
   "mcpServers": {
     "system_engineering_toolkit": {
       "type": "stdio",
-      "command": "/opt/homebrew/bin/python3.14",
+      "command": "python3.14",
       "args": [
         "~/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
       ],

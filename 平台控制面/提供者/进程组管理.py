@@ -3,11 +3,12 @@
 中文契约：
 - 启动进程树(工作目录=None, 模式=None) -> 进程组信息：启动真实 3 层
   python 进程树（父→子→孙，每层打印并落盘 PID），孙节点占用空闲端口，
-  整棵树独立进程组（start_new_session，组号==组长 PID）。模式="组长自杀"
-  时组长启动子进程后立即退出，验证 killpg 不依赖组长存活。
-- 强杀进程组(进程组信息) -> 回收报告：os.killpg(SIGKILL) 强杀整个进程组，
-  等待全部 PID 从系统中消失，清理临时工作目录，验证端口可重绑；重复
-  调用安全（幂等）。
+  整棵树独立进程组（启动标志走 `公共契约.运行时.平台适配.子进程组启动标志()`，
+  组号==组长 PID）。模式="组长自杀"时组长启动子进程后立即退出，
+  验证整组回收不依赖组长存活。
+- 强杀进程组(进程组信息) -> 回收报告：按跨平台收口 `进程终止.终止进程组`
+  强杀整个进程组，等待全部 PID 从系统中消失，清理临时工作目录，验证端口
+  可重绑；重复调用安全（幂等）。
 - 检查残留(进程组信息) -> 残留报告：核验 ps 存活 PID / 临时目录 /
   端口占用，三者全清才无残留。
 """
@@ -15,13 +16,14 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 import socket
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+
+from 公共契约.运行时 import 平台适配, 进程终止
 
 树节点代码 = """import os, socket, subprocess, sys, time
 深度 = int(os.environ["树深度"])
@@ -99,6 +101,23 @@ def _等待节点就绪(工作目录: Path, 端口: int, 超时秒: float = 10.0
     return [int(文件.read_text(encoding="utf-8").strip()) for 文件 in sorted(工作目录.glob("节点_*.pid"))]
 
 
+def _强杀整组(组长pid: int, 已知成员pid表: list[int] | None = None) -> None:
+    """按跨平台收口强杀进程组（幂等，永不抛异常）。
+
+    两步都走 `进程终止.终止进程组`，调用点不做任何平台判断：
+
+    1. 以组长 PID 调一次——组长仍是活着的进程（含僵尸）时，收口按组号整组强杀，
+       一次覆盖全组（含未登记的成员）；
+    2. 组长已被 `Popen.wait()` 回收时（"组长自杀"模式）收口按 PID 判定取不到组号，
+       会如实回「进程不存在」，此时按已知成员 PID 逐个补发——本模块的进程树每一层
+       都落盘 PID，已知成员即全组成员，回收结论与整组强杀一致。
+    """
+    进程终止.终止进程组(组长pid, 信号="强杀")
+    for pid in 已知成员pid表 or ():
+        if pid != 组长pid:
+            进程终止.终止进程组(pid, 信号="强杀")
+
+
 def 启动进程树(工作目录: str | Path | None = None, 模式: str | None = None) -> dict:
     """启动真实 3 层 python 进程树，独立进程组，孙节点占用端口。"""
     目录 = Path(工作目录) if 工作目录 else Path(tempfile.mkdtemp(prefix="进程组树_"))
@@ -107,13 +126,10 @@ def 启动进程树(工作目录: str | Path | None = None, 模式: str | None =
     环境 = dict(os.environ, 树代码=树节点代码, 树深度="0", 树工作目录=str(目录),
                 树端口=str(端口), 树模式=模式 or "")
     组长 = subprocess.Popen([sys.executable, "-c", 树节点代码],
-                            env=环境, start_new_session=True)
+                            env=环境, **平台适配.子进程组启动标志())
     节点pid表 = _等待节点就绪(目录, 端口)
     if len(节点pid表) != 3:
-        try:
-            os.killpg(组长.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        _强杀整组(组长.pid, 节点pid表)
         try:
             组长.wait(timeout=5)
         except (ChildProcessError, subprocess.TimeoutExpired):

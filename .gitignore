@@ -22,3 +22,11 @@ venv/
 *.db
 *.log
 *.tmp
+
+# 数据库文件的全部形态（*.db 之外还有 .sqlite3 与 SQLite 的 WAL/SHM 边车文件）
+# 已入库的验证夹具不受本规则影响（git 对已跟踪文件不生效），此处只挡后续新增
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-wal
+*.db-shm

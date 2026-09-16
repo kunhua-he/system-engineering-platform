@@ -85,7 +85,7 @@
     },
     {
       "路径": "会话存储/实现/会话存储.py",
-      "sha256": "4c0bf6711a07b406c7f9e1872de02442f0cc23176c8f99eafd05ec83a519b22a"
+      "sha256": "1eedc9fca43fb201c155474d2effdfa62b944e8e87c7038b24ab9cefde5cedd1"
     },
     {
       "路径": "会话存储/权限契约/权限契约.json",
@@ -153,7 +153,7 @@
     },
     {
       "路径": "嵌入缓存/实现/嵌入缓存.py",
-      "sha256": "c650fdf5c1131ec3c3b05919a8a0a05ddeabdfb52fda3cf736d625028d19e16c"
+      "sha256": "d1f7f75d4bfb72c8e09ea34a226e66e30b5ba882433dded9545bbea57c5c52e3"
     },
     {
       "路径": "嵌入缓存/权限契约/权限契约.json",

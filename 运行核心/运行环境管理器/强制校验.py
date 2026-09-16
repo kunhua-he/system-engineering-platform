@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时 import 平台适配
 from 运行核心.运行环境管理器.环境管理器 import (
     计算环境摘要,
     废弃环境,
@@ -278,7 +279,10 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
         return 结果
     摘要 = 计算环境摘要(锁, 提供者id)
     目标 = 环境目录(提供者目录, 摘要)
-    解释器 = 目标 / "bin" / "python3"
+    # 解释器路径按平台解析（POSIX 与 Windows 的 venv 布局不同，后者在 Scripts/ 下）：
+    # 这是「独立受管环境就绪」的唯一判定出口，硬编码 POSIX 布局会让非 POSIX 平台
+    # 恒判「环境缺失」，从而每个 pip 提供者都在装配期报不可用。
+    解释器 = 平台适配.虚拟环境解释器路径(目标)
     环境就绪 = 解释器.is_file() and 校验环境(解释器, 锁)
     if not 环境就绪:
         # 规则 7：错误回滚——半态环境（存在但无效）废弃清理，不留残留

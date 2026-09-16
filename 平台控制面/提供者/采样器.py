@@ -1,8 +1,10 @@
 """真实资源采样器提供者：内存/文件句柄/临时空间，全部来自真实系统状态。
 
 - 采样内存(): resource.getrusage(RUSAGE_SELF).ru_maxrss 实际峰值
-  （macOS 为字节、Linux 为 KB，按平台换算为 MB）
-- 采样文件句柄(): 枚举 /proc/self/fd（Linux）或 /dev/fd（macOS）实际句柄数
+  （原始单位与换算系数由 平台适配.内存峰值原始单位() 给出：macOS 字节 / Linux KB，
+  统一换算为 MB；不在此处自带平台判断）
+- 采样文件句柄(): 枚举当前进程句柄目录实际句柄数（候选目录表由
+  平台适配.句柄枚举目录表() 给出；本平台无句柄目录时明确报不支持）
 - 采样临时空间(目录): os.path.getsize 对目录内全部文件求和（真实磁盘占用）
 - 组合报告(监督器报告, 临时目录): 真实采样 + 资源监督器峰值（线程/并发/队列），
   供资源监督器对外报告使用。任何采样失败都如实标注，不伪装数值。
@@ -12,43 +14,48 @@
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 import time
 
 from 公共契约.运行时 import 平台适配
 
-句柄目录表 = ("/proc/self/fd", "/dev/fd")  # Linux / macOS 真实句柄枚举目录
-
 
 def 采样内存() -> dict:
-    """真实内存峰值：getrusage RU_MAXRSS（macOS 字节 / Linux KB，换算为 MB）。
+    """真实内存峰值：getrusage RU_MAXRSS 换算为 MB（原始单位见 平台适配）。
 
     ``resource`` 是 POSIX 专有模块（Windows 上根本不存在，顶层导入会让 import 本模块即崩），
     因此在真正取用它的本函数内惰性导入；非 POSIX 平台**显式报不支持**（抛 平台不支持错误），
-    不静默返回假数值、也不静默跳过采样。
+    不静默返回假数值、也不静默跳过采样。原始值单位与换算系数由
+    ``平台适配.内存峰值原始单位()`` 给出（macOS/BSD 字节、Linux KB）——本函数不自带
+    平台判断，遇到单位无权威定义的平台由收口层抛 平台不支持错误。
     """
     平台适配.要求POSIX能力("resource 内存峰值采样（getrusage）")
+    单位名, 换算除数 = 平台适配.内存峰值原始单位()
     from resource import RUSAGE_SELF, getrusage  # 惰性导入：POSIX 专有
     原始值 = getrusage(RUSAGE_SELF).ru_maxrss
-    if sys.platform == "darwin":  # macOS：字节
-        原始单位, 峰值MB = "字节", 原始值 / 1024 / 1024
-    else:  # Linux 等：KB
-        原始单位, 峰值MB = "KB", 原始值 / 1024
+    峰值MB = 原始值 / 换算除数 / 1024
     return {"成功": True, "值": round(峰值MB, 2), "原始值": 原始值,
-            "原始单位": 原始单位, "错误码": "", "错误说明": ""}
+            "原始单位": 单位名, "错误码": "", "错误说明": ""}
 
 
 def 采样文件句柄() -> dict:
-    """真实文件句柄数：枚举当前进程句柄目录（/proc/self/fd 或 /dev/fd）。"""
-    for 目录 in 句柄目录表:
+    """真实文件句柄数：枚举当前进程句柄目录（候选表由 平台适配 按平台给出）。
+
+    本平台没有句柄目录（如 Windows）时**明确报不支持**（错误码「平台不支持」），
+    不报 0 冒充真实值、也不静默跳过采样。
+    """
+    目录表 = 平台适配.句柄枚举目录表()
+    if not 目录表:
+        return {"成功": False, "值": -1, "来源": "", "错误码": "平台不支持",
+                "错误说明": f"当前平台（{平台适配.当前平台()}）无进程句柄目录，不支持文件句柄采样"}
+    for 目录 in 目录表:
         try:
             return {"成功": True, "值": len(os.listdir(目录)), "来源": 目录,
                     "错误码": "", "错误说明": ""}
         except OSError:
             continue
     return {"成功": False, "值": -1, "来源": "", "错误码": "句柄枚举失败",
-            "错误说明": "无法枚举文件句柄：/proc/self/fd 与 /dev/fd 均不可用"}
+            "错误说明": "无法枚举文件句柄：" + " 与 ".join(目录表) + " 均不可用"}
 
 
 def 采样临时空间(目录) -> dict:
