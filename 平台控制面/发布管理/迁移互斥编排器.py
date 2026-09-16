@@ -25,6 +25,10 @@ class 迁移互斥编排器:
         self._连接: sqlite3.Connection | None = None
 
     def _打开(self) -> sqlite3.Connection:
+        # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：本类要**持有一条连接的显式事务**
+        # （BEGIN IMMEDIATE 跨多条语句、事务内回读状态再决定 推进/复用/冲突）。
+        # 唯一入口的能力契约明写「不向调用方暴露连接对象」，事务执行只接受 SQL 文本列表、
+        # 无事务内读回，表达不了该语义；强行改写会丢掉真实数据库级写锁互斥。
         if self._连接 is None:
             self._连接 = sqlite3.connect(
                 str(self.存储目录 / self.数据库文件名),
