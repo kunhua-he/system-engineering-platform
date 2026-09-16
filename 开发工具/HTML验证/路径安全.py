@@ -21,6 +21,10 @@ def _校验动态声明(值: Any, 场景id: str, 已出现步骤: set[str]) -> N
             _校验动态声明(项, 场景id, 已出现步骤)
         return
     if not isinstance(值, dict):
+        # 有意设计，不放宽：场景不得依赖作者本机的真实路径，也不得真的越界写。
+        # 越界用例的写法口径见 `开发文档/决策记录/0016_验证场景越界用例口径.md`：
+        # 用「写法上越界但字面不含 `..`、也非绝对路径」的方式触发（如 `~` 家目录写法）；
+        # `..` 跳转型越界由定向 unittest + 真实网关调用取证，不进 HTML 黑盒矩阵。
         if isinstance(值, str) and (Path(值).is_absolute() or ".." in Path(值).parts
                                   or re.match(r"^[A-Za-z]:[\\/]", 值)):
             raise ValueError(f"场景 {场景id} 禁止静态绝对路径或路径逃逸")
