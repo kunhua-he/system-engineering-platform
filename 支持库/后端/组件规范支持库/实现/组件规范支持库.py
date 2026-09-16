@@ -14,11 +14,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 支持库.后端.组件规范支持库.实现.包装辅助 import (
+    包声明取值,
+    失败,
+    路径参数,
+)
 from 支持库.后端.组件规范支持库.实现.完整性摘要 import (
     是否应当收录,
 )
@@ -31,32 +35,24 @@ from 支持库.后端.组件规范支持库.实现.完整性摘要 import (
 from 支持库.后端.组件规范支持库.实现.模块模板生成器 import (
     生成模块模板 as _生成模块模板,
 )
+from 支持库.后端.组件规范支持库.实现.组件规范 import (
+    生成完整性摘要 as _生成并写入完整性摘要,
+)
+from 支持库.后端.组件规范支持库.实现.组件规范 import (
+    校验组件规范 as _校验组件规范,
+)
 
 来源 = "组件规范支持库"
 
 
 def _包目录(参数: Any) -> Path | None:
-    """归一 包目录 参数：空/非文本返回 None（由调用方如实报 参数不合法）。"""
-    if isinstance(参数, Path):
-        return 参数
-    if isinstance(参数, str) and 参数.strip():
-        return Path(参数)
-    return None
+    """归一路径参数（包装辅助 路径参数 的历史别名，保持既有调用点不变）。"""
+    return 路径参数(参数)
 
 
 def _包声明取值(包目录: Path, 键名: str) -> str:
     """从 包声明.json 读取指定键；不可读或缺失返回空串（由调用方如实报错）。"""
-    声明路径 = 包目录 / "包声明.json"
-    if not 声明路径.is_file():
-        return ""
-    try:
-        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return ""
-    if not isinstance(声明, dict):
-        return ""
-    值 = 声明.get(键名)
-    return 值 if isinstance(值, str) else ""
+    return 包声明取值(包目录, 键名)
 
 
 def 生成完整性摘要(包目录: Any = None, 包id: Any = None, 版本: Any = None) -> 结果:
@@ -105,3 +101,39 @@ def 生成模块模板(模块名: Any = None, 类型: Any = "基础模块", 能�
         模块库根=模块库根,
         测试中心根=测试中心根,
     )
+
+
+def 校验组件规范(组件目录: Any = None) -> 结果:
+    """九要素组件规范校验（只读）：问题列表为空即通过；目录不存在如实报错。"""
+    目标 = _包目录(组件目录)
+    if 目标 is None:
+        return 失败("参数不合法", f"组件目录 必须是非空路径文本: {组件目录!r}")
+    if not 目标.is_dir():
+        return 失败("包目录不存在", f"组件目录不是目录: {目标}")
+    校验结果 = _校验组件规范(目标)
+    问题列表 = list(校验结果.问题列表)
+    return 结果.成功结果({"通过": not 问题列表, "组件id": 校验结果.组件id,
+                       "问题列表": 问题列表, "问题数": len(问题列表)})
+
+
+def 生成并写入完整性摘要(包目录: Any = None) -> 结果:
+    """生成并写入包内 完整性摘要.json（写盘版；包id/版本取自 包声明.json）。"""
+    目标 = _包目录(包目录)
+    if 目标 is None:
+        return 失败("参数不合法", f"包目录 必须是非空路径文本: {包目录!r}")
+    if not 目标.is_dir():
+        return 失败("包目录不存在", f"包目录不是目录: {目标}")
+    if not any(是否应当收录(文件, 目标) for 文件 in 目标.rglob("*")):
+        return 失败("包无正式文件", f"包内没有可纳入摘要的正式文件: {目标}")
+    try:
+        摘要 = _生成并写入完整性摘要(目标)
+    except ValueError as 错误:
+        return 失败("包无正式文件", str(错误))
+    except OSError as 错误:
+        return 失败("写入失败", f"完整性摘要写入失败: {错误}")
+    if not isinstance(摘要, dict):
+        return 失败("摘要生成失败", "摘要生成器未返回摘要字典")
+    return 结果.成功结果({"摘要文件": str(目标 / "完整性摘要.json"),
+                       "包id": 摘要.get("包id", ""), "版本": 摘要.get("版本", ""),
+                       "文件数": len(摘要.get("文件清单") or []),
+                       "能力数": 摘要.get("能力数", 0)})

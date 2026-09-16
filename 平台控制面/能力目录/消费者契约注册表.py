@@ -10,13 +10,9 @@ import json
 import time
 from pathlib import Path
 
-错误码表 = {
-    "成功": "SUCCESS",
-    "消费者必填": "CONSUMER_REQUIRED",
-    "能力必填": "CAPABILITY_REQUIRED",
-    "契约非法": "INVALID_CONTRACT",
-    "未登记": "NOT_REGISTERED",
-}
+# 对外错误码（中文口径，决策记录 0003「不用英文枚举」）：错误返回的错误码一律中文，
+# 与 能力定义.json 声明的 消费者必填/能力必填/契约非法/未登记 逐字一致。
+错误码表 = ("成功", "消费者必填", "能力必填", "契约非法", "未登记")
 
 
 def 统一返回(成功: bool, 错误码: str, 消息: str, 数据=None) -> dict:
@@ -46,24 +42,24 @@ class 消费者契约注册表:
     def 登记契约(self, 消费者id: str, 能力id: str, 契约: dict) -> dict:
         """登记消费者对能力的契约（请求/响应约束/错误码/超时/释放要求）并落盘。"""
         if not 消费者id:
-            return 统一返回(False, 错误码表["消费者必填"], "消费者id不能为空")
+            return 统一返回(False, "消费者必填", "消费者id不能为空")
         if not 能力id:
-            return 统一返回(False, 错误码表["能力必填"], "能力id不能为空")
+            return 统一返回(False, "能力必填", "能力id不能为空")
         问题 = self._契约问题(契约)
         if 问题:
-            return 统一返回(False, 错误码表["契约非法"], 问题)
+            return 统一返回(False, "契约非法", 问题)
         记录 = {**契约, "消费者id": 消费者id, "能力id": 能力id,
                 "登记时间": time.strftime("%Y-%m-%d %H:%M:%S")}
         存储 = self._读取()
         存储.setdefault(能力id, {})[消费者id] = 记录
         self._写入(存储)
-        return 统一返回(True, 错误码表["成功"],
+        return 统一返回(True, "成功",
                         f"消费者 {消费者id} 对能力 {能力id} 的契约已登记", 记录)
 
     def 查询契约(self, 能力id: str) -> dict:
         """查询能力下全部消费者契约（未登记能力返回空列表）。"""
         能力表 = self._读取().get(能力id, {})
-        return 统一返回(True, 错误码表["成功"],
+        return 统一返回(True, "成功",
                         f"能力 {能力id} 共 {len(能力表)} 份消费者契约",
                         list(能力表.values()))
 
@@ -72,13 +68,13 @@ class 消费者契约注册表:
         存储 = self._读取()
         能力表 = 存储.get(能力id, {})
         if 消费者id not in 能力表:
-            return 统一返回(False, 错误码表["未登记"],
+            return 统一返回(False, "未登记",
                             f"能力 {能力id} 未登记消费者 {消费者id} 的契约")
         del 能力表[消费者id]
         if not 能力表:
             del 存储[能力id]
         self._写入(存储)
-        return 统一返回(True, 错误码表["成功"],
+        return 统一返回(True, "成功",
                         f"已删除消费者 {消费者id} 对能力 {能力id} 的契约")
 
     # ---- 漂移判定 ----
@@ -88,7 +84,7 @@ class 消费者契约注册表:
         漂移列表: list[dict] = []
         for 消费者id, 登记 in sorted(能力表.items()):
             漂移列表.extend(self._对比消费者(消费者id, 登记, 当前契约))
-        return 统一返回(True, 错误码表["成功"],
+        return 统一返回(True, "成功",
                         f"能力 {能力id} 发现 {len(漂移列表)} 处契约漂移", 漂移列表)
 
     def _对比消费者(self, 消费者id: str, 登记: dict, 当前契约: dict) -> list[dict]:
@@ -125,7 +121,7 @@ class 消费者契约注册表:
         """门禁判定：存在任一漂移则阻断；数据含 是否阻断 与 漂移列表。"""
         结果 = self.漂移判定(能力id, 当前契约)
         漂移列表 = 结果["数据"]
-        return 统一返回(True, 错误码表["成功"],
+        return 统一返回(True, "成功",
                         f"门禁{'阻断' if 漂移列表 else '放行'}：发现 {len(漂移列表)} 处漂移",
                         {"是否阻断": bool(漂移列表), "漂移列表": 漂移列表})
 
