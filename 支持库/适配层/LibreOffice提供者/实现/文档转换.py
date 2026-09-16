@@ -192,7 +192,7 @@ class LibreOffice受管池:
             作业.取消事件.set()
             with 作业.进程锁:
                 if 作业.进程 is not None:
-                    _终止进程组(作业.进程)
+                    进程终止.强制结束子进程(作业.进程, 宽限秒=1.0, 等待秒=1.0)
             return _失败("超时", "LibreOffice 受管作业未在时限内回收", 可重试=True)
         return 作业.结果值 or _失败("转换失败", "LibreOffice 作业未返回结果")
 
@@ -309,7 +309,7 @@ class LibreOffice受管池:
                 作业.取消事件.set()
                 with 作业.进程锁:
                     if 作业.进程 is not None:
-                        _终止进程组(作业.进程)
+                        进程终止.强制结束子进程(作业.进程, 宽限秒=1.0, 等待秒=1.0)
             for 成员 in self._成员列表:
                 while True:
                     try:

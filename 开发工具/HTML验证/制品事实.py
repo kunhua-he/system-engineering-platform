@@ -125,7 +125,3 @@ def _扫描能力契约(制品目录: Path) -> list[dict[str, Any]]:
     """兼容查询入口：返回严格校验后的公开能力 id。"""
     能力, _ = _扫描公开能力(制品目录)
     return [{"能力id": 能力id} for 能力id in sorted(能力)]
-
-def _扫描制品能力(制品目录: Path) -> list[dict[str, Any]]:
-    场景束 = _加载场景(制品目录, None)
-    return [场景.转字典(制品目录) for 场景 in 场景束.场景列表]
