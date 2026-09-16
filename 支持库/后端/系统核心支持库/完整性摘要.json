@@ -505,7 +505,7 @@
     },
     {
       "路径": "系统信息/包声明.json",
-      "sha256": "341d98284cdb62ba4b1be43e318a1fa2d3d2df7de544924fac090bbe4c5348be"
+      "sha256": "2143eaae6c3dbdebe6bfb95a8e76b39e23a0553b230129587b6ffe058601fa22"
     },
     {
       "路径": "系统信息/复用决策.json",
@@ -525,15 +525,15 @@
     },
     {
       "路径": "系统信息/能力定义.json",
-      "sha256": "f1c14300029b2a4a3aeea863c499f4638ac20c9af24263a516466736a17ae512"
+      "sha256": "133030af558cb875b4f83cbb7b0bc8fcf4a8458e12c26dec5e854c7fcd71678b"
     },
     {
       "路径": "系统信息/能力数据/Agent查询数据.json",
-      "sha256": "d87c720d64f9d7937d20341328571d3f9e508d0005bb2a52d82c7881b7a016ec"
+      "sha256": "cb2205b1b5adbfffa864b576d01bf1f65911c0d8c89cbb21c622096d225bbff1"
     },
     {
       "路径": "系统信息/能力数据/能力搜索数据.json",
-      "sha256": "8acb62a8005cd7cd85b8429587bd3d51c5f911592645aa16ba32af3598181acd"
+      "sha256": "f2837b26fd5fb79a8a9b6a5412a90e485cef75a31dfb2ea3d73360ac20d74a25"
     },
     {
       "路径": "系统信息/说明/使用说明.md",
