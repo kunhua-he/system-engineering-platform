@@ -193,9 +193,8 @@ class TestGit提供者(unittest.TestCase):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_提供者不可用注入(self):
-        from 支持库.适配层.Git提供者.实现 import 受管执行 as 执行模块
-        with mock.patch.object(执行模块.subprocess, "Popen",
-                               side_effect=OSError("模拟 git 缺失")):
+        with mock.patch("subprocess.Popen", autospec=True,
+                        side_effect=OSError("模拟 git 缺失")):
             结果 = 当前状态(str(self.仓库))
         self.assertEqual(结果.错误码, "提供者不可用")
 
@@ -224,15 +223,12 @@ class TestGit提供者(unittest.TestCase):
         self.assertEqual(结果.错误码, "命令失败")
 
     def test_获取当前提交哈希_提供者不可用注入(self):
-        from 支持库.适配层.Git提供者.实现 import 受管执行 as 执行模块
-        with mock.patch.object(执行模块.subprocess, "Popen",
-                               side_effect=OSError("模拟 git 缺失")):
+        with mock.patch("subprocess.Popen", autospec=True,
+                        side_effect=OSError("模拟 git 缺失")):
             结果 = 获取当前提交哈希(str(self.仓库))
         self.assertEqual(结果.错误码, "提供者不可用")
 
     def test_获取当前提交哈希_超时注入(self):
-        from 支持库.适配层.Git提供者.实现 import 受管执行 as 执行模块
-
         class _挂起进程:
             """模拟 git 卡死：受限通信需 poll() 返回 None 触发超时。"""
 
@@ -248,8 +244,8 @@ class TestGit提供者(unittest.TestCase):
             def wait(self, timeout=None):
                 raise subprocess.TimeoutExpired("git", timeout)
 
-        with mock.patch.object(执行模块.subprocess, "Popen",
-                               return_value=_挂起进程()):
+        with mock.patch("subprocess.Popen", autospec=True,
+                        return_value=_挂起进程()):
             结果 = 获取当前提交哈希(str(self.仓库), 超时秒=1)
         self.assertEqual(结果.错误码, "超时")
         self.assertTrue(结果.可重试)

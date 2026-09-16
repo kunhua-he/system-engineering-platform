@@ -11,6 +11,10 @@
 - 版本漂移：证据记录指纹（锁版本）vs 当前探针版本不符 → 校验证据有效 失败
 - 主进程不加载原生扩展：fitz/PyMuPDF 不进入 sys.modules
 - 真实 LibreOffice/textutil 探针成功（缺工具跳过）
+
+桩纪律：一律「只替换外部命令层」——把受控真实可执行桩目录前置到 PATH，
+生产入口（探测外部应用版本/计算环境指纹/校验证据有效/检查系统工具）
+原样执行，不 patch 任何生产符号。
 """
 
 from __future__ import annotations
@@ -51,49 +55,71 @@ def _成功探针(版本: str) -> 探针结果:
                     诊断="探针成功")
 
 
+def _前置桩路径(桩目录: Path) -> mock._patch_dict:
+    """把受控真实命令目录前置到 PATH 的上下文（只改外部命令层）。"""
+    return mock.patch.dict(os.environ, {
+        "PATH": f"{桩目录}{os.pathsep}{os.environ.get('PATH', '')}",
+    })
+
+
+def _造外部命令层(目录: Path, 输出表: dict[str, str],
+                  退出码: int = 0, 标准错误: str = "") -> None:
+    """在 目录 下写受控真实可执行桩（PATH 注入用）。
+
+    桩只接受生产清单里给该工具的版本参数（`--version` / `-help`），
+    参数不符即以退出码 2 失败——这样「版本参数透传」由真实行为验证。
+    """
+    目录.mkdir(parents=True, exist_ok=True)
+    for 工具, 版本参数 in (("soffice", "--version"), ("textutil", "-help")):
+        主体 = (f'echo "{标准错误}" 1>&2\nexit {退出码}\n' if 退出码
+                else f'echo "{输出表[工具]}"\n')
+        脚本 = 目录 / 工具
+        脚本.write_text(
+            "#!/bin/sh\n"
+            f'if [ "$1" != "{版本参数}" ]; then echo "参数错误" 1>&2; exit 2; fi\n'
+            + 主体,
+            encoding="utf-8",
+        )
+        脚本.chmod(0o755)
+
+
+def _造挂起命令层(目录: Path) -> None:
+    """在 目录 下写只挂起的真实可执行桩：触发生产探针 5 秒超时强杀。"""
+    目录.mkdir(parents=True, exist_ok=True)
+    for 工具 in ("soffice", "textutil"):
+        脚本 = 目录 / 工具
+        脚本.write_text("#!/bin/sh\nsleep 30\n", encoding="utf-8")
+        脚本.chmod(0o755)
+
+
+def _探测(桩目录: Path) -> dict[str, str]:
+    """把受控命令目录前置到 PATH 后真调生产入口 探测外部应用版本。"""
+    from 运行核心.环境指纹 import 探测外部应用版本
+    with _前置桩路径(桩目录):
+        return 探测外部应用版本()
+
+
+def _在桩环境计算指纹(桩目录: Path):
+    """把受控命令目录前置到 PATH 后真调生产入口 计算环境指纹。"""
+    with _前置桩路径(桩目录):
+        return 计算环境指纹()
+
+
 class Test统一版本来源(unittest.TestCase):
     """探测外部应用版本 经 系统探针 获取版本：只替换外部命令层。"""
-
-    def _造外部命令层(self, 目录: Path, 输出表: dict[str, str],
-                      退出码: int = 0, 标准错误: str = "") -> None:
-        """在 目录 下写受控真实可执行桩（PATH 注入用）。
-
-        桩只接受生产清单里给该工具的版本参数（`--version` / `-help`），
-        参数不符即以退出码 2 失败——这样「版本参数透传」由真实行为验证。
-        """
-        目录.mkdir(parents=True, exist_ok=True)
-        for 工具, 版本参数 in (("soffice", "--version"), ("textutil", "-help")):
-            主体 = (f'echo "{标准错误}" 1>&2\nexit {退出码}\n' if 退出码
-                    else f'echo "{输出表[工具]}"\n')
-            脚本 = 目录 / 工具
-            脚本.write_text(
-                "#!/bin/sh\n"
-                f'if [ "$1" != "{版本参数}" ]; then echo "参数错误" 1>&2; exit 2; fi\n'
-                + 主体,
-                encoding="utf-8",
-            )
-            脚本.chmod(0o755)
-
-    def _探测(self, 桩目录: Path) -> dict[str, str]:
-        """把受控命令目录前置到 PATH 后真调生产入口（不改写任何生产命名空间）。"""
-        from 运行核心.环境指纹 import 探测外部应用版本
-        with mock.patch.dict(os.environ, {
-            "PATH": f"{桩目录}{os.pathsep}{os.environ.get('PATH', '')}",
-        }):
-            return 探测外部应用版本()
 
     def test_探测外部应用版本经系统探针(self):
         """只替换外部命令层，生产探针本体（参数校验/退出码/版本提取）原样执行。"""
         with tempfile.TemporaryDirectory(prefix=f"外部命令_{os.getpid()}_") as 临时:
             成功目录 = Path(临时) / "成功"
             失败目录 = Path(临时) / "失败"
-            self._造外部命令层(成功目录, {
+            _造外部命令层(成功目录, {
                 "soffice": "LibreOffice 26.2.2.2 (X86_64)",
                 "textutil": "textutil 桩输出 9.9.9",
             })
-            self._造外部命令层(失败目录, {}, 退出码=3, 标准错误="boom")
-            成功结果 = self._探测(成功目录)
-            失败结果 = self._探测(失败目录)
+            _造外部命令层(失败目录, {}, 退出码=3, 标准错误="boom")
+            成功结果 = _探测(成功目录)
+            失败结果 = _探测(失败目录)
         # 版本字符串由受控真实命令输出经生产探针解析得到（桩只在参数正确时成功）
         self.assertEqual(成功结果["LibreOffice"], "26.2.2.2")
         self.assertEqual(成功结果["textutil"], _macOS版本())
@@ -104,11 +130,14 @@ class Test统一版本来源(unittest.TestCase):
         self.assertEqual(失败结果["textutil"], "失败:退出码非零")
 
     def test_环境指纹详情含统一版本(self):
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=_成功探针("26.2.2.2"),
-        ):
-            指纹 = 计算环境指纹()
+        """环境指纹的外部应用版本同样由真实探针产出（外部命令层受控）。"""
+        with tempfile.TemporaryDirectory(prefix=f"外部命令_{os.getpid()}_") as 临时:
+            桩目录 = Path(临时) / "成功"
+            _造外部命令层(桩目录, {
+                "soffice": "LibreOffice 26.2.2.2 (X86_64)",
+                "textutil": "textutil 桩输出 9.9.9",
+            })
+            指纹 = _在桩环境计算指纹(桩目录)
         self.assertTrue(指纹.成功)
         self.assertEqual(指纹.详细信息["外部应用"]["LibreOffice"], "26.2.2.2")
         self.assertEqual(指纹.详细信息["外部应用"]["textutil"], _macOS版本())
@@ -157,10 +186,11 @@ class Test失败语义(unittest.TestCase):
     """工具缺失/探针超时/退出码非零 → 明确失败，绝不伪造版本。"""
 
     def test_工具缺失明确失败(self):
+        """空 PATH：真实 which 找不到任何候选命令 → 工具缺失。"""
         from 运行核心.环境指纹.环境指纹 import 探测外部应用版本
-        with mock.patch("运行核心.环境指纹.环境指纹.shutil.which",
-                        return_value=None):
-            结果 = 探测外部应用版本()
+        with tempfile.TemporaryDirectory(prefix=f"空路径_{os.getpid()}_") as 空目录:
+            with mock.patch.dict(os.environ, {"PATH": str(空目录)}):
+                结果 = 探测外部应用版本()
         self.assertEqual(结果["LibreOffice"], "失败:工具缺失")
         self.assertEqual(结果["textutil"], "失败:工具缺失")
         # 失败标记不是伪造版本
@@ -169,24 +199,20 @@ class Test失败语义(unittest.TestCase):
             self.assertFalse(值.startswith("/"))  # 不以路径冒充版本
 
     def test_探针超时明确失败(self):
-        from 运行核心.环境指纹 import 探测外部应用版本
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=探针结果(False, 错误码="探针超时",
-                                   诊断="soffice 探针超时", 可重试=True),
-        ):
-            结果 = 探测外部应用版本()
+        """真实挂起命令 → 生产探针 5 秒超时强杀 → 失败:探针超时。"""
+        with tempfile.TemporaryDirectory(prefix=f"挂起_{os.getpid()}_") as 临时:
+            挂起目录 = Path(临时) / "挂起"
+            _造挂起命令层(挂起目录)
+            结果 = _探测(挂起目录)
         self.assertEqual(结果["LibreOffice"], "失败:探针超时")
         self.assertEqual(结果["textutil"], "失败:探针超时")
 
     def test_退出码非零明确失败(self):
-        from 运行核心.环境指纹 import 探测外部应用版本
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=探针结果(False, 错误码="退出码非零", 退出码=3,
-                                   诊断="soffice 退出码 3"),
-        ):
-            结果 = 探测外部应用版本()
+        """真实命令退出码 3 → 失败:退出码非零，绝不伪造版本。"""
+        with tempfile.TemporaryDirectory(prefix=f"退出码_{os.getpid()}_") as 临时:
+            失败目录 = Path(临时) / "失败"
+            _造外部命令层(失败目录, {}, 退出码=3, 标准错误="boom")
+            结果 = _探测(失败目录)
         self.assertEqual(结果["LibreOffice"], "失败:退出码非零")
         self.assertNotEqual(结果["LibreOffice"], "未知")
 
@@ -206,19 +232,23 @@ class Test版本漂移(unittest.TestCase):
     def test_探针版本漂移证据失效(self):
         临时 = Path(tempfile.mkdtemp())
         证据文件 = 临时 / "证据.json"
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=_成功探针("26.2.2.2"),
-        ):
+        锁定目录 = 临时 / "锁定"
+        漂移目录 = 临时 / "漂移"
+        _造外部命令层(锁定目录, {
+            "soffice": "LibreOffice 26.2.2.2 (X86_64)",
+            "textutil": "textutil 桩输出 9.9.9",
+        })
+        _造外部命令层(漂移目录, {
+            "soffice": "LibreOffice 26.2.3.0 (X86_64)",
+            "textutil": "textutil 桩输出 9.9.9",
+        })
+        with _前置桩路径(锁定目录):
             生成证据记录(证据文件, {"测试": "锁定"})
         记录 = json.loads(证据文件.read_text(encoding="utf-8"))
         self.assertEqual(记录["指纹详情"]["外部应用"]["LibreOffice"],
                          "26.2.2.2")
-        # 探针版本漂移 → 指纹变化 → 证据失效
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=_成功探针("26.2.3.0"),
-        ):
+        # 探针版本漂移（真实命令输出不同）→ 指纹变化 → 证据失效
+        with _前置桩路径(漂移目录):
             校验 = 校验证据有效(证据文件)
         self.assertFalse(校验.成功)
         self.assertTrue(any("环境指纹漂移" in 问题
@@ -228,16 +258,16 @@ class Test版本漂移(unittest.TestCase):
         """探针失败（版本变失败标记）→ 指纹变化 → 证据失效。"""
         临时 = Path(tempfile.mkdtemp())
         证据文件 = 临时 / "证据.json"
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=_成功探针("26.2.2.2"),
-        ):
+        成功目录 = 临时 / "成功"
+        失败目录 = 临时 / "失败"
+        _造外部命令层(成功目录, {
+            "soffice": "LibreOffice 26.2.2.2 (X86_64)",
+            "textutil": "textutil 桩输出 9.9.9",
+        })
+        _造外部命令层(失败目录, {}, 退出码=3, 标准错误="boom")
+        with _前置桩路径(成功目录):
             生成证据记录(证据文件)
-        with mock.patch(
-            "支持库.适配层.系统探针.检查系统工具",
-            return_value=探针结果(False, 错误码="工具缺失",
-                                   诊断="未找到 LibreOffice"),
-        ):
+        with _前置桩路径(失败目录):
             校验 = 校验证据有效(证据文件)
         self.assertFalse(校验.成功)
         self.assertTrue(any("环境指纹漂移" in 问题

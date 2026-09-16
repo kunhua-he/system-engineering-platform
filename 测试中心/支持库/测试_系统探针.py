@@ -4,7 +4,8 @@
 风格与 测试_运行环境管理器.py 一致：sys.path 注入系统根、unittest 用例。
 真实工具（LibreOffice/textutil）探针走真实独立子进程；失败路径
 （超时/退出码非0/缺失）用真实命令构造；提供者入口的不可用映射
-用 mock 探针返回（测试内合法用法，生产代码不 mock）。
+一律走真实探针失败路径（把提供者缓存指向确定不存在的可执行文件），
+不替换被测函数本体。
 """
 
 from __future__ import annotations
@@ -120,6 +121,8 @@ class Test系统探针失败路径(unittest.TestCase):
         """探针失败后主进程继续执行（后续调用正常返回）。"""
         结果一 = 检查系统工具("不存在工具", ["/usr/bin/肯定不存在的命令xyz"])
         self.assertFalse(结果一.成功)
+        self.assertEqual(结果一.错误码, "工具缺失")
+        self.assertIn("不存在", 结果一.诊断)
         结果二 = 检查系统工具("textutil", [shutil.which("textutil") or "textutil"],
                              版本参数="-help")
         self.assertIsInstance(结果二, 探针结果)
@@ -136,42 +139,34 @@ class Test系统探针失败路径(unittest.TestCase):
 
 
 class Test提供者入口不可用映射(unittest.TestCase):
-    """提供者 检查提供者 探针失败 → 外部提供者不可用（mock 探针失败路径）。"""
+    """提供者 检查提供者 探针失败 → 外部提供者不可用（真实探针失败路径）。"""
+
+    #: 确定不存在的可执行文件：真实探针必然返回「工具缺失」
+    不存在的工具路径 = "/usr/bin/本机确定不存在的探针工具xyz"
 
     def test_LibreOffice探针失败返回外部提供者不可用(self):
-        from unittest import mock
         from 支持库.适配层.LibreOffice提供者.实现 import 文档转换 as 模块
         原缓存 = dict(模块._提供者缓存)
-        模块._提供者缓存 = {"soffice": str(macOSsoffice路径)}
+        模块._提供者缓存 = {"soffice": self.不存在的工具路径}
         try:
-            with mock.patch(
-                "支持库.适配层.系统探针.检查系统工具",
-                return_value=探针结果(False, 错误码="探针超时", 诊断="卡住已强杀"),
-            ):
-                结果 = 模块.检查提供者()
-                self.assertFalse(结果.成功)
-                self.assertEqual(结果.错误码, "外部提供者不可用")
-                self.assertIn("探针超时", 结果.错误说明)
+            结果 = 模块.检查提供者()
         finally:
             模块._提供者缓存 = 原缓存
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "外部提供者不可用")
+        self.assertIn("工具缺失", 结果.错误说明)
 
     def test_textutil探针失败返回外部提供者不可用(self):
-        from unittest import mock
         from 支持库.适配层.textutil提供者.实现 import 文本转换 as 模块
         原缓存 = dict(模块._提供者缓存)
-        模块._提供者缓存 = {"textutil": "/usr/bin/textutil"}
+        模块._提供者缓存 = {"textutil": self.不存在的工具路径}
         try:
-            with mock.patch(
-                "支持库.适配层.系统探针.检查系统工具",
-                return_value=探针结果(False, 错误码="退出码非零", 退出码=1,
-                                      诊断="textutil 退出码 1"),
-            ):
-                结果 = 模块.检查提供者()
-                self.assertFalse(结果.成功)
-                self.assertEqual(结果.错误码, "外部提供者不可用")
-                self.assertIn("退出码非零", 结果.错误说明)
+            结果 = 模块.检查提供者()
         finally:
             模块._提供者缓存 = 原缓存
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "外部提供者不可用")
+        self.assertIn("工具缺失", 结果.错误说明)
 
 
 if __name__ == "__main__":
