@@ -6,9 +6,34 @@ import hashlib
 import json
 import stat
 import time
+from pathlib import Path
 from typing import Any
 
 from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证
+
+# 生成性元数据：随构建/入库写入制品目录的非正式文件，不参与内容寻址与身份，也不进 文件清单
+# （与 平台客户端制品._身份排除文件名表 同口径，签名侧另含 制品完整性摘要.json）。
+# 它们只能「存在」，不能「被要求存在」——正式文件集合仍以签名的 文件清单 为准。
+非正式文件表 = frozenset({
+    "物料清单.json", "制品摘要.json", "制品来源.json",
+    "制品完整性摘要.json", "编译清单.json",
+})
+
+
+def 制品正式文件集(制品目录) -> set[str]:
+    """制品目录内正式文件相对路径集合（排除生成性元数据与 __pycache__）。"""
+    根 = Path(制品目录)
+    路径集: set[str] = set()
+    for 文件 in 根.rglob("*"):
+        if not 文件.is_file():
+            continue
+        相对 = 文件.relative_to(根)
+        if "__pycache__" in 相对.parts:
+            continue
+        if 文件.name in 非正式文件表:
+            continue
+        路径集.add(相对.as_posix())
+    return 路径集
 
 
 class 签名能力:
@@ -18,9 +43,9 @@ class 签名能力:
         制品 = self.状态.读取记录("制品", "制品摘要", 制品摘要)
         if 制品 is None:
             return False, "制品不存在"
-        信任 = self._信任检查(发布者)
-        if not 信任:
-            return False, f"发布者不在信任目录、已撤销或过期: {发布者}"
+        信任, 信任原因 = self._信任检查详情(发布者)
+        if 信任 is None:
+            return False, f"发布者不在信任目录、已撤销或过期: {发布者}（{信任原因}）"
         # 签名正文覆盖：包id/版本/发布者/权限/资源预算/物料清单/来源证据/全部正式文件摘要
         正文数据 = {
             "包id": 制品["包id"], "版本": 制品["版本"], "发布者": 发布者,
@@ -38,46 +63,72 @@ class 签名能力:
                           "制品摘要=?", (制品摘要,))
         return True, "制品已签名"
 
-    def _信任检查(self, 发布者: str) -> dict[str, Any] | None:
-        """信任目录检查：状态有效 + 未过期；返回信任记录或 None。"""
+    def _信任检查详情(self, 发布者: str) -> tuple[dict[str, Any] | None, str]:
+        """信任目录检查：返回 (信任记录或 None, 失败原因)。
+
+        fail-closed：`过期时间` 缺失、空串或非数值一律判为不可信。
+        为什么必须这样：信任表是发布链路的根，旧实现对 `float(过期)` 的
+        `except (TypeError, ValueError): pass` 会把畸形值当成「永不过期」——
+        往信任表里塞一个乱码有效期就等于拿到永久发布权。
+        正常记录必然带可解析的 `过期时间`（唯一写入方 登记发布者 必写该字段）。
+        """
         信任 = self.状态.读取记录("信任", "发布者", 发布者)
-        if 信任 is None or 信任["状态"] != "有效":
-            return None
+        if 信任 is None:
+            return None, "未登记"
+        if 信任["状态"] != "有效":
+            return None, f"状态非有效: {信任['状态']}"
         过期 = 信任.get("过期时间", "")
-        if 过期:
-            try:
-                if float(过期) < time.time():
-                    return None
-            except (TypeError, ValueError):
-                pass
-        return 信任
+        if 过期 is None or str(过期).strip() == "":
+            return None, "信任记录缺少有效期"
+        try:
+            过期时刻 = float(过期)
+        except (TypeError, ValueError):
+            return None, f"信任记录有效期非法: {过期!r}"
+        if 过期时刻 < time.time():
+            return None, "信任已过期"
+        return 信任, ""
+
+    def _信任检查(self, 发布者: str) -> dict[str, Any] | None:
+        """信任目录检查：状态有效 + 未过期；返回信任记录或 None（原因见 _信任检查详情）。"""
+        return self._信任检查详情(发布者)[0]
 
     def 校验签名(self, *, 制品摘要: str) -> tuple[bool, str]:
         """校验签名：重新读取制品目录实际文件逐一计算摘要。
 
         任何正式文件被篡改（磁盘层面）都使签名失效；不只比较数据库。
+        文件集合双向比对：清单内文件缺失、制品目录多出未审查文件，两种都判无效——
+        安装侧按目录全量复制，多出来的文件会被一起装走，只查清单内文件等于放过它。
         """
         制品 = self.状态.读取记录("制品", "制品摘要", 制品摘要)
         if 制品 is None:
             return False, "制品不存在"
         if not 制品["签名"]:
             return False, "未签名制品"
-        信任 = self._信任检查(制品["签名者"])
+        信任, 信任原因 = self._信任检查详情(制品["签名者"])
         if 信任 is None:
-            return False, f"发布者不在信任目录、已撤销或过期: {制品['签名者']}"
+            return False, f"发布者不在信任目录、已撤销或过期: {制品['签名者']}（{信任原因}）"
         # 1. Ed25519 验证签名正文
         签名正文 = 制品["签名时间"]
         if not Ed验证(信任["公钥"], 签名正文.encode("utf-8"), 制品["签名"]):
             return False, "签名验证失败（正文/签名不匹配）"
         # 2. 数据库文件清单必须等于签名正文冻结的文件摘要
         正文数据 = json.loads(签名正文)
-        if 正文数据.get("文件摘要") != json.loads(制品["文件清单"]):
+        清单 = json.loads(制品["文件清单"])
+        if 正文数据.get("文件摘要") != 清单:
             return False, "数据库文件清单与签名不符"
         # 3. 重新读取制品目录实际文件逐一计算摘要（磁盘篡改检测）
         制品目录 = self.制品根目录 / 制品摘要
         if not 制品目录.is_dir():
             return False, "制品目录缺失"
-        for 路径, 摘要信息 in json.loads(制品["文件清单"]).items():
+        # 3.1 双向集合比对（口径对齐 物料清单.校验物料清单）：多一个未审查文件也算无效
+        实际文件集 = 制品正式文件集(制品目录)
+        清单文件集 = set(清单)
+        if 实际文件集 != 清单文件集:
+            缺少 = sorted(清单文件集 - 实际文件集)
+            多余 = sorted(实际文件集 - 清单文件集)
+            return False, f"制品文件集合与签名清单不一致（缺少 {缺少}，多余 {多余}）"
+        # 3.2 清单内文件逐一重算摘要与权限
+        for 路径, 摘要信息 in 清单.items():
             实际文件 = 制品目录 / 路径
             if not 实际文件.is_file():
                 return False, f"正式文件缺失: {路径}"
