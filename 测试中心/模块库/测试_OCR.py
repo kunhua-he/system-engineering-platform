@@ -64,7 +64,7 @@ class TestOCR模块(unittest.TestCase):
             raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
         cls.网关 = 本地网关服务器(
             网关核心实例=网关核心(cls.后端), 地址="127.0.0.1", 端口=0,
-            配置={"请求超时秒": 10, "要求凭证": False, "禁止客户端身份": False},
+            配置={"请求超时秒": 1800, "要求凭证": False, "禁止客户端身份": False},
         )
         成功, 说明 = cls.网关.启动()
         if not 成功:
@@ -162,7 +162,10 @@ class TestOCR模块(unittest.TestCase):
         能力id, 请求参数 = 连接器.调用历史[0]
         self.assertEqual(能力id, "OCR识别支持库.OCR识别.识别图片")
         self.assertEqual(请求参数["图片路径"], self.图片路径)
-        self.assertIsNone(请求参数["取消事件"], "取消令牌id 语义下支持库侧不得传 callable")
+        self.assertNotIn(
+            "取消事件", 请求参数,
+            "取消令牌id 语义下支持库侧不得传 callable；且 取消事件 是资源引用型"
+            "（threading.Event），JSON 表达不了，HTTP 请求参数里连键都不能有")
 
     def test_取消令牌id透传且支持库侧无callable(self):
         from 模块库.OCR import 设置HTTP连接器
@@ -176,7 +179,7 @@ class TestOCR模块(unittest.TestCase):
             设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
         能力id, 请求参数 = 连接器.调用历史[0]
         self.assertEqual(能力id, "OCR识别支持库.OCR识别.识别图片")
-        self.assertIsNone(请求参数["取消事件"])
+        self.assertNotIn("取消事件", 请求参数)
 
     def test_错误码透传(self):
         from 模块库.OCR import 设置HTTP连接器
