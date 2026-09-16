@@ -26,6 +26,7 @@ from 支持库.后端.系统核心支持库.资源管理 import (
 from 运行核心.权威状态 import 权威状态
 from 运行核心.资源id编码 import 校验资源id, 安全资源id
 from 公共契约.句柄体系 import 生成句柄id
+from 公共契约.诊断.忽略记录 import 记录忽略
 from 运行核心.进程身份 import 进程身份
 
 
@@ -274,10 +275,23 @@ class 资源协调器:
             return True, "提交成功", 新版本
         finally:
             # 7. 释放锁（结构化所有权校验）+ 失效事务句柄 + 清理工作副本（幂等）
-            self.状态.释放锁(资源id, 事务id=事务id,
-                            进程身份键=self.状态.身份.身份键(), 令牌=锁令牌)
-            self.状态.失效句柄(句柄id, "事务完成")
-            self.工作目录.joinpath(f"{事务id}.json").unlink(missing_ok=True)
+            # 三句各自独立 try：任一终止器失败只留痕，既不得遮蔽主结论，也不得
+            # 让其余终止器被跳过。旧写法无嵌套保护——释放锁一旦抛错，「句柄失效」
+            # 与「工作副本清理」一起被跳过，现场残留「有效句柄 + 工作副本」。
+            # 对照同仓既有写法：有状态排空.排空管理「必须继续执行其余资源终止器」。
+            try:
+                self.状态.释放锁(资源id, 事务id=事务id,
+                                进程身份键=self.状态.身份.身份键(), 令牌=锁令牌)
+            except Exception as 错误:  # noqa: BLE001 - 必须继续执行其余终止器
+                记录忽略('资源协调.提交.释放锁', 错误)
+            try:
+                self.状态.失效句柄(句柄id, "事务完成")
+            except Exception as 错误:  # noqa: BLE001 - 必须继续执行其余终止器
+                记录忽略('资源协调.提交.失效句柄', 错误)
+            try:
+                self.工作目录.joinpath(f"{事务id}.json").unlink(missing_ok=True)
+            except Exception as 错误:  # noqa: BLE001 - 必须继续执行其余终止器
+                记录忽略('资源协调.提交.清理工作副本', 错误)
 
     def 查询证据(self, 事务id: str) -> dict[str, Any] | None:
         return self.事务证据表.get(事务id)
