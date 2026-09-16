@@ -401,6 +401,46 @@ def 提升消息(句柄: int = None, 会话id: str = None, 输入id: str = None,
         return 结果.失败("提升消息失败", str(错误), 来源="会话存储")
 
 
+# ── 跨模块消息结构的键名归一（B-01 修复）────────────────────────────
+# 压缩链路的真实数据流：读侧 `_从会话存储读取()` 把中文键转成英文键（role/content），
+# `压缩历史()` 产出的也是英文键消息；而本能力原先只用中文键取值 ⇒ 一旦压缩触发，
+# 先 DELETE 全部原消息、再插入角色全「助手」+ 内容全 {} 的壳行，且返回成功（静默丢整段历史）。
+# 这里在写入侧做双键归一：中文键/英文键任一存在都认，中文键仍是本库对外角色域。
+# 对称原则：读时转换（读侧）与写时归一（写侧）必须成对，只改单侧只是把错配搬家。
+_角色归一表: dict[str, str] = {
+    "用户": "用户", "user": "用户",
+    "助手": "助手", "assistant": "助手",
+    "工具": "工具", "tool": "工具",
+    "系统": "系统", "system": "系统",
+    "压缩摘要": "压缩摘要",
+}
+
+
+def _归一角色(消息: dict) -> str:
+    """取消息角色（中文键 角色 / 英文键 role），归一到本库中文角色域，取不到回落「助手」。"""
+    原角色 = 消息.get("角色")
+    if not isinstance(原角色, str) or not 原角色.strip():
+        原角色 = 消息.get("role")
+    文本 = 原角色.strip() if isinstance(原角色, str) else ""
+    return _角色归一表.get(文本) or _角色归一表.get(文本.lower()) or "助手"
+
+
+def _归一内容(消息: dict) -> dict:
+    """取消息内容（中文键 内容 / 英文键 content），归一到字典型；纯文本按 {"正文": 文本} 落库。
+
+    读取侧（读取历史 + 上下文压缩._从会话存储读取）按 内容["正文"] 取正文，
+    所以英文键的纯文本 content 必须包成 正文 才不丢。
+    """
+    内容 = 消息.get("内容")
+    if 内容 is None:
+        内容 = 消息.get("content")
+    if isinstance(内容, dict):
+        return 内容
+    if 内容 is None:
+        return {}
+    return {"正文": str(内容)}
+
+
 def 写入压缩结果(句柄: int = None, 会话id: str = None, 压缩后消息列表: list = None) -> 结果:
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="会话存储")
@@ -421,9 +461,9 @@ def 写入压缩结果(句柄: int = None, 会话id: str = None, 压缩后消息
             for i, 消息 in enumerate(压缩后消息列表, 1):
                 if not isinstance(消息, dict):
                     continue
-                角色 = 消息.get("角色", "助手")
+                角色 = _归一角色(消息)
                 连接.execute("INSERT INTO 消息表(会话id, 序号, 角色, 内容, 来源, 时间戳) VALUES (?,?,?,?,?,?)",
-                             (会话id, i, 角色, json.dumps(消息.get("内容", {}), ensure_ascii=False),
+                             (会话id, i, 角色, json.dumps(_归一内容(消息), ensure_ascii=False),
                               "压缩摘要" if 角色 == "压缩摘要" else 角色, _当前时间()))
             新次数 = 会话行[0] + 1
             连接.execute("UPDATE 会话表 SET 压缩次数=?, 更新时间=? WHERE 会话id=?", (新次数, _当前时间(), 会话id))

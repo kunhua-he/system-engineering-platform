@@ -15,6 +15,36 @@ from 公共契约.基础类型.结果类型 import 结果
 默认压缩阈值 = 8000
 
 
+def _取正文(消息) -> str:
+    """取消息正文：英文键 content / 中文键 内容（字典取 正文）都认，取不到才空串。
+
+    跨模块消息结构在本仓有两种口径：会话存储对外是 角色/内容[正文]，模型协议侧是 role/content。
+    本函数是本包的**唯一取值口径**，两键都认（B-01 同类修复）——只认单侧时，中文键入参会被
+    当成「空消息」在无模型剪枝阶段整批剪掉，表现为「一压缩就静默清空历史」。
+    """
+    if not isinstance(消息, dict):
+        return "" if 消息 is None else str(消息)
+    正文 = 消息.get("content")
+    if not isinstance(正文, str) or not 正文:
+        候选 = 消息.get("内容")
+        if isinstance(候选, dict):
+            候选 = 候选.get("正文", "")
+        if 候选:
+            正文 = 候选
+    return 正文 if isinstance(正文, str) else ("" if 正文 is None else str(正文))
+
+
+def _取角色(消息) -> str:
+    """取消息角色：英文键 role / 中文键 角色 都认，取不到才回落 user。"""
+    if not isinstance(消息, dict):
+        return "user"
+    for 键 in ("role", "角色"):
+        值 = 消息.get(键)
+        if isinstance(值, str) and 值.strip():
+            return 值.strip()
+    return "user"
+
+
 def _从会话存储读取(句柄: str, 会话id: str) -> tuple[list | None, str]:
     """经会话存储读历史，返回 (消息列表, 错误)。不可用时返回 (None, 原因)。"""
     try:
@@ -54,7 +84,7 @@ def 估算消息token数(消息列表: list = None) -> 结果:
     for 消息 in 消息列表:
         if not isinstance(消息, dict):
             continue
-        内容 = str(消息.get("content", ""))
+        内容 = _取正文(消息)
         总数 += _估算文本token(内容) + 4
     return 结果.成功结果({"token数": 总数, "消息数": len(消息列表)})
 
@@ -81,7 +111,7 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
     if 模式 not in ("拼接", "截断"):
         return 结果.失败("参数不合法", f"摘要模式必须是 拼接/截断: {摘要模式}", 来源="上下文压缩")
 
-    压缩前token = sum(_估算文本token(str(m.get("content", ""))) + 4 for m in 消息列表 if isinstance(m, dict))
+    压缩前token = sum(_估算文本token(_取正文(m)) + 4 for m in 消息列表 if isinstance(m, dict))
     if 压缩前token <= 阈值:
         return 结果.成功结果({
             "已压缩": False, "压缩前token": 压缩前token, "压缩后token": 压缩前token,
@@ -91,10 +121,10 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
     保留列表 = 消息列表[-保留条数:]
     早期列表 = 消息列表[:-保留条数]
     # 摘要预算：早期内容必须显著压缩（默认压缩到早期 token 的 20%，可配上限）
-    早期token = sum(_估算文本token(str(m.get("content", ""))) + 4 for m in 早期列表 if isinstance(m, dict))
+    早期token = sum(_估算文本token(_取正文(m)) + 4 for m in 早期列表 if isinstance(m, dict))
     摘要预算 = 摘要长度上限 if isinstance(摘要长度上限, int) and 摘要长度上限 > 0 else max(200, int(早期token * 0.2))
     摘要文本 = "\n".join(
-        f"{m.get('role', 'user')}: {m.get('content', '')}" for m in 早期列表 if isinstance(m, dict)
+        f"{_取角色(m)}: {_取正文(m)}" for m in 早期列表 if isinstance(m, dict)
     )
     # 真正压缩：摘要必须显著小于早期原文
     摘要文本 = 摘要文本[:摘要预算]
@@ -102,7 +132,7 @@ def 压缩历史(消息列表: list = None, 压缩阈值: int = None,
         摘要文本 = 摘要文本 + "…"
 
     新消息列表 = [{"role": "system", "content": f"[历史摘要] {摘要文本}"}] + 保留列表 if 摘要文本 else list(保留列表)
-    压缩后token = _估算文本token(摘要文本) + sum(_估算文本token(str(m.get("content", ""))) + 4 for m in 保留列表 if isinstance(m, dict))
+    压缩后token = _估算文本token(摘要文本) + sum(_估算文本token(_取正文(m)) + 4 for m in 保留列表 if isinstance(m, dict))
     return 结果.成功结果({
         "已压缩": True, "压缩前token": 压缩前token, "压缩后token": 压缩后token,
         "消息列表": 新消息列表, "摘要": 摘要文本,
@@ -156,10 +186,8 @@ def 压缩会话(句柄: str = None, 会话id: str = None, 压缩阈值: int = N
 
 
 def _消息内容文本(消息) -> str:
-    """取消息正文文本（非字典消息按文本处理）。"""
-    if isinstance(消息, dict):
-        return str(消息.get("content", ""))
-    return str(消息)
+    """取消息正文文本（非字典消息按文本处理；中英键都认，口径同 _取正文）。"""
+    return _取正文(消息)
 
 
 def _是否工具调用消息(消息) -> bool:
@@ -259,7 +287,7 @@ def _确定性摘要(压缩消息列表: list, 摘要预算token: int) -> str:
     行列表: list[str] = []
     已用token = 0
     for 消息 in 压缩消息列表:
-        角色 = 消息.get("role", "user") if isinstance(消息, dict) else "user"
+        角色 = _取角色(消息)
         正文 = _消息内容文本(消息).strip().replace("\n", " ")
         首句 = 正文.split("。")[0].strip()
         if len(首句) > 120:
