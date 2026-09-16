@@ -1,0 +1,127 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>系统工程平台 · 架构总览（图）</title>
+<style>
+body{font-family:-apple-system,"PingFang SC",sans-serif;max-width:1180px;margin:0 auto;padding:28px 20px 80px;
+     background:#fbfbfd;color:#1d1d1f;line-height:1.75}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.3px}
+.副{color:#6b7280;font-size:13.5px;margin-bottom:26px}
+h2{font-size:17.5px;margin:34px 0 10px;padding-left:11px;border-left:4px solid #2b7fff}
+.卡{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px 14px;overflow:auto;
+    box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.mermaid{text-align:center}
+.脚{margin-top:34px;padding-top:14px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12.5px}
+</style></head><body>
+<h1>系统工程平台 · 架构总览</h1>
+<div class="副">5 张图，均经 mermaid 官方解析器校验通过 ｜ 事实来源：AGENTS.md 唯一分层方案 · 网关核心.py 处理顺序 · 构建平台客户端.py 编译链</div>
+<h2>1. 一、分层与依赖方向</h2>
+<div class="卡"><pre class="mermaid">flowchart TB
+    subgraph 调用侧[&quot;调用侧（业务项目 / 数字员工 / 外部合作方）&quot;]
+        A1[&quot;业务代码&lt;br/&gt;只处理统一结果：成功 / 值 / 错误码 / 错误说明&quot;]
+        A2[&quot;HTML · GET · POST&quot;]
+    end
+
+    subgraph 绑定[&quot;项目适配层（唯一绑定层）&quot;]
+        B1[&quot;只绑定：模块版本 · 配置 · 权限 · 路径 · 密钥引用 · 中文别名&lt;br/&gt;不得调用支持库 / 提供者 / 实现源码&quot;]
+    end
+
+    subgraph 组合[&quot;模块库（组合流程）&quot;]
+        C1[&quot;薄模块门面：只保存能力 id + 契约版本&lt;br/&gt;不静态导入支持库 / 提供者&quot;]
+    end
+
+    subgraph 受理[&quot;运行核心（唯一权威）&quot;]
+        D1[&quot;唯一能力注册表&quot;]
+        D2[&quot;唯一提供者路由&quot;]
+        D3[&quot;唯一调用证据链&quot;]
+    end
+
+    subgraph 原子[&quot;支持库（原子能力 + 第三方边界）&quot;]
+        E1[&quot;一个第三方发行包 = 一个支持库 + 一个受管提供者&lt;br/&gt;只做参数/返回/错误转换与资源释放&quot;]
+    end
+
+    F[&quot;第三方：数据库 · 服务器 · DLL · 操作系统 · 外部协议&quot;]
+
+    A1 --&gt; B1 --&gt; C1 --&gt; D1 --&gt; D2 --&gt; E1 --&gt; F
+    A2 -.-&gt;|唯一网关| D1
+
+    禁1[&quot;禁止：sys.path / __path__ / 动态导入 / 全局单例拼接两个源码树&quot;]
+    D1 -.-&gt; 禁1</pre></div>
+<h2>2. 三、一次能力调用的真实全链路</h2>
+<div class="卡"><pre class="mermaid">sequenceDiagram
+    autonumber
+    participant 调用方
+    participant LG as 本地网关&lt;br/&gt;(HTTP，工作线程预算 64)
+    participant GW as 网关核心
+    participant RL as 限流器&lt;br/&gt;(五维固定窗口)
+    participant BC as 后端核心
+    participant CN as 连接器&lt;br/&gt;(进程内 / HTTP)
+    participant PV as 提供者&lt;br/&gt;(受管执行单元)
+
+    调用方-&gt;&gt;LG: POST /网关/调用（能力id + 参数 + 身份 + 凭证）
+    LG-&gt;&gt;GW: 处理(网关请求)
+    Note over GW: ① 生成/沿用 请求id；回报「请求版本 / 当前版本 / 差异原因」&lt;br/&gt;版本不一致**兼容放行**，只有强制参数不满足才失败
+    Note over GW: ② 操作白名单（允许操作表）→ 未知操作
+    Note over GW: ③ 权限（操作权限表）→ 权限不足
+    GW-&gt;&gt;RL: ④ 进入请求（项目 / 用户 / 能力 / 任务 / 提供者）
+    RL--&gt;&gt;GW: 不通过 → 限流
+    Note over GW: ⑤ _执行：操作参数校验 → 按操作分发
+    GW-&gt;&gt;BC: ⑥ 调用能力（参数按该能力的参数声明逐个校验）
+    BC-&gt;&gt;CN: ⑦ 运行核心注入的唯一能力调用器
+    CN-&gt;&gt;PV: ⑧ 锁定提供者与受管执行单元
+    PV--&gt;&gt;CN: 结果
+    CN--&gt;&gt;GW: 统一结果（成功 / 值 / 错误码 / 错误说明）
+    Note over GW: ⑨ 异常 → 公开错误码收口（KeyError→能力不存在、&lt;br/&gt;PermissionError→权限不足、ValueError→参数不合法…）
+    GW-&gt;&gt;RL: finally 离开请求（释放并发计数）
+    GW--&gt;&gt;调用方: 统一信封（含 耗时毫秒）</pre></div>
+<h2>3. 四、从源码到制品到验收</h2>
+<div class="卡"><pre class="mermaid">flowchart LR
+    S[&quot;源码树&lt;br/&gt;公共契约 / 支持库 / 模块库 / 运行核心 / 平台控制面 …&quot;]
+    K[&quot;编译器&lt;br/&gt;AST 重写顶层导入&lt;br/&gt;拒绝符号链接 · 受控路径写入&quot;]
+    P[&quot;稳定产物&lt;br/&gt;平台客户端-&amp;lt;摘要16&amp;gt;&quot;]
+    ID[&quot;制品身份三件&lt;br/&gt;制品摘要.json&lt;br/&gt;完整性摘要.json&lt;br/&gt;编译清单.json&quot;]
+
+    H[&quot;HTML 黑盒&lt;br/&gt;对制品 GET/POST，并发 32&quot;]
+    M[&quot;发布门禁&lt;br/&gt;唯一判定&quot;]
+    GATE[&quot;门禁内其它项&lt;br/&gt;语法编译 · 死链 · 缓存无源码 · 摘要自洽 · 真实调用矩阵&quot;]
+
+    S --&gt; K --&gt; P
+    P --&gt; ID
+    P --&gt; H
+    P --&gt; M
+    M --&gt; GATE
+    H --&gt; EV[&quot;验证证据&quot;]
+    GATE --&gt; EV
+    EV --&gt; R{&quot;通过？&quot;}
+    R --&gt;|是| ACT[&quot;激活指针切换&lt;br/&gt;（只切不可变旧制品）&quot;]
+    R --&gt;|否| BLOCK[&quot;阻断&lt;br/&gt;非零退出码&quot;]</pre></div>
+<h2>4. 五、能力从哪来（四条路径）</h2>
+<div class="卡"><pre class="mermaid">flowchart TB
+    NEED[&quot;一个需求&quot;]
+    Q[&quot;能力搜索：先确认**全局唯一**，没有同义能力&quot;]
+    NEED --&gt; Q
+    Q --&gt; T1[&quot;支持库&lt;br/&gt;单一原子动作 / 绑定一个第三方&quot;]
+    Q --&gt; T2[&quot;模块库&lt;br/&gt;要组合多个能力完成一段流程&quot;]
+    Q --&gt; T3[&quot;技能库&lt;br/&gt;要落盘 / 续跑 / 人审的脚本编排&quot;]
+    Q --&gt; T4[&quot;平台控制面&lt;br/&gt;平台自身治理（目录 / 策略 / 制品 / 发布 / 证据）&quot;]
+
+    T1 --&gt; PKG[&quot;包九要素&lt;br/&gt;包声明 · 参数契约 · 能力定义 · 权限契约&lt;br/&gt;资源预算 · 能力数据 · 验证场景 · 说明 · __init__&quot;]
+    T2 --&gt; PKG
+    T3 --&gt; PKG
+    T4 --&gt; PKG
+    PKG --&gt; COMP[&quot;统一编译器（只编本次变更的小单元）&lt;br/&gt;检查契约 · 依赖 · 边界 · 登记&quot;]
+    COMP --&gt; REG[&quot;能力登记（公开能力全局唯一）&quot;]
+    REG --&gt; HOT[&quot;热接入生效（不重启网关）&quot;]</pre></div>
+<h2>5. 六、资源与失败（句柄体系）</h2>
+<div class="卡"><pre class="mermaid">stateDiagram-v2
+    [*] --&gt; 有效: 申请（登记归属：项目 / 所有者 / 能力）
+    有效 --&gt; 续租: 续租（延长租约）
+    续租 --&gt; 有效
+    有效 --&gt; 已过期: 心跳超时
+    已过期 --&gt; 已回收: 回收（按登记的归属回收）
+    有效 --&gt; 已回收: 主动关闭（幂等）
+    已回收 --&gt; [*]</pre></div>
+<div class="脚">与 <code>开发文档/架构总览.md</code> 同源（同一批 mermaid 源码）；细粒度文字版见 <code>开发文档/当前流程图.md</code>。</div>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true, theme:"base", themeVariables:{fontSize:"14px", primaryColor:"#eef4ff",
+  primaryBorderColor:"#2b7fff", lineColor:"#94a3b8", secondaryColor:"#f6f8fb", tertiaryColor:"#fff"}});
+</script></body></html>
