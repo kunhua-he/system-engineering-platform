@@ -13,6 +13,10 @@ import shutil
 import zipfile
 
 from 公共契约.基础类型.结果类型 import 结果
+from 支持库.后端.文件系统支持库.文件操作.实现.危险路径 import (
+    拦截危险路径,
+    放行标注,
+)
 
 
 def 搜索文件(目录: str = None, 通配符: str = None, 递归: bool = None) -> 结果:
@@ -41,28 +45,48 @@ def 搜索文件(目录: str = None, 通配符: str = None, 递归: bool = None)
     return 结果.成功结果({"文件数": len(文件列表), "文件列表": sorted(文件列表)})
 
 
-def 追加写入(路径: str = None, 内容: str = None) -> 结果:
-    """追加文本到文件末尾。返回 {路径, 追加字节数}。"""
+def 追加写入(路径: str = None, 内容: str = None,
+             允许危险路径: bool = False) -> 结果:
+    """追加文本到文件末尾。返回 {路径, 追加字节数}（显式放行危险路径时加 危险路径放行 标注）。
+
+    危险路径护栏：追加=改变文件内容，默认拒绝命中危险路径判据的目标；
+    允许危险路径=真 显式放行并如实标注。
+    """
     if not isinstance(路径, str) or not 路径.strip():
         return 结果.失败("参数不合法", "路径必须是非空字符串", 来源="文件系统")
     if 内容 is None:
         return 结果.失败("参数不合法", "内容不能为空", 来源="文件系统")
+    拦截 = 拦截危险路径(路径, 允许危险路径, "追加写入")
+    if 拦截 is not None:
+        return 拦截
     try:
         with open(路径, "a", encoding="utf-8") as f:
             字节数 = f.write(str(内容))
-        return 结果.成功结果({"路径": 路径, "追加字节数": 字节数})
+        结果值: dict = {"路径": 路径, "追加字节数": 字节数}
+        标注 = 放行标注(路径)
+        if 标注:
+            结果值["危险路径放行"] = 标注
+        return 结果.成功结果(结果值)
     except OSError as 错误:
         return 结果.失败("写入失败", str(错误), 来源="文件系统")
 
 
-def 压缩文件(源路径: str = None, 目标路径: str = None) -> 结果:
-    """压缩文件/目录为 zip。返回 {目标路径, 条目数}。"""
+def 压缩文件(源路径: str = None, 目标路径: str = None,
+             允许危险路径: bool = False) -> 结果:
+    """压缩文件/目录为 zip。返回 {目标路径, 条目数}（显式放行时加 危险路径放行 标注）。
+
+    危险路径护栏只判**目标路径**（源路径只读，不构成系统性破坏）；
+    允许危险路径=真 显式放行并如实标注。
+    """
     if not isinstance(源路径, str) or not 源路径.strip():
         return 结果.失败("参数不合法", "源路径必须是非空字符串", 来源="文件系统")
     if not isinstance(目标路径, str) or not 目标路径.strip():
         return 结果.失败("参数不合法", "目标路径必须是非空字符串", 来源="文件系统")
     if not os.path.exists(源路径):
         return 结果.失败("源不存在", f"源不存在: {源路径}", 来源="文件系统")
+    拦截 = 拦截危险路径(目标路径, 允许危险路径, "压缩文件目标路径")
+    if 拦截 is not None:
+        return 拦截
     try:
         条目数 = 0
         with zipfile.ZipFile(目标路径, "w", zipfile.ZIP_DEFLATED) as 压缩包:
@@ -76,7 +100,11 @@ def 压缩文件(源路径: str = None, 目标路径: str = None) -> 结果:
                         相对路径 = os.path.relpath(完整路径, os.path.dirname(源路径))
                         压缩包.write(完整路径, 相对路径)
                         条目数 += 1
-        return 结果.成功结果({"目标路径": 目标路径, "条目数": 条目数})
+        压缩结果: dict = {"目标路径": 目标路径, "条目数": 条目数}
+        压缩标注 = 放行标注(目标路径)
+        if 压缩标注:
+            压缩结果["危险路径放行"] = 压缩标注
+        return 结果.成功结果(压缩结果)
     except Exception as 错误:
         return 结果.失败("压缩失败", str(错误), 来源="文件系统")
 
@@ -134,7 +162,7 @@ def _清理解压半成品(目标根: pathlib.Path, 新建目标目录: bool, �
 
 def 解压文件(源路径: str = None, 目标目录: str = None,
              最大字节数: int = None, 最大条目数: int = None,
-             最大压缩比: float = None) -> 结果:
+             最大压缩比: float = None, 允许危险路径: bool = False) -> 结果:
     """解压 zip 到目录（防 zip 炸弹 + 防路径穿越）。返回 {目标目录, 条目数}。
 
     三道入参上限，全部 fail-fast：先校验、后落盘，超限一个字节都不写。
@@ -156,6 +184,9 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
         return 结果.失败("参数不合法", "源路径必须是非空字符串", 来源="文件系统")
     if not isinstance(目标目录, str) or not 目标目录.strip():
         return 结果.失败("参数不合法", "目标目录必须是非空字符串", 来源="文件系统")
+    拦截 = 拦截危险路径(目标目录, 允许危险路径, "解压文件目标目录")
+    if 拦截 is not None:
+        return 拦截
     if not os.path.isfile(源路径):
         return 结果.失败("源不存在", f"源文件不存在: {源路径}", 来源="文件系统")
     try:
@@ -227,7 +258,11 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
                         写出.write(数据块)
                 已写路径列表.append(目标)
                 写入总字节 += 本次字节
-        return 结果.成功结果({"目标目录": 目标目录, "条目数": len(成员列表)})
+        解压结果: dict = {"目标目录": 目标目录, "条目数": len(成员列表)}
+        解压标注 = 放行标注(目标目录)
+        if 解压标注:
+            解压结果["危险路径放行"] = 解压标注
+        return 结果.成功结果(解压结果)
     except _超过上限 as 错误:
         _清理解压半成品(目标根, 新建目标目录, 已写路径列表)
         return 结果.失败("超过解压上限", str(错误), 来源="文件系统")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 import threading
 import uuid
@@ -17,6 +18,9 @@ from urllib.parse import unquote, urlsplit
 根目录 = Path(__file__).resolve().parents[2]
 默认文件 = 根目录 / "工程缓存" / "轻代码前端编辑器" / "页面.json"
 内部工程请求路径 = "/内部/工程请求"
+# 动态会话令牌：替代固定内部标记 X-Internal-Call，请求头名受 HTTP 协议约束只能是 ASCII。
+会话令牌请求头 = "X-IDE-Token"
+令牌占位符 = "__IDE会话令牌__"
 if str(根目录) not in sys.path:
     sys.path.insert(0, str(根目录))
 
@@ -37,6 +41,7 @@ from 开发工具.轻代码前端编辑器.页面模型 import 校验页面
 <aside class="面板 右"><div class="标题">属性</div><div id="属性" class="属性"><div style="color:#94a3b8">选择窗体或组件</div></div><div class="标题">事件</div><div id="事件" class="事件表"><div style="color:#94a3b8">选择组件后绑定事件</div></div></aside>
 <section class="底部"><div class="页签"><span class="选中" onclick="页签(this,'输出')">输出</span><span onclick="页签(this,'事件日志')">事件日志</span><span onclick="页签(this,'页面JSON')">页面 JSON</span></div><pre id="输出" class="输出">欢迎使用轻代码前端 IDE。拖动左侧组件到窗体，按 F5 编译运行。</pre><pre id="页面JSON" class="输出" style="display:none"></pre><pre id="事件日志" class="输出" style="display:none">暂无事件</pre></section></main><div class="底栏">就绪　|　窗体设计　|　组件数: <span id="计数">0</span></div><section id="预览层" class="隐藏" style="position:fixed;inset:30px 0 24px;background:#f8fafc;z-index:20;overflow:auto;padding:28px"><div style="max-width:900px;margin:auto;background:#fff;border:1px solid #cbd5e1;box-shadow:0 8px 30px #0f172a22"><div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#27436b;color:#fff"><strong>运行预览</strong><button onclick="关闭预览()" style="padding:4px 10px">关闭</button></div><div id="预览内容" style="padding:20px"></div></div></section>
 <script>
+const 会话令牌='__IDE会话令牌__';// 启动时由服务端把本次会话令牌注入此变量，请求内部网关必须携带
 function 菜单打开(名称,锚点){let 层=document.querySelector('#菜单弹层');let 命令={文件:[['新建',()=>新建()],['导出 JSON',()=>导出()]],编辑:[['撤销',()=>撤销()],['重做',()=>重做()]],视图:[['窗体',()=>切换视图('窗体')],['代码',()=>切换视图('代码')],['模块',()=>切换视图('模块')]],项目:[['切换软件/网页',()=>{let 选择=document.querySelector('#项目类型');选择.value=选择.value==='软件项目'?'网页项目':'软件项目';选择.dispatchEvent(new Event('change'))}]],运行:[['编译运行',()=>编译运行()],['预览',()=>预览()]],工具:[['导出 JSON',()=>导出()]],帮助:[['查看帮助',()=>{输出.textContent='轻代码前端 IDE：页面 JSON 是唯一源，所有改动自动保存；F5 执行契约编译。';状态.textContent='帮助已显示'}]]}[名称]||[];层.innerHTML=命令.map(([文本])=>`<button type="button" data-命令="${文本}">${文本}</button>`).join('');层.style.cssText='position:absolute;z-index:30;top:30px;left:'+锚点.offsetLeft+'px;min-width:150px;background:#fff;border:1px solid #b9c2cf;box-shadow:0 4px 14px #0f172a22;padding:4px';层.classList.remove('隐藏');层.querySelectorAll('button').forEach((按钮,i)=>按钮.onclick=()=>{层.classList.add('隐藏');命令[i][1]()})}
 let 数据={页面id:'主页',标题:'新页面',路由:'/',项目类型:'软件项目',组件列表:[]},选中=-1,历史=[],历史位置=-1,组件目录={},保存计时器=null,保存进行中=null,当前视图='窗体',脏=false;
 const 网格=document.querySelector('#网格'),属性=document.querySelector('#属性'),事件=document.querySelector('#事件'),输出=document.querySelector('#输出'),状态=document.querySelector('#状态');
@@ -73,11 +78,11 @@ function 绑定事件(名,id){let x=数据.组件列表[选中];x.事件=x.事�
 function 删除(){if(选中>=0){let id=数据.组件列表[选中].组件id;数据.组件列表=数据.组件列表.filter(x=>x.组件id!==id&&x.父组件id!==id);选中=-1;记录()}}function 新建(){let 工程id=数据.工程id,修订号=Number(数据.修订号||0);数据={工程id,修订号,页面id:'主页',标题:'新页面',路由:'/',项目类型:document.querySelector('#项目类型').value,组件列表:[]};选中=-1;记录();状态.textContent='新建页面'}function 撤销(){if(历史位置>0){历史位置--;数据=JSON.parse(历史[历史位置]);选中=-1;渲染()}}function 重做(){if(历史位置+1<历史.length){历史位置++;数据=JSON.parse(历史[历史位置]);选中=-1;渲染()}}
 function 添加组件(类型,目标=null){let 项=默认组件(类型);if(目标){let 容器=数据.组件列表[Number(目标.dataset.索引)];if(容器?.类型==='容器'){项.父组件id=容器.组件id;项.父对象id=容器.对象id}}数据.组件列表.push(项);选中=数据.组件列表.length-1;记录()}
 function 加载组件目录(目录){let 箱=document.querySelector('#组件箱');箱.innerHTML='';(目录.组件类型||[]).forEach(项=>{组件目录[项.类型]=项;let e=document.createElement('div');e.className='组件';e.draggable=true;e.dataset.类型=项.类型;e.textContent=项.别名||项.类型;e.title='点击添加，或拖动到窗体';e.onclick=()=>添加组件(项.类型);e.ondragstart=x=>x.dataTransfer.setData('类型',项.类型);箱.append(e)})}网格.ondragover=e=>e.preventDefault();网格.ondrop=e=>{e.preventDefault();添加组件(e.dataTransfer.getData('类型'),e.target.closest('.控件'))};网格.onclick=()=>{选中=-1;渲染();页面属性()};document.querySelector('#项目类型').onchange=()=>{数据.项目类型=document.querySelector('#项目类型').value;记录()};
-async function 保存(){if(!脏)return true;if(保存进行中)return 保存进行中;保存进行中=(async()=>{try{let 基准修订号=Number(数据.修订号||0),r=await fetch('/内部/工程请求',{method:'POST',headers:{'Content-Type':'application/json','X-Internal-Call':'1'},body:JSON.stringify({操作:'提交变更',工程id:数据.工程id,基准修订号,来源:当前视图==='代码'?'代码视图':当前视图==='模块'?'模块视图':'窗体设计器',请求id:'请求_'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2)),操作列表:[{操作:'替换页面模型',页面:数据}]})}),x=await r.json();if(x.成功){if(x.页面)数据=x.页面;数据.工程id=x.工程id||数据.工程id;数据.修订号=x.新修订号;脏=false;状态.textContent='已自动保存（修订 '+x.新修订号+'）';输出.textContent='页面模型已通过统一工程网关保存。';return true}else if(x.错误码==='编辑冲突'){状态.textContent='编辑冲突：未覆盖他人修改';输出.textContent=x.错误说明;return false}else{状态.textContent='保存失败';输出.textContent=x.错误说明||'保存失败';return false}}catch(e){状态.textContent='保存失败';输出.textContent=String(e);return false}})();try{return await 保存进行中}finally{保存进行中=null}}
+async function 保存(){if(!脏)return true;if(保存进行中)return 保存进行中;保存进行中=(async()=>{try{let 基准修订号=Number(数据.修订号||0),r=await fetch('/内部/工程请求',{method:'POST',headers:{'Content-Type':'application/json','X-IDE-Token':会话令牌},body:JSON.stringify({操作:'提交变更',工程id:数据.工程id,基准修订号,来源:当前视图==='代码'?'代码视图':当前视图==='模块'?'模块视图':'窗体设计器',请求id:'请求_'+(crypto.randomUUID?.()||Math.random().toString(36).slice(2)),操作列表:[{操作:'替换页面模型',页面:数据}]})}),x=await r.json();if(x.成功){if(x.页面)数据=x.页面;数据.工程id=x.工程id||数据.工程id;数据.修订号=x.新修订号;脏=false;状态.textContent='已自动保存（修订 '+x.新修订号+'）';输出.textContent='页面模型已通过统一工程网关保存。';return true}else if(x.错误码==='编辑冲突'){状态.textContent='编辑冲突：未覆盖他人修改';输出.textContent=x.错误说明;return false}else{状态.textContent='保存失败';输出.textContent=x.错误说明||'保存失败';return false}}catch(e){状态.textContent='保存失败';输出.textContent=String(e);return false}})();try{return await 保存进行中}finally{保存进行中=null}}
 function 导出(){let 文本=JSON.stringify(数据,null,2);document.querySelector('#页面JSON').textContent=文本;navigator.clipboard?.writeText(文本).catch(()=>{});状态.textContent='JSON 已复制'}
 function 预览节点(项){let a=项.属性||{},类='控件';if(项.类型==='容器'){return `<section class="${类} 容器"><strong>${安全文本(a.文本||项.组件id)}</strong>${数据.组件列表.filter(x=>x.父组件id===项.组件id).map(预览节点).join('')}</section>`}if(项.类型==='输入框'){return `<label class="${类}">${安全文本(a.文本||项.组件id)}<input value="${安全文本(a.默认值||'')}" placeholder="${安全文本(a.占位文本||'')}"></label>`}if(项.类型==='按钮'){return `<button class="${类}" type="button">${安全文本(a.文本||项.组件id)}</button>`}return `<div class="${类}">${安全文本(a.文本||项.组件id)}</div>`}
 async function 预览(){let 已保存=await 保存();if(!已保存)return;let 层=document.querySelector('#预览层'),内容=document.querySelector('#预览内容');内容.innerHTML=`<h1>${安全文本(数据.标题)}</h1>`+数据.组件列表.filter(x=>!x.父组件id).map(预览节点).join('');层.classList.remove('隐藏');状态.textContent='预览已打开'}function 关闭预览(){document.querySelector('#预览层').classList.add('隐藏');状态.textContent='窗体设计'}
-async function 编译运行(){let 已保存=await 保存();if(!已保存)return;状态.textContent='正在编译…';try{let r=await fetch('/内部/工程请求',{method:'POST',headers:{'Content-Type':'application/json','X-Internal-Call':'1'},body:JSON.stringify({操作:'编译工程',工程id:数据.工程id})}),x=await r.json();if(x.成功){状态.textContent='F5：编译成功';输出.textContent=`编译成功：${x.输出文件}\n能力依赖：${(x.能力依赖||[]).join('、')||'无'}`}else{状态.textContent='F5：编译阻断';输出.textContent=`编译阻断：${x.错误说明||'页面契约不合法'}`}}catch(e){状态.textContent='F5：编译失败';输出.textContent=String(e)}}function 页签(e,id){document.querySelectorAll('.页签 span').forEach(x=>x.classList.remove('选中'));e.classList.add('选中');document.querySelectorAll('.输出').forEach(x=>x.style.display=x.id===id?'block':'none')}
+async function 编译运行(){let 已保存=await 保存();if(!已保存)return;状态.textContent='正在编译…';try{let r=await fetch('/内部/工程请求',{method:'POST',headers:{'Content-Type':'application/json','X-IDE-Token':会话令牌},body:JSON.stringify({操作:'编译工程',工程id:数据.工程id})}),x=await r.json();if(x.成功){状态.textContent='F5：编译成功';输出.textContent=`编译成功：${x.输出文件}\n能力依赖：${(x.能力依赖||[]).join('、')||'无'}`}else{状态.textContent='F5：编译阻断';输出.textContent=`编译阻断：${x.错误说明||'页面契约不合法'}`}}catch(e){状态.textContent='F5：编译失败';输出.textContent=String(e)}}function 页签(e,id){document.querySelectorAll('.页签 span').forEach(x=>x.classList.remove('选中'));e.classList.add('选中');document.querySelectorAll('.输出').forEach(x=>x.style.display=x.id===id?'block':'none')}
 function 页面属性(){if(选中>=0)return;属性.innerHTML=`<div class="属性行"><label>页面标题</label><input data-k="标题" value="${安全文本(数据.标题)}"></div><div class="属性行"><label>页面路由</label><input data-k="路由" value="${安全文本(数据.路由)}"></div><div style="color:#94a3b8;font-size:12px;margin-top:12px">改动会自动保存，无需点击保存。</div>`;属性.querySelectorAll('input').forEach(i=>i.onchange=()=>{数据[i.dataset.k]=i.value;记录()})}
 fetch('/组件目录').then(r=>r.json()).then(加载组件目录).catch(()=>加载组件目录({组件类型:[{类型:'按钮',别名:'按钮',默认属性:{文本:'按钮'},事件:['点击']},{类型:'编辑框',别名:'编辑框',默认属性:{文本:''},事件:['输入']},{类型:'标签',别名:'标签',默认属性:{文本:'标签'},事件:[]}] }));快照();渲染();页面属性();
 </script>'''
@@ -87,6 +92,10 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
     from 公共契约.运行时.端口策略 import 校验应用监听端口
     校验应用监听端口(端口)
     文件.parent.mkdir(parents=True, exist_ok=True)
+    # 动态会话令牌：每次启动随机生成一次，只发给本进程服务出去的页面。
+    # 这是「相对安全，不做绝对安全」下的合理收紧（哲学第 9 条 5 项）：开发者
+    # 体验完全不变，但固定头 X-Internal-Call: 1 不再能冒充内部调用。
+    会话令牌 = secrets.token_urlsafe(32)
     编辑锁 = threading.Lock()
     工程目录 = 文件.parent
     后端模型文件 = 工程目录 / "后端" / "工程模型.json"
@@ -271,6 +280,14 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             页面内容 = 页面
 
+    # 令牌注入必须成立：占位符缺失说明页面模板与后端鉴权脱节，此时继续启动
+    # 只会让所有内部请求被 403 拒绝（或更糟：鉴权形同虚设），必须明确失败。
+    if 令牌占位符 not in 页面内容:
+        raise RuntimeError(
+            f"页面模板缺少会话令牌占位符 {令牌占位符}，无法注入本次动态令牌，拒绝启动"
+        )
+    页面内容 = 页面内容.replace(令牌占位符, 会话令牌, 1)
+
     class 处理器(BaseHTTPRequestHandler):
         def log_message(self, 格式: str, *参数: Any) -> None:
             return
@@ -293,13 +310,27 @@ def 主函数(端口: int = 45082, 文件: Path = 默认文件) -> int:
             self.end_headers()
             self.wfile.write(正文)
 
+        def _会话令牌有效(self) -> bool:
+            """动态会话令牌校验：常量时间比较字节串，避免逐字符比较泄露令牌。"""
+            提交 = self.headers.get(会话令牌请求头, "")
+            return secrets.compare_digest(
+                提交.strip().encode("utf-8"), 会话令牌.encode("utf-8"),
+            )
+
         def do_POST(self) -> None:
             路径 = unquote(urlsplit(self.path).path)
             if 路径 != 内部工程请求路径:
                 self.send_error(404)
                 return
-            if self.headers.get("X-Internal-Call", "") != "1":
-                self.send_error(403)
+            if not self._会话令牌有效():
+                # 说明写进 explain（响应正文）：状态行只允许 ASCII，中文不能进 reason。
+                self.send_error(
+                    403,
+                    explain=(
+                        f"缺少或无效的 IDE 会话令牌：{会话令牌请求头} 头的值必须与本次启动"
+                        "注入页面的动态令牌一致（固定内部标记已失效，请从 IDE 页面发起请求）"
+                    ),
+                )
                 return
             try:
                 # 编辑器接口只接受有界 Content-Length；拒绝 chunked/超长/短读，

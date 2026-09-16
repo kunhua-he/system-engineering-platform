@@ -18,6 +18,9 @@ def 内容摘要(内容: bytes) -> str:
 
 def 校验权威状态(目录: Path, 备份项: dict) -> tuple[bool, str]:
     """真实打开 sqlite 运行 PRAGMA integrity_check，必须返回 ok。"""
+    # 保留 sqlite3 直连、不收敛到唯一入口的技术必要（已实测）：备份快照必须**只读**打开——
+    # 统一入口的 查询 以读写方式开库，对不存在的文件会**隐式建库**并让 PRAGMA integrity_check
+    # 返回 ok，缺失快照会被误判「完整性通过」；且校验不得在可能改写快照的连接上跑。
     try:
         连接 = sqlite3.connect(f"file:{目录 / 备份项['文件']}?mode=ro", uri=True)
         try: 结果 = 连接.execute("PRAGMA integrity_check").fetchone()

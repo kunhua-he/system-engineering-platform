@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import shutil
-import sqlite3
 import time
 from pathlib import Path
 
+from 公共契约.诊断.忽略记录 import 记录忽略
 from 平台控制面.备份恢复.校验函数 import 内容摘要
+from 支持库.后端.数据库连接支持库.SQLite数据库 import 查询
 
 四类数据表 = ("权威状态", "包仓库", "证据账本", "项目锁")
 
@@ -51,15 +52,13 @@ class 备份执行能力:
         文件名 = "证据账本.json" if 类名 == "证据账本" else "项目锁.json"
         条数 = 0
         if 类名 == "证据账本":
-            连接 = sqlite3.connect(str(源), timeout=10)
-            有表 = 连接.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='证据'").fetchone()
+            # 读证据账本一律经唯一 SQLite 支持库入口（参数化只读查询，连接随调用释放）
+            有表列表 = 查询(str(源), "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                          ["证据"]).确保成功()["行列表"]
             证据表 = []
-            if 有表:
-                列名 = [列[1] for 列 in 连接.execute("PRAGMA table_info(证据)").fetchall()]
-                证据表 = [dict(zip(列名, 行)) for 行 in 连接.execute("SELECT * FROM 证据")]
-                证据表 = [{**条, "内容": json.loads(条["内容"])} for 条 in 证据表]
-            连接.close()
+            if 有表列表:
+                行列表 = 查询(str(源), "SELECT * FROM 证据").确保成功()["行列表"]
+                证据表 = [{**条, "内容": json.loads(条["内容"])} for 条 in 行列表]
             条数 = len(证据表)
             (快照目录 / 文件名).write_text(json.dumps(证据表, ensure_ascii=False), encoding="utf-8")
         else:
@@ -72,15 +71,13 @@ class 备份执行能力:
         """真实备份四类数据到时间戳快照子目录，返回备份清单。"""
         快照目录 = Path(备份目录) / f"快照_{time.strftime('%Y%m%d_%H%M%S')}_{int(time.time() % 1 * 1000):03d}"
         快照目录.mkdir(parents=True, exist_ok=True)
-        try:  # 合并 WAL 回主库，尽力而为
-            连接 = sqlite3.connect(str(self.存储根目录 / "权威状态.db"), timeout=10)
-            try:
-                连接.execute("PRAGMA busy_timeout=10000")
-                连接.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            finally:
-                连接.close()
-        except sqlite3.DatabaseError:
-            pass
+        # 合并 WAL 回主库，尽力而为：经唯一入口的只读查询能力执行 checkpoint PRAGMA
+        # （checkpoint 不能在显式事务内跑，实测走 事务执行 报「database table is locked」，
+        #  故只能走 查询；它不改业务数据）。失败不阻断备份，但必须留痕（哲学第 3 条 2 项）。
+        合并结果 = 查询(str(self.存储根目录 / "权威状态.db"),
+                        "PRAGMA wal_checkpoint(TRUNCATE)", 超时秒=10)
+        if not 合并结果.成功:
+            记录忽略("备份执行.WAL合并", f"{合并结果.错误码}: {合并结果.错误说明}")
         契约 = self.声明契约()
         文件清单 = {类: self._备份一类(类, 快照目录) for 类 in 四类数据表}
         清单 = {"快照目录": str(快照目录), "备份时间": time.strftime("%Y-%m-%d %H:%M:%S"),
