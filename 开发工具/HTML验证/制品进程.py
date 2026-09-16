@@ -1,9 +1,15 @@
-"""制品进程启动、有界输出与进程组回收。"""
+"""制品进程启动、有界输出与进程组回收。
+
+跨平台纪律：本文件**不再自带平台判断**（无 ``os.name`` / ``os.killpg`` /
+``os.getpgid`` / ``start_new_session``），进程组启动、存活探测、整组终止一律走
+``公共契约.运行时`` 的收口层（``平台适配.子进程组启动标志``、``进程终止``）。
+"""
 from __future__ import annotations
-import os, queue, re, signal, subprocess, sys, threading, time
+import os, queue, re, subprocess, sys, threading, time
 from pathlib import Path
 from typing import Any
 from 开发工具.HTML验证.常量 import 默认启动超时秒, 输出上限字节
+from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 class _有界输出:
     def __init__(self, 上限字节: int) -> None:
@@ -36,54 +42,59 @@ def _读取管道(管道: Any, 缓冲: _有界输出, 事件: queue.Queue[None])
         pass
 
 def _进程组活跃(进程组id: int) -> bool:
-    if os.name != "posix":
-        return False
-    try:
-        结果 = subprocess.run(
-            ["ps", "-axo", "pgid=,stat="], capture_output=True, text=True, timeout=2, check=False,
-        )
-        for 行 in 结果.stdout.splitlines():
-            部分 = 行.strip().split(None, 1)
-            if len(部分) == 2 and int(部分[0]) == 进程组id and not 部分[1].startswith("Z"):
-                return True
-        return False
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+    """进程组内是否仍有**活动（非僵尸）**成员。
+
+    POSIX 优先用 ``ps`` 扫描真实组归属：僵尸成员不算活跃——这与收口层
+    ``进程存活`` / ``按组号探活`` 的「僵尸计为存活」语义**刻意不同**，本函数判的是
+    「组是否还占着资源」，僵尸已不占资源。
+
+    ``ps`` 不可用（或平台无进程组概念）时退回收口层 ``按组号探活``：平台差异
+    全在收口层判定，本调用点不出现 ``os.killpg`` / ``os.name`` 分支。
+    """
+    if os.name == "posix":
         try:
-            os.killpg(进程组id, 0)
-            return True
-        except (ProcessLookupError, PermissionError):
+            结果 = subprocess.run(
+                ["ps", "-axo", "pgid=,stat="], capture_output=True, text=True, timeout=2, check=False,
+            )
+            for 行 in 结果.stdout.splitlines():
+                部分 = 行.strip().split(None, 1)
+                if len(部分) == 2 and int(部分[0]) == 进程组id and not 部分[1].startswith("Z"):
+                    return True
             return False
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+    return 进程终止.按组号探活(进程组id)
+
+
+def _终止制品进程(进程: subprocess.Popen[Any], 进程组id: int | None, *, 信号: str) -> None:
+    """终止制品进程/整组，平台差异全部由收口层承担。
+
+    **自保护**：只有「组号 == 进程号」（即 ``子进程组启动标志`` 建立的独立会话组长）
+    才按组号整组终止；非组长退回 ``终止进程组``（其 POSIX 分支对非组长只终止单进程），
+    避免误伤同组进程——这一保护与收口层内部策略一致。
+
+    Windows 无进程组号（``进程组号`` 如实返回 ``None``）→ 走 ``终止进程组``，
+    即 ``taskkill /T`` 整棵进程树。
+    """
+    if 进程组id is not None and 进程组id == 进程.pid:
+        进程终止.按组号终止(进程组id, 信号=信号)
+    else:
+        进程终止.终止进程组(进程.pid, 信号=信号)
+
 
 def _回收进程组(进程: subprocess.Popen[Any] | None) -> dict[str, Any]:
     if 进程 is None:
         return {"已回收": True, "模式": "直连", "进程组残留": False}
-    进程组id: int | None = None
-    if os.name == "posix":
-        try:
-            进程组id = os.getpgid(进程.pid)
-        except ProcessLookupError:
-            pass
+    进程组id: int | None = 进程终止.进程组号(进程)
     if 进程.poll() is None or (进程组id is not None and _进程组活跃(进程组id)):
-        try:
-            if 进程组id is not None:
-                os.killpg(进程组id, signal.SIGTERM)
-            else:
-                进程.terminate()
-        except ProcessLookupError:
-            pass
+        _终止制品进程(进程, 进程组id, 信号="终止")
         截止 = time.monotonic() + 2
         while time.monotonic() < 截止:
             if 进程.poll() is not None and (进程组id is None or not _进程组活跃(进程组id)):
                 break
             time.sleep(0.03)
         if 进程.poll() is None or (进程组id is not None and _进程组活跃(进程组id)):
-            try:
-                if 进程组id is not None:
-                    os.killpg(进程组id, signal.SIGKILL)
-                else:
-                    进程.kill()
-            except ProcessLookupError:
-                pass
+            _终止制品进程(进程, 进程组id, 信号="强杀")
     try:
         进程.wait(timeout=2)
     except subprocess.TimeoutExpired:
@@ -156,7 +167,9 @@ def _启动制品(
         cwd=str(制品目录),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        start_new_session=os.name == "posix",
+        # 平台差异收口：POSIX 是 start_new_session（setsid 独立组），
+        # Windows 是 creationflags=CREATE_NEW_PROCESS_GROUP
+        **平台适配.子进程组启动标志(),
         env=环境,
     )
     标准输出 = _有界输出(上限字节)

@@ -9,13 +9,13 @@ from __future__ import annotations
 import base64
 import json
 import os
-import signal
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 
 包目录 = Path(__file__).resolve().parent.parent
@@ -37,21 +37,19 @@ def _启动子进程() -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, str(子进程入口路径)],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        cwd=str(系统根), start_new_session=True, env=dict(os.environ),
+        cwd=str(系统根), env=dict(os.environ),
+        **平台适配.子进程组启动标志(),
     )
 
 
 def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    for 信号值 in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(os.getpgid(进程.pid), 信号值)
-        except (OSError, ProcessLookupError):
-            pass
-        try:
-            进程.wait(timeout=宽限秒)
-            return
-        except subprocess.TimeoutExpired:
-            pass
+    """终止进程组（终止→宽限→强杀→复查死透）：唯一实现在 公共契约.运行时.进程终止。
+
+    平台差异（POSIX 按进程组 / Windows 按进程树）由收口层自己判定：本处不再持有
+    平台判断、信号号或 killpg 调用。保留同名同签名的薄委托，是因为既有测试
+    （测试中心/支持库/测试_Pillow提供者.py）用 patch.object 直接打桩本名。
+    """
+    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
 
 
 def _关闭流(进程: subprocess.Popen) -> None:

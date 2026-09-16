@@ -7,12 +7,11 @@
 
 from __future__ import annotations
 
-import os
-import signal
 import subprocess
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 from 支持库.后端.版本控制支持库.Git操作.实现.白名单 import 失败结果, 校验仓库路径, 校验超时
 
@@ -21,24 +20,12 @@ from 支持库.后端.版本控制支持库.Git操作.实现.白名单 import �
 
 
 def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    """SIGTERM 宽限后 SIGKILL，确保进程组零残留。"""
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass
+    """进程组终止（终止→宽限→强杀→复查死透）：唯一实现在 公共契约.运行时.进程终止。
+
+    平台差异（POSIX 按进程组 / Windows 按进程树）由收口层自己判定：本处不再持有
+    平台判断、信号号或 killpg 调用，也不再自己 wait 收尾。
+    """
+    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
 
 
 def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默认超时秒) -> 结果:
@@ -57,7 +44,7 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
         进程 = subprocess.Popen(
             ["git", "-C", str(仓库)] + 参数列表,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **平台适配.子进程组启动标志(),
         )
     except OSError as 错误:
         return 失败结果("提供者不可用", f"无法启动 git: {错误}", 可重试=True)
