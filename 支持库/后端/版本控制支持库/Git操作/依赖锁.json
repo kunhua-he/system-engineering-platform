@@ -26,9 +26,9 @@
   ],
   "环境": {
     "Python": "3.14.4",
-    "操作系统": "macOS（Darwin 26.5.2）",
+    "操作系统": "macOS",
     "CPU": "arm64"
   },
-  "生成时间": "",
+  "生成时间": "2026-09-16 18:50:29",
   "说明": "git 外部命令最低版本 2.39（worktree add/list/remove、revert、cherry-pick、status/log 稳定可用）；精确锁定，禁止范围版本；模块名为可执行名 git"
 }

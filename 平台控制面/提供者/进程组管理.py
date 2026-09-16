@@ -143,14 +143,11 @@ def 启动进程树(工作目录: str | Path | None = None, 模式: str | None =
 
 
 def 强杀进程组(进程组信息: dict) -> dict:
-    """SIGKILL 整个进程组，等待回收，清理临时目录，验证端口释放。"""
+    """强杀整个进程组，等待回收，清理临时目录，验证端口释放。"""
     组id = 进程组信息["进程组id"]
     端口 = 进程组信息["端口"]
     目录 = Path(进程组信息["工作目录"])
-    try:
-        os.killpg(组id, signal.SIGKILL)
-    except ProcessLookupError:
-        pass  # 进程组已不存在：重复强杀幂等
+    _强杀整组(组id, 进程组信息.get("节点pid表"))
     组长对象 = 进程组信息.get("组长对象")
     if 组长对象 is not None:
         try:
