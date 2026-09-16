@@ -118,7 +118,7 @@ class Test模块对称门禁(unittest.TestCase):
         )
         运行 = subprocess.run(
             [sys.executable, "-c", 脚本], capture_output=True, text=True,
-            cwd=str(系统根), env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": "~", "LANG": "zh_CN.UTF-8", "PYTHONPATH": str(系统根), "系统库网关凭证": "test"},
+            cwd=str(系统根), env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(Path.home()), "LANG": "zh_CN.UTF-8", "PYTHONPATH": str(系统根), "系统库网关凭证": "test"},
         )
         self.assertEqual(0, 运行.returncode, f"子进程失败: {运行.stdout[-800:]}\n{运行.stderr[-800:]}")
         self.assertIn("OK", 运行.stdout)

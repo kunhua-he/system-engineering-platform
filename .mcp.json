@@ -4,7 +4,7 @@
       "type": "stdio",
       "command": "/opt/homebrew/bin/python3.14",
       "args": [
-        "~/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
+        "${HOME}/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
       ],
       "env": {
         "系统库网关凭证": "${MCP_GATEWAY_TOKEN}",
