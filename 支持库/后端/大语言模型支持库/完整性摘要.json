@@ -197,11 +197,11 @@
     },
     {
       "路径": "模型连接器/__init__.py",
-      "sha256": "8952628e17e2fc2feffac2937cf924cc2a99b81b5d1cd8af177b3e731dbb3de1"
+      "sha256": "e5eacda7502691fa0b9ca7cb152313a2b8fd4054e99bccfeb4d14862e76ad947"
     },
     {
       "路径": "模型连接器/包声明.json",
-      "sha256": "20c475c7b76e23d1099034dc6454969f2e8bef18dcb67e2eedc13b78b0caed29"
+      "sha256": "f6d264938b14c223bc3c55725241b334f613a39f12a0d29a0ea30a51a26ee0af"
     },
     {
       "路径": "模型连接器/复用决策.json",
@@ -213,7 +213,7 @@
     },
     {
       "路径": "模型连接器/实现/模型连接器.py",
-      "sha256": "5a200ef1336560dd3548e671345c4c3bb97778110218721c76df983a1a39a88f"
+      "sha256": "0e9a4c314e7f83ae8e350f951f4b949638f9e0deac45675d7651f2666e9a8033"
     },
     {
       "路径": "模型连接器/权限契约/权限契约.json",
@@ -221,27 +221,27 @@
     },
     {
       "路径": "模型连接器/能力契约/参数契约.json",
-      "sha256": "718f9d7ed89a63e61f8c3dd1d3ab1f88a2933f63188838e43fc28362c6237554"
+      "sha256": "5dfe51afdd40616b029220191732c02f29b4c5bdcee4dc2ddaa324db504a6792"
     },
     {
       "路径": "模型连接器/能力定义.json",
-      "sha256": "ef66f91ee82fdfbf484923f710caa7ad8601b68e0f02a3b8707d6116060674f0"
+      "sha256": "86fae6b3d12db1b0e78a131ee8a6f902cf03581a98cf1080a6f15830a939cbc6"
     },
     {
       "路径": "模型连接器/能力数据/Agent查询数据.json",
-      "sha256": "208059058e5863dda771e3a559466baa8843acf446a4f76a1cbd4ceef812df16"
+      "sha256": "0d50d5f1e0339b2740d8a6c4bd923cfdb7f8aee245bf3cea8ab78e1d887249c0"
     },
     {
       "路径": "模型连接器/能力数据/能力搜索数据.json",
-      "sha256": "7fb4a0e0d3f7cac4565c4574d6f0b3279a00fdae53531f68a74c706ca34b2b75"
+      "sha256": "fef3cb2651dfa89a0d8637f7c05781fc09b053d47adcfacbe2b22fe9fbd97842"
     },
     {
       "路径": "模型连接器/说明/使用说明.md",
-      "sha256": "bd3899c4f4e1e6543fe39029595d74e83bfe91429117141a3231de4237232880"
+      "sha256": "738aff2261cacaab3db3a0805431c7fae017dbbbf97a2d179c84f5866c7b6f21"
     },
     {
       "路径": "模型连接器/说明/设计说明.md",
-      "sha256": "762d07075a18bbe847f58cf3b2f91b113630b2ba06e92748f14d136a52f405b9"
+      "sha256": "c81e1ee9a3d9b116f1f35c494757248edbf437be8fbe506c6c8cc1fa2abb198a"
     },
     {
       "路径": "模型连接器/资源预算.json",
