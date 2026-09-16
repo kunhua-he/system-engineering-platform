@@ -6,20 +6,36 @@
 
 存储口径（fail-closed）：只有「存储文件不存在」算全新空注册表；半截 JSON、
 顶层非对象、读失败一律判 `存储损坏` 并阻断——契约数据消失会让漂移门禁从
-恒拦变恒放，所以损坏绝不能被当成空表。写入走 tmp+fsync+os.replace 原子替换，
-进程中断不会留下半截 JSON 覆盖既有契约。
+恒拦变恒放，所以损坏绝不能被当成空表。
+
+**并发口径（本批收口）**：`登记契约` / `删除契约` 都是「读 → 合并 → 写」的
+check-then-act，只有「独占区内重读磁盘 → 在锁内改 → 原子替换」才能并发不丢更新。
+互斥与落盘原子性**不再由本文件自带**，一律走同包 `单文件互斥存储.py` 的唯一底座
+（类级实例缓存 `取实例` + RLock + 跨进程 flock + 锁内重读 + 唯一临时名 + fsync +
+`os.replace`）——与 `文件租约存储.py` 共用同一套机制，同包不再有第二套锁。
+修前实测：4 路并发登记 200/200 轮丢更新（终态只落 1 条）；唯一临时名只保住了
+「JSON 不写坏」，保不住被覆盖的读改写。
+
+只读动作（`查询契约` / `漂移判定` / `门禁判定`）不加锁：写侧是 `os.replace` 原子替换，
+读者要么读到旧版、要么读到新版，永远读不到半截内容，加锁只会平添争用与副作用
+（读不该建存储目录、不该建锁文件）。对外错误码集合一字不改
+（成功 / 消费者必填 / 能力必填 / 契约非法 / 未登记 / 存储损坏）：锁拿不到时**如实失败**
+并回带锁问题原文，既不假装成功、也不无锁登记（无锁登记就是丢更新）。
 """
 from __future__ import annotations
 
 import json
-import os
 import time
-import uuid
 from pathlib import Path
+
+from 平台控制面.能力目录.单文件互斥存储 import 单文件互斥存储
 
 # 对外错误码（中文口径，决策记录 0003「不用英文枚举」）：错误返回的错误码一律中文，
 # 与 能力定义.json 声明的 消费者必填/能力必填/契约非法/未登记 逐字一致。
 错误码表 = ("成功", "消费者必填", "能力必填", "契约非法", "未登记", "存储损坏")
+
+存储文件名 = "消费者契约.json"
+锁文件名 = ".消费者契约.lock"
 
 
 class 存储损坏错误(Exception):
@@ -30,57 +46,21 @@ class 存储损坏错误(Exception):
     """
 
 
-def _原子写入文本(路径: Path, 文本: str) -> None:
-    """tmp + fsync + os.replace 原子落盘（同仓口径，见 客户端/构建平台客户端._原子写入）。
-
-    直接覆盖写一旦进程中断就会留下半截 JSON：旧契约被破坏且无法恢复。
-    先写同目录临时文件并 fsync，再改名替换，任何时刻磁盘上都是完整文件。
-    """
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    临时 = 路径.parent / f".{路径.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
-    描述符 = -1
-    try:
-        描述符 = os.open(临时, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        视图 = memoryview(文本.encode("utf-8"))
-        while 视图:
-            已写 = os.write(描述符, 视图)
-            视图 = 视图[已写:]
-        os.fsync(描述符)
-        os.close(描述符)
-        描述符 = -1
-        os.replace(临时, 路径)
-    except BaseException:
-        # 写入或替换失败：清掉临时文件，既有存储在别处，逐字节不受影响
-        if 描述符 >= 0:
-            os.close(描述符)
-        try:
-            os.unlink(临时)
-        except FileNotFoundError:
-            pass
-        raise
-    # 目录项 fsync：保证改名本身落盘（失败只降级为「已替换但未持久」）
-    try:
-        目录描述符 = os.open(路径.parent, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(目录描述符)
-    except OSError:
-        pass
-    finally:
-        os.close(目录描述符)
-
-
 def 统一返回(成功: bool, 错误码: str, 消息: str, 数据=None) -> dict:
     """统一返回结构：成功/错误码/消息/数据。"""
     return {"成功": 成功, "错误码": 错误码, "消息": 消息, "数据": 数据}
 
 
-class 消费者契约注册表:
-    """消费者契约注册表；存储目录下 消费者契约.json 保存全部绑定。"""
+class 消费者契约注册表(单文件互斥存储):
+    """消费者契约注册表；存储目录下 消费者契约.json 保存全部绑定。
 
-    def __init__(self, 存储目录: Path | str) -> None:
-        self.存储文件 = Path(存储目录) / "消费者契约.json"
+    实例一律经 `取实例` 取（同目录同实例）；实例缓存/线程锁/跨进程锁/原子落盘由
+    `单文件互斥存储` 唯一承载。
+    """
+
+    存储标签 = "消费者契约注册表"
+    存储文件名 = 存储文件名
+    锁文件名 = 锁文件名
 
     # ---- 存储基础 ----
     def _读取(self) -> dict:
@@ -108,7 +88,24 @@ class 消费者契约注册表:
         return 数据
 
     def _写入(self, 存储: dict) -> None:
-        _原子写入文本(self.存储文件, json.dumps(存储, ensure_ascii=False, indent=2))
+        """原子落盘（唯一临时名 + fsync + os.replace），走基座单一口径。
+
+        锁不可用时基座直接抛 `OSError`：调用方按既有错误码 `存储损坏` 如实失败，
+        绝不在无锁状态下读改写。
+        """
+        self.原子写文本(json.dumps(存储, ensure_ascii=False, indent=2))
+
+    def _锁守卫(self) -> dict | None:
+        """跨进程锁不可用时按既有错误码 fail-closed；锁可用返回 None。
+
+        为什么不新开错误码：对外错误码集合一字不增（成功/消费者必填/能力必填/契约非法/
+        未登记/存储损坏），锁拿不到的语义与「存储不可用」同类，落 `存储损坏` 并把真实
+        锁问题原文放进消息——调用方读得到病根，门禁也绝不会把它读成放行。
+        """
+        锁问题 = self.锁问题()
+        if not 锁问题:
+            return None
+        return 统一返回(False, "存储损坏", 锁问题, None)
 
     def _损坏返回(self, 错误: 存储损坏错误, 数据=None) -> dict:
         """存储损坏统一返回：失败 + 明确中文错误码 + 原文原因，绝不静默放行。"""
@@ -127,12 +124,16 @@ class 消费者契约注册表:
         记录 = {**契约, "消费者id": 消费者id, "能力id": 能力id,
                 "登记时间": time.strftime("%Y-%m-%d %H:%M:%S")}
         try:
-            存储 = self._读取()
+            # 独占区里重读 → 合并 → 原子写：读改写之间不许别人插进来（否则丢更新）
+            with self.独占():
+                锁失败 = self._锁守卫()
+                if 锁失败 is not None:
+                    return 锁失败
+                存储 = self._读取()
+                存储.setdefault(能力id, {})[消费者id] = 记录
+                self._写入(存储)
         except 存储损坏错误 as 错误:
             return self._损坏返回(错误)
-        存储.setdefault(能力id, {})[消费者id] = 记录
-        try:
-            self._写入(存储)
         except OSError as 错误:
             return 统一返回(False, "存储损坏", f"消费者契约写入失败: {错误}", None)
         return 统一返回(True, "成功",
@@ -151,18 +152,22 @@ class 消费者契约注册表:
     def 删除契约(self, 消费者id: str, 能力id: str) -> dict:
         """删除消费者与能力的契约绑定。"""
         try:
-            存储 = self._读取()
+            # 判在不在与删除必须在同一个独占区里做完，否则并发下会删掉别人刚登记的那条
+            with self.独占():
+                锁失败 = self._锁守卫()
+                if 锁失败 is not None:
+                    return 锁失败
+                存储 = self._读取()
+                能力表 = 存储.get(能力id, {})
+                if 消费者id not in 能力表:
+                    return 统一返回(False, "未登记",
+                                    f"能力 {能力id} 未登记消费者 {消费者id} 的契约")
+                del 能力表[消费者id]
+                if not 能力表:
+                    del 存储[能力id]
+                self._写入(存储)
         except 存储损坏错误 as 错误:
             return self._损坏返回(错误)
-        能力表 = 存储.get(能力id, {})
-        if 消费者id not in 能力表:
-            return 统一返回(False, "未登记",
-                            f"能力 {能力id} 未登记消费者 {消费者id} 的契约")
-        del 能力表[消费者id]
-        if not 能力表:
-            del 存储[能力id]
-        try:
-            self._写入(存储)
         except OSError as 错误:
             return 统一返回(False, "存储损坏", f"消费者契约写入失败: {错误}", None)
         return 统一返回(True, "成功",
