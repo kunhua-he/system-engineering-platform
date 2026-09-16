@@ -13,7 +13,7 @@
     },
     {
       "路径": "PDF文档/包声明.json",
-      "sha256": "99e981fd029d357aee88b91ca7cce23f09d39dc87b942baeaa61ef1d81b082c3"
+      "sha256": "542999512696f07f26a457acd5eafcca470f0d15d0aa14cecb080b4c3184aa28"
     },
     {
       "路径": "PDF文档/复用决策.json",
@@ -37,7 +37,7 @@
     },
     {
       "路径": "PDF文档/能力定义.json",
-      "sha256": "3fa070635e02962f0510935d9ab2dce21c1764fe80511ecea42367a113476a4c"
+      "sha256": "83656f58afba7e2deca74ff7aadeb8327d7c58e47f381d003a3c2c84a952cdec"
     },
     {
       "路径": "PDF文档/能力数据/Agent查询数据.json",
@@ -93,7 +93,7 @@
     },
     {
       "路径": "文字文档/包声明.json",
-      "sha256": "e94b7a152cd7b7243cb6b332bcaa78570b8c4ece8c35bfa21854c887eec46c36"
+      "sha256": "7fa05e56dc9bd3e85938187f7fc09e6eda88ca9489ae2a1ffc970263602b72af"
     },
     {
       "路径": "文字文档/复用决策.json",
@@ -117,7 +117,7 @@
     },
     {
       "路径": "文字文档/能力定义.json",
-      "sha256": "7de638d63b04b4360f503234fcd33351bd13b4dfe9dd78b69edad9bbe5a2955f"
+      "sha256": "82b895cf2af1f841b2e336da357ca738ce9dcb9f48ae857298cfb6df1b51de9d"
     },
     {
       "路径": "文字文档/能力数据/Agent查询数据.json",
@@ -169,7 +169,7 @@
     },
     {
       "路径": "文档生成/包声明.json",
-      "sha256": "080bf9df6ba1ca3fbd0d74be3370185595d1a9a44cbf0280fca2f6ce1b548ef7"
+      "sha256": "4030128bf231017cf93fd5eaf7949a4d015858e05eb91dfde02c553be53d7442"
     },
     {
       "路径": "文档生成/复用决策.json",
@@ -209,7 +209,7 @@
     },
     {
       "路径": "文档生成/能力定义.json",
-      "sha256": "49405a15c776ddcfdfefcf892d9e144a8ad11ffa3b7f184d5c869eb1d6670dc2"
+      "sha256": "7b3a34d98637b63a14e93318bd5a70aaceee7d3b9ecdfefbf2af126be702f6f6"
     },
     {
       "路径": "文档生成/能力数据/Agent查询数据.json",
@@ -321,7 +321,7 @@
     },
     {
       "路径": "演示文稿/包声明.json",
-      "sha256": "6d62be1f29dfdd5d9029b8f0a1d3ca3cd9650800b0cf954eb99bfe7d700d031c"
+      "sha256": "fa1f6ddb07166201b8691906e6a944bc9330c6060729bf6a299db11eb5d7c919"
     },
     {
       "路径": "演示文稿/复用决策.json",
@@ -345,7 +345,7 @@
     },
     {
       "路径": "演示文稿/能力定义.json",
-      "sha256": "92f6bdbef61b5ccbed3edec4d5f8dbeaae2767aea0f476440a5a2f33b0e51e94"
+      "sha256": "5264945ae8a0e769e232a2162b109def3431dc9680e15cffa404f706dfe6c665"
     },
     {
       "路径": "演示文稿/能力数据/Agent查询数据.json",
@@ -449,7 +449,7 @@
     },
     {
       "路径": "表格文档/包声明.json",
-      "sha256": "44d4312f3ada26e7e8a2bb64a285adc63c6dcb4a04fc24c9e0516c29499eb837"
+      "sha256": "884f05062894c88deb913e5aa011ab08feb5f3257061709aa81b0f6cd25c566e"
     },
     {
       "路径": "表格文档/复用决策.json",
@@ -473,7 +473,7 @@
     },
     {
       "路径": "表格文档/能力定义.json",
-      "sha256": "3376658f37920b078f2dd38cba0d83fa5021c7517543a728f3a810f6f2acf979"
+      "sha256": "25ba46c065674ac79e0fe6accfface3afd7d7f88512de6f1c4077fb4ec15a6c1"
     },
     {
       "路径": "表格文档/能力数据/Agent查询数据.json",

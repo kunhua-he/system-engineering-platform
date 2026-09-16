@@ -205,7 +205,7 @@
     },
     {
       "路径": "数据集合/包声明.json",
-      "sha256": "75795ba5f9eab907c13cef0b8418e6bcc57436c4d10adb8ec23bdc79a6cf104c"
+      "sha256": "0b6e2473031fd2d1a4eca95e9df75637a27044a09e383b10849694c58bc30c9b"
     },
     {
       "路径": "数据集合/复用决策.json",
@@ -229,7 +229,7 @@
     },
     {
       "路径": "数据集合/能力定义.json",
-      "sha256": "5609937b2d684f71ea9761bf4ccbffead373fd48a166bf20c9486dc76555d8e3"
+      "sha256": "161acb5e82d41cb96cc79069c09108bf7db5f464b14cc6fa4fa9e7174db1a2e4"
     },
     {
       "路径": "数据集合/能力数据/Agent查询数据.json",

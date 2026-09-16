@@ -6,7 +6,7 @@ import json
 import hashlib
 from pathlib import Path
 
-系统根 = Path("~/Documents/Agent/PHP/系统工程平台")
+系统根 = Path(__file__).resolve().parents[1]  # 开发工具/ 的父目录＝项目根（不依赖 ~ 展开）
 目标目录 = ["支持库", "模块库", "技能库"]  # 扫描这些目录下的包
 
 def 计算sha256(路径):
