@@ -16,6 +16,7 @@
     python3.14 开发工具/验证场景体检.py --制品 <制品目录>     # 额外扫制品侧
     python3.14 开发工具/验证场景体检.py --含缓存              # 源码侧也扫 工程缓存/
     python3.14 开发工具/验证场景体检.py --修                  # 批量修两类确定缺陷（只动源码侧）
+    python3.14 开发工具/验证场景体检.py --覆盖 <制品目录>      # 覆盖率预检：公开能力取自制品 + 场景取自源码，**不重编译**就能报出还缺谁
 """
 from __future__ import annotations
 
@@ -118,15 +119,51 @@ def 批量修(根: Path) -> int:
     return 改动
 
 
+def 覆盖预检(根: Path, 制品: Path) -> tuple[bool, str]:
+    """用**制品的公开能力** + **源码的场景**跑验证器自己的全集判据，无需重编译。
+
+    为什么单独做：验证器只能对**已编译制品**跑，于是常见工作循环是「改场景 → 重编译（~20 秒）
+    → 跑验证器 → 才发现还缺谁」。本函数把「公开能力」与「场景」两个来源拆开取值
+    （能力集不受场景改动影响，取自现存制品；场景取自当前源码），一次调用就能拿到
+    「还缺哪些能力没有正向目标步骤」的确定答案。
+
+    依赖：制品目录必须已存在（只用它读公开能力，不校验其场景）。
+    """
+    from 开发工具.HTML验证.制品事实 import _扫描公开能力
+    from 开发工具.HTML验证.场景加载 import _解析场景引用, _校验场景全集
+
+    公开能力 = _扫描公开能力(Path(制品))[0]
+    场景原始表: list = []
+    for 目录 in _收集包目录(根, 含缓存=False):
+        场景原始表 += _解析场景引用(目录)
+    try:
+        _校验场景全集(公开能力, 场景原始表, "预检")
+        return True, f"公开能力 {len(公开能力)} 个全部有正向目标步骤（源码场景 {len(场景原始表)} 条）"
+    except Exception as 异常:
+        return False, f"{type(异常).__name__}: {异常}"
+
+
 def 主() -> int:
     解析 = argparse.ArgumentParser(description="验证场景格式体检（判据直连验证器解析链）")
     解析.add_argument("--根", default=str(Path(__file__).resolve().parent.parent))
     解析.add_argument("--制品", default="", help="额外扫描的编译制品目录（绝对路径或相对根）")
+    解析.add_argument("--覆盖", default="", help="覆盖率预检：用该制品（或相对根的路径）的公开能力 + 源码场景跑全集判据，不重编译")
     解析.add_argument("--含缓存", action="store_true", help="源码侧也扫 工程缓存/（默认跳过：缓存里是历史制品副本，不可修）")
     解析.add_argument("--修", action="store_true", help="批量修两类确定缺陷（只动源码侧）")
     参数 = 解析.parse_args()
     根 = Path(参数.根).resolve()
     场景加载 = _载入判据(根)
+
+    if 参数.覆盖:
+        制品 = Path(参数.覆盖) if os.path.isabs(参数.覆盖) else 根 / 参数.覆盖
+        if not 制品.is_dir():
+            print(f"[覆盖预检] 制品目录不存在: {制品}")
+            return 1
+        print(f"[覆盖预检] 公开能力取自: {制品}")
+        通过, 详情 = 覆盖预检(根, 制品)
+        print(("  ✅ " if 通过 else "  ❌ ") + 详情)
+        if not 通过:
+            return 1
 
     if 参数.修:
         print("批量修（只动源码侧，只修判据明确的两类）…")
