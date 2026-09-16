@@ -22,8 +22,8 @@ from 支持库.后端.组件规范支持库 import (
     激活指针文件名,
     生成快照清单模板,
     校验快照模板,
-    清单文件名,
-    摘要文件名,
+    快照清单文件名,
+    快照摘要文件名,
 )
 
 
@@ -46,8 +46,8 @@ class Test生成快照模板(unittest.TestCase):
         结果 = 生成快照清单模板(目标目录, 范围目录表, 工作目录=工作目录)
         self.assertTrue(结果["成功"], str(结果))
         self.assertEqual(结果["错误码"], "")
-        清单路径 = 目标目录 / 清单文件名
-        摘要路径 = 目标目录 / 摘要文件名
+        清单路径 = 目标目录 / 快照清单文件名
+        摘要路径 = 目标目录 / 快照摘要文件名
         激活路径 = 目标目录 / 激活指针文件名
         self.assertTrue(清单路径.is_file())
         self.assertTrue(摘要路径.is_file())
@@ -101,7 +101,7 @@ class Test校验快照模板(unittest.TestCase):
 
     def test_缺文件校验失败(self):
         _, 目标目录 = self._生成()
-        (目标目录 / 摘要文件名).unlink()
+        (目标目录 / 快照摘要文件名).unlink()
         通过, 消息 = 校验快照模板(目标目录)
         self.assertFalse(通过)
         self.assertIn("快照缺少", 消息)
@@ -114,7 +114,7 @@ class Test校验快照模板(unittest.TestCase):
 
     def test_篡改摘要文件校验失败(self):
         _, 目标目录 = self._生成()
-        (目标目录 / 摘要文件名).write_text(
+        (目标目录 / 快照摘要文件名).write_text(
             json.dumps({"摘要": "伪造"}), encoding="utf-8")
         通过, 消息 = 校验快照模板(目标目录)
         self.assertFalse(通过)
@@ -181,8 +181,8 @@ class Test真实核心契约目录(unittest.TestCase):
         self.assertGreater(结果["文件数"], 0)
         通过, 消息 = 校验快照模板(目标目录)
         self.assertTrue(通过, 消息)
-        self.assertFalse((真实目录 / 清单文件名).exists(), "不得在真实目录写入清单")
-        self.assertFalse((真实目录 / 摘要文件名).exists(), "不得在真实目录写入摘要")
+        self.assertFalse((真实目录 / 快照清单文件名).exists(), "不得在真实目录写入清单")
+        self.assertFalse((真实目录 / 快照摘要文件名).exists(), "不得在真实目录写入摘要")
         self.assertFalse((真实目录 / 激活指针文件名).exists(), "不得在真实目录写入激活指针")
 
 
