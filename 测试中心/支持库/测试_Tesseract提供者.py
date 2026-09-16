@@ -19,10 +19,12 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path: sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 公共契约.运行时.进程终止 import 进程存活
+from 公共契约.版本规则.契约版本 import 契约版本
 from 支持库.适配层.Tesseract提供者 import 识别图片, 语言包列表, 版本探针
 from 支持库.适配层.Tesseract提供者.实现 import 提供者 as 提供者模块
 from 支持库.适配层.Tesseract提供者.实现 import 受管进程 as 受管模块
 from 支持库.适配层.Tesseract提供者.实现.临时文件 import 临时目录前缀
+from 支持库.后端.组件规范支持库.实现.组件规范 import 校验组件规范
 
 tesseract存在 = lambda: shutil.which("tesseract") is not None
 
@@ -203,11 +205,25 @@ class Test包级合规(unittest.TestCase):
         )
 
     def test_九要素齐全(self):
+        """S0 正式包九要素 + 平台权威校验器复核。
+
+        依赖契约按平台判据**可选**：`组件规范支持库/实现/组件规范.py::校验组件规范`
+        与 `组件合规/合规测试包.py::_场景依赖` 两处同源——**无文件 = 无内部依赖**；
+        提交 24704a44（2026-09-15 华哥决定）已把空白内部依赖声明全部删除，本包
+        `依赖契约/依赖契约.json` 因此**不该存在**。本用例不再把「文件必须存在」当合格线，
+        改为「生产权威校验器通过 + 若存在则不得是空壳」，断言强度只增不减。
+        """
         for 相对路径 in (
-            "依赖契约/依赖契约.json", "配置契约/配置契约.json", "权限契约/权限契约.json",
+            "配置契约/配置契约.json", "权限契约/权限契约.json",
             "资源预算.json", "复用决策.json", "验证场景引用.json", "完整性摘要.json",
         ):
             self.assertTrue((self.提供者目录 / 相对路径).is_file(), f"缺少 {相对路径}")
+        依赖契约 = self.提供者目录 / "依赖契约" / "依赖契约.json"
+        if 依赖契约.is_file():
+            self.assertTrue(json.loads(依赖契约.read_text(encoding="utf-8")).get("依赖"),
+                            "依赖契约存在即不得是空壳（空白内部依赖声明一律删）")
+        规范结果 = 校验组件规范(self.提供者目录)
+        self.assertTrue(规范结果.成功, f"九要素不合规: {规范结果.问题列表}")
         预算 = json.loads((self.提供者目录 / "资源预算.json").read_text(encoding="utf-8"))
         for 键 in ("内存上限", "线程上限", "子进程上限", "并发调用上限", "队列长度",
                    "文件句柄上限", "临时空间上限", "单次调用超时", "每分钟重启次数", "空闲回收时间"):
@@ -218,13 +234,19 @@ class Test包级合规(unittest.TestCase):
     def test_聚合契约全要素与权限覆盖(self):
         契约数据 = json.loads(
             (self.提供者目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
-        self.assertEqual(契约数据["契约版本"], "1.0.0")
+        # 契约版本从唯一事实源现读（公共契约/版本规则/契约版本.py），禁写死字面量：
+        # 曾写死 "1.0.0"，平台契约版本收敛为唯一值 2.0.0 后就成假红。
+        self.assertEqual(契约数据["契约版本"], 契约版本)
         能力表 = 契约数据["能力契约"]
-        self.assertEqual(len(能力表), 3)
+        定义数据 = json.loads((self.提供者目录 / "能力定义.json").read_text(encoding="utf-8"))
+        定义版本 = {能力["能力id"]: 能力["版本"] for 能力 in 定义数据["能力列表"]}
+        # 数量不写死：与 能力定义.json（唯一事实源）对称，两侧任一漂移即红。
+        self.assertEqual(len(能力表), len(定义数据["能力列表"]))
         权限数据 = json.loads(
             (self.提供者目录 / "权限契约" / "权限契约.json").read_text(encoding="utf-8"))
         for 能力 in 能力表:
-            self.assertEqual(能力["版本"], "1.0.0", 能力["能力id"])
+            # 逐能力迭代版本与 能力定义.json 对称（两源必须一致），同样不写死字面量。
+            self.assertEqual(能力["版本"], 定义版本.get(能力["能力id"]), 能力["能力id"])
             self.assertIn("调用示例", 能力, 能力["能力id"])
             self.assertIsInstance(能力["调用示例"].get("参数"), dict)
             for 参数 in 能力["参数"]:
@@ -232,7 +254,6 @@ class Test包级合规(unittest.TestCase):
                 self.assertIn("必填", 参数)
                 self.assertIn("默认值", 参数)
             self.assertIn(能力["能力id"], 权限数据, f"{能力['能力id']} 缺权限声明")
-        定义数据 = json.loads((self.提供者目录 / "能力定义.json").read_text(encoding="utf-8"))
         self.assertEqual({能力["能力id"] for 能力 in 能力表},
                          {能力["能力id"] for 能力 in 定义数据["能力列表"]})
 
