@@ -16,7 +16,7 @@ _证据锁 = threading.Lock()
 
 def 采样内存RSS(ps命令: str | None) -> dict:
     """真实 RSS(MB)：macOS ps -o rss=，Linux /proc 状态；失败返回错误码。"""
-    if sys.platform == "darwin":
+    if 平台适配.是macOS():
         for 路径 in (ps路径表 if ps命令 is None else (ps命令,)):
             try:
                 输出 = subprocess.run([路径, "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=5)

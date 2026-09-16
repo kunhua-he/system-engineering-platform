@@ -47,6 +47,10 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.运行时.有界IO import 受限读取
+# 平台差异只在 公共契约/运行时/ 的两份收口层里判断：本文件（发布门禁本体）
+# 不再出现「按平台名分支 / 直接杀进程组」这类裸平台调用。
+from 公共契约.运行时 import 平台适配
+from 公共契约.运行时 import 进程终止
 
 
 _门禁临时目录表: set[Path] = set()
@@ -135,7 +139,7 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
     try:
         进程对象 = subprocess.Popen(
             命令列表, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=False, start_new_session=(os.name == "posix"),
+            text=False, **平台适配.子进程组启动标志(),
             env={**os.environ, **(环境覆盖 or {}), "PYTHONUNBUFFERED": "1"},
         )
     except OSError as 错误:
@@ -184,16 +188,10 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
 
     if 超时 or 输出超限.is_set():
         原因 = "输出超过上限" if 输出超限.is_set() else f"超时（> {超时秒} 秒）"
-        try:
-            if os.name == "posix":
-                os.killpg(进程对象.pid, signal.SIGKILL)
-            else:
-                进程对象.kill()
-        except OSError:
-            pass
-        try:
-            进程对象.wait(timeout=5)
-        except subprocess.TimeoutExpired:
+        # 回收整个进程组：POSIX SIGKILL / Windows 终止命令的选择由收口层执行，
+        # 本处只看「结论是否成功」，不再按 os.name 自己分平台。
+        回收结果 = 进程终止.强制结束子进程(进程对象, 宽限秒=0.0, 等待秒=5.0)
+        if not 回收结果.成功:
             return -1, f"{原因}，进程组未能回收"
         读取线程.join(timeout=5)
         if 进程对象.stdout is not None:
@@ -213,14 +211,9 @@ def 运行子进程(命令列表: list[str], *, 超时秒: float = 60.0,
     try:
         退出码 = 进程对象.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        try:
-            if os.name == "posix":
-                os.killpg(进程对象.pid, signal.SIGKILL)
-            else:
-                进程对象.kill()
-        except OSError:
-            pass
-        return -1, "子进程退出确认超时，已请求回收进程组"
+        回收结果 = 进程终止.强制结束子进程(进程对象, 宽限秒=0.0, 等待秒=5.0)
+        回收说明 = "已回收进程组" if 回收结果.成功 else "进程组未能回收"
+        return -1, f"子进程退出确认超时，{回收说明}"
     return 退出码, bytes(输出盒).decode("utf-8", "replace")
 
 

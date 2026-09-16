@@ -144,16 +144,15 @@ class 句柄体系:
                     for r in 对象.绑定资源]
 
     def _检查进程存活(self, pid: int) -> bool:
-        """检查 PID 是否存活（排除 zombie）。"""
+        """检查 PID 是否存活（排除 zombie）。
+
+        存活探测走跨平台收口层：Windows 上对非控制台信号发 0 号信号等于
+        ``TerminateProcess``，裸调会把目标进程**真杀掉**——故本处一律经
+        ``进程终止.进程存活``，由收口层按平台选 WinAPI 或 POSIX 探活。
+        """
         if not isinstance(pid, int) or pid <= 0:
             return False
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        except Exception:
+        if not 进程终止.进程存活(pid):
             return False
         try:
             import subprocess

@@ -12,6 +12,9 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+# 进程存活探测的跨平台实现只在 公共契约/运行时/ 收口层；本文件不裸调 os.kill。
+from 公共契约.运行时 import 进程终止
+
 
 @dataclass
 class 进程身份:
@@ -60,13 +63,12 @@ def 进程存活(身份: 进程身份, 心跳超时秒: float = 15.0) -> bool:
 
 
 def 系统进程存在(进程id: int) -> bool:
-    """查询操作系统中的进程是否仍存在，不发送终止信号。"""
+    """查询操作系统中的进程是否仍存在，不发送终止信号。
+
+    探测一律经跨平台收口层：原先按 0 号信号裸探活在 Windows 上不是探活，
+    而是 ``TerminateProcess``——会把被查的进程真杀掉（且其它 OSError 还会逸出）。
+    ``进程终止.进程存活`` 按平台选 WinAPI 或 POSIX 探活，非法入参返回 False 不抛。
+    """
     if 进程id <= 0:
         return False
-    try:
-        os.kill(进程id, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    return 进程终止.进程存活(进程id)
