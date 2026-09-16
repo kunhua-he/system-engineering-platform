@@ -49,9 +49,14 @@ def 采样句柄数() -> dict:
     try:
         目录表 = 平台适配.句柄枚举目录表()
         if not 目录表:
-            return {"成功": False, "值": 0, "错误码": "平台不支持",
+            return {"成功": False, "值": -1, "错误码": "平台不支持",
                     "错误说明": "当前平台无句柄枚举目录，无法统计打开句柄数"}
-        return {"成功": True, "值": len(os.listdir(目录表[0])), "错误码": "", "错误说明": ""}
+        # 候选目录按平台优先级排列，取**第一个真实存在**的（不能只看 [0]：macOS 无 /proc/self/fd）
+        可用目录 = next((d for d in 目录表 if os.path.isdir(d)), None)
+        if 可用目录 is None:
+            return {"成功": False, "值": -1, "错误码": "句柄枚举失败",
+                    "错误说明": f"句柄目录均不可用: {list(目录表)}"}
+        return {"成功": True, "值": len(os.listdir(可用目录)), "错误码": "", "错误说明": ""}
     except OSError:
         return {"成功": False, "值": -1, "错误码": "句柄枚举失败", "错误说明": "句柄目录均不可用"}
 
