@@ -5,12 +5,18 @@
 ``公共契约.运行时`` 的收口层（``平台适配.子进程组启动标志``、``进程终止``）。
 """
 from __future__ import annotations
-import os, queue, re, subprocess, sys, threading, time
+import os, queue, re, shutil, subprocess, sys, threading, time
 from pathlib import Path
 from typing import Any
 from 开发工具.HTML验证.常量 import 默认启动超时秒, 输出上限字节
 from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
+
+#: 进程状态工具（``ps``）的绝对路径；由 ``shutil.which`` 按能力探测，**不按平台名判**。
+#: 存在 → 可用它排除僵尸得到「活动成员」语义；不存在（如 Windows）→ 退回收口层探活。
+_进程状态工具 = shutil.which("ps")
+
+
 class _有界输出:
     def __init__(self, 上限字节: int) -> None:
         self.上限 = max(128, int(上限字节))
@@ -44,17 +50,18 @@ def _读取管道(管道: Any, 缓冲: _有界输出, 事件: queue.Queue[None])
 def _进程组活跃(进程组id: int) -> bool:
     """进程组内是否仍有**活动（非僵尸）**成员。
 
-    POSIX 优先用 ``ps`` 扫描真实组归属：僵尸成员不算活跃——这与收口层
-    ``进程存活`` / ``按组号探活`` 的「僵尸计为存活」语义**刻意不同**，本函数判的是
-    「组是否还占着资源」，僵尸已不占资源。
+    优先用 ``ps`` 扫描真实组归属：僵尸成员不算活跃——这与收口层 ``进程存活`` /
+    ``按组号探活`` 的「僵尸计为存活」语义**刻意不同**，本函数判的是「组是否还占着
+    资源」，僵尸已不占资源。
 
-    ``ps`` 不可用（或平台无进程组概念）时退回收口层 ``按组号探活``：平台差异
-    全在收口层判定，本调用点不出现 ``os.killpg`` / ``os.name`` 分支。
+    ``ps`` 不可用（如 Windows 无此工具）时退回收口层 ``按组号探活``：**按能力探测，
+    不按平台名硬判**（``shutil.which("ps")`` 判的是「这台机器有没有这个进程状态工具」），
+    平台差异全在收口层承担。
     """
-    if os.name == "posix":
+    if _进程状态工具:
         try:
             结果 = subprocess.run(
-                ["ps", "-axo", "pgid=,stat="], capture_output=True, text=True, timeout=2, check=False,
+                [_进程状态工具, "-axo", "pgid=,stat="], capture_output=True, text=True, timeout=2, check=False,
             )
             for 行 in 结果.stdout.splitlines():
                 部分 = 行.strip().split(None, 1)

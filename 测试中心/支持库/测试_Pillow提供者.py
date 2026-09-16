@@ -22,6 +22,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 公共契约.能力契约.契约 import 能力注册表
+from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.后端.图像处理支持库.图像解码 import (
     解码图像, 像素统计, 生成占位图, 生成缩略图, 图像EXIF转置,
     透明背景合成, 计算感知哈希, 缩放图像, 重编码图像, 注册能力,
@@ -114,7 +115,9 @@ class _假进程:
 def _退出子进程(码: int) -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, "-c", f"import os; os._exit({码})"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        # 平台差异收口：POSIX 走 start_new_session，Windows 走 CREATE_NEW_PROCESS_GROUP
+        **子进程组启动标志(),
     )
 
 

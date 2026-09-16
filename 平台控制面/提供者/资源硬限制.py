@@ -52,11 +52,12 @@ class _惰性限制类型表:
     - 非 POSIX：任何取值经 `限制类型表()` 显式抛 ``平台不支持错误``，不静默返 None。
     """
 
-    def 取值(self) -> dict[str, int]:
+    def 全部取值(self) -> dict[str, int]:
         """真实映射（每次取值现算，避免导入期取用 POSIX 专有模块）。"""
         return 限制类型表()
 
-    def get(self, 类型: str, 默认=None):
+    def 取(self, 类型: str, 默认=None):
+        """中文命名的取项方法（不用 dict 的 ``get``：正式代码全中文，且 ``get`` 不是映射协议的一部分）。"""
         return 限制类型表().get(类型, 默认)
 
     def __getitem__(self, 类型: str) -> int:
@@ -70,15 +71,6 @@ class _惰性限制类型表:
 
     def __iter__(self):
         return iter(限制类型表())
-
-    def keys(self):
-        return 限制类型表().keys()
-
-    def values(self):
-        return 限制类型表().values()
-
-    def items(self):
-        return 限制类型表().items()
 
     def __repr__(self) -> str:
         return "类型表（惰性：取值时才取用 POSIX 专有的 resource 模块）"
@@ -155,7 +147,7 @@ def 设置限制(类型: str, 软上限: int, 硬上限: int) -> dict:
     ``resource`` 在真正调用它的本函数内惰性导入（POSIX 专有：顶层导入会让 Windows 上
     import 本模块即崩）；非 POSIX 平台由 `类型表.get()` 先行**显式报不支持**。
     """
-    常量 = 类型表.get(类型)
+    常量 = 类型表.取(类型)
     if 常量 is None:
         return {"成功": False, "值": None, "错误码": 未强制, "错误说明": f"未知限制类型: {类型}"}
     from resource import getrlimit, setrlimit  # 惰性导入：POSIX 专有

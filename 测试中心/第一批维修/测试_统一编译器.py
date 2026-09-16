@@ -5,7 +5,6 @@ import json
 import os
 import select
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -21,6 +20,8 @@ from unittest import mock
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.运行时.平台适配 import 子进程组启动标志
+from 公共契约.运行时.进程终止 import 强制结束子进程
 from 开发工具.项目编译.工作区指纹 import 计算工作区字节指纹
 from 开发工具.项目编译.项目编译器 import (
     _准备输出目录,
@@ -199,7 +200,8 @@ class 启动器页面路由测试(unittest.TestCase):
             进程 = subprocess.Popen(
                 ["python3.14", "-u", "-B", "运行入口/启动.py", "--端口", "0", "--不自动打开"],
                 cwd=输出, env=环境, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                start_new_session=True,
+                # 平台差异收口：POSIX 走 start_new_session，Windows 走 CREATE_NEW_PROCESS_GROUP
+                **子进程组启动标志(),
             )
             try:
                 地址 = ""
@@ -225,13 +227,9 @@ class 启动器页面路由测试(unittest.TestCase):
                 self.assertEqual(捕获.exception.code, 404)
                 捕获.exception.close()
             finally:
-                if 进程.poll() is None:
-                    os.killpg(进程.pid, signal.SIGINT)
-                    try:
-                        进程.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(进程.pid, signal.SIGKILL)
-                        进程.wait(timeout=5)
+                # 平台差异收口：优雅终止→宽限→强杀→复查死透 全由 进程终止.强制结束子进程 承担，
+                # 调用点不再出现 os.killpg / signal.SIGINT|SIGKILL
+                强制结束子进程(进程, 宽限秒=10, 等待秒=5)
                 if 进程.stdout is not None:
                     进程.stdout.close()
                 if 进程.stderr is not None:

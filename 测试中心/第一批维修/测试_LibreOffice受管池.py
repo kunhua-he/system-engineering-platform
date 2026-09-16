@@ -19,6 +19,8 @@ from unittest import mock
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.运行时.进程终止 import 进程存活
+
 
 假程序源码 = r'''#!/usr/bin/env python3
 import json
@@ -186,9 +188,9 @@ class 测试LibreOffice受管池(unittest.TestCase):
         子进程pid = 日志[0]["pid"]
         截止 = time.monotonic() + 2
         while time.monotonic() < 截止:
-            try:
-                os.kill(子进程pid, 0)
-            except ProcessLookupError:
+            # 探活一律走收口层：Windows 上裸用 os.kill(pid, 0) 会真把目标进程结束掉
+            # （os.kill 对非控制台信号走 TerminateProcess），不能用来当「探活」
+            if not 进程存活(子进程pid):
                 break
             time.sleep(0.02)
         else:
@@ -211,12 +213,8 @@ class 测试LibreOffice受管池(unittest.TestCase):
             线程.join(timeout=3)
         self.assertFalse(线程.is_alive())
         self.assertFalse(根目录.exists())
-        try:
-            os.kill(子进程pid, 0)
-        except ProcessLookupError:
-            pass
-        else:
-            self.fail("关闭后子进程仍存活")
+        # 探活走收口层（Windows 上 os.kill(pid, 0) 会真杀进程，不可用作探活）
+        self.assertFalse(进程存活(子进程pid), "关闭后子进程仍存活")
 
     def test_子进程异常退出后清理作业临时目录(self):
         池 = self._新建池(池大小=1)

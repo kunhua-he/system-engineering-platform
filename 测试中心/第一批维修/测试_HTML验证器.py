@@ -30,6 +30,12 @@ from 开发工具.HTML验证 import (
 from 开发工具.HTML验证.单步场景 import 验证场景
 from 开发工具.HTML验证.验证报告 import 验证报告
 
+#: 能力探测式能力判据（**不**按 ``os.name`` / ``sys.platform`` 平台名硬判）：
+#: 「收口层能否给出真实进程组号」。``进程终止.进程组号`` 在无进程组概念的平台
+#: （Windows）如实返回 ``None`` → 该类的「独立进程组 + 整组回收」断言无意义；
+#: Linux / macOS 都有真实组号 → 该类**真跑**，只有 Windows 才跳。
+有进程组概念 = 进程组号(os.getpid()) is not None
+
 
 def 写JSON(路径: Path, 数据) -> None:
     路径.parent.mkdir(parents=True, exist_ok=True)
@@ -676,7 +682,7 @@ class Test制品端口策略(unittest.TestCase):
             self.assertIsNone(实际端口)
 
 
-@unittest.skipUnless(os.name == "posix", "进程组回收仅在 POSIX 验证")
+@unittest.skipUnless(有进程组概念, "本平台无进程组号概念（进程终止.进程组号 返回 None），进程组回收断言不适用")
 class Test进程生命周期(unittest.TestCase):
     def test_首次提供者环境安装有足够启动预算(self):
         self.assertGreaterEqual(常量.默认启动超时秒, 120)

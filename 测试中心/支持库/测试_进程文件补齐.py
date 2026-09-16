@@ -18,6 +18,8 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.进程终止 import 进程组号, 按组号探活
+from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.本地进程适配器 import 本地进程适配器
 from 支持库.后端.文件系统支持库.文件操作 import (
     创建目录, 复制文件, 判断存在, 读取二进制文件, 读取文件, 读取文件头部字节,
@@ -126,23 +128,26 @@ class Test进程补齐(unittest.TestCase):
         self.assertIsNone(适配器.运行进程)
 
     def test_取消运行(self):
-        """启动长进程后取消→进程组终止。"""
+        """启动长进程后取消→进程组终止（零残留按收口层探活）。"""
         适配器 = 本地进程适配器()
         import subprocess
         进程 = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(60)"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            # 平台差异收口：POSIX 走 start_new_session，Windows 走 CREATE_NEW_PROCESS_GROUP
+            **子进程组启动标志(),
         )
+        # 组号必须在取消**之前**取：取消会把组长回收掉，回收后 os.getpgid 必然失败
+        # （收口层 进程组号 此时如实返回 None），拿不到「待验证的组号」。
+        组号 = 进程组号(进程)
         适配器.运行进程 = 进程
         取消 = 适配器.取消运行()
         self.assertTrue(取消.成功)
-        try:
-            os.killpg(os.getpgid(进程.pid), 0)
-            残留 = True
-        except (OSError, ProcessLookupError):
-            残留 = False
-        self.assertFalse(残留, "进程组应被 killpg 回收，零残留")
+        # 探活一律走收口层：裸用 os.killpg(os.getpgid(pid), 0) 在 Windows 上根本不存在，
+        # 且 os.kill(pid, 0) 在 Windows 上会真把目标进程结束掉。
+        # 无进程组概念的平台（进程组号 如实返回 None）不做组级断言，不伪造「已验证」。
+        残留 = 组号 is not None and 按组号探活(组号)
+        self.assertFalse(残留, "进程组应被整组回收，零残留")
         for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
             if 流 is not None:
                 流.close()
