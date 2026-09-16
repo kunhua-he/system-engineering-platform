@@ -27,9 +27,17 @@ class 发布者视图:
         self.服务 = 服务
 
     # ---- 统一授权与错误结构 ----
-    def _校验发布者(self, 令牌: str, 操作: str = "") -> tuple[bool, dict[str, Any]]:
-        允许, _错误码, 会话 = self.服务.授权.校验操作(令牌=令牌, 操作=操作 or 发布授权操作)
-        return 允许, 会话
+    def _校验发布者(self, 令牌: str, 操作: str = "") -> tuple[bool, dict[str, Any], str]:
+        """校验发布者权限：返回（允许, 会话, 拒绝码）。
+
+        拒绝码由授权实现（平台控制面/授权.py 校验操作）产出，按决策 0003
+        「对外错误只走中文」恒为中文短词（会话不存在/会话过期/未知角色/
+        角色未授予/越权操作）。本视图**如实透传**该中文码，禁止再用硬编码
+        英文码 PERMISSION_DENIED 覆盖（那会把上游中文码降级为英文对外）。
+        兜底值同为中文：越权操作（与授权实现越权拒绝分支同码）。
+        """
+        允许, 错误码, 会话 = self.服务.授权.校验操作(令牌=令牌, 操作=操作 or 发布授权操作)
+        return 允许, 会话, 错误码
 
     @staticmethod
     def _拒绝(错误码: str, 消息: str = "权限不足") -> dict[str, Any]:
@@ -38,9 +46,9 @@ class 发布者视图:
     # ---- 审核候选（只读制品记录） ----
     def 审核候选(self, *, 令牌: str, 制品摘要: str) -> dict[str, Any]:
         """读取制品记录供审核：包id/版本/构建输入/来源证据/签名状态。"""
-        允许, _会话 = self._校验发布者(令牌)
+        允许, _会话, 拒绝码 = self._校验发布者(令牌)
         if not 允许:
-            return self._拒绝("PERMISSION_DENIED")
+            return self._拒绝(拒绝码 or "越权操作")
         制品 = self.服务.状态.读取记录("制品", "制品摘要", 制品摘要)
         if 制品 is None:
             return self._拒绝("ARTIFACT_NOT_FOUND", "制品不存在")
@@ -53,9 +61,9 @@ class 发布者视图:
     # ---- 签名（密钥环私钥 + 信任目录，真实 Ed25519） ----
     def 签名(self, *, 令牌: str, 制品摘要: str) -> dict[str, Any]:
         """签名候选：私钥取自服务密钥环，经 服务.仓库.签名制品 真实签名。"""
-        允许, 会话 = self._校验发布者(令牌)
+        允许, 会话, 拒绝码 = self._校验发布者(令牌)
         if not 允许:
-            return self._拒绝("PERMISSION_DENIED")
+            return self._拒绝(拒绝码 or "越权操作")
         身份id = 会话["身份id"]
         私钥 = self.服务._签名密钥环.get(身份id)
         if 私钥 is None:
@@ -78,9 +86,9 @@ class 发布者视图:
     # ---- 撤销（先读发布状态，再执行回滚） ----
     def 撤销(self, *, 令牌: str, 发布id: str, 回滚目标: str = "") -> dict[str, Any]:
         """撤销发布：先读取发布状态，再经执行操作(回滚) 切回目标指针。"""
-        允许, _会话 = self._校验发布者(令牌, 回滚授权操作)
+        允许, _会话, 拒绝码 = self._校验发布者(令牌, 回滚授权操作)
         if not 允许:
-            return self._拒绝("PERMISSION_DENIED")
+            return self._拒绝(拒绝码 or "越权操作")
         发布记录 = self.服务.状态.读取记录("发布", "发布id", 发布id)
         if 发布记录 is None:
             return self._拒绝("RELEASE_NOT_FOUND", "发布不存在")
@@ -106,9 +114,9 @@ class 发布者视图:
         仓库 Ed25519 验证 + 磁盘逐一重算 sha256；任一正式文件被篡改
         （源码/安装内容变化）即返回失败，证明旧签名失效。
         """
-        允许, _会话 = self._校验发布者(令牌)
+        允许, _会话, 拒绝码 = self._校验发布者(令牌)
         if not 允许:
-            return self._拒绝("PERMISSION_DENIED")
+            return self._拒绝(拒绝码 or "越权操作")
         制品 = self.服务.状态.读取记录("制品", "制品摘要", 制品摘要)
         if 制品 is None:
             return self._拒绝("ARTIFACT_NOT_FOUND", "制品不存在")
