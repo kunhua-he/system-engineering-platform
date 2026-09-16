@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -18,31 +17,33 @@ for _祖先 in 系统根.parents:
 
 
 def _创建旧库(目录: Path, *, 中断迁移: bool = False) -> None:
-    连接 = sqlite3.connect(str(目录 / "权威状态.db"))
-    连接.executescript("""
-        CREATE TABLE 元信息(键 TEXT PRIMARY KEY, 值 TEXT);
-        CREATE TABLE 句柄(句柄id TEXT PRIMARY KEY, 句柄类型 TEXT, 资源id TEXT,
+    # 建旧库经唯一 SQLite 支持库入口（事务执行：BEGIN IMMEDIATE + 全表 DDL + 初始行）
+    from 支持库.后端.数据库连接支持库.SQLite数据库 import 事务执行
+
+    SQL列表 = [
+        """CREATE TABLE 元信息(键 TEXT PRIMARY KEY, 值 TEXT)""",
+        """CREATE TABLE 句柄(句柄id TEXT PRIMARY KEY, 句柄类型 TEXT, 资源id TEXT,
             项目id TEXT, 所有者 TEXT, 状态 TEXT, 版本 TEXT,
-            创建时间 TEXT, 失效时间 TEXT, 失效原因 TEXT);
-        CREATE TABLE 租约(租约id TEXT PRIMARY KEY, 资源id TEXT, 项目id TEXT, 所有者 TEXT,
-            句柄id TEXT, 空闲超时秒 REAL, 硬截止时间 REAL, 最后心跳 REAL, 已回收 INTEGER);
-        CREATE TABLE 资源版本(资源id TEXT PRIMARY KEY, 版本 TEXT, 值 TEXT, 摘要 TEXT, 更新时间 TEXT);
-        CREATE TABLE 事务(事务id TEXT PRIMARY KEY, 资源id TEXT, 句柄id TEXT, 基础版本 TEXT,
-            状态 TEXT, 结果 TEXT, 新版本 TEXT, 创建时间 TEXT, 提交时间 TEXT);
-        CREATE TABLE 锁(资源id TEXT PRIMARY KEY, 持有者 TEXT, 锁时间 TEXT);
-        CREATE TABLE 进程(身份键 TEXT PRIMARY KEY, 进程id INTEGER, 启动指纹 TEXT,
-            项目id TEXT, 所有者 TEXT, 实例id TEXT, 最后心跳 REAL);
-        CREATE TABLE 回收证据(证据id TEXT PRIMARY KEY, 句柄id TEXT, 资源id TEXT, 类型 TEXT,
-            失效原因 TEXT, 时间 TEXT, 版本 TEXT);
-        CREATE TABLE 引用计数(引用键 TEXT PRIMARY KEY, 包id TEXT, 版本 TEXT, 计数 INTEGER);
-    """)
-    连接.execute("INSERT INTO 元信息 VALUES('结构版本', '1.0.0')")
-    连接.execute(
-        "INSERT INTO 资源版本 VALUES('老资源', '0', '{\"内容\": \"旧数据\"}', '', '')")
+            创建时间 TEXT, 失效时间 TEXT, 失效原因 TEXT)""",
+        """CREATE TABLE 租约(租约id TEXT PRIMARY KEY, 资源id TEXT, 项目id TEXT, 所有者 TEXT,
+            句柄id TEXT, 空闲超时秒 REAL, 硬截止时间 REAL, 最后心跳 REAL, 已回收 INTEGER)""",
+        """CREATE TABLE 资源版本(资源id TEXT PRIMARY KEY, 版本 TEXT, 值 TEXT, 摘要 TEXT, 更新时间 TEXT)""",
+        """CREATE TABLE 事务(事务id TEXT PRIMARY KEY, 资源id TEXT, 句柄id TEXT, 基础版本 TEXT,
+            状态 TEXT, 结果 TEXT, 新版本 TEXT, 创建时间 TEXT, 提交时间 TEXT)""",
+        """CREATE TABLE 锁(资源id TEXT PRIMARY KEY, 持有者 TEXT, 锁时间 TEXT)""",
+        """CREATE TABLE 进程(身份键 TEXT PRIMARY KEY, 进程id INTEGER, 启动指纹 TEXT,
+            项目id TEXT, 所有者 TEXT, 实例id TEXT, 最后心跳 REAL)""",
+        """CREATE TABLE 回收证据(证据id TEXT PRIMARY KEY, 句柄id TEXT, 资源id TEXT, 类型 TEXT,
+            失效原因 TEXT, 时间 TEXT, 版本 TEXT)""",
+        """CREATE TABLE 引用计数(引用键 TEXT PRIMARY KEY, 包id TEXT, 版本 TEXT, 计数 INTEGER)""",
+        "INSERT INTO 元信息 VALUES('结构版本', '1.0.0')",
+        """INSERT INTO 资源版本 VALUES('老资源', '0', '{"内容": "旧数据"}', '', '')""",
+    ]
     if 中断迁移:
-        连接.execute("ALTER TABLE 资源版本 ADD COLUMN 栅栏令牌 INTEGER DEFAULT 0")
-    连接.commit()
-    连接.close()
+        SQL列表.append("ALTER TABLE 资源版本 ADD COLUMN 栅栏令牌 INTEGER DEFAULT 0")
+    建库结果 = 事务执行(str(目录 / "权威状态.db"), SQL列表)
+    if not 建库结果.成功:
+        raise RuntimeError(f"旧库创建失败：{建库结果.错误码} {建库结果.错误说明}")
 
 
 def _旧库迁移() -> str:
@@ -54,13 +55,12 @@ def _旧库迁移() -> str:
         状态 = 权威状态(目录)
         结构正常, 说明 = 状态.校验结构()
         资源 = 状态.读取资源("老资源")
-        查询连接 = sqlite3.connect(str(目录 / "权威状态.db"))
-        try:
-            版本 = 查询连接.execute(
-                "SELECT 值 FROM 元信息 WHERE 键='结构版本'"
-            ).fetchone()[0]
-        finally:
-            查询连接.close()
+        from 支持库.后端.数据库连接支持库.SQLite数据库 import 查询
+        行列表 = 查询(str(目录 / "权威状态.db"),
+                     "SELECT 值 FROM 元信息 WHERE 键='结构版本'").确保成功()["行列表"]
+        if not 行列表:
+            raise RuntimeError("结构版本读取失败：元信息表无 结构版本 行")
+        版本 = 行列表[0]["值"]
         状态.关闭()
         if not (结构正常 and 版本 == 状态结构版本 and 资源["值"]["内容"] == "旧数据"):
             raise AssertionError(f"迁移结果异常: {说明} / {版本} / {资源}")
