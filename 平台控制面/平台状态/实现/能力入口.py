@@ -18,11 +18,15 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from 平台控制面.平台状态.状态存储 import 平台状态
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
-默认存储目录 = "工程缓存/平台控制面"
+# 存储目录缺省值：经唯一解析器取运行态存储根（源码态 = `<系统根>/工程缓存/平台控制面`，
+# 与旧的裸相对值同义；制品态 = 平台受管缓存）。裸相对路径在制品态会把运行态写进制品。
+默认存储目录 = str(解析运行缓存根(Path(__file__).resolve().parents[3]) / "平台控制面")
 来源名称 = "平台状态"
 
 # 存储实例 → 按 (目录, 项目id) 复用，避免每次调用重建状态库连接。

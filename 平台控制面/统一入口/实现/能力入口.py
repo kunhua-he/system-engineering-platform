@@ -17,12 +17,16 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from 平台控制面.授权 import 取共享授权服务
 from 平台控制面.统一入口 import 统一能力服务, 稳定操作表
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
-默认存储目录 = "工程缓存/平台控制面"
+# 存储目录缺省值：经唯一解析器取运行态存储根（源码态 = `<系统根>/工程缓存/平台控制面`，
+# 与旧的裸相对值同义；制品态 = 平台受管缓存）。裸相对路径在制品态会把运行态写进制品。
+默认存储目录 = str(解析运行缓存根(Path(__file__).resolve().parents[3]) / "平台控制面")
 
 # 存储目录 → 统一能力服务（同目录复用同一实例，避免每次调用重建状态库连接）。
 _服务表: dict[str, 统一能力服务] = {}
