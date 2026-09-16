@@ -109,6 +109,12 @@ def _是Windows() -> bool:
     return 是Windows()
 
 
+def _是POSIX() -> bool:
+    from 公共契约.运行时.平台适配 import 是POSIX
+
+    return 是POSIX()
+
+
 def _Windows内核() -> Any:
     """取 ``kernel32`` 句柄；ctypes/WinAPI 不可用时抛 ``平台不支持错误``（显式，不静默）。
 
@@ -602,6 +608,73 @@ __all__ = [
 ]
 
 
+def 按组号探活(组号: int) -> bool:
+    """按**进程组号**探活；Windows 恒 ``False``（如实标注，不伪造）。
+
+    为什么必须独立于 ``进程存活``：``os.getpgid(pid)`` 在组长被 ``wait()`` 回收后
+    抛 ``ProcessLookupError``，而 ``os.killpg(组号, 0)`` 仍能探测到该组存在
+    —— 「组长退出、同组子孙仍在」这类语义只有按组号的原语能表达。
+    """
+    if isinstance(组号, bool) or not isinstance(组号, int) or 组号 <= 0:
+        return False
+    if _是Windows() or not hasattr(os, "killpg"):
+        return False
+    try:
+        os.killpg(组号, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # 组在，只是无权限发信号
+    except OSError:
+        return False
+    return True
+
+
+def 按组号终止(组号: int, *, 信号: str = "终止") -> 结果[dict[str, Any]]:
+    """按**进程组号**终止整组，返回 ``结果``，**永不抛异常**。
+
+    与 ``终止进程组`` 的唯一区别：**不再用 ``os.getpgid`` 反查组号**，因此
+    **组长已被回收（僵尸已 wait）时依然可用** —— 正是「组长正常退出但同组子孙仍在」
+    场景唯一能用的终止原语。``结果.值`` 字段与 ``终止进程组`` 完全一致（同一信封），
+    其中 ``进程ID`` 位放的是**组号**。
+    """
+    if 信号 not in 信号表:
+        return _失败结果(结论_参数错误, f"信号必须是 {信号表} 之一，收到: {信号!r}")
+    if isinstance(组号, bool) or not isinstance(组号, int) or 组号 <= 0:
+        return _失败结果(
+            结论_参数错误,
+            f"组号必须是正整数，收到 {type(组号).__name__}: {组号!r}",
+        )
+    强杀 = 信号 == "强杀"
+    try:
+        if _是Windows():
+            结论, 说明 = (
+                结论_不支持,
+                "Windows 无进程组号概念，无法按组号终止（请按进程树终止）",
+            )
+        elif not hasattr(os, "killpg"):
+            结论, 说明 = (
+                结论_不支持,
+                f"平台 {sys.platform} 无 os.killpg，无法按组号终止",
+            )
+        else:
+            信号号 = signal.SIGKILL if 强杀 else signal.SIGTERM
+            信号名 = "SIGKILL" if 强杀 else "SIGTERM"
+            try:
+                os.killpg(组号, 信号号)
+                结论 = 结论_已终止
+                说明 = f"已按组号向进程组 {组号} 发出 {信号名}"
+            except ProcessLookupError:
+                结论 = 结论_进程不存在
+                说明 = f"进程组 {组号} 不存在（幂等）"
+            except PermissionError:
+                结论 = 结论_无权限
+                说明 = f"无权限向进程组 {组号} 发信号"
+    except Exception as 错误:  # noqa: BLE001
+        结论 = 结论_终止失败
+        说明 = f"按组号终止时出现未预期异常 {type(错误).__name__}: {错误}"
+    return _组装(结论, 组号, 信号, 说明, 已发出信号=结论 in (结论_已终止, 结论_已终止_回退))
+
 def 进程组号(进程) -> int | None:
     """返回进程所属进程组号；Windows 无此概念时返回 ``None``（如实标注，不伪造）。
 
@@ -617,7 +690,7 @@ def 进程组号(进程) -> int | None:
     else:
         return None
     try:
-        if not 平台适配.是POSIX():
+        if not _是POSIX():
             return None
         return os.getpgid(进程ID)
     except (OSError, AttributeError):
