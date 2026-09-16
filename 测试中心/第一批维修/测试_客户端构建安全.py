@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 系统根 = Path(__file__).resolve().parents[2]
@@ -320,12 +321,31 @@ class 测试客户端构建安全(unittest.TestCase):
 
 
     def test_安装链无论成功都关闭制品接入状态库(self) -> None:
+        class 假状态:
+            """替身状态库：只记录读取调用并返回 None（生产侧对 None 已做兜底）。"""
+
+            def __init__(self):
+                self.读取记录调用 = []
+
+            def 读取记录(self, 类型: str, 字段: str, 值):
+                self.读取记录调用.append((类型, 字段, 值))
+                return None
+
         class 假接入:
-            最后实例 = None
+            最后实例: Any = None
+            缓存根: Path = Path(".")  # 由用例覆盖：清理过期制品 会对两个根 iterdir()
 
             def __init__(self):
                 type(self).最后实例 = self
                 self.已关闭 = False
+                # 生产 安装到环境 会读 接入.状态.读取记录(...)（构建平台客户端.py:702）
+                # 并按 接入.制品根目录 / 接入.客户端制品目录 两个根清理过期制品，
+                # 替身必须补齐这三处契约，否则测的是 AttributeError 而不是「必关闭」。
+                self.状态 = 假状态()
+                self.制品根目录 = type(self).缓存根 / "内容寻址"
+                self.客户端制品目录 = type(self).缓存根 / "身份目录"
+                self.制品根目录.mkdir(parents=True, exist_ok=True)
+                self.客户端制品目录.mkdir(parents=True, exist_ok=True)
 
             @staticmethod
             def 生成或读取密钥():
@@ -344,6 +364,8 @@ class 测试客户端构建安全(unittest.TestCase):
                 self.已关闭 = True
 
         假接入.目标 = self.临时根 / "已安装"
+        假接入.缓存根 = self.临时根 / "假仓库"
+        假接入.缓存根.mkdir(parents=True, exist_ok=True)
         with mock.patch(
             "平台控制面.包仓库.平台客户端制品.平台客户端制品接入", 假接入
         ):
@@ -351,6 +373,9 @@ class 测试客户端构建安全(unittest.TestCase):
         self.assertEqual(结果, 假接入.目标)
         self.assertIsNotNone(假接入.最后实例)
         self.assertTrue(假接入.最后实例.已关闭, "安装完成后必须关闭状态数据库")
+        self.assertEqual(假接入.最后实例.状态.读取记录调用,
+                         [("制品", "制品摘要", "a" * 32)],
+                         "安装链必须按制品摘要读一次制品记录（用于清理过期制品）")
 
 
 if __name__ == "__main__":
