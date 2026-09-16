@@ -146,7 +146,7 @@ class Test发布者视图(unittest.TestCase):
         结果 = self.服务.执行操作(令牌=令牌普通, 操作="签名与发布",
                                  参数={"制品摘要": self.制品摘要})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
         # 发布者未授予平台维护者角色 → 切换被拒（角色不可自举）
         成功, _ = self.服务.授权.切换角色(self.令牌, "平台维护者")
         self.assertFalse(成功)

@@ -56,7 +56,7 @@ class Test授权自举阻断(unittest.TestCase):
             self.assertIn("角色未授予", 消息)
         # 操作级也拒绝
         结果 = self.服务.执行操作(令牌=令牌, 操作="签名与发布", 参数={})
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
 
     def test_注册身份默认最低角色(self):
         令牌 = self.服务.授权.注册身份(身份id="新用户")
@@ -66,14 +66,14 @@ class Test授权自举阻断(unittest.TestCase):
     def test_撤销角色后旧令牌失败(self):
         令牌 = 提权(self.服务, "被撤者", "发布者")
         结果 = self.服务.执行操作(令牌=令牌, 操作="签名与发布", 参数={})
-        self.assertNotEqual(结果["错误码"], "PERMISSION_DENIED", "授予后权限已生效")
+        self.assertNotEqual(结果["错误码"], "越权操作", "授予后权限已生效")
         # 维护者撤销
         维护令牌 = 提权(self.服务, "维护者", "平台维护者")
         成功, _ = self.服务.授权.撤销角色(授予者令牌=维护令牌, 身份id="被撤者", 角色="发布者")
         self.assertTrue(成功)
         # 旧令牌立即失效（角色被降为普通用户）
         结果 = self.服务.执行操作(令牌=令牌, 操作="签名与发布", 参数={})
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
 
     def test_伪造所有者被拒(self):
         令牌 = self.服务.授权.注册身份(身份id="真身")

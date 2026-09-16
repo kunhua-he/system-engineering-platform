@@ -1,7 +1,7 @@
 """第十四阶段 工作包04 维护者视图 测试：诊断/证据/裁决/回滚建议/权限拦截。
 
 维护者（角色等级 4）可只读诊断与建议；签名与发布（等级 5）、回滚
-（等级 5）必须被统一能力服务授权真实拦截（PERMISSION_DENIED）。
+（等级 5）必须被统一能力服务授权真实拦截（越权操作）。
 调用生产实现（统一能力服务 + 维护者视图），禁止模拟绿灯。
 """
 import sys
@@ -115,7 +115,7 @@ class Test维护者权限边界(unittest.TestCase):
     def test_维护者签名与发布被授权拦截(self):
         结果 = self.服务.执行操作(令牌=self.令牌, 操作="签名与发布", 参数={})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
         # 视图不提供签名/安装/发布执行方法
         for 方法名 in ("签名与发布", "安装制品", "执行发布"):
             self.assertFalse(hasattr(self.视图, 方法名))
@@ -123,7 +123,7 @@ class Test维护者权限边界(unittest.TestCase):
     def test_维护者回滚被授权拦截(self):
         结果 = self.服务.执行操作(令牌=self.令牌, 操作="回滚", 参数={"发布id": "x"})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
         # 发布者（等级5）可回滚：真实对照，证明拦截来自角色等级
         发布令牌 = 提权(self.服务, "发布者", "发布者")
         发布id = self.服务.发布.登记期望版本(包id="对照包", 期望版本="1")
@@ -138,9 +138,9 @@ class Test维护者权限边界(unittest.TestCase):
         访客令牌 = self.服务.授权.注册身份(身份id="访客")
         结果 = self.视图.查看依赖(访客令牌, "能力1")
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
         结果 = self.视图.冲突裁决(访客令牌, "能力1", "复用")
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
 
 
 class Test维护者视图只读视图(unittest.TestCase):

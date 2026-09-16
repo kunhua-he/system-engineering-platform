@@ -144,7 +144,8 @@ class Test调用Agent视图(unittest.TestCase):
         self.服务.注册提供者(能力id="异常.能力", 函数=抛异常, 预算=完整预算())
         结果 = self.视图.调用能力(令牌=self.令牌, 能力id="异常.能力", 参数={})
         self.assertFalse(结果["成功"])
-        self.assertIn(结果["错误码"], ("CALL_FAILED", "CALL_TIMEOUT"))
+        # 注册表 对外稳定错误码本批汉化（决策 0003）：超时 → 调用超时，其余 → 调用失败
+        self.assertIn(结果["错误码"], ("调用失败", "调用超时"))
         正文 = json.dumps(结果, ensure_ascii=False)
         self.assertNotIn("机密异常细节", 正文)
         self.assertNotIn("Traceback", 正文)

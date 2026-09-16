@@ -91,7 +91,7 @@ class Test普通用户视图(unittest.TestCase):
     def test_失败返回错误码与中文建议(self):
         普通结果 = self.视图.调用能力(self.令牌, "计算.求值", {})
         self.assertFalse(普通结果["成功"])
-        self.assertEqual(普通结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(普通结果["错误码"], "越权操作")
         self.assertEqual(普通结果["处理建议"], "当前账号没有该操作权限")
         self.assertEqual(普通结果["消息"], "当前账号没有该操作权限")
         agent令牌 = 提权(self.服务, "调用Agent2", "调用Agent")
@@ -106,7 +106,7 @@ class Test普通用户视图(unittest.TestCase):
             "摘要": self.视图.展示能力摘要(),
             "详情": self.视图.查看能力详情("计算.求值"),
             "建议": self.视图.失败处理建议(
-                {"成功": False, "错误码": "PERMISSION_DENIED"})},
+                {"成功": False, "错误码": "越权操作"})},
             ensure_ascii=False)
         for 禁词 in ("私钥测试内容_勿外泄", "统一入口.py",
                      str(self.服务.状态.存储目录), "验证缓存"):

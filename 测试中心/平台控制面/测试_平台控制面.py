@@ -77,7 +77,7 @@ class Test授权五角色(unittest.TestCase):
         令牌 = 提权(self.服务, "开发Agent", "组件开发Agent")
         结果 = self.服务.执行操作(令牌=令牌, 操作="签名与发布", 参数={})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
 
     def test_未知角色被拒绝(self):
         令牌 = self.服务.授权.注册身份(身份id="神秘人")
@@ -89,7 +89,7 @@ class Test授权五角色(unittest.TestCase):
         普通令牌 = self.服务.授权.注册身份(身份id="用户")
         self.服务.授权.切换角色(普通令牌, "普通用户")
         结果 = self.服务.执行操作(令牌=普通令牌, 操作="调用能力", 参数={"能力id": "x"})
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
         agent令牌 = 提权(self.服务, "调用Agent", "调用Agent")
         结果 = self.服务.执行操作(令牌=agent令牌, 操作="调用能力", 参数={"能力id": "x"})
         self.assertEqual(结果["错误码"], "能力不存在", "授权通过，走到能力查找")
@@ -218,7 +218,7 @@ class Test统一入口(unittest.TestCase):
         self.assertEqual(进程.returncode, 0)
         结果 = __import__("json").loads(进程.stdout.strip())
         self.assertFalse(结果["成功"], "CLI 注册的普通用户不能签名发布")
-        self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
+        self.assertEqual(结果["错误码"], "越权操作")
 
 
 if __name__ == "__main__":
