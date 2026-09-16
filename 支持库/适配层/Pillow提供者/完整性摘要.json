@@ -29,7 +29,7 @@
     },
     {
       "路径": "实现/提供者.py",
-      "sha256": "37c6bb2d0152d5d867ccb82102a52aecdcc5598e6f595edea4b03e70fee0c9a4"
+      "sha256": "55f1fa2064e47e58ce1b0457ad9bb67aa8ad8232620ebc4a2f8b30e7e17a11fb"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -37,7 +37,7 @@
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "507b301d5a878b2c0c15602b9282ba9a7abafcd96a380d6b1d3bc6cec4d2fcde"
+      "sha256": "c8d7d6922fe0d4f4904f6f4c28708fe285352bf2410ce06b1c7ee9027374ee9f"
     },
     {
       "路径": "能力契约/参数契约.json",

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import contextlib
-import os
-import signal
 import subprocess
 from typing import Any
+
+from 公共契约.运行时 import 平台适配, 进程终止
 
 
 def _截断(文本: str, 上限: int) -> str:
@@ -21,23 +21,14 @@ def _截断(文本: str, 上限: int) -> str:
 
 
 def _回收(进程: subprocess.Popen) -> None:
-    """回收子进程：终止失败必须留痕（哲学第 3 条 2 项），但不阻塞上层错误上报。"""
-    try:
-        if os.name == "posix":
-            os.killpg(进程.pid, signal.SIGTERM)
-        else:
-            进程.terminate()
-        进程.wait(timeout=1.0)
-    except Exception as 错误:
-        清理问题.append(f"SIGTERM 回收失败: {错误}")
-        try:
-            if os.name == "posix":
-                os.killpg(进程.pid, signal.SIGKILL)
-            else:
-                进程.kill()
-            进程.wait(timeout=2.0)
-        except Exception as 终止错误:
-            清理问题.append(f"SIGKILL 回收失败（进程可能残留）: {终止错误}")
+    """回收子进程：终止失败必须留痕（哲学第 3 条 2 项），但不阻塞上层错误上报。
+
+    平台分叉（POSIX 进程组强杀 / 非 POSIX terminate）已删除：终止与存活判定全部
+    收口在 公共契约.运行时.进程终止，本处不做任何平台判断。
+    """
+    终止 = 进程终止.强制结束子进程(进程, 宽限秒=1.0, 等待秒=2.0)
+    if not 终止.成功:
+        清理问题.append(f"进程回收失败（进程可能残留）: {终止.错误说明}")
     with contextlib.suppress(Exception):
         进程.communicate(timeout=1.0)
 
@@ -53,7 +44,7 @@ def 有界执行(
         进程 = subprocess.Popen(
             命令, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-            env=环境, start_new_session=(os.name == "posix"),
+            env=环境, **平台适配.子进程组启动标志(),
         )
     except OSError as 错误:
         return {"成功": False, "错误码": "提供者不可用", "错误说明": str(错误)}

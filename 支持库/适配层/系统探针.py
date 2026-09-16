@@ -21,13 +21,13 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import signal
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
+from 公共契约.运行时 import 平台适配, 进程终止
 
 try:
     import psutil
@@ -97,7 +97,7 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
         进程 = subprocess.Popen(
             list(命令列表) + [版本参数],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **平台适配.子进程组启动标志(),
         )
     except OSError as 错误:
         return 探针结果(False, 错误码="工具缺失",
@@ -105,7 +105,7 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
     try:
         标准输出, 标准错误, 已超时, 已超限 = 受限通信(
             进程, 超时秒=超时秒, 输出上限字节=默认子进程输出上限字节,
-            终止回调=lambda: _终止进程组(进程),
+            终止回调=lambda: 进程终止.强制结束子进程(进程, 宽限秒=终止宽限秒, 等待秒=终止宽限秒),
         )
         if 已超时:
             return 探针结果(
@@ -130,7 +130,7 @@ def 检查系统工具(名称: str, 命令列表: list[str], *, 超时秒: float
         )
     finally:
         if 进程.poll() is None:
-            _终止进程组(进程)
+            进程终止.强制结束子进程(进程, 宽限秒=终止宽限秒, 等待秒=终止宽限秒)
 
 
 # ── 系统内存（汉化原子能力）─────────────────────────────
@@ -214,23 +214,3 @@ def _标准错误摘要(标准错误: bytes | None) -> str:
         :标准错误摘要最大长度
     ]
 
-
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 终止宽限秒) -> None:
-    """超时强杀：先 SIGTERM 进程组，宽限后 SIGKILL。"""
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass

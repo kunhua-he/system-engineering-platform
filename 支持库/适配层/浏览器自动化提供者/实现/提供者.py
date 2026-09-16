@@ -7,7 +7,6 @@ import contextlib
 import json
 import os
 import shutil
-import signal
 import subprocess
 import tempfile
 import time
@@ -15,6 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时 import 平台适配, 进程终止
 from 支持库.适配层.浏览器自动化提供者.实现.执行器 import 有界执行
 
 
@@ -76,7 +76,7 @@ class 浏览器自动化提供者:
         try:
             进程 = subprocess.Popen(
                 参数, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL, start_new_session=(os.name == "posix"),
+                stderr=subprocess.DEVNULL, **平台适配.子进程组启动标志(),
             )
         except OSError:
             return None
@@ -95,22 +95,17 @@ class 浏览器自动化提供者:
         return None
 
     @staticmethod
+    @staticmethod
     def _回收进程(进程: subprocess.Popen) -> None:
+        """回收子进程（终止→宽限→强杀→复查）：跨平台，终止失败不阻塞上层。
+
+        原「POSIX 进程组强杀 / 非 POSIX terminate()」的平台分叉已删除——平台差异
+        收口在 公共契约.运行时.进程终止，本处不判断平台。
+        """
         if 进程.poll() is not None:
             return
-        try:
-            if os.name == "posix":
-                os.killpg(进程.pid, signal.SIGTERM)
-            else:
-                进程.terminate()
-            进程.wait(timeout=2)
-        except Exception:
-            with contextlib.suppress(Exception):
-                if os.name == "posix":
-                    os.killpg(进程.pid, signal.SIGKILL)
-                else:
-                    进程.kill()
-                进程.wait(timeout=2)
+        with contextlib.suppress(Exception):
+            进程终止.强制结束子进程(进程, 宽限秒=2.0, 等待秒=2.0)
 
     def _会话环境(self, 会话名: str) -> dict[str, str]:
         环境 = dict(os.environ)
@@ -266,16 +261,16 @@ class 浏览器自动化提供者:
                 return {"成功": True, "值": {"状态": "守护进程已不存在且状态已清理", "PID": pid}}
             if "browser_harness.daemon" not in 命令:
                 return {"成功": False, "错误码": "资源未收敛", "错误说明": "PID文件指向的进程不是Browser Harness守护进程"}
-            os.kill(pid, signal.SIGTERM)
+            进程终止.终止进程组(pid, 信号="终止")
             截止 = time.monotonic() + max(1, min(int(超时秒), 15))
             while time.monotonic() < 截止:
-                if subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode != 0:
+                if not 进程终止.进程存活(pid):
                     break
                 time.sleep(0.1)
-            if subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode == 0:
-                os.kill(pid, signal.SIGKILL)
+            if 进程终止.进程存活(pid):
+                进程终止.终止进程组(pid, 信号="强杀")
                 time.sleep(0.2)
-            if subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode == 0:
+            if 进程终止.进程存活(pid):
                 return {"成功": False, "错误码": "资源未收敛", "错误说明": f"守护进程 {pid} 仍存活"}
             for 后缀 in (".pid", ".sock", ".spawnlock"):
                 with contextlib.suppress(OSError):

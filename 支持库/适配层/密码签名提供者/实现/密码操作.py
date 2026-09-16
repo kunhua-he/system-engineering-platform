@@ -200,28 +200,32 @@ def 对称加密(明文b64: str, 密钥b64: str, 模式: str = 默认模式,
            初始向量b64: str | None = None, 附加数据b64: str | None = None) -> str:
     """AES 对称加密，返回 base64 密文包。
 
-    AES-GCM（默认，带认证标签）：随机数(12 字节) + 密文 + 标签(16 字节)；
-    AES-CBC（PKCS7 填充）：初始向量(16 字节) + 密文。
+    密文包外壳规则（加解密两端同一条规则，往返必然自洽）：
+    - 未给 初始向量b64：提供者随机生成向量，密文包 = 向量前缀 + 密文；
+    - 显式给 初始向量b64：向量由调用方保管，密文包 = 密文本身（不带前缀）。
+    AES-GCM（默认，带 16 字节认证标签）：向量前缀 12 字节；
+    AES-CBC（PKCS7 填充）：向量前缀 16 字节。
     """
     规范模式 = _规范化模式(模式)
     密钥 = _解码密钥(密钥b64)
     明文 = _解码数据(明文b64)
     附加数据 = _解码可选字节(附加数据b64, "附加数据b64")
-    初始向量 = _解码可选字节(初始向量b64, "初始向量b64")
+    显式向量 = _解码可选字节(初始向量b64, "初始向量b64")
     Cipher, algorithms, modes, padding, AESGCM = _导入AES组件()
     try:
         if 规范模式 == "AES-GCM":
-            随机数 = 初始向量 if 初始向量 is not None else os.urandom(GCM随机数字节)
-            if len(随机数) != GCM随机数字节:
+            向量 = 显式向量 if 显式向量 is not None else os.urandom(GCM随机数字节)
+            if len(向量) != GCM随机数字节:
                 raise 提供者操作异常(
                     "参数不合法",
-                    f"AES-GCM 初始向量必须是 {GCM随机数字节} 字节，收到 {len(随机数)} 字节",
+                    f"AES-GCM 初始向量必须是 {GCM随机数字节} 字节，收到 {len(向量)} 字节",
                 )
-            密文 = AESGCM(密钥).encrypt(随机数, 明文, 附加数据)
-            return base64.b64encode(随机数 + 密文).decode("ascii")
+            密文 = AESGCM(密钥).encrypt(向量, 明文, 附加数据)
+            输出 = 密文 if 显式向量 is not None else 向量 + 密文
+            return base64.b64encode(输出).decode("ascii")
         if 附加数据 is not None:
             raise 提供者操作异常("参数不合法", "AES-CBC 模式不支持 附加数据b64")
-        向量 = 初始向量 if 初始向量 is not None else os.urandom(CBC初始向量字节)
+        向量 = 显式向量 if 显式向量 is not None else os.urandom(CBC初始向量字节)
         if len(向量) != CBC初始向量字节:
             raise 提供者操作异常(
                 "参数不合法",
@@ -231,7 +235,8 @@ def 对称加密(明文b64: str, 密钥b64: str, 模式: str = 默认模式,
         填充后 = 填充器.update(明文) + 填充器.finalize()
         加密器 = Cipher(algorithms.AES(密钥), modes.CBC(向量)).encryptor()
         密文 = 加密器.update(填充后) + 加密器.finalize()
-        return base64.b64encode(向量 + 密文).decode("ascii")
+        输出 = 密文 if 显式向量 is not None else 向量 + 密文
+        return base64.b64encode(输出).decode("ascii")
     except 提供者操作异常:
         raise
     except Exception as 错误:
@@ -242,7 +247,9 @@ def 对称解密(密文b64: str, 密钥b64: str, 模式: str = 默认模式,
            初始向量b64: str | None = None, 附加数据b64: str | None = None) -> str:
     """AES 对称解密，返回明文 base64。
 
-    未传 初始向量b64 时按密文包前缀自解析（GCM 取前 12 字节、CBC 取前 16 字节）；
+    密文包外壳规则与 对称加密 同一条：
+    - 未给 初始向量b64：按密文包前缀自解析向量（GCM 取前 12 字节、CBC 取前 16 字节）；
+    - 显式给 初始向量b64：密文包被视为纯密文，向量只用调用方给的这一个。
     密钥不匹配或被篡改返回 解密失败（可诊断，不静默返回空值）。
     """
     规范模式 = _规范化模式(模式)
@@ -297,5 +304,6 @@ def 对称解密(密文b64: str, 密钥b64: str, 模式: str = 默认模式,
         raise
     except Exception as 错误:
         raise 提供者操作异常(
-            "解密失败", f"AES 解密失败（密钥不匹配或密文被篡改）: {错误}"
+            "解密失败",
+            f"AES 解密失败（密钥不匹配或密文被篡改）{type(错误).__name__}: {错误}",
         ) from 错误

@@ -1,11 +1,11 @@
 {
   "包id": "支持库.适配层.密码签名提供者",
-  "版本": "1.0.3",
+  "版本": "1.1.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "46e4cc96b05be01d5e65be59a978235ff1def7344fae2e3548b10156529bd94e"
+      "sha256": "ecc1c952ba9baf4641d10660b40006ac10cd8ee95a6acb2663386bdc5ca99c41"
     },
     {
       "路径": "依赖锁.json",
@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "19cb6cc3204632424cd500669ab3bf2f45be803d664777df6a74f08fd169696d"
+      "sha256": "8572e743125d97b0358fb64087354e19c359f3e82eeb5b65b5d41b8b12216337"
     },
     {
       "路径": "复用决策.json",
@@ -21,55 +21,55 @@
     },
     {
       "路径": "实现/子进程入口.py",
-      "sha256": "3e75dafacb90296a1c8a2c36b892e0dc47d6fbbba52758a2a09cc755dde89ef9"
+      "sha256": "ad8754c7dddeaa8502179efc7db402d14a1f9aec8da07300bd571acb6fbfd192"
     },
     {
       "路径": "实现/密码操作.py",
-      "sha256": "f2e3008ac1bb2e5a773a6a44bd4bb5a90a824e5de50218434906eabccf6ef1fb"
+      "sha256": "2e5bb71e35f6f1390d62fda158aa2a9becb8bb8876e6aaa552e8a99f297d34f1"
     },
     {
       "路径": "实现/提供者管理器.py",
-      "sha256": "265f7588c2ee0dd32e0c5697cab25510a18928137c6945c6409608d4e636238d"
+      "sha256": "dce87d3eac4154ad603f502b7868ab8ed6a10b57b1020d2de2d7358f9e631da0"
     },
     {
       "路径": "实现/能力调用.py",
-      "sha256": "8b4cb2d272693c963807e84210819e8c86e5f8524f972d37002cedadfb2fba6b"
+      "sha256": "948695f41173e38ca7a6548f51b5840b437c63feadee0b9191bfb66835181ff6"
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "bfdf1e4d356b7df368ce26d25b166c8ad87113da893fefd77c160ce00925ce93"
+      "sha256": "b711ca835cb8a3cbcf843544b168ca1db76c2131fd6c9f4b9f7ef06740e77f7b"
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "5bfa0304b0de7cdb57ae3e6d77641e619b79fe9456d80b380a03e487dc3b8861"
+      "sha256": "10a8c554763bc6b103acb48529d8e2fce750f72eec81bead6e83f603ba8b1075"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "388f7103df239ffabdbcb3b4a3b787ad8a35abb2897761c5202433a4518b843e"
+      "sha256": "dedf4caa135358d06b93b502c5eac91119e638ef10ce81e58865605857a45329"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "39d9d066af4daa9b2e5deff2d72919536b477f817f819f61d25152f539d798a5"
+      "sha256": "18cc82418c1d8101af55092b6e869bec85c9003f660b000a5ba97c46d30cabbe"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "4725b2f0bf83712402798dca052a1ef41742b2a7d7aae629b99ddbb4ee072659"
+      "sha256": "bcbd7e49d17e81f0292a2a37e921ded5430cf1df5c1cac3d49ee01690894d489"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "2e5d811e001ec10ce8731af6835dcf734f476d7762685596f87c36d9d0947a27"
+      "sha256": "ef9ab335945eac03b4a486a7529d9ce0e6250eb467f9ef0f96c85b182aff13e8"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "e4acc232f695cfd2a430454544c6f0d7e06d5d43f49f655a51e3854f7e24b09d"
+      "sha256": "f2963e3a3234ae36dffea05b5ec6c192de3124abfe2acee1a8fad0f885974b25"
     },
     {
       "路径": "说明/目录树与命令.md",
-      "sha256": "491dd96de6ed63c842f8df1842e1d432d7d0567786a3c7f58192705e94b8bdaa"
+      "sha256": "a7bc29eb4e3ec7f78cf39e275e463b8a452f254cb2ce34d08803a17a8c709f0e"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "56f5d9c804927202e148dc21a5dc482c7fdc4c2b20b5a21d94ce201ed7b1290f"
+      "sha256": "bc57a21694b6b58357fe8ceddba90f00347743d24e2a7a446174f3fe6015cd2f"
     },
     {
       "路径": "资源预算.json",
@@ -81,16 +81,18 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "66dfafae415d02b8076fdf94269f762ade8121515178efbf7959f01bfaa4a173"
+      "sha256": "958a5cbae9f88290487c2022e174afc82b7726733f242ab67ce6175ade1ea696"
     }
   ],
-  "能力数": 5,
+  "能力数": 7,
   "能力清单": [
     "密码签名.生成密钥对",
     "密码签名.签名",
     "密码签名.验证签名",
     "密码签名.公钥指纹",
-    "密码签名.内容摘要"
+    "密码签名.内容摘要",
+    "密码签名.对称加密",
+    "密码签名.对称解密"
   ],
-  "能力定义摘要": "6aca8c099ec15fdd"
+  "能力定义摘要": "bb8614baf382730f"
 }

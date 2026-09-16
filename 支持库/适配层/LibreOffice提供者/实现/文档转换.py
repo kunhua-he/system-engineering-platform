@@ -8,7 +8,6 @@ import hashlib
 import os
 import queue
 import shutil
-import signal
 import subprocess
 import tempfile
 import threading
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 
 默认超时秒 = 60
@@ -71,35 +71,6 @@ def 检查提供者(超时秒: float = 30) -> 结果:
         "退出码": 探针.退出码,
         "标准错误摘要": 探针.标准错误摘要,
     })
-
-
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    """先 TERM、后 KILL 回收由本提供者创建的独立进程组。"""
-    try:
-        进程组id = os.getpgid(进程.pid)
-    except (OSError, ProcessLookupError):
-        try:
-            进程.wait(timeout=宽限秒)
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        return
-    try:
-        os.killpg(进程组id, signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except (OSError, subprocess.TimeoutExpired):
-        pass
-    try:
-        os.killpg(进程组id, signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except (OSError, subprocess.TimeoutExpired):
-        pass
 
 
 def _读取受限文本(文件路径: Path, 最大字节数: int) -> str:
@@ -270,7 +241,7 @@ class LibreOffice受管池:
                 命令,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                start_new_session=True,
+                **平台适配.子进程组启动标志(),
             )
             with 作业.进程锁:
                 作业.进程 = 进程
@@ -278,7 +249,7 @@ class LibreOffice受管池:
                 _标准输出, 错误输出, 已超时, 输出超限 = 受限通信(
                     进程, 超时秒=作业.超时秒,
                     输出上限字节=作业.最大输出字节,
-                    终止回调=lambda: _终止进程组(进程),
+                    终止回调=lambda: 进程终止.强制结束子进程(进程, 宽限秒=1.0, 等待秒=1.0),
                 )
             except (OSError, ValueError) as 错误:
                 return _失败("转换失败", f"LibreOffice 受限通信失败: {错误}")

@@ -5,14 +5,13 @@
 
 from __future__ import annotations
 
-import os
 import shutil
-import signal
 import subprocess
 import threading
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配, 进程终止
 from 支持库.适配层.适配契约 import 资源状态_已关闭, 资源状态_已连接, 外部适配器
 
 
@@ -67,9 +66,9 @@ class 本地进程适配器(外部适配器):
         输出上限字节: int = 1024 * 1024,
         工作目录: str = "",
     ) -> 结果:
-        """真实子进程执行：独立进程组 + 超时 killpg 回收 + 输出上限。
+        """真实子进程执行：独立进程组 + 超时强制结束子进程回收 + 输出上限。
 
-        覆盖：启动失败→参数错误；执行超时→超时并 killpg 终止进程组；
+        覆盖：启动失败→参数错误；执行超时→超时并强制结束子进程；
         输出超过上限→超出限制；非零退出→执行失败。
         """
         if not isinstance(命令列表, list) or not 命令列表 or not all(
@@ -82,7 +81,7 @@ class 本地进程适配器(外部适配器):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=工作目录 or None,
-                start_new_session=True,
+                **平台适配.子进程组启动标志(),
             )
         except OSError as 错误:
             return 结果.失败("启动失败", f"无法启动本地进程: {错误}", 来源=self.适配器名称, 可重试=True)
@@ -110,7 +109,7 @@ class 本地进程适配器(外部适配器):
         try:
             进程.wait(timeout=超时秒)
         except subprocess.TimeoutExpired:
-            self._终止进程组(进程)
+            进程终止.强制结束子进程(进程, 宽限秒=1.0, 等待秒=1.0)
             return 结果.失败("超时", f"本地进程执行超过 {超时秒} 秒", 来源=self.适配器名称, 可重试=True)
         finally:
             for 线程 in 线程列表:
@@ -129,32 +128,12 @@ class 本地进程适配器(外部适配器):
             return 结果.失败("执行失败", f"本地进程退出码 {进程.returncode}", 来源=self.适配器名称)
         return 结果.成功结果({"输出": 标准输出.decode("utf-8", errors="replace"), "退出码": 进程.returncode})
 
-    def _终止进程组(self, 进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-        """killpg 回收整个进程组（SIGTERM → 宽限 → SIGKILL），零残留。"""
-        try:
-            os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-        except (OSError, ProcessLookupError):
-            pass
-        try:
-            进程.wait(timeout=宽限秒)
-            return
-        except subprocess.TimeoutExpired:
-            pass
-        try:
-            os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
-        try:
-            进程.wait(timeout=宽限秒)
-        except subprocess.TimeoutExpired:
-            pass
-
     def 取消运行(self) -> 结果:
-        """取消正在运行的子进程（killpg 终止进程组）。"""
+        """取消正在运行的子进程（终止进程组）。"""
         进程 = self.运行进程
         if 进程 is None or 进程.poll() is not None:
             return 结果.成功结果("无运行进程")
-        self._终止进程组(进程)
+        进程终止.强制结束子进程(进程, 宽限秒=1.0, 等待秒=1.0)
         self.运行进程 = None
         return 结果.成功结果("已取消")
 

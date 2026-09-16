@@ -440,14 +440,19 @@ def 强制结束子进程(
     if isinstance(等待秒, bool) or not isinstance(等待秒, (int, float)) or 等待秒 < 0:
         return _失败结果(结论_参数错误, f"等待秒 必须是非负数，收到 {等待秒!r}")
 
-    if isinstance(进程, subprocess.Popen):
-        进程ID = 进程.pid
-    elif isinstance(进程, int) and not isinstance(进程, bool):
+    # 句柄判定用鸭子类型，不用 isinstance(进程, subprocess.Popen)：
+    # 后者在 subprocess.Popen 被替换/打桩（如 mock.patch("subprocess.Popen", autospec=True)）时，
+    # isinstance 的第二个参数不再是类型对象 → 抛 TypeError，且会波及所有调用方（收口层必须稳）。
+    if isinstance(进程, bool):
+        return _失败结果(结论_参数错误, f"进程 不接受布尔值，收到 {进程!r}")
+    if isinstance(进程, int):
         进程ID = 进程
+    elif hasattr(进程, "pid") and hasattr(进程, "poll"):
+        进程ID = 进程.pid
     else:
         return _失败结果(
             结论_参数错误,
-            f"进程 必须是 subprocess.Popen 或正整数进程号，收到 {type(进程).__name__}",
+            f"进程 必须是有 pid/poll 的句柄或正整数进程号，收到 {type(进程).__name__}",
         )
     if not isinstance(进程ID, int) or 进程ID <= 0:
         return _失败结果(结论_参数错误, f"无法从入参取得合法进程号: {进程ID!r}")
@@ -497,9 +502,20 @@ def 强制结束子进程(
     return _组装结束(结论_仍存活, 已使用强杀, 说明表, *参数)
 
 
+def _是进程句柄(值) -> bool:
+    """句柄判定：**一律用鸭子类型**，不用 ``isinstance(值, subprocess.Popen)``。
+
+    为什么不能用 isinstance：`subprocess.Popen` 可能被替换或打桩
+    （如 ``mock.patch("subprocess.Popen", autospec=True)``），此时它是 MagicMock 而非类型对象，
+    ``isinstance`` 的第二参会抛 ``TypeError`` —— 而本模块是所有调用方的收口层，
+    一处抛错会波及全部调用方（实测已打中 `测试中心/支持库/测试_Git提供者.py`）。
+    """
+    return (not isinstance(值, (bool, int))) and hasattr(值, "pid") and hasattr(值, "poll")
+
+
 def _已结束(进程: subprocess.Popen | int) -> bool:
     """目标是否已结束：``Popen`` 走 ``poll()``（含回收），``int`` 走存活探测。"""
-    if isinstance(进程, subprocess.Popen):
+    if _是进程句柄(进程):
         try:
             return 进程.poll() is not None
         except OSError:
@@ -511,7 +527,7 @@ def _等待结束(进程: subprocess.Popen | int, 进程ID: int, 秒: float) -> 
     """等待进程结束：``Popen`` 走 ``wait``（顺带回收），``int`` 走「先回收僵尸 → 再探存活」。"""
     截止 = time.monotonic() + float(秒)
     while True:
-        if isinstance(进程, subprocess.Popen):
+        if _是进程句柄(进程):
             try:
                 进程.wait(timeout=轮询间隔秒)
                 return True
@@ -545,7 +561,7 @@ def _组装结束(
     等待秒: float,
 ) -> 结果[dict[str, Any]]:
     退出码: int | None = None
-    if isinstance(进程, subprocess.Popen):
+    if _是进程句柄(进程):
         try:
             退出码 = 进程.poll()
         except OSError:
@@ -584,3 +600,25 @@ __all__ = [
     "终止进程组",
     "强制结束子进程",
 ]
+
+
+def 进程组号(进程) -> int | None:
+    """返回进程所属进程组号；Windows 无此概念时返回 ``None``（如实标注，不伪造）。
+
+    供需要"真实组号"的调用方使用（例如 FFmpeg 提供者对账进程组）。
+    平台差异只在本模块内判断，调用方不需要知道自己在什么平台上。
+    """
+    if isinstance(进程, bool):
+        return None
+    if isinstance(进程, int):
+        进程ID = 进程
+    elif hasattr(进程, "pid"):
+        进程ID = 进程.pid
+    else:
+        return None
+    try:
+        if not 平台适配.是POSIX():
+            return None
+        return os.getpgid(进程ID)
+    except (OSError, AttributeError):
+        return None

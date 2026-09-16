@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import base64
 import shutil
-import signal
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 
 默认超时秒 = 60
@@ -63,28 +63,6 @@ def 检查提供者(超时秒: float = 30) -> 结果:
     })
 
 
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    try:
-        import os
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        import os
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass
-
-
 def 转换文本文件(输入路径: str, 目标格式: str, *, 超时秒: float = 默认超时秒,
               最大输出字节: int = 默认最大输出字节, 输出目录: str | None = None) -> 结果:
     """textutil 转换：txt/html/rtf/doc/docx 互转；返回 文本内容。"""
@@ -108,12 +86,12 @@ def 转换文本文件(输入路径: str, 目标格式: str, *, 超时秒: float
             [textutil, "-convert", 目标格式_clean, "-output",
              str(输出根 / f"{输入文件.stem}.{目标格式_clean}"), str(输入文件)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **平台适配.子进程组启动标志(),
         )
         try:
             _标准输出, 错误输出, 已超时, 输出超限 = 受限通信(
                 进程, 超时秒=超时秒, 输出上限字节=默认最大输出字节,
-                终止回调=lambda: _终止进程组(进程),
+                终止回调=lambda: 进程终止.强制结束子进程(进程, 宽限秒=1.0, 等待秒=1.0),
             )
         except (OSError, ValueError) as 错误:
             return _失败("转换失败", f"textutil 受限通信失败: {错误}")

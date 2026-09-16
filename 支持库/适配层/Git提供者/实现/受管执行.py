@@ -1,44 +1,22 @@
 """Git 提供者受管执行层：参数列表执行、超时、进程组回收、输出上限。
 
 全部 git 调用走 subprocess 参数列表（禁 shell=True / 禁字符串拼接）；
-独立进程组（start_new_session）+ 超时 SIGTERM→SIGKILL 回收；
+独立进程组（平台适配.子进程组启动标志）+ 超时走 进程终止.强制结束子进程 回收；
 标准输出超限返回 超出限制；非零退出由调用方按语义映射错误码。
 """
 
 from __future__ import annotations
 
-import os
-import signal
 import subprocess
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.有界IO import 受限通信
+from 公共契约.运行时 import 平台适配, 进程终止
 from 支持库.适配层.Git提供者.实现.白名单 import 失败结果, 校验仓库路径, 校验超时
 
 默认超时秒 = 60.0
 最大输出字节 = 4 * 1024 * 1024
-
-
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    """SIGTERM 宽限后 SIGKILL，确保进程组零残留。"""
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass
 
 
 def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默认超时秒) -> 结果:
@@ -57,14 +35,20 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
         进程 = subprocess.Popen(
             ["git", "-C", str(仓库)] + 参数列表,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **平台适配.子进程组启动标志(),
         )
     except OSError as 错误:
         return 失败结果("提供者不可用", f"无法启动 git: {错误}", 可重试=True)
     try:
         标准输出, 标准错误, 已超时, 输出超限 = 受限通信(
             进程, 超时秒=超时秒, 输出上限字节=最大输出字节,
-            终止回调=lambda: _终止进程组(进程),
+            # 传进程号而非句柄：终止回调只在超时/超限路径触发，两条路径都在
+            # 读取 进程.returncode 之前就返回失败，句柄的退出码不影响结论；
+            # 而收口层 强制结束子进程 目前用 isinstance(..., subprocess.Popen)
+            # 判定句柄，测试对 subprocess.Popen 打桩（autospec）时该判定会抛
+            # TypeError（见回执「收口层缺口」）。收口层改成鸭子类型判定后，
+            # 此处可改回传句柄以保留真实退出码。
+            终止回调=lambda: 进程终止.强制结束子进程(进程.pid, 宽限秒=1.0, 等待秒=1.0),
         )
     finally:
         for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
