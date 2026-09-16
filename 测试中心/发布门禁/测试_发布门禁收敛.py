@@ -24,7 +24,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 开发工具.组件合规.合规测试包 import 组件合规
-from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
+from 支持库.后端.组件规范支持库 import 生成完整性摘要
 from 开发工具.发布门禁.运行发布门禁 import 执行逐包权威合规
 
 破坏能力1 = {

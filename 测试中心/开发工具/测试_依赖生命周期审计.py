@@ -16,7 +16,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
+from 支持库.后端.组件规范支持库 import 生成完整性摘要
 from 开发工具.依赖生命周期审计.审计核心 import 审计单个提供者, 审计全部
 from 运行核心.依赖防火墙 import 审计依赖
 

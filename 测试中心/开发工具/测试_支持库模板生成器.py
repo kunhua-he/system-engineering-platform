@@ -16,8 +16,8 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
-from 开发工具.组件规范.支持库模板生成器 import 生成支持库模板
+from 支持库.后端.组件规范支持库 import 校验完整性摘要
+from 支持库.后端.组件规范支持库 import 生成支持库模板
 
 包id = "支持库.示例.示例提供者"
 名称 = "示例提供者"

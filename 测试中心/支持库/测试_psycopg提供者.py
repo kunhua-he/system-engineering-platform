@@ -327,7 +327,7 @@ class Testpsycopg提供者(unittest.TestCase):
 
     def test_完整性摘要与真实文件闭合(self) -> None:
         """摘要经唯一生成器校验通过（含逐文件 sha256 与清单闭合），且能力清单与包声明一致。"""
-        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        from 支持库.后端.组件规范支持库 import 校验完整性摘要
 
         通过, 问题 = 校验完整性摘要(提供者目录)
         self.assertTrue(通过, f"摘要漂移: {问题}")

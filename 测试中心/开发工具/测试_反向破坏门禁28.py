@@ -154,7 +154,7 @@ class Test反向破坏门禁28(unittest.TestCase):
 
     def test_新能力九要素与摘要齐全(self) -> None:
         """Pillow 6 新能力契约要素齐全、摘要校验通过。"""
-        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        from 支持库.后端.组件规范支持库 import 校验完整性摘要
         包目录 = 系统根 / "支持库" / "适配层" / "Pillow提供者"
         通过, 问题 = 校验完整性摘要(包目录)
         self.assertTrue(通过, f"摘要漂移: {问题}")

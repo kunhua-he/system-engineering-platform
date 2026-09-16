@@ -475,7 +475,7 @@ class 组件合规:
             if 缺:
                 return False, f"聚合视图包缺少 {缺}"
             return True, "聚合视图包：包声明 + 注册入口齐全（九要素由子包承载）"
-        from 开发工具.组件规范.组件规范 import 校验组件规范
+        from 支持库.后端.组件规范支持库 import 校验组件规范
         结果 = 校验组件规范(self.组件目录)
         问题列表 = list(结果.问题列表)
         if self._正式包形态:
@@ -704,7 +704,11 @@ class 组件合规:
         问题列表 = []
         for 文件 in 实现目录.rglob("*.py"):
             内容 = 文件.read_text(encoding="utf-8")
-            if re.search(r"\bopen\(", 内容) and "close()" not in 内容 and "with open" not in 内容:
+            # 判据：有 open( 调用、且不在任何 with 语句行内、且全文件无 close() → 才判未关闭。
+            # 认 with 里的 Path.open（`with 文件.open("rb") as 流:`）同样属正确关闭方式。
+            if (re.search(r"\bopen\(", 内容)
+                    and not re.search(r"with[^\n]*\bopen\(", 内容)
+                    and "close()" not in 内容):
                 问题列表.append(f"{文件.name} 存在 open 未关闭")
             if "while True" in 内容 and "break" not in 内容 and "return" not in 内容:
                 问题列表.append(f"{文件.name} 存在无退出无限循环")
@@ -785,7 +789,7 @@ class 组件合规:
 
     def _场景完整性摘要(self) -> tuple[bool, str]:
         """完整性摘要：经唯一校验器验证文件清单格式闭合（拒绝旧格式与自比较）。"""
-        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        from 支持库.后端.组件规范支持库 import 校验完整性摘要
         通过, 问题列表 = 校验完整性摘要(self.组件目录)
         if not 通过:
             return False, "; ".join(问题列表) or "完整性摘要校验失败"

@@ -234,7 +234,7 @@ class 破坏验证器:
     def _破坏摘要篡改(self) -> 破坏证据:
         目录 = _临时组件()
         (目录 / "完整性摘要.json").write_text(json.dumps({"摘要": "篡改摘要"}, ensure_ascii=False), encoding="utf-8")
-        from 开发工具.组件规范.组件规范 import 校验组件规范
+        from 支持库.后端.组件规范支持库 import 校验组件规范
         结果 = 校验组件规范(目录)
         验证失败 = not 结果.成功
         return 破坏证据("完整性摘要篡改", "完整性摘要.json 写为伪造值", 验证失败,

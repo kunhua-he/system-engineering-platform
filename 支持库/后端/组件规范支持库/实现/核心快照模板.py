@@ -22,7 +22,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-系统根 = Path(__file__).resolve().parents[2]
+系统根 = Path(__file__).resolve()
+for _祖先 in 系统根.parents:
+    if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
+        系统根 = _祖先
+        break
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 

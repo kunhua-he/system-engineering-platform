@@ -2,6 +2,8 @@
 
 - 真实生成密钥对/签名/验证/指纹/摘要；版本探测返回真实 cryptography
   版本号作为子进程加载证据；篡改签名验证失败；指纹稳定；
+- 真实 AES 对称加解密往返（GCM 默认 / CBC 可显式初始向量），篡改密文、
+  错误密钥、附加数据不一致与非法密钥长度全部返回稳定错误码；
 - 缺环境注入（环境变量禁用 cryptography）→ 提供者不可用，主进程
   内容摘要不受影响；本包代码绝不 import cryptography。
 生命周期（超时/崩溃/重启/残留）见 测试_密码签名提供者_生命周期.py。
@@ -20,7 +22,15 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 支持库.适配层.密码签名提供者 import 公钥指纹, 内容摘要, 生成密钥对, 签名, 验证签名
+from 支持库.适配层.密码签名提供者 import (
+    公钥指纹,
+    内容摘要,
+    对称加密,
+    对称解密,
+    生成密钥对,
+    签名,
+    验证签名,
+)
 from 支持库.适配层.密码签名提供者.实现 import 提供者管理器 as 提供者模块
 
 
@@ -103,6 +113,111 @@ class Test密码签名提供者能力(unittest.TestCase):
         结果 = 提供者模块.检查提供者版本()
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertRegex(str((结果.值 or {}).get("cryptography", "")), r"^\d+\.\d+")
+
+
+class Test密码签名对称加解密(unittest.TestCase):
+    """AES 对称加解密（同一提供者内新增能力）：真实往返，不 mock 第三方。"""
+
+    明文 = "华哥的对称加解密原子能力：同一明文，AES 往返一致。".encode("utf-8")
+    密钥32 = bytes(range(32))
+    密钥16 = bytes(range(16))
+    向量12 = bytes(range(12))
+    向量16 = bytes(range(16))
+
+    def 往返(self, 模式: str, 密钥: bytes, 额外: dict) -> str:
+        加密结果 = 对称加密(_b64(self.明文), _b64(密钥), 模式, **额外)
+        self.assertTrue(加密结果.成功, 加密结果.错误说明)
+        解密结果 = 对称解密(加密结果.值, _b64(密钥), 模式, **额外)
+        self.assertTrue(解密结果.成功, 解密结果.错误说明)
+        self.assertEqual(base64.b64decode(解密结果.值), self.明文)
+        return 加密结果.值
+
+    def test_往返gcm默认模式(self):
+        密文 = self.往返("AES-GCM", self.密钥32, {})
+        # 随机数 12 字节 + 密文 + 认证标签 16 字节
+        self.assertEqual(len(base64.b64decode(密文)), len(self.明文) + 12 + 16)
+
+    def test_往返gcm显式初始向量与附加数据(self):
+        self.往返("AES-GCM", self.密钥32,
+                 {"初始向量b64": _b64(self.向量12),
+                  "附加数据b64": _b64("平台附加认证数据".encode("utf-8"))})
+
+    def test_往返cbc显式初始向量是纯密文(self):
+        # 显式给向量：向量由调用方保管，密文包不带前缀（数据库固定向量用法）
+        密文 = self.往返("AES-CBC", self.密钥32, {"初始向量b64": _b64(self.向量16)})
+        字节数 = len(base64.b64decode(密文))
+        self.assertEqual(字节数 % 16, 0)
+        self.assertEqual(字节数, (len(self.明文) // 16 + 1) * 16)
+
+    def test_往返cbc不传初始向量时向量写入密文包(self):
+        密文 = self.往返("AES-CBC", self.密钥16, {})
+        字节数 = len(base64.b64decode(密文))
+        self.assertEqual(字节数 % 16, 0)
+        self.assertEqual(字节数, 16 + (len(self.明文) // 16 + 1) * 16)
+
+    def test_同明文两次gcm加密密文不同(self):
+        第一次 = 对称加密(_b64(self.明文), _b64(self.密钥32))
+        第二次 = 对称加密(_b64(self.明文), _b64(self.密钥32))
+        self.assertTrue(第一次.成功 and 第二次.成功)
+        self.assertNotEqual(第一次.值, 第二次.值)  # 随机数不同 → 密文不同
+
+    def test_篡改密文与错误密钥返回解密失败(self):
+        密文 = base64.b64decode(对称加密(_b64(self.明文), _b64(self.密钥32)).值)
+        篡改包 = bytearray(密文)
+        篡改包[20] ^= 0xFF
+        篡改结果 = 对称解密(_b64(bytes(篡改包)), _b64(self.密钥32))
+        self.assertFalse(篡改结果.成功)
+        self.assertEqual(篡改结果.错误码, "解密失败")
+        错钥结果 = 对称解密(_b64(密文), _b64(bytes(range(1, 33))))
+        self.assertFalse(错钥结果.成功)
+        self.assertEqual(错钥结果.错误码, "解密失败")
+
+    def test_附加数据不一致返回解密失败(self):
+        附加 = "原始附加数据".encode("utf-8")
+        密文 = 对称加密(_b64(self.明文), _b64(self.密钥32), "AES-GCM",
+                      _b64(self.向量12), _b64(附加)).值
+        一致 = 对称解密(密文, _b64(self.密钥32), "AES-GCM",
+                      _b64(self.向量12), _b64(附加))
+        self.assertTrue(一致.成功, 一致.错误说明)
+        不一致 = 对称解密(密文, _b64(self.密钥32), "AES-GCM",
+                        _b64(self.向量12), _b64("被换掉的附加数据".encode("utf-8")))
+        self.assertFalse(不一致.成功)
+        self.assertEqual(不一致.错误码, "解密失败")
+
+    def test_参数不合法(self):
+        self.assertEqual(对称加密(_b64(self.明文), _b64(b"abc")).错误码, "参数不合法")
+        self.assertEqual(对称加密(_b64(self.明文), "不是base64!!").错误码, "参数不合法")
+        self.assertEqual(对称加密("", _b64(self.密钥32)).错误码, "参数不合法")
+        self.assertEqual(对称加密(_b64(self.明文), _b64(self.密钥32), "AES-CTR").错误码, "参数不合法")
+        self.assertEqual(
+            对称加密(_b64(self.明文), _b64(self.密钥32), "AES-CBC",
+                   _b64(self.向量16), _b64("cbc不支持附加数据".encode("utf-8"))).错误码,
+            "参数不合法")
+        self.assertEqual(对称解密(_b64(b"x"), _b64(self.密钥32)).错误码, "参数不合法")
+
+    def test_主进程不加载cryptography(self):
+        self.assertNotIn("cryptography", vars(提供者模块))
+        对称加密(_b64(self.明文), _b64(self.密钥32))
+        对称解密(_b64(self.明文), _b64(self.密钥32))
+        self.assertNotIn("cryptography", vars(提供者模块))
+
+    def test_缺环境注入对称能力提供者不可用(self):
+        密文 = 对称加密(_b64(self.明文), _b64(self.密钥32)).值
+        with mock.patch.dict(os.environ, {"密码签名提供者_禁用库": "cryptography"}):
+            加密结果 = 对称加密(_b64(self.明文), _b64(self.密钥32))
+            解密结果 = 对称解密(密文, _b64(self.密钥32))
+        for 结果 in (加密结果, 解密结果):
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+            self.assertTrue(结果.可重试)
+
+    def test_注册能力含对称能力(self):
+        from 公共契约.能力契约.契约 import 能力注册表
+
+        注册表 = 能力注册表()
+        __import__("支持库.适配层.密码签名提供者", fromlist=["注册能力"]).注册能力(注册表)
+        for 能力id in ("密码签名.对称加密", "密码签名.对称解密"):
+            self.assertIn(能力id, 注册表.能力id列表)
 
 
 if __name__ == "__main__":

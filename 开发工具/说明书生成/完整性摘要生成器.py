@@ -15,7 +15,7 @@ for _祖先 in 系统根.parents:
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 开发工具.组件规范.完整性摘要 import (
+from 支持库.后端.组件规范支持库 import (
     生成完整性摘要,
     扫描正式包,
     摘要文件名,

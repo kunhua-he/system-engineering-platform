@@ -16,15 +16,23 @@ import sys
 from pathlib import Path
 from typing import Any
 
+def _定位项目根() -> Path:
+    """向上定位项目根：同时含 支持库 与 模块库 双目录的最近祖先（下沉后不再用 parents[2]）。"""
+    for 祖先 in Path(__file__).resolve().parents:
+        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
+            return 祖先
+    raise RuntimeError("无法定位项目根（找不到同时含 支持库 与 模块库 的祖先目录）")
+
+
 # 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
-_项目根 = Path(__file__).resolve().parents[2]
+_项目根 = _定位项目根()
 if str(_项目根) not in sys.path:
     sys.path.insert(0, str(_项目根))
 
 from 公共契约.基础类型.结果类型 import 结果
-from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
+from 支持库.后端.组件规范支持库.实现.完整性摘要 import 生成完整性摘要
 
-系统根 = Path(__file__).resolve().parents[2]
+系统根 = _定位项目根()
 错误来源 = "支持库模板生成器"
 默认错误码 = ["参数不合法", "超时", "提供者崩溃", "提供者不可用"]
 默认行为 = {"修改输入": False, "幂等": True, "副作用": "只读", "排序稳定": True,

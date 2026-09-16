@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
+from 支持库.后端.组件规范支持库 import 生成完整性摘要
 
 适配层目录名 = "支持库/适配层"
 依赖锁文件名 = "依赖锁.json"

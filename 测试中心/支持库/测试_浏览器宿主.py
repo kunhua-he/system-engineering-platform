@@ -32,7 +32,7 @@ class Test浏览器宿主(unittest.TestCase):
         self.assertEqual(getattr(结果, "错误码", "非统一结果"), "")
 
     def test_完整性摘要与当前源码一致(self) -> None:
-        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        from 支持库.后端.组件规范支持库 import 校验完整性摘要
 
         通过, 问题 = 校验完整性摘要(系统根 / "支持库" / "前端" / "浏览器宿主")
         self.assertTrue(通过, 问题)

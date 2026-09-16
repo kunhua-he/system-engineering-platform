@@ -20,7 +20,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 开发工具.组件规范.完整性摘要 import 生成完整性摘要, 校验完整性摘要
+from 支持库.后端.组件规范支持库 import 生成完整性摘要, 校验完整性摘要
 
 
 def 建临时包(包id: str = "收敛.包", 版本: str = "1.0.0") -> tuple[Path, Path]:
@@ -161,7 +161,7 @@ class Test组件规范委托唯一生成器(unittest.TestCase):
     """组件规范.py 的生成/校验必须委托唯一生成器，不复制第二套算法。"""
 
     def test_组件规范生成器产出文件清单格式(self):
-        from 开发工具.组件规范.组件规范 import 生成完整性摘要 as 组件规范生成
+        from 支持库.后端.组件规范支持库 import 生成并写入完整性摘要 as 组件规范生成
         目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛规范_"))
         (目录 / "包声明.json").write_text(json.dumps({
             "包id": "收敛.规范", "版本": "2.0.0", "类型": "支持库",
@@ -178,7 +178,7 @@ class Test组件规范委托唯一生成器(unittest.TestCase):
         self.assertTrue(通过, str(问题列表))
 
     def test_组件规范校验拒绝旧组件id格式(self):
-        from 开发工具.组件规范.组件规范 import 校验组件规范
+        from 支持库.后端.组件规范支持库 import 校验组件规范
         目录, _ = 建临时包()
         (目录 / "完整性摘要.json").write_text(json.dumps({
             "组件id": "收敛.包", "摘要": "旧格式",

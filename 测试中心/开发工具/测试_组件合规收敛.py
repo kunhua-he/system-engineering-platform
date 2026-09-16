@@ -19,7 +19,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 开发工具.组件合规.合规测试包 import 组件合规, 合规场景表
-from 开发工具.组件规范.完整性摘要 import 生成完整性摘要
+from 支持库.后端.组件规范支持库 import 生成完整性摘要
 
 能力1 = {
     "能力id": "合规.能力1", "版本": "1.0.0", "说明": "合规测试能力1",

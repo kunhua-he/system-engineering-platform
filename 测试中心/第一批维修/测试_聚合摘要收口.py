@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from 开发工具.组件规范.完整性摘要 import 扫描正式包, 校验完整性摘要
+from 支持库.后端.组件规范支持库 import 扫描正式包, 校验完整性摘要
 
 
 class 聚合摘要收口测试(unittest.TestCase):

@@ -22,8 +22,8 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
-from 开发工具.组件规范.模块模板生成器 import 生成模块模板
+from 支持库.后端.组件规范支持库 import 校验完整性摘要
+from 支持库.后端.组件规范支持库 import 生成模块模板
 
 九要素文件表 = [
     "包声明.json",

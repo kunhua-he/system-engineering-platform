@@ -75,7 +75,7 @@ class Test前端描述支持库S0收敛(unittest.TestCase):
             self.assertEqual(len(入口模块.__all__), len(声明集), 包名)
 
     def test_完整性摘要校验通过(self) -> None:
-        from 开发工具.组件规范.完整性摘要 import 校验完整性摘要
+        from 支持库.后端.组件规范支持库 import 校验完整性摘要
         for 包id, 包名 in 前端包表:
             通过, 问题 = 校验完整性摘要(系统根 / "支持库" / "前端" / 包名)
             self.assertTrue(通过, f"{包名}: {问题}")

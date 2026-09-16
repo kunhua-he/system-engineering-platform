@@ -14,7 +14,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 开发工具.组件规范.说明书生成器 import (
+from 支持库.后端.组件规范支持库 import (
     生成说明书, 生成说明书文本, 校验输出目标,
 )
 

@@ -20,7 +20,7 @@
     unset PYTHONPATH
     python3.14 -c "
     import sys; sys.path.insert(0, '.')
-    from 开发工具.组件规范.技能模板生成器 import 生成技能模板
+    from 支持库.后端.组件规范支持库.实现.技能模板生成器 import 生成技能模板
     结果 = 生成技能模板(
         技能根目录='技能根示例', 技能目录名='示例技能',
         能力标识='示例.文本统计', 名称='文本统计', 分类='文本',
@@ -39,8 +39,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+def _定位项目根() -> Path:
+    """向上定位项目根：同时含 支持库 与 模块库 双目录的最近祖先（下沉后不再用 parents[2]）。"""
+    for 祖先 in Path(__file__).resolve().parents:
+        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
+            return 祖先
+    raise RuntimeError("无法定位项目根（找不到同时含 支持库 与 模块库 的祖先目录）")
+
+
 # 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
-_项目根 = Path(__file__).resolve().parents[2]
+_项目根 = _定位项目根()
 if str(_项目根) not in sys.path:
     sys.path.insert(0, str(_项目根))
 
@@ -249,7 +257,7 @@ def _技能说明(名称: str, 能力标识: str, 说明: str, 参数: list, 用
 
 {用例行}
 
-> 本文件由 `开发工具/组件规范/技能模板生成器.py` 生成，计入技能包指纹；任何改动都要升技能版本。
+> 本文件由 `支持库/后端/组件规范支持库/实现/技能模板生成器.py` 生成，计入技能包指纹；任何改动都要升技能版本。
 """
 
 

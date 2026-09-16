@@ -192,11 +192,23 @@ def 生成测试骨架(模块名: str, 能力清单: list[dict], 测试中心根
     骨架路径.write_text(文本, encoding="utf-8")
     return 结果.成功结果({"测试骨架": str(骨架路径)})
 
+def _默认系统根() -> Path:
+    """向上定位项目根：同时含 支持库 与 模块库 双目录的最近祖先。
+
+    本包由 `开发工具/组件规范/` 下沉到支持库层，目录深度改变，不能再按
+    `parents[2]` 硬编码定位（会落到 支持库/后端），故按双目录判据定位。
+    """
+    for 祖先 in Path(__file__).resolve().parents:
+        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
+            return 祖先
+    raise RuntimeError("无法定位项目根（找不到同时含 支持库 与 模块库 的祖先目录）")
+
+
 def 生成模块模板(*, 模块名: str, 类型: str = "基础模块", 能力清单: list[dict],
                  依赖能力清单: list[dict] | None = None, 系统根: Path | str | None = None,
                  模块库根: Path | str | None = None, 测试中心根: Path | str | None = None) -> 结果:
     """主入口：校验输入 → 生成模块包 + 测试骨架（已存在一律拒绝覆盖）。"""
-    系统根 = Path(系统根 or Path(__file__).resolve().parents[2])
+    系统根 = Path(系统根 or _默认系统根())
     模块库根, 测试中心根 = Path(模块库根 or 系统根 / "模块库"), Path(测试中心根 or 系统根 / "测试中心")
     依赖清单 = 依赖能力清单 or []
     校验 = 校验输入(模块名, 类型, 能力清单, 依赖清单, 扫描支持库能力集(系统根))
@@ -212,7 +224,7 @@ def 生成模块模板(*, 模块名: str, 类型: str = "基础模块", 能力�
     for 相对路径, 内容 in 文件表.items():
         (模块目录 / 相对路径).parent.mkdir(parents=True, exist_ok=True)
         (模块目录 / 相对路径).write_text(内容, encoding="utf-8")
-    from 开发工具.组件规范.组件规范 import 生成完整性摘要
+    from 支持库.后端.组件规范支持库.实现.组件规范 import 生成完整性摘要
     生成完整性摘要(模块目录)
     骨架结果 = 生成测试骨架(模块名, 能力清单, 测试中心根)
     if not 骨架结果.成功:
