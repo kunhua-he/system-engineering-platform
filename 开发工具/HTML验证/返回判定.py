@@ -2,25 +2,37 @@
 from __future__ import annotations
 import json
 from typing import Any
+from 公共契约.基础类型.类型表 import 正式类型表
+from 公共契约.基础类型.数值类型 import 数值类型定义, 校验数值类型
+from 运行核心.统一网关.网关核心 import 类型匹配表
 from 开发工具.HTML验证.常量 import 未指定, 统一返回字段, 默认超时秒
 from 开发工具.HTML验证.单步场景 import 验证场景
 from 开发工具.HTML验证.验证报告 import 验证结果
 from 开发工具.HTML验证.HTTP请求 import _发送请求
+
+
 def _类型匹配(值: Any, 类型名: str) -> bool:
-    映射 = {
-        "字典型": lambda 项: isinstance(项, dict),
-        "对象型": lambda 项: isinstance(项, dict),
-        "列表型": lambda 项: isinstance(项, list),
-        "文本型": lambda 项: isinstance(项, str),
-        "字符串型": lambda 项: isinstance(项, str),
-        "整数型": lambda 项: type(项) is int,
-        "数值型": lambda 项: type(项) in {int, float},
-        "浮点型": lambda 项: type(项) is float,
-        "逻辑型": lambda 项: type(项) is bool,
-        "布尔型": lambda 项: type(项) is bool,
-        "空值型": lambda 项: 项 is None,
-    }
-    判断 = 映射.get(类型名)
+    """值是否符合**正式类型名**；只消费唯一事实源，本模块不维护第二份类型名表。
+
+    三段判定顺序（每一段都给出去处）：
+
+    1. 名字闸门 = `公共契约/基础类型/类型表.py:正式类型表`（16 个正式类型名的唯一清单）。
+       不在表内的名字（历史短名 `文本/结果/浮点数…`、历史自造名
+       `对象型/字符串型/数值型/浮点型/布尔型`）一律判**不符合**——它们的语义无冻结定义，
+       放行等于"声明了类型却没人校验"的假绿。
+    2. 四类数值型 = `公共契约/基础类型/数值类型.py`：边界冻结、不做隐式转换
+       （`校验数值类型` 只接受真 int/真 float，布尔不算整数）。
+    3. 其余 12 类 = `运行核心/统一网关/网关核心.py:类型匹配表`：网关在 JSON 边界上的
+       **同一张**判定表；HTML 黑盒与线上网关因此逐项同强度，不存在"两套类型表"的裂缝。
+    """
+    if 类型名 not in 正式类型表:
+        return False
+    if 类型名 in 数值类型定义:
+        try:
+            return bool(校验数值类型(值, 类型名))
+        except ValueError:
+            return False
+    判断 = 类型匹配表.get(类型名)
     return bool(判断 and 判断(值))
 
 def _取路径(值: Any, 路径: str) -> Any:
