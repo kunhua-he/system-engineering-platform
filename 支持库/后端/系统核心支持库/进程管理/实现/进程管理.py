@@ -7,15 +7,18 @@
 from __future__ import annotations
 
 import os
+import shlex
 import socket
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 from 公共契约.运行时 import 平台适配, 进程终止
-from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
+from 公共契约.运行时.有界IO import 受限读取, 受限通信, 默认子进程输出上限字节
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 句柄系统 = 句柄体系()
 进程表: dict[int, dict] = {}
@@ -28,16 +31,130 @@ from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出�
 
 降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
 
-def _取进程(句柄: int | None) -> tuple[subprocess.Popen | None, str]:
+
+def _解析超时秒(超时秒, 默认秒: float | None, 留空语义: str) -> tuple[float | None, str]:
+    """把 `超时秒` 收口成「秒数或 None」，非法输入返回原因文本（空串=合法）。
+
+    - 留空（None）→ `默认秒`（None 表示**无限等待**：不设隐式截止）；
+    - 非数字 / 布尔 / 非正数 → 拒绝（原因文本）。
+
+    为什么不沿用 `float(超时秒 or 60)`：`0` 是假值，会被静默改写成 60 秒，
+    调用方显式传 0（意图「不等待」）却得到 60 秒的等待与强杀；显式参数被偷偷
+    改写属于「参数只收不用」。这里一律显式裁定：留空取默认，非正数拒收。
+    """
+    if 超时秒 is None:
+        return 默认秒, ""
+    if isinstance(超时秒, bool) or not isinstance(超时秒, (int, float)):
+        return None, f"超时秒必须是正数；留空表示{留空语义}"
+    if not float(超时秒) > 0:
+        return None, f"超时秒必须大于 0（收到 {超时秒!r}）；留空表示{留空语义}"
+    return float(超时秒), ""
+
+
+def _剥成对引号(项: str) -> str:
+    """剥掉 `posix=False` 拆分留下的成对首尾引号（`"a b"` → `a b`）。"""
+    if len(项) >= 2 and 项[0] == 项[-1] and 项[0] in ("'", '"'):
+        return 项[1:-1]
+    return 项
+
+
+def _拆分命令(命令: str) -> list[str]:
+    """把命令文本拆成参数表（平台判定只在收口层，调用点不写平台判断）。
+
+    B-28：POSIX 模式下 `shlex.split` 把反斜杠当转义符，Windows 路径
+    `C:\\tools\\app.exe` 会被拆成 `C:oolsapp.exe`（`\\t`/`\\a` 被吞）。
+    因此：
+
+    - Windows：`posix=False`（反斜杠是普通字符、引号由 shlex 保留）→ 再剥成对引号；
+      真实最终引用由 `subprocess`（`list2cmdline`）在启动时负责；
+    - POSIX：保留 posix 语义（反斜杠就是转义符，与真实 shell 一致）；需要保留
+      反斜杠的场景用引号包裹（`执行命令("echo 'C:\\\\tools\\\\app.exe'")`）。
+    """
+    if 平台适配.是Windows():
+        return [_剥成对引号(项) for 项 in shlex.split(命令, posix=False)]
+    return shlex.split(命令)
+
+系统根 = Path(__file__).resolve().parents[5]
+
+# 沙箱输出临时文件目录：落本仓固定运行缓存目录（铁律「测试产物和快照只放工程缓存」），
+# 不落系统 /tmp —— 子进程被 SIGKILL 时 finally 不执行，散在系统 /tmp 的残片无人回收、
+# 多次运行无界累积（报告 BUG-12）。保留策略按年龄 + 条数双限，既不无界增长，
+# 也不可能删掉正在进行中的调用（新文件 mtime 最新，排在保留窗口最前）。
+沙箱输出目录名 = ("进程管理", "沙箱输出")
+沙箱输出保留秒 = 24 * 3600
+沙箱输出保留条数 = 200
+沙箱输出文件模式 = (".沙箱输出_*.txt", ".沙箱错误_*.txt")
+
+
+class _启动输出通道:
+    """`启动进程` 带就绪轮询时建立的输出排空通道（进程存活期内的唯一管道读者）。
+
+    为什么必须有：子进程 stdout/stderr 都是管道，子进程在就绪前写满管道缓冲
+    （macOS 常见 64KB）就阻塞在 write 上 → 端口永不监听 → 就绪轮询空转到超时；
+    历史实现只在 `poll() is not None`（进程已退出）之后才读一次 stderr，轮询
+    期间从不读 stdout，等于把子进程的输出写死在管道里（报告 BUG-04）。
+
+    为什么由通道长期持有：通道建立后它就是这两个管道的唯一读者。若就绪成功后把它
+    撤掉、再由 `等待进程结束` 另起读者，两个读者会争抢同一管道（谁先读到算谁的），
+    输出会静默丢字节。因此 `等待进程结束` 复用它而不另开读者。
+
+    有界性复用 公共契约.运行时.有界IO.受限读取（读满上限后继续排空），本类只负责
+    「谁在什么时候读、读完归谁」，不复制读取/截断判定。
+    """
+
+    def __init__(self, 进程: subprocess.Popen,
+                 输出上限字节: int = 默认子进程输出上限字节) -> None:
+        self.进程 = 进程
+        self.输出上限字节 = 输出上限字节
+        self.缓冲: dict[str, bytearray] = {"标准输出": bytearray(), "错误输出": bytearray()}
+        self.超限事件 = threading.Event()
+        self.线程: list[threading.Thread] = []
+        for 名称, 流 in (("标准输出", 进程.stdout), ("错误输出", 进程.stderr)):
+            线程 = threading.Thread(target=self._排空, args=(名称, 流),
+                                  daemon=True, name=f"进程输出排空-{名称}")
+            线程.start()
+            self.线程.append(线程)
+
+    def _排空(self, 名称: str, 流) -> None:
+        if 流 is None:
+            return
+        try:
+            内容, _超限 = 受限读取(流, self.输出上限字节, 超限回调=self.超限事件.set)
+        except (OSError, ValueError) as 错误:
+            # 释放句柄/外部关闭管道导致的收尾中断：留痕不吞（哲学第 3 条 2 项）
+            临时文件问题.append(f"{名称} 排空中断（管道已关闭）: {错误}")
+            return
+        self.缓冲[名称].extend(内容)
+
+    def 收口(self, 等待秒: float) -> tuple[bytes, bytes, bool]:
+        """限时等排空收口（进程退出或管道关闭即收口），返回（输出、错误、是否超限）。"""
+        for 线程 in self.线程:
+            线程.join(timeout=max(0.0, float(等待秒)))
+        return (bytes(self.缓冲["标准输出"]), bytes(self.缓冲["错误输出"]),
+                self.超限事件.is_set())
+
+    def 已收口(self) -> bool:
+        return not any(线程.is_alive() for 线程 in self.线程)
+
+
+def _取条目(句柄: int | None) -> tuple[dict | None, str]:
+    """按句柄取进程表条目（含输出通道）；无效句柄返回（None，原因）。"""
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return None, "句柄必须是1到999999的整数"
     有效, 原因 = 句柄系统.校验(句柄id=句柄)
     if not 有效:
         return None, 原因
-    进程 = 进程表.get(句柄)
-    if 进程 is None:
+    条目 = 进程表.get(句柄)
+    if 条目 is None:
         return None, f"进程句柄 {句柄} 不存在"
-    return 进程.get("进程对象"), ""
+    return 条目, ""
+
+
+def _取进程(句柄: int | None) -> tuple[subprocess.Popen | None, str]:
+    条目, 原因 = _取条目(句柄)
+    if 条目 is None:
+        return None, 原因
+    return 条目.get("进程对象"), ""
 
 
 def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = None,
@@ -60,6 +177,10 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
                                 **平台适配.子进程组启动标志())
     except Exception as 错误:
         return 结果.失败("启动失败", str(错误), 来源="进程管理")
+    # 就绪轮询必须有独立排空者：子进程在就绪前写满管道缓冲（约 64KB）就会卡在
+    # write 上，端口永不监听，轮询只会空转到超时（报告 BUG-04 管道死锁）。
+    # 通道在轮询开始之前建立，成为这两个管道在进程存活期内的唯一读者。
+    输出通道 = _启动输出通道(进程) if 就绪地址 else None
     if 就绪地址:
         try:
             主机, 端口文本 = 就绪地址.rsplit(":", 1)
@@ -67,7 +188,8 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
             截止 = time.monotonic() + (float(就绪超时秒) if 就绪超时秒 else 5.0)
             while time.monotonic() < 截止:
                 if 进程.poll() is not None:
-                    错误输出 = (进程.stderr.read() if 进程.stderr else b"")[:2000]
+                    已排空错误输出 = 输出通道.收口(1.0)[1] if 输出通道 else b""
+                    错误输出 = 已排空错误输出[:2000]
                     return 结果.失败("启动失败", f"进程在就绪前退出: {错误输出.decode('utf-8', 'replace')}", 来源="进程管理")
                 try:
                     with socket.create_connection((主机, 端口), timeout=0.1):
@@ -76,13 +198,18 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
                     time.sleep(0.02)
             else:
                 _终止进程组(进程)
+                if 输出通道 is not None:
+                    输出通道.收口(2.0)
                 return 结果.失败("启动超时", f"就绪地址未监听: {就绪地址}", 来源="进程管理")
         except (TypeError, ValueError) as 错误:
             _终止进程组(进程)
+            if 输出通道 is not None:
+                输出通道.收口(2.0)
             return 结果.失败("参数不合法", f"就绪地址必须是 主机:端口: {错误}", 来源="进程管理")
     with 锁:
         对象 = 句柄系统.创建句柄(句柄类型=句柄类型_资源, 资源id="进程", 所有者="")
-        进程表[对象.句柄id] = {"进程对象": 进程, "PID": 进程.pid, "命令": 命令}
+        进程表[对象.句柄id] = {"进程对象": 进程, "PID": 进程.pid, "命令": 命令,
+                              "输出通道": 输出通道}
     return 结果.成功结果({"句柄": 对象.句柄id, "PID": 进程.pid, "命令": 命令})
 
 
@@ -119,18 +246,55 @@ def 查询进程状态(句柄: int | None = None) -> 结果:
 
 
 def 等待进程结束(句柄: int | None = None, 超时秒: float = None) -> 结果:
-    """等待进程结束。返回 {退出码, 标准输出, 错误输出}。"""
-    进程, 原因 = _取进程(句柄)
-    if 进程 is None:
+    """等待进程结束。返回 {退出码, 标准输出, 错误输出}。
+
+    超时语义（B-27）：
+    - `超时秒` 留空 = **无限等待**（不设隐式截止）。历史实现把留空当 60 秒，
+      于是默认参数就能强杀一个正在健康运行的长驻进程；空值的正确含义是
+      「等到进程自己结束」。
+    - 显式给出 `超时秒` = 只结束本次等待：到点返回失败 `超时`，**不终止进程**，
+      管道与已读输出保持原样，调用方可以再等，或显式 `终止进程` / `释放句柄`。
+      （历史实现在超时点直接回收进程组，等待 API 变成了隐式杀进程 API。）
+    - 非正数 / 非数字一律 `参数不合法`，不静默改写成默认值。
+
+    输出读取（与 `启动进程` 的就绪排空通道配合，不另开读者）：
+    就绪启动的进程，输出由启动期建立的通道排空；**非就绪启动的进程在这里补建同一个
+    排空通道**并记进条目，之后一律复用 —— 通道是这两条管道的唯一读者。历史实现让非
+    就绪进程走「一次性有界通信」，它在返回前就关闭 stdout/stderr：超时后进程再写输出
+    即 EPIPE 乱死、读取线程还会撞上已关闭的流，所以等待一律由通道承载。
+    """
+    条目, 原因 = _取条目(句柄)
+    if 条目 is None:
         return 结果.失败("句柄失效", 原因, 来源="进程管理")
+    进程 = 条目.get("进程对象")
+    if 进程 is None:
+        return 结果.失败("句柄失效", f"进程句柄 {句柄} 无进程对象", 来源="进程管理")
+    上限等待, 超时原因 = _解析超时秒(超时秒, None, "无限等待（等到进程结束）")
+    if 超时原因:
+        return 结果.失败("参数不合法", 超时原因, 来源="进程管理")
+    通道: _启动输出通道 | None = 条目.get("输出通道")
+    if 通道 is None:
+        try:
+            通道 = _启动输出通道(进程)
+        except (OSError, ValueError) as 错误:
+            return 结果.失败("等待失败", f"建立输出排空通道失败: {错误}", 来源="进程管理")
+        条目["输出通道"] = 通道      # 通道即唯一读者，后续等待复用同一通道
     try:
-        stdout, stderr, 已超时, 已超限 = 受限通信(
-            进程, 超时秒=float(超时秒) if 超时秒 is not None else 60.0,
-            输出上限字节=默认子进程输出上限字节,
-            终止回调=lambda: _终止进程组(进程),
-        )
-        if 已超时:
-            return 结果.失败("超时", "进程等待超时", 来源="进程管理")
+        try:
+            if 上限等待 is None:
+                进程.wait()
+            else:
+                进程.wait(timeout=上限等待)
+        except subprocess.TimeoutExpired:
+            # 只结束本次等待，不销毁进程对象（B-27 去掉「超时即杀」）
+            return 结果.失败(
+                "超时",
+                f"等待超时（{上限等待} 秒）：进程仍在运行，未被终止；"
+                "如需终止请调用 终止进程 或 释放句柄，也可再次等待",
+                来源="进程管理",
+                详情={"PID": 进程.pid, "超时秒": 上限等待, "进程已被终止": False},
+            )
+        stdout, stderr, 已超限 = 通道.收口(5.0)
         if 已超限:
             return 结果.失败("超出限制", "进程输出超过上限", 来源="进程管理")
         return 结果.成功结果({"退出码": 进程.returncode,
@@ -148,17 +312,21 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
     """
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
+    执行上限秒, 超时原因 = _解析超时秒(超时秒, 60.0, "按参数契约默认 60 秒")
+    if 超时原因 or 执行上限秒 is None:
+        return 结果.失败("参数不合法", 超时原因 or "超时秒不合法", 来源="进程管理")
     危险命中 = _前置危险命令检测(命令)
     if 危险命中 is not None:
         return 危险命中
     # 不用 shell=True（参数列表直启）：进程自成独立组后，超时/异常由收口层
     # 整组回收，避免 shell 子孙进程泄漏。
-    import shlex
+    # 命令文本拆分按平台选口径（B-28）：Windows 用 posix=False 保住反斜杠路径，
+    # 平台判定只在收口层 平台适配.是Windows()，这里不写平台判断。
     try:
-        命令表 = shlex.split(命令)
+        命令表 = _拆分命令(命令)
     except ValueError as 错误:
         return 结果.失败("参数不合法", f"命令解析失败: {错误}", 来源="进程管理")
-    if not 命令表:
+    if not 命令表 or not 命令表[0].strip():
         return 结果.失败("参数不合法", "命令为空", 来源="进程管理")
     进程 = None
     try:
@@ -166,7 +334,7 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
             命令表, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=工作目录, **平台适配.子进程组启动标志())
         stdout, stderr, 已超时, 已超限 = 受限通信(
-            进程, 超时秒=float(超时秒 or 60),
+            进程, 超时秒=执行上限秒,
             输出上限字节=默认子进程输出上限字节,
             终止回调=lambda: _终止进程组(进程),
         )
@@ -211,8 +379,10 @@ def 释放句柄(句柄: int | None = None) -> 结果:
             # 进程组归属由 平台适配.子进程组启动标志() 保证，再锁外终止，
             # 避免在锁内执行阻塞式等待拖住所有句柄操作。
             进程对象 = 进程.get("进程对象")
+            输出通道 = 进程.get("输出通道")
         else:
             进程对象 = None
+            输出通道 = None
         句柄系统.失效(句柄, "释放")
     if 进程对象 is not None:
         try:
@@ -220,6 +390,10 @@ def 释放句柄(句柄: int | None = None) -> 结果:
         except Exception as 错误:
             降级记录表.append(str(错误))
         finally:
+            # 先让启动期建立的排空通道收口，再关管道：反过来会让排空线程读到
+            # 已关闭的管道（ValueError），已读到的字节还可能丢在通道缓冲里。
+            if 输出通道 is not None:
+                输出通道.收口(2.0)
             for 管道 in (进程对象.stdout, 进程对象.stderr, 进程对象.stdin):
                 if 管道 is not None:
                     管道.close()
@@ -372,6 +546,48 @@ def _沙箱安全环境(工作目录: str) -> dict:
     }
 
 
+def _沙箱输出目录() -> Path:
+    """沙箱输出临时文件目录：本仓固定运行缓存目录（铁律「测试产物和快照只放工程缓存」）。
+
+    不落系统 /tmp：进程被 SIGKILL 时 finally 不执行，落在系统 /tmp 的残片无人回收、
+    多次运行无界累积（报告 BUG-12）。
+    """
+    目录 = 解析运行缓存根(系统根).joinpath(*沙箱输出目录名)
+    目录.mkdir(parents=True, exist_ok=True)
+    return 目录
+
+
+def _修改时刻(路径: Path) -> float:
+    """文件 mtime；取不到（已被删/无权限）按 0 处理，让清理逻辑照常推进。"""
+    try:
+        return 路径.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _清理残留沙箱输出(目录: Path, 现在: float | None = None) -> int:
+    """清理沙箱输出的历史残留文件，返回清理条数。
+
+    双限：只删「年龄超过 沙箱输出保留秒」的文件；条数超 沙箱输出保留条数 时只删
+    最旧的。**正在进行中的调用不可能被删** —— 它的文件刚创建，mtime 最新，永远排在
+    保留窗口最前。
+    """
+    时刻 = time.time() if 现在 is None else float(现在)
+    文件列表: list[Path] = []
+    for 模式 in 沙箱输出文件模式:
+        文件列表.extend(路径 for 路径 in 目录.glob(模式) if 路径.is_file())
+    文件列表.sort(key=_修改时刻, reverse=True)
+    清理数 = 0
+    for 序号, 路径 in enumerate(文件列表):
+        try:
+            if 序号 >= 沙箱输出保留条数 or (时刻 - _修改时刻(路径)) > 沙箱输出保留秒:
+                路径.unlink(missing_ok=True)
+                清理数 += 1
+        except OSError as 删除错误:
+            临时文件问题.append(f"{路径} 残留清理失败: {删除错误}")
+    return 清理数
+
+
 def 沙箱执行命令(
     命令: str = None,
     工作目录: str = None,
@@ -409,7 +625,9 @@ def 沙箱执行命令(
         return 结果.失败("目录不存在", f"工作目录不存在: {工作区}", 来源="进程管理")
     上限字节 = int(输出上限字节) if isinstance(输出上限字节, int) and 输出上限字节 > 0 \
         else 默认沙箱输出上限字节
-    超时 = float(超时秒) if isinstance(超时秒, (int, float)) and 超时秒 > 0 else 60.0
+    超时, 超时原因 = _解析超时秒(超时秒, 60.0, "按本能力的默认 60 秒")
+    if 超时原因 or 超时 is None:
+        return 结果.失败("参数不合法", 超时原因 or "超时秒不合法", 来源="进程管理")
 
     import shutil as _shutil
     if not (平台适配.是macOS() and _shutil.which("sandbox-exec")):
@@ -433,11 +651,12 @@ def 沙箱执行命令(
         return 预检结果
     argv = ["sandbox-exec", "-p", 配置, "/bin/sh", "-c", 命令]
 
-    import tempfile as _tempfile
     import uuid as _uuid
+    输出目录 = _沙箱输出目录()
+    _清理残留沙箱输出(输出目录)
     令牌 = _uuid.uuid4().hex
-    输出文件 = _Path(_tempfile.gettempdir()) / f".沙箱输出_{令牌}.txt"
-    错误文件 = _Path(_tempfile.gettempdir()) / f".沙箱错误_{令牌}.txt"
+    输出文件 = 输出目录 / f".沙箱输出_{令牌}.txt"
+    错误文件 = 输出目录 / f".沙箱错误_{令牌}.txt"
     进程 = None
     try:
         with 输出文件.open("wb") as 出, 错误文件.open("wb") as 错:

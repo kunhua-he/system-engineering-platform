@@ -267,6 +267,55 @@ def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = N
         return 结果.失败("网络失败", str(错误), 来源="网络请求")
 
 
+def _multipart头部转义(值: str) -> str:
+    """multipart 头部词组转义：反斜杠与双引号按 RFC 7578/2046 转义（防改写头部结构）。"""
+    return str(值).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _构造multipart正文(字段名: str, 文件路径: str, 文件名: str,
+                       额外字段: dict | None) -> tuple[bytes, str]:
+    """手工拼装标准 `multipart/form-data` 正文，返回（正文字节、boundary）。
+
+    B-26 修正：历史实现直接用 `email.mime.multipart.MIMEMultipart` + `as_string()`，
+    真实报文出现四处不符（已在本机端点复现）：
+
+    1. `Content-Type: multipart/mixed`（MIMEMultipart 默认 subtype 是 mixed，
+       不是 form-data）；
+    2. 额外字段用 `MIMEText` 拼 → 只有 `Content-Type: text/plain`，
+       没有 `Content-Disposition: form-data; name="…"`，服务端取不到字段名；
+    3. 文件载荷 `encoders.encode_base64` → base64 文本，不是原始字节；
+    4. `as_string()` 把 `Content-Type`/`MIME-Version` 等 MIME 头写进了 **body** 首部。
+
+    这里改为「boundary + 二进制拼接」：每片自带 `Content-Disposition: form-data`
+    头、文件字节原样、结尾 `--boundary--`，`Content-Type` 由调用方带 boundary 传出。
+
+    boundary 必须是 **纯 ASCII**：`Content-Type` 走 HTTP 头，urllib 按 latin-1 编码
+    头部，含中文的 boundary 会在发请求前就抛 UnicodeEncodeError（本机复现）。
+    各分片的 `name`/`filename` 在 **body** 里（bytes，UTF-8），不受头部编码限制；
+    文件名非 ASCII 时额外附 RFC 5987 的 `filename*=UTF-8''…` 供严格服务端取用。
+    """
+    import uuid as _uuid
+    边界 = "----FormBoundary" + _uuid.uuid4().hex
+    分片: list[bytes] = []
+    for 键, 值 in (额外字段 or {}).items():
+        分片.append(
+            f"--{边界}\r\n"
+            f'Content-Disposition: form-data; name="{_multipart头部转义(键)}"\r\n\r\n'
+            f"{值}\r\n".encode("utf-8"))
+    文件名声明 = f'filename="{_multipart头部转义(文件名)}"'
+    if any(序 > 127 for 序 in 文件名.encode("utf-8")):
+        文件名声明 += f"; filename*=UTF-8''{urllib.parse.quote(文件名, safe='')}"
+    分片.append(
+        f"--{边界}\r\n"
+        f'Content-Disposition: form-data; name="{_multipart头部转义(字段名)}"; '
+        f"{文件名声明}\r\n"
+        "Content-Type: application/octet-stream\r\n\r\n".encode("utf-8"))
+    with open(文件路径, "rb") as 文件:
+        分片.append(文件.read())        # 原始字节，不 base64
+    分片.append(f"\r\n--{边界}--\r\n".encode("utf-8"))
+    return b"".join(分片), 边界
+
+
 def 上传文件(*, 地址: str = None, 文件路径: str = None, 字段名: str = "file",
               额外字段: dict = None, 超时秒: float = 默认超时秒,
               允许回环: bool = False, 代理: str = None) -> 结果:
@@ -278,27 +327,13 @@ def 上传文件(*, 地址: str = None, 文件路径: str = None, 字段名: str
             return 结果.失败("参数不合法", f"文件不存在: {文件路径}", 来源="网络请求")
         _校验协议与SSRF(地址, 允许回环)
 
-        import email.mime.multipart
-        import email.mime.base
-        import email.mime.text
-        from email import encoders
-
-        消息 = email.mime.multipart.MIMEMultipart()
-        for 键, 值 in (额外字段 or {}).items():
-            消息.attach(email.mime.text.MIMEText(值))
         文件大小 = os.path.getsize(文件路径)
         上传上限字节 = 256 * 1024 * 1024
         if 文件大小 > 上传上限字节:
             return 结果.失败("超出限制", f"上传文件过大: {文件大小} 字节 > {上传上限字节}", 来源="网络请求")
-        with open(文件路径, "rb") as f:
-            附件 = email.mime.base.MIMEBase("application", "octet-stream")
-            附件.set_payload(f.read())
-            encoders.encode_base64(附件)
-            附件.add_header("Content-Disposition", f"form-data; name=\"{字段名}\"; filename=\"{os.path.basename(文件路径)}\"")
-            消息.attach(附件)
-
-        请求体 = 消息.as_string().encode("utf-8")
-        请求头 = {"Content-Type": 消息.get_content_type()}
+        文件名 = os.path.basename(文件路径)
+        请求体, 边界 = _构造multipart正文(str(字段名 or "file"), 文件路径, 文件名, 额外字段)
+        请求头 = {"Content-Type": f"multipart/form-data; boundary={边界}"}
 
         return 发送请求(地址=地址, 方法="POST", 请求头=请求头, 请求体=请求体,
                        超时秒=超时秒, 允许回环=允许回环, 代理=代理)
@@ -312,7 +347,15 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
              超时秒: float = 默认超时秒, 允许回环: bool = False,
              代理: str = None, SSL验证: bool = None,
              最大字节数: int = 默认最大字节数) -> 结果:
-    """从 URL 下载文件（流式写入，适配大文件）。返回 {状态码, 文件路径, 字节数}。"""
+    """从 URL 下载文件（流式写入，适配大文件）。返回 {状态码, 文件路径, 字节数}。
+
+    落盘口径（B-33）：**先写同目录 `.part` 临时文件，全部成功才 `os.replace` 到
+    `保存路径`**。任何失败路径（超时/网络错误/HTTP 错误/超限/写盘错误）都删掉临时
+    文件，`保存路径` 保持原样。历史实现直接 `open(保存路径, "wb")`：
+    - 一打开就把旧文件清空，失败后旧文件已毁、目录里只剩半截新内容；
+    - 只有「超限」一条路径删文件，TimeoutError/URLError 路径不删 → 半截文件残留，
+      调用方无法区分「完整制品」与「失败残片」。
+    """
     try:
         if not isinstance(地址, str) or 地址.strip() == "":
             return 结果.失败("参数不合法", "地址为空", 来源="网络请求")
@@ -343,11 +386,13 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
             处理程序.append(HTTPSHandler(context=ssl上下文))
         打开器 = build_opener(*处理程序)
 
+        import uuid as _uuid
+        临时路径 = f"{保存路径}.{_uuid.uuid4().hex}.part"
         try:
             响应对象 = 打开器.open(请求, timeout=超时秒)
             with 响应对象 as 响应:
                 状态码 = 响应.getcode()
-                with open(保存路径, "wb") as f:
+                with open(临时路径, "wb") as f:
                     字节数 = 0
                     while True:
                         块 = 响应.read(65536)
@@ -355,25 +400,30 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
                             break
                         字节数 += len(块)
                         if 字节数 > 最大字节数:
-                            # 超限时删除截断文件，避免调用方误把部分内容当成
-                            # 成功制品继续处理。
-                            try:
-                                os.unlink(保存路径)
-                            except OSError:
-                                pass
+                            # 超限：由 finally 删临时文件，保存路径不动
                             return 结果.失败(
                                 "响应超限", f"下载内容超过上限 {最大字节数} 字节",
                                 来源="网络请求",
                             )
                         f.write(块)
-                return 结果.成功结果({"状态码": 状态码, "文件路径": 保存路径, "字节数": 字节数,
-                                        "错误信息": ""})
+            # 只有完整读完才落正式路径（同目录 os.replace：原子替换，失败不留半截）
+            os.replace(临时路径, 保存路径)
+            return 结果.成功结果({"状态码": 状态码, "文件路径": 保存路径, "字节数": 字节数,
+                                    "错误信息": ""})
         except HTTPError as 错误:
             return 结果.失败("下载失败", f"HTTP {错误.code}: {错误.reason}", 来源="网络请求")
         except TimeoutError:
             return 结果.失败("网络超时", "下载超时", 来源="网络请求")
         except URLError as 错误:
             return 结果.失败("下载失败", f"网络失败: {错误.reason}", 来源="网络请求")
+        finally:
+            # 失败/超限/超时一律清掉临时文件（成功时已被 os.replace 移走，missing_ok 兜底）
+            try:
+                os.unlink(临时路径)
+            except FileNotFoundError:
+                pass
+            except OSError as 清理错误:
+                降级记录表.append(f"下载临时文件清理失败 {临时路径}: {清理错误}")
     except ValueError as 错误:
         return 结果.失败("参数不合法", str(错误), 来源="网络请求")
     except OSError as 错误:
