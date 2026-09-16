@@ -1,4 +1,4 @@
-"""模块库.直播逐字稿.实现.质检门禁 纯计算测试：长度比、数字保留率、异常残句、待确认与模式附加。
+"""模块库.直播逐字稿.实现.质检门禁 纯计算测试：底稿有效性、长度比、数字保留率、异常残句、待确认与模式附加。
 
 全部用内联字符串数据，不依赖模型、网络、文件；只断言真实返回字典的字段与失败原因。
 """
@@ -27,7 +27,8 @@ from 模块库.直播逐字稿.实现.质检门禁 import 质检, 统计异常�
 
 class Test质检判定(unittest.TestCase):
     def test_正常通过(self):
-        报告 = 质检("今天讲三个重点，价格是1288元。", "今天讲三个重点，价格是1288元。", 模式一)
+        底稿 = "今天讲三个重点，第一个是价格1288元，第二个是交付周期，第三个是售后承诺。"
+        报告 = 质检(底稿, 底稿, 模式一)
         self.assertTrue(报告["通过"])
         self.assertEqual(报告["失败原因"], [])
         self.assertEqual(报告["长度比"], 1.0)
@@ -46,7 +47,8 @@ class Test质检判定(unittest.TestCase):
         self.assertTrue(any("长度比" in 原因 and "0.7" in 原因 for 原因 in 报告["失败原因"]))
 
     def test_数字丢失不通过(self):
-        报告 = 质检("门店价格是1288元，库存300件。", "门店价格很实惠，库存充足。", 模式一)
+        报告 = 质检("门店价格是1288元，库存300件，活动到月底结束，请大家抓紧下单。",
+                  "门店价格很实惠，库存也很充足，活动快结束了，请大家抓紧下单。", 模式一)
         self.assertFalse(报告["通过"])
         self.assertEqual(报告["数字保留率"], 0.0)
         全部原因 = "".join(报告["失败原因"])
@@ -54,7 +56,8 @@ class Test质检判定(unittest.TestCase):
         self.assertIn("1288", 全部原因)
 
     def test_关键数字全保留触发不通过(self):
-        报告 = 质检("门店3000家，价格1288元。", "门店很多，价格1288元。", 模式二)
+        报告 = 质检("门店已经开到3000家，单店价格1288元，覆盖全国大部分城市。",
+                  "门店已经开到了很多家，单店价格1288元，覆盖全国大部分城市。", 模式二)
         self.assertFalse(报告["通过"])
         self.assertEqual(报告["数字保留率"], 0.5)
         self.assertTrue(any("关键数字未全部保留" in 原因 and "3000" in 原因 for 原因 in 报告["失败原因"]))
@@ -81,11 +84,20 @@ class Test质检判定(unittest.TestCase):
         self.assertEqual(报告["待确认数"], 3)
         self.assertTrue(报告["通过"])
 
-    def test_原始为空不崩(self):
+    def test_原始为空不通过(self):
+        """空底稿是「无法判定」不是「满分」：必须判不通过并写明原因（旧行为恒过，已修）。"""
         报告 = 质检("", "没有原始文本时按 1.0 计。", 模式一)
-        self.assertEqual(报告["长度比"], 1.0)
-        self.assertEqual(报告["数字保留率"], 1.0)
-        self.assertTrue(报告["通过"])
+        self.assertFalse(报告["通过"])
+        self.assertEqual(报告["长度比"], 0.0)
+        self.assertEqual(报告["数字保留率"], 0.0)
+        self.assertTrue(any("有效底稿为空/过短" in 原因 for 原因 in 报告["失败原因"]))
+
+    def test_超短底稿不通过(self):
+        """底稿只有 1 字、成稿长 18 倍：旧行为算出 长度比=18.0 照样通过，现在必须判不通过。"""
+        报告 = 质检("短", "完全不同的很长很长的成稿内容xxxx", 模式一)
+        self.assertFalse(报告["通过"])
+        self.assertEqual(报告["长度比"], 0.0)
+        self.assertTrue(any("有效底稿为空/过短" in 原因 for 原因 in 报告["失败原因"]))
 
     def test_模式非字典如实写明原因(self):
         报告 = 质检("内容。", "内容。", None)
@@ -105,10 +117,12 @@ class Test质检判定(unittest.TestCase):
         self.assertEqual(报告["模式附加"]["最小数字保留率"], 0.85)
 
     def test_非文本输入按空串处理(self):
+        """非文本输入按空串处理，等同空底稿：判不通过，且不抛裸异常。"""
         报告 = 质检(None, None, 模式一)
-        self.assertTrue(报告["通过"])
-        self.assertEqual(报告["长度比"], 1.0)
+        self.assertFalse(报告["通过"])
+        self.assertEqual(报告["长度比"], 0.0)
         self.assertEqual(报告["待确认数"], 0)
+        self.assertTrue(any("有效底稿为空/过短" in 原因 for 原因 in 报告["失败原因"]))
 
 
 if __name__ == "__main__":

@@ -63,7 +63,11 @@ def 准备缓存(缓存目录: str) -> dict[str, Path]:
 
 
 def 计算文件摘要(文件路径: str) -> str:
-    """计算文件 sha256；失败返回空串（调用方按“未知摘要”处理）。"""
+    """计算文件 sha256；取不到返回空串。
+
+    空串是「未知摘要」的哨兵值（不是「两个文件相同」）：调用方必须把空串
+    当未知处理（见 指纹一致：空串一律判不一致），绝不能拿两份空串互比。
+    """
     结果对象 = _底座("系统核心支持库.资源管理.创建内容摘要",
                    {"文件路径": str(文件路径), "算法": "sha256"})
     if not _成功(结果对象):
@@ -109,12 +113,49 @@ def 写指纹(缓存: dict, 指纹: dict) -> bool:
     return 写JSON(缓存["指纹"], 指纹)
 
 
+def _未知(值) -> bool:
+    """该指纹字段是否是「未知」（缺失/None/空串/0）。
+
+    未知 ≠ 相同：字段取不到（如摘要能力不可用返回空串、大小取不到返回 0）时
+    绝不能判「指纹一致」，否则两个不同源文件会被判成同一任务而复用旧产物。
+    """
+    if 值 is None:
+        return True
+    if isinstance(值, str):
+        return not 值.strip()
+    if isinstance(值, bool):
+        return not 值
+    if isinstance(值, (int, float)):
+        return 值 == 0
+    return False
+
+
+# 必须有值的字段：值来自能力调用或数值口径，为空串/0 只可能来自兜底 → 未知，直接判不一致。
+指纹必有值字段 = ("源文件摘要", "源文件大小字节", "模式", "分片秒数")
+# 允许为空的字段：调用方直传，「空串」是合法取值（无附加术语/未指定模型名）→ 逐字比较。
+指纹可空字段 = ("附加术语", "模型名")
+
+
 def 指纹一致(旧指纹: dict | None, 新指纹: dict) -> bool:
-    """比较指纹关键字段：源文件摘要、大小、模式、分片秒数、附加术语、模型名。"""
-    if not isinstance(旧指纹, dict):
+    """比较指纹关键字段：源文件摘要、大小、模式、分片秒数、附加术语、模型名。
+
+    任一关键字段缺失/为 None/空串/0（未知）→ 判不一致（未知 ≠ 相同），
+    即宁可重跑一遍，也不复用来源不明的旧产物。
+    """
+    if not isinstance(旧指纹, dict) or not isinstance(新指纹, dict):
         return False
-    关键字段 = ("源文件摘要", "源文件大小字节", "模式", "分片秒数", "附加术语", "模型名")
-    return all(旧指纹.get(字段) == 新指纹.get(字段) for 字段 in 关键字段)
+    for 字段 in 指纹必有值字段:
+        旧值, 新值 = 旧指纹.get(字段), 新指纹.get(字段)
+        if _未知(旧值) or _未知(新值):
+            return False
+        if 旧值 != 新值:
+            return False
+    for 字段 in 指纹可空字段:
+        if 字段 not in 旧指纹 or 字段 not in 新指纹:
+            return False
+        if 旧指纹.get(字段) != 新指纹.get(字段):
+            return False
+    return True
 
 
 def 写状态(缓存: dict, 状态: dict) -> bool:
@@ -129,18 +170,38 @@ def 读状态(缓存: dict) -> dict | None:
     return 读JSON(缓存["状态"])
 
 
-def 产物存在(缓存: dict, 键: str, 子项: str | None = None) -> bool:
-    """判断某阶段产物是否已存在（子项为空时判目录非空）。"""
-    路径 = 缓存.get(键)
+def 产物状态(缓存: dict, 键: str, 子项: str | None = None) -> bool | None:
+    """三态判定某阶段产物：True=存在且有内容；False=不存在或为空；None=判不了。
+
+    None 只出现在底座能力调用失败（判断存在/列出目录 都没给出结论）时：
+    让调用方能区分「没产出」「有产出」「这条判不了」，而不是把「判不了」当「有产出」。
+    """
+    路径 = 缓存.get(键) if isinstance(缓存, dict) else None
     if 路径 is None:
         return False
     目标 = (Path(路径) / 子项) if 子项 else Path(路径)
     存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(目标)})
+    if not _成功(存在):
+        return None   # 判断存在都失败 → 判不了（绝不按「存在」放行）
     if not bool(getattr(存在, "值", False)):
         return False
     if 子项:
         return True
     列 = _底座("文件系统支持库.文件操作.列出目录", {"目录路径": str(目标)})
-    if _成功(列):
-        return bool(getattr(列, "值", None))
-    return True   # 存在但不是目录 → 是文件，视为已存在
+    if not _成功(列):
+        # 判断存在 已确认路径存在，列出目录 报「目录不存在」→ 存在但不是目录，是文件，视为已存在。
+        # 其余失败（目录读取失败/参数不合法/调用器未装配）→ 拿不到结论，判不了。
+        # 过去这里不分失败原因一律 return True，会把「没产出的阶段」当成已完成整段跳过。
+        if str(getattr(列, "错误码", "") or "") == "目录不存在":
+            return True
+        return None
+    return bool(getattr(列, "值", None))
+
+
+def 产物存在(缓存: dict, 键: str, 子项: str | None = None) -> bool:
+    """判断某阶段产物是否已存在（子项为空时判目录非空）。
+
+    fail-closed：只有确凿「存在且有内容」才返回 True；判不了（能力调用失败）
+    一律按不存在返回 False，调用方据此重跑该阶段，不跳过。
+    """
+    return 产物状态(缓存, 键, 子项) is True
