@@ -1,0 +1,28 @@
+# 统一换行符：仓库内一律 LF，签出时也不做转换
+# 理由：本项目为跨平台底座，Windows 客户端若开启 core.autocrlf，
+# 会把全仓文件改写为 CRLF → 产生「整仓 diff」污染，且破坏 shell 脚本与哈希校验。
+* text=auto eol=lf
+
+# 明确按二进制处理（禁止换行符转换）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.db binary
+*.sqlite3 binary
+*.npz binary
+*.gguf binary
+
+# 文本类型明确标记
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.sh text eol=lf

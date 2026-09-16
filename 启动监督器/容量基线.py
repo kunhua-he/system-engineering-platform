@@ -1,6 +1,7 @@
 """容量与资源基线：声明基线→实测采样→对比超限→超限处理链→熔断与证据。
 P1-16 仅标准库中文语义；采样全真实，ps 不可用返回错误码；超限处理真实执行并追加 JSON Lines 证据，连续超限达阈值熔断。"""
 from __future__ import annotations
+from 公共契约.运行时 import 平台适配
 
 import json, os, subprocess, sys, tempfile, threading, time
 from pathlib import Path
@@ -25,7 +26,11 @@ def 采样内存RSS(ps命令: str | None) -> dict:
                 continue
         return {"成功": False, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": f"ps 不可用: {ps命令 or ps路径表}"}
     try:
-        值 = next(行.split()[1] for 行 in Path(f"/proc/{os.getpid()}/status").read_text(encoding="utf-8").splitlines() if 行.startswith("VmRSS:"))
+        状态路径 = Path("/proc") / str(os.getpid()) / "status"
+        if not 状态路径.is_file():
+            return {"成功": False, "值": 0, "错误码": "平台不支持",
+                    "错误说明": "当前平台无 /proc，无法读取容量基线"}
+        值 = next(行.split()[1] for 行 in 状态路径.read_text(encoding="utf-8").splitlines() if 行.startswith("VmRSS:"))
         return {"成功": True, "值MB": round(int(值) / 1024, 2), "错误码": "", "错误说明": ""}
     except (OSError, StopIteration, ValueError) as 错误:
         return {"成功": False, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": f"/proc 状态不可用: {错误}"}
@@ -42,7 +47,11 @@ def 采样进程数() -> dict:
 
 def 采样句柄数() -> dict:
     try:
-        return {"成功": True, "值": len(os.listdir("/dev/fd")), "错误码": "", "错误说明": ""}
+        目录表 = 平台适配.句柄枚举目录表()
+        if not 目录表:
+            return {"成功": False, "值": 0, "错误码": "平台不支持",
+                    "错误说明": "当前平台无句柄枚举目录，无法统计打开句柄数"}
+        return {"成功": True, "值": len(os.listdir(目录表[0])), "错误码": "", "错误说明": ""}
     except OSError:
         return {"成功": False, "值": -1, "错误码": "句柄枚举失败", "错误说明": "句柄目录均不可用"}
 

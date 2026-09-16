@@ -172,7 +172,7 @@ def 验证文件句柄() -> tuple[bool, str]:
     已开: list[int] = []
     try:
         for _ in range(32):
-            已开.append(os.open("/dev/null", os.O_RDONLY))
+            已开.append(os.open(os.devnull, os.O_RDONLY))
         return False, "打开 32 个文件未被拒"
     except OSError as 错误:
         for 句柄 in 已开:
