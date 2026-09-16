@@ -1,10 +1,16 @@
-"""公开调用完整性门禁：正式公开包的六环一致性。
+"""公开调用完整性门禁：正式公开包的六环一致性 + 错误码登记环。
 
 正式公开边界是 ``支持库/后端``、``模块库`` 与 ``技能库``（技能库是顶层
 第三根正式包根，包声明类型同为「支持库」）。``支持库/适配层`` 是
 Provider/第三方实现边界：它可以声明内部实现能力，但不能成为公开能力
 owner，也不能因为和正式包使用同一能力 id 而制造重复 owner。模板目录（如
 ``模块库/_模板``）同样不是正式包，禁止进入扫描、注册和冲突统计。
+
+**错误码登记环（2026-09-16 R1 新增，防第四批漂移）**：``能力定义.json``
+里声明的每个错误码都必须在网关的 ``公开错误码状态映射`` 里登记；两张表
+（状态映射 + 说明表）键集必须一致。缺键的代价见 ``本地网关.py``——
+HTTP 状态码回落 500、错误说明回落「请求处理失败」，把可辨识的业务失败
+伪装成服务端故障（R1 实测：77 码曾因此漏登，波及 13 条 HTML 黑盒场景）。
 
 注册表为唯一事实源（包声明.json 能力列表），公开调用必须经由注册能力导出。
 任一违规 → 退出码 1 并打印缺口类型/能力id/包/路径清单；全部通过 → 退出码 0。
@@ -20,6 +26,19 @@ from pathlib import Path
 # 这里只列出可以向调用方公开能力的正式包根。适配层 Provider 有自己的
 # 依赖/运行时门禁，不得混入公开能力六环或公开 owner 冲突统计。
 扫描段 = ("支持库/后端", "模块库", "技能库")
+
+# —— 错误码登记环的源与判据（2026-09-16 R1）——
+# 两张表的键集是「对外错误码口径」，本地网关按 状态映射 缺键回落 500、
+# 网关核心按 说明表 缺键回落「请求处理失败」；因此两张表的源文件路径、
+# 变量名在这里写死一份，判据只用 AST 读字面量（不 import 网关：避免加载
+# 依赖与副作用）。扫描面**故意大于六环**：错误码是网关对外契约，
+# ``支持库/适配层`` 的提供者与 ``平台控制面`` 同样对调用方暴露错误码，
+# 只扫六环三根会把它们整体漏检——R1 的 77 个缺登码**全部**落在六环之外。
+错误码状态映射源 = ("运行核心", "统一网关", "本地网关.py")
+错误码状态映射变量 = "公开错误码状态映射"
+错误码说明表源 = ("运行核心", "统一网关", "网关核心.py")
+错误码说明表变量 = "公开错误说明表"
+错误码扫描排除根 = ("工程缓存",)
 
 
 def _是保留目录(路径: Path) -> bool:
@@ -242,8 +261,117 @@ def 检查全局(包能力表: list[tuple[str, str, str]]) -> list[dict]:
     return 额外
 
 
+def _错误码声明文件(根: Path):
+    """错误码声明面：根下每个非保留、非缓存的顶层目录里的全部 能力定义.json。
+
+    与六环的 ``扫描段`` 不同，这里不限定 ``支持库/后端`` 三根：错误码是网关
+    对外契约，``支持库/适配层`` 的提供者与 ``平台控制面`` 同样声明并暴露错误码。
+    ``工程缓存`` 是制品/缓存区（R1 时点 592 份制品内 能力定义.json），既不是
+    声明源也不该被扫——它会把「制品里的旧声明」当成新契约。
+    """
+    for 顶层 in sorted(根.iterdir()):
+        if not 顶层.is_dir() or 顶层.name.startswith(("_", ".")):
+            continue
+        if 顶层.name in 错误码扫描排除根:
+            continue
+        yield from sorted(顶层.rglob("能力定义.json"))
+
+
+def 读取模块字面量字典(源路径: Path, 变量名: str):
+    """AST 读模块级字面量字典；读不出（缺文件/语法错/非字面量）返回 None。
+
+    不 import 网关模块：门禁只读契约源，不为查一张表把网关依赖与副作用拉进来。
+    """
+    try:
+        树 = ast.parse(源路径.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+    for 节点 in 树.body:
+        if not isinstance(节点, ast.Assign):
+            continue
+        if not any(getattr(目标, "id", None) == 变量名 for 目标 in 节点.targets):
+            continue
+        try:
+            return ast.literal_eval(节点.value)
+        except (ValueError, SyntaxError):
+            return None
+    return None
+
+
+def 收集声明错误码(根: Path) -> dict[str, dict[str, list[str]]]:
+    """全库 能力定义.json 声明的错误码 → ``{码: {"能力": [...], "文件": [...]}}``。"""
+    声明: dict[str, dict[str, list[str]]] = {}
+    for 定义路径 in _错误码声明文件(根):
+        try:
+            数据 = json.loads(定义路径.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if not isinstance(数据, dict):
+            continue
+        能力列表 = 数据.get("能力列表") or 数据.get("能力") or []
+        for 能力 in 能力列表:
+            if not isinstance(能力, dict):
+                continue
+            for 码 in 能力.get("错误码") or []:
+                if not isinstance(码, str) or not 码:
+                    continue
+                条 = 声明.setdefault(码, {"能力": [], "文件": []})
+                条["能力"].append(str(能力.get("能力id") or "?"))
+                路径文本 = str(定义路径.relative_to(根))
+                if 路径文本 not in 条["文件"]:
+                    条["文件"].append(路径文本)
+    return 声明
+
+
+def _错误码条目(码: str, 缺口类型: str, 来源: dict | None = None,
+                路径文本: str = "") -> dict:
+    """统一构造错误码环违规条目（字段与六环条目同形，便于同一处打印）。"""
+    if 来源:
+        能力们 = sorted(set(来源.get("能力") or []))
+        能力文本 = "、".join(能力们[:3]) + (" 等 %d 条声明" % len(能力们) if len(能力们) > 3 else "")
+        文件们 = sorted(来源.get("文件") or [])
+        路径文本 = "、".join(文件们[:2]) + (" 等 %d 处" % len(文件们) if len(文件们) > 2 else "")
+        包文本 = str(Path(文件们[0]).parent) if 文件们 else "跨包"
+    else:
+        能力文本, 包文本 = "*", "运行核心.统一网关"
+    return {"能力id": 能力文本, "包": 包文本, "缺口类型": 缺口类型,
+            "错误码": 码, "路径": 路径文本}
+
+
+def 检查错误码登记(根: Path) -> list[dict]:
+    """错误码登记环：**能力定义声明码 ⊆ 状态映射码**，且两张表键集一致。
+
+    判据三条（同一条门禁项，缺口类型前缀 ``错误码-``）：
+      ① 声明码 ⊆ 状态映射码 —— 缺键即回落 500，正是 R1 的 77 码病根；
+      ② 状态映射码 == 说明表码   —— 同仓既有的「同一提交同步三处」纪律，
+         单向缺一侧都会让调用方拿到「500 或没有原因的失败」；
+      ③ 真仓库自身读不到两张表即 fail-closed（临时测试根没有网关源，
+         由六环检查判该根，这里不造条目）。
+    """
+    状态映射 = 读取模块字面量字典(根.joinpath(*错误码状态映射源), 错误码状态映射变量)
+    说明表 = 读取模块字面量字典(根.joinpath(*错误码说明表源), 错误码说明表变量)
+    if not isinstance(状态映射, dict) or not isinstance(说明表, dict):
+        if 根.resolve() != 仓库根.resolve():
+            return []
+        缺失 = []
+        if not isinstance(状态映射, dict):
+            缺失.append(_错误码条目("-", "错误码-状态映射源不可读"))
+        if not isinstance(说明表, dict):
+            缺失.append(_错误码条目("-", "错误码-错误说明源不可读"))
+        return 缺失
+    违规: list[dict] = []
+    for 码, 来源 in sorted(收集声明错误码(根).items()):
+        if 码 not in 状态映射:
+            违规.append(_错误码条目(码, "错误码-能力定义声明码未登记状态映射", 来源))
+    for 码 in sorted(set(状态映射) - set(说明表)):
+        违规.append(_错误码条目(码, "错误码-状态映射码缺错误说明"))
+    for 码 in sorted(set(说明表) - set(状态映射)):
+        违规.append(_错误码条目(码, "错误码-错误说明码缺状态映射"))
+    return 违规
+
+
 def 运行门禁(根: Path) -> list[dict]:
-    """扫描根目录下全部包，返回六环与全局检查的完整违规清单。"""
+    """扫描根目录下全部包，返回六环、全局检查与错误码登记的完整违规清单。"""
     违规: list[dict] = []
     包能力表: list[tuple[str, str, str]] = []
     for 包目录 in 找包目录(根):
@@ -252,6 +380,7 @@ def 运行门禁(根: Path) -> list[dict]:
         包能力表.extend((包id, 能力.get("能力id") or "", 能力.get("名称") or "") for 能力 in 声明.get("能力") or [])
         违规.extend(检查包(包目录))
     违规.extend(检查全局(包能力表))
+    违规.extend(检查错误码登记(根))
     return 违规
 
 
@@ -259,11 +388,12 @@ def 主程序() -> int:
     根 = Path(sys.argv[1]) if len(sys.argv) > 1 else 仓库根
     违规 = 运行门禁(根)
     if not 违规:
-        print("公开调用完整性门禁通过：六环一致，无违规")
+        print("公开调用完整性门禁通过：六环一致 + 错误码登记环一致，无违规")
         return 0
-    print(f"公开调用完整性门禁失败：共 {len(违规)} 项违规（六环缺口+重复提供者）")
+    print(f"公开调用完整性门禁失败：共 {len(违规)} 项违规（六环缺口+重复提供者+错误码登记）")
     for 条 in 违规:
-        print(f"[{条['缺口类型']}] 能力id={条['能力id']} 包={条['包']} 路径={条['路径']}")
+        尾 = f" 错误码={条['错误码']}" if 条.get("错误码") else ""
+        print(f"[{条['缺口类型']}] 能力id={条['能力id']} 包={条['包']} 路径={条['路径']}{尾}")
     return 1
 
 
