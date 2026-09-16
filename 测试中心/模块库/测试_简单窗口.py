@@ -25,6 +25,8 @@ if str(系统根) not in sys.path:
 
 # S0.2 契约冻结的正式模块类型（治理层 声明.py 升级前的运行时补丁）
 from 公共契约.包声明 import 声明 as 包声明契约
+# 契约版本只有一套，事实源唯一：禁止在测试里写死版本号（写死一次就随版本升级变红）
+from 公共契约.版本规则.契约版本 import 契约版本 as 平台契约版本
 
 包声明契约.允许类型集合.update({"基础模块", "功能模块"})
 
@@ -59,7 +61,8 @@ class Test简单窗口S0收敛(unittest.TestCase):
     def test_聚合契约S01全要素(self) -> None:
         契约 = json.loads(
             (模块目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
-        self.assertEqual(契约["契约版本"], "1.0.0")
+        # 不写死版本号：与唯一事实源 公共契约.版本规则.契约版本 对账
+        self.assertEqual(契约["契约版本"], 平台契约版本)
         能力表 = 契约["能力契约"]
         self.assertEqual(len(能力表), 6)
         预期能力 = {"简单窗口.创建窗口", "简单窗口.打开窗口", "简单窗口.关闭窗口",
