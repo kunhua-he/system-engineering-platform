@@ -13,7 +13,7 @@
     },
     {
       "路径": "可信仓库元数据.py",
-      "sha256": "ac68246fb38a1c85757ed204e67f9a304efb2fc0521eed0befe0fddc0c43865d"
+      "sha256": "ecead6fe2d278eebbc2bbef1b277ca20c77367ae72a3b0f5a199e58da42c6926"
     },
     {
       "路径": "可复现构建器.py",
