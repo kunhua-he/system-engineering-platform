@@ -34,6 +34,11 @@ from 公共契约.运行时 import 平台适配, 进程终止
 
 默认超时秒 = 1800                            # 华哥口径：不申报默认 30 分钟（1800 秒），模块/支持库应主动申报
 内存安全阈值 = 0.80                              # 系统内存占用安全阈值（80%）
+# 本地模型内存估算系数（2026-09-16 实测修正）：
+#   Qwen3.6-27B-Q5_K_M.gguf 文件 18.5GB，加载完成（-c 8192 -ngl 99）后实测 RSS 19.7GB，
+#   倍率 1.06。原实现按「文件大小 × 2」估算得 36.9GB，会把本机明明能跑的模型判成内存不足，
+#   用户会误读成硬件不够。取 1.15 保留安全余量（覆盖 KV cache 与量化反量化缓冲）。
+本地模型估算系数 = 1.15
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
 默认协议 = "chat_completions"
 允许协议 = frozenset(("chat_completions", "codex_responses", "anthropic_messages"))
@@ -113,7 +118,15 @@ def _预计占用(连接类型: str, 配置: dict) -> int:
     # 本地：优先按 模型大小 估算，否则按类型默认
     大小 = 配置.get("模型大小字节")
     if isinstance(大小, (int, float)) and 大小 > 0:
-        return int(大小) * 2  # 加载后约 2 倍文件大小（量化+推理缓冲）
+        # 估算系数可被调用方覆盖（内存估算系数），缺省用实测标定值
+        系数 = 配置.get("内存估算系数")
+        try:
+            系数 = float(系数) if 系数 is not None else 本地模型估算系数
+        except (TypeError, ValueError):
+            系数 = 本地模型估算系数
+        if 系数 <= 0:
+            系数 = 本地模型估算系数
+        return int(大小 * 系数)
     默认表 = {"LLM": 8 * 1024**3, "向量": 2 * 1024**3, "重排": 2 * 1024**3}  # LLM 8GB/向量 2GB/重排 2GB
     return 默认表.get(连接类型, 2 * 1024**3)
 
@@ -643,6 +656,39 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
     return 命令
 
 
+def _启动日志路径(模型路径: str) -> str:
+    """本地模型启动日志路径：工程缓存/模型日志/<模型名>.log。
+
+    2026-09-16 实测背景：原来把 stdout/stderr 丢 DEVNULL，模型启动即退出时
+    任务只能空转健康检查（上限 900 秒）后报一句「健康检查超时」，
+    没有任何可用线索，必须人工用同款命令复现才拿得到日志。
+    """
+    from pathlib import Path
+    名字 = Path(模型路径).stem or "本地模型"
+    目录 = Path(__file__).resolve().parents[5] / "工程缓存" / "模型日志"
+    try:
+        目录.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return str(目录 / f"{名字}.log")
+
+
+def _读启动日志尾部(模型路径: str, 行数: int = 12) -> str:
+    """读启动日志尾部，供启动失败时随错误说明一并返回。"""
+    try:
+        with open(_启动日志路径(模型路径), "rb") as 文件:
+            文件.seek(0, 2)
+            大小 = 文件.tell()
+            文件.seek(max(0, 大小 - 8192))
+            文本 = 文件.read().decode("utf-8", "ignore")
+        有效行 = [行.strip() for 行 in 文本.splitlines() if 行.strip()]
+        if not 有效行:
+            return ""
+        return " | ".join(有效行[-行数:])[:1200]
+    except OSError:
+        return ""
+
+
 def _等待本地健康(端口: int, 超时秒: int) -> bool:
     import urllib.request
     网址 = f"http://127.0.0.1:{端口}/v1/models"
@@ -702,6 +748,7 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
             "本地路径": 规范路径, "模型源格式": 源格式, "启动器": 启动器名, "模型类型": 类型,
             "模型大小字节": 模型大小字节, "端口": 端口, "url": f"http://127.0.0.1:{端口}/v1",
             "协议": 启动参数.get("协议", 默认协议) if 类型 == "LLM" else None}
+    配置["内存估算系数"] = 启动参数.get("内存估算系数")
     with 锁:
         守卫 = _内存守卫(类型, 配置)
         if 守卫 is not None:
@@ -715,19 +762,32 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
         全局模型索引[模型身份] = 连接键
     try:
         命令 = _构建本地启动命令(规范路径, 类型, 启动器名, 端口, 启动参数)
-        进程 = subprocess.Popen(命令, **平台适配.子进程组启动标志(),
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 启动日志落盘而非 DEVNULL：失败时可诊断（子进程持有独立 fd，
+        # 父进程关闭文件对象不影响其继续写入）
+        日志文件 = open(_启动日志路径(规范路径), "ab", buffering=0)
+        try:
+            进程 = subprocess.Popen(命令, **平台适配.子进程组启动标志(),
+                                    stdout=日志文件, stderr=subprocess.STDOUT)
+        finally:
+            日志文件.close()
         本地进程表[连接键] = 进程
         句柄系统.登记资源(对象.句柄id, 资源类型="进程", PID=进程.pid, 端口=端口)
         if not _等待本地健康(端口, 有效超时):
-            raise TimeoutError(f"本地模型启动后健康检查超时: {模型路径}")
+            尾部 = _读启动日志尾部(规范路径)
+            raise TimeoutError(
+                f"本地模型启动后健康检查超时: {模型路径}（端口 {端口} 未在 "
+                f"{min(max(10, 有效超时), 900)} 秒内就绪）"
+                + (f"；启动日志尾部：{尾部}" if 尾部 else
+                   "；启动日志为空，常见原因：端口被占用、模型文件损坏或启动器参数不被支持"))
         return 结果.成功结果({"句柄": 对象.句柄id, "模型类型": 类型, "模型路径": 规范路径,
                          "端口": 端口, "启动命令": 命令, "全局句柄": True,
                          "协议": 配置.get("协议") if 类型 == "LLM" else None,
                          "超时秒": 有效超时})
     except Exception as 错误:
         释放句柄(对象.句柄id)
-        return _失败("提供者不可用", f"本地模型启动失败: {错误}")
+        尾部 = _读启动日志尾部(规范路径)
+        return _失败("提供者不可用", f"本地模型启动失败: {错误}"
+                     + (f"；启动日志尾部：{尾部}" if 尾部 else ""))
 
 
 def 启动本地模型(模型路径: str | None = None, 启动器: str | None = None, 模型类型: str | None = None,
