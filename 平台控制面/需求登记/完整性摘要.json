@@ -1,55 +1,55 @@
 {
   "包id": "平台控制面.需求登记",
-  "版本": "1.0.0",
+  "版本": "1.1.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "a8fd647683dc0a5e3bca2589f0206721e1e2bdf25faa46cbdf05b3df70997032"
+      "sha256": "ee3c19d2ff1779a5fb81dd8c46c4806cc35d31eb20d2fdac1122e5762597f277"
     },
     {
       "路径": "包声明.json",
-      "sha256": "e9ea806eea30e3a5dfd1882bc9614f7725a7e229caf712ce711b7c44f54bf784"
+      "sha256": "c2af26521619942e6960f3d4efff4f93d65e6da53603b6759e30ed9dff5e24cd"
     },
     {
       "路径": "复用决策.json",
-      "sha256": "af2f0bdf17af1133989eb96b16ebb18cb3878f42ab8f46b6fcca45bf5ff42a0b"
+      "sha256": "a3d3d8f4a6334fc81d3a53264ed6c02b6ef5d16be3b2a53f1f1717c6c62ae97d"
     },
     {
       "路径": "实现/能力入口.py",
-      "sha256": "f8e1cd97677401137f2b5466a576533dc676fad1f83fe7a63e18a56f3c8499f9"
+      "sha256": "236a3665f18be674f3d8878e3e33fb4aab0ceb054bc86620ba1706a88653ea40"
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "764fbce1688390a9d905a7ec91bf7fdbff92c02a67bf547faa0a2f495d2bbb43"
+      "sha256": "2ef758c8bb3f9ea67464fea043e5cc0166dc7777e800cabf6e364fe191856a26"
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "8604fbbc9400f8ecf029bc42a1a82f307a4a9f8dbdf4fdbc7217ad63a27487c9"
+      "sha256": "cc5e8525ee76c8009ccd3bcac943a34ff53ecc793f4145e10b4c8009d0959f28"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "d2139744b7991cacad7fa4ab1f2dfa88be6cfb47b5af60e340e346d8b5e9c28d"
+      "sha256": "30f6c1e957eae557bdf43ebf38ca924506591e03ee433c95c22c6c958e8e18fe"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "2308a9ed4e91cc3d82d87465f7398168200be8ca2531bfbcc95cbf323e81908c"
+      "sha256": "b5af6ad0f819b1a1ef22e72b36f7bdb05d5176de5c46a21af467a974f6c77f5c"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "9237cb7fa3bd2cf970181f724f79106eb1a81af34ec81e0452c85d3b4744f8d3"
+      "sha256": "f33a0051d8bbaf64d97077351c5ac44d5d9e01850ee223f83cf40fd61ee66739"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "e3de2f500cbb4f47b8d1ce827fedd1e0c5034e54ce23d0de938d16cb34a6279b"
+      "sha256": "9e6fa416613f4b38dd676526d8165e5e367d41d155e1f4f3dbe179bb9b737d90"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "6564c5ed39feb495016cb599b2691ce567fb1f41c04ee550639157f2bb198c06"
+      "sha256": "5877c5585e3f041e6cfa905bffa38795fa0f3c9c858e1e75b248b82d8cbded1f"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "a67d7ffdb222474a72a236b318ba8ea200546b95ae458ae7edd91e293147075b"
+      "sha256": "824bb4529f0f81a3728970a26c91dbd4141c636b72fd5e28efbc22cf941db623"
     },
     {
       "路径": "资源预算.json",
@@ -69,15 +69,18 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "c1403fca5796f797d9c4f69bd664873c33b855239e6f16a022b216bf4c18e1fb"
+      "sha256": "bff26cdc3fcf204a5e6726cbb5a7c259c5d7e030f0265b5caaa7ceee20f481b0"
     }
   ],
-  "能力数": 4,
+  "能力数": 7,
   "能力清单": [
     "平台控制面.需求登记.登记需求",
     "平台控制面.需求登记.确认需求",
     "平台控制面.需求登记.查询需求",
-    "平台控制面.需求登记.登记装配计划"
+    "平台控制面.需求登记.登记装配计划",
+    "平台控制面.需求登记.需求已确认",
+    "平台控制面.需求登记.保存工作包",
+    "平台控制面.需求登记.查询工作包"
   ],
-  "能力定义摘要": "115241f10b08f7c7"
+  "能力定义摘要": "4ed1afa4ec51a061"
 }

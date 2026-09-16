@@ -146,6 +146,86 @@ def 查询需求(需求id: str = "", 限制: int = 50, 包含工作包: bool = F
     })
 
 
+def 需求已确认(需求id: str, 存储目录: str = "") -> Any:
+    """只读判定需求是否已确认（闸门口径与 确认需求 逐字一致，幂等、无副作用）。"""
+    from 公共契约.基础类型.结果类型 import 结果
+
+    if not isinstance(需求id, str) or not 需求id.strip():
+        return 结果.失败("需求id不能为空",
+                        "需求id不能为空（平台稳定码 REQUIREMENT_REQUIRED：空需求id一律阻断）",
+                        来源=来源名称, 详情={"稳定错误码": "REQUIREMENT_REQUIRED"})
+    服务, 失败 = _取服务或失败(存储目录)
+    if 服务 is None:
+        return 失败
+    try:
+        记录表 = 服务.查询需求(需求id.strip())
+    except sqlite3.Error:
+        # 闸门 fail-safe：读不到一律按「未确认/不存在」阻断（与 确认需求 的 sqlite 分支同口径），
+        # 绝不在读取失败时假装已确认。
+        记录表 = []
+    命中 = 记录表[0] if 记录表 else None
+    if not 命中 or 命中.get("确认状态") != "已确认":
+        return 结果.失败("需求不存在",
+                        f"{需求id} 未确认或不存在（平台稳定码 REQUIREMENT_UNCONFIRMED："
+                        "未确认或不存在一律阻断开发与发布放行）",
+                        来源=来源名称,
+                        详情={"稳定错误码": "REQUIREMENT_UNCONFIRMED", "需求id": 需求id})
+    return 结果.成功结果({"需求id": 需求id, "是否已确认": True, "消息": "需求已确认"})
+
+
+def 保存工作包(需求id: str, 波次: int, 说明: str, 输入快照: dict[str, Any],
+              允许修改路径: list[str], 能力占用: list[str], 资源预算: dict[str, Any],
+              验收命令: str, 存储目录: str = "") -> Any:
+    """把一条工作包落 平台状态.工作包 表（唯一写入口仍是 需求服务.保存工作包）。"""
+    from 公共契约.基础类型.结果类型 import 结果
+
+    if not isinstance(需求id, str) or not 需求id.strip():
+        return 结果.失败("需求id不能为空",
+                        "需求id不能为空（平台稳定码 REQUIREMENT_REQUIRED：空需求id一律阻断）",
+                        来源=来源名称, 详情={"稳定错误码": "REQUIREMENT_REQUIRED"})
+    if not isinstance(波次, int) or isinstance(波次, bool):
+        return 结果.失败("参数不合法", "波次 必须是整数", 来源=来源名称)
+    for 名称, 值 in (("说明", 说明), ("验收命令", 验收命令)):
+        if not isinstance(值, str):
+            return 结果.失败("参数不合法", f"{名称} 必须是文本", 来源=来源名称)
+    for 名称, 值 in (("输入快照", 输入快照), ("资源预算", 资源预算)):
+        if not isinstance(值, dict):
+            return 结果.失败("参数不合法", f"{名称} 必须是 JSON 对象", 来源=来源名称)
+    for 名称, 值 in (("允许修改路径", 允许修改路径), ("能力占用", 能力占用)):
+        if not isinstance(值, list):
+            return 结果.失败("参数不合法", f"{名称} 必须是列表", 来源=来源名称)
+    服务, 失败 = _取服务或失败(存储目录)
+    if 服务 is None:
+        return 失败
+    try:
+        记录 = 服务.保存工作包(需求id=需求id, 波次=波次, 说明=说明, 输入快照=输入快照,
+                             允许修改路径=允许修改路径, 能力占用=能力占用,
+                             资源预算=资源预算, 验收命令=验收命令)
+    except sqlite3.Error as 错误:
+        return 结果.失败("工作包登记失败", f"工作包写入失败：{错误}", 来源=来源名称)
+    except (TypeError, ValueError) as 错误:
+        return 结果.失败("参数不合法", f"工作包参数不合法：{错误}", 来源=来源名称)
+    return 结果.成功结果({键: 记录[键] for 键 in ("工作包id", "需求id", "波次", "说明", "状态")})
+
+
+def 查询工作包(需求id: str = "", 限制: int = 50, 存储目录: str = "") -> Any:
+    """查询工作包（只读）：给 需求id 过滤，留空列全部，按 限制 截断。"""
+    from 公共契约.基础类型.结果类型 import 结果
+
+    if 需求id is None or not isinstance(需求id, str):
+        return 结果.失败("参数不合法", "需求id 必须是文本（留空表示列全部）", 来源=来源名称)
+    if not isinstance(限制, int) or isinstance(限制, bool) or not 1 <= 限制 <= 1000:
+        return 结果.失败("参数不合法", "限制必须是 1 到 1000 的整数", 来源=来源名称)
+    服务, 失败 = _取服务或失败(存储目录)
+    if 服务 is None:
+        return 失败
+    try:
+        工作包表 = 服务.查询工作包(需求id.strip())[:限制]
+    except sqlite3.Error as 错误:
+        return 结果.失败("需求查询失败", f"工作包查询失败：{错误}", 来源=来源名称)
+    return 结果.成功结果({"工作包表": 工作包表, "数量": len(工作包表)})
+
+
 def 登记装配计划(需求id: str, 能力搜索结果: list[Any] | None = None,
                 工作包表: list[Any] | None = None, 落工作包: bool = False,
                 存储目录: str = "") -> Any:
