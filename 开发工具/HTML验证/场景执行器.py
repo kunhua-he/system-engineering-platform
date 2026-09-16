@@ -17,13 +17,13 @@ from 开发工具.HTML验证.端口池 import _场景资源键
 from 开发工具.HTML验证.验证证据 import _校验制品前后绑定
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 class _受管临时根:
-    """场景临时根句柄（与 tempfile.TemporaryDirectory 同形：.name / .cleanup）。"""
+    """场景临时根句柄（与 tempfile.TemporaryDirectory 同形：.name / .清理）。"""
 
     def __init__(self, 路径: Path) -> None:
         self.路径 = 路径
         self.name = str(路径)
 
-    def cleanup(self) -> None:
+    def 清理(self) -> None:
         shutil.rmtree(self.路径, ignore_errors=True)
 
 
@@ -114,7 +114,7 @@ def _执行场景束(制品目录: Path, 场景束: 验证场景束, 地址: str
                 结果表.append(结果)
                 if not 结果.通过:
                     清理失败数 += 1
-            临时对象.cleanup()
+            临时对象.清理()
         残留 = [str(临时根)] if 临时根.exists() else []
         return 结果表, 场景成功目标, 清理失败数, 残留
 

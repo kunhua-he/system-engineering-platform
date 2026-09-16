@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
 错误码_限流 = "限流"
+
+# 有界治理：空闲状态清理的调用间隔（每 N 次状态访问清一次，避免热路径开销）
+清理间隔 = 256
 
 
 @dataclass
@@ -21,6 +25,7 @@ class 限流状态:
     窗口计数: int = 0
     拒绝数: int = 0
     上限: int = 0
+    最后访问: float = 0.0
 
     def 转字典(self) -> dict[str, Any]:
         return {
@@ -49,6 +54,8 @@ class 限流器:
         单提供者频率: int = 300,
         单维度并发: int = 20,
         窗口秒: float = 10.0,
+        拒绝记录上限: int = 10000,
+        状态空闲秒: float = 600.0,
     ) -> None:
         if min(最大并发请求, 最大任务数, 最大流式连接, 单维度并发) < 1:
             raise ValueError("并发上限必须大于零")
@@ -56,6 +63,10 @@ class 限流器:
             raise ValueError("频率上限必须大于零")
         if 窗口秒 <= 0:
             raise ValueError("限流窗口必须大于零")
+        if 拒绝记录上限 < 1:
+            raise ValueError("拒绝记录上限必须大于零")
+        if 状态空闲秒 <= 0:
+            raise ValueError("状态空闲秒必须大于零")
         self.最大并发请求 = 最大并发请求
         self.最大任务数 = 最大任务数
         self.最大流式连接 = 最大流式连接
@@ -68,12 +79,17 @@ class 限流器:
             "任务": 单任务频率,
             "提供者": 单提供者频率,
         }
+        self.拒绝记录上限 = 拒绝记录上限
+        self.状态空闲秒 = 状态空闲秒
         self.锁 = threading.RLock()
         self.请求并发 = 0
         self.任务数 = 0
         self.流式连接数 = 0
         self.状态表: dict[tuple[str, str], 限流状态] = {}
-        self.拒绝记录: list[dict[str, Any]] = []
+        # 有界：拒绝记录只保留最近 N 条（deque maxlen），累计值另计，语义不丢
+        self.拒绝记录: deque[dict[str, Any]] = deque(maxlen=拒绝记录上限)
+        self.累计拒绝数 = 0
+        self._清理计数 = 0
 
     def _维度表(
         self,
@@ -98,9 +114,26 @@ class 限流器:
         elif 现在 - 状态.窗口开始 >= self.窗口秒:
             状态.窗口开始 = 现在
             状态.窗口计数 = 0
+        状态.最后访问 = 现在
+        self._清理计数 += 1
+        if self._清理计数 >= 清理间隔:
+            self._清理计数 = 0
+            self._清理空闲状态(现在)
         return 状态
 
+    def _清理空闲状态(self, 现在: float) -> int:
+        """有界：删除空闲超过 状态空闲秒 且当前无并发的维度状态（调用方必须已持锁）。
+
+        只删"空闲且并发为 0"的条目，窗口（窗口秒）远小于空闲秒，不会放过频率限制。
+        """
+        过期 = [标识 for 标识, 状态 in self.状态表.items()
+                if 状态.当前并发 <= 0 and 现在 - 状态.最后访问 > self.状态空闲秒]
+        for 标识 in 过期:
+            del self.状态表[标识]
+        return len(过期)
+
     def _记录拒绝(self, 原因: str, 维度: str = "全局", 键: str = "") -> None:
+        self.累计拒绝数 += 1
         self.拒绝记录.append({
             "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
             "维度": 维度,
@@ -198,7 +231,8 @@ class 限流器:
                 "请求并发": self.请求并发,
                 "任务数": self.任务数,
                 "流式连接数": self.流式连接数,
-                "拒绝总数": len(self.拒绝记录),
+                "拒绝总数": self.累计拒绝数,
+                "拒绝记录保留": len(self.拒绝记录),
                 "窗口秒": self.窗口秒,
                 "五维状态": [状态.转字典() for 状态 in self.状态表.values()],
             }

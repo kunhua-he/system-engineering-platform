@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from 平台控制面.能力反馈 import 能力反馈服务
 from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 请求限制器, 提取访问凭证
 from 运行核心.统一网关.网关核心 import 网关核心, 网关请求
+from 公共契约.运行时.JSON解码 import 解码冻结值
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 
 
@@ -482,20 +483,12 @@ class 本地网关服务器:
 
             @staticmethod
             def _解码JSON值(值: Any) -> Any:
-                """还原客户端传入的冻结字节集对象；非法编码一律拒绝。"""
-                if isinstance(值, dict):
-                    if 值.get("类型") == "字节集型":
-                        编码 = 值.get("base64")
-                        if not isinstance(编码, str):
-                            raise ValueError("字节集型缺少合法 base64")
-                        try:
-                            return base64.b64decode(编码, validate=True)
-                        except (ValueError, TypeError):
-                            raise ValueError("字节集型 base64 不合法") from None
-                    return {键: 处理类._解码JSON值(子值) for 键, 子值 in 值.items()}
-                if isinstance(值, list):
-                    return [处理类._解码JSON值(子值) for 子值 in 值]
-                return 值
+                """还原客户端传入的冻结字节集对象。
+
+                委托全平台唯一实现（严格模式）：非法编码一律拒绝，且带
+                最大深度/节点预算，深嵌套不再以 RecursionError 逃逸。
+                """
+                return 解码冻结值(值, 模式="严格")
 
             def _反馈响应(self, 状态码: int, 成功: bool, 值: Any = None,
                          错误码: str = "", 错误说明: str = "", 操作: str = "能力反馈") -> None:

@@ -29,6 +29,7 @@ from typing import Any
 
 默认响应上限字节 = 4 * 1024 * 1024
 
+from 公共契约.运行时.JSON解码 import 解码冻结值
 from 公共契约.错误结构 import (
     错误码_参数不合法,
     错误码_提供者不可用,
@@ -97,7 +98,10 @@ class HTTP连接器:
         except (TypeError, ValueError) as 错误:
             return self._失败(错误码_参数不合法, f"参数无法编码为 JSON：{错误}", 请求id)
         if isinstance(数据, dict):
-            数据 = self._解码JSON值(数据)
+            try:
+                数据 = self._解码JSON值(数据)
+            except ValueError as 错误:
+                return self._失败(错误码_返回结果不符合契约, f"网关响应正文非法：{错误}", 请求id)
         if 状态码 >= 500 and (数据 is None or not isinstance(数据, dict) or 数据.get("成功") is not False):
             return self._失败(错误码_提供者不可用, f"网关服务错误（状态 {状态码}）：{错误说明}", 请求id)
         if 数据 is None:
@@ -132,17 +136,11 @@ class HTTP连接器:
 
     @staticmethod
     def _解码JSON值(值: Any) -> Any:
-        """还原网关约定的字节集 JSON 表示；其他对象递归保持原样。"""
-        if isinstance(值, dict):
-            if 值.get("类型") == "字节集型" and isinstance(值.get("base64"), str):
-                try:
-                    return base64.b64decode(值["base64"], validate=True)
-                except (ValueError, TypeError):
-                    return 值
-            return {键: HTTP连接器._解码JSON值(子值) for 键, 子值 in 值.items()}
-        if isinstance(值, list):
-            return [HTTP连接器._解码JSON值(子值) for 子值 in 值]
-        return 值
+        """还原网关约定的字节集 JSON 表示。
+
+        委托全平台唯一实现（宽松模式）：非法字节集原样保留；带最大深度/节点预算。
+        """
+        return 解码冻结值(值, 模式="宽松")
 
     @staticmethod
     def _编码JSON值(值: Any) -> Any:

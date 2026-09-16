@@ -175,7 +175,28 @@ class 句柄体系:
         except Exception:
             return False
 
-    def _回收单个资源(self, 资源: dict) -> tuple[bool, str]:
+    def _端口归属PID(self, 端口资源: dict, 同句柄资源: list[dict] | None = None) -> set[int]:
+        """端口归属判定（第 9 条 5 项：回收必须自证归属，不猜、不误杀）。
+
+        归属来源只有两处，都在登记时写入状态机：① 该端口资源自身登记的 PID；
+        ② 同一句柄下、端口相同的那条「进程」资源登记的 PID。
+        两处都取不到 → 返回空集，回收方只能报告、不得按 lsof 枚举结果强杀。
+        """
+        候选: set[int] = set()
+        自己 = 端口资源.get("PID")
+        if isinstance(自己, int) and 自己 > 0:
+            候选.add(自己)
+        端口 = 端口资源.get("端口")
+        for 其他 in (同句柄资源 or []):
+            if 其他 is 端口资源:
+                continue
+            if 其他.get("资源类型") == "进程" and 其他.get("端口") == 端口:
+                pid = 其他.get("PID")
+                if isinstance(pid, int) and pid > 0:
+                    候选.add(pid)
+        return 候选
+
+    def _回收单个资源(self, 资源: dict, 同句柄资源: list[dict] | None = None) -> tuple[bool, str]:
         """核查单个资源：存活→回收；否则标记已回收（幂等）。"""
         类型 = 资源["资源类型"]
         说明 = ""
@@ -203,10 +224,14 @@ class 句柄体系:
                     说明 = "进程已不存在（无泄露）"
             elif 类型 == "端口":
                 端口 = 资源["端口"]
+                归属表 = self._端口归属PID(资源, 同句柄资源)
                 if not isinstance(端口, int) or 端口 <= 0:
                     说明 = "无端口（无泄露）"  # 与 进程 分支「进程已不存在（无泄露）」对称
                 elif not self._端口被占用(端口):
                     说明 = "端口已释放（无泄露）"
+                elif not 归属表:
+                    说明 = (f"端口 {端口} 仍被占用，但本句柄未登记归属进程"
+                           f"（第 9 条 5 项：只报告、不按 lsof 猜杀无关进程）")
                 else:
                     import subprocess
                     try:
@@ -220,7 +245,10 @@ class 句柄体系:
                         if not 占用进程:
                             说明 = f"端口 {端口} 仍被占用（未枚举到可清理进程）"
                         else:
-                            for pid in 占用进程:
+                            越权 = [pid for pid in 占用进程 if pid not in 归属表]
+                            if 越权:
+                                记录忽略('句柄体系.回收端口占用进程', f"端口 {端口} 存在非本句柄归属进程 {越权}，跳过")
+                            for pid in [pid for pid in 占用进程 if pid in 归属表]:
                                 try: os.kill(pid, signal.SIGKILL)
                                 except (ProcessLookupError, PermissionError) as 错误:
                                     # 允许忽略，但留痕（哲学第 3 条 2 项）：进程刚退出 / 无权限杀，
@@ -268,7 +296,7 @@ class 句柄体系:
                     回收清单.append({"资源类型": 资源["资源类型"], "已回收": True, "说明": "已在先前回收（幂等）"})
                     已回收数 += 1
                     continue
-                已回收, 说明 = self._回收单个资源(资源)
+                已回收, 说明 = self._回收单个资源(资源, 对象.绑定资源)
                 # 只有确认清理成功才进入终态；失败必须保留待回收状态，
                 # 让后续有界重试或诊断流程仍能再次执行清理。
                 资源["已回收"] = 已回收
