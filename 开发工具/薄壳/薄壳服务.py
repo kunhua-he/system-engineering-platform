@@ -19,16 +19,24 @@ _薄壳目录 = Path(__file__).resolve().parent
 if str(_薄壳目录) not in sys.path:
     sys.path.insert(0, str(_薄壳目录))
 
-from mcp.server import Server
-from mcp.server.models import InitializationOptions
-from mcp.server.stdio import stdio_server
-from mcp.types import ServerCapabilities, TextContent, Tool
+# MCP SDK 只经适配层提供者的包级中文入口使用：薄壳不直接依赖第三方 mcp 包。
+# 项目根入 sys.path：薄壳由 MCP 客户端按绝对路径拉起，脚本目录不是项目根。
+_项目根 = _薄壳目录.parents[1]
+if str(_项目根) not in sys.path:
+    sys.path.insert(0, str(_项目根))
+
+from 支持库.适配层.MCP协议提供者 import (
+    构造服务,
+    构造初始化选项,
+    构造文本内容,
+    标准输入输出上下文,
+)
 
 from 工具清单 import 中文名到协议名, 三个工具定义, 构建工具目录, 搜索能力目标
 from 网关转发 import 网关调用地址, 转发
 from 待补能力清单 import 登记待补能力
 
-服务 = Server("系统工程平台_薄壳")
+服务 = 构造服务("系统工程平台_薄壳")
 服务名 = "系统工程平台_薄壳"
 服务版本 = "1.0.0"
 # 网关表示「该能力没登记」的错误码/错误说明关键字（只做归一化，不改写业务语义）。
@@ -101,13 +109,13 @@ def _工具目录(参数: dict) -> dict[str, Any]:
 
 
 @服务.list_tools()
-async def 工具列表() -> list[Tool]:
+async def 工具列表() -> list:
     """薄壳只暴露 3 个工具，不按角色过滤、不注入业务工具。"""
     return list(三个工具定义)
 
 
 @服务.call_tool()
-async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]:
+async def 调用工具(名称: str, 参数: dict[str, Any]) -> list:
     协议名 = 中文名到协议名.get(str(名称), str(名称))
     处理 = 分发表.get(协议名)
     if 处理 is None:
@@ -119,19 +127,13 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list[TextContent]
         except Exception as 异常:  # 薄壳不吞异常细节以外的信息，凭证不入错误文本
             数据 = {"成功": False, "错误码": "薄壳内部错误",
                     "错误说明": f"{type(异常).__name__}: {str(异常)[:200]}"}
-    return [TextContent(type="text", text=json.dumps(数据, ensure_ascii=False, indent=2))]
+    return [构造文本内容(json.dumps(数据, ensure_ascii=False, indent=2))]
 
 
 async def 主程序() -> None:
     """stdio 传输：不绑定端口、不启 HTTP 服务。"""
-    async with stdio_server() as (读取流, 写入流):
-        await 服务.run(
-            读取流, 写入流,
-            InitializationOptions(
-                server_name=服务名, server_version=服务版本,
-                capabilities=ServerCapabilities(tools={}),
-            ),
-        )
+    async with 标准输入输出上下文() as (读取流, 写入流):
+        await 服务.run(读取流, 写入流, 构造初始化选项(服务名, 服务版本))
 
 
 if __name__ == "__main__":
