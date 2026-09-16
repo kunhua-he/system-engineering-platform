@@ -3,23 +3,27 @@
   {
    "名称": "tree-sitter",
    "版本": "0.26.0",
-   "模块名": "tree_sitter"
+   "模块名": "tree_sitter",
+   "发行包": "tree-sitter"
   },
   {
    "名称": "tree-sitter-typescript",
    "版本": "0.23.2",
-   "模块名": "tree_sitter_typescript"
+   "模块名": "tree_sitter_typescript",
+   "发行包": "tree-sitter"
   }
  ],
  "提供者id": "支持库.适配层.TreeSitter提供者",
  "直接依赖": [
   {
    "名称": "tree-sitter",
-   "版本": "0.26.0"
+   "版本": "0.26.0",
+   "发行包": "tree-sitter"
   },
   {
    "名称": "tree-sitter-typescript",
-   "版本": "0.23.2"
+   "版本": "0.23.2",
+   "发行包": "tree-sitter"
   }
  ],
  "依赖闭包": [
@@ -27,13 +31,15 @@
    "名称": "tree-sitter",
    "版本": "0.26.0",
    "来源": "PyPI",
-   "许可证": "MIT"
+   "许可证": "MIT",
+   "发行包": "tree-sitter"
   },
   {
    "名称": "tree-sitter-typescript",
    "版本": "0.23.2",
    "来源": "PyPI",
-   "许可证": "MIT"
+   "许可证": "MIT",
+   "发行包": "tree-sitter"
   }
  ],
  "环境": {
@@ -42,5 +48,5 @@
   "CPU": "arm64"
  },
  "生成时间": "",
- "说明": "精确锁定，禁止范围版本"
+ "说明": "精确锁定，禁止范围版本；tree-sitter 引擎与其官方 TypeScript 语法包属同一上游生态（引擎 + 该引擎的语法），构成一个逻辑依赖单元，故统一归属发行包 tree-sitter。"
 }

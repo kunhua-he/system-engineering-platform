@@ -11,8 +11,9 @@ from __future__ import annotations
 from 支持库.适配层.TreeSitter提供者.实现.提供者 import 解析语法树
 from 支持库.适配层.TreeSitter提供者.实现.提供者 import 检查可用性
 from 支持库.适配层.TreeSitter提供者.实现.提供者 import TreeSitter解析错误
+from 支持库.适配层.TreeSitter提供者.实现.提供者 import 停止
 
-__all__ = ["解析语法树", "检查可用性", "TreeSitter解析错误", "注册能力"]
+__all__ = ["解析语法树", "检查可用性", "TreeSitter解析错误", "停止", "注册能力"]
 
 支持的语言集 = ("typescript", "tsx")
 
