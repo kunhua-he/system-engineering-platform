@@ -104,23 +104,30 @@ class _同步连接池:
             self._许可.release()
             raise
 
-    def 归还(self, 池连接: _池连接, *, 失效: bool = False) -> None:
+    def 归还(self, 池连接: _池连接, *, 失效: bool = False) -> str | None:
+        """归还池连接；返回**释放问题**（None=干净归还），调用方必须并入结果，不得丢弃。
+
+        `释放连接()` 的契约是「返回释放过程中的问题，None 表示干净释放，**绝不静默吞掉**」——
+        调用方把返回值丢掉，就是把释放失败静默吞掉（句柄残留假绿），由 `_收尾()` 收口。
+        """
         try:
             with self._锁:
                 self._借出数 = max(0, self._借出数 - 1)
                 是否关闭 = self._关闭
             if 失效 or 是否关闭:
-                _释放(池连接.连接对象)
+                问题 = _释放(池连接.连接对象)
                 with self._锁:
                     self._全部.discard(id(池连接))
-                return
+                return 问题
             try:
                 池连接.连接对象.rollback()
                 self._空闲.put_nowait(池连接)
+                return None
             except Exception:
-                _释放(池连接.连接对象)
+                问题 = _释放(池连接.连接对象)
                 with self._锁:
                     self._全部.discard(id(池连接))
+                return 问题
         finally:
             self._许可.release()
 
@@ -195,7 +202,8 @@ def 连接数据库(连接串: str, 连接池大小: int = 4, 超时秒: float =
     try:
         池 = _同步连接池(连接串, 大小=连接池大小, 连接超时秒=float(超时秒))
         探针 = 池.借出(float(超时秒))
-        池.归还(探针)
+        if (探针问题 := 池.归还(探针)):
+            return _失败(错误码_连接失败, f"连接池探针释放问题：{探针问题}")
         对象 = _句柄体系.创建句柄(
             句柄类型=句柄类型_资源, 资源id=f"postgresql:{id(池)}", 版本="1.0.0",
         )
@@ -224,21 +232,23 @@ def 查询数据库(数据库句柄: int, SQL: str, 参数: list | None = None,
         return _失败(错误码_句柄失效, "数据库句柄不存在、已关闭或已失效")
     池连接 = None
     失效 = False
+    释放问题: str | None = None
     try:
         池连接 = 池.借出(float(超时秒))
         with 池连接.连接对象.cursor() as 游标:
             游标.execute(SQL, 参数 or ())
             行列表 = 游标.fetchall()
             列名表 = [描述[0] for 描述 in 游标.description] if 游标.description else []
-        return 结果.成功结果({"行列表": [dict(zip(列名表, 行)) for 行 in 行列表]})
+        结果对象 = 结果.成功结果({"行列表": [dict(zip(列名表, 行)) for 行 in 行列表]})
     except TimeoutError as 错误:
-        return _失败(错误码_超时, str(错误))
+        结果对象 = _失败(错误码_超时, str(错误))
     except Exception as 错误:
         失效 = True
-        return _失败(_归类错误(错误), f"查询失败：{错误}")
+        结果对象 = _失败(_归类错误(错误), f"查询失败：{错误}")
     finally:
         if 池连接 is not None:
-            池.归还(池连接, 失效=失效)
+            释放问题 = 池.归还(池连接, 失效=失效)
+    return _收尾(结果对象, 释放问题)
 
 
 def 事务执行数据库(数据库句柄: int, SQL列表: list, 超时秒: float = 30) -> 结果:
@@ -255,15 +265,16 @@ def 事务执行数据库(数据库句柄: int, SQL列表: list, 超时秒: floa
         return _失败(错误码_句柄失效, "数据库句柄不存在、已关闭或已失效")
     池连接 = None
     失效 = False
+    释放问题: str | None = None
     try:
         池连接 = 池.借出(float(超时秒))
         with 池连接.连接对象.cursor() as 游标:
             for 条 in SQL列表:
                 游标.execute(条)
         池连接.连接对象.commit()
-        return 结果.成功结果({"已提交": True})
+        结果对象 = 结果.成功结果({"已提交": True})
     except TimeoutError as 错误:
-        return _失败(错误码_超时, str(错误))
+        结果对象 = _失败(错误码_超时, str(错误))
     except Exception as 错误:
         失效 = True
         说明 = ""
@@ -275,10 +286,11 @@ def 事务执行数据库(数据库句柄: int, SQL列表: list, 超时秒: floa
                 说明 = f"；回滚失败：{回滚错误}"
             else:
                 说明 = ""
-        return _失败(_归类错误(错误), f"事务执行失败，已回滚{说明}：{错误}")
+        结果对象 = _失败(_归类错误(错误), f"事务执行失败，已回滚{说明}：{错误}")
     finally:
         if 池连接 is not None:
-            池.归还(池连接, 失效=失效)
+            释放问题 = 池.归还(池连接, 失效=失效)
+    return _收尾(结果对象, 释放问题)
 
 
 def 连接池状态(数据库句柄: int) -> 结果:
