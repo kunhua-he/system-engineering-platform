@@ -105,13 +105,14 @@ def 确认需求(需求id: str, 调用者: str = "", 角色: str = "", 存储目
     try:
         成功, 消息 = 服务.确认需求(需求id=需求id, 调用者=调用者, 角色=角色)
     except sqlite3.Error as 错误:
-        return 结果.失败("需求不存在", f"需求确认写入失败：{错误}", 来源=来源名称,
+        # 写入失败即「确认状态没落上」→ 按未确认 fail-safe 阻断（稳定码与拆表前同码）。
+        return 结果.失败("需求未确认", f"需求确认写入失败：{错误}", 来源=来源名称,
                         详情={"稳定错误码": "REQUIREMENT_UNCONFIRMED", "需求id": 需求id})
     if not 成功:
-        return 结果.失败("需求不存在", f"{消息}（平台稳定码 REQUIREMENT_UNCONFIRMED："
-                        "未确认或不存在一律阻断开发与发布放行）",
+        return 结果.失败("需求不存在", f"{消息}（平台稳定码 REQUIREMENT_NOT_FOUND："
+                        "需求快照查不到，不能确认）",
                         来源=来源名称,
-                        详情={"稳定错误码": "REQUIREMENT_UNCONFIRMED", "需求id": 需求id})
+                        详情={"稳定错误码": "REQUIREMENT_NOT_FOUND", "需求id": 需求id})
     return 结果.成功结果({"需求id": 需求id, "是否已确认": True, "消息": 消息})
 
 
@@ -157,17 +158,29 @@ def 需求已确认(需求id: str, 存储目录: str = "") -> Any:
     服务, 失败 = _取服务或失败(存储目录)
     if 服务 is None:
         return 失败
+    读取失败 = False
     try:
         记录表 = 服务.查询需求(需求id.strip())
     except sqlite3.Error:
-        # 闸门 fail-safe：读不到一律按「未确认/不存在」阻断（与 确认需求 的 sqlite 分支同口径），
+        # 闸门 fail-safe：读不到一律按「未确认」阻断（与 确认需求 的 sqlite 分支同口径），
         # 绝不在读取失败时假装已确认。
+        读取失败 = True
         记录表 = []
     命中 = 记录表[0] if 记录表 else None
-    if not 命中 or 命中.get("确认状态") != "已确认":
+    if 命中 is None and not 读取失败:
+        # 干净读、无记录 → 目标快照查不到（稳定码 REQUIREMENT_NOT_FOUND，
+        # 与 统一入口.py:184 的「需求不存在」逐字同词）。
         return 结果.失败("需求不存在",
-                        f"{需求id} 未确认或不存在（平台稳定码 REQUIREMENT_UNCONFIRMED："
-                        "未确认或不存在一律阻断开发与发布放行）",
+                        f"{需求id} 查不到需求快照（平台稳定码 REQUIREMENT_NOT_FOUND："
+                        "不存在一律阻断开发与发布放行）",
+                        来源=来源名称,
+                        详情={"稳定错误码": "REQUIREMENT_NOT_FOUND", "需求id": 需求id})
+    if 读取失败 or (命中.get("确认状态") if 命中 else "") != "已确认":
+        # 需求存在但未确认（或读取失败 fail-safe）→ 稳定码 REQUIREMENT_UNCONFIRMED，
+        # 与 统一入口.py:186/235/389 的「需求未确认」逐字同词。
+        return 结果.失败("需求未确认",
+                        f"{需求id} 未确认（平台稳定码 REQUIREMENT_UNCONFIRMED："
+                        "未确认一律阻断开发与发布放行）",
                         来源=来源名称,
                         详情={"稳定错误码": "REQUIREMENT_UNCONFIRMED", "需求id": 需求id})
     return 结果.成功结果({"需求id": 需求id, "是否已确认": True, "消息": "需求已确认"})
