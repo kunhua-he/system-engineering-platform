@@ -12,17 +12,25 @@
 from __future__ import annotations
 
 import os
-import resource
 import sys
 import tempfile
 import time
+
+from 公共契约.运行时 import 平台适配
 
 句柄目录表 = ("/proc/self/fd", "/dev/fd")  # Linux / macOS 真实句柄枚举目录
 
 
 def 采样内存() -> dict:
-    """真实内存峰值：getrusage RU_MAXRSS（macOS 字节 / Linux KB，换算为 MB）。"""
-    原始值 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    """真实内存峰值：getrusage RU_MAXRSS（macOS 字节 / Linux KB，换算为 MB）。
+
+    ``resource`` 是 POSIX 专有模块（Windows 上根本不存在，顶层导入会让 import 本模块即崩），
+    因此在真正取用它的本函数内惰性导入；非 POSIX 平台**显式报不支持**（抛 平台不支持错误），
+    不静默返回假数值、也不静默跳过采样。
+    """
+    平台适配.要求POSIX能力("resource 内存峰值采样（getrusage）")
+    from resource import RUSAGE_SELF, getrusage  # 惰性导入：POSIX 专有
+    原始值 = getrusage(RUSAGE_SELF).ru_maxrss
     if sys.platform == "darwin":  # macOS：字节
         原始单位, 峰值MB = "字节", 原始值 / 1024 / 1024
     else:  # Linux 等：KB

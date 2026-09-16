@@ -31,7 +31,6 @@ import ast
 import contextlib
 import json
 import os
-import resource
 import select
 import shutil
 import signal
@@ -42,6 +41,7 @@ import time
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配
 
 来源标识 = "技能库"
 
@@ -298,14 +298,27 @@ def 构造白名单环境(技能根目录: Path, 调用方环境: dict | None = 
 
 
 def 设置资源预算(预算: dict):
-    """构造 preexec_fn：在子进程内施加 CPU 与文件大小资源上限。"""
+    """构造 preexec_fn：在子进程内施加 CPU 与文件大小资源上限。
+
+    ``resource`` 是 **POSIX 专有** 模块（Windows 上根本不存在，顶层导入会让 import 本模块即崩），
+    故改为在真正取用它的 `应用()` 内惰性导入，并在构造期先经 `平台适配.要求POSIX能力`
+    **显式报不支持**——非 POSIX 平台不会静默降级成「技能脚本没有 CPU/文件大小上限」。
+    报错放在构造期（父进程内）而非 `应用()` 内：preexec_fn 里的异常会被包装成
+    SubprocessError，真实原因（平台不支持）会失真。
+
+    保留原有降级语义：`应用()` 内 setrlimit 被内核拒绝（权限不足/该平台内核不支持该项）时
+    仍不阻断技能执行——那是「上限没生效」的既有降级，与「平台根本没有 resource 能力」两回事，
+    后者已在构造期显式报错。
+    """
+    平台适配.要求POSIX能力("resource 资源预算（CPU秒 / 文件大小上限）")
 
     def 应用() -> None:
+        from resource import RLIMIT_CPU, RLIMIT_FSIZE, setrlimit  # 惰性导入：POSIX 专有
         try:
             cpu = int(预算.get("CPU秒", 默认超时秒))
-            resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+            setrlimit(RLIMIT_CPU, (cpu, cpu))
             大小 = int(预算.get("文件大小", 默认脚本大小上限))
-            resource.setrlimit(resource.RLIMIT_FSIZE, (大小, 大小))
+            setrlimit(RLIMIT_FSIZE, (大小, 大小))
         except (ValueError, OSError, AttributeError):
             pass
 

@@ -1,10 +1,14 @@
-"""进程资源硬限制提供者：macOS 用 resource.setrlimit 做真实硬限制（无 cgroup）。
+"""进程资源硬限制提供者：POSIX 用 resource.setrlimit 做真实硬限制（无 cgroup）。
 
 覆盖进程数/文件句柄/内存/核心转储四类，每条限制都在真实子进程内设置并
 验证强制效果；无法强制的预算项如实返回 UNENFORCEABLE，禁止显示为正常。
 契约：探测能力()、设置限制(类型,软上限,硬上限)、应用预算(预算dict)
 （返回已生效/不可强制清单）、在独立进程组中运行(命令列表,预算dict,超时秒)。
 预算键：进程数上限/文件句柄上限/内存上限(字节)/核心转储上限(字节)。
+
+平台口径：``resource`` 是 **POSIX 专有** 模块（Windows 上根本不存在，顶层导入会让
+import 本模块即崩）。故本模块顶层不导入它，改成 `限制类型表()` 内惰性取用，并在取用前
+用 `平台适配.要求POSIX能力` **显式报不支持**——非 POSIX 平台不会静默降级成「无限制运行」。
 """
 from __future__ import annotations
 
@@ -12,20 +16,75 @@ import errno
 import json
 import mmap
 import os
-import resource
 import subprocess
 import sys
 import threading
 import signal
 from pathlib import Path
 
+from 公共契约.运行时 import 平台适配
+
 模块路径 = str(Path(__file__).resolve())
 未强制 = "UNENFORCEABLE"
-类型表 = {"进程数": resource.RLIMIT_NPROC, "文件句柄": resource.RLIMIT_NOFILE,
-          "内存": resource.RLIMIT_AS, "核心转储": resource.RLIMIT_CORE}
 预算对应表 = {"进程数上限": "进程数", "文件句柄上限": "文件句柄",
             "内存上限": "内存", "核心转储上限": "核心转储"}
 默认输出上限 = 4 * 1024 * 1024
+
+
+def 限制类型表() -> dict[str, int]:
+    """资源限制类型 → 当前平台 ``resource`` 常量的映射（**取值时才取用** POSIX 专有模块）。
+
+    非 POSIX 平台在此**显式报不支持**（``平台不支持错误``），不返回空表、不静默跳过。
+    """
+    平台适配.要求POSIX能力("resource 资源硬限制（setrlimit）")
+    from resource import RLIMIT_AS, RLIMIT_CORE, RLIMIT_NOFILE, RLIMIT_NPROC  # 惰性导入：POSIX 专有
+    return {"进程数": RLIMIT_NPROC, "文件句柄": RLIMIT_NOFILE,
+            "内存": RLIMIT_AS, "核心转储": RLIMIT_CORE}
+
+
+class _惰性限制类型表:
+    """``类型表`` 的惰性替身：只有真正取值时才取用 POSIX 专有的 ``resource``。
+
+    为什么不是普通 dict：本模块的 ``类型表`` 被 `平台控制面.提供者.__init__` 在**导入期**
+    取用，而 dict 必须在导入期就把 ``resource`` 常量算出来——那等于让 Windows 上 import 即崩。
+    这里改为「取值时才构建」的映射替身，语义与原 dict 逐项一致：
+    - POSIX：取值结果与原来完全相同；
+    - 非 POSIX：任何取值经 `限制类型表()` 显式抛 ``平台不支持错误``，不静默返 None。
+    """
+
+    def 取值(self) -> dict[str, int]:
+        """真实映射（每次取值现算，避免导入期取用 POSIX 专有模块）。"""
+        return 限制类型表()
+
+    def get(self, 类型: str, 默认=None):
+        return 限制类型表().get(类型, 默认)
+
+    def __getitem__(self, 类型: str) -> int:
+        return 限制类型表()[类型]
+
+    def __contains__(self, 类型: object) -> bool:
+        return 类型 in 限制类型表()
+
+    def __len__(self) -> int:
+        return len(限制类型表())
+
+    def __iter__(self):
+        return iter(限制类型表())
+
+    def keys(self):
+        return 限制类型表().keys()
+
+    def values(self):
+        return 限制类型表().values()
+
+    def items(self):
+        return 限制类型表().items()
+
+    def __repr__(self) -> str:
+        return "类型表（惰性：取值时才取用 POSIX 专有的 resource 模块）"
+
+
+类型表 = _惰性限制类型表()
 
 
 def _终止进程组(进程: subprocess.Popen) -> None:
@@ -97,16 +156,21 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
 
 
 def 设置限制(类型: str, 软上限: int, 硬上限: int) -> dict:
-    """当前进程真实 setrlimit；设置失败返回 UNENFORCEABLE，不伪装成功。"""
+    """当前进程真实 setrlimit；设置失败返回 UNENFORCEABLE，不伪装成功。
+
+    ``resource`` 在真正调用它的本函数内惰性导入（POSIX 专有：顶层导入会让 Windows 上
+    import 本模块即崩）；非 POSIX 平台由 `类型表.get()` 先行**显式报不支持**。
+    """
     常量 = 类型表.get(类型)
     if 常量 is None:
         return {"成功": False, "值": None, "错误码": 未强制, "错误说明": f"未知限制类型: {类型}"}
+    from resource import getrlimit, setrlimit  # 惰性导入：POSIX 专有
     try:
-        resource.setrlimit(常量, (软上限, 硬上限))
+        setrlimit(常量, (软上限, 硬上限))
     except (OSError, ValueError) as 错误:
         return {"成功": False, "值": None, "错误码": 未强制,
                 "错误说明": f"{类型}上限设置失败，不具备硬限制能力: {错误}"}
-    return {"成功": True, "值": resource.getrlimit(常量), "错误码": "", "错误说明": ""}
+    return {"成功": True, "值": getrlimit(常量), "错误码": "", "错误说明": ""}
 
 
 def 验证文件句柄() -> tuple[bool, str]:
