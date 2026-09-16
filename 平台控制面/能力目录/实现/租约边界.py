@@ -1,0 +1,79 @@
+"""文件租约能力的边界收口：存储目录缺省、参数归一、统一结果（唯一入口）。
+
+分工（第 2 条 1 项）：`文件租约存储.py` 是事实存储，`租约路径.py` 是路径边界，
+本模块只做**能力边界**上的三件事——存储目录缺省、参数形态归一、统一结果收口；
+三者都不复制任何租约语义（语义只在 文件租约存储 里）。
+
+存储目录缺省口径与同包 `实现/能力入口.py:默认存储目录` 逐字一致：取包内系统根下的
+`工程缓存/平台控制面`（**绝对路径**，不随调用方工作目录漂移，运行态一律入库 工程缓存）。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+错误_参数不合法 = "参数不合法"
+错误_路径越界 = "路径越界"
+错误_文件已被占用 = "文件已被占用"
+错误_租约不存在 = "租约不存在"
+错误_存储目录不可用 = "存储目录不可用"
+
+来源名称 = "能力目录"
+
+# 包内系统根：本文件在 <系统根>/平台控制面/能力目录/实现/ 下，parents[3] 即系统根。
+_包内系统根 = Path(__file__).resolve().parents[3]
+默认存储目录 = str(_包内系统根 / "工程缓存" / "平台控制面")
+
+
+def 文本(值: Any) -> str:
+    """文本参数归一：None 视为空串，其余转文本并去首尾空白。"""
+    return "" if 值 is None else str(值).strip()
+
+
+def 正秒(值: Any, 缺省: float, 上限: float) -> tuple[float, str]:
+    """秒数参数归一：缺省取 缺省，非法或越界返回问题说明（不静默截断）。"""
+    if 值 is None or 值 == "":
+        return 缺省, ""
+    if isinstance(值, bool) or not isinstance(值, (int, float)):
+        return 0.0, f"必须是非负秒数（数），收到 {type(值).__name__}: {值!r}"
+    if 值 < 0 or 值 > 上限:
+        return 0.0, f"必须在 0 到 {上限} 秒之间，收到 {值!r}"
+    return float(值), ""
+
+
+def 文本清单(值: Any, 名称: str) -> tuple[list[str], str]:
+    """文本列表参数归一：None 视为空表；含非文本项即如实报问题（不静默丢弃）。"""
+    if 值 is None:
+        return [], ""
+    if not isinstance(值, list):
+        return [], f"{名称} 必须是列表型，收到 {type(值).__name__}"
+    清单 = []
+    for 序号, 项 in enumerate(值):
+        if not isinstance(项, str) or not 项.strip():
+            return [], f"{名称} 第 {序号} 项必须是非空文本: {项!r}"
+        清单.append(项.strip())
+    return 清单, ""
+
+
+def 取存储(存储目录: str):
+    """按存储目录取文件租约存储；目录留空即取平台默认目录（不隐式兜底空目录）。"""
+    from 平台控制面.能力目录.文件租约存储 import 文件租约存储
+
+    目录 = 文本(存储目录) or 默认存储目录
+    if not 目录:
+        return None
+    return 文件租约存储(Path(目录))
+
+
+def 失败结果(错误码: str, 错误说明: str) -> Any:
+    """统一失败结果（来源=能力目录）；调用方据此映射 HTTP 状态码。"""
+    from 公共契约.基础类型.结果类型 import 结果
+
+    return 结果.失败(错误码, 错误说明, 来源=来源名称)
+
+
+def 成功结果(值: dict[str, Any]) -> Any:
+    """统一成功结果；值结构 = 对外公开读数。"""
+    from 公共契约.基础类型.结果类型 import 结果
+
+    return 结果.成功结果(值)
