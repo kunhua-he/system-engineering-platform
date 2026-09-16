@@ -131,7 +131,7 @@ def _解压上限(值, 默认值: float, 名称: str) -> float:
     if 值 is None:
         return 默认值
     if isinstance(值, bool) or not isinstance(值, (int, float)):
-        raise ValueError(f"{名称} 必须是数值型")
+        raise ValueError(f"{名称} 必须是数值（正式类型：整数型 或 双精度数型；布尔不算）")
     if 值 <= 0:
         raise ValueError(f"{名称} 必须为正数（0/负数不表示不限制）")
     return 值

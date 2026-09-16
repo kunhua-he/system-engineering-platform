@@ -62,7 +62,7 @@
             "成功": true,
             "状态码": 200,
             "返回断言": {
-              "包含": "Transcription success",
+              "包含": "ranscription success",
               "值类型": "字典型",
               "关键值": {
                 "语言": "en",

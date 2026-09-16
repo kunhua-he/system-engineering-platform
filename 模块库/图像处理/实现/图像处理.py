@@ -68,7 +68,7 @@ def _校验超时秒(超时秒) -> float | 结果:
     try:
         return float(超时秒)
     except (TypeError, ValueError):
-        return _失败("参数不合法", "超时秒必须是数值型")
+        return _失败("参数不合法", "超时秒必须是数值（正式类型：整数型 或 双精度数型；布尔不算）")
 
 
 def 分析图像文件(受控根目录: str, 相对路径: str, 最大字节数: int = 0) -> 结果:

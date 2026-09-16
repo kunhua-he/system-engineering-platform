@@ -68,7 +68,7 @@ def 文本转双精度数(文本: str) -> 结果[float]:
 
 def 数值转文本(数值: int | float, 小数位数: int | None = None) -> 结果[str]:
     if isinstance(数值, bool) or not isinstance(数值, (int, float)):
-        return 结果.失败("参数不合法", "值必须是数值型")
+        return 结果.失败("参数不合法", "值必须是数值（正式类型：整数型 或 双精度数型；布尔不算）")
     if isinstance(数值, float) and not math.isfinite(数值):
         return 结果.失败("类型转换失败", "不接受 NaN 或无穷")
     if 小数位数 is None:
