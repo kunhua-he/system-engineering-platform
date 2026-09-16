@@ -6,6 +6,11 @@
 `os.getpgrp`）。两条必保语义都在：① **「不向自己进程组发信号」的自保护**（组号与本进程
 组号相同时拒绝整组发信号）；② **「组长已回收但同组子孙仍在」仍按组回收**（只有收口层
 的按组号原语能表达，`os.getpgid(组长pid)` 在组长被 join 回收后必然失败）。
+
+**启动方式按平台收口**：POSIX 用 `fork`（子进程继承已注册的中文能力表，执行器零序列化）；
+其他平台（Windows 只有 `spawn`）用 `spawn`，执行器在提交点**显式 pickle 成字节**送达子进程
+——旧实现无条件强制 `fork`，在 Windows 上 `get_context("fork")` 抛 `ValueError`，把
+`启动运行核心网关.py` 在导入期直接打死。
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ from __future__ import annotations
 import json
 import multiprocessing
 import os
+import pickle
 import sys
 import tempfile
 import threading
@@ -56,28 +62,38 @@ class 资源繁忙错误(Exception):
         super().__init__(消息 or "任务进程池资源繁忙，拒绝提交新任务")
 
 
-def _执行任务进程入口(进程组就绪事件: Any, 发送连接: Any, 函数: Callable,
+def _还原执行器(执行器: Any) -> Callable:
+    """还原执行器句柄：`spawn` 送达的是字节（显式序列化），`fork` 直接是函数对象。"""
+    if isinstance(执行器, (bytes, bytearray)):
+        return pickle.loads(bytes(执行器))
+    return 执行器
+
+
+def _执行任务进程入口(进程组就绪事件: Any, 发送连接: Any, 执行器: Any,
                     请求: dict[str, Any], 取消事件: Any) -> None:
     """先建立独立会话/进程组，再允许能力启动任何后代进程。
 
-    「本平台是否具备独立进程组」由收口层判定（`平台适配.要求POSIX能力`）：不支持即
-    **明确报「进程组建立失败」并拒绝执行**，绝不静默跳过 —— 没有独立进程组的任务在
-    取消/超时路径上无法整组回收，跑下去就是伪成功。
+    「本平台是否具备独立进程组」由收口层判定（`进程终止.进程组号(本进程pid)`，非 POSIX
+    平台如实回 `None`）：**不具备时不建立、也绝不谎报就绪** —— 该平台上「整棵回收」由
+    收口层的进程树终止（Windows `taskkill /T`）承担，`_发送工作器信号` 走同一条收口；
+    具备时按 POSIX 语义 `os.setsid()` 建独立进程组，建立失败（`OSError`）即明确报
+    「进程组建立失败」并拒绝执行 —— 绝不静默跳过，那会让取消/超时路径无法整组回收。
     """
-    try:
-        平台适配.要求POSIX能力("os.setsid（任务工作器建立独立进程组）")
-        os.setsid()
-    except (平台适配.平台不支持错误, OSError) as 错误:
-        响应 = {
-            "任务id": 请求.get("任务id", ""), "成功": False,
-            "错误码": "进程组建立失败", "错误说明": str(错误),
-        }
+    函数 = _还原执行器(执行器)
+    if 进程终止.进程组号(os.getpid()) is not None:
         try:
-            发送连接.send_bytes(json.dumps(响应, ensure_ascii=False).encode("utf-8"))
-        finally:
-            发送连接.close()
-        return
-    进程组就绪事件.set()
+            os.setsid()
+        except OSError as 错误:
+            响应 = {
+                "任务id": 请求.get("任务id", ""), "成功": False,
+                "错误码": "进程组建立失败", "错误说明": str(错误),
+            }
+            try:
+                发送连接.send_bytes(json.dumps(响应, ensure_ascii=False).encode("utf-8"))
+            finally:
+                发送连接.close()
+            return
+        进程组就绪事件.set()
     执行单次任务(发送连接, 函数, 请求, 取消事件)
 
 
@@ -104,6 +120,12 @@ class 独立任务:
         self.待发布状态 = ""
         self.待发布错误码 = ""
         self.待发布错误说明 = ""
+        #: 结果连接是否已被读取过（单读者仲裁，B-07）：每任务最多收取一次结果，
+        #: 不可能出现两个读者对同一连接并发 poll→recv。
+        self.结果已收取 = False
+        #: 本会话是否真实起过工作进程（B-08）：从磁盘快照重建的对象恒为 False，
+        #: 它没有状态话语权，不能把重启收敛结果覆盖回「运行中」。
+        self.本会话活动 = False
         self.截止时刻: float = 0.0
         self.创建时间 = time.strftime("%Y-%m-%d %H:%M:%S")
         self.完成时间 = ""
@@ -151,10 +173,42 @@ class 任务进程池:
         self.监视线程: threading.Thread | None = None
         self.监视唤醒事件 = threading.Event()
         self.监视停止事件 = threading.Event()
+        self.进程上下文, self.需序列化执行器 = self._选择进程上下文()
+
+    @staticmethod
+    def _选择进程上下文() -> tuple[Any, bool]:
+        """按平台选多进程启动方式；返回 `(上下文, 执行器是否必须显式序列化)`。
+
+        - POSIX → `fork`：子进程继承父进程里已注册的中文能力表，执行器直接传函数对象。
+        - 其他平台（Windows 上 `multiprocessing` **只有 spawn**）→ `spawn`：子进程是全新
+          解释器，执行器必须经 pickle 显式送达（`_准备执行器`）。
+        - 自称 POSIX 却不提供 `fork` 的受限构建 → 退回 `spawn`，由执行器序列化补齐能力。
+
+        平台判定只经收口层 `平台适配`（本文件调用点仍不直接读 `sys.platform` / `os.name`）。
+        """
+        if 平台适配.是POSIX():
+            try:
+                return multiprocessing.get_context("fork"), False
+            except ValueError:
+                pass
+        return multiprocessing.get_context("spawn"), True
+
+    def _准备执行器(self, 能力id: str, 函数: Callable) -> Any:
+        """按启动方式准备执行器句柄：`fork` 给函数对象，`spawn` 显式 pickle 成字节。
+
+        **为什么在提交点显式做**：`spawn` 下执行器只能靠序列化过去，若留给 `进程.start()`
+        隐式序列化，失败会发生在子进程创建路径上且难以归因（任务会卡在「运行中」的黑洞里）。
+        这里失败即抛能力级明确错误，调用方按「提交失败」处理，错误信息直接指出是哪个能力。
+        """
+        if not self.需序列化执行器:
+            return 函数
         try:
-            self.进程上下文 = multiprocessing.get_context("fork")
-        except ValueError as 错误:
-            raise RuntimeError("当前平台不支持可继承中文能力注册表的独立任务进程") from 错误
+            return pickle.dumps(函数)
+        except Exception as 错误:  # noqa: BLE001 —— 任何不可序列化都必须转成一句人话
+            raise RuntimeError(
+                f"当前平台的多进程启动方式为 spawn，任务执行器必须可序列化；"
+                f"能力[{能力id}] 的执行器不是模块级可导出对象（如 lambda / 局部闭包 / 未注册实例方法）："
+                f"{type(错误).__name__}: {错误}") from 错误
 
     def 注册执行函数(self, 能力id: str, 函数: Callable) -> None:
         with self.锁:
@@ -204,9 +258,10 @@ class 任务进程池:
             取消事件 = self.进程上下文.Event()
             进程组就绪事件 = self.进程上下文.Event()
             请求 = {"任务id": 任务对象.任务id, "能力id": 能力id, "参数": 参数 or {}}
+            执行器 = self._准备执行器(能力id, 函数)
             进程 = self.进程上下文.Process(
                 target=_执行任务进程入口,
-                args=(进程组就绪事件, 发送连接, 函数, 请求, 取消事件),
+                args=(进程组就绪事件, 发送连接, 执行器, 请求, 取消事件),
                 name=f"系统级任务-{任务对象.任务id}",
                 daemon=True,
             )
@@ -216,6 +271,8 @@ class 任务进程池:
             任务对象.进程 = 进程
             任务对象.截止时刻 = time.monotonic() + 任务对象.超时秒
             任务对象.状态 = 任务状态_运行中
+            # 本会话真实起了工作进程：该对象才有状态话语权（B-08）
+            任务对象.本会话活动 = True
             进程.start()
             任务对象.进程组id = 进程.pid
             发送连接.close()
@@ -258,7 +315,18 @@ class 任务进程池:
             self.监视唤醒事件.clear()
 
     def _轮询任务(self, 任务对象: 独立任务, *, 截止时刻: float | None = None) -> None:
-        """单次轮询：推进状态，但任何资源回收都不得越过调用方给定的硬截止。"""
+        """单次轮询：推进状态，但任何资源回收都不得越过调用方给定的硬截止。
+
+        **单读者仲裁（B-07）**：`poll` 与 `recv_bytes` **全程在同一把池锁内**完成，且每个
+        任务的结果连接**最多被读取一次**（`结果已收取`）。旧实现把 poll/recv 放在锁外，
+        监视线程与 `排空`/`等待` 会对同一连接并发 poll→recv：两个读者分食同一字节流
+        （一方拿到真实结果、另一方读到 EOF/残缺帧），读到坏帧的一方先进锁把任务判成
+        「崩溃」终态，真实结果随后被 `状态 in _终态` 挡掉 —— 实测 30/30 轮全部误判，
+        并把已经算完的子进程一起误杀（退出码 -15）。
+
+        **判崩溃前必须复查 `进程.exitcode`**：只有工作进程**确认已退出**时，「读不到结果」
+        才算崩溃；进程仍在运行则一律不凭「读不到东西」下终态判决（交给超时/后续轮询）。
+        """
         with self.锁:
             if 任务对象.状态 in _终态:
                 return
@@ -279,45 +347,84 @@ class 任务进程池:
                 return
             进程 = 任务对象.进程
             连接 = 任务对象.接收连接
-        if 连接 is not None and 连接.poll():
-            try:
-                响应 = json.loads(连接.recv_bytes(4 * 1024 * 1024).decode("utf-8"))
-            except (EOFError, OSError, UnicodeDecodeError, json.JSONDecodeError,
-                    ValueError, multiprocessing.BufferTooShort):
-                响应 = None
-            with self.锁:
-                if 任务对象.状态 in _终态:
+            已收取 = 任务对象.结果已收取
+            if 连接 is not None and not 已收取 and 连接.poll():
+                任务对象.结果已收取 = True
+                响应 = self._收取响应(连接)
+                if 响应 is not None:
+                    self._发布响应(任务对象, 响应, 截止时刻=截止时刻)
                     return
-                if 响应 is None:
-                    退出码 = 进程.exitcode if 进程 is not None else None
-                    self._完成失败(
-                        任务对象, 任务状态_崩溃, "崩溃",
-                        f"工作进程异常退出（退出码 {退出码}）", 截止时刻=截止时刻)
-                elif 响应.get("取消"):
-                    self._完成失败(
-                        任务对象, 任务状态_已取消, "已取消", "任务已取消",
-                        截止时刻=截止时刻)
-                elif 响应.get("成功", False):
-                    任务对象.结果 = 响应.get("值")
-                    self._完成(任务对象, 任务状态_成功, 截止时刻=截止时刻)
-                else:
-                    self._完成失败(
-                        任务对象, 任务状态_失败,
-                        响应.get("错误码", "内部错误"), 响应.get("错误说明", "任务执行失败"),
-                        截止时刻=截止时刻)
-            return
-        with self.锁:
-            if 任务对象.状态 in _终态:
+                # EOF / 残缺帧 / 坏 JSON：**不得仅凭此判崩溃**，先复查进程是否真的退出
+                if not self._进程已退出(进程):
+                    return
+                self._完成失败(
+                    任务对象, 任务状态_崩溃, "崩溃",
+                    f"工作进程异常退出（退出码 {self._退出码(进程)}）", 截止时刻=截止时刻)
                 return
             if time.monotonic() >= 任务对象.截止时刻:
                 self._完成失败(
                     任务对象, 任务状态_超时, "超时",
                     f"任务执行超过 {任务对象.超时秒} 秒", 截止时刻=截止时刻)
-            elif 进程 is not None and not 进程.is_alive():
-                退出码 = 进程.exitcode
+                return
+            if self._进程已退出(进程):
+                # 进程已退出：它若成功发送过，数据必已进入管道缓冲（写入先于退出），
+                # 因此在这里做最后一次锁内收取；确认真的没有结果才按崩溃收敛。
+                if 连接 is not None and not 已收取:
+                    任务对象.结果已收取 = True
+                    响应 = self._收取响应(连接) if 连接.poll() else None
+                    if 响应 is not None:
+                        self._发布响应(任务对象, 响应, 截止时刻=截止时刻)
+                        return
                 self._完成失败(
                     任务对象, 任务状态_崩溃, "崩溃",
-                    f"工作进程异常退出（退出码 {退出码}）", 截止时刻=截止时刻)
+                    f"工作进程异常退出（退出码 {self._退出码(进程)}）", 截止时刻=截止时刻)
+
+    @staticmethod
+    def _收取响应(连接: Any) -> dict[str, Any] | None:
+        """锁内收取一次结果信封；EOF / 残缺帧 / 坏 JSON / 超大一律收口成 ``None``。
+
+        调用方**必须**再用 `_进程已退出` 复查退出码才可判崩溃（B-07）：
+        读到 ``None`` 只说明「这一次没读到合法信封」，不说明工作进程崩了
+        （并发读者被另一读者抢先读走、句柄被回收后 read(None) 的 ``TypeError`` 都走这里）。
+        """
+        try:
+            return json.loads(连接.recv_bytes(4 * 1024 * 1024).decode("utf-8"))
+        except (EOFError, OSError, UnicodeDecodeError, json.JSONDecodeError,
+                ValueError, TypeError, multiprocessing.BufferTooShort):
+            return None
+
+    def _发布响应(self, 任务对象: 独立任务, 响应: Any, *,
+                截止时刻: float | None = None) -> None:
+        """把一次合法读出按协议发布成终态（锁内调用）。"""
+        if not isinstance(响应, dict):
+            self._完成失败(
+                任务对象, 任务状态_失败, "协议错误",
+                 f"工作进程返回的信封不是 JSON 对象：{type(响应).__name__}",
+                截止时刻=截止时刻)
+        elif 响应.get("取消"):
+            self._完成失败(
+                任务对象, 任务状态_已取消, "已取消", "任务已取消",
+                截止时刻=截止时刻)
+        elif 响应.get("成功", False):
+            任务对象.结果 = 响应.get("值")
+            self._完成(任务对象, 任务状态_成功, 截止时刻=截止时刻)
+        else:
+            self._完成失败(
+                任务对象, 任务状态_失败,
+                响应.get("错误码", "内部错误"), 响应.get("错误说明", "任务执行失败"),
+                截止时刻=截止时刻)
+
+    @staticmethod
+    def _进程已退出(进程: Any) -> bool:
+        """工作进程是否**确认已退出**（退出码已定）；退出码 ``None`` 即仍在运行。
+
+        **这是判崩溃的唯一依据**：绝不用「管道读不到东西」代替（B-07 根因）。
+        """
+        return 进程 is not None and 进程.exitcode is not None
+
+    @staticmethod
+    def _退出码(进程: Any) -> Any:
+        return 进程.exitcode if 进程 is not None else None
 
     def _完成失败(self, 任务对象: 独立任务, 状态: str, 错误码: str, 错误说明: str,
               *, 截止时刻: float | None = None) -> bool:
@@ -404,6 +511,17 @@ class 任务进程池:
             return
         if 进程 is None or not 进程.is_alive():
             return
+        if _本进程组号() is None:
+            进程号 = 进程.pid
+            if 进程号:
+                # 本平台没有进程组概念（收口层如实回 None，如 Windows）：整棵回收只能由收口层
+                # 的**进程树终止**表达（Windows `taskkill /T`）。若在这里直接用进程句柄的
+                # terminate()/kill()，只杀得掉工作进程本身，能力自己派生的子孙会漏网 ——
+                # 那才是真正的「伪成功」。收口失败（无权限/不支持）时不冒充成功，
+                # 落到句柄兜底，收敛与否一律以随后的存活复查为准。
+                结果 = 进程终止.终止进程组(进程号, 信号=信号名)
+                if 结果.成功:
+                    return
         try:
             if 信号名 == 信号_强杀 and hasattr(进程, "kill"):
                 进程.kill()
