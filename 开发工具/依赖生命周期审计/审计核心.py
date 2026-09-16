@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -142,6 +143,33 @@ def 检查健康探针(目录: Path) -> list[str]:
     return ["缺健康探针: 能力定义.json 未声明探针且生命周期契约无效"]
 
 
+def _停止入口真实存在(目录: Path, 停止入口文本: str) -> bool:
+    """契约里的「停止入口」必须指向实现里**真实存在**的函数。
+
+    为什么要这一步：光有「停止入口」这个字段可能是空话（契约写了、实现里没有）。
+    本函数从文本里抓出函数名（形如 ``实现/进程管理.py 的 终止进程组()``），
+    再到 ``实现/**/*.py`` 的 AST 里核对确实存在同名函数。
+    """
+    实现目录 = 目录 / "实现"
+    if not 实现目录.is_dir():
+        return False
+    候选 = re.findall(r"([A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]{1,40})\s*\(\)", 停止入口文本)
+    if not 候选:
+        候选 = re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,40}", 停止入口文本)
+    if not 候选:
+        return False
+    实际函数名: set[str] = set()
+    for 文件 in 实现目录.rglob("*.py"):
+        try:
+            树 = ast.parse(文件.read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
+            continue
+        for 节点 in ast.walk(树):
+            if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                实际函数名.add(节点.name)
+    return any(名 in 实际函数名 for 名 in 候选)
+
+
 def 检查停止入口(目录: Path) -> list[str]:
     """停止与资源释放证据：实现函数或生命周期契约必须明确释放语义。"""
     实现目录 = 目录 / "实现"
@@ -162,19 +190,26 @@ def 检查停止入口(目录: Path) -> list[str]:
             契约 = json.loads(契约路径.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             契约 = {}
-        资源模型 = 契约.get("资源模型")
-        释放策略 = 契约.get("释放策略")
         身份一致 = 契约.get("提供者id") in {
             str(目录.name),
             f"支持库.适配层.{目录.name}",
         }
+        # 主判据（2026-09-16 收紧）：契约必须**显式声明停止入口**，且该入口**真实存在**。
+        # 旧判据只认「资源模型 == 调用内临时资源」这个精确字符串，写别的合法措辞会被误判成缺入口；
+        # 而"契约写了停止入口但实现里没有"这类名不副实又拦不住 —— 故改为按停止入口字段 + AST 核对。
+        停止入口 = str(契约.get("停止入口") or "")
+        if 身份一致 and len(停止入口) >= 6 and _停止入口真实存在(目录, 停止入口):
+            return []
+        # 兼容路径：契约没有停止入口字段，但资源模型自述为"调用内临时资源"且释放策略明确
+        资源模型 = 契约.get("资源模型")
+        释放策略 = 契约.get("释放策略")
         释放文本 = str(释放策略 or "")
         释放证据词 = ("finally", "关闭", "释放", "终止", "回收", "无跨调用状态")
         if (资源模型 == "调用内临时资源" and 身份一致
                 and any(词 in 释放文本 for 词 in 释放证据词)
                 and len(释放文本) >= 12):
             return []
-    return ["缺停止入口: 实现/ 下无停止函数且无明确生命周期释放契约"]
+    return ["缺停止入口: 实现/ 下无停止函数，且契约未声明可核对的停止入口"]
 
 
 def 审计单个提供者(目录: Path) -> 提供者审计结果:
