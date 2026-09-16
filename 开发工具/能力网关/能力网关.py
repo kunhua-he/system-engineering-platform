@@ -148,7 +148,7 @@ def 启动网关(*, 端口: int, 地址: str = "127.0.0.1") -> None:
 
 if __name__ == "__main__":
     解析器 = argparse.ArgumentParser(description="系统工程平台 HTTP 能力网关")
-    解析器.add_argument("--端口", type=int, default=8866, help="网关端口（默认 8866）")
+    解析器.add_argument("--端口", type=int, default=40006, help="网关端口（默认 40006，与 启动能力网关.sh 一致；8866 为已删除的旧 MCP工具箱体系）")
     解析器.add_argument("--地址", default="127.0.0.1", help="监听地址（默认本机）")
     参数 = 解析器.parse_args()
     启动网关(端口=参数.端口, 地址=参数.地址)
