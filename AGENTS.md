@@ -2,18 +2,19 @@
 
 ## 项目 MCP 与代码地图
 
-- 本仓库使用独立 MCP：system_engineering_toolkit（Streamable HTTP，配置见根目录 opencode.json，remote http://127.0.0.1:8766/mcp/）。
+- 本仓库使用独立 MCP：system_engineering_toolkit（**stdio 薄壳，无 HTTP 端口**；入口 `开发工具/薄壳/薄壳服务.py`，仅 3 个工具；配置见根目录 `opencode.json`、`.mcp.json`）。原 Streamable HTTP `http://127.0.0.1:8766/mcp/` 已随 `MCP工具箱/` 于 2026-09-15 清场下线，照抄连不上。
 - 平台 MCP 为单一对外网关，无角色门面，工具直通网关；外部项目只能通过各自声明的公开契约和授权边界消费本平台能力，本仓库不维护外部项目聚合路由或业务接入实现。
-- 新会话开工先调用 project_context，读取项目身份、代码地图状态、证据可信度和最近 1 至 3 次成功验证。
-- MCP 客户端如连接，仅允许使用唯一的 `http://127.0.0.1:8766/mcp/`；MCP 不作为只读审计前置条件，已编译制品可直接通过 HTML 黑盒验证。
-- 所有 MCP 调用必须完成 `initialize`，声明 `Accept: application/json, text/event-stream`，保存并回传 `mcp-session-id`，随后按 JSON-RPC 调用同一工具名；不得绕过 `project_context`、`mcp_feedback`、`verify_and_record`、路径边界和验证命令白名单。
+- 新会话开工先调用 `project_context`，读取项目身份、代码地图状态、证据可信度和最近 1 至 3 次成功验证。
+- 薄壳只暴露 3 个工具（`capability_search` / `capability_call` / `tool_catalog`，实测见 `开发工具/薄壳/工具清单.py`）；**能力执行一律走 40007 统一网关**（`GET http://127.0.0.1:40007/健康` 可探活）。40006（只读能力发现网关）当前**未启用**（无监听；`launchctl` 的 `com.huashi.gateway-40006` 退出码 2 且 plist 仍指已删路径），现役脚本名为 `开发工具/能力网关/启动能力网关.sh`。MCP 不作为只读审计前置条件，已编译制品可直接通过 HTML 黑盒验证。
+- 所有 MCP 调用必须完成 `initialize` 握手；不得绕过 `project_context`、`mcp_feedback`、`verify_and_record`、路径边界和验证命令白名单。
 - 理解或定位代码先调用 codegraph_explore；.codegraph/ 是本仓库独立代码地图，不与任何业务项目共用。
 - 运行时验证账本只写入本仓库 开发文档/项目证据/ 的机器文件；当前版本功能和用法只写入 `开发文档/项目说明.md` 及包级说明，不再新增项目记忆、阶段报告或临时审计 Markdown。
 - 证据可信度由代码地图、当前 Git/工作区指纹和真实成功验证计算，不允许 Agent 主观自评。
 
 ## 单一网关与子代理继承协议
 
-本平台只保留一个权威 MCP 服务 system_engineering_toolkit（HTTP 8766），
+本平台只保留一个权威 MCP 服务 system_engineering_toolkit（**stdio 薄壳，3 个工具，无 HTTP 端口**；
+原 HTTP 8766 已随 `MCP工具箱/` 于 2026-09-15 清场下线），
 作为单一对外网关；不设角色门面，工具直通网关，不得为支持库、模块、核心
 分别复制一套会产生分叉状态的 MCP 实例。
 
@@ -50,7 +51,7 @@
 - **凭证**：薄壳只认环境变量 `系统库网关凭证`（`开发工具/薄壳/网关转发.py`），缺失即返回 `网关凭证缺失` 且**不转发**（fail-closed）。客户端经 `MCP_GATEWAY_TOKEN` 插值注入（`~/.zshrc` 里从 40007 plist 取值，不写明文）。bash 不能 `export` 中文变量名，故引用名用 ASCII。
 - **薄壳不是第二条执行腿**：只做协议翻译（stdio ↔ 唯一网关 HTTP），不实现业务逻辑、不读源码树内部。
 - **自测**：`env "系统库网关凭证=…" python3.14 -B 开发工具/薄壳/自测_stdio客户端.py` → 期望 `tools/list = 3` 且三条调用 `成功=True`。
-- **只读能力发现网关（40006）**：`开发工具/能力网关/启动能力网关.sh 40006`（只读 `/能力/搜索`、`/能力/契约/{能力id}`；执行仍统一走 40007 `POST /网关/调用`）。
+- **只读能力发现网关（40006）**：脚本 `开发工具/能力网关/启动能力网关.sh 40006`（只读 `/能力/搜索`、`/能力/契约/{能力id}`；执行仍统一走 40007 `POST /网关/调用`）。**当前未启用**：40006 无监听，`launchctl` 的 `com.huashi.gateway-40006` 退出码 2 且 plist 仍指已删路径；脚本历史上也从未跑通（原用中文变量名，bash 直接报 `command not found`，现已改为 ASCII 变量名）。
 
 服务未注入时可直接对编译制品跑 HTML 黑盒；HTML 结果只证明真实 HTTP 功能，不替代治理账本、反馈和正式发布证据。
 
@@ -141,7 +142,8 @@ python3.14 -m unittest 测试中心.<受影响测试模块>  # 开发期定向�
 python3.14 -m 开发工具.HTML验证.验证器 --制品 <编译产物目录> --并发 32  # 正式真实HTTP
 python3.14 开发工具/发布门禁/运行发布门禁.py   # 正式发布唯一判定
 python3.14 开发工具/能力搜索/能力搜索器.py --能力 读取文件
-python3.14 示例项目/适配层示例/运行入口/运行.py
+# 示例运行需注入网关凭证（否则报「网关凭证缺失」；bash 不能 export 中文变量名，故用 env 前缀）
+env 系统库网关凭证="$(plutil -extract EnvironmentVariables.系统库网关凭证 raw -o - ~/Library/LaunchAgents/com.huashi.gateway-40007.plist)" python3.14 示例项目/适配层示例/运行入口/运行.py
 ```
 
 门禁：实际加载全部测试；零测试、导入失败、未解释跳过、债务通过、缓存假绿
@@ -221,7 +223,7 @@ python3.14 示例项目/适配层示例/运行入口/运行.py
 示例项目/   最小运行样板
 客户端/     平台客户端制品构建脚本
 开发工具/薄壳/    平台 MCP stdio 薄壳（3 工具，无端口；agent 接入面）
-开发工具/能力网关/  只读能力发现网关（40006；执行仍走 40007）
+开发工具/能力网关/  只读能力发现网关（40006，当前未启用；执行仍走 40007）
 开发文档/   当前版本说明、架构/能力契约、决策记录与参考资料（外部源码研究）；机器验证账本只保留 JSON/JSONL
 工程缓存/   生成物（可删除）
 ```
