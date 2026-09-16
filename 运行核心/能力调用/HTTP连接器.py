@@ -21,6 +21,7 @@ import json
 import base64
 import http.client
 import math
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,7 @@ from 公共契约.运行时.JSON解码 import 解码冻结值
 from 公共契约.错误结构 import (
     错误码_参数不合法,
     错误码_提供者不可用,
+    错误码_权限不足,
     错误码_超时,
     错误码_返回结果不符合契约,
 )
@@ -43,10 +45,20 @@ class HTTP连接器:
     """模块侧唯一跨边界调用门面（HTTP 客户端）。"""
 
     def __init__(self, *, 网关地址: str = "127.0.0.1", 网关端口: int = 40007,
-                 默认超时秒: float = 10.0, 契约版本: str | None = None) -> None:
+                 默认超时秒: float = 10.0, 契约版本: str | None = None,
+                 凭证: str = "", 凭证环境变量: str = "") -> None:
         self.网关地址 = 网关地址
         self.网关端口 = 网关端口
         self.默认超时秒 = 默认超时秒
+        # 网关凭证（外部调用方的硬前提）：网关「要求凭证」时，请求必须携带
+        # `Authorization: Bearer <凭证>`，否则一律 401/权限不足——非 MCP 薄壳的调用方
+        # （业务引擎、脚本、CI、其它 Agent）会全军覆没。两种来源：
+        #   ① 显式 `凭证` 优先；
+        #   ② 否则读 `凭证环境变量`（**引用而非明文**，不把凭证写进代码/配置/日志）。
+        # 两者都不给 → **保持旧行为**（不发凭证头），以兼容「要求凭证=False」的本地免凭证网关。
+        # 注意：HTTP 头只能承载 ASCII，凭证本身必须是纯 ASCII（中文凭证请改名，见 README 支持矩阵）。
+        self.凭证 = 凭证
+        self.凭证环境变量 = 凭证环境变量
         # 契约版本只能来自唯一事实源（公共契约/版本规则/契约版本.py）：
         # 写死字面量会让「请求版本」与网关侧契约版本长期分叉（只回报差异不失败，
         # 所以分叉不会被打红，只能靠不写字面量来防）。
@@ -124,11 +136,17 @@ class HTTP连接器:
                 请求id,
             )
         # 5. 转统一结果（句柄透传）
+        说明 = 数据["错误说明"]
+        if 数据["错误码"] == 错误码_权限不足 and not self._解析凭证():
+            # 网关「要求凭证」时，外部调用方撞的第一道墙就是它。不吞成含糊的一句，
+            # 直接说清是「本连接器没配凭证」而不是「权限真的不够」。
+            说明 = (f"{说明}（本连接器未配置 `凭证` / `凭证环境变量`；网关要求凭证时"
+                    f"必须携带 Authorization: Bearer <凭证>，见 README「当前支持矩阵」）")
         return {
             "成功": 数据["成功"],
             "值": 数据.get("值"),
             "错误码": 数据["错误码"],
-            "错误说明": 数据["错误说明"],
+            "错误说明": 说明,
             "句柄": 数据.get("句柄"),
             "请求id": 数据["请求id"],
             "耗时毫秒": 数据.get("耗时毫秒", 0),
@@ -195,6 +213,9 @@ class HTTP连接器:
             ),
             method="GET",
         )
+        凭证 = self._解析凭证()
+        if 凭证:
+            请求.add_header("Authorization", f"Bearer {凭证}")
         try:
             开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             with 开放器.open(请求, timeout=float(self.默认超时秒)) as 响应:
@@ -202,18 +223,32 @@ class HTTP连接器:
         except Exception:
             return False
 
+    def _解析凭证(self) -> str:
+        """网关凭证取值：显式 `凭证` 优先，其次 `凭证环境变量` 引用；都没有返回空串（不发凭证头）。"""
+        if self.凭证:
+            return self.凭证
+        if self.凭证环境变量:
+            return os.environ.get(self.凭证环境变量, "")
+        return ""
+
     def _请求(self, 请求体: dict[str, Any], *, 超时秒: float | None = None) -> tuple[int, dict[str, Any] | None, str]:
         """发 HTTP POST 到 /网关/调用；返回 (状态码, 数据, 错误说明)。"""
         载荷 = json.dumps(
             self._编码JSON值(请求体), ensure_ascii=False, allow_nan=False,
         ).encode("utf-8")
+        请求头 = {
+            "Content-Type": "application/json; charset=utf-8",
+            # 请求头值必须是 Latin-1；百分号编码后由网关还原中文请求 id。
+            "X-Request-ID": urllib.parse.quote(str(请求体.get("请求id", "")), safe=""),
+        }
+        凭证 = self._解析凭证()
+        if 凭证:
+            # 网关「要求凭证」时认两种头（见 运行核心/统一网关/安全边界.py 取凭证口径），
+            # 这里发规范形态 Authorization: Bearer。
+            请求头["Authorization"] = f"Bearer {凭证}"
         请求 = urllib.request.Request(
             urllib.parse.quote(self.端点, safe=":/@._-"), data=载荷, method="POST",
-            headers={
-                "Content-Type": "application/json; charset=utf-8",
-                # 请求头值必须是 Latin-1；百分号编码后由网关还原中文请求 id。
-                "X-Request-ID": urllib.parse.quote(str(请求体.get("请求id", "")), safe=""),
-            },
+            headers=请求头,
         )
         try:
             开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -235,6 +270,10 @@ class HTTP连接器:
                 except (json.JSONDecodeError, UnicodeDecodeError, OSError):
                     数据 = None
                     说明 = f"HTTP {错误.code}"
+                if 错误.code in (401, 403) and not self._解析凭证():
+                    # 不吞成含糊的「HTTP 401」：外部调用方最常见的第一道墙就是它。
+                    说明 = (f"HTTP {错误.code}（网关要求凭证，而本连接器未配置 `凭证` / "
+                            f"`凭证环境变量`；见 README「当前支持矩阵」的网关凭证说明）")
                 return 错误.code, 数据, 说明
             finally:
                 错误.close()
