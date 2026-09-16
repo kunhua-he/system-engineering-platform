@@ -305,15 +305,38 @@ class TestFFmpeg提供者(unittest.TestCase):
         self.assertLessEqual(len(结果.标准输出), 256)
 
     def test_临时文件零残留(self):
-        临时根 = Path(tempfile.gettempdir())
-        前缀集 = _临时前缀集(临时根)
-        提取音频(str(self.带音频))
-        转码(str(self.带音频), 输出格式="mkv")
-        抽取帧(str(self.带音频), 0.5)
-        抽取帧(str(self.标清视频), 0.5)
-        抽取帧(str(self.低清视频), 0.5)
-        抽取帧(str(self.纯音频), 0.5)
-        提取音频(str(self.损坏文件))
-        self.assertEqual(_临时前缀集(临时根), 前缀集)
+        """本次调用零残留：临时根私有化，不对全机 TMPDIR 做 glob 快照。
+
+        修复前直接对 tempfile.gettempdir()（全机共享）取瞬时快照比对，同机任何
+        并发进程造/删 FFmpeg抽帧_* 同名临时目录即假红（并发下确定失败，单跑全绿）。
+        现把 tempfile.tempdir 指向本用例私有目录：被测提供者自建临时目录也落在
+        私有根内，断言语义仍是「本次调用不留残留」，但不再被同机其它进程干扰。
+        """
+        私有根 = Path(tempfile.mkdtemp(prefix="测试_FFmpeg零残留根_"))
+        self.addCleanup(shutil.rmtree, 私有根, ignore_errors=True)
+        真实mkdtemp = tempfile.mkdtemp
+        建成: list = []
+
+        def 记录mkdtemp(*参数, **关键字):
+            路径 = 真实mkdtemp(*参数, **关键字)
+            建成.append(Path(路径))
+            return 路径
+
+        with mock.patch.object(tempfile, "tempdir", str(私有根)), \
+                mock.patch.object(tempfile, "mkdtemp", 记录mkdtemp):
+            前缀集 = _临时前缀集(私有根)
+            提取音频(str(self.带音频))
+            转码(str(self.带音频), 输出格式="mkv")
+            抽取帧(str(self.带音频), 0.5)
+            抽取帧(str(self.标清视频), 0.5)
+            抽取帧(str(self.低清视频), 0.5)
+            抽取帧(str(self.纯音频), 0.5)
+            提取音频(str(self.损坏文件))
+            残留 = _临时前缀集(私有根)
+        # 正向对照：临时根确实被私有化生效（否则本用例会退化成空转断言）
+        self.assertTrue(建成, "提供者必须自建临时目录，否则本用例无意义")
+        self.assertTrue(all(私有根 in 记录.parents for 记录 in 建成),
+                        f"临时目录必须落在私有根内，实际: {建成}")
+        self.assertEqual(残留, 前缀集)
 
 
