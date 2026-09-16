@@ -1,21 +1,21 @@
 """FFmpeg 外部进程受管执行核心：独立进程组+超时+取消+输出上限截断+零残留。
 
 ffmpeg/ffprobe 属外部命令，主进程直接受管调用：
-- start_new_session 独立进程组，终止时 killpg 整组回收（含孙进程）；
-- 轮询循环同时支持 超时 与 外部取消函数，触发后 killpg 强杀；
+- 子进程组启动标志 独立进程组，终止时整组强杀回收（含孙进程）；
+- 轮询循环同时支持 超时 与 外部取消函数，触发后强制结束子进程；
 - stdout/stderr 后台线程受限读取（超限截断并继续排空防管道阻塞）；
 - 成功/超时/取消/崩溃全路径回收子进程并等待读取线程结束，零残留。
 """
 
 from __future__ import annotations
 
-import os
-import signal
 import subprocess
 import threading
 import time
 from dataclasses import dataclass
 from typing import Callable
+
+from 公共契约.运行时 import 平台适配, 进程终止
 
 终止宽限秒 = 1.0
 轮询间隔秒 = 0.02
@@ -34,27 +34,6 @@ class 受管结果:
     耗时秒: float = 0.0
     错误码: str = ""
     错误摘要: str = ""
-
-
-def 终止进程组(进程: subprocess.Popen, 宽限秒: float = 终止宽限秒) -> None:
-    """SIGTERM → 宽限等待 → SIGKILL → 等待回收（进程组内全部子进程一并回收）。"""
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass
 
 
 def _受限读取(流, 上限: int) -> tuple[bytes, bool]:
@@ -77,7 +56,7 @@ def _受限读取(流, 上限: int) -> tuple[bytes, bool]:
 
 def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输出字节: int,
               取消函数: Callable[[], bool] | None = None) -> 受管结果:
-    """受管执行外部命令：超时/取消触发 killpg；输出超限截断；失败不抛异常。
+    """受管执行外部命令：超时/取消触发强制结束子进程；输出超限截断；失败不抛异常。
 
     失败映射稳定错误码：提供者不可用（启动失败）/ 超时 / 取消 / 进程崩溃（退出码非零）。
     """
@@ -85,15 +64,11 @@ def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输�
     try:
         进程 = subprocess.Popen(
             命令列表, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **平台适配.子进程组启动标志(),
         )
     except OSError as 错误:
         return 受管结果(成功=False, 错误码="提供者不可用", 错误摘要=str(错误))
-    进程组id = None
-    try:
-        进程组id = os.getpgid(进程.pid)
-    except (OSError, ProcessLookupError):
-        pass
+    进程组id = 进程终止.进程组号(进程)
     共享 = {"标准输出": b"", "标准错误": b"", "截断": False}
 
     def 读取流(流, 键: str) -> None:
@@ -119,7 +94,7 @@ def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输�
             break
         time.sleep(轮询间隔秒)
     if 触发:
-        终止进程组(进程)
+        进程终止.强制结束子进程(进程, 宽限秒=终止宽限秒, 等待秒=终止宽限秒)
     退出码 = 进程.poll()
     for 线程 in 线程列表:
         线程.join(timeout=终止宽限秒 + 1.0)

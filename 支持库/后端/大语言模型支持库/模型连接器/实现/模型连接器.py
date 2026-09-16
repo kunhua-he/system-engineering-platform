@@ -23,6 +23,7 @@ from typing import Any, Callable, Iterator
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
+from 公共契约.运行时 import 平台适配, 进程终止
 
 # ── 句柄与连接管理 ──────────────────────────────
 
@@ -714,7 +715,8 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
         全局模型索引[模型身份] = 连接键
     try:
         命令 = _构建本地启动命令(规范路径, 类型, 启动器名, 端口, 启动参数)
-        进程 = subprocess.Popen(命令, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        进程 = subprocess.Popen(命令, **平台适配.子进程组启动标志(),
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         本地进程表[连接键] = 进程
         句柄系统.登记资源(对象.句柄id, 资源类型="进程", PID=进程.pid, 端口=端口)
         if not _等待本地健康(端口, 有效超时):
@@ -739,33 +741,21 @@ def _终止本地进程(句柄id: int) -> bool:
     """释放句柄时终止整个本地模型进程组。
 
     进程表取出与状态迁移在同一锁内完成（防并发释放/过期回收/启动失败
-    回滚重复 kill 或状态不一致）；实际 kill/wait 放锁外执行。
+    回滚重复终止或状态不一致）；实际终止与等待放锁外执行。
+    进程组回收统一走 公共契约.运行时.进程终止.强制结束子进程（平台差异
+    只在收口层判定，本调用点不写平台判断）。
     """
-    import os
-    import signal
-    import subprocess
     with 锁:
         进程 = 本地进程表.get(句柄id)
     if 进程 is None:
         return True
     try:
         if 进程.poll() is None:
-            try:
-                os.killpg(进程.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                进程.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(进程.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                try:
-                    进程.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    降级记录表.append(f"句柄 {句柄id} 本地模型进程强杀后仍未结束")
-                    return False
+            回收结果 = 进程终止.强制结束子进程(进程, 宽限秒=5.0, 等待秒=5.0)
+            if not 回收结果.成功:
+                降级记录表.append(
+                    f"句柄 {句柄id} 本地模型进程强杀后仍未结束（{回收结果.错误码}）：{回收结果.错误说明}")
+                return False
         if 进程.poll() is None:
             return False
         with 锁:

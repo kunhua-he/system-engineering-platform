@@ -16,6 +16,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.进程终止 import 按组号探活
 from 支持库.适配层.FFmpeg提供者 import 检查提供者, 探测媒体, 提取音频, 转码, 抽取帧
 from 支持库.适配层.FFmpeg提供者.实现 import 进程管理 as 进程模块
 from 支持库.适配层.FFmpeg提供者.实现 import 探测 as 探测模块
@@ -202,7 +203,7 @@ class TestFFmpeg提供者(unittest.TestCase):
         self.assertEqual(结果.错误码, "进程崩溃")
         self.assertTrue(结果.可重试)
 
-    def test_取消killpg无残留(self):
+    def test_取消后进程组零残留(self):
         挂起脚本 = _写脚本(self.临时目录 / "挂起.sh", "#!/bin/sh\nsleep 30\n")
         标志 = {"取消": False}
         threading.Timer(0.3, lambda: 标志.update(取消=True)).start()
@@ -210,8 +211,8 @@ class TestFFmpeg提供者(unittest.TestCase):
                                  最大输出字节=1024,
                                  取消函数=lambda: 标志["取消"])
         self.assertEqual(结果.错误码, "取消")
-        with self.assertRaises(ProcessLookupError):
-            os.killpg(结果.进程组id, 0)
+        # 断言真实进程组号已消失：平台差异由 进程终止.按组号探活 收口
+        self.assertFalse(按组号探活(结果.进程组id), "取消后进程组必须零残留")
 
     def test_输出上限截断(self):
         刷屏脚本 = _写脚本(self.临时目录 / "刷屏.sh",

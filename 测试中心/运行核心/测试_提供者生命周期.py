@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -29,6 +28,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.运行时.进程终止 import 终止进程组
 from 启动监督器.健康监督 import 系统提供者健康监督
 from 运行核心.运行环境管理器.提供者生命周期 import 提供者生命周期管理器, 提供者路由
 from 支持库.适配层.提供者注册表.提供者注册表 import 提供者注册表
@@ -244,7 +244,8 @@ class 提供者生命周期测试(unittest.TestCase):
         self.assertTrue(成功)
         进程 = self.管理器._进程表["测试提供者A"]
         崩溃pid = 进程.进程.pid
-        os.kill(崩溃pid, signal.SIGKILL)
+        # 平台差异收口：强杀整组由 进程终止.终止进程组 负责
+        终止进程组(崩溃pid, 信号="强杀")
         time.sleep(0.3)
         未恢复 = self.管理器.崩溃检测("测试提供者A")
         self.assertFalse(未恢复)  # 已自动重启恢复
@@ -270,13 +271,13 @@ class 提供者生命周期测试(unittest.TestCase):
         try:
             time.sleep(0.6)
             self.assertFalse(self._端口可重绑(端口))  # 被监听子进程占用
-            os.kill(子进程.pid, signal.SIGKILL)
+            终止进程组(子进程.pid, 信号="强杀")
             子进程.wait(timeout=5)
             time.sleep(0.3)
             self.assertTrue(self._端口可重绑(端口))  # 崩溃后端口已释放
         finally:
             if 子进程.poll() is None:
-                os.kill(子进程.pid, signal.SIGKILL)
+                终止进程组(子进程.pid, 信号="强杀")
                 子进程.wait(timeout=5)
 
     def test_清理全部后零残留(self):

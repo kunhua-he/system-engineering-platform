@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import sys
 import tempfile
 import threading
@@ -16,11 +15,16 @@ from unittest.mock import patch
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.运行时.进程终止 import 进程存活, 终止进程组
 from 平台控制面.提供者.进程提供者 import 本地进程提供者
 from 运行核心.加载器.提供者隔离.独立进程 import 提供者进程池
 
 工作器源码 = r'''
 import json, os, signal, subprocess, sys, time
+# 父进程经 argv[1] 显式传入系统根（-S 模式下无 site，须自行注入才能 import 公共契约）——
+# 与生产工作器 运行核心/加载器/提供者隔离/进程工作器.py 的启动协议一致。
+if len(sys.argv) > 1:
+    sys.path.insert(0, sys.argv[1])
 from 公共契约.诊断.忽略记录 import 记录忽略
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 print("READY", flush=True)
@@ -99,7 +103,7 @@ class Provider进程维修测试(unittest.TestCase):
         return 池
 
     def _控制面池(self, 池大小=3):
-        池 = 本地进程提供者([sys.executable, "-S", str(self.工作器)],
+        池 = 本地进程提供者([sys.executable, "-S", str(self.工作器), str(系统根)],
                          池大小=池大小, 启动超时秒=2.0, 调用超时秒=1.0)
         self.对象表.append(池)
         self.assertTrue(池.启动()["成功"])
@@ -164,23 +168,20 @@ class Provider进程维修测试(unittest.TestCase):
             self.assertTrue(结果["已使用SIGKILL"], 结果)
             self.assertEqual(结果["未收敛"], [])
             for pid in pid表:
-                with self.assertRaises(ProcessLookupError):
-                    os.kill(pid, 0)
-            with self.assertRaises(ProcessLookupError, msg="关闭成功前必须确认同组子进程也已退出"):
-                os.kill(子pid, 0)
+                self.assertFalse(进程存活(pid), f"关闭成功后进程 {pid} 应已消失")
+            self.assertFalse(进程存活(子pid), "关闭成功前必须确认同组子进程也已退出")
 
     def test_P0_13_控制面健康握手失败不泄漏进程管道线程(self):
         哑工作器 = Path(self.临时对象.name) / "哑工作器.py"
         哑工作器.write_text("import time\ntime.sleep(60)\n", encoding="utf-8")
-        提供者 = 本地进程提供者([sys.executable, "-S", str(哑工作器)],
+        提供者 = 本地进程提供者([sys.executable, "-S", str(哑工作器), str(系统根)],
                             启动超时秒=0.1, 调用超时秒=0.1)
         self.对象表.append(提供者)
         结果 = 提供者.启动()
         self.assertFalse(结果["成功"])
         pid = 提供者.状态()["pid"]
         self.assertIsNotNone(pid)
-        with self.assertRaises(ProcessLookupError, msg="健康握手失败必须回收刚启动的进程"):
-            os.kill(pid, 0)
+        self.assertFalse(进程存活(pid), "健康握手失败必须回收刚启动的进程")
         self.assertEqual(提供者._核对资源收敛(), [])
 
     def test_P0_14_组长正常退出也必须回收同组子进程(self):
@@ -188,7 +189,7 @@ class Provider进程维修测试(unittest.TestCase):
         工作器.write_text(正常关闭工作器源码, encoding="utf-8")
         运行池 = 提供者进程池("正常退出运行池", 池大小=1, 工作器路径=工作器,
                           启动超时秒=1.0, 调用超时秒=0.2)
-        控制池 = 本地进程提供者([sys.executable, "-S", str(工作器)],
+        控制池 = 本地进程提供者([sys.executable, "-S", str(工作器), str(系统根)],
                            池大小=1, 启动超时秒=1.0, 调用超时秒=0.2)
         self.对象表.extend((运行池, 控制池))
         self.assertTrue(运行池.启动()[0])
@@ -201,13 +202,9 @@ class Provider进程维修测试(unittest.TestCase):
             try:
                 结果 = 池.关闭()
                 self.assertTrue(结果["成功"], 结果)
-                with self.assertRaises(ProcessLookupError, msg="组长退出不等于进程组已收敛"):
-                    os.kill(子pid, 0)
+                self.assertFalse(进程存活(子pid), "组长退出不等于进程组已收敛")
             finally:
-                try:
-                    os.kill(子pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                终止进程组(子pid, 信号="强杀")
 
     def test_P0_14_无法收敛返回统一失败保留账本并可重试(self):
         for 池 in (self._运行核心池(1), self._控制面池(1)):

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import os
-import signal
 import socket
 import subprocess
 import threading
@@ -15,6 +14,7 @@ import time
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
+from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
 
 句柄系统 = 句柄体系()
@@ -53,11 +53,11 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
     try:
         cmd = [命令] + (参数 or [])
-        # 独立进程组：POSIX 下 killpg 必须作用在独立组，否则会误杀
-        # 网关/测试进程自身；Windows 走 job 等价策略（terminate/kill）。
+        # 独立进程组：平台差异（POSIX setsid / Windows 新建进程组标志）只在
+        # 平台适配.子进程组启动标志() 内判定，调用点不写平台判断。
         进程 = subprocess.Popen(cmd, cwd=工作目录, env=环境变量,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                start_new_session=(os.name == "posix"))
+                                **平台适配.子进程组启动标志())
     except Exception as 错误:
         return 结果.失败("启动失败", str(错误), 来源="进程管理")
     if 就绪地址:
@@ -87,41 +87,17 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
 
 
 def _终止进程组(进程: subprocess.Popen, 强制: bool = True, 宽限秒: float = 2.0) -> None:
-    """进程组终止：TERM→有界等待→KILL→再次等待（POSIX）；Windows 用进程级 terminate/kill。
+    """进程组终止：唯一实现在 公共契约.运行时.进程终止.强制结束子进程。
 
-    先确认进程组归属（进程可能已退出或从未建立独立组），避免误杀无关进程组。
+    终止 → 宽限 → 强杀 → 复查死透全在收口层内完成（POSIX 按进程组 / Windows
+    按进程树由收口层自己判定）；本处不再持有平台判断、信号号或 killpg 调用。
+    强制 为真时不设宽限（直接升级强杀），为假时给 宽限秒 让进程自行退出。
     """
-    if os.name != "posix":
-        try:
-            if 强制:
-                进程.kill()
-            else:
-                进程.terminate()
-            进程.wait(timeout=宽限秒)
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        return
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM if not 强制 else signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        return  # 进程组已不存在
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass
+    进程终止.强制结束子进程(进程, 宽限秒=0.0 if 强制 else 宽限秒, 等待秒=宽限秒)
 
 
 def 终止进程(句柄: int | None = None, 强制: bool = None) -> 结果:
-    """终止进程（killpg 进程组）。返回 {已终止, 退出码}。"""
+    """终止进程（回收整个进程组）。返回 {已终止, 退出码}。"""
     进程, 原因 = _取进程(句柄)
     if 进程 is None:
         return 结果.失败("句柄失效", 原因, 来源="进程管理")
@@ -175,8 +151,8 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
     危险命中 = _前置危险命令检测(命令)
     if 危险命中 is not None:
         return 危险命中
-    # shell=True 时无法 killpg 进程组；改用参数列表方式，超时由独立
-    # 进程组统一回收，避免 shell 子孙进程泄漏。
+    # 不用 shell=True（参数列表直启）：进程自成独立组后，超时/异常由收口层
+    # 整组回收，避免 shell 子孙进程泄漏。
     import shlex
     try:
         命令表 = shlex.split(命令)
@@ -188,7 +164,7 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
     try:
         进程 = subprocess.Popen(
             命令表, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            cwd=工作目录, start_new_session=(os.name == "posix"))
+            cwd=工作目录, **平台适配.子进程组启动标志())
         stdout, stderr, 已超时, 已超限 = 受限通信(
             进程, 超时秒=float(超时秒 or 60),
             输出上限字节=默认子进程输出上限字节,
@@ -232,8 +208,8 @@ def 释放句柄(句柄: int | None = None) -> 结果:
     with 锁:
         进程 = 进程表.pop(句柄, None)
         if 进程:
-            # 先确认进程组归属（start_new_session 保证独立组），再锁外终止，
-            # 避免在锁内执行阻塞式 kill/wait 拖住所有句柄操作。
+            # 进程组归属由 平台适配.子进程组启动标志() 保证，再锁外终止，
+            # 避免在锁内执行阻塞式等待拖住所有句柄操作。
             进程对象 = 进程.get("进程对象")
         else:
             进程对象 = None
@@ -410,7 +386,7 @@ def 沙箱执行命令(
     - 工作目录含 `"`/`\\`/换行/`)` 直接 `参数不合法`（这些字符会改写 SBPL 结构）；
     - profile 先做编译预检，编译不过 → `执行失败`（绝不把「没跑」报成成功）；
     - 执行前经能力调用服务取 `命令安全.检测危险命令`，命中 → `危险命令`；
-    - 输出上限内截断；超时用 killpg 回收整棵进程树；
+    - 输出上限内截断；超时由收口层回收整棵进程树；
     - 环境变量走白名单，可用 环境变量 追加白名单内的键。
     """
     from pathlib import Path as _Path
@@ -436,8 +412,7 @@ def 沙箱执行命令(
     超时 = float(超时秒) if isinstance(超时秒, (int, float)) and 超时秒 > 0 else 60.0
 
     import shutil as _shutil
-    import sys as _sys
-    if not (_sys.platform == "darwin" and _shutil.which("sandbox-exec")):
+    if not (平台适配.是macOS() and _shutil.which("sandbox-exec")):
         return 结果.失败(
             "沙箱不可用",
             "当前平台无 sandbox-exec 内核沙箱，沙箱执行已禁用（fail-closed，不降级）",
@@ -468,7 +443,7 @@ def 沙箱执行命令(
         with 输出文件.open("wb") as 出, 错误文件.open("wb") as 错:
             进程 = subprocess.Popen(
                 argv, cwd=str(工作区), stdout=出, stderr=错,
-                env=环境, start_new_session=(os.name == "posix"))
+                env=环境, **平台适配.子进程组启动标志())
             超时标志 = False
             try:
                 进程.wait(timeout=超时)

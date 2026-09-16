@@ -15,6 +15,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.运行时.进程终止 import 进程存活, 终止进程组
 from 运行核心.任务调度.任务进程 import 任务进程池
 
 
@@ -28,13 +29,8 @@ def 等待条件(条件, 超时秒: float = 3.0) -> bool:
 
 
 def 进程存在(进程id: int) -> bool:
-    try:
-        os.kill(进程id, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    # 平台差异收口：Windows 上 os.kill(pid, 0) 会真把目标进程结束掉，禁止裸用
+    return 进程存活(进程id)
 
 
 def 长时间运行(参数: dict, 取消事件) -> dict:
@@ -93,10 +89,7 @@ class Test任务进程收敛(unittest.TestCase):
                 池.关闭全部()
         for 进程id in self.残留进程id表:
             if 进程存在(进程id):
-                try:
-                    os.kill(进程id, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                终止进程组(进程id, 信号="强杀")
         self.临时对象.cleanup()
 
     def 新池(self) -> 任务进程池:

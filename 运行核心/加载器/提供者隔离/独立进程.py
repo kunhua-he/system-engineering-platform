@@ -5,6 +5,12 @@
 强制终止、进程退出码记录、日志隔离。
 
 核心只能通过统一中文协议调用提供者，不得泄漏原生进程对象。
+
+**跨平台收口（华哥 2026-09-16 裁决：底座做完整跨平台）**：子进程组启动标志、进程组存活
+判定、组信号发送全部走 `公共契约/运行时/平台适配.py` 与 `公共契约/运行时/进程终止.py`
+—— **本文件调用点不含任何平台判断**（无 `os.name` / `sys.platform` / `os.killpg` /
+`os.getpgrp`）。**「进程组归属」与「隔离回收」语义不变**：组长被 `poll()` 回收后，
+「同组子孙仍在」只有收口层的按组号原语（`按组号探活` / `按组号终止`）能表达。
 """
 
 from __future__ import annotations
@@ -12,7 +18,6 @@ from __future__ import annotations
 import json
 import hashlib
 import os
-import signal
 import select
 import shutil
 import subprocess
@@ -26,6 +31,7 @@ from pathlib import Path
 from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.版本规则.契约版本 import 取契约版本
+from 公共契约.运行时 import 平台适配, 进程终止
 
 进程状态_已创建 = "已创建"
 进程状态_启动中 = "启动中"
@@ -36,6 +42,20 @@ from 公共契约.版本规则.契约版本 import 取契约版本
 日志上限 = 200  # 日志列表环形裁剪上限（对齐 提供者生命周期._日志上限）
 stderr日志上限 = 200
 最大允许池大小 = 16
+
+#: 收口层 进程终止 的信号语义名（POSIX → SIGTERM/SIGKILL；Windows → taskkill 不带/带 /F）
+信号_终止 = "终止"
+信号_强杀 = "强杀"
+
+
+def _已发出信号(收口结果) -> bool:
+    """判定收口层 ``进程终止`` 的结果信封是否**真的发出了信号**。
+
+    只读信封里的 ``已发出信号`` 字段（它由收口层按平台事实填写），调用点不猜平台：
+    成功类结论（``已终止`` / ``已终止（回退）``）在 ``.值``，失败类结论在 ``.详细信息``。
+    """
+    载荷 = 收口结果.值 or 收口结果.详细信息 or {}
+    return bool(载荷.get("已发出信号"))
 
 
 @dataclass
@@ -186,7 +206,7 @@ class 独立进程:
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", bufsize=1,
                 env={**os.environ, "PYTHONNOUSERSITE": "1"},
-                start_new_session=(os.name == "posix"),
+                **平台适配.子进程组启动标志(),
             )
             self._启动stderr消费(self.进程)
         except OSError as 错误:
@@ -297,18 +317,26 @@ class 独立进程:
         return True  # 崩溃且未恢复
 
     def _进程组存活(self) -> bool:
+        """成员进程组是否仍存活（组长已回收但同组子孙仍在也算存活）。
+
+        **为什么必须用「按组号」的收口原语**：收口层 `进程存活` / `终止进程组` 都以
+        `os.getpgid(pid)` 为判定前提，而 `Popen.wait()/poll()` 一旦观察到组长退出就把
+        它**回收**，回收后 `os.getpgid(组长pid)` 必然失败（收口只能如实判「进程不存在」）
+        —— 于是「组长正常退出、同组子孙仍在」这条语义就判不出来了，而这正是本类必须
+        覆盖的语义（测试中心/第一批维修/测试_Provider进程.py::test_P0_14_组长正常退出
+        也必须回收同组子进程）。
+
+        故先看句柄（句柄未回收即未退出 → 组必然活着），句柄已回收才用收口层为此场景
+        专门补齐的 `按组号探活(组长pid)`（组号 == 组长 pid，由 `子进程组启动标志()` 保证）。
+        平台差异（有无 `os.killpg`、Windows 无组概念）全部收口在
+        `公共契约/运行时/进程终止.py`，**本调用点不做任何平台判断**。
+        """
         进程 = self.进程
         if 进程 is None:
             return False
-        if os.name != "posix":
-            return 进程.poll() is None
-        try:
-            os.killpg(进程.pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
+        if 进程.poll() is None:
             return True
-        return True
+        return 进程终止.按组号探活(进程.pid)
 
     def _等待进程组退出(self, 超时秒: float) -> bool:
         截止 = time.monotonic() + max(0.0, 超时秒)
@@ -322,19 +350,33 @@ class 独立进程:
                 pass
         return not self._进程组存活()
 
-    def _发进程组信号(self, 信号值: int) -> None:
+    def _发进程组信号(self, 信号名: str) -> None:
+        """向成员进程组发信号：两发都走跨平台收口，**调用点不做任何平台判断**。
+
+        第一发 `终止进程组(组长pid)`：组长仍活着（含僵尸）时收口按组长身份一次整组终止，
+        非组长则退化为单进程（不误伤同组其他进程）—— 这正是原实现里自己拼
+        `os.name == "posix"` + `killpg` + `pid != os.getpgrp()` 分支要表达的语义。
+
+        组长已被 `Popen` 回收时收口取不到组号（只能如实回「进程不存在」），而组内子孙可能
+        仍在，故第二发改用收口层专为此场景补齐的 `按组号终止(组长pid)` 补发一次 ——
+        保住「组长已回收 ≠ 组已收敛」（测试中心/第一批维修/测试_Provider进程.py::test_P0_14）。
+
+        `本进程组号` 由收口 `进程组号()` 取（非 POSIX 平台如实回 `None`），仅用于避免误伤
+        本进程自己所在的组 —— 这不是平台判断，而是「不要打自己」的安全闸；收口两层都
+        没真的发出信号时才退化为单进程句柄信号（与原实现 killpg 抛错后回退同语义）。
+        """
         进程 = self.进程
         if 进程 is None:
             return
-        try:
-            if os.name == "posix" and 进程.pid != os.getpgrp():
-                os.killpg(进程.pid, 信号值)
+        if _已发出信号(进程终止.终止进程组(进程.pid, 信号=信号名)):
+            return
+        本进程组号 = 进程终止.进程组号(os.getpid())
+        if 本进程组号 is None or 进程.pid != 本进程组号:
+            if _已发出信号(进程终止.按组号终止(进程.pid, 信号=信号名)):
                 return
-        except (OSError, ProcessLookupError):
-            pass
         if 进程.poll() is None:
             try:
-                进程.terminate() if 信号值 == signal.SIGTERM else 进程.kill()
+                进程.terminate() if 信号名 == 信号_终止 else 进程.kill()
             except (OSError, ProcessLookupError):
                 pass
 
@@ -383,11 +425,11 @@ class 独立进程:
                 except subprocess.TimeoutExpired:
                     pass
             if self._进程组存活():
-                self._发进程组信号(signal.SIGTERM)
+                self._发进程组信号(信号_终止)
                 self._等待进程组退出(min(max(self.调用超时秒, 0.05), 1.0))
             if self._进程组存活():
                 已使用SIGKILL = True
-                self._发进程组信号(signal.SIGKILL)
+                self._发进程组信号(信号_强杀)
                 self._等待进程组退出(2.0)
             if 进程 is not None:
                 self.退出码 = 进程.poll()
@@ -404,11 +446,11 @@ class 独立进程:
         进程 = self.进程
         已使用SIGKILL = False
         if self._进程组存活():
-            self._发进程组信号(signal.SIGTERM)
+            self._发进程组信号(信号_终止)
             self._等待进程组退出(min(max(self.调用超时秒, 0.05), 1.0))
             if self._进程组存活():
                 已使用SIGKILL = True
-                self._发进程组信号(signal.SIGKILL)
+                self._发进程组信号(信号_强杀)
                 self._等待进程组退出(2.0)
             if 进程 is not None:
                 self.退出码 = 进程.poll()

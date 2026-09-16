@@ -16,6 +16,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.密码签名提供者 import 生成密钥对, 签名
 from 支持库.适配层.密码签名提供者.实现 import 提供者管理器 as 提供者模块
 
@@ -29,7 +30,7 @@ def _崩溃子进程(退出码: int) -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, "-c", f"import os; os._exit({退出码})"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        start_new_session=True,
+        **子进程组启动标志(),
     )
 
 

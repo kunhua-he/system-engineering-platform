@@ -21,6 +21,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.PDF隔离提供者 import 检查提供者版本, 解析PDF隔离, 校验PDF隔离
 from 支持库.适配层.PDF隔离提供者.实现 import 隔离提供者 as 提供者模块
 
@@ -106,7 +107,7 @@ class TestPDF隔离提供者(unittest.TestCase):
             进程 = subprocess.Popen(
                 [sys.executable, "-c", "import os; os._exit(7)"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                start_new_session=True,
+                **子进程组启动标志(),
             )
             return 进程
 
@@ -142,7 +143,7 @@ class TestPDF隔离提供者(unittest.TestCase):
                 进程 = subprocess.Popen(
                     [sys.executable, "-c", "import os; os._exit(9)"],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    start_new_session=True,
+                    **子进程组启动标志(),
                 )
                 return 进程
             return 原始启动()

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import io
-import os
-import signal
 import subprocess
 import sys
 import unittest
 
 from 公共契约.运行时.有界IO import 受限读取, 受限通信
+from 公共契约.运行时.平台适配 import 子进程组启动标志
+from 公共契约.运行时.进程终止 import 终止进程组
 
 
 class 有界IO测试(unittest.TestCase):
@@ -40,17 +40,15 @@ class 有界IO测试(unittest.TestCase):
     def _终止(self, 进程: subprocess.Popen) -> None:
         if 进程.poll() is not None:
             return
-        try:
-            os.killpg(进程.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            return
+        # 平台差异收口在 公共契约.运行时.进程终止（Windows 走 taskkill 整树）
+        终止进程组(进程.pid, 信号="强杀")
         进程.wait(timeout=5)
 
     def test_受限通信支持输入和双管道(self) -> None:
         进程 = subprocess.Popen(
             [sys.executable, "-c", "import sys; d=sys.stdin.buffer.read(); sys.stdout.buffer.write(d); sys.stderr.buffer.write(b'err')"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **子进程组启动标志(),
         )
         输出, 错误, 超时, 超限 = 受限通信(
             进程, 输入=b"hello", 超时秒=5,
@@ -65,7 +63,7 @@ class 有界IO测试(unittest.TestCase):
         进程 = subprocess.Popen(
             [sys.executable, "-c", "import sys,time; sys.stdout.write('x'*300000); sys.stdout.flush(); time.sleep(30)"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **子进程组启动标志(),
         )
         输出, _错误, _超时, 超限 = 受限通信(
             进程, 超时秒=5, 输出上限字节=1024,
@@ -79,7 +77,7 @@ class 有界IO测试(unittest.TestCase):
         进程 = subprocess.Popen(
             [sys.executable, "-c", "import time; time.sleep(30)"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            start_new_session=True,
+            **子进程组启动标志(),
         )
         _输出, _错误, 超时, _超限 = 受限通信(
             进程, 超时秒=0.1,

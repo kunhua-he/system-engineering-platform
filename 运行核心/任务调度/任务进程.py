@@ -1,11 +1,18 @@
-"""独立任务进程：每个任务使用独立进程，支持真实超时、取消和回收。"""
+"""独立任务进程：每个任务使用独立进程，支持真实超时、取消和回收。
+
+**跨平台收口（华哥 2026-09-16 裁决：底座做完整跨平台）**：独立进程组建立、进程组存活
+判定、组信号发送全部走 `公共契约/运行时/平台适配.py` 与 `公共契约/运行时/进程终止.py`
+—— **本文件调用点不含任何平台判断**（无 `os.name` / `sys.platform` / `os.killpg` /
+`os.getpgrp`）。两条必保语义都在：① **「不向自己进程组发信号」的自保护**（组号与本进程
+组号相同时拒绝整组发信号）；② **「组长已回收但同组子孙仍在」仍按组回收**（只有收口层
+的按组号原语能表达，`os.getpgid(组长pid)` 在组长被 join 回收后必然失败）。
+"""
 
 from __future__ import annotations
 
 import json
 import multiprocessing
 import os
-import signal
 import sys
 import tempfile
 import threading
@@ -15,6 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时 import 平台适配, 进程终止
 from 运行核心.任务调度.任务工作器 import 执行单次任务
 
 任务状态_等待中 = "等待中"
@@ -28,6 +36,18 @@ from 运行核心.任务调度.任务工作器 import 执行单次任务
 
 _终态 = {任务状态_成功, 任务状态_失败, 任务状态_已取消, 任务状态_超时, 任务状态_崩溃}
 
+#: 收口层 进程终止 的信号语义名（POSIX → SIGTERM/SIGKILL；Windows → taskkill 不带/带 /F）
+信号_终止 = "终止"
+信号_强杀 = "强杀"
+
+
+def _本进程组号() -> int | None:
+    """本进程所属进程组号；平台无进程组概念时由收口层如实回 ``None``。
+
+    只问能力、不写平台判断：这是「不要打自己」安全闸与「本平台有无进程组」判定的唯一来源。
+    """
+    return 进程终止.进程组号(os.getpid())
+
 
 class 资源繁忙错误(Exception):
     """提交任务超过进程池有界容量时的统一资源繁忙错误，区分"忙"与"失败"。"""
@@ -38,20 +58,25 @@ class 资源繁忙错误(Exception):
 
 def _执行任务进程入口(进程组就绪事件: Any, 发送连接: Any, 函数: Callable,
                     请求: dict[str, Any], 取消事件: Any) -> None:
-    """先建立独立会话/进程组，再允许能力启动任何后代进程。"""
-    if hasattr(os, "setsid"):
+    """先建立独立会话/进程组，再允许能力启动任何后代进程。
+
+    「本平台是否具备独立进程组」由收口层判定（`平台适配.要求POSIX能力`）：不支持即
+    **明确报「进程组建立失败」并拒绝执行**，绝不静默跳过 —— 没有独立进程组的任务在
+    取消/超时路径上无法整组回收，跑下去就是伪成功。
+    """
+    try:
+        平台适配.要求POSIX能力("os.setsid（任务工作器建立独立进程组）")
+        os.setsid()
+    except (平台适配.平台不支持错误, OSError) as 错误:
+        响应 = {
+            "任务id": 请求.get("任务id", ""), "成功": False,
+            "错误码": "进程组建立失败", "错误说明": str(错误),
+        }
         try:
-            os.setsid()
-        except OSError as 错误:
-            响应 = {
-                "任务id": 请求.get("任务id", ""), "成功": False,
-                "错误码": "进程组建立失败", "错误说明": str(错误),
-            }
-            try:
-                发送连接.send_bytes(json.dumps(响应, ensure_ascii=False).encode("utf-8"))
-            finally:
-                发送连接.close()
-            return
+            发送连接.send_bytes(json.dumps(响应, ensure_ascii=False).encode("utf-8"))
+        finally:
+            发送连接.close()
+        return
     进程组就绪事件.set()
     执行单次任务(发送连接, 函数, 请求, 取消事件)
 
@@ -332,19 +357,26 @@ class 任务进程池:
 
     @staticmethod
     def _进程组存活(进程组id: int | None) -> bool:
-        if not 进程组id or not hasattr(os, "killpg"):
+        """工作器进程组是否仍存活（组长已回收但同组子孙仍在也算存活）。
+
+        **为什么必须按组号而不是按 pid**：组长一旦被 `进程.join()` 回收，
+        `os.getpgid(组长pid)` 必然失败（收口层的 `进程存活` / `终止进程组` 都以它为
+        判定前提），只有收口层专为此场景补齐的 `按组号探活`（`os.killpg(组号, 0)`，
+        组长被回收后仍可用）能表达「组长退出、同组子孙仍在」。平台差异（Windows 无
+        组概念）由收口层如实回 `False`，**本调用点不做任何平台判断**。
+        """
+        if not 进程组id:
             return False
-        try:
-            os.killpg(进程组id, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
+        return 进程终止.按组号探活(进程组id)
 
     def _进程组已就绪(self, 任务对象: 独立任务) -> bool:
+        """工作器是否已建立独立进程组（就绪事件只在子进程 setsid 成功后置位）。
+
+        追加「本平台具备进程组能力」的判定：由收口 `进程组号(本进程pid)` 如实回答
+        （非 POSIX 平台返回 `None`）—— 平台差异在收口层判定，调用点只问能力。
+        """
         事件 = 任务对象.进程组就绪事件
-        return bool(事件 is not None and 事件.is_set() and hasattr(os, "killpg"))
+        return bool(事件 is not None and 事件.is_set() and _本进程组号() is not None)
 
     def _工作器存活(self, 任务对象: 独立任务) -> bool:
         if self._进程组已就绪(任务对象):
@@ -352,22 +384,28 @@ class 任务进程池:
         进程 = 任务对象.进程
         return bool(进程 is not None and 进程.is_alive())
 
-    def _发送工作器信号(self, 任务对象: 独立任务, 信号值: int) -> None:
+    def _发送工作器信号(self, 任务对象: 独立任务, 信号名: str) -> None:
+        """向任务工作器发信号（组优先、单进程兜底），**调用点不做任何平台判断**。
+
+        **必保的自保护语义**：`任务对象.进程组id` 与本进程所在组号相同时**拒绝整组发
+        信号** —— 否则会把主进程自己一起打死（就绪事件只在子进程 setsid 成功后置位，
+        正常情况下组号必不等于主进程组号）。本进程组号由收口 `进程组号()` 取（非 POSIX
+        平台如实回 `None`），这不是平台判断，而是「不要打自己」的安全闸；本平台没有
+        进程组能力时 `_进程组已就绪` 即为假，直接走单进程句柄信号兜底。
+
+        组发信号全程走收口 `按组号终止`：组长已被 `join()` 回收后仍可用，且**永不抛
+        异常**（失败收口成结果信封）—— 进程组可能在存活检查与发信号之间退出，EPERM
+        也不能被解释成信号已送达，后续仍以存活复查决定是否收敛。
+        """
         进程 = 任务对象.进程
-        if self._进程组已就绪(任务对象) and 任务对象.进程组id:
-            # 绝不向主进程所在组发送信号；就绪事件只在子进程 setsid 后置位。
-            if 任务对象.进程组id != os.getpgrp():
-                try:
-                    os.killpg(任务对象.进程组id, 信号值)
-                except (ProcessLookupError, PermissionError, OSError):
-                    # 进程组可能在存活检查与发信号之间退出；EPERM 也不能
-                    # 被解释成信号已送达，后续仍以存活复查决定是否收敛。
-                    pass
-                return
+        组号 = 任务对象.进程组id
+        if 组号 and self._进程组已就绪(任务对象) and 组号 != _本进程组号():
+            进程终止.按组号终止(组号, 信号=信号名)
+            return
         if 进程 is None or not 进程.is_alive():
             return
         try:
-            if 信号值 == signal.SIGKILL and hasattr(进程, "kill"):
+            if 信号名 == 信号_强杀 and hasattr(进程, "kill"):
                 进程.kill()
             else:
                 进程.terminate()
@@ -395,10 +433,10 @@ class 任务进程池:
         剩余秒 = 截止时刻 - time.monotonic()
         if 剩余秒 <= 0:
             return False
-        self._发送工作器信号(任务对象, signal.SIGTERM)
+        self._发送工作器信号(任务对象, 信号_终止)
         优雅截止 = min(截止时刻, time.monotonic() + min(0.2, 剩余秒 * 0.4))
         if not self._等待工作器退出(任务对象, 优雅截止):
-            self._发送工作器信号(任务对象, signal.SIGKILL)
+            self._发送工作器信号(任务对象, 信号_强杀)
             self._等待工作器退出(任务对象, 截止时刻)
         return self._回收工作器(任务对象)
 

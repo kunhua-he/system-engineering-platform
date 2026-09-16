@@ -18,6 +18,7 @@ from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path: sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.进程终止 import 进程存活
 from 支持库.适配层.Tesseract提供者 import 识别图片, 语言包列表, 版本探针
 from 支持库.适配层.Tesseract提供者.实现 import 提供者 as 提供者模块
 from 支持库.适配层.Tesseract提供者.实现 import 受管进程 as 受管模块
@@ -271,8 +272,7 @@ class Test受管进程(unittest.TestCase):
              f"import os, time; open({str(pid文件)!r}, 'w').write(str(os.getpid())); time.sleep(30)"],
             超时秒=0.5)
         self.assertEqual(结果.错误码, "超时")
-        with self.assertRaises(OSError):
-            os.kill(int(pid文件.read_text()), 0)
+        self.assertFalse(进程存活(int(pid文件.read_text())), "超时回收后不得残留超时进程")
 
     def test_参数不合法与提供者不可用(self):
         self.assertEqual(受管模块.执行命令([]).错误码, "参数不合法")

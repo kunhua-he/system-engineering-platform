@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
 提供者模板 = '''"""@@名称@@ 主进程管理器：子进程协议 + 稳定错误码（骨架占位）。"""
 from __future__ import annotations
-import json, os, signal, subprocess, sys
+import json, os, subprocess, sys
 from pathlib import Path
 
 系统根 = "@@系统根@@"
@@ -210,6 +210,7 @@ if 系统根 not in sys.path:
     sys.path.insert(0, 系统根)
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.有界IO import 受限通信
+from 公共契约.运行时 import 平台适配, 进程终止
 
 包目录 = Path(__file__).resolve().parent.parent
 子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
@@ -221,24 +222,12 @@ def _失败(错误码: str, 消息: str) -> 结果:
 
 
 def _终止进程组(进程, 宽限秒: float = 1.0) -> None:
-    """超时/异常时 killpg 回收整个进程组（SIGTERM → 宽限 → SIGKILL）。"""
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGTERM)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(进程.pid), signal.SIGKILL)
-    except (OSError, ProcessLookupError):
-        pass
-    try:
-        进程.wait(timeout=宽限秒)
-    except subprocess.TimeoutExpired:
-        pass
+    """超时/异常时回收整个进程组（终止 → 宽限 → 强杀 → 复查）。
+
+    唯一实现是 公共契约.运行时.进程终止.强制结束子进程；本模板不生成任何
+    平台判断，进程组启动标志与整组回收都由 公共契约.运行时 收口。
+    """
+    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
 
 
 def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
@@ -246,7 +235,7 @@ def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
     try:
         进程 = subprocess.Popen([sys.executable, str(子进程入口路径)], stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                start_new_session=True, env=dict(os.environ))
+                                **平台适配.子进程组启动标志(), env=dict(os.environ))
     except OSError as 错误:
         return _失败("提供者不可用", f"无法启动子进程: {错误}")
     try:

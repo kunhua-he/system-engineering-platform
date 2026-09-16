@@ -22,6 +22,7 @@ assert 规格 and 规格.loader
 sys.modules[规格.name] = 验证器
 规格.loader.exec_module(验证器)
 
+from 公共契约.运行时.进程终止 import 进程组号
 from 开发工具.HTML验证 import (
     常量, 制品事实, 场景加载, HTTP请求, 制品进程, 返回判定, 动态值,
     场景执行器, 验证证据, 单实例验证, 验证应用, 验证服务,
@@ -692,7 +693,7 @@ class Test进程生命周期(unittest.TestCase):
                 "time.sleep(60)\n", encoding="utf-8")
             进程, _, _ = 制品进程._启动制品(启动器, 根, 45080, 2, 1024)
             子pid = int((根 / "子进程.pid").read_text())
-            self.assertNotEqual(os.getpgid(进程.pid), os.getpgid(0))
+            self.assertNotEqual(进程组号(进程), 进程组号(os.getpid()))
             回收 = 制品进程._回收进程组(进程)
             self.assertTrue(回收["已回收"])
             self.assertIsNotNone(进程.poll())
