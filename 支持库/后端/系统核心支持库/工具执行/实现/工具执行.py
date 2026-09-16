@@ -134,6 +134,9 @@ def _投递连接(库路径: str):
                 _投递缓存连接 = None
                 _投递缓存路径 = None
         _os.makedirs(_os.path.dirname(目标), exist_ok=True)
+        # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：认领投递是「事务内读最早一条待认领
+        # + 原子改状态」，且该长连接在模块级 锁 内被跨线程复用（check_same_thread=False）；
+        # 唯一入口不暴露连接对象、事务执行无事务内读回与参数绑定，表达不了该原子语义。
         连接 = _sqlite3.connect(目标, timeout=5, check_same_thread=False)
         连接.execute("""CREATE TABLE IF NOT EXISTS 投递表 (
         投递id TEXT PRIMARY KEY,

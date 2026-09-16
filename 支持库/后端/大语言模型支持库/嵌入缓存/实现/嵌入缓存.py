@@ -63,6 +63,9 @@ def _取连接(数据库路径: str | Path | None = None) -> sqlite3.Connection:
         except Exception as 错误:
             降级记录表.append(str(错误))
     目标.parent.mkdir(parents=True, exist_ok=True)
+    # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：连接按库路径缓存并被模块级 锁 跨线程复用
+    # （check_same_thread=False）；写入只能经 事务执行，而它的契约是「SQL 文本列表、无参数绑定」，
+    # 模型名/提供者/向量属调用方数据，拼进 SQL 文本会引入转义与注入面。
     _连接 = sqlite3.connect(str(目标), timeout=10, check_same_thread=False)
     _连接.execute(
         "CREATE TABLE IF NOT EXISTS 嵌入缓存 ("

@@ -24,6 +24,9 @@ from 公共契约.运行时.运行缓存 import 解析运行缓存根, 解析运
 
 
 def _连接(库路径: str = None) -> sqlite3.Connection:
+    # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：本库是记忆支持库**自有库**（记忆库.db），
+    # 且写入需要参数绑定（正文是任意用户全文）；唯一入口的 事务执行 契约只有「SQL 文本列表、
+    # 无参数绑定」，只把读改成走入口会留下两条执行腿（底座哲学第 1 条 2 项）→ 整模块保留待能力补齐。
     路径 = Path(库路径) if 库路径 else 默认库路径
     路径.parent.mkdir(parents=True, exist_ok=True)
     连接 = sqlite3.connect(路径)

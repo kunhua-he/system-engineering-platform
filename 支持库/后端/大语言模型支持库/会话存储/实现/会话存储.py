@@ -123,6 +123,9 @@ def _连接(库路径: str) -> sqlite3.Connection:
             目录 = os.path.dirname(目标)
             if 目录:
                 os.makedirs(目录, exist_ok=True)
+            # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：连接按库路径缓存（换路径先关旧、
+            # 进程退出统一收口）、check_same_thread=False 配合模块级 锁 串行化，且建表/补列必须
+            # 在持连接时完成；唯一入口每次调用即关连接、不暴露连接对象，表达不了该生命周期。
             新建 = sqlite3.connect(目标, timeout=10, check_same_thread=False)
             新建.executescript(_建表语句)
             # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 3 条 2 项）。
