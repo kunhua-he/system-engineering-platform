@@ -20,6 +20,8 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.版本规则.契约版本 import 契约版本
+
 前端包表 = [
     ("支持库.前端.基础组件描述", "基础组件描述"),
     ("支持库.前端.文件选择描述", "文件选择描述"),
@@ -37,7 +39,9 @@ class Test前端描述支持库S0收敛(unittest.TestCase):
             契约 = json.loads(
                 (系统根 / "支持库" / "前端" / 包名 / "能力契约" / "参数契约.json")
                 .read_text(encoding="utf-8"))
-            self.assertEqual(契约["契约版本"], "1.0.0")
+            # 契约版本从唯一事实源现读（公共契约/版本规则/契约版本.py），禁写死字面量：
+            # 曾写死 "1.0.0"，平台契约版本收敛为唯一值 2.0.0 后就成假红。
+            self.assertEqual(契约["契约版本"], 契约版本)
             能力表 = 契约["能力契约"]
             self.assertTrue(能力表, 包名)
             声明 = json.loads(
