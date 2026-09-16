@@ -4,11 +4,56 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import time
 from pathlib import Path
 
 
 from 平台控制面.备份恢复.备份执行 import 清单文件名, _尽力复制附加文件
+
+
+def _取独占目标库(目标库: Path) -> tuple[sqlite3.Connection | None, str]:
+    """恢复期间**独占**目标权威状态库；返回 `(连接, 失败原因)`，成功时原因为空串。
+
+    **为什么必须独占**（B-20）：恢复是**覆盖写**目标库文件。另一进程（网关/监督器/
+    另一个恢复任务）正开着它读写时直接覆盖，会得到「一半旧一半新」的混合库，
+    且对方持有的旧文件句柄还能把旧内容写回。`BEGIN EXCLUSIVE` 是唯一可靠的探针：
+    它只能被一个连接拿到，有活跃连接持锁即抛 `database is locked`。
+    目标库不存在（全新恢复目标）时无需加锁，返回 `(None, "")`。
+
+    WAL 模式下 `BEGIN EXCLUSIVE` 同样拦截活跃写事务；拿到锁期间 SQLite 不会让
+    第二个写连接介入，覆盖期间的库状态对外不可见（当前连接不提交、随后 rollback）。
+
+    **不抛异常**：占用是**预期的业务结论**（调用方要如实返回失败原因），
+    不能穿透到网关被收口成「路由缺失/未知错误」。
+    """
+    if not 目标库.exists():
+        return None, ""
+    try:
+        连接 = sqlite3.connect(str(目标库), timeout=0, isolation_level=None)
+    except sqlite3.Error as 错误:
+        return None, f"目标权威状态库无法打开，拒绝覆盖恢复: {错误}"
+    try:
+        连接.execute("BEGIN EXCLUSIVE")
+    except sqlite3.OperationalError as 错误:
+        连接.close()
+        return None, f"目标权威状态库被占用，拒绝无锁覆盖恢复: {错误}"
+    except sqlite3.DatabaseError as 错误:
+        # 目标不是 sqlite 库 / 文件已损坏：**无从证明独占**，故同样拒绝覆盖，
+        # 并如实说明（先把损坏库移走再恢复），不猜「反正要恢复就随便覆盖」。
+        连接.close()
+        return None, f"目标权威状态库不可用（非 sqlite 库或已损坏），拒绝覆盖恢复: {错误}"
+    return 连接, ""
+
+
+def _释放目标库(连接: sqlite3.Connection | None) -> None:
+    """释放独占锁（未提交事务回滚，绝不把恢复期的库状态写回业务语义）。"""
+    if 连接 is None:
+        return
+    try:
+        连接.rollback()
+    finally:
+        连接.close()
 
 
 class 恢复执行能力:
@@ -55,10 +100,19 @@ class 恢复执行能力:
         if 类名 == "权威状态":
             shutil.copy2(快照目录 / "权威状态.db", 目标目录 / "权威状态.db")
             for 后缀 in ("-wal", "-shm"):
+                目标附加 = 目标目录 / f"权威状态.db{后缀}"
                 附加 = 快照目录 / f"权威状态.db{后缀}"
                 if 附加.is_file():
                     # 与备份侧同一语义：WAL/SHM 是瞬时文件，缺失即「本快照没有它」。
-                    _尽力复制附加文件(附加, 目标目录 / f"权威状态.db{后缀}")
+                    _尽力复制附加文件(附加, 目标附加)
+                else:
+                    # 新快照（VACUUM INTO）不带附加文件：目标目录里遗留的旧 `-wal`
+                    # 属于**上一个库**，留着会被 SQLite 当成本库日志回放 → 混合状态。
+                    # 覆盖后必须清掉，否则恢复出的库内容不可预期。
+                    try:
+                        目标附加.unlink()
+                    except OSError:
+                        pass
             return 目标目录
         文件名 = "证据账本.json" if 类名 == "证据账本" else "项目锁.json"
         shutil.copy2(快照目录 / 文件名, 目标目录 / 文件名)
@@ -79,14 +133,24 @@ class 恢复执行能力:
         顺序类表 = sorted(契约表, key=lambda 类: 契约表[类]["恢复顺序"])
         回退警告 = self._检测版本回退(清单, 目标目录)
         结果表 = []
-        for 类名 in 顺序类表:
-            备份项 = 清单["文件"].get(类名, {})
-            if 备份项.get("缺失"):
-                结果表.append({"类": 类名, "成功": False, "原因": "备份缺失"})
-                continue
-            校验目录 = self._恢复一类(类名, 快照目录, 目标目录)
-            成功, 原因 = 契约表[类名]["校验方法"](校验目录, 备份项)
-            结果表.append({"类": 类名, "成功": 成功, "原因": 原因})
+        独占连接, 占用原因 = _取独占目标库(目标目录 / "权威状态.db")
+        if 占用原因:
+            # 目标库被占用：必须在**写任何东西之前**中止（B-20）。
+            # 如实返回失败结论，不抛异常穿透到网关被收口成「路由缺失/未知错误」。
+            return {"成功": False, "恢复顺序": 顺序类表,
+                    "结果": [{"类": "权威状态", "成功": False, "原因": 占用原因}],
+                    "目标目录": str(目标目录), "回退警告": 回退警告}
+        try:
+            for 类名 in 顺序类表:
+                备份项 = 清单["文件"].get(类名, {})
+                if 备份项.get("缺失"):
+                    结果表.append({"类": 类名, "成功": False, "原因": "备份缺失"})
+                    continue
+                校验目录 = self._恢复一类(类名, 快照目录, 目标目录)
+                成功, 原因 = 契约表[类名]["校验方法"](校验目录, 备份项)
+                结果表.append({"类": 类名, "成功": 成功, "原因": 原因})
+        finally:
+            _释放目标库(独占连接)
         return {"成功": bool(结果表) and all(项["成功"] for 项 in 结果表),
                 "恢复顺序": 顺序类表, "结果": 结果表, "目标目录": str(目标目录),
                 "回退警告": 回退警告}

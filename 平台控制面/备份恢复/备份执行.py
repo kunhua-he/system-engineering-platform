@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import time
 from pathlib import Path
 
@@ -15,6 +16,32 @@ from 支持库.后端.数据库连接支持库.SQLite数据库 import 查询
 
 #: 备份快照的认证标记：写在快照目录里的最后一步，**没有它就等于该快照未被认证**。
 清单文件名 = "备份清单.json"
+
+
+def 一致性快照(源库: Path, 目标: Path) -> None:
+    """用 `VACUUM INTO` 从运行中的源库生成**单文件一致性快照**。
+
+    **为什么不能 `shutil.copy2`**（B-20 撕裂快照）：checkpoint 与 copy 之间、
+    `.db` 与 `-wal` 两次 copy 之间运行中的进程仍在写，拷出的是**跨时点**镜像
+    （主库来自 T1、WAL 来自 T2，或反过来），却会被 `校验权威状态` 的
+    `PRAGMA integrity_check` 背书成「完整性通过」—— integrity_check 只验页结构
+    与校验和，**验不出快照来自哪一刻**。
+    `VACUUM INTO` 在**一个读事务**内重建整库：快照必定是某一时刻的一致状态，
+    且输出单文件（不存在「先抓 `.db` 再抓 `-wal`」的第二个窗口）。
+
+    只读打开（`mode=ro`）：备份绝不能在源库上留下写事务。
+    失败即抛错 —— 由 `执行备份` 回收整个未被认证的快照目录，不留半份状态。
+    """
+    try:
+        源连接 = sqlite3.connect(f"file:{源库}?mode=ro", uri=True, timeout=10)
+    except sqlite3.Error as 错误:
+        raise RuntimeError(f"权威状态库不可读，备份中止: {错误}") from 错误
+    try:
+        源连接.execute("VACUUM INTO ?", (str(目标),))
+    except sqlite3.Error as 错误:
+        raise RuntimeError(f"一致性快照生成失败: {错误}") from 错误
+    finally:
+        源连接.close()
 
 
 def _尽力复制附加文件(源: Path, 目标: Path) -> bool:
@@ -72,11 +99,9 @@ class 备份执行能力:
         if not 源.is_file():
             return 缺失项
         if 类名 == "权威状态":
-            shutil.copy2(源, 快照目录 / "权威状态.db")
-            for 后缀 in ("-wal", "-shm"):
-                附加 = Path(str(源) + 后缀)
-                if 附加.is_file():
-                    _尽力复制附加文件(附加, 快照目录 / f"权威状态.db{后缀}")
+            # 一致性快照（B-20）：不再 copy2 出分时点镜像；快照自带全部已提交内容，
+            # 不留 -wal/-shm（旧归档里的附加文件仍按原语义被 恢复执行 兼容处理）。
+            一致性快照(源, 快照目录 / "权威状态.db")
             内容 = (快照目录 / "权威状态.db").read_bytes()
             return {"文件": "权威状态.db", "大小": len(内容), "摘要": 内容摘要(内容)}
         文件名 = "证据账本.json" if 类名 == "证据账本" else "项目锁.json"
@@ -117,7 +142,10 @@ class 备份执行能力:
 
     def _写快照(self, 快照目录: Path) -> dict:
         """写一份完整快照并返回清单（清单最后写入 = 认证标记）。"""
-        # 合并 WAL 回主库，尽力而为：经唯一入口的只读查询能力执行 checkpoint PRAGMA
+        # 合并 WAL 回主库：**只作减小 -wal 体积的运维动作**，一致性已不再依赖它
+        # （B-20：权威状态改走 VACUUM INTO 一致性快照，读事务内重建整库，
+        #  checkpoint 与快照之间再有人写也不会撕裂）。
+        # 经唯一入口的只读查询能力执行 checkpoint PRAGMA
         # （checkpoint 不能在显式事务内跑，实测走 事务执行 报「database table is locked」，
         #  故只能走 查询；它不改业务数据）。失败不阻断备份，但必须留痕（哲学第 3 条 2 项）。
         合并结果 = 查询(str(self.存储根目录 / "权威状态.db"),
