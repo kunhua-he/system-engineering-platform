@@ -11,6 +11,10 @@
 —— **本文件调用点不含任何平台判断**（无 `os.name` / `sys.platform` / `os.killpg` /
 `os.getpgrp`）。**「进程组归属」与「隔离回收」语义不变**：组长被 `poll()` 回收后，
 「同组子孙仍在」只有收口层的按组号原语（`按组号探活` / `按组号终止`）能表达。
+
+**管道读取同样不做平台判断**：stdout 由后台线程阻塞式 `os.read` 直读内核并用
+`公共契约/运行时/有界IO.受限读取` 排空+限界，调用方在条件变量上等一个完整行
+—— 不再用 `select` 轮询管道 fd（Windows 的 `select` 只接受 socket，轮询管道必然报错）。
 """
 
 from __future__ import annotations
@@ -18,7 +22,6 @@ from __future__ import annotations
 import json
 import hashlib
 import os
-import select
 import shutil
 import subprocess
 import sys
@@ -31,7 +34,7 @@ from pathlib import Path
 from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.版本规则.契约版本 import 取契约版本
-from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时 import 平台适配, 进程终止, 有界IO
 
 进程状态_已创建 = "已创建"
 进程状态_启动中 = "启动中"
@@ -42,6 +45,26 @@ from 公共契约.运行时 import 平台适配, 进程终止
 日志上限 = 200  # 日志列表环形裁剪上限（对齐 提供者生命周期._日志上限）
 stderr日志上限 = 200
 最大允许池大小 = 16
+响应行上限字节 = 1024 * 1024  # 单行响应上限（防恶意/异常进程写无界行）
+读取块大小 = 4096  # 直读内核的块大小（不做 TextIOWrapper 预读）
+
+
+class _描述符读取器:
+    """把裸文件描述符包成 ``有界IO.受限读取`` 需要的 ``read(大小)`` 接口。
+
+    用 ``os.read`` 直读内核：每次只返回当前可用字节，不做 readline/预读的无界阻塞。
+    **不使用 ``select``**：Windows 的 ``select`` 只接受 socket，轮询管道 fd 会直接
+    报错（旧实现把该异常吞成「启动超时」，导致提供者隔离进程在 Windows 永远起不来）。
+    """
+
+    __slots__ = ("描述符",)
+
+    def __init__(self, 描述符: int) -> None:
+        self.描述符 = 描述符
+
+    def read(self, 大小: int = 读取块大小) -> bytes:
+        return os.read(self.描述符, int(大小))
+
 
 #: 收口层 进程终止 的信号语义名（POSIX → SIGTERM/SIGKILL；Windows → taskkill 不带/带 /F）
 信号_终止 = "终止"
@@ -100,7 +123,12 @@ class 独立进程:
         self.stderr日志 = deque(maxlen=stderr日志上限)
         self._stderr线程: threading.Thread | None = None
         self.关闭账本: list[dict[str, Any]] = []
-        self._读取缓冲 = b""  # os.read 直读内核的行缓冲（绕开 TextIOWrapper 预读）
+        self._读取缓冲 = b""  # 后台读线程交接的行缓冲（os.read 直读内核，无预读）
+        # 后台 stdout 读线程 ↔ 调用方的交接（条件变量：不用 sleep 轮询，也不用 select）
+        self._读取条件 = threading.Condition()
+        self._读取结束 = False  # 后台读线程已 EOF/出错
+        self._读取超限 = False  # 单行超过 响应行上限字节
+        self._stdout线程: threading.Thread | None = None
         # JSON 行协议是一问一答；同一 Provider 进程不能让多个线程交叉
         # 写 stdin/读 stdout，否则迟到响应会被下一请求消费。
         self._通信锁 = threading.RLock()
@@ -125,6 +153,50 @@ class 独立进程:
             name=f"Provider-stderr-{self.名称}-{进程.pid}", daemon=True)
         self._stderr线程.start()
 
+    def _启动stdout消费(self, 进程: subprocess.Popen) -> None:
+        """启动 stdout 后台读线程（阻塞式 os.read + 有界IO.受限读取）。
+
+        跨平台收口：**不依赖 select**（Windows 的 select 只支持 socket，轮询管道 fd
+        必然报错，旧实现把该异常吞成「启动超时」）。新进程启动前重置交接状态，避免
+        迟到半行/超限标记串到新进程。
+        """
+        with self._读取条件:
+            self._读取缓冲 = b""
+            self._读取结束 = False
+            self._读取超限 = False
+        self._stdout线程 = threading.Thread(
+            target=self._消费stdout, args=(进程,),
+            name=f"Provider-stdout-{self.名称}-{进程.pid}", daemon=True)
+        self._stdout线程.start()
+
+    def _收块(self, 块: bytes) -> None:
+        """后台读线程的数据回调：上限内累积，超限后不再累积但继续排空（防管道回压）。"""
+        with self._读取条件:
+            if not self._读取超限:
+                self._读取缓冲 += 块
+                if len(self._读取缓冲) > 响应行上限字节:
+                    self._读取超限 = True
+                    self._读取缓冲 = self._读取缓冲[:响应行上限字节]
+            self._读取条件.notify_all()
+
+    def _消费stdout(self, 进程: subprocess.Popen) -> None:
+        """持续落盘到 EOF：有界IO.受限读取 负责排空与上限，异常收敛为「读取结束」。
+
+        对端正常退出/管道被关闭都会走这里（OSError/ValueError），由等待侧按协议
+        判据给出「超时/进程已退出」的结构化结论，故与 stderr 消费同样静默收敛。
+        """
+        try:
+            if 进程.stdout is not None:
+                有界IO.受限读取(
+                    _描述符读取器(进程.stdout.fileno()), 响应行上限字节,
+                    块大小=读取块大小, 数据回调=self._收块)
+        except (OSError, ValueError):
+            pass
+        finally:
+            with self._读取条件:
+                self._读取结束 = True
+                self._读取条件.notify_all()
+
     def _确定解释器(self) -> str:
         """确定子进程解释器；声明提供者环境时失败必须阻断，禁止回退。"""
         if self.解释器路径:
@@ -146,37 +218,35 @@ class 独立进程:
             del self.日志列表[:len(self.日志列表) - 日志上限]
 
     def _读取一行(self, 超时秒: float) -> str:
-        """带超时的行读取：select + os.read 直读内核，避免 readline/缓冲预读无界阻塞。
+        """带超时的行读取：**后台读线程 + 有界IO.受限读取**，不轮询管道 fd。
 
-        内部缓冲保存半行/多行数据（响应行上限 1MB，防恶意无界行）；
-        超过 超时秒 未读到完整行抛 TimeoutError；管道 EOF 抛 ConnectionError。
+        后台线程用 os.read 直读内核（不经过 readline/TextIOWrapper 预读），
+        有界IO.受限读取 负责排空与上限；调用方在条件变量上等一个完整行：
+        超过 超时秒 未读到完整行抛 TimeoutError；管道 EOF 抛 ConnectionError；
+        单行超过 响应行上限字节 抛 ConnectionError。
+
+        旧实现是 select.select([管道fd]) 轮询 —— Windows 的 select 只支持 socket，
+        对管道 fd 直接报错，而 启动() 把该异常吞成「启动超时」，导致提供者隔离
+        进程在 Windows 永远起不来。改后台线程后调用点不含任何平台判断。
         """
-        行缓冲上限 = 1024 * 1024
         截止 = time.monotonic() + max(0.01, 超时秒)
-        描述符 = self.进程.stdout.fileno()
-        while True:
-            if b"\n" in self._读取缓冲:
-                行, 剩余 = self._读取缓冲.split(b"\n", 1)
-                self._读取缓冲 = 剩余
-                return 行.decode("utf-8", "replace")
-            剩余时间 = 截止 - time.monotonic()
-            if 剩余时间 <= 0:
-                raise TimeoutError(f"读取响应超时（> {超时秒} 秒）")
-            可读, _, _ = select.select([描述符], [], [], 剩余时间)
-            if not 可读:
-                raise TimeoutError(f"读取响应超时（> {超时秒} 秒）")
-            try:
-                块 = os.read(描述符, 4096)
-            except OSError as 错误:
-                raise ConnectionError(f"读取响应失败: {错误}") from 错误
-            if not 块:
-                raise ConnectionError("进程已退出（无响应）")
-            self._读取缓冲 += 块
-            if len(self._读取缓冲) > 行缓冲上限:
-                raise ConnectionError(f"响应行超过上限（{行缓冲上限} 字节）")
+        with self._读取条件:
+            while True:
+                if b"\n" in self._读取缓冲:
+                    行, 剩余 = self._读取缓冲.split(b"\n", 1)
+                    self._读取缓冲 = 剩余
+                    return 行.decode("utf-8", "replace")
+                if self._读取超限:
+                    raise ConnectionError(f"响应行超过上限（{响应行上限字节} 字节）")
+                if self._读取结束:
+                    raise ConnectionError("进程已退出（无响应）")
+                剩余时间 = 截止 - time.monotonic()
+                if 剩余时间 <= 0:
+                    raise TimeoutError(f"读取响应超时（> {超时秒} 秒）")
+                self._读取条件.wait(剩余时间)
 
     def _关闭管道(self) -> None:
-        """关闭已结束进程的标准管道，避免文件描述符泄漏。"""
+        """关闭已结束进程的标准管道并回收后台消费线程，避免 fd/线程泄漏。"""
         if self.进程 is None:
             return
         for 管道 in (self.进程.stdin, self.进程.stdout, self.进程.stderr):
@@ -185,9 +255,9 @@ class 独立进程:
                     管道.close()
                 except OSError:
                     pass
-        if (self._stderr线程 is not None
-                and self._stderr线程 is not threading.current_thread()):
-            self._stderr线程.join(timeout=1.0)
+        for 线程 in (self._stderr线程, self._stdout线程):
+            if 线程 is not None and 线程 is not threading.current_thread():
+                线程.join(timeout=1.0)
 
     def 启动(self) -> tuple[bool, str]:
         """启动子进程并等待 READY（启动超时失败）。"""
@@ -209,6 +279,9 @@ class 独立进程:
                 **平台适配.子进程组启动标志(),
             )
             self._启动stderr消费(self.进程)
+            # stdout 后台读线程必须先起：READY/响应行由它落到交接缓冲，
+            # 启动循环只做「等一行 + 判 READY」，不再轮询管道 fd。
+            self._启动stdout消费(self.进程)
         except OSError as 错误:
             self.状态 = 进程状态_故障
             return False, f"启动失败: {错误}"
@@ -308,6 +381,7 @@ class 独立进程:
             self._记录日志(f"自动重启（第 {self.重启次数} 次）")
             # 重启前必须显式关闭旧管道并重置读缓冲，避免旧 Popen 管道
             # 依赖垃圾回收、新进程继承旧半行/迟到响应造成协议串读。
+            # （读缓冲/结束/超限标记由 _启动stdout消费 在起线程前统一重置）
             self._关闭管道()
             self._读取缓冲 = b""
             成功, 消息 = self.启动()
@@ -392,6 +466,8 @@ class 独立进程:
                     未收敛.append(f"管道未关闭:{名称}")
         if self._stderr线程 is not None and self._stderr线程.is_alive():
             未收敛.append(f"stderr线程仍存活:{self._stderr线程.name}")
+        if self._stdout线程 is not None and self._stdout线程.is_alive():
+            未收敛.append(f"stdout线程仍存活:{self._stdout线程.name}")
         return 未收敛
 
     def _关闭结果(self, *, 已使用SIGKILL: bool = False) -> dict[str, Any]:

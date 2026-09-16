@@ -597,12 +597,29 @@ class 权威状态:
             )
             return 游标.rowcount > 0
 
-    def 回收租约(self, 租约id: str, 原因: str) -> bool:
+    def 回收租约(self, 租约id: str, 原因: str, *, 仅当过期: bool = False,
+                 现在: float | None = None) -> bool:
+        """回收租约（置 已回收=1 并级联失效句柄）。
+
+        `仅当过期=True` 用于**过期扫描**：把过期判据放进 UPDATE 的 WHERE 里做
+        CAS，消灭「SELECT 判过期 → UPDATE 无条件置已回收」之间被续租抢进的窗口
+        （长租句柄空闲超时后恰在窗口内续租成功，会被旧实现无条件误杀）。
+        rowcount==0 表示租约已被续租/已回收，跳过，不得误杀。
+        显式失效（句柄主动失效、所属进程死亡）保持无条件语义，调用方传默认值。
+        """
         连接 = self._连接()
         时间 = time.strftime("%Y-%m-%d %H:%M:%S")
         with 连接:
-            游标 = 连接.execute(
-                "UPDATE 租约 SET 已回收=1 WHERE 租约id=? AND 已回收=0", (租约id,))
+            if 仅当过期:
+                现在 = time.time() if 现在 is None else 现在
+                游标 = 连接.execute(
+                    "UPDATE 租约 SET 已回收=1 WHERE 租约id=? AND 已回收=0 AND "
+                    "(硬截止时间 < ? OR (空闲超时秒 > 0 AND ? - 最后心跳 > 空闲超时秒))",
+                    (租约id, 现在, 现在),
+                )
+            else:
+                游标 = 连接.execute(
+                    "UPDATE 租约 SET 已回收=1 WHERE 租约id=? AND 已回收=0", (租约id,))
             if 游标.rowcount == 0:
                 return False
             行 = 连接.execute(
@@ -630,18 +647,25 @@ class 权威状态:
             return True
 
     def 扫描过期租约(self) -> list[str]:
-        """空闲超时/硬截止过期的租约（幂等回收）。"""
+        """空闲超时/硬截止过期的租约（幂等回收）。
+
+        SELECT 只用于发现候选；真正的过期判定由 回收租约(仅当过期=True) 的
+        条件 UPDATE 在同一条 SQL 内复检（CAS），SELECT→UPDATE 之间被续租的
+        租约 rowcount=0 被跳过并**不计入返回清单**，保证回带的就是真回收的。
+        """
         连接 = self._连接()
         现在 = time.time()
-        过期列表 = []
+        候选列表 = []
         for 行 in 连接.execute(
                 "SELECT 租约id FROM 租约 WHERE 已回收=0 AND "
                 "(硬截止时间 < ? OR (空闲超时秒 > 0 AND ? - 最后心跳 > 空闲超时秒))",
                 (现在, 现在)):
-            过期列表.append(行[0])
-        for 租约id in 过期列表:
-            self.回收租约(租约id, "空闲超时或硬截止")
-        return 过期列表
+            候选列表.append(行[0])
+        已回收列表 = []
+        for 租约id in 候选列表:
+            if self.回收租约(租约id, "空闲超时或硬截止", 仅当过期=True, 现在=现在):
+                已回收列表.append(租约id)
+        return 已回收列表
 
     # ---- 资源版本 ----
     def 读取资源(self, 资源id: str) -> dict[str, Any] | None:
