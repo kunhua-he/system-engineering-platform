@@ -2,6 +2,11 @@
 
 项目声明.json 定义项目身份、所需支持库与模块绑定、验证范围。
 适配层只消费声明，不读取业务项目代码。
+
+解析层严格校验键名：未知键、绑定条目缺版本约束一律显式报错。消费侧统一用
+`.get(键, "")` 读取，读不到只会拿到空串；解析层不拦，写错一个键名（例如把
+`版本约束` 写成 `版本`）就会让版本约束校验恒真空跑（判据① 空跑，见
+公共契约/版本规则/比较.py::满足约束）。
 """
 
 from __future__ import annotations
@@ -11,6 +16,48 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 必填字段 = ("项目id", "项目名称", "系统版本", "支持库绑定", "模块绑定", "验证范围")
+# 可选键：当前仅「可双击演示」声明在用，不参与版本约束消费面。
+可选字段 = ("前端入口", "模块入口", "编译输出目录")
+已知字段 = 必填字段 + 可选字段
+绑定组名 = ("支持库绑定", "模块绑定")
+绑定条目字段 = ("包id", "版本约束")
+
+
+def 校验声明键名(数据: dict, 来源: str = "") -> None:
+    """严格校验声明键名与绑定条目形状；未知键或缺失约束抛 ValueError。
+
+    未知键必须显式报错，不能静默当空：消费侧的 `.get(键, "")` 会把拼错的
+    键读成空串，把版本约束校验变成恒真门禁。
+    """
+    if not isinstance(数据, dict):
+        raise ValueError(f"项目声明必须是 JSON 对象: {来源}")
+    未知键 = sorted(set(数据) - set(已知字段))
+    if 未知键:
+        raise ValueError(
+            f"项目声明存在未知键 {未知键}: {来源}；已知键 {list(已知字段)}"
+        )
+    for 组名 in 绑定组名:
+        条目列表 = 数据.get(组名, [])
+        if not isinstance(条目列表, list):
+            raise ValueError(f"项目声明.{组名} 必须是数组: {来源}")
+        for 序号, 条目 in enumerate(条目列表):
+            位置 = f"{组名}[{序号}]"
+            if not isinstance(条目, dict):
+                raise ValueError(f"项目声明.{位置} 必须是对象: {来源}")
+            条目未知键 = sorted(set(条目) - set(绑定条目字段))
+            if 条目未知键:
+                raise ValueError(
+                    f"项目声明.{位置} 存在未知键 {条目未知键}: {来源}；"
+                    f"已知键 {list(绑定条目字段)}"
+                )
+            if not str(条目.get("包id", "")).strip():
+                raise ValueError(f"项目声明.{位置} 缺少 包id: {来源}")
+            约束 = 条目.get("版本约束")
+            if not isinstance(约束, str) or not 约束.strip():
+                raise ValueError(
+                    f"项目声明.{位置} 缺少非空 版本约束: {来源}；"
+                    "空约束会让版本校验空跑，无约束须显式写 >=0.0.0"
+                )
 
 
 @dataclass
@@ -37,10 +84,11 @@ class 项目声明:
 
 
 def 从字典构建(数据: dict, 来源路径: str = "") -> 项目声明:
-    """从字典构建项目声明；缺失必填字段抛 ValueError。"""
+    """从字典构建项目声明；缺失必填字段或存在未知键抛 ValueError。"""
     缺失 = [字段 for 字段 in 必填字段 if 字段 not in 数据]
     if 缺失:
         raise ValueError(f"项目声明缺少必填字段: {', '.join(缺失)}")
+    校验声明键名(数据, 来源=来源路径)
     return 项目声明(
         项目id=数据["项目id"],
         项目名称=数据["项目名称"],

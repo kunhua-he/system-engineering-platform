@@ -70,8 +70,14 @@ def _满足约束(实际版本: str, 约束: str) -> bool:
 
 
 def _读取项目声明(项目根目录: Path) -> dict:
-    """读取 项目声明.json；结构不合法时抛异常由调用方兜底。"""
-    return json.loads((项目根目录 / "项目声明.json").read_text(encoding="utf-8"))
+    """经声明解析层读取 项目声明.json，返回字典；结构不合法时抛异常由调用方兜底。
+
+    必须走解析层：未知键（如把「版本约束」写成「版本」）与空约束在此显式
+    报错；否则 `.get("版本约束", "")` 会把读不到的约束当空串，版本漂移校验空跑。
+    """
+    from 项目适配层.项目声明.项目声明 import 加载项目声明
+
+    return 加载项目声明(项目根目录 / "项目声明.json").转字典()
 
 
 def _绑定约束表(项目数据: dict) -> dict[str, str]:
@@ -136,7 +142,7 @@ def 校验传递闭包(项目根目录: Path, 系统根目录: Path) -> 闭包�
         return 结果
     try:
         项目数据 = _读取项目声明(项目根目录)
-    except (json.JSONDecodeError, OSError) as 错误:
+    except (json.JSONDecodeError, OSError, ValueError) as 错误:
         结果.问题列表.append(f"缺项: 项目→—→—（项目声明不可读: {错误}）")
         return 结果
     绑定约束表 = _绑定约束表(项目数据)
