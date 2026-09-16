@@ -1,16 +1,20 @@
 """模块库.直播逐字稿 组合能力真实测试：经统一能力调用器走网关/注册表。
 
 覆盖：参数校验、文件不存在、未配置模型如实返回（不伪造转写）、
-读取项目状态（无状态文件）、检查可用性、注册能力 3 项齐全、
-模块公开入口可导入且返回统一结果。
+读取项目状态（无状态文件）、检查可用性、注册能力按 能力定义.json 现读清单齐全、
+主流程能力 全自动精校 的失败路径如实返回、模块公开入口可导入且返回统一结果。
 
 测试装配：setUpClass 启动 后端核心 + 随机回环网关，走真实注册表
 （媒体处理/媒体转写/转写支持库能力注册），直播逐字稿模块经
 获取能力调用器 调用底层组合能力。
+
+能力清单以 模块库/直播逐字稿/能力定义.json 为唯一事实源（现读，不写死元组：
+写死元组曾漏掉主流程能力 全自动精校，导致它零覆盖）。
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -22,12 +26,24 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 模块库.直播逐字稿 import 检查可用性, 读取项目状态, 转写媒体文件, 注册能力
+from 模块库.直播逐字稿 import 全自动精校, 检查可用性, 读取项目状态, 转写媒体文件, 注册能力
 from 公共契约.基础类型.结果类型 import 结果 as 结果类型
 
 环境变量模型路径 = "MLXWhisper提供者_模型路径"
 环境变量模型名 = "MLXWhisper提供者_模型名"
 环境变量名表 = [环境变量模型路径, 环境变量模型名]
+
+能力定义文件 = Path(__file__).resolve().parents[2] / "模块库" / "直播逐字稿" / "能力定义.json"
+
+
+def 读能力定义() -> dict:
+    """现读本包 能力定义.json（能力清单的唯一事实源）。"""
+    return json.loads(能力定义文件.read_text(encoding="utf-8"))
+
+
+def 能力id清单() -> list[str]:
+    """能力定义.json 声明的全部能力 id（升序；写死元组会漏新能力）。"""
+    return sorted(str(条目.get("能力id") or "") for 条目 in 读能力定义().get("能力列表") or [])
 
 
 def 运行ffmpeg(参数列表: list[str]) -> bool:
@@ -125,15 +141,24 @@ class 直播逐字稿装配(unittest.TestCase):
 
 
 class Test公开入口与注册(直播逐字稿装配):
+    def test_能力定义清单非空且无重号(self):
+        清单 = 能力id清单()
+        self.assertTrue(清单, "能力定义.json 里必须声明能力")
+        self.assertEqual(len(清单), len(set(清单)), "能力 id 不得重复")
+        self.assertNotIn("", 清单, "能力 id 不得为空")
+        for 能力id in 清单:
+            self.assertTrue(能力id.startswith("直播逐字稿."), f"能力 id 命名不合包内口径: {能力id}")
+
     def test_公开入口可导入(self):
-        for 能力名 in ("转写媒体文件", "检查可用性", "读取项目状态"):
-            self.assertTrue(callable(globals()[能力名]), f"{能力名} 未从公开入口导出")
+        for 能力id in 能力id清单():
+            能力名 = 能力id.rsplit(".", 1)[-1]
+            self.assertTrue(callable(globals().get(能力名)), f"{能力id} 未从公开入口导出")
 
     def test_注册能力齐全(self):
         from 公共契约.能力契约.契约 import 能力注册表
         注册表 = 能力注册表()
         注册能力(注册表)
-        for 能力id in ("直播逐字稿.转写媒体文件", "直播逐字稿.检查可用性", "直播逐字稿.读取项目状态"):
+        for 能力id in 能力id清单():
             self.assertIn(能力id, 注册表.能力id列表)
 
     def test_返回统一结果(self):
@@ -220,6 +245,45 @@ class Test检查可用性(直播逐字稿装配):
         self.assertIsInstance(结果.成功, bool)
         if not 结果.成功:
             self.assertIn(结果.错误码, ("提供者不可用", "未配置模型"))
+
+
+class Test全自动精校失败路径(直播逐字稿装配):
+    """主流程能力 全自动精校 的失败路径：走 阶段0 入参校验与分片失败口径，不依赖真模型。
+
+    真模型成功路径需要 MLX Whisper 模型与真实长音频，不在定向测试里跑；这里只钉死
+    「失败必须如实报错误码、值必须为空」，防止 未配置模型/坏入参 被伪造成成功。
+    """
+
+    def test_源文件不存在(self):
+        结果 = 全自动精校(str(self.临时目录 / "不存在.mp4"), str(self.临时目录 / "导出_1.txt"),
+                        str(self.临时目录 / "缓存_1"), 1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "文件不存在")
+        self.assertIsNone(结果.值)
+
+    def test_源文件路径必须绝对路径(self):
+        结果 = 全自动精校("相对/路径.mp4", str(self.临时目录 / "导出_2.txt"),
+                        str(self.临时目录 / "缓存_2"), 1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_不支持的媒体格式(self):
+        笔记 = self.临时目录 / "笔记.txt"
+        笔记.write_text("不是媒体\n", encoding="utf-8")
+        结果 = 全自动精校(str(笔记), str(self.临时目录 / "导出_3.txt"),
+                        str(self.临时目录 / "缓存_3"), 1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "不支持的媒体格式")
+
+    def test_分片失败如实返回转写失败(self):
+        """底稿为空/分片失败口径：有真实音频但未配置模型 → 转写失败，不伪造已精校。"""
+        if not Path(self.音频路径).is_file():
+            self.skipTest("无真实音频文件（ffmpeg 不可用或无夹具）")
+        结果 = 全自动精校(self.音频路径, str(self.临时目录 / "导出_4.txt"),
+                        str(self.临时目录 / "缓存_4"), 1)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "转写失败")
+        self.assertIn("未配置模型", 结果.错误说明)
 
 
 if __name__ == "__main__":
