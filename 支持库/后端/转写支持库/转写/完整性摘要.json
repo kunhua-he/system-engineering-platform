@@ -40,6 +40,10 @@
       "sha256": "282edf53d69a98ab2a3cbd74c42bb7d8d493ae86f5c37395cc7ea7c076ec3a68"
     },
     {
+      "路径": "生命周期契约.json",
+      "sha256": "75ca4776a74fee65a7c0ad6468c957642811f0a2fd6b067ad0b14b71f0c3fc5c"
+    },
+    {
       "路径": "能力契约/参数契约.json",
       "sha256": "ab5ec807a38060b59297a7cc6bef63ac1e5a7e699f8ca0ea00c39eb2c6bd4665"
     },
@@ -57,7 +61,7 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "74dedb7add2c7f177cb52a609cad9bfcdd5b80ade08f8dba77f2c709a47e646e"
+      "sha256": "cd1af7edea51677e33318e1e30fa10cb7e5a8896a489c25ca629253e56a5f8ec"
     },
     {
       "路径": "说明/目录树与命令.md",
