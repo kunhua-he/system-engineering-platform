@@ -44,7 +44,7 @@ class 注册表:
         """统一调用：资源监督有界执行 → 真实结果或稳定错误码 → 证据。"""
         提供者 = self._提供者表.get(能力id)
         if 提供者 is None:
-            return {"成功": False, "结果": None, "错误码": "CAPABILITY_NOT_FOUND",
+            return {"成功": False, "结果": None, "错误码": "能力不存在",
                     "消息": f"能力未注册: {能力id}", "可重试": False}
         函数, 预算 = 提供者
         超时 = 超时秒 or float(预算.get("单次调用超时", 5))

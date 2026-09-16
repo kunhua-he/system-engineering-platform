@@ -75,15 +75,15 @@ def 稳定操作清单() -> list[str]:
 
 # 错误码 → 普通用户可执行的中文建议
 错误码建议表 = {
-    "CAPABILITY_NOT_FOUND": "该功能暂不可用，请稍后再试",
-    "CAPABILITY_REQUIRED": "请先选择要查看的功能",
-    "PERMISSION_DENIED": "当前账号没有该操作权限",
+    "能力不存在": "该功能暂不可用，请稍后再试",
+    "能力必填": "请先选择要查看的功能",
+    "PERMISSION_DENIED": "当前账号没有该操作权限", "越权操作": "当前账号没有该操作权限",
     "PROVIDER_UNAVAILABLE": "该功能正在维护，请稍后再试",
-    "SESSION_EXPIRED": "登录已过期，请重新登录",
+    "SESSION_EXPIRED": "登录已过期，请重新登录", "会话过期": "登录已过期，请重新登录",
     "CALL_TIMEOUT": "处理超时，请稍后重试",
     "CALL_FAILED": "执行失败，请重试或联系管理员",
-    "INTERNAL_ERROR": "系统繁忙，请稍后再试",
-    "UNKNOWN_OPERATION": "该操作不存在，请刷新后重试",
+    "内部错误": "系统繁忙，请稍后再试",
+    "未知操作": "该操作不存在，请刷新后重试",
     "会话不存在": "登录状态无效，请重新登录",
 }
 
@@ -125,12 +125,12 @@ class 普通用户视图:
     def 查看能力详情(self, 能力id: str) -> dict[str, Any]:
         """只返回中文名称/作用/输入参数说明/权限要求/可用状态/结果/处理建议。"""
         if not 能力id:
-            return {"成功": False, "错误码": "CAPABILITY_REQUIRED",
+            return {"成功": False, "错误码": "能力必填",
                     "消息": "请先选择要查看的功能", "处理建议": "请先选择要查看的功能"}
         记录 = self.服务.状态.读取记录("能力条目", "能力id", 能力id)
         if 记录 is None:
-            建议 = 错误码建议表["CAPABILITY_NOT_FOUND"]
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND",
+            建议 = 错误码建议表["能力不存在"]
+            return {"成功": False, "错误码": "能力不存在",
                     "消息": 建议, "处理建议": 建议}
         资源 = json.loads(记录.get("资源") or "{}") if isinstance(记录.get("资源"), str) else {}
         参数说明 = 资源.get("参数说明", []) if isinstance(资源, dict) else []

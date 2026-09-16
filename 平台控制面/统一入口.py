@@ -107,11 +107,15 @@ class 统一能力服务:
     def 注册健康检查(self, *, 包id: str, 检查函数: Callable[[], bool]) -> None:
         self._健康检查表[包id] = 检查函数
 
+    # 错误码口径（决策 0003「对外错误只走中文」）：本文件对外错误码一律中文短词，与
+    # 开发工具/契约编译/消费者契约.py 的 12 操作错误码集合同一批同步（该文件为契约事实
+    # 记录，改名须同批，否则契约↔实现漂移）。鉴权类码「越权操作/会话过期/未知角色/
+    # 角色未授予」的稳定码仍由 平台控制面/授权.py 的 稳定错误码 表持有，此处只透传。
     # ---- 统一操作分发（唯一入口） ----
     def 执行操作(self, *, 令牌: str, 操作: str, 参数: dict[str, Any]) -> dict[str, Any]:
         """所有入口调用这里：授权 → 执行 → 证据。返回统一结果结构。"""
         if 操作 not in 稳定操作表:
-            return {"成功": False, "错误码": "UNKNOWN_OPERATION", "消息": f"未知操作: {操作}"}
+            return {"成功": False, "错误码": "未知操作", "消息": f"未知操作: {操作}"}
         允许, 错误码, 会话 = self.授权.校验操作(令牌=令牌, 操作=操作)
         if not 允许:
             return {"成功": False, "错误码": 错误码, "消息": "权限不足"}
@@ -147,13 +151,13 @@ class 统一能力服务:
             if 操作 == "回滚":
                 return self._回滚(参数, 会话)
         except Exception as 错误:
-            return {"成功": False, "错误码": "INTERNAL_ERROR", "消息": str(错误)[:200]}
-        return {"成功": False, "错误码": "UNKNOWN_OPERATION", "消息": 操作}
+            return {"成功": False, "错误码": "内部错误", "消息": str(错误)[:200]}
+        return {"成功": False, "错误码": "未知操作", "消息": 操作}
 
     def _确认需求(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
         需求id = 参数.get("需求id", "")
         if not 需求id:
-            return {"成功": False, "错误码": "REQUIREMENT_REQUIRED", "消息": "需求id不能为空"}
+            return {"成功": False, "错误码": "需求id不能为空", "消息": "需求id不能为空"}
         成功, 消息 = self.需求.确认需求(需求id=需求id, 调用者=会话["身份id"], 角色=会话["角色"])
         return {"成功": 成功, "消息": 消息, "需求id": 需求id}
 
@@ -164,22 +168,22 @@ class 统一能力服务:
     def _查看能力(self, 参数: dict[str, Any]) -> dict[str, Any]:
         能力id = 参数.get("能力id", "")
         if not 能力id:
-            return {"成功": False, "错误码": "CAPABILITY_REQUIRED", "消息": "能力id不能为空"}
+            return {"成功": False, "错误码": "能力必填", "消息": "能力id不能为空"}
         记录 = self.状态.读取记录("能力条目", "能力id", 能力id)
         if 记录 is None:
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": f"能力未登记: {能力id}", "能力": None}
+            return {"成功": False, "错误码": "能力不存在", "消息": f"能力未登记: {能力id}", "能力": None}
         return {"成功": True, "错误码": "", "消息": "能力已找到", "能力": 记录}
 
     def _装配计划(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
         """自动生成装配计划：扫描能力目录 → 候选 → 契约指纹 → DAG → 拓扑波次。"""
         需求id = 参数.get("需求id", "")
         if not 需求id:
-            return {"成功": False, "错误码": "REQUIREMENT_REQUIRED", "消息": "需求id不能为空"}
+            return {"成功": False, "错误码": "需求id不能为空", "消息": "需求id不能为空"}
         需求记录 = self.状态.读取记录("需求", "需求id", 需求id)
         if 需求记录 is None:
-            return {"成功": False, "错误码": "REQUIREMENT_NOT_FOUND", "消息": "需求不存在"}
+            return {"成功": False, "错误码": "需求不存在", "消息": "需求不存在"}
         if 需求记录["确认状态"] != "已确认":
-            return {"成功": False, "错误码": "REQUIREMENT_UNCONFIRMED", "消息": "需求未确认"}
+            return {"成功": False, "错误码": "需求未确认", "消息": "需求未确认"}
         快照 = json.loads(需求记录["快照"])
         # 候选能力从能力目录全量扫描（依赖图驱动），关键词仅作过滤提示
         候选 = self.目录.搜索能力(关键词=参数.get("关键词", ""), 限制=50)
@@ -210,7 +214,7 @@ class 统一能力服务:
         for 包 in 工作包表:
             包["波次"] = 波次表.get(包["工作包id"], 1)
         if not 工作包表:
-            return {"成功": False, "错误码": "NO_CAPABILITIES", "消息": "无候选能力可生成计划"}
+            return {"成功": False, "错误码": "无候选能力", "消息": "无候选能力可生成计划"}
         计划 = self.需求.生成装配计划(需求id=需求id, 能力搜索结果=候选, 工作包表=工作包表)
         return {"成功": True, "计划": 计划}
 
@@ -225,22 +229,22 @@ class 统一能力服务:
         """创建组件五重门禁：非空已确认需求 / 复用决策 / 真实占用租约 / 预算 / 声明。"""
         需求id = 参数.get("需求id", "")
         if not 需求id:
-            return {"成功": False, "错误码": "REQUIREMENT_REQUIRED", "消息": "需求id不能为空"}
+            return {"成功": False, "错误码": "需求id不能为空", "消息": "需求id不能为空"}
         需求记录 = self.状态.读取记录("需求", "需求id", 需求id)
         if 需求记录 is None or 需求记录["确认状态"] != "已确认":
-            return {"成功": False, "错误码": "REQUIREMENT_UNCONFIRMED", "消息": "需求未确认或不存在"}
+            return {"成功": False, "错误码": "需求未确认", "消息": "需求未确认或不存在"}
         复用决策 = 参数.get("复用决策", {})
         if not 复用决策.get("搜索词") or not 复用决策.get("候选能力id"):
-            return {"成功": False, "错误码": "NO_REUSE_DECISION",
+            return {"成功": False, "错误码": "未做复用决策",
                     "消息": "复用决策必须真实引用搜索结果（非空搜索词+候选能力id）"}
         预算 = 参数.get("资源预算", {})
         有效, 消息 = self.监督.校验预算声明(预算)
         if not 有效:
-            return {"成功": False, "错误码": "BUDGET_INCOMPLETE", "消息": 消息}
+            return {"成功": False, "错误码": "预算不完整", "消息": 消息}
         if not 参数.get("允许修改路径"):
-            return {"成功": False, "错误码": "NO_MODIFY_PATHS", "消息": "必须声明允许修改路径"}
+            return {"成功": False, "错误码": "未声明修改路径", "消息": "必须声明允许修改路径"}
         if not 参数.get("组件声明"):
-            return {"成功": False, "错误码": "NO_COMPONENT_DECLARATION", "消息": "必须提供组件声明"}
+            return {"成功": False, "错误码": "未提供组件声明", "消息": "必须提供组件声明"}
         能力id = 参数.get("能力id", "")
         # 真实能力占用租约（申请失败即创建失败）
         本次租约id = ""
@@ -249,22 +253,22 @@ class 统一能力服务:
                 能力id=能力id, 领域=参数.get("领域", ""), 契约指纹=参数.get("契约指纹", ""),
                 任务=f"组件:{能力id}", 所有者=会话["身份id"])
             if not 成功:
-                return {"成功": False, "错误码": "OCCUPANCY_DENIED", "消息": 消息}
+                return {"成功": False, "错误码": "占用被拒", "消息": 消息}
             本次租约id = 租约id
         try:
             决定 = self.策略.判定(类型="复用", 主题=能力id or "新能力",
                                 请求={"调用者": 会话["身份id"], "角色": 会话["角色"]})
             if not 决定["允许"]:
                 if 本次租约id:
-                    self.目录.释放占用(本次租约id, 证据="创建组件失败:REUSE_DENIED")
-                return {"成功": False, "错误码": "REUSE_DENIED", "消息": 决定["理由"]}
+                    self.目录.释放占用(本次租约id, 证据="创建组件失败:复用被拒")
+                return {"成功": False, "错误码": "复用被拒", "消息": 决定["理由"]}
             self.状态.追加证据(类型="组件", 主题=能力id or "新组件",
                               内容={"创建": True, "复用决策": 复用决策, "需求id": 需求id},
                               调用者=会话["身份id"], 角色=会话["角色"], 结果="创建")
         except Exception as 错误:
             if 本次租约id:
-                self.目录.释放占用(本次租约id, 证据="创建组件失败:COMPONENT_CREATE_FAILED")
-            return {"成功": False, "错误码": "COMPONENT_CREATE_FAILED", "消息": str(错误)[:200]}
+                self.目录.释放占用(本次租约id, 证据="创建组件失败:组件创建失败")
+            return {"成功": False, "错误码": "组件创建失败", "消息": str(错误)[:200]}
         return {"成功": True, "消息": f"组件已创建: {能力id or '新组件'}", "能力id": 能力id}
 
     def _验证组件(self, 参数: dict[str, Any], 会话) -> dict[str, Any]:
@@ -272,9 +276,9 @@ class 统一能力服务:
         命令 = 参数.get("命令", "")
         参数表 = 参数.get("参数", [])
         if 命令 not in 允许验证命令:
-            return {"成功": False, "错误码": "COMMAND_DENIED", "消息": f"命令不在白名单: {命令}"}
+            return {"成功": False, "错误码": "命令被拒", "消息": f"命令不在白名单: {命令}"}
         if not isinstance(参数表, list) or any(not isinstance(项, str) for 项 in 参数表):
-            return {"成功": False, "错误码": "INVALID_ARGS", "消息": "参数必须是字符串列表"}
+            return {"成功": False, "错误码": "参数不合法", "消息": "参数必须是字符串列表"}
         工作区 = Path(参数.get("工作目录", "工程缓存/验证工作区"))
         工作区.mkdir(parents=True, exist_ok=True)
         超时秒 = float(参数.get("超时秒", 30))
@@ -286,14 +290,14 @@ class 统一能力服务:
             if 超时发生:
                 self.状态.追加证据(类型="验证", 主题=命令, 内容={"超时": 超时秒},
                                   调用者=会话["身份id"], 角色=会话["角色"], 结果="超时")
-                return {"成功": False, "错误码": "VERIFY_TIMEOUT",
+                return {"成功": False, "错误码": "验证超时",
                         "消息": f"验证超时({超时秒}s)，进程组已终止"}
             if 输出超限:
-                return {"成功": False, "错误码": "OUTPUT_LIMIT", "消息": "验证输出超过上限，已终止"}
+                return {"成功": False, "错误码": "验证输出超限", "消息": "验证输出超过上限，已终止"}
             return {"成功": 进程.returncode == 0, "退出码": 进程.returncode,
                     "输出摘要": 输出块[-200:].decode("utf-8", "replace") or "（无输出）"}
         except Exception as 错误:
-            return {"成功": False, "错误码": "VERIFY_FAILED", "消息": str(错误)[:200]}
+            return {"成功": False, "错误码": "验证失败", "消息": str(错误)[:200]}
         finally:
             self._终止进程组(进程)
             for 流 in (进程.stdout, 进程.stderr, 进程.stdin):
@@ -360,9 +364,9 @@ class 统一能力服务:
         能力id = 参数.get("能力id", "")
         记录 = self.状态.读取记录("能力条目", "能力id", 能力id)
         if 记录 is None:
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND", "消息": f"能力未登记: {能力id}"}
+            return {"成功": False, "错误码": "能力不存在", "消息": f"能力未登记: {能力id}"}
         if not self.提供者注册表.已注册(能力id):
-            return {"成功": False, "错误码": "PROVIDER_UNAVAILABLE",
+            return {"成功": False, "错误码": "提供者不可用",
                     "消息": f"能力 {能力id} 无可用提供者实现（不可调用）"}
         结果 = self.提供者注册表.调用(
             能力id=能力id, 参数=参数.get("参数"),
@@ -379,24 +383,24 @@ class 统一能力服务:
         """提交候选包五重门禁：非空已确认需求 / 复用决策 / 完整性 / 依赖 / 预算。"""
         需求id = 参数.get("需求id", "")
         if not 需求id:
-            return {"成功": False, "错误码": "REQUIREMENT_REQUIRED", "消息": "需求id不能为空"}
+            return {"成功": False, "错误码": "需求id不能为空", "消息": "需求id不能为空"}
         需求记录 = self.状态.读取记录("需求", "需求id", 需求id)
         if 需求记录 is None or 需求记录["确认状态"] != "已确认":
-            return {"成功": False, "错误码": "REQUIREMENT_UNCONFIRMED", "消息": "需求未确认或不存在"}
+            return {"成功": False, "错误码": "需求未确认", "消息": "需求未确认或不存在"}
         if not 参数.get("复用决策"):
-            return {"成功": False, "错误码": "NO_REUSE_DECISION", "消息": "缺少复用决策"}
+            return {"成功": False, "错误码": "未做复用决策", "消息": "缺少复用决策"}
         if not 参数.get("文件表"):
-            return {"成功": False, "错误码": "NO_FILES", "消息": "候选包必须包含文件表"}
+            return {"成功": False, "错误码": "缺文件", "消息": "候选包必须包含文件表"}
         if not 参数.get("资源预算"):
-            return {"成功": False, "错误码": "BUDGET_INCOMPLETE", "消息": "缺少资源预算"}
+            return {"成功": False, "错误码": "预算不完整", "消息": "缺少资源预算"}
         if not 参数.get("构建输入"):
-            return {"成功": False, "错误码": "NO_SOURCE_PROVENANCE", "消息": "缺少构建来源证据"}
+            return {"成功": False, "错误码": "缺少构建来源证据", "消息": "缺少构建来源证据"}
         # 依赖策略判定
         依赖决定 = self.策略.判定(类型="依赖", 主题=参数.get("包id", ""),
                                请求={"依赖": 参数.get("依赖", []),
                                       "调用者": 会话["身份id"], "角色": 会话["角色"]})
         if not 依赖决定["允许"]:
-            return {"成功": False, "错误码": "DEPENDENCY_DENIED", "消息": 依赖决定["理由"]}
+            return {"成功": False, "错误码": "依赖被拒", "消息": 依赖决定["理由"]}
         成功, 消息, 制品摘要 = self.仓库.构建制品(
             包id=参数.get("包id", ""), 版本=参数.get("版本", "1"),
             文件表=参数.get("文件表", {}), 构建输入=参数.get("构建输入", {}))
@@ -412,28 +416,28 @@ class 统一能力服务:
         制品摘要 = 参数.get("制品摘要", "")
         制品 = self.状态.读取记录("制品", "制品摘要", 制品摘要) if 制品摘要 else None
         if 制品 is None:
-            return {"成功": False, "错误码": "ARTIFACT_NOT_FOUND", "消息": "制品不存在"}
+            return {"成功": False, "错误码": "制品不存在", "消息": "制品不存在"}
         发布者身份 = 会话["身份id"]
         私钥 = self._签名密钥环.get(发布者身份)
         if 私钥 is None:
-            return {"成功": False, "错误码": "NO_SIGNING_KEY", "消息": "发布者未导入签名密钥"}
+            return {"成功": False, "错误码": "未导入签名密钥", "消息": "发布者未导入签名密钥"}
         # 发布策略判定（需求确认/版本唯一/签名）
         决定 = self.策略.判定(类型="发布", 主题=制品["包id"],
                             请求={"候选版本": 制品["版本"], "需求id": 参数.get("需求id", ""),
                                    "调用者": 发布者身份, "角色": 会话["角色"]})
         if not 决定["允许"]:
-            return {"成功": False, "错误码": "RELEASE_DENIED", "消息": 决定["理由"]}
+            return {"成功": False, "错误码": "发布被拒", "消息": 决定["理由"]}
         # 1. 签名
         签名成功, 签名消息 = self.仓库.签名制品(制品摘要=制品摘要, 私钥PEM=私钥, 发布者=发布者身份)
         if not 签名成功:
-            return {"成功": False, "错误码": "SIGN_FAILED", "消息": 签名消息}
+            return {"成功": False, "错误码": "签名失败", "消息": 签名消息}
         # 2. 安装候选
         安装目标 = self.状态.存储目录 / "已激活" / 制品["包id"]
         安装成功, 安装消息 = self.仓库.安装制品(制品摘要=制品摘要, 目标目录=安装目标)
         if not 安装成功:
             self.状态.追加证据(类型="发布", 主题=制品["包id"], 内容={"步骤": "安装", "失败": 安装消息},
                               调用者=发布者身份, 角色=会话["角色"], 结果="失败")
-            return {"成功": False, "错误码": "INSTALL_FAILED", "消息": 安装消息}
+            return {"成功": False, "错误码": "安装失败", "消息": 安装消息}
         # 3. 影子启动 + 健康检查（真实调用）
         健康函数 = self._健康检查表.get(制品["包id"])
         if 健康函数 is not None:
@@ -446,7 +450,7 @@ class 统一能力服务:
                 self.状态.追加证据(类型="发布", 主题=制品["包id"],
                                   内容={"步骤": "健康检查", "失败": 健康消息 or "健康失败"},
                                   调用者=发布者身份, 角色=会话["角色"], 结果="失败")
-                return {"成功": False, "错误码": "HEALTH_FAILED",
+                return {"成功": False, "错误码": "健康检查失败",
                         "消息": f"健康检查失败，已中止发布: {健康消息}"}
         # 4. 灰度 + 激活
         发布记录表 = self.状态.查询记录("发布", "包id=? AND 状态 IN ('期望','灰度')", (制品["包id"],))
@@ -456,7 +460,7 @@ class 统一能力服务:
         if not 激活成功:
             self.状态.追加证据(类型="发布", 主题=制品["包id"], 内容={"步骤": "激活", "失败": 激活消息},
                               调用者=发布者身份, 角色=会话["角色"], 结果="失败")
-            return {"成功": False, "错误码": "ACTIVATE_FAILED", "消息": 激活消息}
+            return {"成功": False, "错误码": "激活失败", "消息": 激活消息}
         # 5. 证据
         证据id = self.状态.追加证据(类型="发布", 主题=制品["包id"],
                                 内容={"步骤": "完成", "制品摘要": 制品摘要, "目标": str(安装目标)},
@@ -502,7 +506,7 @@ def 命令行入口(argv: list[str] | None = None) -> int:
     if 角色:
         成功, 消息 = 服务.授权.切换角色(令牌, 角色)
         if not 成功:
-            print(json.dumps({"成功": False, "错误码": "ROLE_NOT_GRANTED", "消息": 消息}, ensure_ascii=False))
+            print(json.dumps({"成功": False, "错误码": "角色未授予", "消息": 消息}, ensure_ascii=False))
             return 1
     结果 = 服务.执行操作(令牌=令牌, 操作=操作, 参数=参数)
     print(json.dumps(结果, ensure_ascii=False, indent=2))

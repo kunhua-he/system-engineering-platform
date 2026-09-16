@@ -66,9 +66,18 @@ class 能力反馈服务:
             能力id = 字段值["能力id"]
             if not self.能力存在(能力id):
                 return False, "能力不存在", {}
-            状态码 = 请求.get("HTTP状态码", 0)
-            if isinstance(状态码, bool) or not isinstance(状态码, int) or not 100 <= 状态码 <= 599:
-                raise ValueError("HTTP状态码必须是 100 到 599 的整数")
+            # 契约判据（平台控制面/能力反馈/能力契约/参数契约.json 的 请求 参数说明）：
+            # 来源系统/来源版本/请求id/能力id/契约版本/错误码/错误说明 **必填**，
+            # HTTP状态码 等五项 **可选**。可选字段缺省 != 值 0：缺省一律存 0 表示「未提供」，
+            # **不做 100-599 区间校验**，只有调用方真的传了 HTTP状态码 才校验。
+            # 反例（修复前实测 2026-09-16）：`请求.get("HTTP状态码", 0)` 把缺省当成 0 再判区间，
+            # 于是契约允许的「最小反馈登记」必被判 参数不合法（200 != 400 黑盒红）。
+            if "HTTP状态码" in 请求 and 请求["HTTP状态码"] is not None:
+                状态码 = 请求["HTTP状态码"]
+                if isinstance(状态码, bool) or not isinstance(状态码, int) or not 100 <= 状态码 <= 599:
+                    raise ValueError("HTTP状态码必须是 100 到 599 的整数")
+            else:
+                状态码 = 0
             优先级 = 请求.get("优先级", "普通")
             if 优先级 not in 优先级表:
                 raise ValueError("优先级必须是 普通、高、紧急")

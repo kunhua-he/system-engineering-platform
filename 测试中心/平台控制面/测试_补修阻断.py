@@ -94,7 +94,7 @@ class Test统一入口真实执行(unittest.TestCase):
             "能力id": "x", "需求id": "", "复用决策": {"搜索词": "x", "候选能力id": ["x"]},
             "资源预算": 完整预算(), "允许修改路径": ["a"], "组件声明": {"名称": "x"}})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "REQUIREMENT_REQUIRED")
+        self.assertEqual(结果["错误码"], "需求id不能为空")
 
     def test_无复用证据创建组件被拒绝(self):
         令牌 = 提权(self.服务, "开发Agent", "组件开发Agent")
@@ -103,13 +103,13 @@ class Test统一入口真实执行(unittest.TestCase):
         结果 = self.服务.执行操作(令牌=令牌, 操作="创建组件", 参数={
             "能力id": "x", "需求id": 快照["需求id"], "复用决策": {},
             "资源预算": 完整预算(), "允许修改路径": ["a"], "组件声明": {"名称": "x"}})
-        self.assertEqual(结果["错误码"], "NO_REUSE_DECISION")
+        self.assertEqual(结果["错误码"], "未做复用决策")
         # 空搜索词同样拒绝
         结果 = self.服务.执行操作(令牌=令牌, 操作="创建组件", 参数={
             "能力id": "x", "需求id": 快照["需求id"],
             "复用决策": {"搜索词": "", "候选能力id": []},
             "资源预算": 完整预算(), "允许修改路径": ["a"], "组件声明": {"名称": "x"}})
-        self.assertEqual(结果["错误码"], "NO_REUSE_DECISION")
+        self.assertEqual(结果["错误码"], "未做复用决策")
 
     def test_调用能力真实返回值(self):
         令牌 = 提权(self.服务, "调用Agent", "调用Agent")
@@ -129,12 +129,12 @@ class Test统一入口真实执行(unittest.TestCase):
         self.assertEqual(结果["结果"], 4, "真实返回值必须等于 len('你好世界')")
         # 未登记能力 → 失败
         结果 = self.服务.执行操作(令牌=令牌, 操作="调用能力", 参数={"能力id": "不存在.能力"})
-        self.assertEqual(结果["错误码"], "CAPABILITY_NOT_FOUND")
+        self.assertEqual(结果["错误码"], "能力不存在")
         # 登记但无提供者 → 失败
         self.服务.目录.登记能力(能力id="无提供者.能力", 契约={"能力id": "无提供者.能力"},
                              组件="x", 领域="x")
         结果 = self.服务.执行操作(令牌=令牌, 操作="调用能力", 参数={"能力id": "无提供者.能力"})
-        self.assertEqual(结果["错误码"], "PROVIDER_UNAVAILABLE")
+        self.assertEqual(结果["错误码"], "提供者不可用")
 
     def test_调用能力异常与超时真实失败(self):
         令牌 = 提权(self.服务, "调用Agent", "调用Agent")
@@ -198,7 +198,7 @@ class Test统一入口真实执行(unittest.TestCase):
         发布令牌2 = 提权(self.服务, "发布者2", "发布者")
         结果 = self.服务.执行操作(令牌=发布令牌2, 操作="签名与发布",
                                 参数={"制品摘要": 制品摘要})
-        self.assertEqual(结果["错误码"], "NO_SIGNING_KEY")
+        self.assertEqual(结果["错误码"], "未导入签名密钥")
 
     def test_健康检查失败发布中止(self):
         发布令牌 = 提权(self.服务, "发布者", "发布者")
@@ -218,14 +218,14 @@ class Test统一入口真实执行(unittest.TestCase):
         结果 = self.服务.执行操作(令牌=发布令牌, 操作="签名与发布",
                                 参数={"制品摘要": 结果["制品摘要"], "需求id": 快照["需求id"]})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "HEALTH_FAILED")
+        self.assertEqual(结果["错误码"], "健康检查失败")
 
     def test_验证组件shell注入被阻断(self):
         令牌 = 提权(self.服务, "开发Agent", "组件开发Agent")
         # shell=True 注入尝试：命令不在白名单
         结果 = self.服务.执行操作(令牌=令牌, 操作="验证组件",
                                 参数={"命令": "bash", "参数": ["-c", "touch /tmp/逃逸"]})
-        self.assertEqual(结果["错误码"], "COMMAND_DENIED")
+        self.assertEqual(结果["错误码"], "命令被拒")
         # 白名单命令正常执行
         结果 = self.服务.执行操作(令牌=令牌, 操作="验证组件",
                                 参数={"命令": "python3.14", "参数": ["-c", "print('ok')"]})
@@ -234,12 +234,12 @@ class Test统一入口真实执行(unittest.TestCase):
         结果 = self.服务.执行操作(令牌=令牌, 操作="验证组件",
                                 参数={"命令": "python3.14",
                                        "参数": ["-c", "print('x'*500000)"], "超时秒": 5})
-        self.assertEqual(结果["错误码"], "OUTPUT_LIMIT")
+        self.assertEqual(结果["错误码"], "验证输出超限")
         # 超时 → 进程组终止
         结果 = self.服务.执行操作(令牌=令牌, 操作="验证组件",
                                 参数={"命令": "python3.14",
                                        "参数": ["-c", "import time; time.sleep(10)"], "超时秒": 1})
-        self.assertEqual(结果["错误码"], "VERIFY_TIMEOUT")
+        self.assertEqual(结果["错误码"], "验证超时")
 
 
 class Test可信制品防篡改(unittest.TestCase):
@@ -413,7 +413,7 @@ class Test自动DAG与复用证据(unittest.TestCase):
         快照 = 服务.需求.登记需求(目标="未确认计划")
         令牌 = 提权(服务, "规划者", "调用Agent")
         结果 = 服务.执行操作(令牌=令牌, 操作="生成装配计划", 参数={"需求id": 快照["需求id"]})
-        self.assertEqual(结果["错误码"], "REQUIREMENT_UNCONFIRMED")
+        self.assertEqual(结果["错误码"], "需求未确认")
 
 
 if __name__ == "__main__":

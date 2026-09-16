@@ -42,7 +42,7 @@ class Test消费者契约注册表(unittest.TestCase):
     def test_登记契约后查询契约返回真实绑定记录(self):
         结果 = self.注册表.登记契约("消费者1", "能力A", 能力契约())
         self.assertTrue(结果["成功"], 结果["消息"])
-        self.assertEqual(结果["错误码"], "SUCCESS")
+        self.assertEqual(结果["错误码"], "成功")
         查询 = self.注册表.查询契约("能力A")
         self.assertTrue(查询["成功"])
         self.assertEqual(len(查询["数据"]), 1, "能力A 应只有一份消费者契约")
@@ -126,13 +126,13 @@ class Test消费者契约注册表(unittest.TestCase):
         # 删除消费者2后仅剩满足要求的消费者1 → 放行
         删除 = self.注册表.删除契约("消费者2", "能力A")
         self.assertTrue(删除["成功"])
-        self.assertEqual(删除["错误码"], "SUCCESS")
+        self.assertEqual(删除["错误码"], "成功")
         结果2 = self.注册表.门禁判定("能力A", 能力契约(请求参数=["能力id"]))
         self.assertFalse(结果2["数据"]["是否阻断"], "删除漂移消费者后必须放行")
         # 重复删除返回未登记
         重复 = self.注册表.删除契约("消费者2", "能力A")
         self.assertFalse(重复["成功"])
-        self.assertEqual(重复["错误码"], "NOT_REGISTERED")
+        self.assertEqual(重复["错误码"], "未登记")
 
     def test_查询未登记能力返回空列表(self):
         查询 = self.注册表.查询契约("未登记能力")

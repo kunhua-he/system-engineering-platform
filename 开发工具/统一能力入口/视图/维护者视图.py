@@ -50,7 +50,7 @@ class 维护者视图:
             return self._拒绝(错误码)
         记录 = self.服务.状态.读取记录("能力条目", "能力id", 能力id)
         if 记录 is None:
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND",
+            return {"成功": False, "错误码": "能力不存在",
                     "消息": f"能力未登记: {能力id}"}
         依赖表 = json.loads(记录.get("依赖", "[]") or "[]")
         被依赖表 = [条目["能力id"] for 条目 in self.服务.状态.查询记录("能力条目")
@@ -66,7 +66,7 @@ class 维护者视图:
             return self._拒绝(错误码)
         记录 = self.服务.状态.读取记录("能力条目", "能力id", 能力id)
         if 记录 is None:
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND",
+            return {"成功": False, "错误码": "能力不存在",
                     "消息": f"能力未登记: {能力id}"}
         已注册 = self.服务.提供者注册表.已注册(能力id)
         提供者表 = getattr(self.服务.提供者注册表, "_提供者表", {})
@@ -103,12 +103,12 @@ class 维护者视图:
             return self._拒绝(错误码)
         记录 = self.服务.状态.读取记录("能力条目", "能力id", 能力id)
         if 记录 is None:
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND",
+            return {"成功": False, "错误码": "能力不存在",
                     "消息": f"能力未登记: {能力id}"}
         成功, 消息 = self.服务.目录.裁决(能力id=能力id, 决定=裁决结果,
                                        维护者=会话.get("身份id", ""))
         if not 成功:
-            return {"成功": False, "错误码": "RULING_REJECTED", "消息": 消息}
+            return {"成功": False, "错误码": "裁决被拒", "消息": 消息}
         return {"成功": True, "消息": 消息, "能力id": 能力id, "裁决": 裁决结果}
 
     # ---- 回滚建议（只读建议，不执行回滚） ----
@@ -118,7 +118,7 @@ class 维护者视图:
             return self._拒绝(错误码)
         记录 = self.服务.状态.读取记录("发布", "发布id", 发布id)
         if 记录 is None:
-            return {"成功": False, "错误码": "RELEASE_NOT_FOUND",
+            return {"成功": False, "错误码": "发布不存在",
                     "消息": f"发布不存在: {发布id}"}
         当前激活 = self.服务.发布.当前激活(记录["包id"])
         历史表 = self.服务.状态.查询记录(

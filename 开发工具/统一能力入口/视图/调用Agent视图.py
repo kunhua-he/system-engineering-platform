@@ -49,28 +49,28 @@ def 角色模型() -> dict[str, Any]:
 
 
 # 错误码 → 中文错误说明（安全文案，不泄漏实现细节） / 建议操作（可直接执行）
-错误说明表 = {"CAPABILITY_NOT_FOUND": "能力未登记，无法调用",
-    "PROVIDER_UNAVAILABLE": "能力已登记但无可用提供者实现",
-    "PERMISSION_DENIED": "当前令牌无调用该能力的权限",
+错误说明表 = {"能力不存在": "能力未登记，无法调用",
+    "提供者不可用": "能力已登记但无可用提供者实现",
+    "PERMISSION_DENIED": "当前令牌无调用该能力的权限", "越权操作": "当前令牌无调用该能力的权限",
     "CALL_TIMEOUT": "能力调用超时，任务已取消",
     "CALL_FAILED": "能力执行失败，提供者返回异常",
     "RESOURCE_EXCEEDED": "资源超限，调用被拒绝",
-    "SESSION_EXPIRED": "会话已过期，请重新登录",
-    "INTERNAL_ERROR": "服务内部错误，请稍后重试",
-    "CAPABILITY_REQUIRED": "缺少能力id，无法执行",
-    "UNKNOWN_OPERATION": "未知操作，无法执行",
-    "ROLE_NOT_GRANTED": "角色未授予，无权执行"}
-建议操作表 = {"CAPABILITY_NOT_FOUND": "先用「搜索能力」确认能力id是否正确",
-    "PROVIDER_UNAVAILABLE": "联系组件开发Agent注册提供者实现后重试",
-    "PERMISSION_DENIED": "引导授予「调用Agent」角色并切换后重试",
+    "SESSION_EXPIRED": "会话已过期，请重新登录", "会话过期": "会话已过期，请重新登录",
+    "内部错误": "服务内部错误，请稍后重试",
+    "能力必填": "缺少能力id，无法执行",
+    "未知操作": "未知操作，无法执行",
+    "角色未授予": "角色未授予，无权执行"}
+建议操作表 = {"能力不存在": "先用「搜索能力」确认能力id是否正确",
+    "提供者不可用": "联系组件开发Agent注册提供者实现后重试",
+    "PERMISSION_DENIED": "引导授予「调用Agent」角色并切换后重试", "越权操作": "引导授予「调用Agent」角色并切换后重试",
     "CALL_TIMEOUT": "稍后重试，或按需调整超时秒参数",
     "CALL_FAILED": "重试一次；持续失败请反馈提供者维护方",
     "RESOURCE_EXCEEDED": "稍后重试或联系平台维护者调整资源预算",
-    "SESSION_EXPIRED": "重新注册身份获取新令牌",
-    "INTERNAL_ERROR": "稍后重试，仍失败请反馈平台维护者",
-    "CAPABILITY_REQUIRED": "请先通过「搜索能力」取得能力id",
-    "UNKNOWN_OPERATION": "检查操作名是否为平台稳定操作",
-    "ROLE_NOT_GRANTED": "请平台维护者通过引导授予角色"}
+    "SESSION_EXPIRED": "重新注册身份获取新令牌", "会话过期": "重新注册身份获取新令牌",
+    "内部错误": "稍后重试，仍失败请反馈平台维护者",
+    "能力必填": "请先通过「搜索能力」取得能力id",
+    "未知操作": "检查操作名是否为平台稳定操作",
+    "角色未授予": "请平台维护者通过引导授予角色"}
 
 
 class 调用Agent视图:
@@ -94,7 +94,7 @@ class 调用Agent视图:
             结果 = self.服务.执行操作(
                 令牌=令牌, 操作="搜索能力", 参数={"关键词": 关键词, "限制": 限制})
         except Exception:
-            return self._统一错误(错误码="INTERNAL_ERROR", 消息="搜索能力执行失败")
+            return self._统一错误(错误码="内部错误", 消息="搜索能力执行失败")
         if not 结果.get("成功"):
             return self._统一错误(
                 错误码=结果.get("错误码") or "SEARCH_FAILED",
@@ -113,14 +113,14 @@ class 调用Agent视图:
     def 查看能力(self, *, 令牌: str, 能力id: str) -> dict[str, Any]:
         """完整结构化契约：按 id 展开参数/返回/错误码集/权限/版本等权威字段。"""
         if not 能力id:
-            return self._统一错误(错误码="CAPABILITY_REQUIRED", 消息="能力id不能为空")
+            return self._统一错误(错误码="能力必填", 消息="能力id不能为空")
         try:
             结果 = self.服务.执行操作(令牌=令牌, 操作="查看能力", 参数={"能力id": 能力id})
         except Exception:
-            return self._统一错误(错误码="INTERNAL_ERROR", 消息="查看能力执行失败")
+            return self._统一错误(错误码="内部错误", 消息="查看能力执行失败")
         记录 = 结果.get("能力")
         if not 结果.get("成功") or 记录 is None:
-            return self._统一错误(错误码=结果.get("错误码") or "CAPABILITY_NOT_FOUND",
+            return self._统一错误(错误码=结果.get("错误码") or "能力不存在",
                                   消息=f"能力未登记: {能力id}")
         详情 = self._契约详情(记录)
         权限要求 = (f"调用该能力需要「调用Agent」角色"
@@ -140,24 +140,24 @@ class 调用Agent视图:
     def 验证可用(self, *, 令牌: str, 能力id: str) -> dict[str, Any]:
         """真实验证：查看能力判定登记 + 监督报告/状态快照判定提供者 + 授权校验。"""
         if not 能力id:
-            return self._统一错误(错误码="CAPABILITY_REQUIRED", 消息="能力id不能为空")
+            return self._统一错误(错误码="能力必填", 消息="能力id不能为空")
         try:
             查看结果 = self.服务.执行操作(令牌=令牌, 操作="查看能力", 参数={"能力id": 能力id})
             监督报告 = self.服务.监督.状态报告()
             状态快照 = self.服务.状态.状态快照()
             允许, 权限码, _ = self.服务.授权.校验操作(令牌=令牌, 操作="调用能力")
         except Exception:
-            return self._统一错误(错误码="INTERNAL_ERROR", 消息="验证可用执行失败")
+            return self._统一错误(错误码="内部错误", 消息="验证可用执行失败")
         if not 查看结果.get("成功") or 查看结果.get("能力") is None:
-            return {"成功": False, "错误码": "CAPABILITY_NOT_FOUND",
+            return {"成功": False, "错误码": "能力不存在",
                     "消息": f"能力未登记: {能力id}", "可重试": False,
-                    "建议操作": 建议操作表["CAPABILITY_NOT_FOUND"],
+                    "建议操作": 建议操作表["能力不存在"],
                     "可用状态": "不可用", "原因": "能力未登记，无法调用"}
         单元 = f"单元_{能力id}"
         if not self.服务.提供者注册表.已注册(能力id) or 单元 not in 监督报告:
-            return {"成功": False, "错误码": "PROVIDER_UNAVAILABLE",
+            return {"成功": False, "错误码": "提供者不可用",
                     "消息": f"能力 {能力id} 无可用提供者实现", "可重试": False,
-                    "建议操作": 建议操作表["PROVIDER_UNAVAILABLE"],
+                    "建议操作": 建议操作表["提供者不可用"],
                     "可用状态": "不可用", "原因": "能力已登记但提供者未注册，不可调用"}
         if not 允许:
             return {"成功": True, "错误码": "", "消息": f"能力可用但当前令牌无调用权限: {权限码}",
@@ -172,12 +172,12 @@ class 调用Agent视图:
                  参数: dict[str, Any] | None = None) -> dict[str, Any]:
         """经 服务.执行操作 真实调用；结构化返回 成功/值/错误码/错误说明/可重试/建议。"""
         if not 能力id:
-            return self._统一错误(错误码="CAPABILITY_REQUIRED", 消息="能力id不能为空")
+            return self._统一错误(错误码="能力必填", 消息="能力id不能为空")
         try:
             结果 = self.服务.执行操作(
                 令牌=令牌, 操作="调用能力", 参数={"能力id": 能力id, "参数": 参数 or {}})
         except Exception:
-            return self._统一错误(错误码="INTERNAL_ERROR", 消息="调用能力执行失败")
+            return self._统一错误(错误码="内部错误", 消息="调用能力执行失败")
         错误码 = str(结果.get("错误码", ""))
         错误说明 = ("调用完成" if 结果.get("成功")
                    else 错误说明表.get(错误码, "调用失败，请检查能力id与参数后重试"))

@@ -1,7 +1,8 @@
 """组件开发Agent视图：需求确认、复用分析、占用租约、模板创建、候选提交。
 
 视图只做中文业务组装与透传，全部业务判定由 统一能力服务.执行操作 真实完成：
-未确认需求 → REQUIREMENT_UNCONFIRMED；缺复用证据 → NO_REUSE_DECISION；
+未确认需求 → REQUIREMENT_UNCONFIRMED；缺复用证据 → 未做复用决策（B-8：英文码
+NO_REUSE_DECISION 已随 契约编译/消费者契约.py 同批汉化）；
 视图如实返回服务拒绝结果（统一结果结构 成功/错误码/消息），禁止伪造成功。
 """
 from __future__ import annotations

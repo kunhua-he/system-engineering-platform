@@ -310,6 +310,8 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
                 令牌键 = "max_tokens"
                 if 响应格式:
                     请求体["response_format"] = 响应格式
+                if 参数.get("chat_template_kwargs"):
+                    请求体["chat_template_kwargs"] = 参数.get("chat_template_kwargs")
             if 温度 is not None:
                 请求体["temperature"] = 温度
             if 最大令牌数 is not None:
@@ -641,7 +643,15 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
         raise ValueError("底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")
     候选二进制 = [启动器, os.environ.get("LLAMA_CPP_SERVER_BIN", ""), shutil.which("llama-server")]
     候选二进制.extend(str(Path.home() / 路径) for 路径 in (
-        "llama.cpp-old/build/bin/llama-server", "llama.cpp-latest/build/bin/llama-server"))
+        # 2026-09-16 实测修正：原顺序把 llama.cpp-old 排在 latest 前面。
+        # 旧版二进制不支持新架构（实测 Qwen3.6-27B 的 SSM 张量
+        # blk.64.ssm_conv1d.weight 缺失直接加载失败，报 missing tensor），
+        # 而报错里看不出用了哪个二进制，极难定位——同一文件手动用 latest
+        # 跑得好好的，经底座就失败，会被误判成权限或文件损坏。
+        # 因此 latest 优先；需要走旧版时用 启动器 显式传绝对路径或设
+        # 环境变量 LLAMA_CPP_SERVER_BIN。
+        "llama.cpp-latest/build/bin/llama-server",
+        "llama.cpp-old/build/bin/llama-server"))
     二进制 = next((路径 for 路径 in 候选二进制 if 路径 and os.path.isfile(路径) and os.access(路径, os.X_OK)), "")
     if not 二进制:
         raise FileNotFoundError("未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
@@ -766,6 +776,13 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
         # 父进程关闭文件对象不影响其继续写入）
         日志文件 = open(_启动日志路径(规范路径), "ab", buffering=0)
         try:
+            表头 = ("\n" + "=" * 60 + "\n[启动] "
+                    + time.strftime("%Y-%m-%d %H:%M:%S")
+                    + "\n[命令] " + " ".join(命令) + "\n")
+            日志文件.write(表头.encode("utf-8"))
+        except OSError:
+            pass
+        try:
             进程 = subprocess.Popen(命令, **平台适配.子进程组启动标志(),
                                     stdout=日志文件, stderr=subprocess.STDOUT)
         finally:
@@ -855,7 +872,7 @@ def 生成对话(句柄: int | None = None, 消息列表: list = None,
            系统提示词: str = None, 流式输出: bool = False,
            温度: float = None, 最大令牌数: int = None,
            工具: list = None, 响应格式: dict = None,
-           附加请求头: dict = None) -> 结果:
+           附加请求头: dict = None, chat_template_kwargs: dict = None) -> 结果:
     """持句柄生成对话。
 
     可选生成参数（温度/最大令牌数/工具/响应格式）按协议映射到上游请求体：
@@ -880,10 +897,12 @@ def 生成对话(句柄: int | None = None, 消息列表: list = None,
         return _失败("参数不合法", "附加请求头必须是字典型或空值")
     if not isinstance(流式输出, bool):
         return _失败("参数不合法", "流式输出必须是逻辑型")
+    if chat_template_kwargs is not None and not isinstance(chat_template_kwargs, dict):
+        return _失败("参数不合法", "chat_template_kwargs 必须是字典型或空值")
     return _调用模型(句柄, "LLM", {
         "消息列表": 消息列表, "系统提示词": 系统提示词, "流式输出": 流式输出,
         "温度": 温度, "最大令牌数": 最大令牌数, "工具": 工具, "响应格式": 响应格式,
-        "附加请求头": 附加请求头,
+        "附加请求头": 附加请求头, "chat_template_kwargs": chat_template_kwargs,
     })
 
 
@@ -901,7 +920,8 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
                系统提示词: str = None, 流式输出: bool = True,
                温度: float = None, 最大令牌数: int = None,
                工具: list = None, 响应格式: dict = None,
-               附加请求头: dict = None) -> Iterator[dict[str, Any]]:
+               附加请求头: dict = None,
+               chat_template_kwargs: dict = None) -> Iterator[dict[str, Any]]:
     """按句柄配置调用 H 节点 Provider，并原样转发有限流式事件。
 
     这是连接器内部/包级流式边界，不是 HTTP 路由。流式输出必须显式保持为
@@ -928,6 +948,8 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
         return iter((_流式错误事件("参数不合法", "响应格式必须是字典型"),))
     if 附加请求头 is not None and not isinstance(附加请求头, dict):
         return iter((_流式错误事件("参数不合法", "附加请求头必须是字典型或空值"),))
+    if chat_template_kwargs is not None and not isinstance(chat_template_kwargs, dict):
+        return iter((_流式错误事件("参数不合法", "chat_template_kwargs 必须是字典型或空值"),))
 
     连接, 原因 = _取连接(句柄)
     if 连接 is None:
@@ -945,6 +967,7 @@ def 流式生成对话(句柄: int | None = None, 消息列表: list = None,
             温度=温度, 最大令牌数=最大令牌数,
             工具=工具, 响应格式=响应格式,
             附加请求头=附加请求头,
+            chat_template_kwargs=chat_template_kwargs,
         )
     except Exception as 错误:
         return iter((_流式错误事件(
@@ -1172,14 +1195,18 @@ def 调度工具调用(*, 工具调用列表: list = None, 并行上限: int = N
 
 
 def 合成取消结果(*, 调用id: str = None, 工具名: str = None, 原因: str = None) -> 结果:
-    """合成取消/未启动调用的错误结果（DeepSeek TOOL_ABORTED_BEFORE_DISPATCH 语义）。"""
+    """合成取消/未启动调用的错误结果。
+
+    对外错误码一律中文（决策 0003）：`派发前已取消`——语义对齐上游 DeepSeek 的
+    TOOL_ABORTED_BEFORE_DISPATCH；合成结果随工具回执回给模型，不落网关错误码表。
+    """
     try:
         if not isinstance(调用id, str) or not 调用id.strip():
             return 结果.失败("参数不合法", "调用id不能为空", 来源="模型连接器")
         原因值 = str(原因 or "调度前已取消")
         return 结果.成功结果({
             "调用id": 调用id, "工具名": str(工具名 or ""),
-            "合成结果": {"错误码": "TOOL_ABORTED_BEFORE_DISPATCH", "原因": 原因值},
+            "合成结果": {"错误码": "派发前已取消", "原因": 原因值},
             "未执行": True,
         })
     except Exception as 异常:

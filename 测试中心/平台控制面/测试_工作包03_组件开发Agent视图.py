@@ -75,7 +75,7 @@ class Test组件开发Agent视图(unittest.TestCase):
             资源预算=完整预算(), 允许修改路径=["组件库/x"],
             组件声明={"名称": "x"}, 能力id="统计.汇总")
         self.assertFalse(创建结果["成功"])
-        self.assertEqual(创建结果["错误码"], "REQUIREMENT_UNCONFIRMED")
+        self.assertEqual(创建结果["错误码"], "需求未确认")
 
     def test_缺复用决策创建组件被拒(self):
         登记结果 = self.视图.登记需求(self.令牌, "缺决策目标")
@@ -86,7 +86,7 @@ class Test组件开发Agent视图(unittest.TestCase):
             self.令牌, 需求id, 复用决策={}, 资源预算=完整预算(),
             允许修改路径=["组件库/x"], 组件声明={"名称": "x"}, 能力id="")
         self.assertFalse(创建结果["成功"])
-        self.assertEqual(创建结果["错误码"], "NO_REUSE_DECISION")
+        self.assertEqual(创建结果["错误码"], "未做复用决策")
 
     def test_确认需求后创建组件成功_真实占用租约(self):
         登记统计能力(self.服务)

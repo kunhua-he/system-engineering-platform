@@ -98,7 +98,7 @@ class Test调用Agent视图(unittest.TestCase):
         # 未登记能力 → 不可用 + 原因
         结果2 = self.视图.验证可用(令牌=self.令牌, 能力id="不存在.能力")
         self.assertFalse(结果2["成功"])
-        self.assertEqual(结果2["错误码"], "CAPABILITY_NOT_FOUND")
+        self.assertEqual(结果2["错误码"], "能力不存在")
         self.assertEqual(结果2["可用状态"], "不可用")
         self.assertIn("未登记", 结果2["原因"])
         self.assertTrue(结果2["建议操作"])
@@ -124,13 +124,13 @@ class Test调用Agent视图(unittest.TestCase):
         # 未登记能力 → CAPABILITY_NOT_FOUND + 建议操作
         结果2 = self.视图.调用能力(令牌=self.令牌, 能力id="未登记.能力", 参数={})
         self.assertFalse(结果2["成功"])
-        self.assertEqual(结果2["错误码"], "CAPABILITY_NOT_FOUND")
+        self.assertEqual(结果2["错误码"], "能力不存在")
         self.assertEqual(结果2["值"], None)
         self.assertTrue(结果2["错误说明"])
         self.assertTrue(结果2["建议操作"])
         # 空能力id → 结构化错误
         结果3 = self.视图.调用能力(令牌=self.令牌, 能力id="", 参数={})
-        self.assertEqual(结果3["错误码"], "CAPABILITY_REQUIRED")
+        self.assertEqual(结果3["错误码"], "能力必填")
 
     def test_异常提供者失败文本不泄漏(self):
         """提供者抛异常 → 错误说明/消息必须为中文安全文案，不得泄漏异常文本。"""

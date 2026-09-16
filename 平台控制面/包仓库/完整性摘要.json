@@ -33,7 +33,7 @@
     },
     {
       "路径": "平台客户端制品.py",
-      "sha256": "255781fea6fbeb090f5d6c72e7b364bb03bdd4d0e2ebb909de2a18c032e2df3c"
+      "sha256": "70c34a6d82d0121d6301426e275f2ce62d7af43d5d2383daa388b2e3101dbe8d"
     },
     {
       "路径": "服务.py",
@@ -105,7 +105,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "8cbdeb76838c5a319b1afee72b96cf78a3cb5bdba164f0c7268afb193ed1a2ed"
+      "sha256": "b39128b77c8c254a9a8a48c49f5e05953c2f6a2516e6956e584db53ddae0194d"
     }
   ],
   "能力数": 14,

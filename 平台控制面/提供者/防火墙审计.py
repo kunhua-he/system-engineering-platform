@@ -49,15 +49,15 @@ def 审计平台控制面(目标目录: Path | None = None,
 
 
 def 发布依赖判定(状态, *, 请求: dict[str, Any]) -> dict[str, Any]:
-    """发布依赖策略：依赖未声明或声明依赖未登记 → DEPENDENCY_MISSING 拒绝。"""
+    """发布依赖策略：依赖未声明或声明依赖未登记 → 依赖缺失 拒绝。"""
     if "依赖" not in 请求:
-        return {"允许": False, "错误码": "DEPENDENCY_MISSING",
+        return {"允许": False, "错误码": "依赖缺失",
                 "理由": "依赖未声明（发布请求缺少依赖声明），拒绝发布"}
     依赖 = 请求.get("依赖", [])
     声明 = {项["能力id"] for 项 in 依赖} if isinstance(依赖, list) else set()
     已登记 = {记录["能力id"] for 记录 in 状态.查询记录("能力条目")}
     缺失 = 声明 - 已登记
     if 缺失:
-        return {"允许": False, "错误码": "DEPENDENCY_MISSING",
+        return {"允许": False, "错误码": "依赖缺失",
                 "理由": f"声明依赖未登记: {缺失}"}
     return {"允许": True, "理由": "依赖已声明且全部已登记"}

@@ -58,7 +58,7 @@ class Test需求与CAS(unittest.TestCase):
             "能力id": "x.能力", "需求id": 快照["需求id"], "复用决策": {"搜索词": "x", "候选能力id": ["x"]},
             "资源预算": 完整预算(), "允许修改路径": ["组件库/x"], "组件声明": {"名称": "x"}})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "REQUIREMENT_UNCONFIRMED")
+        self.assertEqual(结果["错误码"], "需求未确认")
         # 确认后允许
         self.服务.需求.确认需求(需求id=快照["需求id"])
         结果 = self.服务.执行操作(令牌=令牌, 操作="创建组件", 参数={
@@ -92,7 +92,7 @@ class Test授权五角色(unittest.TestCase):
         self.assertEqual(结果["错误码"], "PERMISSION_DENIED")
         agent令牌 = 提权(self.服务, "调用Agent", "调用Agent")
         结果 = self.服务.执行操作(令牌=agent令牌, 操作="调用能力", 参数={"能力id": "x"})
-        self.assertEqual(结果["错误码"], "CAPABILITY_NOT_FOUND", "授权通过，走到能力查找")
+        self.assertEqual(结果["错误码"], "能力不存在", "授权通过，走到能力查找")
 
 
 class Test复用治理与占用(unittest.TestCase):
@@ -150,7 +150,7 @@ class Test复用治理与占用(unittest.TestCase):
         self.服务.状态.条件更新("能力条目", {"裁决状态": "待裁决"}, "能力id=?", ("c.能力",))
         决定 = self.服务.策略.判定(类型="复用", 主题="c.能力", 请求={"调用者": "x", "角色": "发布者"})
         self.assertFalse(决定["允许"])
-        self.assertEqual(决定["错误码"], "PENDING_RULING")
+        self.assertEqual(决定["错误码"], "待裁决")
         # 维护者裁决后允许
         self.服务.目录.裁决(能力id="c.能力", 决定="允许并存", 维护者="维护者")
         决定 = self.服务.策略.判定(类型="复用", 主题="c.能力", 请求={"调用者": "x", "角色": "发布者"})

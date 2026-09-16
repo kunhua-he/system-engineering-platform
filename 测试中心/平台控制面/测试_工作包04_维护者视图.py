@@ -80,10 +80,10 @@ class Test维护者视图核心(unittest.TestCase):
         # 非法裁决值被拒
         结果 = self.视图.冲突裁决(self.令牌, "能力1", "任意值")
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "RULING_REJECTED")
+        self.assertEqual(结果["错误码"], "裁决被拒")
         # 未登记能力被拒
         结果 = self.视图.冲突裁决(self.令牌, "不存在", "复用")
-        self.assertEqual(结果["错误码"], "CAPABILITY_NOT_FOUND")
+        self.assertEqual(结果["错误码"], "能力不存在")
 
     def test_回滚建议返回可回滚目标且只读(self):
         发布id = self.服务.发布.登记期望版本(包id="建议包", 期望版本="2")
@@ -101,7 +101,7 @@ class Test维护者视图核心(unittest.TestCase):
         self.assertEqual(记录["状态"], "完成")
         # 未知发布id被拒
         结果 = self.视图.回滚建议(self.令牌, "不存在发布")
-        self.assertEqual(结果["错误码"], "RELEASE_NOT_FOUND")
+        self.assertEqual(结果["错误码"], "发布不存在")
 
 
 class Test维护者权限边界(unittest.TestCase):
@@ -173,7 +173,7 @@ class Test维护者视图只读视图(unittest.TestCase):
         提供者空 = 视图.查看提供者(令牌, "底层.能力")
         self.assertFalse(提供者空["已注册"])
         结果 = 视图.查看依赖(令牌, "不存在.能力")
-        self.assertEqual(结果["错误码"], "CAPABILITY_NOT_FOUND")
+        self.assertEqual(结果["错误码"], "能力不存在")
 
     def test_查看资源返回真实句柄与线程(self):
         服务, 目录 = 建服务()

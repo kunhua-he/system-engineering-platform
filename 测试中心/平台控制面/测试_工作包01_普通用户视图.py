@@ -97,7 +97,7 @@ class Test普通用户视图(unittest.TestCase):
         agent令牌 = 提权(self.服务, "调用Agent2", "调用Agent")
         结果 = self.视图.调用能力(agent令牌, "不存在的能力", {})
         self.assertFalse(结果["成功"])
-        self.assertEqual(结果["错误码"], "CAPABILITY_NOT_FOUND")
+        self.assertEqual(结果["错误码"], "能力不存在")
         self.assertEqual(结果["处理建议"], "该功能暂不可用，请稍后再试")
         self.assertNotIn("不存在的能力", 结果["消息"], "失败消息为中文建议，不含内部原文")
 

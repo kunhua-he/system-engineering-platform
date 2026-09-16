@@ -8,18 +8,28 @@ import time
 from pathlib import Path
 
 
+from 平台控制面.备份恢复.备份执行 import 清单文件名, _尽力复制附加文件
+
+
 class 恢复执行能力:
     """恢复执行能力：按契约顺序恢复四类数据并逐类真实校验。"""
 
     def _定位清单(self, 备份目录: Path) -> dict:
-        """备份目录直接含清单则用之；否则取最新时间戳快照。"""
+        """备份目录直接含清单则用之；否则取**已认证**（含清单）的最新时间戳快照。
+
+        未被认证的快照（只有 `快照_*` 目录、没有 `备份清单.json`——写清单是备份的
+        最后一步）一律跳过：把它当备份去读清单会抛 `FileNotFoundError`，被
+        `运行核心/统一网关/网关核心.py` 收口成公开码 `文件不存在` = **HTTP 404**，
+        把「备份未认证」伪装成「路由缺失」（2026-09-16 HTML 黑盒实测）。
+        """
         备份目录 = Path(备份目录)
-        清单文件 = 备份目录 / "备份清单.json"
+        清单文件 = 备份目录 / 清单文件名
         if not 清单文件.is_file():
-            候选 = sorted(备份目录.glob("快照_*"), reverse=True)
+            候选 = [子目录 for 子目录 in sorted(备份目录.glob("快照_*"), reverse=True)
+                    if (子目录 / 清单文件名).is_file()]
             if not 候选:
-                raise FileNotFoundError(f"备份目录无任何备份: {备份目录}")
-            清单文件 = 候选[0] / "备份清单.json"
+                raise FileNotFoundError(f"备份目录无已认证备份（缺 {清单文件名}）: {备份目录}")
+            清单文件 = 候选[0] / 清单文件名
         return json.loads(清单文件.read_text(encoding="utf-8"))
 
     def _检测版本回退(self, 清单: dict, 目标目录: Path) -> str:
@@ -47,7 +57,8 @@ class 恢复执行能力:
             for 后缀 in ("-wal", "-shm"):
                 附加 = 快照目录 / f"权威状态.db{后缀}"
                 if 附加.is_file():
-                    shutil.copy2(附加, 目标目录 / f"权威状态.db{后缀}")
+                    # 与备份侧同一语义：WAL/SHM 是瞬时文件，缺失即「本快照没有它」。
+                    _尽力复制附加文件(附加, 目标目录 / f"权威状态.db{后缀}")
             return 目标目录
         文件名 = "证据账本.json" if 类名 == "证据账本" else "项目锁.json"
         shutil.copy2(快照目录 / 文件名, 目标目录 / 文件名)
