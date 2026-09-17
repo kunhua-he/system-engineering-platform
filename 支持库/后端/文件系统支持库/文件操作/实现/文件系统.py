@@ -22,6 +22,7 @@ from 支持库.后端.文件系统支持库.文件操作.实现.危险路径 imp
     放行标注,
     汇总放行标注,
 )
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def 读取文件(文件路径: str = None, 编码: str = "utf-8") -> 结果:
@@ -42,7 +43,7 @@ def 读取文件(文件路径: str = None, 编码: str = "utf-8") -> 结果:
 
 
 def 写入文件(文件路径: str = None, 内容: str = None, 编码: str = "utf-8",
-             允许危险路径: bool = False) -> 结果:
+             允许危险路径: bool = 假) -> 结果:
     """按文本方式写入文件（自动创建父目录）。
 
     危险路径护栏（相对安全底线，见 实现/危险路径.py 判据全文）：默认拒绝命中
@@ -62,7 +63,7 @@ def 写入文件(文件路径: str = None, 内容: str = None, 编码: str = "ut
     try:
         路径.parent.mkdir(parents=True, exist_ok=True)
         路径.write_text(内容, encoding=编码)
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     except LookupError as 错误:
         return 结果.失败("参数不合法", f"未知编码: {错误}", 来源="文件系统")
     except OSError as 错误:
@@ -72,7 +73,7 @@ def 写入文件(文件路径: str = None, 内容: str = None, 编码: str = "ut
 def 判断存在(文件路径: str = None) -> bool:
     """判断路径是否存在（平台既有契约：直接返回布尔；非法参数视为不存在）。"""
     if not isinstance(文件路径, str) or not 文件路径.strip():
-        return False
+        return 假
     return Path(文件路径).exists()
 
 
@@ -89,7 +90,7 @@ def 列出目录(目录路径: str = None) -> 结果:
         return 结果.失败("目录读取失败", str(错误), 来源="文件系统")
 
 
-def 删除文件(文件路径: str = None, 允许危险路径: bool = False) -> 结果:
+def 删除文件(文件路径: str = None, 允许危险路径: bool = 假) -> 结果:
     """删除文件或空目录（不存在视为幂等成功）。
 
     危险路径护栏：默认拒绝命中危险路径判据的目标；允许危险路径=真 显式放行并如实标注。
@@ -101,19 +102,19 @@ def 删除文件(文件路径: str = None, 允许危险路径: bool = False) -> 
         return 拦截
     路径 = Path(文件路径)
     if not 路径.exists():
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     try:
         if 路径.is_dir():
             路径.rmdir()
         else:
             路径.unlink()
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     except OSError as 错误:
         return 结果.失败("文件删除失败", str(错误), 来源="文件系统")
 
 
 def 复制文件(源路径: str = None, 目标路径: str = None,
-             允许危险路径: bool = False) -> 结果:
+             允许危险路径: bool = 假) -> 结果:
     """复制文件到目标路径（自动创建父目录）。
 
     危险路径护栏只判**目标路径**（源路径只读，不构成系统性破坏）；
@@ -133,13 +134,13 @@ def 复制文件(源路径: str = None, 目标路径: str = None,
         目标 = Path(目标路径)
         目标.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(源, 目标)
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     except OSError as 错误:
         return 结果.失败("文件复制失败", str(错误), 来源="文件系统")
 
 
 def 移动文件(源路径: str = None, 目标路径: str = None,
-             允许危险路径: bool = False) -> 结果:
+             允许危险路径: bool = 假) -> 结果:
     """移动文件或目录到目标路径（自动创建父目录）。
 
     危险路径护栏同时判**源路径与目标路径**（移动=源处删除+目标处写入，两端都可能
@@ -162,9 +163,9 @@ def 移动文件(源路径: str = None, 目标路径: str = None,
         shutil.move(str(源), str(目标))
         移动标注 = 汇总放行标注([源路径, 目标路径])
         if 移动标注:
-            return 结果.成功结果({"成功": True, "危险路径放行": 移动标注,
+            return 结果.成功结果({"成功": 真, "危险路径放行": 移动标注,
                                  "路径": 目标路径})
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     except OSError as 错误:
         return 结果.失败("文件移动失败", str(错误), 来源="文件系统")
 
@@ -195,8 +196,8 @@ def 获取修改时间(文件路径: str = None) -> 结果:
         return 结果.失败("修改时间读取失败", str(错误), 来源="文件系统")
 
 
-def 创建目录(目录路径: str = None, 递归: bool = True,
-             允许危险路径: bool = False) -> 结果:
+def 创建目录(目录路径: str = None, 递归: bool = 真,
+             允许危险路径: bool = 假) -> 结果:
     """创建目录（递归创建父目录；已存在视为幂等成功）。
 
     危险路径护栏：默认拒绝命中危险路径判据的目标；允许危险路径=真 显式放行并如实标注。
@@ -208,13 +209,13 @@ def 创建目录(目录路径: str = None, 递归: bool = True,
         return 拦截
     路径 = Path(目录路径)
     if 路径.is_dir():
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     try:
         if 递归:
             路径.mkdir(parents=True, exist_ok=True)
         else:
             路径.mkdir(exist_ok=True)
-        return 结果.成功结果(True)
+        return 结果.成功结果(真)
     except OSError as 错误:
         return 结果.失败("目录创建失败", str(错误), 来源="文件系统")
 
@@ -292,7 +293,7 @@ def 登记临时资源(路径: str = None) -> 结果:
         return 结果.成功结果(len(_临时资源登记表))
 
 
-def 清理全部临时资源(路径前缀: str = "", 允许危险路径: bool = False) -> 结果:
+def 清理全部临时资源(路径前缀: str = "", 允许危险路径: bool = 假) -> 结果:
     """清理已登记临时资源（文件删除/目录递归删除，不存在视为幂等成功）。
 
     路径前缀 非空时只清理以此前缀开头的登记资源；无匹配登记资源时返回

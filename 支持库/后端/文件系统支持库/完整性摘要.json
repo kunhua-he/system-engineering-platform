@@ -69,7 +69,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "aad49f1784ab7a6597c80b459637bcec6cdc9daa3b73a39457bcf2ef37ae6913"
+      "sha256": "8f65154a18ef526ba7d20f92de5d3558ce0c79ed6e543c92ccba59884bf430de"
     },
     {
       "路径": "文件操作/__init__.py",
@@ -77,7 +77,7 @@
     },
     {
       "路径": "文件操作/包声明.json",
-      "sha256": "337dbe712f848de2169380913dc45ae3d045548db0fd5423f33f6bf3a43bb73b"
+      "sha256": "36191e799905e053aaf8057f2bf9a3dbf471c2c00074867ed9f0f93d57790cf0"
     },
     {
       "路径": "文件操作/复用决策.json",
@@ -89,11 +89,11 @@
     },
     {
       "路径": "文件操作/实现/文件系统.py",
-      "sha256": "1306ddea06fbd5de4b92c5c19b98885f5b4f3d947efda83322ded82e95dd4f95"
+      "sha256": "5f5d442248af4e7d1d2417213dd61693887bf8ac75a02f5a684e7648521f1586"
     },
     {
       "路径": "文件操作/实现/文件系统补充.py",
-      "sha256": "64cc5a15cfdbd066bf3be8620e43dbdf1fe564109f5bb61c3d9a4508557145f5"
+      "sha256": "1df62fd37f84e311be1c73368fc0745aee01ab2c182d08a1c725585984e4750b"
     },
     {
       "路径": "文件操作/权限契约/权限契约.json",
@@ -101,23 +101,23 @@
     },
     {
       "路径": "文件操作/能力契约/参数契约.json",
-      "sha256": "96d2e1ac95940d35416d5a48ad68ef72776659d664a0ad13b086afe698327f2f"
+      "sha256": "cbee01d744760ad1eaa6bf4c3f0f11f81dee2127f1b8a952c924236de4ef9364"
     },
     {
       "路径": "文件操作/能力定义.json",
-      "sha256": "6ec548a49c7b0681f3ef9defde4207a147b33f6bfb316c108e78fa1f3a14e2f5"
+      "sha256": "1e393b0cd582177b2722aa3f39d0267d9a918d18145c85a1fc5816c0f229591e"
     },
     {
       "路径": "文件操作/能力数据/Agent查询数据.json",
-      "sha256": "1641a03d969deed8ac3b435c785b349fd16bd0e4f3752ac35286edf26251b3f7"
+      "sha256": "d73fb668f893aad56c443c5f4d5db6b61078f968e14a669994005e20f8256d0c"
     },
     {
       "路径": "文件操作/能力数据/能力搜索数据.json",
-      "sha256": "dd924e720f1aa5236698df28df9d48407e73ce1b2483b560538f53da1a9eb8fa"
+      "sha256": "dfe8e9b1d3cca7bcd8b6e6ec7098c14d9d8a74e257ad25673b2828f9511523a1"
     },
     {
       "路径": "文件操作/说明/使用说明.md",
-      "sha256": "fd61e8994135f3979ffef62c3ff909ce8a0fb649e841c3a58af7e47bd0b1f658"
+      "sha256": "963fe1a88259190cb5bd50f7d0f44dd2fcc7f45b037b3e090a9c4e704bae97c3"
     },
     {
       "路径": "文件操作/说明/目录树与命令.md",
