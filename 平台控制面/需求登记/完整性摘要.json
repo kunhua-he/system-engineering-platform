@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "d99f99533ad958419d56b4e9df6f517dd79ac37943591a686bc1f047c6c45825"
+      "sha256": "ac0a248517b17f9e0937d0c497cee8bbfb5952a6f409824828a49e9ed4dff0d5"
     },
     {
       "路径": "包声明.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "实现/能力入口.py",
-      "sha256": "aba5893631371334e210b134d01ed95de87d87451d84cae41c32b293e0bbaf15"
+      "sha256": "285f8fc7a4920265efc713970aeb9382b0e7f1ead5dc3b6a97c9f58fcaf9fa1a"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -61,11 +61,11 @@
     },
     {
       "路径": "需求服务.py",
-      "sha256": "ed8b81136faa2e9ceee7a4bf014ab91a3711721be14c03a0bc25a405751a91cf"
+      "sha256": "601f242f76db6ab8e73a8e2f73aae2ea54ed2f37cf0b32094b1f7889a14bb1ce"
     },
     {
       "路径": "需求错误码.py",
-      "sha256": "774867164b3d6ce730b7d8dbd467aa67745a4b377acb540ee3997cadcee03651"
+      "sha256": "f44ab60d716e165cc6f26f938aba0ea99285405a2f5a5ef1b1565fa0db349cff"
     },
     {
       "路径": "验证场景引用.json",

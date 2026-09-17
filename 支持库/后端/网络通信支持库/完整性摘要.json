@@ -69,7 +69,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "9bde1e3546334cc013484736a91b6600ed46808a4fc8b5f3289b8a09eef092a0"
+      "sha256": "2531129094dcfa9573f0eda23d7ad40c81e25df4675c7a2d61bcdc23936e8745"
     },
     {
       "路径": "网页解析/__init__.py",
@@ -169,7 +169,7 @@
     },
     {
       "路径": "请求/实现/网络请求.py",
-      "sha256": "dbf11490588199f12ee7a4fdfede6ecf28646abe19eb37c8c2f75d1d59464cc9"
+      "sha256": "3d068ec3f5a96e03ad5a25dba1ab9ddcf67bbe5694821d54ae53cca5ccd031aa"
     },
     {
       "路径": "请求/权限契约/权限契约.json",

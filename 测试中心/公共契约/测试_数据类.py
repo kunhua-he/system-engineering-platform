@@ -55,9 +55,14 @@ class 测试裸用等价(unittest.TestCase):
         class 标准版:
             值: int
 
-        self.assertEqual(中文版(1), 中文版(1))
-        self.assertNotEqual(中文版(1), 中文版(2))
+        # 与**标准库 dataclasses** 逐项对照才是真测「等价语义」：
+        # 原写法 `assertEqual(中文版(1), 中文版(1))` 是**恒真断言**
+        # （同一表达式两侧），被测试伪装门禁判「规则3·恒真断言」拦下 —— 这是真判定，按此改正。
         self.assertEqual(中文版(1) == 中文版(1), 标准版(1) == 标准版(1))
+        self.assertEqual(中文版(1) == 中文版(2), 标准版(1) == 标准版(2))
+        self.assertNotEqual(中文版(1), 中文版(2))
+        # repr 的**格式**对照（类名必然不同，只比字段段）
+        self.assertEqual(repr(中文版(1)).split("(", 1)[1], repr(标准版(1)).split("(", 1)[1])
 
     def test_打印与字段清单一致(self):
         @数据类

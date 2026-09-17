@@ -21,47 +21,47 @@
     },
     {
       "路径": "实现/入参校验.py",
-      "sha256": "1459f74b9493e59d93f0fcdaaa56917ca9cb04f945d0f5a0916b4d56c3981539"
+      "sha256": "cc5d5c477c1d23134d2c7b8fc68119e2790fffa5fc08e1f1afa7c2dfbdc5c2a0"
     },
     {
       "路径": "实现/全自动精校.py",
-      "sha256": "d4e145871d887549df3c2d36320be656bda70a25a0ff7479ad3ca0cdf2122d31"
+      "sha256": "8db480b421f564338dc8d99034d30ac8f7d087b5333c2b62c7c643047b9db64a"
     },
     {
       "路径": "实现/分片转写.py",
-      "sha256": "59bc603b9b121f55e4d388f56ecc8cb13cfabe87040f5cfb6d48753830e5be78"
+      "sha256": "eff4e3cea5986d743dc7423129ffab54fcda182b73037805700164f5b1b3e117"
     },
     {
       "路径": "实现/复核编排.py",
-      "sha256": "c39358c8d54326cad0819074e49ec34fa287751fdb5a8270be17593b515ba022"
+      "sha256": "d583015aa9f0666f6f99e20020438b103d59befdbfd57c1f3c36a38736635c63"
     },
     {
       "路径": "实现/复核调度.py",
-      "sha256": "d5defd22a763e887a0161d6f9235f6dbfc2b820194e6850d5e2fc7889d1cd78a"
+      "sha256": "6593f4010ca87b6b1db008e7be8ebc01ef9dbef50ef4e8d26201d128fd8c19ee"
     },
     {
       "路径": "实现/导出落盘.py",
-      "sha256": "01b46a1d9f46770aca142df5b5c945197e63ba7b3d7b02d8ad8889898ddc1e02"
+      "sha256": "ae770bcb1bfa7a276f27ed0a804b93992ea0111b6c8edc735f8c16414bd9d405"
     },
     {
       "路径": "实现/排版合成.py",
-      "sha256": "072b5b9fbc185fad8b496da76e2165377b5d726c0f93a79e52c21a7d1e476370"
+      "sha256": "9ba674e4c6a9b8171c426465768c030b9e350fce91d731bf51ae26d1a122f6f7"
     },
     {
       "路径": "实现/有效底稿.py",
-      "sha256": "e7203958af6877202595b64fb2b22e3c5f0e66e19a29f9f916bc993e41a8a4b6"
+      "sha256": "72fc447824cacf0e443681b0263f06b5b67d8dc1322ca6437b5c7d9512dafe20"
     },
     {
       "路径": "实现/模式注册表.py",
-      "sha256": "0b21b52b224ec537d710d65d6efbdf72d1eae2576d9d832f183bbf4c48a47c71"
+      "sha256": "19d9cb468f7e4a1504199ab8a1c93bf0bb0048f039f41db0f1ad1e781182ce92"
     },
     {
       "路径": "实现/疑难标记.py",
-      "sha256": "e398a0049fe89c1082502ac528906f3ed4e468d8e3f844b8f1fdf83cbe38252f"
+      "sha256": "1192ea2042308f6b075ef3b69a276656cea603d53a514850ad1223f7f324abb6"
     },
     {
       "路径": "实现/直播逐字稿.py",
-      "sha256": "10df48acdd5f7558d931cc11aea462fee5e0d43f3f1db087337d736389340a83"
+      "sha256": "b3fa6dd25b056a255893a62ccfe0c3c6d43f9f48228de3d5c61e2b408e04777a"
     },
     {
       "路径": "实现/窗口切分.py",
@@ -69,11 +69,11 @@
     },
     {
       "路径": "实现/精校裁决.py",
-      "sha256": "d9adb37bb281f27901560e31e63c760c2e8e0718609e354ba2bc3becf2389d22"
+      "sha256": "5753208d62fc9c47b4c95d1c7a6eb3d346acee906e10d04678582184ae0183de"
     },
     {
       "路径": "实现/缓存与续跑.py",
-      "sha256": "e2d83cd21c16a576504fc26eed666c04ea2f60bb51ac931005d99a4431363544"
+      "sha256": "98678aefba7828eb73f069508e7edbbd8112292d1161edc430c87ba11818a6fc"
     },
     {
       "路径": "实现/证据包.py",

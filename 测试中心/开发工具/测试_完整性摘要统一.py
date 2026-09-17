@@ -128,13 +128,18 @@ class Test校验完整性摘要(unittest.TestCase):
         self.assertTrue(any("文件清单缺失或为空" in 问题 for 问题 in 问题列表))
 
     def test_空文件清单拒绝(self):
+        """空 `文件清单` 必须被拒绝，且**给出原因**（与兄弟用例同形状）。"""
         目录, _ = 建临时包()
         (目录 / "完整性摘要.json").write_text(json.dumps({
             "包id": "测试.包", "版本": "1.0.0",
             "摘要算法": "sha256", "文件清单": [],
         }, ensure_ascii=False), encoding="utf-8")
         通过, 问题列表 = 校验完整性摘要(目录)
+        # 只 `assertFalse` 是「负面断言强度不足」——门禁要求**同时断言拒绝原因**，
+        # 否则实现改坏成「一律拒绝」也能骗过本条（测试伪装门禁 规则3 真判定）。
         self.assertFalse(通过)
+        self.assertTrue(any("文件清单缺失或为空" in 问题 for 问题 in 问题列表),
+                        f"拒绝原因须指明文件清单为空，实得: {问题列表}")
 
     def test_摘要算法不合法拒绝(self):
         目录, _ = 建临时包()
