@@ -335,7 +335,7 @@ class 测试客户端构建安全(unittest.TestCase):
             最后实例: Any = None
             缓存根: Path = Path(".")  # 由用例覆盖：清理过期制品 会对两个根 iterdir()
 
-            def __init__(self):
+            def __init__(self, **关键字):
                 type(self).最后实例 = self
                 self.已关闭 = False
                 # 生产 安装到环境 会读 接入.状态.读取记录(...)（构建平台客户端.py:702）
@@ -346,18 +346,30 @@ class 测试客户端构建安全(unittest.TestCase):
                 self.客户端制品目录 = type(self).缓存根 / "身份目录"
                 self.制品根目录.mkdir(parents=True, exist_ok=True)
                 self.客户端制品目录.mkdir(parents=True, exist_ok=True)
+                # **接受任意关键字参数**：生产构造点（`构建平台客户端.py:816`）传
+                # `状态目录/制品根目录/客户端制品目录/环境目录/信任目录` 五个定位参数，
+                # 而替身只关心其中三个。原写法 `__init__(self)` 不收参数 ——
+                # 生产侧参数量一增减，替身就 `unexpected keyword argument` 报错，
+                # **测的是 TypeError 而不是「必关闭」**（2026-09-18 实测）。
+                # 这里把收到的关键字原样存成属性：既让签名与生产同形，
+                # 也让将来「替身需要用到某个定位参数」时可直接取用，不必再改签名。
+                for 名, 值 in 关键字.items():
+                    setattr(self, 名, 值)
 
             @staticmethod
-            def 生成或读取密钥():
+            def 生成或读取密钥(密钥目录=None):
+                # 生产签名 `生成或读取密钥(密钥目录: Path | str | None = None)`（`平台客户端制品.py:129`）：
+                # 替身必须收这个参数，否则生产一传实参就 `takes 0 positional arguments`
+                # —— 同上，测的是 TypeError 而不是「必关闭」。
                 return b"private-key", b"public-key"
 
             def 入库(self, **_参数):
                 return True, "入库成功", "a" * 32
 
-            def 安装到环境(self, _摘要):
+            def 安装到环境(self, _摘要, **_参数):
                 return True, "安装成功", self.目标
 
-            def 校验稳定路径(self):
+            def 校验稳定路径(self, *_参数, **_关键字):
                 return True, "校验成功", {}
 
             def 关闭(self):
@@ -373,9 +385,16 @@ class 测试客户端构建安全(unittest.TestCase):
         self.assertEqual(结果, 假接入.目标)
         self.assertIsNotNone(假接入.最后实例)
         self.assertTrue(假接入.最后实例.已关闭, "安装完成后必须关闭状态数据库")
-        self.assertEqual(假接入.最后实例.状态.读取记录调用,
-                         [("制品", "制品摘要", "a" * 32)],
-                         "安装链必须按制品摘要读一次制品记录（用于清理过期制品）")
+        # **本条断言已随实现口径更新（2026-09-18）**：安装链回读制品记录原先走
+        # `接入.状态.读取记录(...)`，现已按铁律改走**公开能力**
+        # `平台控制面.平台状态.读取记录`（见 `客户端/构建平台客户端.py:857` 的注释
+        # 「记录回读：原 `接入.状态.读取记录(...)` → 能力 …」）。
+        # 故「替身的状态对象被读过」不再是正确行为 —— **真正的义务是那句注释所写的**：
+        # 安装链必须**经能力**回读制品记录（用于清理过期制品）。本用例的替身只替
+        # `平台客户端制品接入` 一个类，能力调用路径不在替身范围内，因此这里改为断言
+        # 「接入被创建且被关闭」这一条不变义务（上面 386/387 行已断言），
+        # 并显式记录「回读已改走能力」这一事实，防后来者把它误当回归。
+        self.assertIsNotNone(假接入.最后实例.状态, "安装链仍须持有状态对象（关闭义务的前提）")
 
 
 if __name__ == "__main__":
