@@ -19,7 +19,7 @@ def _失败(码: str, 说明: str) -> 结果:
     return 结果.失败(码, 说明, 来源="组件控件支持库")
 
 
-def _校验(句柄id: str, 类型: str) -> tuple[bool, str]:
+def _校验(句柄id: int, 类型: str) -> tuple[bool, str]:
     句柄 = _句柄体系.句柄表.get(句柄id)
     if 句柄 is None or 句柄.状态 != "有效": return False, "句柄不存在或已失效"
     if 句柄.元数据.get("层级") != 类型: return False, f"需要{类型}句柄"
@@ -37,7 +37,7 @@ def 创建窗口(窗口id: str, 标题: str, 宽度: int = 800, 高度: int = 60
     return 结果.成功结果({"句柄id":句柄.句柄id,"句柄类型":"窗口句柄","窗口id":窗口id})
 
 
-def 创建页面(窗口句柄: str, 页面id: str, 路由: str = "/", 标题: str = "") -> 结果:
+def 创建页面(窗口句柄: int, 页面id: str, 路由: str = "/", 标题: str = "") -> 结果:
     通过, 说明 = _校验(窗口句柄, "窗口")
     if not 通过: return _失败("句柄不合法", 说明)
     if not isinstance(页面id, str) or not 页面id: return _失败("参数不合法", "页面id不能为空")
@@ -46,7 +46,7 @@ def 创建页面(窗口句柄: str, 页面id: str, 路由: str = "/", 标题: st
     return 结果.成功结果({"句柄id":句柄.句柄id,"句柄类型":"页面句柄","页面id":页面id,"窗口句柄":窗口句柄})
 
 
-def 创建组件(页面句柄: str, 组件id: str, 组件类型: str, 属性: dict | None = None) -> 结果:
+def 创建组件(页面句柄: int, 组件id: str, 组件类型: str, 属性: dict | None = None) -> 结果:
     通过, 说明 = _校验(页面句柄, "页面")
     if not 通过: return _失败("句柄不合法", 说明)
     if not isinstance(组件id, str) or not 组件id or 组件类型 not in _组件类型: return _失败("参数不合法", "组件id不能为空或组件类型不受支持")
@@ -59,7 +59,7 @@ def 创建组件(页面句柄: str, 组件id: str, 组件类型: str, 属性: di
     return 结果.成功结果({"句柄id":句柄.句柄id,"句柄类型":"组件句柄","组件id":组件id,"页面句柄":页面句柄})
 
 
-def 设置组件属性(组件句柄: str, 属性名: str, 属性值: Any) -> 结果:
+def 设置组件属性(组件句柄: int, 属性名: str, 属性值: Any) -> 结果:
     通过, 说明 = _校验(组件句柄, "组件")
     if not 通过: return _失败("句柄不合法", 说明)
     if 属性名 not in _组件属性: return _失败("属性不支持", f"组件属性不支持: {属性名}")
@@ -68,7 +68,7 @@ def 设置组件属性(组件句柄: str, 属性名: str, 属性值: Any) -> 结
     return 结果.成功结果({"句柄id":组件句柄,"属性名":属性名,"属性值":属性值})
 
 
-def 绑定组件事件(组件句柄: str, 事件名称: str, 能力id: str, 参数模板: dict | None = None) -> 结果:
+def 绑定组件事件(组件句柄: int, 事件名称: str, 能力id: str, 参数模板: dict | None = None) -> 结果:
     通过, 说明 = _校验(组件句柄, "组件")
     if not 通过: return _失败("句柄不合法", 说明)
     if not 事件名称 or not 能力id: return _失败("参数不合法", "事件名称和能力id不能为空")
@@ -76,7 +76,7 @@ def 绑定组件事件(组件句柄: str, 事件名称: str, 能力id: str, 参�
     return 结果.成功结果(事件)
 
 
-def 释放句柄(句柄id: str) -> 结果:
+def 释放句柄(句柄id: int) -> 结果:
     成功, 说明 = _句柄体系.失效(句柄id, "前端组件释放")
     if not 成功: return _失败("句柄不存在", 说明)
     return 结果.成功结果({"句柄id":句柄id,"状态":"已失效"})

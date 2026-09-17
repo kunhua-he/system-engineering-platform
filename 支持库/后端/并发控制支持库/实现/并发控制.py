@@ -31,7 +31,7 @@ def _记录降级(消息: Any) -> None:
         if len(降级记录表) > 降级记录上限:
             del 降级记录表[: len(降级记录表) - 降级记录上限]
 
-def _句柄键(句柄: str | int) -> int:
+def _句柄键(句柄: int | int) -> int:
     """资源表与公开网关统一使用整数句柄。"""
     return int(句柄)
 
@@ -43,7 +43,7 @@ def _创建(类型: str, 对象: object, 说明: str) -> 结果:
     return 结果.成功结果({"句柄": 句柄键, "类型": 类型, "说明": 说明})
 
 
-def _取(句柄: str, 类型: str) -> tuple[object | None, str]:
+def _取(句柄: int, 类型: str) -> tuple[object | None, str]:
     键 = _句柄键(句柄)
     try:
         状态机id = int(键)
@@ -81,7 +81,7 @@ def 创建线程池(最大线程数: int = None, 超时秒: int = None) -> 结�
     return _创建("线程池", 池, f"线程池已创建（最大 {数量} 线程）")
 
 
-def 获取锁(句柄: str = None, 超时秒: float = None) -> 结果:
+def 获取锁(句柄: int = None, 超时秒: float = None) -> 结果:
     """获取互斥锁。返回 {已获取}。"""
     对象, 原因 = _取(句柄, "互斥锁")
     if 对象 is None:
@@ -96,7 +96,7 @@ def 获取锁(句柄: str = None, 超时秒: float = None) -> 结果:
         return 结果.失败("获取锁失败", str(错误), 来源="并发控制")
 
 
-def 释放锁(句柄: str = None) -> 结果:
+def 释放锁(句柄: int = None) -> 结果:
     """释放互斥锁。返回 {已释放}。"""
     对象, 原因 = _取(句柄, "互斥锁")
     if 对象 is None:
@@ -108,7 +108,7 @@ def 释放锁(句柄: str = None) -> 结果:
         return 结果.失败("释放锁失败", str(错误), 来源="并发控制")
 
 
-def 获取信号量(句柄: str = None, 超时秒: float = None) -> 结果:
+def 获取信号量(句柄: int = None, 超时秒: float = None) -> 结果:
     """获取信号量（计数减1；可设超时，超时返回未获取，不永久阻塞）。返回 {已获取}。"""
     对象, 原因 = _取(句柄, "信号量")
     if 对象 is None:
@@ -123,7 +123,7 @@ def 获取信号量(句柄: str = None, 超时秒: float = None) -> 结果:
         return 结果.失败("获取信号量失败", str(错误), 来源="并发控制")
 
 
-def 释放信号量(句柄: str = None) -> 结果:
+def 释放信号量(句柄: int = None) -> 结果:
     """释放信号量（计数加1）。返回 {已释放}。"""
     对象, 原因 = _取(句柄, "信号量")
     if 对象 is None:
@@ -132,7 +132,7 @@ def 释放信号量(句柄: str = None) -> 结果:
     return 结果.成功结果({"已释放": True})
 
 
-def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: float = None) -> 结果:
+def 线程池执行(句柄: int = None, 任务列表: list = None, 超时秒: float = None) -> 结果:
     """线程池并发执行任务列表（每个任务 dict {函数, 参数}）。返回 {结果列表, 成功数, 失败数}。
 
     先批量 submit 全部合法任务再按原顺序收集 Future 结果，避免逐项
@@ -168,7 +168,7 @@ def 线程池执行(句柄: str = None, 任务列表: list = None, 超时秒: fl
     return 结果.成功结果({"结果列表": 结果列表, "成功数": len(结果列表) - 失败数, "失败数": 失败数})
 
 
-def 释放句柄(句柄: str = None) -> 结果:
+def 释放句柄(句柄: int = None) -> 结果:
     """释放并发资源句柄（线程池有界等待，未收敛时保留账本）。"""
     if isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999:
         return 结果.失败("参数不合法", "句柄必须是1到999999的整数", 来源="并发控制")
@@ -576,7 +576,7 @@ def 创建事件总线(*, 名称: str = None, 队列上限: int = None) -> 结�
         return 结果.失败("创建事件总线失败", str(异常), 来源="并发控制")
 
 
-def 订阅事件(*, 句柄: str = None, 事件名: str = None, 模式: str = None,
+def 订阅事件(*, 句柄: int = None, 事件名: str = None, 模式: str = None,
              订阅者名: str = None) -> 结果:
     """订阅事件。模式=通知（广播）或 决策（按序询问，显式 next 才继续）。"""
     try:
@@ -602,7 +602,7 @@ def 订阅事件(*, 句柄: str = None, 事件名: str = None, 模式: str = Non
         return 结果.失败("订阅失败", str(异常), 来源="并发控制")
 
 
-def 取消订阅(*, 句柄: str = None, 序号: int = None) -> 结果:
+def 取消订阅(*, 句柄: int = None, 序号: int = None) -> 结果:
     """取消订阅。按订阅序号移除。"""
     try:
         总线对象, 原因 = _取(句柄, "事件总线")
@@ -619,7 +619,7 @@ def 取消订阅(*, 句柄: str = None, 序号: int = None) -> 结果:
         return 结果.失败("取消订阅失败", str(异常), 来源="并发控制")
 
 
-def 发布通知(*, 句柄: str = None, 事件名: str = None, 负载: dict = None) -> 结果:
+def 发布通知(*, 句柄: int = None, 事件名: str = None, 负载: dict = None) -> 结果:
     """发布通知类事件（广播）。返回收到通知的订阅者列表。"""
     try:
         总线对象, 原因 = _取(句柄, "事件总线")
@@ -644,7 +644,7 @@ def 发布通知(*, 句柄: str = None, 事件名: str = None, 负载: dict = No
         return 结果.失败("发布通知失败", str(异常), 来源="并发控制")
 
 
-def 发布决策(*, 句柄: str = None, 事件名: str = None, 负载: dict = None,
+def 发布决策(*, 句柄: int = None, 事件名: str = None, 负载: dict = None,
              继续: bool = None) -> 结果:
     """发布决策类事件（waterfall：按订阅顺序逐个询问，显式 next 才继续）。
     返回首个订阅者处理结果；后续订阅者需 继续=true 才会被询问。"""
@@ -684,7 +684,7 @@ def 发布决策(*, 句柄: str = None, 事件名: str = None, 负载: dict = No
         return 结果.失败("发布决策失败", str(异常), 来源="并发控制")
 
 
-def 查询事件总线(*, 句柄: str = None) -> 结果:
+def 查询事件总线(*, 句柄: int = None) -> 结果:
     """查询事件总线状态（订阅者/通知次数/决策次数）。句柄空=列全部。"""
     try:
         if 句柄 is None:
@@ -740,7 +740,7 @@ def 创建流管道(*, 名称: str = None, 容量上限: int = None) -> 结果:
         return 结果.失败("创建流管道失败", str(异常), 来源="并发控制")
 
 
-def 管道写入(*, 句柄: str = None, 事件名: str = None, 负载: dict = None) -> 结果:
+def 管道写入(*, 句柄: int = None, 事件名: str = None, 负载: dict = None) -> 结果:
     """向流管道写入一条事件（生产者）。队列满返回 队列已满。"""
     try:
         管道对象, 原因 = _取(句柄, "流管道")
@@ -759,7 +759,7 @@ def 管道写入(*, 句柄: str = None, 事件名: str = None, 负载: dict = No
         return 结果.失败("管道写入失败", str(异常), 来源="并发控制")
 
 
-def 管道读取(*, 句柄: str = None, 数量: int = None) -> 结果:
+def 管道读取(*, 句柄: int = None, 数量: int = None) -> 结果:
     """从流管道读取事件（消费者；FIFO 出队）。返回 {条目数, 条目列表}。"""
     try:
         管道对象, 原因 = _取(句柄, "流管道")
@@ -778,7 +778,7 @@ def 管道读取(*, 句柄: str = None, 数量: int = None) -> 结果:
         return 结果.失败("管道读取失败", str(异常), 来源="并发控制")
 
 
-def 查询流管道(*, 句柄: str = None) -> 结果:
+def 查询流管道(*, 句柄: int = None) -> 结果:
     """查询流管道状态。句柄空=列全部。"""
     try:
         if 句柄 is None:
@@ -836,7 +836,7 @@ def 创建并发组(*, 名称: str = None, 并发上限: int = None, 失败模�
         return 结果.失败("创建并发组失败", str(异常), 来源="并发控制")
 
 
-def 组内提交(*, 句柄: str = None, 任务名: str = None, 负载: dict = None) -> 结果:
+def 组内提交(*, 句柄: int = None, 任务名: str = None, 负载: dict = None) -> 结果:
     """向并发组提交一个任务（排队）。任务名重复返回 已存在。"""
     try:
         组对象, 原因 = _取(句柄, "并发组")
@@ -856,7 +856,7 @@ def 组内提交(*, 句柄: str = None, 任务名: str = None, 负载: dict = No
         return 结果.失败("组内提交失败", str(异常), 来源="并发控制")
 
 
-def 组内领取(*, 句柄: str = None, 数量: int = None) -> 结果:
+def 组内领取(*, 句柄: int = None, 数量: int = None) -> 结果:
     """从并发组领取可执行任务（排队→执行，受限并发上限）。失败即停模式下组已失败则拒绝领取。"""
     try:
         组对象, 原因 = _取(句柄, "并发组")
@@ -886,7 +886,7 @@ def 组内领取(*, 句柄: str = None, 数量: int = None) -> 结果:
         return 结果.失败("组内领取失败", str(异常), 来源="并发控制")
 
 
-def 组内完成(*, 句柄: str = None, 任务名: str = None, 成功: bool = None,
+def 组内完成(*, 句柄: int = None, 任务名: str = None, 成功: bool = None,
              结果值: dict = None, 错误: str = None) -> 结果:
     """上报任务完成（执行→结束）。返回组累计统计。"""
     try:
@@ -919,7 +919,7 @@ def 组内完成(*, 句柄: str = None, 任务名: str = None, 成功: bool = No
         return 结果.失败("组内完成失败", str(异常), 来源="并发控制")
 
 
-def 组内等待(*, 句柄: str = None, 超时秒: float = None) -> 结果:
+def 组内等待(*, 句柄: int = None, 超时秒: float = None) -> 结果:
     """等待并发组全部结束（轮询语义，非阻塞返回当前快照；超时返回仍在执行）。"""
     try:
         组对象, 原因 = _取(句柄, "并发组")
@@ -947,7 +947,7 @@ def 组内等待(*, 句柄: str = None, 超时秒: float = None) -> 结果:
         return 结果.失败("组内等待失败", str(异常), 来源="并发控制")
 
 
-def 查询并发组(*, 句柄: str = None) -> 结果:
+def 查询并发组(*, 句柄: int = None) -> 结果:
     """查询并发组状态。句柄空=列全部。"""
     try:
         if 句柄 is None:
