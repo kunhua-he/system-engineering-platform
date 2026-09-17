@@ -365,6 +365,23 @@ def 生成包声明(定义: dict[str, Any], 包id: str, 包名称: str, 包类�
     return json.dumps(声明, ensure_ascii=False, indent=1)
 
 
+def _默认值文本(值: Any) -> str:
+    """把能力定义里的默认值写成 Python 字面量文本（中文工程口径：空值写 `无`）。"""
+    if 值 is None:
+        # 直接写 `None`（与全仓既有注册表同形）；平台没有 `无` 这个常量，
+        # 写 `无` 会让注册入口在装配期 NameError（2026-09-18 实测踩到）。
+        return "None"
+    if 值 is True:
+        return "真"
+    if 值 is False:
+        return "假"
+    if isinstance(值, str):
+        return json.dumps(值, ensure_ascii=False)
+    if isinstance(值, (list, dict)):
+        return json.dumps(值, ensure_ascii=False)
+    return repr(值)
+
+
 def 生成注册入口(定义: dict[str, Any], 包id: str, 实现模块: str) -> str:
     """生成 __init__.py 注册入口（含 注册能力 函数）。"""
     能力列表 = 提取能力列表(定义)
@@ -374,7 +391,18 @@ def 生成注册入口(定义: dict[str, Any], 包id: str, 实现模块: str) ->
     for 能力 in 能力列表:
         能力id = 能力["能力id"]
         函数名 = 能力id.split(".")[-1]
-        参数行 = ", ".join(f'"{参数["名称"]}"' for 参数 in 能力.get("参数", []))
+        # 参数表**必须带全四要素**（名称/类型/必填/默认值）。
+        # ★ 原实现只输出名字（`参数=["任务", "项目根"]`），导致注册口径缺「类型/必填/默认值」，
+        #   在发布门禁「契约声明一致（注册口径）」里沉淀成漏声明（2026-09-18 实测：
+        #   全仓 42 条不一致，其中 23 条是新建模块因本行只发名字而漏声明）。
+        #   类型/必填/默认值在 `能力定义.json` 里是**权威且齐全**的，生成器没有理由不产出它们。
+        参数行 = ",\n".join(
+            '            {"名称": %s, "类型": %s, "必填": %s, "默认值": %s}'
+            % (json.dumps(str(参数.get("名称", "")), ensure_ascii=False),
+               json.dumps(str(参数.get("类型", "")), ensure_ascii=False),
+               "真" if 参数.get("必填") else "假",
+               _默认值文本(参数.get("默认值")))
+            for 参数 in 能力.get("参数", []))
         说明 = 能力.get("说明", "")
         返回 = 能力.get("返回", "结果")
         导入行表.append(f"from {实现模块} import {函数名}")
@@ -384,7 +412,9 @@ def 生成注册入口(定义: dict[str, Any], 包id: str, 实现模块: str) ->
             能力id="{能力id}",
             包id="{包id}",
             实现函数={函数名},
-            参数=[{参数行}],
+            参数=[
+{参数行}
+            ],
             返回="{返回}",
             说明="{说明}",
         )
@@ -398,6 +428,7 @@ def 生成注册入口(定义: dict[str, Any], 包id: str, 实现模块: str) ->
 from __future__ import annotations
 
 from 公共契约.能力契约.契约 import 能力实现
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 {导入行}
 
