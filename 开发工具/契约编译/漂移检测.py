@@ -798,7 +798,7 @@ def _注解可接受(形状: str, 期望集: set[str]) -> bool:
     """
     文本 = str(形状).strip()
     if not 文本:
-        return False
+        return 假
     # ① 中文别名：走编译器同一张表（唯一源，不另列）
     try:
         from 开发工具.契约编译.能力定义编译器 import 易语言类型别名
@@ -821,7 +821,7 @@ def _注解可接受(形状: str, 期望集: set[str]) -> bool:
     #    故「别名归一结果」与「契约类型名」相等也算一致（判据两侧的命名口径不同，
     #    一边是 Python/别名写法、一边是平台类型名，必须在这条线上汇合）。
     if 文本 in 期望集:
-        return True
+        return 真
     return bool(候选 & 期望集)
 
 
