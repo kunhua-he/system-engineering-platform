@@ -436,8 +436,14 @@ def 连接LLM(模型: str = None, 提供者: str = None, 部署形态: str = Non
             "启动器": 启动器, "模型大小字节": 模型大小字节, "url": url, "api_key": api_key,
             "上下文长度": 上下文长度, "协议": 协议, "额外请求头": 额外请求头}
     if 形态 == "本地" and 本地路径:
+        # 2026-09-17 修复（P0·阻塞生产）：原来 参数 只传了「协议」，调用方给的
+        # 「上下文长度」在这一层就被丢掉 —— 于是下游 _构建本地启动命令 取不到它，
+        # llama-server 永远以 -c 8192 启动。实测后果：逐字稿精校的裁决窗口输入
+        # （证据包+提示词+底稿）远超 8192 tokens，模型回 500
+        # `Context size has been exceeded.`，而调用方只看到「模型 HTTP 返回 500」。
+        # 上下文长度是启动期参数，必须在这里带下去（协议一并保留）。
         return 启动本地模型(本地路径, 启动器, "LLM", 模型大小字节=模型大小字节,
-                           参数={"协议": 协议}, 超时秒=超时秒)
+                           参数={"协议": 协议, "上下文长度": 上下文长度}, 超时秒=超时秒)
     return _登记连接("LLM", 配置, 超时秒=超时秒)
 
 
@@ -655,7 +661,25 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
     二进制 = next((路径 for 路径 in 候选二进制 if 路径 and os.path.isfile(路径) and os.access(路径, os.X_OK)), "")
     if not 二进制:
         raise FileNotFoundError("未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
-    命令 = [二进制, "-m", 模型路径, "--port", str(端口), "--sleep-idle-seconds", "300", "-c", "8192", "-ngl", "99"]
+    # 2026-09-17 修复（P0·阻塞生产）：「上下文长度」参数原来收了不用 —— 启动命令里
+    # -c 是硬编码 8192。实测后果：直播逐字稿精校的裁决窗口输入（证据包 + 提示词 +
+    # 底稿，实测单个窗口底稿 2400+ 字符）远超 8192 tokens，llama-server 直接回
+    # 500 `Context size has been exceeded.`，而调用方只看到
+    # 「模型调用失败: 模型 HTTP 返回 500」—— 极易误判成提示词或模型能力问题
+    # （实测绕了两轮：先怀疑思考模式、再怀疑参数没透传）。
+    # 现在按调用方给的 上下文长度 启动；未给或非法则保持原默认 8192（行为不变）。
+    _上下文 = 参数.get("上下文长度")
+    if isinstance(_上下文, bool) or not isinstance(_上下文, (int, str)):
+        _上下文 = 8192
+    else:
+        try:
+            _上下文 = int(_上下文)
+        except (TypeError, ValueError):
+            _上下文 = 8192
+    if _上下文 <= 0:
+        _上下文 = 8192
+    命令 = [二进制, "-m", 模型路径, "--port", str(端口), "--sleep-idle-seconds", "300",
+            "-c", str(_上下文), "-ngl", "99"]
     if 模型类型 == "向量":
         命令.extend(["--pooling", "cls", "--embeddings"])
     elif 模型类型 == "重排":
