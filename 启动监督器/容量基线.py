@@ -2,6 +2,7 @@
 P1-16 仅标准库中文语义；采样全真实，ps 不可用返回错误码；超限处理真实执行并追加 JSON Lines 证据，连续超限达阈值熔断。"""
 from __future__ import annotations
 from 公共契约.运行时 import 平台适配
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 import json, os, subprocess, sys, tempfile, threading, time
 from pathlib import Path
@@ -71,13 +72,19 @@ def 采样临时目录(目录) -> dict:
 
 
 class 容量基线:
-    """声明基线→实测采样→对比超限→超限处理链（拒绝/排空/释放/证据/熔断）。"""
+    """声明基线→实测采样→对比超限→超限处理链（拒绝/排空/释放/证据/熔断）。
+
+    证据文件缺省根一律经唯一解析器 `公共契约/运行时/运行缓存.解析运行缓存根` 取：
+    源码态回落 `<系统根>/工程缓存`（与旧写法**逐字相同**），制品态改落平台受管缓存。
+    裸拼 `工程缓存` 在制品态就是把证据写进不可变制品——2026-09-17 伪制品布局实测：
+    旧写法真在 `<制品>/平台客户端/工程缓存/启动监督器/` 下建目录并追加证据行。
+    """
 
     def __init__(self, 证据文件=None, 临时目录=None, *, ps命令: str | None = None, 熔断阈值: int = 3, 排空超时秒: float = 10.0) -> None:
         self._基线: dict[str, Any] = {}
         self._证据文件 = (Path(证据文件) if 证据文件
-                         else Path(__file__).resolve().parents[1]
-                         / "工程缓存" / "启动监督器" / "容量基线证据.jsonl")
+                         else 解析运行缓存根(Path(__file__).resolve().parents[1])
+                         / "启动监督器" / "容量基线证据.jsonl")
         self._临时目录 = str(临时目录) if 临时目录 else tempfile.gettempdir()
         self._ps命令, self._熔断阈值, self._排空超时秒 = ps命令, max(1, int(熔断阈值)), float(排空超时秒)
         self._锁 = threading.Lock()
