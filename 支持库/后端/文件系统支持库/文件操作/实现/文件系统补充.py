@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import os
 import pathlib
 import shutil
+import tempfile
 import zipfile
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -47,10 +49,15 @@ def 搜索文件(目录: str = None, 通配符: str = None, 递归: bool = None)
 
 def 追加写入(路径: str = None, 内容: str = None,
              允许危险路径: bool = False) -> 结果:
-    """追加文本到文件末尾。返回 {路径, 追加字节数}（显式放行危险路径时加 危险路径放行 标注）。
+    """追加文本到文件末尾。返回 {路径, 追加字节数, 追加字符数}（显式放行危险路径时加 危险路径放行 标注）。
 
     危险路径护栏：追加=改变文件内容，默认拒绝命中危险路径判据的目标；
     允许危险路径=真 显式放行并如实标注。
+
+    计数口径：`追加字节数` **实写字节数**（按 utf-8 编码后的长度），
+    `追加字符数` 为 `str` 字符个数 —— 修掉「字段名叫字节、值其实是字符」的
+    名实不符（中文时旧实现 报2 实际6）。两个字段取同一份字节缓冲的
+    len(buf) 与 len(str)，不依赖 `write()` 返回值（文本流返回字符数，不是字节数）。
     """
     if not isinstance(路径, str) or not 路径.strip():
         return 结果.失败("参数不合法", "路径必须是非空字符串", 来源="文件系统")
@@ -59,14 +66,20 @@ def 追加写入(路径: str = None, 内容: str = None,
     拦截 = 拦截危险路径(路径, 允许危险路径, "追加写入")
     if 拦截 is not None:
         return 拦截
+    文本 = str(内容)
     try:
-        with open(路径, "a", encoding="utf-8") as f:
-            字节数 = f.write(str(内容))
-        结果值: dict = {"路径": 路径, "追加字节数": 字节数}
+        字节缓冲 = 文本.encode("utf-8")
+        with open(路径, "ab") as f:
+            f.write(字节缓冲)
+        结果值: dict = {"路径": 路径,
+                      "追加字节数": len(字节缓冲),
+                      "追加字符数": len(文本)}
         标注 = 放行标注(路径)
         if 标注:
             结果值["危险路径放行"] = 标注
         return 结果.成功结果(结果值)
+    except UnicodeEncodeError as 错误:
+        return 结果.失败("写入失败", f"内容无法按 utf-8 编码: {错误}", 来源="文件系统")
     except OSError as 错误:
         return 结果.失败("写入失败", str(错误), 来源="文件系统")
 
@@ -77,6 +90,12 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
 
     危险路径护栏只判**目标路径**（源路径只读，不构成系统性破坏）；
     允许危险路径=真 显式放行并如实标注。
+
+    不静默截断既有目标（与 解压文件 同一口径）：写入前先备份既有目标 → 写临时 zip
+    → `os.replace` 原子替换；失败时删临时件并**还原既有目标**（旧内容逐字不变，
+    既不截断也不丢失）。自包含防护：目标路径在源目录内时，从挑选出的源文件清单里
+    剔除目标自身（按 resolve 后的真实路径比对，等价于旧行为的「目标与源同路径」也
+    一并拦下），避免归档把自己写进自己。失败不留半截 zip。
     """
     if not isinstance(源路径, str) or not 源路径.strip():
         return 结果.失败("参数不合法", "源路径必须是非空字符串", 来源="文件系统")
@@ -87,19 +106,71 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
     拦截 = 拦截危险路径(目标路径, 允许危险路径, "压缩文件目标路径")
     if 拦截 is not None:
         return 拦截
+    目标 = pathlib.Path(目标路径).expanduser()
     try:
+        目标真实 = 目标.resolve()
+    except OSError as 错误:
+        return 结果.失败("压缩失败", str(错误), 来源="文件系统")
+    if os.path.isfile(源路径) and pathlib.Path(源路径).resolve() == 目标真实:
+        return 结果.失败("参数不合法", "源路径与目标路径是同一个文件，压缩会自包含/自毁",
+                        来源="文件系统")
+
+    # 先挑源文件清单（含自包含排除），再动目标路径上的任何东西。
+    # 遍历基用 abspath（不解析符号链接）：保证 os.walk 产出的路径与「父目录」
+    # 同形态，成员名与旧行为逐字一致（解析过的那份只在做自包含比对时用）。
+    待压缩列表: list[tuple[str, str]] = []
+    try:
+        if os.path.isfile(源路径):
+            待压缩列表.append((源路径, os.path.basename(源路径)))
+        else:
+            遍历基 = os.path.abspath(源路径)
+            父目录 = os.path.dirname(遍历基)
+            for 根, 子目录, 文件 in os.walk(遍历基):
+                子目录[:] = [
+                    名 for 名 in 子目录
+                    if not (pathlib.Path(根) / 名).resolve().is_relative_to(目标真实)
+                ]
+                for 名 in 文件:
+                    完整路径 = os.path.join(根, 名)
+                    try:
+                        真实路径 = pathlib.Path(完整路径).resolve()
+                    except OSError:
+                        continue
+                    if 真实路径 == 目标真实:
+                        continue  # 不把目标 zip 自己写进自己（写入途中边写边读）
+                    相对路径 = os.path.relpath(完整路径, 父目录)
+                    待压缩列表.append((完整路径, 相对路径))
+    except OSError as 错误:
+        return 结果.失败("压缩失败", str(错误), 来源="文件系统")
+
+    try:
+        目标.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as 错误:
+        return 结果.失败("压缩失败", str(错误), 来源="文件系统")
+
+    临时目录 = None
+    临时压缩件 = None
+    既有目标备份件 = None
+    try:
+        文本目标 = str(目标)
+        句柄, 临时压缩件 = tempfile.mkstemp(
+            dir=str(目标.parent), prefix=".__压缩_", suffix=".tmp")
+        os.close(句柄)
         条目数 = 0
-        with zipfile.ZipFile(目标路径, "w", zipfile.ZIP_DEFLATED) as 压缩包:
-            if os.path.isfile(源路径):
-                压缩包.write(源路径, os.path.basename(源路径))
-                条目数 = 1
-            else:
-                for 根, 子目录, 文件 in os.walk(源路径):
-                    for f in 文件:
-                        完整路径 = os.path.join(根, f)
-                        相对路径 = os.path.relpath(完整路径, os.path.dirname(源路径))
-                        压缩包.write(完整路径, 相对路径)
-                        条目数 += 1
+        with zipfile.ZipFile(临时压缩件, "w", zipfile.ZIP_DEFLATED) as 压缩包:
+            for 完整路径, 相对路径 in 待压缩列表:
+                压缩包.write(完整路径, 相对路径)
+                条目数 += 1
+        if 目标.is_symlink():
+            目标.unlink()
+        if 目标.exists():
+            # 与 解压文件 同一口径：绝不静默截断既有目标 —— 先备份再原子替换。
+            临时目录 = pathlib.Path(tempfile.mkdtemp(
+                dir=str(目标.parent), prefix=".__压缩备份_"))
+            既有目标备份件 = 临时目录 / "旧目标.zip"
+            shutil.move(文本目标, str(既有目标备份件))
+        os.replace(临时压缩件, 文本目标)
+        临时压缩件 = None
         压缩结果: dict = {"目标路径": 目标路径, "条目数": 条目数}
         压缩标注 = 放行标注(目标路径)
         if 压缩标注:
@@ -107,6 +178,19 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
         return 结果.成功结果(压缩结果)
     except Exception as 错误:
         return 结果.失败("压缩失败", str(错误), 来源="文件系统")
+    finally:
+        # 失败路径清理 + 既有目标还原（成功路径下 临时压缩件 已换成 None，不动成品）。
+        if 临时压缩件 is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(临时压缩件)
+        if 既有目标备份件 is not None:
+            try:
+                if 既有目标备份件.exists() and not 目标.exists():
+                    shutil.move(str(既有目标备份件), str(目标))
+            except OSError:
+                pass
+        if 临时目录 is not None:
+            shutil.rmtree(临时目录, ignore_errors=True)
 
 
 # 解压入参上限默认值（口径与 运行核心/运行环境管理器/远程镜像.py 的
@@ -137,27 +221,62 @@ def _解压上限(值, 默认值: float, 名称: str) -> float:
     return 值
 
 
-def _清理解压半成品(目标根: pathlib.Path, 新建目标目录: bool, 已写路径列表: list) -> None:
-    """解压失败回滚：本次新建的目录整棵删除，否则只删本次写入的文件与空目录。
+def _清理解压落盘中转件(目标根: pathlib.Path, 新建目标目录: bool,
+                    已有文件备份表: dict, 已写文件列表: list,
+                    已建目录列表: list) -> bool:
+    """解压失败回滚：绝不删除/截断调用方原有文件。返回 是否还原成功。
 
-    只删「自己这一次写的」东西：目标目录是调用方既有目录时，删除范围不越出
-    本次写入路径的父链，且仅删空目录，不碰调用方的既有内容。
+    - 目标目录本次新建：整棵删除（清完不留空壳）；
+    - 目标目录是调用方既有目录：范围限定在「本次新建的」东西 —— 本次新建的文件
+      `unlink`、本次新建的空目录 `rmdir`（自底向上，非空即停）；
+    - **覆盖过调用方既有文件成员**：按写前备份表逐字还原（`os.replace` 回原路径）；
+    - 每次删/还原后剔除同路径的既有空目录记录，避免把调用方原目录压成空壳。
+
+    关键：删/还原的口径来自「写前是否已存在」的实测快照，不来自「已写路径列表」——
+    后者在旧实现里既混着调用方原有文件，又只在写完后才登记，失败即把原文件删掉。
     """
+
+    def 剔除空目录记录(路径: pathlib.Path) -> None:
+        try:
+            已建目录列表.remove(路径)
+        except ValueError:
+            pass
+
     if 新建目标目录:
         shutil.rmtree(目标根, ignore_errors=True)
-        return
-    for 路径 in sorted(已写路径列表, key=lambda 项: len(项.parts), reverse=True):
+        return True
+    还原成功 = True
+    for 备份路径, 原路径 in 已有文件备份表.items():
+        try:
+            if 备份路径.exists():
+                os.replace(str(备份路径), str(原路径))
+            else:
+                还原成功 = False
+        except OSError:
+            还原成功 = False
+        else:
+            剔除空目录记录(原路径.parent)
+    for 路径 in sorted(已写文件列表, key=lambda 项: len(项.parts), reverse=True):
         try:
             路径.unlink()
         except OSError:
             continue
-        上级 = 路径.parent
-        while 上级 != 目标根 and 目标根 in 上级.parents:
-            try:
-                上级.rmdir()
-            except OSError:
-                break
-            上级 = 上级.parent
+        剔除空目录记录(路径.parent)
+    for 目录 in sorted(已建目录列表, key=lambda 项: len(项.parts), reverse=True):
+        try:
+            目录.rmdir()
+        except OSError:
+            continue
+        try:
+            已建目录列表.remove(目录)
+        except ValueError:
+            pass
+    for 备份路径 in 已有文件备份表:
+        保留目录 = 备份路径.parent
+        if 保留目录.exists() and any(保留目录.iterdir()):
+            continue
+        shutil.rmtree(保留目录, ignore_errors=True)
+    return 还原成功
 
 
 def 解压文件(源路径: str = None, 目标目录: str = None,
@@ -177,8 +296,14 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
     （zipfile 自身也按声明大小与 CRC 校验解码，本检查是第二道兜底，实测由
     归档声明/CRC 不一致先触发）。
 
-    失败不留半成品：上限与路径校验全部在落盘之前完成；落盘中途失败（含归档
+    失败不留落盘中转件：上限与路径校验全部在落盘之前完成；落盘中途失败（含归档
     声明、CRC 与实际不符）会回滚本次写入的文件与空目录。
+
+    绝不丢失调用方原有内容（本包统一口径，与 压缩文件 一致「不静默截断既有文件」）：
+    落盘前先记「写前是否已存在」的实测快照 —— 新文件写同目录临时件再 `os.replace`
+    原子落位；**覆盖既有文件**则先把既有内容整体搬进本次备份目录（同卷 rename），
+    失败按备份表逐字还原回原路径。因此「本次写入的」与「原本就在的」严格可分，
+    回滚只删/只还原自己这一趟动过的东西，调用方原文件与既有目录都不会被删或被截断。
     """
     if not isinstance(源路径, str) or not 源路径.strip():
         return 结果.失败("参数不合法", "源路径必须是非空字符串", 来源="文件系统")
@@ -197,11 +322,46 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
         return 结果.失败("参数不合法", str(错误), 来源="文件系统")
     try:
         源包字节 = os.path.getsize(源路径)
+        源包真实 = pathlib.Path(源路径).resolve()
     except OSError as 错误:
         return 结果.失败("解压失败", str(错误), 来源="文件系统")
     目标根 = pathlib.Path(目标目录).resolve()
     新建目标目录 = False
-    已写路径列表 = []
+    已写文件列表 = []          # 本次新建（写前不存在）的文件，回滚只删这些
+    已建目录列表 = []          # 本次新建的目录，回滚只删这些
+    已有文件备份表: dict = {}   # 目标路径 → 备份路径：写前就存在、被本次覆盖的调用方文件
+    临时备份目录 = None        # 本次备份目录（成功即删；回滚不成功时保留，供取证还原）
+
+    def 建目录并登记(目录: pathlib.Path) -> None:
+        """mkdir(parents=True) 并登记「本次新建」的目录，回滚时只删登记过的。"""
+        待登记 = []
+        当前 = 目录
+        while 当前 != 目标根 and 目标根 in 当前.parents:
+            待登记.append(当前)
+            当前 = 当前.parent
+        for 项 in reversed(待登记):
+            if not 项.exists():
+                项.mkdir(parents=True, exist_ok=True)
+                已建目录列表.append(项)
+
+    def 备份既有目标(目标: pathlib.Path) -> None:
+        """写前把调用方既有目标（文件或软链接）整体搬进本次备份目录（同卷 rename）。
+
+        搬走而不是复制：既有字节原样保留在备份里，回滚时 `os.replace` 搬回原路径
+        即为逐字还原；成功路径下整个备份目录删除，不留残留。搬不动就直接抛错交给
+        回滚口径 —— 绝不静默截断既有文件（等价 `原子写入` 的「先写临时再替换」，
+        这里受制于分块落盘，改为「先搬备份再替换」）。
+        """
+        nonlocal 临时备份目录
+        if 目标 in 已有文件备份表.values():
+            return   # 同一目标本趟已备份过（归档里同名成员重复）→ 真原件已在备份里，不再搬
+        if 临时备份目录 is None:
+            临时备份目录 = pathlib.Path(tempfile.mkdtemp(
+                dir=str(目标根), prefix=".__解压备份_"))
+        备份路径 = 临时备份目录 / f"{len(已有文件备份表)}__.bak"
+        shutil.move(str(目标), str(备份路径))
+        已有文件备份表[备份路径] = 目标   # 键＝备份件，值＝原路径（回滚按此还原）
+
     try:
         with zipfile.ZipFile(源路径, "r") as 压缩包:
             成员列表 = 压缩包.infolist()
@@ -234,6 +394,13 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
                     return 结果.失败("路径越界",
                                     f"归档成员路径逃出目标目录: {成员.filename}",
                                     来源="文件系统")
+                # 源包自己落在目标根内时，成员命中源包 = 解压会把源包自己删掉
+                # （源包被当成既有文件备份、成功后再随备份目录删除）→ 先拦下。
+                if 目标 == 源包真实:
+                    return 结果.失败(
+                        "参数不合法",
+                        f"解压源包位于目标目录内且归档成员会覆盖源包自身: {成员.filename}",
+                        来源="文件系统")
                 计划列表.append((成员, 目标))
             if not 目标根.exists():
                 目标根.mkdir(parents=True)
@@ -241,34 +408,52 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
             写入总字节 = 0
             for 成员, 目标 in 计划列表:
                 if 成员.is_dir():
-                    目标.mkdir(parents=True, exist_ok=True)
+                    建目录并登记(目标)
                     continue
-                目标.parent.mkdir(parents=True, exist_ok=True)
+                if 目标.parent != 目标根:
+                    建目录并登记(目标.parent)
                 本次字节 = 0
-                with 压缩包.open(成员, "r") as 读入, open(目标, "wb") as 写出:
-                    while True:
-                        数据块 = 读入.read(解压分块字节)
-                        if not 数据块:
-                            break
-                        本次字节 += len(数据块)
-                        if 写入总字节 + 本次字节 > 上限字节:
-                            raise _超过上限(
-                                f"实际解压 {写入总字节 + 本次字节} 字节超过上限 {上限字节}"
-                                f"（归档声明与实写不符）")
-                        写出.write(数据块)
-                已写路径列表.append(目标)
+                已存在 = 目标.is_symlink() or 目标.exists()
+                已有目标文件 = 已存在 and not 目标.is_dir()
+                if 已存在:
+                    备份既有目标(目标)   # 先搬走调用方既有内容，绝不原地截断
+                # 新文件写同目录临时件再原子落位（口径同 本包 原子写入）：
+                # 落盘中途失败不会有半截正式产物，回滚只删登记过的临时件。
+                落盘中转件 = 目标.parent / f".__解压_{len(已写文件列表)}_{目标.name}.tmp"
+                已写文件列表.append(落盘中转件)
+                with 压缩包.open(成员, "r") as 读入:
+                    with open(落盘中转件, "wb") as 写出:
+                        while True:
+                            数据块 = 读入.read(解压分块字节)
+                            if not 数据块:
+                                break
+                            本次字节 += len(数据块)
+                            if 写入总字节 + 本次字节 > 上限字节:
+                                raise _超过上限(
+                                    f"实际解压 {写入总字节 + 本次字节} 字节超过上限 {上限字节}"
+                                    f"（归档声明与实写不符）")
+                            写出.write(数据块)
+                os.replace(str(落盘中转件), str(目标))
+                已写文件列表.remove(落盘中转件)
+                if not 已有目标文件:
+                    已写文件列表.append(目标)   # 本次新建的文件：回滚只删这些
                 写入总字节 += 本次字节
         解压结果: dict = {"目标目录": 目标目录, "条目数": len(成员列表)}
         解压标注 = 放行标注(目标目录)
         if 解压标注:
             解压结果["危险路径放行"] = 解压标注
+        if 临时备份目录 is not None:
+            shutil.rmtree(临时备份目录, ignore_errors=True)  # 成功：备份盘随用随删
         return 结果.成功结果(解压结果)
     except _超过上限 as 错误:
-        _清理解压半成品(目标根, 新建目标目录, 已写路径列表)
+        _清理解压落盘中转件(目标根, 新建目标目录, 已有文件备份表,
+                        已写文件列表, 已建目录列表)
         return 结果.失败("超过解压上限", str(错误), 来源="文件系统")
     except Exception as 错误:
-        _清理解压半成品(目标根, 新建目标目录, 已写路径列表)
-        return 结果.失败("解压失败", str(错误), 来源="文件系统")
+        还原成功 = _清理解压落盘中转件(目标根, 新建目标目录, 已有文件备份表,
+                                   已写文件列表, 已建目录列表)
+        提示 = "" if 还原成功 else "（被覆盖的既有文件未能全部还原，备份保留在目标目录下 .__解压备份_* 内）"
+        return 结果.失败("解压失败", f"{错误}{提示}", 来源="文件系统")
 
 
 def 获取文件权限(路径: str = None) -> 结果:
