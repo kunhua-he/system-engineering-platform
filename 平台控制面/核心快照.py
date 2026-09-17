@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from 平台控制面.包仓库 import 规范化相对路径
 from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证, 内容摘要
+from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 
 class 核心快照管理:
@@ -25,7 +26,10 @@ class 核心快照管理:
 
     def __init__(self, 状态, 快照根目录: Path | None = None) -> None:
         self.状态 = 状态
-        self.快照根目录 = Path(快照根目录) if 快照根目录 else Path("工程缓存/核心快照")
+        # 缺省值经唯一解析器（禁止 cwd 依赖的裸相对 `工程缓存/核心快照`）：制品进程 cwd 是
+        # 制品目录，裸相对值会把快照写进不可变制品；源码态回落 `<系统根>/工程缓存`（同旧值）。
+        self.快照根目录 = Path(快照根目录) if 快照根目录 else \
+            解析运行缓存根(Path(__file__).resolve().parents[1]) / "核心快照"
         self.快照根目录.mkdir(parents=True, exist_ok=True)
 
     def 创建快照(self, *, 运行核心版本: str, 前端核心版本: str, 后端核心版本: str,

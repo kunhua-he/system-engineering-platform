@@ -264,5 +264,8 @@ def 默认运行库路径() -> str:
     环境 = os.environ.get("系统库运行库", "").strip()
     if 环境:
         return 环境
-    系统根 = Path(__file__).resolve().parents[3]
-    return str(系统根 / "工程缓存" / "运行数据" / "底座运行.db")
+    # 落点经唯一解析器（禁止裸拼 `工程缓存`）：制品进程里 `parents[3]` = 制品内 `平台客户端`，
+    # 裸拼会把运行库建进不可变制品；源码态回落 `<系统根>/工程缓存/运行数据`（与旧值逐字一致）。
+    from 公共契约.运行时.运行缓存 import 解析运行数据根
+
+    return str(解析运行数据根(Path(__file__).resolve().parents[3]) / "底座运行.db")
