@@ -23,13 +23,14 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.组件合规.合规测试包 import 组件合规
 from 支持库.后端.组件规范支持库 import 生成完整性摘要
 from 开发工具.发布门禁.运行发布门禁 import 执行逐包权威合规
 
 破坏能力1 = {
     "能力id": "破坏模块.破坏能力1", "版本": "1.0.0", "说明": "门禁收敛破坏能力1",
-    "参数": [{"名称": "文本", "类型": "文本", "必填": True,
+    "参数": [{"名称": "文本", "类型": "文本", "必填": 真,
               "默认值": None, "说明": "待处理文本"}],
     "返回": {"类型": "结果", "值结构": {}},
     "错误码": ["参数不合法"],
@@ -142,7 +143,7 @@ class Test发布门禁收敛(unittest.TestCase):
             通过, 证据表 = 执行逐包权威合规([模块目录])
             self.assertTrue(通过, 证据表)
             self.assertEqual(证据表[0][3], 13, "逐包证据必须为 13/13")
-            self.assertEqual(证据表[0][2], True)
+            self.assertEqual(证据表[0][2], 真)
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 
@@ -216,7 +217,7 @@ class Test发布门禁收敛(unittest.TestCase):
             名称, 失败场景, 通过标记, 通过数 = 证据表[0]
             self.assertEqual(名称, "破坏模块")
             self.assertEqual(失败场景, "", "通过包失败场景必须为空")
-            self.assertEqual(通过标记, True)
+            self.assertEqual(通过标记, 真)
             self.assertEqual(通过数, 13)
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
@@ -274,17 +275,24 @@ class Test发布门禁收敛(unittest.TestCase):
 
 
     def test_英文命名扫描覆盖全部正式目录(self) -> None:
-        """漏扫的正式层放入英文函数时必须被门禁发现。"""
+        """漏扫的正式层放入英文函数时必须被门禁发现。
+
+        **样本用真越界名，不用 `main`**：`main` 是 Python 脚本入口惯例名
+        （外部工具/IDE/`python -m` 都按它找入口），已在判据的白名单内，
+        **不再算越界**（2026-09-18 按 13.1 补白名单：与 `__xxx__` 同族）。
+        本用例的目的是「验证扫描面覆盖了该正式层」，样本换成真英文业务名即可，
+        动机不变。
+        """
         from 开发工具.发布门禁 import 运行发布门禁 as 门禁
         临时根 = Path(tempfile.mkdtemp(prefix="门禁英文边界_"))
         try:
             (临时根 / "启动监督器").mkdir()
             (临时根 / "启动监督器" / "越界.py").write_text(
-                "def main():\n    return 1\n", encoding="utf-8")
+                "def handle_request():\n    return 1\n", encoding="utf-8")
             with patch.object(门禁, "系统根", 临时根):
                 结果 = 门禁._扫描英文函数命名()
             self.assertIn("越界.py", 结果)
-            self.assertIn("main", 结果)
+            self.assertIn("handle_request", 结果)
         finally:
             shutil.rmtree(临时根, ignore_errors=True)
 
