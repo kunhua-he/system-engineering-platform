@@ -18,7 +18,9 @@
   未配置则显式直连（禁用环境代理变量），地址一律来自配置、不硬编码。
 - 下载防篡改全程：下载（大小上限）→ 解包（拒绝 绝对路径/../符号链接
   逃逸，解包后复核落盘边界）→ 复校验（制品摘要/文件清单 sha256）→
-  原子落盘（fsync + os.replace）。任一失败 → 镜像下载失败，不落半成品。
+  原子落盘（fsync + 旧环境改名让位 + os.replace 顶位 + 清理让位）。
+  任一失败 → 镜像下载失败，不落半成品；顶位失败一律回滚，任一时刻磁盘上
+  至少有一个可用环境（上一代环境不会与新环境同时消失）。
 - 默认关闭：启用=false 时本模块不参与 确保环境 流程，本地缓存行为零变化。
 - 制品摘要 = 环境目录稳定摘要（sha256 文件路径+内容，排除易变文件），
   用于下载后防篡改比对：下载内容与镜像声明不符 → 拒绝。
@@ -35,11 +37,13 @@ import shutil
 import tarfile
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.诊断.忽略记录 import 记录忽略
 from 支持库.适配层.密码签名提供者 import 签名, 验证签名
 
 镜像不可用 = "镜像不可用"
@@ -482,19 +486,59 @@ def 同步落盘(制品目录: Path) -> None:
 
 
 def 原子落盘(临时目录: Path, 目标目录: Path) -> None:
-    """临时目录 fsync 落盘 → os.replace 原子改名；失败清理临时目录并抛出。
+    """临时目录 fsync 落盘 → 旧环境改名让位 → 新环境顶位 → 清理让位目录。
 
-    半成品（未 fsync/未替换成功）不会以 目标目录 名义出现；
-    失败时清理临时目录，由调用方回退本地构建。
+    口径：**任一时刻磁盘上至少有一个可用环境**。
+
+    - 旧环境不删除，只改名到同级「让位目录」（``.<目标名>.让位_<进程号>_<随机>``）；
+      新环境 ``os.replace`` 顶位失败时把让位目录改回原名（回滚），旧环境原样可用。
+    - 回滚本身失败（父目录不可写等）时**不删除让位目录**：旧环境数据仍在磁盘上，
+      并在抛出的错误说明里点明实际位置，同时经 ``记录忽略`` 留痕（第 3 条）。
+    - 只在「新环境已顶位成功」之后才清理让位目录；清理失败不影响新环境可用，只留痕。
+    - 半成品（未 fsync/未顶位成功）不会以 目标目录 名义出现；失败时清理临时目录。
     """
     临时目录 = Path(临时目录)
     目标目录 = Path(目标目录)
     try:
         同步落盘(临时目录)
-        目标目录.parent.mkdir(parents=True, exist_ok=True)
-        if 目标目录.exists():
-            shutil.rmtree(目标目录, ignore_errors=True)
-        os.replace(临时目录, 目标目录)
     except OSError:
         shutil.rmtree(临时目录, ignore_errors=True)
         raise
+    目标目录.parent.mkdir(parents=True, exist_ok=True)
+    让位目录: Path | None = None
+    if 目标目录.exists():
+        让位目录 = 目标目录.parent / (
+            f".{目标目录.name}.让位_{os.getpid()}_{uuid.uuid4().hex[:8]}")
+        try:
+            os.replace(目标目录, 让位目录)  # 旧环境改名让位：不删除，可回滚
+        except OSError as 错误:
+            shutil.rmtree(临时目录, ignore_errors=True)
+            raise OSError(
+                f"旧环境让位失败（旧环境原样保留在 {目标目录}）: {错误}") from 错误
+    try:
+        os.replace(临时目录, 目标目录)
+    except OSError as 错误:
+        shutil.rmtree(临时目录, ignore_errors=True)
+        回滚说明 = _回滚让位(让位目录, 目标目录) if 让位目录 is not None else "无旧环境需要回滚"
+        raise OSError(f"新环境顶位失败: {错误}；{回滚说明}") from 错误
+    if 让位目录 is not None:
+        _清理让位(让位目录)
+
+
+def _回滚让位(让位目录: Path, 目标目录: Path) -> str:
+    """把让位目录改回 目标目录；失败则保留让位目录并把位置写进说明与忽略记录。"""
+    try:
+        目标目录.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(让位目录, 目标目录)
+    except OSError as 错误:
+        记录忽略("远程镜像.原子落盘.回滚让位", 错误)
+        return (f"回滚失败（旧环境仍在 {让位目录}，请人工改回 {目标目录}）: {错误}")
+    return "已回滚，旧环境已复位到目标路径"
+
+
+def _清理让位(让位目录: Path) -> None:
+    """新环境顶位成功后清理让位目录；失败只留痕，不影响新环境可用。"""
+    try:
+        shutil.rmtree(让位目录)
+    except OSError as 错误:
+        记录忽略("远程镜像.原子落盘.清理让位", 错误)

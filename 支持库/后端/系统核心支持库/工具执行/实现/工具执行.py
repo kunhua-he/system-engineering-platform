@@ -11,6 +11,7 @@ import json
 import threading
 import time
 import uuid
+from collections import deque
 
 from 公共契约.基础类型.结果类型 import 结果
 
@@ -93,7 +94,7 @@ from 公共契约.运行时.运行缓存 import 解析运行数据根 as _解析
 _投递缓存连接 = None
 _投递缓存路径 = None
 _投递缓存锁 = threading.RLock()  # 独立于模块级 锁（不可重入，调用点已持有）
-投递降级记录表: list = []  # 关闭/切换连接时的异常留痕（不阻断主流程）
+投递降级记录表: deque[str] = deque(maxlen=1000)  # 关闭/切换连接时的异常留痕（不阻断主流程），有界保留 1000 条（照 模型连接器.py:64 口径）
 
 
 def _关闭投递连接() -> None:

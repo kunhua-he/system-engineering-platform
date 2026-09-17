@@ -18,6 +18,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from collections import deque
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
@@ -42,7 +43,7 @@ _连接锁 = threading.RLock()
 
 
 
-降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+降级记录表: deque[str] = deque(maxlen=1000)  # 尽力清理/降级场景的异常记录（不阻断主流程），有界保留 1000 条（照 模型连接器.py:64 口径）
 
 def _包申报超时() -> int:
     """读取本包 包声明.json 的 句柄超时秒（模块主动申报），缺省返回 默认超时秒。"""

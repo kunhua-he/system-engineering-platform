@@ -10,12 +10,13 @@ import json
 import os
 import platform
 import socket
+from collections import deque
 
 from 公共契约.基础类型.结果类型 import 结果
 
 
 
-降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+降级记录表: deque[str] = deque(maxlen=1000)  # 尽力清理/降级场景的异常记录（不阻断主流程），有界保留 1000 条（照 模型连接器.py:64 口径）
 
 def 获取操作系统信息() -> 结果:
     """操作系统信息。返回 {系统, 版本, 架构, 主机名, Python版本}。"""

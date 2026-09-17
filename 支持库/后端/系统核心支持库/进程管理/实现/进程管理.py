@@ -12,6 +12,7 @@ import socket
 import subprocess
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -29,7 +30,7 @@ from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 
 
-降级记录表: list[str] = []  # 尽力清理/降级场景的异常记录（不阻断主流程）
+降级记录表: deque[str] = deque(maxlen=1000)  # 尽力清理/降级场景的异常记录（不阻断主流程），有界保留 1000 条（照 模型连接器.py:64 口径）
 
 
 def _解析超时秒(超时秒, 默认秒: float | None, 留空语义: str) -> tuple[float | None, str]:
