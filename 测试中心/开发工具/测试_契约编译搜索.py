@@ -20,7 +20,7 @@ if str(项目根) not in sys.path:
 from 公共契约.包声明 import 加载声明文件
 from 开发工具.契约编译.能力定义编译器 import 编译能力定义, 生成能力契约
 from 开发工具.契约编译.聚合契约解析 import 解析聚合契约
-from 开发工具.能力搜索.能力搜索器 import 搜索公开能力, 搜索字段表
+from 开发工具.能力搜索.能力搜索器 import 搜索公开能力
 from 开发工具.说明书生成.说明书生成器 import _包契约表, 生成单包说明书
 
 十四字段 = (
@@ -148,13 +148,13 @@ class 编译器聚合输出测试(unittest.TestCase):
 
 
 class 搜索14字段测试(unittest.TestCase):
-    """能力搜索器 14 字段全覆盖（真实 模块库.OCR 等）。"""
+    """能力搜索器（转调）14 字段全覆盖（唯一实现腿 = 模块库.能力目录，真实 模块库.OCR 等）。"""
 
     def test_真实模块OCR搜索14字段全覆盖(self):
         结果 = 搜索公开能力(项目根, "OCR", 20)
         self.assertTrue(结果, "关键词 OCR 应有搜索结果")
         for 能力 in 结果:
-            for 字段 in 搜索字段表:
+            for 字段 in 十四字段:
                 self.assertIn(字段, 能力, f"{能力['能力id']} 缺字段 {字段}")
             文本 = json.dumps(能力, ensure_ascii=False)
             for 禁用 in ("未声明", "无调用示例"):
@@ -202,13 +202,16 @@ class 说明书复用测试(unittest.TestCase):
 
 
 class 重复解析删除确认测试(unittest.TestCase):
-    """重复解析逻辑已删除/委托，三模块复用唯一聚合契约解析。"""
+    """重复解析逻辑已删除/委托，模块复用唯一聚合契约解析。
+
+    注：`开发工具/能力搜索/能力搜索器.py` 已随 D-4 收口改为**转调**（不再解析契约），
+    故不在此文件表内；它的收口断言见 `检索唯一腿收口测试`。
+    """
 
     文件表 = (
         "开发工具/契约编译/能力定义编译器.py",
         "开发工具/契约编译/契约编译器.py",
         "开发工具/契约编译/漂移检测.py",
-        "开发工具/能力搜索/能力搜索器.py",
         "开发工具/说明书生成/说明书生成器.py",
     )
 
@@ -230,6 +233,83 @@ class 重复解析删除确认测试(unittest.TestCase):
     def test_契约编译器校验已委托(self):
         源码 = (项目根 / "开发工具/契约编译/契约编译器.py").read_text(encoding="utf-8")
         self.assertNotIn("缺少 能力id", 源码)
+
+
+class 检索唯一腿收口测试(unittest.TestCase):
+    """D-4 收口：能力检索只剩一条实现腿（模块库.能力目录），开发工具侧一律转调。
+
+    反向可验证：把任一处改回自行扫描声明，本类必红。
+    """
+
+    转调文件表 = (
+        "开发工具/能力搜索/能力搜索器.py",
+        "开发工具/开发入口.py",
+        "开发工具/统一能力入口/Agent查询/查询入口.py",
+    )
+    自建检索痕迹 = ("扫描目录(", "发现全部(", "rglob(", "解析聚合契约")
+
+    def test_能力搜索器不再自建检索实现(self):
+        from 开发工具.能力搜索 import 能力搜索器
+
+        源码 = (项目根 / "开发工具/能力搜索/能力搜索器.py").read_text(encoding="utf-8")
+        for 痕迹 in self.自建检索痕迹:
+            self.assertNotIn(痕迹, 源码, f"能力搜索器 仍在自建检索（命中 {痕迹}）")
+        self.assertEqual("能力目录.搜索能力", 能力搜索器.搜索能力id)
+
+    def test_开发入口搜索能力只转调(self):
+        源码 = (项目根 / "开发工具/开发入口.py").read_text(encoding="utf-8")
+        搜索段 = 源码.split("def 搜索能力", 1)[1].split("def 查看契约", 1)[0]
+        self.assertIn("能力搜索.能力搜索器 import", 搜索段, "开发入口.搜索能力 未转调唯一检索腿")
+        for 痕迹 in self.自建检索痕迹:
+            self.assertNotIn(痕迹, 搜索段, f"开发入口.搜索能力 仍自建检索（命中 {痕迹}）")
+
+    def test_查询入口搜索能力只转调(self):
+        源码 = (项目根 / "开发工具/统一能力入口/Agent查询/查询入口.py").read_text(encoding="utf-8")
+        搜索段 = 源码.split("def 搜索能力", 1)[1].split("def 查看包版本", 1)[0]
+        self.assertIn("能力搜索.能力搜索器 import", 搜索段, "查询入口.搜索能力 未转调唯一检索腿")
+        for 痕迹 in self.自建检索痕迹:
+            self.assertNotIn(痕迹, 搜索段, f"查询入口.搜索能力 仍自建检索（命中 {痕迹}）")
+
+    def test_三处转调结果同源且字段口径一致(self):
+        """三处入口拿到的记录必须同源：同一关键词的记录数与能力id完全一致。"""
+        from 开发工具 import 开发入口
+        from 开发工具.能力搜索.能力搜索器 import 搜索公开能力
+        from 开发工具.统一能力入口.Agent查询.查询入口 import 查询入口
+
+        关键词 = "能力目录.搜索能力"
+        直接结果 = 搜索公开能力(项目根, 关键词, 5)
+        开发入口结果 = 开发入口.搜索能力(关键词, 5)
+        查询结果 = 查询入口().搜索能力(关键词=关键词)
+        self.assertTrue(查询结果.成功, 查询结果.说明)
+        self.assertEqual([记录["能力id"] for 记录 in 直接结果],
+                         [记录["能力id"] for 记录 in 开发入口结果])
+        self.assertEqual([记录["能力id"] for 记录 in 直接结果],
+                         [记录["能力id"] for 记录 in 查询结果.数据])
+
+    def test_唯一能力腿失败时如实上报(self):
+        """能力腿失败不得静默降级成空列表：唯一腿报错 → 开发入口抛错、查询入口带原因失败。
+
+        桩打在**依赖边界**（`后端核心.后端核心.后端核心.调用`＝唯一腿的下游调用面），
+        不是被测模块自身的成员：被测对象（`能力搜索器` 的转调逻辑）保持原样不被替换，
+        证明的是两处转调入口对「能力腿报错」的处理是否如实上报（fail-closed），
+        而不是用假桩顶掉被测实现；签名校验由 `autospec=True` 承担。
+        """
+        from unittest import mock
+
+        from 公共契约.基础类型.结果类型 import 结果
+        from 后端核心.后端核心 import 后端核心 as 后端核心类
+        from 开发工具 import 开发入口
+        from 开发工具.能力搜索 import 能力搜索器
+        from 开发工具.统一能力入口.Agent查询.查询入口 import 查询入口
+
+        能力腿失败 = 结果.失败("内部错误", "模拟唯一腿不可用", 来源="定向测试桩")
+        with mock.patch.object(后端核心类, "调用", autospec=True, return_value=能力腿失败):
+            with self.assertRaises(能力搜索器.检索失败) as 捕获:
+                开发入口.搜索能力("任意", 1)
+            查询结果 = 查询入口().搜索能力(关键词="任意")
+        self.assertIn("模拟唯一腿不可用", str(捕获.exception))
+        self.assertFalse(查询结果.成功)
+        self.assertIn("模拟唯一腿不可用", 查询结果.说明)
 
 
 if __name__ == "__main__":
