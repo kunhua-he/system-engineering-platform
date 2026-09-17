@@ -86,6 +86,15 @@ class HTTP连接器:
             return self._失败(错误码_参数不合法, "请求id 必须是文本型", "")
         if not isinstance(获取句柄, bool):
             return self._失败(错误码_参数不合法, "获取句柄必须是逻辑型", "")
+        # 2026-09-17 修复（P0·阻塞生产）：同 进程内连接器 —— 未显式给 超时秒 时
+        # 回落到参数里的「超时秒」（能力参数本就是调用方的时限意图）。原实现直接落到
+        # self.默认超时秒（10 秒），而 转码/提取音频/媒体转写 真实耗时可达数分钟
+        # → 必然误判超时；且超时不取消执行线程 → 每次留下残留 ffmpeg，累积占满
+        # 媒体引擎，后续请求才真的失败。在此收口，12 个模块一次修好。
+        参数时限 = (参数 or {}).get("超时秒")
+        if (超时秒 is None and isinstance(参数时限, (int, float))
+                and not isinstance(参数时限, bool) and 参数时限 > 0):
+            超时秒 = float(参数时限)
         实际超时 = 超时秒 if 超时秒 is not None else self.默认超时秒
         if isinstance(实际超时, bool) or not isinstance(实际超时, (int, float)):
             return self._失败(错误码_参数不合法, "超时秒必须是数值（正式类型：整数型 或 双精度数型；布尔不算）", "")
