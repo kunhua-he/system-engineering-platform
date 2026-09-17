@@ -30,6 +30,15 @@ def 只读激活指针(存储目录: Path | str, 指针id: str) -> dict[str, Any
         行 = 连接.execute(
             "SELECT 指针id, 目标, 版本, 栅栏令牌, 状态 FROM 激活指针 WHERE 指针id=?",
             (指针id,)).fetchone()
+    except sqlite3.OperationalError as 错误:
+        # 库文件在、但「激活指针」表不存在 = 控制面从未初始化过这张表。
+        # 按本能力语义（「控制面不可用时的调用面只读视图」「未命中如实返回」），
+        # 这属**未命中**，不属「存储目录不可用」：后者留给真正的 IO/权限/库损坏。
+        # 2026-09-17 实测：黑盒场景用受管临时根（那里只有最小库），旧实现抛
+        # SQLite OperationalError 被上层包成 503，而场景期望 200 + 是否命中=false。
+        if "no such table" in str(错误).lower():
+            return None
+        raise
     finally:
         连接.close()
     if 行 is None:
