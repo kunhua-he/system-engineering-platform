@@ -81,15 +81,15 @@
     },
     {
       "路径": "验证场景/拒收与判据缺失场景.json",
-      "sha256": "ab4e3469570637d33b9d4969c22887829034928a1b10f738f5b3b13742da0a14"
+      "sha256": "962844cd8f0ccf7afe1cb8444900ece5dcc99042081041de4512209f495faa90"
     },
     {
       "路径": "验证场景/清单条目管理场景.json",
-      "sha256": "5f4f45e52d6a4f599cec3dc7e15a6d898cbdad51390d584723807d7c5a03ae15"
+      "sha256": "e2a7154a576b117e2daed52f6382388dad38dd01a87cd842548025da95a11f9c"
     },
     {
       "路径": "验证场景/索引与切块正向链场景.json",
-      "sha256": "37836e1ff34d1c487112e6ed2e917af8f8e11b29e55d8b7cb71accbdc1404785"
+      "sha256": "01fbbcba2f88a211726a23fa26d9e8cd0ff865a4ebb2e341f14317edd3cabe12"
     },
     {
       "路径": "验证场景引用.json",
