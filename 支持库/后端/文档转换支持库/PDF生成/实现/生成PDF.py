@@ -1,157 +1,129 @@
-"""reportlab 独立提供者实现：文档转换支持库.PDF生成.生成PDF（主进程直接 import reportlab）。
+"""文档转换支持库.PDF生成.生成PDF：把 reportlab 下沉到隔离子进程执行。
 
-按内容参数字典 {标题, 段落列表, 表格列表?} 生成 PDF，返回
-结果[生成产物字典{字节b64, 媒体类型, 摘要, 格式, 字节数, 诊断}]。
-中文字体：优先注册系统 PingFang.ttc/STSong.ttf/Songti.ttc，
-失败回退 reportlab 内置 STSong-Light CID 字体。
-表格渲染收拢在 渲染表格.py；reportlab 为纯 Python 库，主进程直接加载。
-错误码：参数不合法 / 提供者不可用 / 生成失败。
+主进程（本文件）只做三件事：参数预校验、拉起一次性子进程、把子进程响应映射成
+统一结果 —— **本进程绝不 import reportlab**（D-3 收口：对齐同仓 PIL/fitz/mlx_whisper
+已验证的 子进程解析.py 形态，第三方库只在子进程内加载）。
+
+渲染逻辑不在本包重复实现：reportlab 的唯一实现在 支持库.适配层.reportlab提供者，
+子进程内经其**公开入口**调用（D-2 收口：同一份逻辑只有一个实现；本包原
+实现/渲染表格.py 与适配层腿逐字节相同，已删除）。
+
+错误码严格保持契约声明的三项（参数不合法 / 提供者不可用 / 生成失败）：子进程
+超时与崩溃按「生成失败」返回、真实原因写进 错误说明，不新增未声明的错误码。
+释放语义：子进程独占进程组启动，调用返回前一律回收（终止 → 宽限 → 强杀 → 复查），
+不留残留进程；不落盘、不持跨调用状态。
 """
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import importlib
-import io
+import json
 import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
-from 支持库.后端.文档转换支持库.PDF生成.实现.渲染表格 import 添加表格
+from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时.有界IO import 受限通信
 
-媒体类型PDF = "application/pdf"
 能力名 = "文档转换支持库.PDF生成.生成PDF"
-字体候选路径表 = [
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/STSong.ttf",
-    "/System/Library/Fonts/Supplemental/Songti.ttc",
-]
+媒体类型PDF = "application/pdf"
+包目录 = Path(__file__).resolve().parent.parent
+子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
+默认超时秒 = 90.0
+默认最大输出字节 = 64 * 1024 * 1024
+# 只有契约声明的错误码可以外泄；子进程的其余错误码（超时/提供者崩溃/…）一律
+# 归并到 生成失败，并把真实原因写进 错误说明（不新增未声明的错误码）。
+可透传错误码 = ("参数不合法", "提供者不可用")
 
 
 def 生成PDF(内容参数: dict) -> 结果:
-    """按内容参数字典生成 PDF，返回 结果[生成产物字典]。"""
+    """按 内容参数（标题/段落列表/表格列表）生成 PDF，返回 结果[生成产物字典]。"""
+    错误 = _预校验(内容参数)
+    if 错误 is not None:
+        return 错误
+    return _执行任务({"操作": "生成", "内容参数": 内容参数}, 超时秒=默认超时秒)
+
+
+def _预校验(内容参数: Any) -> 结果 | None:
+    """主进程预校验：形态不对时直接返回，不起子进程（与渲染层同一口径）。"""
     if not isinstance(内容参数, dict):
         return 结果.失败("参数不合法", "内容参数必须是字典", 来源=能力名)
-    if not _提供者可用():
-        return 结果.失败("提供者不可用", "reportlab 未安装，无法生成 PDF", 来源=能力名)
-    try:
-        字节 = _生成PDF字节(内容参数)
-    except ValueError as 错误:
-        return 结果.失败("参数不合法", str(错误), 来源=能力名)
-    except Exception as 错误:
-        return 结果.失败("生成失败", f"PDF 生成异常: {错误}", 来源=能力名)
-    if not 字节:
-        return 结果.失败("生成失败", "PDF 生成结果为空", 来源=能力名)
-    return 结果.成功结果({
-        "格式": "pdf",
-        "字节b64": base64.b64encode(字节).decode("ascii"),
-        "媒体类型": 媒体类型PDF,
-        "摘要": hashlib.sha256(字节).hexdigest(),
-        "字节数": len(字节),
-        "提供者版本": _提供者版本(),
-        "诊断": [f"PDF 生成成功，共 {len(字节)} 字节"],
-    })
-
-
-def _提供者可用() -> bool:
-    """reportlab 是否可导入（纯 Python，主进程直接加载）。"""
-    try:
-        importlib.import_module("reportlab")
-        return True
-    except Exception:
-        return False
-
-
-def _提供者版本() -> dict[str, str]:
-    """返回 reportlab 版本字典。"""
-    try:
-        模块 = importlib.import_module("reportlab")
-        return {"reportlab": str(getattr(模块, "Version", "未知"))}
-    except Exception:
-        return {}
-
-
-def _生成PDF字节(参数: dict) -> bytes:
-    """按 标题/段落列表/表格列表 渲染 PDF 字节。"""
-    from reportlab.lib.colors import HexColor
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import cm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-
-    标题 = 参数.get("标题") or ""
-    段落列表 = 参数.get("段落列表") or []
-    表格列表 = 参数.get("表格列表") or []
+    标题 = 内容参数.get("标题") or ""
+    段落列表 = 内容参数.get("段落列表") or []
+    表格列表 = 内容参数.get("表格列表") or []
     if not isinstance(标题, str):
-        raise ValueError("标题必须是文本")
+        return 结果.失败("参数不合法", "标题必须是文本", 来源=能力名)
     if not isinstance(段落列表, list):
-        raise ValueError("段落列表必须是列表")
+        return 结果.失败("参数不合法", "段落列表必须是列表", 来源=能力名)
     if not isinstance(表格列表, list):
-        raise ValueError("表格列表必须是列表")
+        return 结果.失败("参数不合法", "表格列表必须是列表", 来源=能力名)
     if not 标题 and not 段落列表 and not 表格列表:
-        raise ValueError("内容不能为空：标题/段落列表/表格列表至少提供一项")
+        return 结果.失败("参数不合法", "内容不能为空：标题/段落列表/表格列表至少提供一项", 来源=能力名)
+    return None
 
-    正文字体, 粗体字体 = _注册中文字体()
-    缓冲 = io.BytesIO()
-    文档 = SimpleDocTemplate(
-        缓冲, pagesize=A4,
-        leftMargin=2 * cm, rightMargin=2 * cm,
-        topMargin=2 * cm, bottomMargin=2 * cm,
+
+def _启动子进程() -> subprocess.Popen:
+    """启动一次性隔离子进程（独立进程组，cwd=平台根）。"""
+    系统根 = next(祖先 for 祖先 in 包目录.parents if (祖先 / "支持库").is_dir())
+    return subprocess.Popen(
+        [sys.executable, str(子进程入口路径)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=str(系统根),
+        **平台适配.子进程组启动标志(),
+        env=dict(os.environ),
     )
-    样式表 = getSampleStyleSheet()
-    元素列表: list = []
-    if 标题:
-        标题样式 = ParagraphStyle(
-            "文档标题", parent=样式表["Heading1"],
-            fontSize=22, alignment=TA_CENTER, spaceAfter=12, spaceBefore=6,
-            fontName=粗体字体, textColor=HexColor("#2395bc"),
-        )
-        元素列表.append(Paragraph(标题, 标题样式))
-        元素列表.append(Spacer(1, 8))
-    for 项 in 段落列表:
-        if isinstance(项, dict):
-            文本 = str(项.get("文本") or 项.get("text") or "")
-            加粗 = bool(项.get("加粗") or 项.get("bold") or False)
-        else:
-            文本 = "" if 项 is None else str(项)
-            加粗 = False
-        if not 文本.strip():
-            continue
-        样式 = ParagraphStyle(
-            "正文", parent=样式表["Normal"],
-            fontSize=12, alignment=TA_LEFT, spaceAfter=8, leading=20,
-            fontName=粗体字体 if 加粗 else 正文字体,
-        )
-        元素列表.append(Paragraph(文本, 样式))
-    for 表格 in 表格列表:
-        添加表格(元素列表, 表格, 正文字体, 粗体字体)
-    if not 元素列表:
-        raise ValueError("没有可渲染内容（标题/段落/表格均为空）")
-    文档.build(元素列表)
-    return 缓冲.getvalue()
 
 
-def _注册中文字体() -> tuple[str, str]:
-    """注册中文字体，返回 (正文字体名, 粗体字体名)。"""
-    from reportlab.pdfbase import pdfmetrics
+def _终止子进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
+    """回收子进程（唯一实现在 公共契约.运行时.进程终止，本处只做同签名的薄委托）。"""
+    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
 
-    for 路径 in 字体候选路径表:
-        if not os.path.exists(路径):
-            continue
-        try:
-            from reportlab.pdfbase.ttfonts import TTFont
 
-            pdfmetrics.registerFont(TTFont("STSong", 路径))
-            pdfmetrics.registerFont(TTFont("STSong-Bold", 路径))
-            return "STSong", "STSong-Bold"
-        except Exception:
-            continue
-    # 回退：reportlab 内置 STSong-Light CID 字体（无需字体文件）
-    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-
+def _执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 结果:
+    """执行一次子进程任务，返回统一结果（错误码归并到契约声明的三项）。"""
+    进程 = None
     try:
-        pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-    except Exception as 错误:
-        raise ValueError(f"中文字体注册失败（系统字体与内置 CID 均不可用）: {错误}")
-    return "STSong-Light", "STSong-Light"
+        进程 = _启动子进程()
+    except (OSError, ValueError) as 错误:
+        return 结果.失败("提供者不可用", f"无法启动 PDF 生成子进程: {错误}", 来源=能力名, 可重试=True)
+    请求行 = (json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8")
+    try:
+        标准输出, _标准错误, 已超时, 输出超限 = 受限通信(
+            进程, 输入=请求行, 超时秒=超时秒,
+            输出上限字节=默认最大输出字节,
+            终止回调=lambda: _终止子进程组(进程),
+        )
+    finally:
+        try:
+            if 进程.poll() is None:
+                _终止子进程组(进程)
+        except (OSError, ValueError):
+            pass
+        for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
+            try:
+                if 流 is not None:
+                    流.close()
+            except (OSError, ValueError):
+                pass
+    if 已超时:
+        return 结果.失败("生成失败", f"PDF 生成子进程执行超过 {超时秒} 秒（进程组已回收）", 来源=能力名)
+    if 输出超限:
+        return 结果.失败("生成失败", f"PDF 生成子进程输出超过上限 {默认最大输出字节} 字节", 来源=能力名)
+    退出码 = 进程.returncode or 0
+    if 退出码 != 0:
+        return 结果.失败("生成失败", f"PDF 生成子进程异常退出（退出码 {退出码}）", 来源=能力名)
+    try:
+        响应 = json.loads(标准输出.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        return 结果.失败("生成失败", "PDF 生成子进程返回了无效响应", 来源=能力名)
+    if 响应.get("成功"):
+        return 结果.成功结果(响应.get("值"))
+    错误码 = str(响应.get("错误码") or "生成失败")
+    错误说明 = str(响应.get("错误说明") or "PDF 生成子进程执行失败")
+    if 错误码 in 可透传错误码:
+        return 结果.失败(错误码, 错误说明, 来源=能力名, 可重试=错误码 == "提供者不可用")
+    return 结果.失败("生成失败", f"子进程返回 {错误码}：{错误说明}", 来源=能力名)
