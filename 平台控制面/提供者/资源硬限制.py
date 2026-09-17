@@ -79,19 +79,46 @@ class _惰性限制类型表:
 类型表 = _惰性限制类型表()
 
 
-def _终止进程组(进程: subprocess.Popen) -> None:
-    进程终止.强制结束子进程(进程, 宽限秒=2.0, 等待秒=2.0)
+def _终止进程组(进程: subprocess.Popen) -> bool:
+    """收敛本进程组的子进程；返回是否确认收敛（**回收失败不静默**）。
+
+    统一口径：``强制结束子进程`` 的返回值一律走 ``进程终止.结束并留痕`` ——
+    失败即登记回收失败留痕（可经 ``进程终止.回收失败留痕快照()`` 读到），
+    本函数再把「是否确认收敛」交给调用方，调用方据此在错误说明里如实带出，
+    绝不把「没回收掉」写成「已终止」。
+    """
+    收敛 = 进程终止.结束并留痕(
+        进程, 位置="资源硬限制._终止进程组", 宽限秒=2.0, 等待秒=2.0)
     try:
         进程.wait(timeout=2.0)
     except subprocess.TimeoutExpired:
-        pass
+        收敛 = False
+    if 进程.poll() is None:
+        收敛 = False
+    return 收敛
+
+
+def _回收失败提示(回收失败: list[str]) -> str:
+    """回收失败留痕 → 错误说明后缀（空表 = 无失败，返回空串，不改原说明形状）。
+
+    口径：``强制结束子进程`` 的失败已经在 ``进程终止`` 里留痕，这里只把「未确认回收」
+    如实带到调用方看得见的错误说明上——**不把失败说成已终止**，也不造第二套留痕。
+    """
+    if not 回收失败:
+        return ""
+    return "；" + "；".join(回收失败) + "（见 进程终止.回收失败留痕快照()）"
 
 
 def _受限通信(进程: subprocess.Popen, 超时秒: float,
-             输出上限: int = 默认输出上限) -> tuple[bytes, bytes, bool, bool]:
-    """双管道有界读取，避免 communicate 一次性把子进程输出载入内存。"""
+             输出上限: int = 默认输出上限) -> tuple[bytes, bytes, bool, bool, list[str]]:
+    """双管道有界读取，避免 communicate 一次性把子进程输出载入内存。
+
+    返回第 5 项是**回收失败留痕**（本次调用里 ``_终止进程组`` 未确认收敛的条目），
+    空表 = 所有终止路径都确认收敛；调用方必须把它带进错误说明，不得丢弃。
+    """
     结果: dict[str, bytearray] = {"输出": bytearray(), "错误输出": bytearray()}
     超限 = {"输出": False, "错误输出": False}
+    回收失败: list[str] = []
 
     def 读取(名称: str, 流) -> None:
         if 流 is None:
@@ -108,7 +135,8 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
                     目标.extend(块[:输出上限 - len(目标)])
                 if len(目标) >= 输出上限 and len(块) > 输出上限 - len(目标):
                     超限[名称] = True
-                    _终止进程组(进程)
+                    if not _终止进程组(进程):
+                        回收失败.append(f"输出达到上限后回收子进程组未确认收敛（{名称}）")
                     return
         except (OSError, ValueError):
             return
@@ -120,7 +148,8 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
     try:
         进程.wait(timeout=超时秒)
     except subprocess.TimeoutExpired:
-        _终止进程组(进程)
+        if not _终止进程组(进程):
+            回收失败.append(f"超时（{超时秒} 秒）回收子进程组未确认收敛")
         for 线程 in 线程表:
             线程.join(timeout=1.0)
         for 流 in (进程.stdout, 进程.stderr):
@@ -129,7 +158,8 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
                     流.close()
             except (OSError, ValueError):
                 pass
-        return bytes(结果["输出"]), bytes(结果["错误输出"]), True, any(线程.is_alive() for 线程 in 线程表)
+        return (bytes(结果["输出"]), bytes(结果["错误输出"]), True,
+                any(线程.is_alive() for 线程 in 线程表), 回收失败)
     for 线程 in 线程表:
         线程.join(timeout=1.0)
     for 流 in (进程.stdout, 进程.stderr):
@@ -138,7 +168,8 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
                 流.close()
         except (OSError, ValueError):
             pass
-    return bytes(结果["输出"]), bytes(结果["错误输出"]), False, any(超限.values())
+    return (bytes(结果["输出"]), bytes(结果["错误输出"]), False,
+            any(超限.values()), 回收失败)
 
 
 def 设置限制(类型: str, 软上限: int, 硬上限: int) -> dict:
@@ -269,23 +300,31 @@ def 在独立进程组中运行(命令列表: list[str], 预算: dict, 超时秒
         return {"成功": False, "错误码": 未强制, "值": None,
                 "错误说明": f"进程启动失败: {错误}"}
     try:
-        输出, 错误输出, 已超时, 输出超限 = _受限通信(进程, 超时秒)
+        输出, 错误输出, 已超时, 输出超限, 回收失败 = _受限通信(进程, 超时秒)
     except Exception as 错误:
-        _终止进程组(进程)
+        if not _终止进程组(进程):
+            回收失败 = [f"受限读取异常后回收子进程组未确认收敛（{type(错误).__name__}）"]
+        else:
+            回收失败 = []
         return {"成功": False, "错误码": "命令失败", "值": None,
-                "错误说明": f"受限读取失败: {错误}"}
+                "错误说明": f"受限读取失败: {错误}{_回收失败提示(回收失败)}",
+                "回收失败留痕": 回收失败}
     if 已超时:
         进程.kill()
         进程.wait()
         return {"成功": False, "错误码": "超时", "值": None,
-                "错误说明": f"命令 {超时秒} 秒未结束，已终止"}
+                "错误说明": f"命令 {超时秒} 秒未结束，已终止{_回收失败提示(回收失败)}",
+                "回收失败留痕": 回收失败}
     if 输出超限:
-        _终止进程组(进程)
+        if not _终止进程组(进程):
+            回收失败.append("输出超限路径回收子进程组未确认收敛")
         return {"成功": False, "错误码": "超出限制", "值": None,
-                "错误说明": f"命令输出超过上限 {默认输出上限} 字节，已终止"}
+                "错误说明": f"命令输出超过上限 {默认输出上限} 字节，已终止{_回收失败提示(回收失败)}",
+                "回收失败留痕": 回收失败}
     return {"成功": 进程.returncode == 0,
             "错误码": "" if 进程.returncode == 0 else "命令失败",
             "错误说明": "" if 进程.returncode == 0 else "命令返回非零",
+            "回收失败留痕": 回收失败,
             "值": {"进程组id": 进程.pid, "返回码": 进程.returncode,
                    "输出": 输出.decode("utf-8", "replace"),
                    "错误输出": 错误输出.decode("utf-8", "replace")}}
