@@ -1,12 +1,19 @@
-"""定向测试：对外契约变更判定（版本递增判据＝对外契约指纹变化——哲学 5.3 / 决策记录 0020）。
+"""定向测试：对外契约变更判定（版本递增判据＝对外契约**面**指纹变化——哲学 5.3 / 决策记录 0020）。
 
 三档**真实包**对照（包 `平台控制面/提供者/注册表`，基线＝当前激活制品内同名包，非夹具）：
 ① 契约未变 → `内部优化` / 不要求版本递增；
 ② `/tmp` 副本改一个参数类型 → `契约变化` / 要求递增；
-③ 同一副本版本号递增 → 放行（不要求递增）；
+③ 同一副本版本号递增 → 放行（不要求递增）。
 反向验证：② 的改动还原 → 回到 ①；版本号改回旧值 → 重新判「要求递增」。
 
-另覆盖：能力级判定、新增/删除能力算契约变化、说明变化属内部优化、失败路径 fail-closed、
+**口径修正（2026-09-17 父会话裁决）**：对外契约面剔除说明文案（`参数.说明` / `返回.值结构`）——
+只改说明文案 → `内部优化` / 不要求递增；原始指纹与契约面指纹**两个值同时输出**，
+明细里区分「文档性变化（不要求递增）」与「契约面变化（要求递增）」。
+规范化＝**同一个** `契约指纹()` ＋ `规范化契约面()` 输入，**不另写第二套指纹算法**（用例含反向破坏：
+把规范化关掉，只改说明又必须变回「契约变化」）。
+
+另覆盖：能力级判定、新增/删除能力算契约变化、契约面六维（参数名/类型/必填/默认值/返回类型/错误码）
+各一例、硬保守（`上限` 约束键与「非文档形态的值结构」都不剔除）、失败路径 fail-closed、
 输出结构固定五键、判据复用唯一事实源（对象同一性）、信封包装。
 
 边界：本测试**不修改仓库既有文件**，全部改动落在 /tmp 副本；不重编译制品、不跑发布门禁。
@@ -20,6 +27,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 项目根 = Path(__file__).resolve().parents[2]
 if str(项目根) not in sys.path:
@@ -33,6 +41,8 @@ from 开发工具.契约编译.对外契约变更判定 import (
     是失败结果,
     读取包契约,
     契约指纹,
+    契约面指纹,
+    规范化契约面,
     检查契约兼容,
 )
 
@@ -255,8 +265,10 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.assertIs(结果["是否要求版本递增"], False)
         self.assertIs(结果["兼容判定"]["指纹是否变化"], False)
 
-    def test_参数说明变化随指纹判契约变化(self) -> None:
-        # 唯一口径是 契约指纹()：参数对象整体入指纹，故参数说明变化也判契约变化（不得人工放宽）
+    def test_参数说明变化判文档性变化属内部优化(self) -> None:
+        """口径修正（父会话裁决，2026-09-17）：「说明文案不算契约变化」——原断言「说明变化判契约变化」
+        随之改为「文档性变化 / 不要求递增」。**覆盖不减**：原始指纹变化仍被完整断言（说明照样被
+        原始指纹抓到），只是判据改走契约面指纹；契约面指纹仍由**同一个** 契约指纹() 产出。"""
         副本 = self.造副本("参数说明")
         数据 = json.loads((副本 / "能力定义.json").read_text(encoding="utf-8"))
         for 能力 in 数据["能力列表"]:
@@ -267,11 +279,186 @@ class 对外契约变更判定测试(unittest.TestCase):
         (副本 / "能力定义.json").write_text(json.dumps(数据, ensure_ascii=False, indent=1),
                                       encoding="utf-8")
         结果 = self.判定副本(副本)
-        self.assertEqual(结果["变更类别"], "契约变化")
-        self.assertIs(结果["是否要求版本递增"], True)
+        兼容 = 结果["兼容判定"]
+        self.assertEqual(结果["变更类别"], "内部优化")
+        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertEqual(兼容["指纹变化能力"], [目标能力id])        # 原始指纹照样抓到变化
+        self.assertIs(兼容["原始指纹是否变化"], True)
+        self.assertEqual(兼容["文档性变化能力"], [目标能力id])
+        self.assertEqual(兼容["契约面变化能力"], [])
+        self.assertIs(兼容["指纹是否变化"], False)                  # 判据＝契约面指纹
+        self.assertEqual(兼容["新增契约面指纹"], 兼容["基线契约面指纹"])
+        self.assertNotEqual(兼容["新增指纹"], 兼容["基线指纹"])
+        self.assertTrue(any("文档性变化（不要求递增" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
         self.assertTrue(any("参数说明变化" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
 
-    # ---- 输出结构 / 判据来源 ----
+    def test_返回值结构文案变化也判内部优化(self) -> None:
+        """`返回.值结构` 是纯文档字段（决策记录 0019 第 3 项：值结构只作文档性描述）。"""
+        副本 = self.造副本("值结构文档")
+        数据 = json.loads((副本 / "能力定义.json").read_text(encoding="utf-8"))
+        改前 = None
+        for 能力 in 数据["能力列表"]:
+            if 能力["能力id"] == 目标能力id:
+                值结构 = 能力["返回"].get("值结构")
+                self.assertIsInstance(值结构, dict, f"真实包该能力应带 值结构：{能力['返回']}")
+                键 = sorted(值结构)[0]
+                改前 = 值结构[键]
+                值结构[键] = 值结构[键] + "（措辞调整）"
+        self.assertIsNotNone(改前)
+        (副本 / "能力定义.json").write_text(json.dumps(数据, ensure_ascii=False, indent=1),
+                                      encoding="utf-8")
+        结果 = self.判定副本(副本)
+        self.assertEqual(结果["变更类别"], "内部优化")
+        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertEqual(结果["兼容判定"]["文档性变化能力"], [目标能力id])
+        self.assertEqual(结果["兼容判定"]["结论"], "兼容")
+        self.assertTrue(any("返回值结构变化" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
+
+    # ---- 契约面变化：逐维各一例，全部必须「契约变化 / 要求递增」----
+
+    def 造改副本(self, 名字: str, 改动) -> Path:
+        """造副本，按 `改动(数据)` 就地改 能力定义.json（改动函数自己去改目标能力）。"""
+        副本 = self.造副本(名字)
+        数据 = json.loads((副本 / "能力定义.json").read_text(encoding="utf-8"))
+        改动(数据)
+        (副本 / "能力定义.json").write_text(json.dumps(数据, ensure_ascii=False, indent=1),
+                                      encoding="utf-8")
+        return 副本
+
+    def _目标能力(self, 数据: dict) -> dict:
+        for 能力 in 数据["能力列表"]:
+            if 能力["能力id"] == 目标能力id:
+                return 能力
+        raise AssertionError(f"副本内找不到目标能力：{目标能力id}")
+
+    def _目标参数(self, 数据: dict, 名称: str) -> dict:
+        for 参数 in self._目标能力(数据)["参数"]:
+            if 参数.get("名称") == 名称:
+                return 参数
+        raise AssertionError(f"副本内找不到目标参数：{名称}")
+
+    def _断言契约面变化(self, 副本: Path) -> None:
+        """契约面变化的口径：契约变化 / 要求递增 / 契约面指纹变化能力点名被改能力。"""
+        结果 = self.判定副本(副本)
+        兼容 = 结果["兼容判定"]
+        self.assertEqual(结果["变更类别"], "契约变化", 结果["变化明细"])
+        self.assertIs(结果["是否要求版本递增"], True, 结果["变化明细"])
+        self.assertEqual(兼容["契约面变化能力"], [目标能力id], 兼容)
+        self.assertIs(兼容["指纹是否变化"], True)
+        self.assertNotEqual(兼容["新增契约面指纹"], 兼容["基线契约面指纹"])
+        self.assertTrue(any("契约面变化（要求递增" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
+
+    def test_契约面_参数名变化判契约变化(self) -> None:
+        def 改(数据):
+            参数 = self._目标参数(数据, "存储目录")
+            参数["名称"] = "存储目录甲"
+
+        self._断言契约面变化(self.造改副本("面_参数名", 改))
+
+    def test_契约面_参数类型变化判契约变化(self) -> None:
+        def 改(数据):
+            参数 = self._目标参数(数据, "超时秒")
+            self.assertEqual(参数["类型"], 参数旧类型, 参数)
+            参数["类型"] = 参数新类型
+
+        self._断言契约面变化(self.造改副本("面_参数类型", 改))
+
+    def test_契约面_参数必填变化判契约变化(self) -> None:
+        def 改(数据):
+            参数 = self._目标参数(数据, "超时秒")
+            self.assertIs(参数["必填"], False, 参数)
+            参数["必填"] = True
+
+        self._断言契约面变化(self.造改副本("面_必填", 改))
+
+    def test_契约面_参数默认值变化判契约变化(self) -> None:
+        def 改(数据):
+            参数 = self._目标参数(数据, "超时秒")
+            self.assertEqual(参数["默认值"], 0.0, 参数)
+            参数["默认值"] = 1.0
+
+        self._断言契约面变化(self.造改副本("面_默认值", 改))
+
+    def test_契约面_返回类型变化判契约变化(self) -> None:
+        def 改(数据):
+            返回 = self._目标能力(数据)["返回"]
+            self.assertEqual(返回["类型"], "结果型", 返回)
+            返回["类型"] = "结果型甲"
+
+        self._断言契约面变化(self.造改副本("面_返回类型", 改))
+
+    def test_契约面_错误码集合变化判契约变化(self) -> None:
+        def 改(数据):
+            能力 = self._目标能力(数据)
+            能力["错误码"] = list(能力["错误码"]) + ["新错误码甲"]
+
+        self._断言契约面变化(self.造改副本("面_错误码", 改))
+
+    def test_契约面_参数新增约束键判契约变化_存疑一律保留(self) -> None:
+        """硬保守：`上限` 不是文案（是输入约束）→ 留在契约面内，必须判契约变化。"""
+        def 改(数据):
+            参数 = self._目标参数(数据, "超时秒")
+            self.assertNotIn("上限", 参数, 参数)
+            参数["上限"] = 100
+
+        self._断言契约面变化(self.造改副本("面_约束键", 改))
+
+    def test_契约面_值结构改成非文档形态仍判契约变化(self) -> None:
+        """硬保守第二道闸：键在文档表里，但**值不是文档形态**（列表）→ 保留在契约面内。"""
+        def 改(数据):
+            self._目标能力(数据)["返回"]["值结构"] = ["不是文档形态"]
+
+        self._断言契约面变化(self.造改副本("面_值结构非文档", 改))
+
+    # ---- 规范化本身：同一指纹函数 + 规范化输入（不得另写第二套算法）----
+
+    def test_规范化_剔除纯文档字段后仍走同一个契约指纹(self) -> None:
+        读数 = 读取包契约(self.基线包)
+        契约 = 读数.能力表[目标能力id]
+        契约面 = 判定模块.规范化契约面(契约)
+        # ① 剔除确实生效（原始契约里的说明/值结构在契约面里没了）
+        self.assertTrue(all("说明" not in 参数 for 参数 in 契约面["参数"]), 契约面["参数"])
+        self.assertNotIn("值结构", 契约面["返回"], 契约面["返回"])
+        # ② 每个参数的名字/类型/必填/默认值逐字保留（0020 的面积不动）
+        self.assertEqual(
+            [(参数.get("名称"), 参数.get("类型"), 参数.get("必填"), 参数.get("默认值"))
+             for 参数 in 契约面["参数"]],
+            [(参数.get("名称"), 参数.get("类型"), 参数.get("必填"), 参数.get("默认值"))
+             for 参数 in 契约["参数"]])
+        # ③ 契约面指纹＝**同一个**契约指纹() 吃规范化输入（不是另写的哈希）
+        self.assertIs(判定模块.契约指纹, 契约指纹)
+        self.assertEqual(判定模块.契约面指纹(契约), 契约指纹(契约面))
+        self.assertNotEqual(判定模块.契约面指纹(契约), 契约指纹(契约))   # 说明/值结构原本参与了原始指纹
+        # ④ 不修改入参
+        self.assertTrue(any("说明" in 参数 for 参数 in 契约["参数"]))
+        self.assertIn("值结构", 契约["返回"])
+        # ⑤ 剔除字段清单写进输出，供门禁对账
+        self.assertEqual(判定模块.文档字段清单, ("参数.说明", "返回.值结构"))
+        结果 = self.判定副本(self.造副本("口径输出"))
+        self.assertEqual(结果["兼容判定"]["指纹口径"]["剔除字段"], ["参数.说明", "返回.值结构"])
+
+    def test_反向_去掉规范化后只改说明又变回契约变化(self) -> None:
+        """反向破坏：把规范化关掉（只改过说明的副本）必须重新判「契约变化 / 要求递增」。
+
+        证明是「规范化」这一步在翻转结论，而不是判据被写松（判据仍只看指纹）。
+        """
+        副本 = self.造副本("反向规范化")
+        数据 = json.loads((副本 / "能力定义.json").read_text(encoding="utf-8"))
+        for 能力 in 数据["能力列表"]:
+            if 能力["能力id"] == 目标能力id:
+                for 参数 in 能力["参数"]:
+                    if 参数["名称"] == "超时秒":
+                        参数["说明"] = 参数["说明"] + "（措辞调整）"
+        (副本 / "能力定义.json").write_text(json.dumps(数据, ensure_ascii=False, indent=1),
+                                      encoding="utf-8")
+        self.assertEqual(self.判定副本(副本)["变更类别"], "内部优化")
+        with mock.patch.object(判定模块, "规范化契约面", side_effect=lambda 契约: 契约):
+            关掉 = self.判定副本(副本)
+        self.assertEqual(关掉["变更类别"], "契约变化")
+        self.assertIs(关掉["是否要求版本递增"], True)
+        self.assertEqual(关掉["兼容判定"]["契约面变化能力"], [目标能力id])
+        # 恢复规范化 → 同一副本必须回到「内部优化」（结论可复现、无残留状态）
+        self.assertEqual(self.判定副本(副本)["变更类别"], "内部优化")
 
     def test_输出结构固定五键(self) -> None:
         for 结果 in (判定对外契约变更(真实包相对路径),
@@ -291,6 +478,42 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.assertEqual(判定模块.判据来源,
                          {"指纹": "平台控制面.能力目录.服务.契约指纹",
                           "兼容": "运行核心.加载器.版本系统.契约兼容.检查契约兼容"})
+
+    def test_规范化不引入第二套指纹算法(self) -> None:
+        """规范化只做「剔除字段 + 交给同一个函数」，源码里不许出现自己算哈希的痕迹。"""
+        import ast
+
+        源码 = Path(判定模块.__file__).read_text(encoding="utf-8")
+        树 = ast.parse(源码)
+        导入模块表 = {
+            别名.name.split(".")[0]
+            for 节点 in ast.walk(树) if isinstance(节点, (ast.Import, ast.ImportFrom))
+            for 别名 in (节点.names if isinstance(节点, ast.Import) else [ast.alias(name=节点.module or "")])
+        }
+        self.assertNotIn("hashlib", 导入模块表, "规范化层不许引入哈希实现（只能是同一函数＋规范化输入）")
+        self.assertNotIn("hmac", 导入模块表)
+        调用名表 = {节点.func.attr for 节点 in ast.walk(树)
+                 if isinstance(节点, ast.Call) and isinstance(节点.func, ast.Attribute)}
+        self.assertNotIn("sha256", 调用名表, "本模块不许自己算 sha256")
+        读数 = 读取包契约(self.基线包)
+        契约 = 读数.能力表[目标能力id]
+        self.assertEqual(契约面指纹(契约), 契约指纹(规范化契约面(契约)))
+        self.assertEqual(判定模块.契约面指纹.__module__, 判定模块.__name__)
+
+    def test_输出里原始指纹与契约面指纹同时保留(self) -> None:
+        结果 = 判定能力对外契约变更(真实包相对路径, 目标能力id)
+        兼容 = 结果["兼容判定"]
+        for 键 in ("基线指纹", "新增指纹", "基线契约面指纹", "新增契约面指纹",
+                  "指纹变化能力", "契约面变化能力", "文档性变化能力"):
+            self.assertIn(键, 兼容, 兼容)
+        self.assertEqual(set(兼容["基线指纹"]), set(兼容["基线契约面指纹"]))
+        self.assertEqual(set(兼容["新增指纹"]), set(兼容["新增契约面指纹"]))
+        self.assertEqual(兼容["基线指纹"][目标能力id], "ab533d8eb95b4cce")          # 原始指纹（含说明）
+        self.assertEqual(兼容["基线契约面指纹"][目标能力id], 契约面指纹(
+            读取包契约(self.基线包).能力表[目标能力id]))
+        self.assertNotEqual(兼容["基线契约面指纹"][目标能力id], 兼容["基线指纹"][目标能力id])
+        self.assertEqual(兼容["指纹口径"]["剔除字段"], ["参数.说明", "返回.值结构"])
+        self.assertIn("同一", 兼容["指纹口径"]["契约面指纹"])
 
     def test_归一化契约只含对外契约七维加能力id与对外名(self) -> None:
         读数 = 读取包契约(self.基线包)
