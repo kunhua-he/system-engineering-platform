@@ -1355,8 +1355,73 @@ def 检查门禁原始项(根: Path) -> list[dict]:
             continue
         包能力表.extend((包id, 能力.get("能力id") or "", 能力.get("名称") or "")
                      for 能力 in 声明.get("能力") or [])
+    违规.extend(检查依赖锁存在性(根, 包目录们))
     违规.extend(检查全局(包能力表, 视图包id集))
     违规.extend(检查错误码登记(根))
+    return 违规
+
+
+def 检查依赖锁存在性(根: Path, 包目录们: list[Path]) -> list[dict]:
+    """依赖锁环：**无第三方依赖的包不得带空壳锁**（决策记录 `0033`）。
+
+    背景：装配期 `运行核心/运行环境管理器/环境管理器.py.检查依赖锁内容` 对「锁存在但
+    包与直接依赖都空」判 `依赖锁为空` 并**禁止装配提供者**（整包跳过）。而生成侧
+    （模板 / 重建依赖锁）此前不判这一条 → 生成器可以产出「注定装不上」的包，
+    直到有人手工跑装配才发现（2026-09-17 实测：本项目文档支持库被本地装配整包跳过，
+    而 40007 热接入同一份源码却成功——两条装配腿结论相反）。
+
+    本条把**同一个判据**接到生成链上：判据实现不重写 —— 按路径载入唯一源
+    `公共契约/包声明/声明.检查依赖锁内容`（该模块零仓内依赖，直跑与包式调用同一结果），
+    凡返回非空错误码即计入违规。「判据在、门禁不调 ＝ 纸面规则」（哲学第 13 条）
+    ——接线就是本条的全部意义。
+
+    锁文件**缺失**不算违规：那正是「无第三方依赖」的正确表达。
+    """
+    import importlib.util
+
+    判据路径 = 根 / "公共契约" / "包声明" / "声明.py"
+    if not 判据路径.is_file():
+        return [{"能力id": "*", "包": "公共契约/包声明",
+                 "缺口类型": "依赖锁-判据模块缺失",
+                 "路径": str(判据路径.relative_to(根)) if 判据路径.is_relative_to(根) else str(判据路径),
+                 "详情": f"依赖锁唯一判据不存在，无法执行依赖锁环：{判据路径}"}]
+    try:
+        规格 = importlib.util.spec_from_file_location("_依赖锁判据唯一源", 判据路径)
+        if 规格 is None or 规格.loader is None:
+            raise ImportError("无法构造模块规格")
+        模块 = importlib.util.module_from_spec(规格)
+        # 必须先登记进 sys.modules 再 exec：`声明.py` 用 dataclass + `from __future__
+        # import annotations`，dataclass 解析字符串注解时要回查 sys.modules[cls.__module__]，
+        # 未登记会以 `'NoneType' object has no attribute '__dict__'` 载入失败（实测）。
+        既有 = sys.modules.get(规格.name)
+        sys.modules[规格.name] = 模块
+        try:
+            规格.loader.exec_module(模块)
+        except BaseException:
+            if 既有 is None:
+                sys.modules.pop(规格.name, None)
+            else:
+                sys.modules[规格.name] = 既有
+            raise
+    except Exception as 异常:
+        return [{"能力id": "*", "包": "公共契约/包声明",
+                 "缺口类型": f"依赖锁-判据模块载入失败:{type(异常).__name__}",
+                 "路径": str(判据路径.relative_to(根)) if 判据路径.is_relative_to(根) else str(判据路径),
+                 "详情": str(异常)}]
+
+    违规: list[dict] = []
+    for 包目录 in 包目录们:
+        if not (包目录 / "依赖锁.json").is_file():
+            continue
+        错误码, 错误说明 = 模块.检查依赖锁内容(包目录)
+        if not 错误码:
+            continue
+        违规.append({
+            "能力id": "*", "包": str(包目录.relative_to(根)),
+            "缺口类型": "依赖锁-内容不合法",
+            "路径": str((包目录 / "依赖锁.json").relative_to(根)),
+            "详情": f"{错误码}：{错误说明}",
+        })
     return 违规
 
 

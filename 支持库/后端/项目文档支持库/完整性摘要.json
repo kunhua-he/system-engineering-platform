@@ -8,10 +8,6 @@
       "sha256": "93d627dce3df1c417b1d5093f39780f10c9264236a54f2b5d280baa730605a08"
     },
     {
-      "路径": "依赖锁.json",
-      "sha256": "0616a2ff90eb6b18c32f8395c5a3f4aefe512b9028772e4679d0a1fa6f240cab"
-    },
-    {
       "路径": "包声明.json",
       "sha256": "bd179cb7dd58fda637c60fb8f7579830820fa2f62d90278db1cb49a4bf8d74bc"
     },
