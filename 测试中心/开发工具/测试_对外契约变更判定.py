@@ -33,6 +33,7 @@ from pathlib import Path
 if str(项目根) not in sys.path:
     sys.path.insert(0, str(项目根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.契约编译 import 对外契约变更判定 as 判定模块
 from 开发工具.契约编译.对外契约变更判定 import (
     判定对外契约变更,
@@ -103,8 +104,8 @@ class 对外契约变更判定测试(unittest.TestCase):
         结果 = 判定对外契约变更(真实包相对路径)
         self.assertNotIn("成功", 结果, f"不应是失败信封：{结果}")
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
-        self.assertIs(结果["兼容判定"]["指纹是否变化"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
+        self.assertIs(结果["兼容判定"]["指纹是否变化"], 假)
         self.assertEqual(结果["兼容判定"]["结论"], "兼容")
         self.assertEqual(结果["兼容判定"]["对比能力数"], 4)
         # 基线来源必须点名激活制品与包路径（不新建存储）
@@ -114,7 +115,7 @@ class 对外契约变更判定测试(unittest.TestCase):
     def test_一档_第二个真实包也判内部优化(self) -> None:
         结果 = 判定对外契约变更("支持库/适配层/MCP协议提供者")
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
 
     # ---- ② 改参数类型一个字 ----
 
@@ -123,8 +124,8 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.改副本定义(副本, [(参数旧类型, 参数新类型)])
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "契约变化")
-        self.assertIs(结果["是否要求版本递增"], True)
-        self.assertIs(结果["兼容判定"]["指纹是否变化"], True)
+        self.assertIs(结果["是否要求版本递增"], 真)
+        self.assertIs(结果["兼容判定"]["指纹是否变化"], 真)
         self.assertEqual(结果["兼容判定"]["指纹变化能力"], [目标能力id])
         self.assertTrue(any("参数类型变化" in 行 and 参数新类型 in 行 for 行 in 结果["变化明细"]),
                        结果["变化明细"])
@@ -143,10 +144,10 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.改副本定义(副本, [(参数旧类型, 参数新类型), ('"版本": "1.0.0"', '"版本": "1.1.0"')])
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "契约变化")   # 契约确实变了
-        self.assertIs(结果["是否要求版本递增"], False)     # 但已由版本递增承载 → 放行
+        self.assertIs(结果["是否要求版本递增"], 假)     # 但已由版本递增承载 → 放行
         self.assertEqual(结果["兼容判定"]["版本"],
                          {"基线版本": "1.0.0", "新增版本": "1.1.0",
-                          "版本判定": "版本已递增", "是否递增": True})
+                          "版本判定": "版本已递增", "是否递增": 真})
         self.assertTrue(any("版本已递增合法" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
 
     def test_三档_版本回退仍要求递增(self) -> None:
@@ -155,7 +156,7 @@ class 对外契约变更判定测试(unittest.TestCase):
                               ('"版本": "1.0.0"', '"版本": "0.9.0"')])
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "契约变化")
-        self.assertIs(结果["是否要求版本递增"], True)
+        self.assertIs(结果["是否要求版本递增"], 真)
         self.assertEqual(结果["兼容判定"]["版本"]["版本判定"], "版本回退")
 
     # ---- 反向验证 ----
@@ -166,23 +167,23 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.改副本定义(副本, [(参数旧类型, 参数新类型)])
         改后 = self.判定副本(副本)
         self.assertEqual(改后["变更类别"], "契约变化")
-        self.assertIs(改后["是否要求版本递增"], True)
+        self.assertIs(改后["是否要求版本递增"], 真)
         # 还原改动 → 判定必须回到 ①
         (副本 / "能力定义.json").write_text(原文, encoding="utf-8")
         还原后 = self.判定副本(副本)
         self.assertEqual(还原后["变更类别"], "内部优化")
-        self.assertIs(还原后["是否要求版本递增"], False)
+        self.assertIs(还原后["是否要求版本递增"], 假)
         self.assertEqual(还原后["兼容判定"]["基线指纹"], 改后["兼容判定"]["基线指纹"])
         self.assertEqual(还原后["兼容判定"]["新增指纹"], 还原后["兼容判定"]["基线指纹"])
 
     def test_反向_版本号改回旧值必须重新要求递增(self) -> None:
         副本 = self.造副本("反向版本")
         self.改副本定义(副本, [(参数旧类型, 参数新类型), ('"版本": "1.0.0"', '"版本": "1.1.0"')])
-        self.assertIs(self.判定副本(副本)["是否要求版本递增"], False)
+        self.assertIs(self.判定副本(副本)["是否要求版本递增"], 假)
         self.改副本定义(副本, [('"版本": "1.1.0"', '"版本": "1.0.0"')])
         回退后 = self.判定副本(副本)
         self.assertEqual(回退后["变更类别"], "契约变化")
-        self.assertIs(回退后["是否要求版本递增"], True)
+        self.assertIs(回退后["是否要求版本递增"], 真)
         self.assertEqual(回退后["兼容判定"]["版本"]["版本判定"], "版本未递增")
 
     # ---- 能力级 ----
@@ -190,7 +191,7 @@ class 对外契约变更判定测试(unittest.TestCase):
     def test_能力级_单能力契约未变判内部优化(self) -> None:
         结果 = 判定能力对外契约变更(真实包相对路径, 目标能力id)
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
         self.assertEqual(结果["兼容判定"]["对比能力数"], 1)
         self.assertEqual(list(结果["兼容判定"]["基线指纹"]), [目标能力id])
         self.assertEqual(结果["兼容判定"]["基线指纹"][目标能力id], "ab533d8eb95b4cce")
@@ -200,7 +201,7 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.改副本定义(副本, [(参数旧类型, 参数新类型)])
         结果 = self.判定副本(副本, 能力id=目标能力id)
         self.assertEqual(结果["变更类别"], "契约变化")
-        self.assertIs(结果["是否要求版本递增"], True)
+        self.assertIs(结果["是否要求版本递增"], 真)
         self.assertEqual(结果["兼容判定"]["指纹变化能力"], [目标能力id])
 
     def test_能力级_改别包能力不影响本能力(self) -> None:
@@ -216,7 +217,7 @@ class 对外契约变更判定测试(unittest.TestCase):
         self.assertEqual(self.判定副本(副本)["变更类别"], "契约变化")
         结果 = self.判定副本(副本, 能力id="平台控制面.提供者.注册表.查询提供者")
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
 
     def test_能力级_基线无此能力时fail_closed(self) -> None:
         结果 = 判定能力对外契约变更(真实包相对路径, "平台控制面.提供者.注册表.不存在的能力")
@@ -234,7 +235,7 @@ class 对外契约变更判定测试(unittest.TestCase):
                                       encoding="utf-8")
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "契约变化")
-        self.assertIs(结果["是否要求版本递增"], True)
+        self.assertIs(结果["是否要求版本递增"], 真)
         self.assertEqual(结果["兼容判定"]["删除能力"], [目标能力id])
 
     def test_包级_新增一个能力算契约变化并要求递增(self) -> None:
@@ -248,7 +249,7 @@ class 对外契约变更判定测试(unittest.TestCase):
                                       encoding="utf-8")
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "契约变化")
-        self.assertIs(结果["是否要求版本递增"], True)
+        self.assertIs(结果["是否要求版本递增"], 真)
         self.assertEqual(结果["兼容判定"]["新增能力"], [新能力["能力id"]])
         self.assertEqual(结果["兼容判定"]["结论"], "兼容")   # 兼容层判向后兼容，指纹层仍判新增对外面
 
@@ -262,8 +263,8 @@ class 对外契约变更判定测试(unittest.TestCase):
                                       encoding="utf-8")
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
-        self.assertIs(结果["兼容判定"]["指纹是否变化"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
+        self.assertIs(结果["兼容判定"]["指纹是否变化"], 假)
 
     def test_参数说明变化判文档性变化属内部优化(self) -> None:
         """口径修正（父会话裁决，2026-09-17）：「说明文案不算契约变化」——原断言「说明变化判契约变化」
@@ -281,12 +282,12 @@ class 对外契约变更判定测试(unittest.TestCase):
         结果 = self.判定副本(副本)
         兼容 = 结果["兼容判定"]
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
         self.assertEqual(兼容["指纹变化能力"], [目标能力id])        # 原始指纹照样抓到变化
-        self.assertIs(兼容["原始指纹是否变化"], True)
+        self.assertIs(兼容["原始指纹是否变化"], 真)
         self.assertEqual(兼容["文档性变化能力"], [目标能力id])
         self.assertEqual(兼容["契约面变化能力"], [])
-        self.assertIs(兼容["指纹是否变化"], False)                  # 判据＝契约面指纹
+        self.assertIs(兼容["指纹是否变化"], 假)                  # 判据＝契约面指纹
         self.assertEqual(兼容["新增契约面指纹"], 兼容["基线契约面指纹"])
         self.assertNotEqual(兼容["新增指纹"], 兼容["基线指纹"])
         self.assertTrue(any("文档性变化（不要求递增" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
@@ -309,7 +310,7 @@ class 对外契约变更判定测试(unittest.TestCase):
                                       encoding="utf-8")
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "内部优化")
-        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
         self.assertEqual(结果["兼容判定"]["文档性变化能力"], [目标能力id])
         self.assertEqual(结果["兼容判定"]["结论"], "兼容")
         self.assertTrue(any("返回值结构变化" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
@@ -342,9 +343,9 @@ class 对外契约变更判定测试(unittest.TestCase):
         结果 = self.判定副本(副本)
         兼容 = 结果["兼容判定"]
         self.assertEqual(结果["变更类别"], "契约变化", 结果["变化明细"])
-        self.assertIs(结果["是否要求版本递增"], True, 结果["变化明细"])
+        self.assertIs(结果["是否要求版本递增"], 真, 结果["变化明细"])
         self.assertEqual(兼容["契约面变化能力"], [目标能力id], 兼容)
-        self.assertIs(兼容["指纹是否变化"], True)
+        self.assertIs(兼容["指纹是否变化"], 真)
         self.assertNotEqual(兼容["新增契约面指纹"], 兼容["基线契约面指纹"])
         self.assertTrue(any("契约面变化（要求递增" in 行 for 行 in 结果["变化明细"]), 结果["变化明细"])
 
@@ -366,8 +367,8 @@ class 对外契约变更判定测试(unittest.TestCase):
     def test_契约面_参数必填变化判契约变化(self) -> None:
         def 改(数据):
             参数 = self._目标参数(数据, "超时秒")
-            self.assertIs(参数["必填"], False, 参数)
-            参数["必填"] = True
+            self.assertIs(参数["必填"], 假, 参数)
+            参数["必填"] = 真
 
         self._断言契约面变化(self.造改副本("面_必填", 改))
 
@@ -470,7 +471,7 @@ class 对外契约变更判定测试(unittest.TestCase):
         # ④ 生产链路（规范化在位）对同一副本判「内部优化 / 不要求递增」，并点名文档性变化
         结果 = self.判定副本(副本)
         self.assertEqual(结果["变更类别"], "内部优化", 结果["变化明细"])
-        self.assertIs(结果["是否要求版本递增"], False)
+        self.assertIs(结果["是否要求版本递增"], 假)
         self.assertEqual(结果["兼容判定"]["契约面变化能力"], [])
         self.assertEqual(结果["兼容判定"]["文档性变化能力"], [目标能力id])
         self.assertEqual(结果["兼容判定"]["结论"], "兼容")
@@ -621,7 +622,7 @@ class 对外契约变更判定测试(unittest.TestCase):
 
     def test_判定并包装成功包成信封(self) -> None:
         信封 = 判定并包装(判定对外契约变更(真实包相对路径))
-        self.assertIs(信封["成功"], True)
+        self.assertIs(信封["成功"], 真)
         self.assertEqual(信封["错误码"], "")
         self.assertEqual(set(信封["值"]), 固定结构键)
 
@@ -629,7 +630,7 @@ class 对外契约变更判定测试(unittest.TestCase):
         原始 = 判定对外契约变更(self.临时根 / "没有这个包")
         信封 = 判定并包装(原始)
         self.assertEqual(信封, 原始)
-        self.assertIs(信封["成功"], False)
+        self.assertIs(信封["成功"], 假)
 
     # ---- 验收：不可对既有文件产生写入 ----
 

@@ -26,6 +26,7 @@ from typing import Any
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.契约编译.漂移检测 import 全仓注册口径统计, 默认存量基线路径
 from 开发工具.发布门禁.运行发布门禁 import 执行门禁, 注册口径新增判据
 
@@ -209,7 +210,7 @@ class 发布门禁接线测试(unittest.TestCase):
             lambda *参数, **关键词: self.原统计函数(根, 基线文件=默认存量基线路径()))
         try:
             with contextlib.redirect_stdout(io.StringIO()):
-                结果 = 执行门禁(运行测试=False, 运行编译=False, 真实进程=False)
+                结果 = 执行门禁(运行测试=假, 运行编译=假, 真实进程=假)
         finally:
             self.漂移检测.全仓注册口径统计 = self.原统计函数
         return 结果
@@ -261,7 +262,7 @@ class 发布门禁接线测试(unittest.TestCase):
             降级 = [关键词 for 关键词 in 节点.keywords
                     if 关键词.arg == "强制"
                     and isinstance(关键词.value, ast.Constant)
-                    and 关键词.value.value is False]
+                    and 关键词.value.value is 假]
             self.assertFalse(降级, "本项被降级成只报（强制=False），新增不一致将拦不住")
         源码 = 门禁模块路径.read_text(encoding="utf-8")
         self.assertIn("注册口径新增判据(口径统计)", 源码,
@@ -273,7 +274,7 @@ class 发布门禁接线测试(unittest.TestCase):
             return {"默认值硬不一致数": 默认值硬, "必填硬不一致数": 必填硬,
                     "新增漏声明数": 新增, "存量漏声明数": 存量,
                     "默认值硬不一致列表": [], "必填硬不一致列表": [], "新增漏声明列表": [],
-                    "基线": {"生效": True}}
+                    "基线": {"生效": 真}}
         通过, 详情 = 注册口径新增判据(_统计(0, 0, 0, 221))
         self.assertTrue(通过, 详情)
         self.assertIn("存量漏声明 221 条只报不阻断", 详情)

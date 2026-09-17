@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 运行核心.加载器.包发现.发现器 import 发现全部
 from 运行核心.加载器.依赖解析.解析器 import 解析依赖
 from 运行核心.加载器.提供者选择.选择器 import 选择全部提供者
@@ -178,7 +179,7 @@ def 运行发布门禁(包目录: str | Path | None = None, *, 超时秒: float 
             timeout=超时秒,
         )
     except (OSError, subprocess.TimeoutExpired) as 异常:
-        return 结果(False, 门禁失败, f"发布门禁子进程异常: {异常}")
+        return 结果(假, 门禁失败, f"发布门禁子进程异常: {异常}")
     输出 = (进程.stdout or "") + (进程.stderr or "")
     状态匹配 = re.findall(r"发布状态[:：]\s*(通过|失败|阻断)", 输出)
     发布状态 = 状态匹配[-1] if 状态匹配 else "未知"
@@ -188,8 +189,8 @@ def 运行发布门禁(包目录: str | Path | None = None, *, 超时秒: float 
     # 只有唯一明确的“通过”状态且退出码为 0 才能形成成功证据；
     # 无状态、失败或阻断一律失败，防止命令桩/异常输出制造假绿。
     if 进程.returncode == 0 and 发布状态 == "通过":
-        return 结果(True, 消息=f"发布门禁通过（发布状态: {发布状态}）", 数据=数据)
-    return 结果(False, 门禁失败,
+        return 结果(真, 消息=f"发布门禁通过（发布状态: {发布状态}）", 数据=数据)
+    return 结果(假, 门禁失败,
                 f"发布门禁失败（退出码 {进程.returncode}，发布状态: {发布状态}）",
                 数据=数据)
 
@@ -205,7 +206,7 @@ def 检查发布证据(提交: str, *, 证据路径: str | Path | None = None) -
     """
     文件路径 = Path(证据路径) if 证据路径 else 验证历史路径
     if not 文件路径.is_file():
-        return 结果(False, 无证据, f"验证历史不存在: {文件路径}")
+        return 结果(假, 无证据, f"验证历史不存在: {文件路径}")
     记录列表: list[dict[str, Any]] = []
     for 行 in 文件路径.read_text(encoding="utf-8").splitlines():
         try:
@@ -218,7 +219,7 @@ def 检查发布证据(提交: str, *, 证据路径: str | Path | None = None) -
             continue
         记录列表.append(记录)
     if not 记录列表:
-        return 结果(False, 无证据,
+        return 结果(假, 无证据,
                     f"提交 {提交[:12]} 无成功验证记录（无发布证据）")
     最新记录 = 记录列表[-1]
     数据 = {
@@ -229,7 +230,7 @@ def 检查发布证据(提交: str, *, 证据路径: str | Path | None = None) -
         "命令": 最新记录.get("命令", []),
         "记录数": len(记录列表),
     }
-    return 结果(True,
+    return 结果(真,
                消息=f"提交 {提交[:12]} 有发布证据（{len(记录列表)} 条成功记录）",
                数据=数据)
 
@@ -277,7 +278,7 @@ def 生成发布证据(提交: str, 名称: str, 退出码: int, 指纹: str, *,
                 状态: str = "", 核验工作区指纹: str = "") -> 结果:
     """写发布记录；只有完整的专用类型记录才是正式发布判定事实。"""
     if not _提交模式.fullmatch(提交):
-        return 结果(False, 参数无效, f"提交必须是 40 位十六进制: {提交[:40]!r}")
+        return 结果(假, 参数无效, f"提交必须是 40 位十六进制: {提交[:40]!r}")
     目录 = Path(证据目录) if 证据目录 else 发布证据目录
     文件路径 = 目录 / f"{提交}.json"
     条目表: list[dict[str, Any]] = []
@@ -287,7 +288,7 @@ def 生成发布证据(提交: str, 名称: str, 退出码: int, 指纹: str, *,
             if isinstance(现有, dict) and isinstance(现有.get("条目"), list):
                 条目表 = 现有["条目"]
         except (json.JSONDecodeError, OSError) as 错误:
-            return 结果(False, 证据写入失败, f"现有发布证据不可读: {错误}")
+            return 结果(假, 证据写入失败, f"现有发布证据不可读: {错误}")
     条目: dict[str, Any] = {
         "类型": 证据类型, "名称": 名称, "退出码": 退出码,
         "指纹": 指纹, "工作区指纹": 指纹, "提交": 提交, "时间": _时间戳(),
@@ -302,7 +303,7 @@ def 生成发布证据(提交: str, 名称: str, 退出码: int, 指纹: str, *,
         预期工作区指纹 = 核验工作区指纹 or 当前工作区指纹()
         问题 = _正式证据问题(条目, 预期工作区指纹)
         if 问题:
-            return 结果(False, 参数无效, 问题)
+            return 结果(假, 参数无效, 问题)
     条目表.append(条目)
     try:
         _原子写文本(
@@ -310,8 +311,8 @@ def 生成发布证据(提交: str, 名称: str, 退出码: int, 指纹: str, *,
             json.dumps({"提交": 提交, "条目": 条目表}, ensure_ascii=False, indent=2) + "\n",
         )
     except OSError as 错误:
-        return 结果(False, 证据写入失败, f"发布证据写入失败: {错误}")
-    return 结果(True, 消息=f"发布记录已追加: {文件路径}",
+        return 结果(假, 证据写入失败, f"发布证据写入失败: {错误}")
+    return 结果(真, 消息=f"发布记录已追加: {文件路径}",
                 数据={"路径": str(文件路径), "条目数": len(条目表), "类型": 证据类型})
 
 
@@ -341,8 +342,8 @@ def 读取正式发布状态(*, 证据目录: str | Path | None = None,
             if not _正式证据问题(条目, 实际指纹):
                 候选表.append(条目)
     if not 候选表:
-        return 结果(False, 无证据, "当前提交和工作区指纹没有正式发布通过证据")
-    return 结果(True, 消息="正式发布状态：通过", 数据=dict(候选表[0]))
+        return 结果(假, 无证据, "当前提交和工作区指纹没有正式发布通过证据")
+    return 结果(真, 消息="正式发布状态：通过", 数据=dict(候选表[0]))
 
 
 def 检查正式发布证据(提交: str, 制品摘要: str, 工作区指纹: str,
@@ -352,9 +353,9 @@ def 检查正式发布证据(提交: str, 制品摘要: str, 工作区指纹: st
     if not 状态.成功:
         return 状态
     if 状态.数据.get("制品摘要") != 制品摘要:
-        return 结果(False, 无证据, "正式发布证据与待激活制品摘要不一致")
+        return 结果(假, 无证据, "正式发布证据与待激活制品摘要不一致")
     if 状态.数据.get("来源指纹") != 来源指纹:
-        return 结果(False, 无证据, "正式发布证据与制品来源指纹不一致")
+        return 结果(假, 无证据, "正式发布证据与制品来源指纹不一致")
     return 状态
 
 
@@ -435,7 +436,7 @@ def _校验制品签名与信任(制品摘要: str, *, 制品根目录参数: Pa
         "信任目录": str(信任目录参数),
     })
     if not 调用结果.成功:
-        return 结果(False, 参数无效, 调用结果.错误说明)
+        return 结果(假, 参数无效, 调用结果.错误说明)
     通过 = bool(调用结果.值.get("通过"))
     return 结果(通过, "" if 通过 else 参数无效, str(调用结果.值.get("消息", "")))
 
@@ -447,12 +448,12 @@ def _写激活准备证据(路径: Path, 条目: dict[str, Any]) -> 结果:
         try:
             旧文本 = 路径.read_text(encoding="utf-8")
         except OSError as 错误:
-            return 结果(False, 证据写入失败, f"激活证据不可读: {错误}")
+            return 结果(假, 证据写入失败, f"激活证据不可读: {错误}")
     try:
         _原子写文本(路径, 旧文本 + json.dumps(条目, ensure_ascii=False) + "\n")
     except OSError as 错误:
-        return 结果(False, 证据写入失败, f"激活证据写入失败: {错误}")
-    return 结果(True, 消息="激活准备证据已持久化", 数据={"路径": str(路径)})
+        return 结果(假, 证据写入失败, f"激活证据写入失败: {错误}")
+    return 结果(真, 消息="激活准备证据已持久化", 数据={"路径": str(路径)})
 
 
 def _CAS切换激活指针(指针文件: Path, 目标摘要: str, 旧令牌: int) -> 结果:
@@ -464,21 +465,21 @@ def _CAS切换激活指针(指针文件: Path, 目标摘要: str, 旧令牌: int
     成功时 data={"旧指针": 旧指针, "新指针": 新指针}。
     """
     if not 指针文件.is_file():
-        return 结果(False, 指针缺失, f"激活指针缺失: {指针文件}")
+        return 结果(假, 指针缺失, f"激活指针缺失: {指针文件}")
     try:
         指针 = json.loads(指针文件.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as 错误:
-        return 结果(False, 指针缺失, f"激活指针不可读: {错误}")
+        return 结果(假, 指针缺失, f"激活指针不可读: {错误}")
     if not isinstance(指针, dict):
-        return 结果(False, 指针缺失, "激活指针结构不合法")
+        return 结果(假, 指针缺失, "激活指针结构不合法")
     try:
         当前令牌 = int(指针.get(栅栏令牌字段, 0))
         旧版本 = int(指针.get(版本字段, 1))
         请求令牌 = int(旧令牌)
     except (TypeError, ValueError):
-        return 结果(False, 参数无效, "激活指针版本或栅栏令牌不合法")
+        return 结果(假, 参数无效, "激活指针版本或栅栏令牌不合法")
     if 当前令牌 != 请求令牌:
-        return 结果(False, 陈旧令牌,
+        return 结果(假, 陈旧令牌,
                     f"陈旧令牌: 当前栅栏令牌为 {当前令牌}，收到 {旧令牌}")
     新指针 = {
         摘要字段: 目标摘要[:16],
@@ -487,7 +488,7 @@ def _CAS切换激活指针(指针文件: Path, 目标摘要: str, 旧令牌: int
         版本字段: 旧版本 + 1,
         栅栏令牌字段: 当前令牌 + 1,
     }
-    return 结果(True, 消息=f"CAS 校验通过（令牌 {当前令牌}→{新指针[栅栏令牌字段]}）",
+    return 结果(真, 消息=f"CAS 校验通过（令牌 {当前令牌}→{新指针[栅栏令牌字段]}）",
                 数据={"旧指针": 指针, "新指针": 新指针})
 
 
@@ -502,33 +503,33 @@ def 切换激活指针(目标摘要: str, 旧令牌: int, *,
     """全部制品、信任、正式证据和来源条件通过且证据先落盘后，才 CAS 切换。"""
     证据提交 = 提交 or 当前提交()
     if not _提交模式.fullmatch(证据提交):
-        return 结果(False, 参数无效, f"提交必须是 40 位十六进制: {证据提交[:40]!r}")
+        return 结果(假, 参数无效, f"提交必须是 40 位十六进制: {证据提交[:40]!r}")
     if not _制品摘要模式.fullmatch(str(目标摘要)):
-        return 结果(False, 参数无效, f"制品摘要必须是 32 位小写十六进制: {目标摘要!r}")
+        return 结果(假, 参数无效, f"制品摘要必须是 32 位小写十六进制: {目标摘要!r}")
     目录 = Path(环境目录参数) if 环境目录参数 else 环境目录
     制品根 = Path(制品根目录参数) if 制品根目录参数 else 目录.parent
     状态根 = Path(状态目录参数) if 状态目录参数 else 制品根 / "平台客户端状态"
     信任根 = Path(信任目录参数) if 信任目录参数 else 制品根 / "平台客户端信任"
     制品目录 = 制品根 / 目标摘要
     if not 制品目录.is_dir():
-        return 结果(False, 参数无效, f"待激活制品不存在: {制品目录}")
+        return 结果(假, 参数无效, f"待激活制品不存在: {制品目录}")
     清单, 清单问题 = _读取物料清单(制品目录)
     if 清单 is None:
-        return 结果(False, 参数无效, 清单问题)
+        return 结果(假, 参数无效, 清单问题)
     清单来源指纹 = _物料来源指纹(清单)
     if not 清单来源指纹:
-        return 结果(False, 参数无效, "物料清单缺少合法来源工作区指纹")
+        return 结果(假, 参数无效, "物料清单缺少合法来源工作区指纹")
     if 来源指纹 and 来源指纹 != 清单来源指纹:
-        return 结果(False, 参数无效, "调用来源指纹与物料清单不一致")
+        return 结果(假, 参数无效, "调用来源指纹与物料清单不一致")
     签名校验 = _校验制品签名与信任(
         目标摘要, 制品根目录参数=制品根, 状态目录参数=状态根,
         环境目录参数=目录, 信任目录参数=信任根,
     )
     if not 签名校验.成功:
-        return 结果(False, 参数无效, f"制品签名或信任元数据校验失败: {签名校验.消息}")
+        return 结果(假, 参数无效, f"制品签名或信任元数据校验失败: {签名校验.消息}")
     实际工作区指纹 = 当前工作区指纹()
     if 工作区指纹 and 工作区指纹 != 实际工作区指纹:
-        return 结果(False, 参数无效, "调用工作区指纹不是当前真实工作区指纹")
+        return 结果(假, 参数无效, "调用工作区指纹不是当前真实工作区指纹")
     正式证据 = 检查正式发布证据(
         证据提交, 目标摘要, 实际工作区指纹, 清单来源指纹,
         证据目录=证据目录参数,
@@ -555,9 +556,9 @@ def 切换激活指针(目标摘要: str, 旧令牌: int, *,
     try:
         _原子写文本(指针文件, json.dumps(新指针, ensure_ascii=False))
     except OSError as 错误:
-        return 结果(False, 指针缺失, f"激活指针写入失败: {错误}")
+        return 结果(假, 指针缺失, f"激活指针写入失败: {错误}")
     旧令牌号 = int(旧指针.get(栅栏令牌字段, 0))
-    return 结果(True,
+    return 结果(真,
                消息=f"激活指针已切换（令牌 {旧令牌号}→{新指针[栅栏令牌字段]}）",
                数据={"新指针": 新指针, "指针文件": str(指针文件),
                     "激活证据": 准备证据.数据})
@@ -574,7 +575,7 @@ def 校验依赖闭包(声明: Any, *, 系统根: str | Path | None = None) -> �
     根 = Path(系统根) if 系统根 else 系统根目录
     发现 = 发现全部(根 / "支持库", 根 / "模块库", 根 / "技能库")
     if not 发现.成功:
-        return 结果(False, 裁决失败,
+        return 结果(假, 裁决失败,
                     "系统包发现失败: " + "；".join(发现.问题列表[:3]))
     系统提供者表 = 选择全部提供者(发现.声明列表)
     能力提供者 = {
@@ -584,9 +585,9 @@ def 校验依赖闭包(声明: Any, *, 系统根: str | Path | None = None) -> �
     解析 = 解析依赖([声明], 能力提供者)
     缺口 = 解析.缺失能力 + 解析.版本冲突 + 解析.循环
     if not 缺口:
-        return 结果(True,
+        return 结果(真,
                    消息=f"{声明.包id} 依赖闭包裁决通过（{len(声明.依赖)} 项依赖）")
-    return 结果(False, 裁决失败,
+    return 结果(假, 裁决失败,
                 f"{声明.包id} 依赖闭包有缺口: " + "；".join(缺口[:5]),
                 数据={"缺口": 缺口})
 
@@ -596,10 +597,10 @@ def 依赖裁决(包id: str, *, 系统根: str | Path | None = None) -> 结果:
     根 = Path(系统根) if 系统根 else 系统根目录
     发现 = 发现全部(根 / "支持库", 根 / "模块库", 根 / "技能库")
     if not 发现.成功:
-        return 结果(False, 裁决失败,
+        return 结果(假, 裁决失败,
                     "系统包发现失败: " + "；".join(发现.问题列表[:3]))
     声明表 = {声明.包id: 声明 for 声明 in 发现.声明列表}
     目标声明 = 声明表.get(包id)
     if 目标声明 is None:
-        return 结果(False, 裁决失败, f"系统内无包声明: {包id}")
+        return 结果(假, 裁决失败, f"系统内无包声明: {包id}")
     return 校验依赖闭包(目标声明, 系统根=根)
