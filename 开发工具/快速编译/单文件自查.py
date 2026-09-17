@@ -1,0 +1,124 @@
+"""单文件自查：改完一个文件，立刻确认它还能编译（并行期的第一道自检）。
+
+**为什么必须有它（2026-09-18 实测教训，哲学 14.3「反复犯错的开发要补底层」）**：
+并行维修期有 30+ 路同时改同一仓库。某一路拆分 `网关核心.py` 时把中间态（class 体被搬空、
+语法错）留在磁盘上，导致：
+- 另一路跑 `测试_冷启动反向门禁` → **11 个用例红**，全因 `import 网关核心` 失败；
+- 父会话复跑同一条测试 → 误判「刚提交的改动把仓库跑红了」，白查一轮。
+
+**根因不是谁不小心，是流程缺一轻量自检**：`py_compile` 一行命令，但没人把它固定成动作。
+本工具就是那个动作——**改完立刻跑一次**，代价不到 1 秒。
+
+用法：
+    python3.14 开发工具/快速编译/单文件自查.py 运行核心/统一网关/网关核心.py
+    python3.14 开发工具/快速编译/单文件自查.py --全仓 --只近期 30      # 扫全仓（只报近期改过的）
+    python3.14 开发工具/快速编译/单文件自查.py --改过   # 只查 git 工作树里已改动的 .py
+
+退出码：0 全部可编译；1 有不可编译文件（逐条打印错误位置与原因）。
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+系统根 = Path(__file__).resolve().parents[2]
+git = "/Library/Developer/CommandLineTools/usr/bin/git"
+
+#: 扫描/自查都要排除的目录（与发布门禁的源码边界一致，不另列一套）
+排除目录 = frozenset({
+    "工程缓存", ".git", "__pycache__", "归档", "参考资料", "node_modules",
+    "制品仓库", "编译缓存", "提供者运行环境",
+})
+
+
+def 查一个(相对路径: str) -> tuple[bool, str]:
+    """查单个文件能否编译；返回 (是否通过, 说明)。"""
+    路径 = 系统根 / 相对路径 if not Path(相对路径).is_absolute() else Path(相对路径)
+    if not 路径.is_file():
+        return 假值(), f"文件不存在: {相对路径}"
+    try:
+        ast.parse(路径.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError) as 错误:
+        行号 = getattr(错误, "lineno", "?")
+        文本 = getattr(错误, "text", "") or ""
+        return 假值(), f"{相对路径}:{行号} {type(错误).__name__}: {错误.msg if hasattr(错误,'msg') else 错误}\n      {文本.strip()[:110]}"
+    except OSError as 错误:
+        return 假值(), f"{相对路径}: 读取失败 {错误}"
+    return 真值(), f"{相对路径}: OK"
+
+
+def 假值() -> bool:
+    """裸布尔禁令（决策 0003）：本模块是正式源码，用中文口径。"""
+    return False
+
+
+def 真值() -> bool:
+    return True
+
+
+def _工作树改动的py() -> list[str]:
+    """git 工作树里已改动/新增的 .py（排 __pycache__）。"""
+    结果 = subprocess.run([git, "status", "--porcelain"], cwd=系统根, capture_output=True, text=True)
+    表: list[str] = []
+    for 行 in 结果.stdout.splitlines():
+        状态, _, 路径 = 行[:2], 行[2:3], 行[3:].strip().strip('"')
+        if not 路径.endswith(".py") or "__pycache__" in 路径:
+            continue
+        if 状态.strip().startswith("D"):
+            continue  # 已删除的不查
+        表.append(路径)
+    return 表
+
+
+def _全仓(只近期分钟: int) -> list[str]:
+    表: list[str] = []
+    现在 = time.time()
+    for 路径 in sorted(系统根.rglob("*.py")):
+        if any(段 in 排除目录 for 段 in 路径.relative_to(系统根).parts):
+            continue
+        if 只近期分钟 and (现在 - 路径.stat().st_mtime) / 60 > 只近期分钟:
+            continue
+        表.append(str(路径.relative_to(系统根)))
+    return 表
+
+
+def 主函数(argv: list[str] | None = None) -> int:
+    解析 = argparse.ArgumentParser(description="改完立刻自查：文件还能不能编译")
+    解析.add_argument("文件", nargs="*", help="要查的仓库相对路径（可多个）")
+    解析.add_argument("--改过", action="store_true", help="只查 git 工作树里改动的 .py")
+    解析.add_argument("--全仓", action="store_true", help="扫全仓 .py")
+    解析.add_argument("--只近期", type=int, default=0, metavar="分钟",
+                      help="配合 --全仓：只查该时间内改过的（0=不限）")
+    参 = 解析.parse_args(argv)
+
+    if 参.改过:
+        目标 = _工作树改动的py()
+    elif 参.全仓:
+        目标 = _全仓(参.只近期)
+    else:
+        目标 = 参.文件
+    if not 目标:
+        print("没有要查的文件（给路径，或用 --改过 / --全仓）")
+        return 0
+
+    坏: list[str] = []
+    for 项 in 目标:
+        通过, 说明 = 查一个(项)
+        if not 通过:
+            坏.append(说明)
+    if 坏:
+        print(f"❌ {len(坏)}/{len(目标)} 个文件不可编译（并行期请立刻修回可编译状态）:")
+        for 说明 in 坏:
+            print("  " + 说明)
+        return 1
+    print(f"✅ {len(目标)} 个文件全部可编译")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(主函数())
