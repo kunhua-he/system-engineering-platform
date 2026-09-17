@@ -28,6 +28,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 系统根 = Path(__file__).resolve().parents[2]
 脚本路径 = Path(__file__).resolve().parent / "冷启动脚本.py"
@@ -97,7 +98,36 @@ def 干净环境() -> dict[str, str]:
 class 冷启动反向门禁基础(unittest.TestCase):
     """公共设施：临时暂存根（支持库+模块库）、子进程执行、合成包写入。"""
 
+    #: 子进程超时预算 —— **按「编译缓存是否可用」分档**（2026-09-18 实测结论）。
+    #:
+    #: 为什么分档（第 52 项，结论已推翻同日初判「测试本身不稳」）：
+    #: 本测试的 `复制真实制品()` 复制的是**仓库源码**；冷启动子进程在**无 `工程缓存`**
+    #: 的干净副本里装配时需**现场冷编译**。同日两次对照实测：
+    #:   ① 有 `工程缓存` 的工作树 → `Ran 13 tests in 20.230s / OK`；
+    #:   ② 干净 `git worktree` 副本（无缓存）→ `Ran 13 tests in 133.193s / FAILED`，
+    #:      失败是 `组件合规` 步骤子进程 `TimeoutExpired after 120 seconds`；
+    #:   ③ 冷启动自举单项实测 **205.46 秒**（32 个提供者目录、83 个生成文件）。
+    #: **放宽超时不是正解、删测试更不是**：该测试的价值就是「干净环境门禁」。
+    #: 正解是**按环境给预算** —— 有缓存时保持 120 秒的严格（那才是它能抓的回归），
+    #: 无缓存（真·冷启动）时给足冷编译时间，并**把实际耗时打印出来**便于回归观察。
     子进程超时秒 = 120
+    #: 无编译缓存时的冷启动预算（含冷编译 + 装配 + 13 个用例的重复子进程起点）。
+    #: 取实测 205.46 秒的约 2.2 倍余量，**留出机器负载波动**；不设「无限」——
+    #: 超预算仍失败（真挂死必须能被抓住）。
+    冷启动超时秒 = 450
+
+    @staticmethod
+    def _有编译缓存() -> bool:
+        """工作树里是否有可复用的编译缓存（`工程缓存/编译缓存` 或 `工程缓存/制品仓库`）。"""
+        工程缓存 = 系统根 / "工程缓存"
+        return any((工程缓存 / 名).exists() for 名 in ("编译缓存", "制品仓库"))
+
+    def 取超时预算(self) -> int:
+        """按当前环境取子进程超时预算（有缓存严格、无缓存放宽），并打印取哪一档。"""
+        有 = self._有编译缓存()
+        预算 = self.子进程超时秒 if 有 else self.冷启动超时秒
+        print(f"[冷启动门禁] 编译缓存可用={有} → 子进程预算 {预算} 秒")
+        return 预算
 
     def setUp(self) -> None:
         self.临时根 = Path(tempfile.mkdtemp(prefix="冷启动门禁_"))
@@ -115,7 +145,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
         进程 = subprocess.run(
             [sys.executable, str(脚本路径), *参数],
             capture_output=True, env=干净环境(), cwd=str(self.工作目录),
-            timeout=超时秒 or self.子进程超时秒, text=True, encoding="utf-8",
+            timeout=超时秒 or self.取超时预算(), text=True, encoding="utf-8",
         )
         self.assertEqual(
             进程.returncode, 0,
@@ -171,7 +201,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
     def 写合成支持库(
         self, 名称: str, 能力id: str, *,
         版本: str = "1.0.0", 注册能力id: str | None = None,
-        依赖: list | None = None, 已废弃: bool = False, 返回值: str = "",
+        依赖: list | None = None, 已废弃: bool = 假, 返回值: str = "",
     ) -> Path:
         """写一份合成支持库（入口只注册 lambda 能力实现，无仓库孪生包）。"""
         目录 = self.根 / "支持库" / "适配层" / 名称
@@ -182,7 +212,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
             "能力": [{"能力id": 能力id, "名称": 名称}],
         }
         if 已废弃:
-            声明["已废弃"] = True
+            声明["已废弃"] = 真
         (目录 / "包声明.json").write_text(
             json.dumps(声明, ensure_ascii=False), encoding="utf-8")
         契约 = {
@@ -197,7 +227,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
         (目录 / "能力契约" / "参数契约.json").write_text(
             json.dumps(契约, ensure_ascii=False), encoding="utf-8")
         from 运行核心.环境指纹 import 计算环境指纹
-        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        指纹 = 计算环境指纹(含外部应用=假).详细信息
         系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
         (目录 / "依赖锁.json").write_text(json.dumps({
             "包": [{"名称": "冷启动测试工具", "版本": "1.0.0",
@@ -215,7 +245,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
             encoding="utf-8")
         return 目录
 
-    def 写合成实现包(self, 名称: str, 能力id: str, *, 带实现: bool = True) -> Path:
+    def 写合成实现包(self, 名称: str, 能力id: str, *, 带实现: bool = 真) -> Path:
         """写一份入口导入 实现/ 文件的合成支持库（用于删实现破坏场景）。"""
         目录 = self.根 / "支持库" / "适配层" / 名称
         (目录 / "实现").mkdir(parents=True, exist_ok=True)
@@ -236,7 +266,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
             }],
         }, ensure_ascii=False), encoding="utf-8")
         from 运行核心.环境指纹 import 计算环境指纹
-        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        指纹 = 计算环境指纹(含外部应用=假).详细信息
         系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
         (目录 / "依赖锁.json").write_text(json.dumps({
             "包": [{"名称": "冷启动测试工具", "版本": "1.0.0",
@@ -411,7 +441,7 @@ class Test冷启动子进程(冷启动反向门禁基础):
         self.复制真实制品()
         self.写合成支持库("回滚新", "冷启动.回滚能力", 版本="2.0.0", 返回值="新版本")
         self.写合成支持库("回滚旧", "冷启动.回滚能力", 版本="1.0.0",
-                           已废弃=True, 返回值="旧版本")
+                           已废弃=真, 返回值="旧版本")
         请求 = self.装配请求(("冷启动.回滚能力", {}))
         数据 = self.运行脚本("装配", str(self.根), 请求)
         self.assertTrue(数据["装配成功"], str(数据["问题列表"]))
@@ -419,7 +449,7 @@ class Test冷启动子进程(冷启动反向门禁基础):
         # 回滚：新版本标已废弃、旧版本恢复活跃（纯文件系统翻转声明）
         新声明 = self.根 / "支持库" / "适配层" / "回滚新" / "包声明.json"
         新数据 = json.loads(新声明.read_text(encoding="utf-8"))
-        新数据["已废弃"] = True
+        新数据["已废弃"] = 真
         新声明.write_text(json.dumps(新数据, ensure_ascii=False), encoding="utf-8")
         旧声明 = self.根 / "支持库" / "适配层" / "回滚旧" / "包声明.json"
         旧数据 = json.loads(旧声明.read_text(encoding="utf-8"))
@@ -480,7 +510,7 @@ class Test冷启动反向破坏(冷启动反向门禁基础):
         对调用方必须直接 能力不存在（fail-closed 于该包，不靠残留跑通）。
         """
         self.复制真实制品()
-        self.写合成实现包("删实现", "冷启动.删实现能力", 带实现=False)
+        self.写合成实现包("删实现", "冷启动.删实现能力", 带实现=假)
         数据 = self.运行脚本("装配", str(self.根), self.装配请求(
             ("冷启动.删实现能力", {}),
             ("文件系统支持库.文件操作.写入文件",
