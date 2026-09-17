@@ -22,6 +22,7 @@ from 公共契约.运行时.有界IO import (
     追加JSONL, 读取JSONL,
 )
 from 运行核心.运行诊断.运行事件.脱敏工具 import 脱敏事件字典
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 事件日志:
@@ -57,12 +58,12 @@ class 事件日志:
                     self.当前文件, 字典,
                     最大文件字节数=self.最大文件字节数,
                     轮转数量=self.轮转数量,
-                    强制落盘=False,
+                    强制落盘=假,
                 )
-            return True
+            return 真
         except OSError:
             self.降级告警数 += 1
-            return False
+            return 假
 
     def 分片路径表(self) -> list[Path]:
         """从新到旧返回日志分片：当前文件、`.1`、`.2` …（供有界分片读）。"""
@@ -123,13 +124,13 @@ class 事件日志:
     def 聚合错误码(self, *, 最近条数: int = 500) -> dict[str, int]:
         """按错误码聚合失败事件数量。"""
         统计表: dict[str, int] = {}
-        for 条目 in self.查询(成功=False, 最近条数=最近条数):
+        for 条目 in self.查询(成功=假, 最近条数=最近条数):
             错误码 = 条目.get("错误码") or "未知"
             统计表[错误码] = 统计表.get(错误码, 0) + 1
         return dict(sorted(统计表.items(), key=lambda 项: -项[1]))
 
     def 最近失败(self, 条数: int = 10) -> list[dict[str, Any]]:
-        return self.查询(成功=False, 最近条数=条数)
+        return self.查询(成功=假, 最近条数=条数)
 
     def 清空(self) -> None:
         """清空日志及其轮转分片（仅测试/管理用）。"""

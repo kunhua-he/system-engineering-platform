@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from 运行核心.任务调度.任务进程 import 任务进程池
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 状态_等待中 = "等待中"
 状态_运行中 = "运行中"
@@ -42,7 +43,7 @@ class 任务:
     请求id: str = ""
     项目id: str = ""
     用户id: str = ""
-    取消标记: bool = False
+    取消标记: bool = 假
 
     def 转字典(self) -> dict[str, Any]:
         return {
@@ -275,7 +276,7 @@ class 任务系统:
         永无终态。只有本会话真起过工作进程的独立任务（`本会话活动`）才有状态话语权；
         没有独立对象（本会话进程池与磁盘快照都没有的历史任务）同样以内存账本为准。
         """
-        if 独立对象 is None or not getattr(独立对象, "本会话活动", False):
+        if 独立对象 is None or not getattr(独立对象, "本会话活动", 假):
             return
         任务对象.状态 = 独立对象.状态
         任务对象.进度 = 独立对象.进度
@@ -326,15 +327,15 @@ class 任务系统:
         with self.锁:
             任务对象 = self.任务表.get(任务id)
             if 任务对象 is None:
-                return False, f"未知任务id: {任务id}"
+                return 假, f"未知任务id: {任务id}"
             # 归属校验：任务有归属时，调用方必须匹配
             if 任务对象.项目id and 项目id and 任务对象.项目id != 项目id:
-                return False, f"未知任务id: {任务id}"
+                return 假, f"未知任务id: {任务id}"
             if 任务对象.用户id and 用户id and 任务对象.用户id != 用户id:
-                return False, f"未知任务id: {任务id}"
+                return 假, f"未知任务id: {任务id}"
             if 任务对象.状态 in _终态:
-                return True, f"任务已处于终态 {任务对象.状态}（取消幂等）"
-            任务对象.取消标记 = True
+                return 真, f"任务已处于终态 {任务对象.状态}（取消幂等）"
+            任务对象.取消标记 = 真
             任务对象.状态 = 状态_取消中
             self._保存已加锁()
         成功, 消息 = self.进程池.取消(任务id)
@@ -345,7 +346,7 @@ class 任务系统:
             with self.锁:
                 任务对象 = self.任务表.get(任务id)
                 if 任务对象 is not None:
-                    任务对象.取消标记 = True
+                    任务对象.取消标记 = 真
                     self._保存已加锁()
                     self.上次同步状态表[任务id] = 任务对象.状态
             return 成功, 消息

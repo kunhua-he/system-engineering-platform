@@ -12,6 +12,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 验证场景推荐表 = {
     "参数不合法": "契约测试",
@@ -52,7 +53,7 @@ class 调用证据:
     制品摘要: str = ""
     错误码: str = ""
     时间: str = ""
-    成功: bool = True
+    成功: bool = 真
     资源释放结论: str = ""
 
     def 转字典(self) -> dict[str, Any]:
@@ -171,16 +172,16 @@ class 版本锁定:
             "包id": 包id, "版本": 版本, "契约版本": 契约版本, "提供者版本": 提供者版本,
         }
         self.引用计数[引用键] = self.引用计数.get(引用键, 0) + 1
-        return True
+        return 真
 
     def 释放(self, *, 请求id: str) -> bool:
         """请求/任务完成或资源释放后减少引用。"""
         锁定 = self.锁定表.pop(请求id, None)
         if 锁定 is None:
-            return False  # 重复释放幂等
+            return 假  # 重复释放幂等
         引用键 = f"{锁定['包id']}@{锁定['版本']}"
         self.引用计数[引用键] = max(0, self.引用计数.get(引用键, 0) - 1)
-        return True
+        return 真
 
     def 引用数(self, *, 包id: str, 版本: str) -> int:
         return self.引用计数.get(f"{包id}@{版本}", 0)

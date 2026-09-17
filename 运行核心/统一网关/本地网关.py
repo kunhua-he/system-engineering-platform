@@ -25,6 +25,7 @@ from 运行核心.统一网关.网关核心 import 网关核心, 网关请求
 from 公共契约.运行时.JSON解码 import 解码冻结值
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 # 公开错误码 → HTTP 状态码：与 网关核心.公开错误说明表 逐码一一对应（现 337 码对 337 码）。
@@ -292,7 +293,7 @@ class 有界线程HTTP服务器(ThreadingHTTPServer):
 
     def _写限流响应(self, request) -> None:
         正文 = json.dumps({
-            "请求id": "", "操作": "HTTP边界", "成功": False, "值": None,
+            "请求id": "", "操作": "HTTP边界", "成功": 假, "值": None,
             "错误码": "限流", "错误说明": "网关工作线程已达上限",
             "句柄": None, "耗时毫秒": 0.0,
         }, ensure_ascii=False).encode("utf-8")
@@ -349,8 +350,8 @@ class 本地网关服务器:
         # 客户端提交的项目/用户/会话/任务字段不能作为身份来源；只有
         # 经过受信服务端上下文注入的身份才可进入核心。兼容旧测试或
         # 专用内部夹具时，必须显式传入 False，不能依赖默认放行。
-        self.禁止客户端身份 = bool(self.配置.get("禁止客户端身份", True))
-        要求凭证 = bool(self.配置.get("要求凭证", True))
+        self.禁止客户端身份 = bool(self.配置.get("禁止客户端身份", 真))
+        要求凭证 = bool(self.配置.get("要求凭证", 真))
         self.安全配置 = 安全配置(
             凭证环境变量=str(self.配置.get("凭证环境变量", "系统库网关凭证")),
             请求大小上限=int(self.配置.get("请求大小上限", 1024 * 1024)),
@@ -359,7 +360,7 @@ class 本地网关服务器:
             要求凭证=要求凭证,
             默认权限范围=set(self.配置.get("默认权限范围", {"查询", "调用", "任务"})),
             允许来源表=set(self.配置.get("允许来源表", set())),
-            允许本地不验证SSL=bool(self.配置.get("允许本地不验证SSL", False)),
+            允许本地不验证SSL=bool(self.配置.get("允许本地不验证SSL", 假)),
         )
         self.请求限制器 = 请求限制器(self.安全配置)
         self.凭证管理器 = 凭证管理器(self.安全配置.凭证环境变量)
@@ -394,32 +395,32 @@ class 本地网关服务器:
                  配置: dict[str, Any] | None = None) -> "本地网关服务器":
         """测试/演示专用显式构造器；生产构造器不得隐式免凭证。"""
         测试配置 = dict(配置 or {})
-        测试配置["要求凭证"] = False
+        测试配置["要求凭证"] = 假
         return cls(网关核心实例=网关核心实例, 地址=地址, 端口=端口, 配置=测试配置)
 
     def 启动(self) -> tuple[bool, str]:
         地址通过, 地址消息 = self.请求限制器.校验监听地址(self.地址)
         if not 地址通过:
-            return False, 地址消息
+            return 假, 地址消息
         try:
             校验应用监听端口(self.端口)
         except (TypeError, ValueError) as 错误:
-            return False, str(错误)
+            return 假, str(错误)
         if self.安全配置.要求凭证:
             凭证通过, 凭证消息 = self.凭证管理器.加载()
             if not 凭证通过:
-                return False, 凭证消息
+                return 假, 凭证消息
         try:
             self.服务器 = 有界线程HTTP服务器(
                 (self.地址, self.端口), self._构造处理类(),
                 最大工作线程=self.并发上限,
             )
         except (OSError, ValueError):
-            return False, "端口占用或监听地址不可用"
+            return 假, "端口占用或监听地址不可用"
         self.端口 = int(self.服务器.server_address[1])
         self.线程 = threading.Thread(target=self.服务器.serve_forever, daemon=True)
         self.线程.start()
-        return True, f"网关已启动 http://{self.地址}:{self.端口}"
+        return 真, f"网关已启动 http://{self.地址}:{self.端口}"
 
     def 优雅停止(self) -> tuple[bool, str]:
         服务器 = self.服务器
@@ -432,7 +433,7 @@ class 本地网关服务器:
         if 线程 is not None and 线程.is_alive():
             线程.join(timeout=max(1.0, self.请求超时秒))
         self.凭证管理器.清除()
-        return True, "网关已优雅停止"
+        return 真, "网关已优雅停止"
 
     def _构造处理类(self):
         网关核心实例 = self.网关核心实例
@@ -491,7 +492,7 @@ class 本地网关服务器:
                     # 线程异常断开并把内部堆栈暴露给客户端。
                     状态码 = 500
                     正文 = json.dumps({
-                        "成功": False, "值": None, "错误码": "返回结果不符合契约",
+                        "成功": 假, "值": None, "错误码": "返回结果不符合契约",
                         "错误说明": "网关响应包含不可传输的数据类型",
                     }, ensure_ascii=False).encode("utf-8")
                 try:
@@ -559,14 +560,14 @@ class 本地网关服务器:
                     请求id = ""
                 请求id = 请求id[:64] or uuid.uuid4().hex[:16]
                 网关核心实例.审计.记录(
-                    操作=操作, 请求id=请求id, 来源地址=self.client_address[0], 成功=False,
+                    操作=操作, 请求id=请求id, 来源地址=self.client_address[0], 成功=假,
                     错误码=错误码, 失败原因=错误说明,
                     权限拒绝=错误码 == "权限不足",
                 )
                 # 边界拒绝也必须满足统一响应契约，避免连接器把原始错误
                 # 二次归类成“返回结果不符合契约”而丢失真实故障原因。
                 self._写JSON(状态码, {
-                    "请求id": 请求id, "操作": 操作, "成功": False, "值": None,
+                    "请求id": 请求id, "操作": 操作, "成功": 假, "值": None,
                     "错误码": 错误码, "错误说明": 错误说明,
                     "句柄": None, "耗时毫秒": 0.0,
                 })
@@ -578,59 +579,59 @@ class 本地网关服务器:
                 路径通过, 路径消息 = 请求限制器实例.校验路径(路径)
                 if not 路径通过:
                     self._拒绝(404, "未知路径", 路径消息)
-                    return False
+                    return 假
                 if 路径 == "/健康" and not 安全配置实例.要求凭证:
-                    return True
+                    return 真
                 if 安全配置实例.要求凭证:
                     凭证 = 提取访问凭证(self.headers)
                     凭证通过, _ = 凭证管理器实例.校验(凭证)
                     if not 凭证通过:
                         self._拒绝(401, "权限不足", "访问凭证缺失或无效")
-                        return False
-                return True
+                        return 假
+                return 真
 
             def _读请求体(self) -> tuple[bool, dict[str, Any], str]:
                 # 当前网关只实现有界 Content-Length 读取。若放行 chunked，
                 # rfile.read(0) 会留下分块数据污染持久连接，绕过大小/超时边界。
                 if self.headers.get("Transfer-Encoding", "").strip():
-                    return False, {}, "暂不支持分块传输"
+                    return 假, {}, "暂不支持分块传输"
                 长度文本 = self.headers.get("Content-Length", "0")
                 try:
                     长度 = int(长度文本)
                 except (TypeError, ValueError):
-                    return False, {}, "请求长度不合法"
+                    return 假, {}, "请求长度不合法"
                 大小通过, 大小消息 = 请求限制器实例.校验大小(长度)
                 if not 大小通过:
-                    return False, {}, 大小消息
+                    return 假, {}, 大小消息
                 类型通过, 类型消息 = 请求限制器实例.校验内容类型(
                     self.headers.get("Content-Type", ""), 长度,
                 )
                 if not 类型通过:
-                    return False, {}, 类型消息
+                    return 假, {}, 类型消息
                 if 长度 == 0:
-                    return True, {}, ""
+                    return 真, {}, ""
                 try:
                     # 请求体读取不得继承能力执行的长超时，防止慢体连接
                     # 长时间占用网关线程和文件描述符。
                     self.connection.settimeout(请求体读取超时秒)
                     原始字节 = self.rfile.read(长度)
                     if len(原始字节) != 长度:
-                        return False, {}, "请求正文长度不足"
+                        return 假, {}, "请求正文长度不足"
                     原始 = 原始字节.decode("utf-8")
                     def 拒绝非有限数(_文本: str):
                         raise ValueError("JSON 不允许 NaN 或 Infinity")
                     数据 = json.loads(原始, parse_constant=拒绝非有限数)
                 except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TimeoutError, OSError):
-                    return False, {}, "请求正文不是合法 JSON"
+                    return 假, {}, "请求正文不是合法 JSON"
                 finally:
                     self.connection.settimeout(请求超时秒)
                 if not isinstance(数据, dict):
-                    return False, {}, "请求正文必须是 JSON 对象"
+                    return 假, {}, "请求正文必须是 JSON 对象"
                 try:
                     数据 = self._解码JSON值(数据)
                 except ValueError as 错误:
-                    return False, {}, str(错误)
-                return True, 数据, ""
+                    return 假, {}, str(错误)
+                return 真, 数据, ""
 
             @staticmethod
             def _解码JSON值(值: Any) -> Any:
@@ -659,13 +660,13 @@ class 本地网关服务器:
                 通过, _ = 凭证处理凭证管理器实例.校验(凭证)
                 if not 通过:
                     self._拒绝(403, "权限不足", "反馈状态迁移需要平台处理凭证", "能力反馈状态")
-                    return False
-                return True
+                    return 假
+                return 真
 
             def _处理反馈登记(self) -> None:
                 读取成功, 请求数据, 错误说明 = self._读请求体()
                 if not 读取成功:
-                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明=错误说明,
+                    self._反馈响应(400, 假, 错误码="参数不合法", 错误说明=错误说明,
                                  操作="能力反馈登记")
                     return
                 结果对象 = 调用反馈能力("平台控制面.能力反馈.登记能力反馈",
@@ -684,22 +685,22 @@ class 本地网关服务器:
                 try:
                     限制 = int(限制原值)
                 except (TypeError, ValueError):
-                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明="限制必须是整数",
+                    self._反馈响应(400, 假, 错误码="参数不合法", 错误说明="限制必须是整数",
                                  操作="能力反馈查询")
                     return
                 结果对象 = 调用反馈能力("平台控制面.能力反馈.查询能力反馈",
                                     {"反馈id": 反馈id, "状态": 状态, "能力id": 能力id,
                                      "限制": 限制, "存储目录": 反馈存储目录})
                 if not 结果对象.成功:
-                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明=结果对象.错误说明,
+                    self._反馈响应(400, 假, 错误码="参数不合法", 错误说明=结果对象.错误说明,
                                  操作="能力反馈查询")
                     return
                 列表 = (结果对象.值 or {}).get("记录表", [])
                 if 反馈id and not 列表:
-                    self._反馈响应(404, False, 错误码="反馈不存在", 错误说明="反馈记录不存在",
+                    self._反馈响应(404, 假, 错误码="反馈不存在", 错误说明="反馈记录不存在",
                                  操作="能力反馈查询")
                     return
-                self._反馈响应(200, True, {"记录表": 列表, "数量": len(列表)}, 操作="能力反馈查询")
+                self._反馈响应(200, 真, {"记录表": 列表, "数量": len(列表)}, 操作="能力反馈查询")
 
             def _处理反馈状态(self) -> None:
                 if not self._反馈处理认证():
@@ -708,7 +709,7 @@ class 本地网关服务器:
                 反馈id = unquote(段[2])
                 读取成功, 请求数据, 错误说明 = self._读请求体()
                 if not 读取成功:
-                    self._反馈响应(400, False, 错误码="参数不合法", 错误说明=错误说明,
+                    self._反馈响应(400, 假, 错误码="参数不合法", 错误说明=错误说明,
                                  操作="能力反馈状态")
                     return
                 结果对象 = 调用反馈能力("平台控制面.能力反馈.迁移能力反馈状态",
@@ -736,7 +737,7 @@ class 本地网关服务器:
                 except Exception as 错误:
                     try:
                         self._反馈响应(
-                            500, False, None, "内部错误",
+                            500, 假, None, "内部错误",
                             f"{type(错误).__name__}: {错误}", 操作)
                     except Exception:
                         # 连接已断，信封写不出去：不吞掉原始异常场景，交 HTTP 层收尾。
@@ -891,12 +892,12 @@ class 本地网关服务器:
                     self._拒绝(404, "句柄无效", "流式请求不存在或已经结束", "流式取消")
                     return
                 网关核心实例.审计.记录(
-                    操作="流式取消", 请求id=请求id, 成功=True,
+                    操作="流式取消", 请求id=请求id, 成功=真,
                     来源地址=self.client_address[0],
                 )
                 self._写JSON(200, {
-                    "请求id": 请求id, "操作": "流式取消", "成功": True,
-                    "值": {"已取消": True}, "错误码": "", "错误说明": "",
+                    "请求id": 请求id, "操作": "流式取消", "成功": 真,
+                    "值": {"已取消": 真}, "错误码": "", "错误说明": "",
                     "句柄": None, "耗时毫秒": 0.0,
                 })
 
@@ -941,7 +942,7 @@ class 本地网关服务器:
                     self._拒绝(400, "参数不合法", "消息列表必须是非空列表", "流式生成对话")
                     return
                 流式输出 = 参数.get("流式输出")
-                if 流式输出 is not True:
+                if 流式输出 is not 真:
                     self._拒绝(400, "参数不合法", "流式输出必须是逻辑型真值", "流式生成对话")
                     return
                 请求id = str(请求数据.get("请求id", self.headers.get("X-请求-id", "")))[:64]
@@ -958,7 +959,7 @@ class 本地网关服务器:
                             句柄=句柄,
                             消息列表=消息列表,
                             系统提示词=参数.get("系统提示词"),
-                            流式输出=True,
+                            流式输出=真,
                             温度=参数.get("温度"),
                             最大令牌数=参数.get("最大令牌数"),
                             工具=参数.get("工具"),
@@ -982,7 +983,7 @@ class 本地网关服务器:
                     return
                 网关核心实例.审计.记录(
                     操作="流式生成对话", 能力id=能力id, 请求id=通道.请求id,
-                    成功=True, 来源地址=self.client_address[0],
+                    成功=真, 来源地址=self.client_address[0],
                 )
                 try:
                     self.send_response(200)
@@ -1075,7 +1076,7 @@ class 本地网关服务器:
                 ):
                     self._拒绝(400, "参数不合法", "句柄必须是 1 到 999999 的整数，只能使用网关返回值", 操作)
                     return
-                获取句柄 = 请求数据.get("获取句柄", False)
+                获取句柄 = 请求数据.get("获取句柄", 假)
                 if not isinstance(获取句柄, bool):
                     self._拒绝(400, "参数不合法", "获取句柄必须是逻辑型", 操作)
                     return
@@ -1149,8 +1150,8 @@ def 检查端口可用(端口: int) -> bool:
     套接字 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         套接字.bind(("127.0.0.1", 端口))
-        return True
+        return 真
     except OSError:
-        return False
+        return 假
     finally:
         套接字.close()

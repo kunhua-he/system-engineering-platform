@@ -34,6 +34,7 @@ from typing import Any
 
 from 运行核心.进程身份 import 创建进程身份
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 状态结构版本 = "1.2.0"  # 1.1.0：栅栏令牌列；1.2.0：结构化锁表+租约/句柄/事务进程身份键+迁移器重构
 
@@ -330,9 +331,9 @@ class 权威状态:
         """当前版本完整结构校验（列齐全才认为版本真实）。"""
         try:
             self._校验版本结构(连接, self.目标版本)
-            return True
+            return 真
         except RuntimeError:
-            return False
+            return 假
 
     def _校验版本结构(self, 连接: sqlite3.Connection, 版本: str) -> None:
         """按 校验规则表 校验指定版本要求的表、列与完整性；不满足抛 RuntimeError。
@@ -498,7 +499,7 @@ class 权威状态:
             "失效时间": 行[8], "失效原因": 行[9], "进程身份键": 行[10],
         }
 
-    def 全部句柄(self, *, 仅有效: bool = False) -> list[dict[str, Any]]:
+    def 全部句柄(self, *, 仅有效: bool = 假) -> list[dict[str, Any]]:
         """读取句柄账本快照，供服务重启恢复；默认包含已失效记录。"""
         连接 = self._连接()
         条件 = " WHERE 状态='有效'" if 仅有效 else ""
@@ -582,12 +583,12 @@ class 权威状态:
                 "UPDATE 句柄 SET 状态='已失效', 失效时间=?, 失效原因=? "
                 "WHERE 句柄id=? AND 状态='有效'", (时间, 原因, 句柄id))
             if 游标.rowcount == 0:
-                return False
+                return 假
             当前连接.execute(
                 "INSERT INTO 回收证据(证据id, 句柄id, 资源id, 类型, 失效原因, 时间, 版本) "
                 "VALUES(?, ?, ?, ?, ?, ?, ?)",
                 (uuid.uuid4().hex[:16], 句柄id, 资源id, 类型, 原因, 时间, 版本))
-            return True
+            return 真
 
     def 活跃句柄数(self) -> int:
         连接 = self._连接()
@@ -662,7 +663,7 @@ class 权威状态:
             )
             return 游标.rowcount > 0
 
-    def 回收租约(self, 租约id: str, 原因: str, *, 仅当过期: bool = False,
+    def 回收租约(self, 租约id: str, 原因: str, *, 仅当过期: bool = 假,
                  现在: float | None = None,
                  连接: sqlite3.Connection | None = None) -> bool:
         """回收租约（置 已回收=1 并级联失效句柄）。
@@ -692,7 +693,7 @@ class 权威状态:
                 游标 = 当前连接.execute(
                     "UPDATE 租约 SET 已回收=1 WHERE 租约id=? AND 已回收=0", (租约id,))
             if 游标.rowcount == 0:
-                return False
+                return 假
             行 = 当前连接.execute(
                 "SELECT 句柄id, 资源id FROM 租约 WHERE 租约id=?", (租约id,)
             ).fetchone()
@@ -715,7 +716,7 @@ class 权威状态:
                          句柄行[0] if 句柄行 else "", 原因, 时间,
                          句柄行[1] if 句柄行 else ""),
                     )
-            return True
+            return 真
 
     def 扫描过期租约(self) -> list[str]:
         """空闲超时/硬截止过期的租约（幂等回收）。
@@ -734,7 +735,7 @@ class 权威状态:
             候选列表.append(行[0])
         已回收列表 = []
         for 租约id in 候选列表:
-            if self.回收租约(租约id, "空闲超时或硬截止", 仅当过期=True, 现在=现在):
+            if self.回收租约(租约id, "空闲超时或硬截止", 仅当过期=真, 现在=现在):
                 已回收列表.append(租约id)
         return 已回收列表
 
@@ -783,23 +784,23 @@ class 权威状态:
                 "SELECT 事务id, 进程身份键, 项目id, 所有者, 栅栏令牌 FROM 锁 WHERE 资源id=?",
                 (资源id,)).fetchone()
             if 锁行 is None:
-                return False, "锁不存在: 提交必须持有资源锁"
+                return 假, "锁不存在: 提交必须持有资源锁"
             if 锁行[0] and 锁行[0] != 事务id:
-                return False, f"锁所有权不匹配: 锁属事务 {锁行[0]}，请求 {事务id}"
+                return 假, f"锁所有权不匹配: 锁属事务 {锁行[0]}，请求 {事务id}"
             if 锁行[1] and 锁行[1] != 进程身份键:
-                return False, f"锁所有权不匹配: 锁属进程 {锁行[1]}，请求 {进程身份键}"
+                return 假, f"锁所有权不匹配: 锁属进程 {锁行[1]}，请求 {进程身份键}"
             if 锁行[2] and 锁行[2] != 项目id:
-                return False, f"跨项目提交被拒绝: 锁属 {锁行[2]}，请求 {项目id}"
+                return 假, f"跨项目提交被拒绝: 锁属 {锁行[2]}，请求 {项目id}"
             if 锁行[3] and 锁行[3] != 所有者:
-                return False, f"跨所有者提交被拒绝: 锁属 {锁行[3]}，请求 {所有者}"
+                return 假, f"跨所有者提交被拒绝: 锁属 {锁行[3]}，请求 {所有者}"
             资源行 = 连接.execute(
                 "SELECT 版本, 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()
             if 资源行 is None:
-                return False, "资源不存在"
+                return 假, "资源不存在"
             if str(资源行[0]) != str(期望版本):
-                return False, f"版本冲突: 期望 {期望版本}，当前 {资源行[0]}"
+                return 假, f"版本冲突: 期望 {期望版本}，当前 {资源行[0]}"
             if str(资源行[1]) != str(期望令牌) or str(锁行[4]) != str(期望令牌):
-                return False, "旧令牌提交: 栅栏令牌已变化，提交被拒绝"
+                return 假, "旧令牌提交: 栅栏令牌已变化，提交被拒绝"
             try:
                 版本号文本 = str(资源行[0])
                 当前版本号 = int(版本号文本)
@@ -810,7 +811,7 @@ class 权威状态:
                 # （网关 公开错误说明表 已登记，本地网关 公开错误码状态映射 → 409）。
                 当前版本号 = None
             if 当前版本号 is None:
-                return False, (f"版本冲突: 资源 {资源id} 当前版本 {资源行[0]!r} "
+                return 假, (f"版本冲突: 资源 {资源id} 当前版本 {资源行[0]!r} "
                                f"不是十进制数字，无法递增新版本，提交被拒绝")
             新版本 = str(当前版本号 + 1)
             游标 = 连接.execute(
@@ -819,8 +820,8 @@ class 权威状态:
                 (新版本, json.dumps(新值, ensure_ascii=False), 新摘要,
                  time.strftime("%Y-%m-%d %H:%M:%S"), 资源id, 期望版本, 期望令牌))
             if 游标.rowcount != 1:
-                return False, "并发提交冲突"
-            return True, 新版本
+                return 假, "并发提交冲突"
+            return 真, 新版本
 
     # ---- 事务 ----
     def 创建事务(self, *, 事务id: str, 资源id: str, 句柄id: str, 基础版本: str,
@@ -877,7 +878,7 @@ class 权威状态:
                     令牌行 = 连接.execute(
                         "SELECT 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()
                     if 令牌行 is None:
-                        return False, "资源不存在: 无法授锁", 0
+                        return 假, "资源不存在: 无法授锁", 0
                     游标 = 连接.execute(
                         "INSERT OR IGNORE INTO 锁(资源id, 操作id, 事务id, 进程身份键, "
                         "项目id, 所有者, 栅栏令牌, 获取时间, 租约截止) "
@@ -890,9 +891,9 @@ class 权威状态:
                         新令牌 = 连接.execute(
                             "SELECT 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()[0]
                         连接.execute("UPDATE 锁 SET 栅栏令牌=? WHERE 资源id=?", (新令牌, 资源id))
-                        return True, "锁已获取", 新令牌
+                        return 真, "锁已获取", 新令牌
             if time.time() > 截止:
-                return False, f"锁获取超时: 资源 {资源id} 被占用", 0
+                return 假, f"锁获取超时: 资源 {资源id} 被占用", 0
             time.sleep(退避)
             退避 = min(退避 * 2, 0.1)  # 指数退避，有界
 
@@ -1167,7 +1168,7 @@ class 权威状态:
             shutil.copy(self.数据库路径, 目标路径)
             return 目标路径.is_file()
         except (OSError, sqlite3.OperationalError):
-            return False
+            return 假
 
     def 关闭(self) -> None:
         """在没有其他活跃调用线程时关闭全部连接。"""
@@ -1212,10 +1213,10 @@ class 权威状态:
                 self._校验版本结构(连接, self.目标版本)
                 行 = 连接.execute("SELECT 值 FROM 元信息 WHERE 键='结构版本'").fetchone()
                 if not 行 or 行[0] != self.目标版本:
-                    return False, f"结构版本不一致: {行[0] if 行 else '无'}"
-            return True, "结构完整"
+                    return 假, f"结构版本不一致: {行[0] if 行 else '无'}"
+            return 真, "结构完整"
         except Exception as 错误:
-            return False, str(错误)
+            return 假, str(错误)
 
     def 损坏恢复(self, 备份目录: Path | None = None) -> tuple[bool, str]:
         """数据库损坏恢复：integrity_check 返回 ok 才认为完整；损坏则从最新备份恢复。
@@ -1232,13 +1233,13 @@ class 权威状态:
                 # close 必须在 finally 里，只读校验连接不得泄漏。
                 校验连接.close()
             if 结果 and 结果[0] == "ok":
-                return True, "数据库完整"
+                return 真, "数据库完整"
             raise sqlite3.DatabaseError(f"完整性检查: {结果}")
         except sqlite3.DatabaseError:
             pass
         备份目录 = Path(备份目录 or (self.存储目录 / "备份"))
         if not 备份目录.is_dir():
-            return False, "数据库损坏且无可用备份"
+            return 假, "数据库损坏且无可用备份"
         for 备份文件 in sorted(备份目录.glob("*.db"), reverse=True):
             try:
                 shutil.copy(备份文件, self.数据库路径)
@@ -1252,8 +1253,8 @@ class 权威状态:
                 # 恢复后重新校验结构
                 成功, 消息 = self.校验结构()
                 if not 成功:
-                    return False, f"备份恢复后结构校验失败: {消息}"
-                return True, f"已从备份恢复: {备份文件.name}"
+                    return 假, f"备份恢复后结构校验失败: {消息}"
+                return 真, f"已从备份恢复: {备份文件.name}"
             except (OSError, sqlite3.OperationalError):
                 continue
-        return False, "数据库损坏且所有备份恢复失败"
+        return 假, "数据库损坏且所有备份恢复失败"

@@ -35,6 +35,7 @@ from 运行核心.运行环境管理器.环境管理器 import (
     环境目录,
     _是pip包,
 )
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 锁文件名 = "依赖锁.json"
 占位版本表 = {
@@ -46,16 +47,16 @@ from 运行核心.运行环境管理器.环境管理器 import (
 def 是精确版本(版本: Any) -> bool:
     """版本是否为精确锁定版本（禁止范围/通配/占位写法）。"""
     if not isinstance(版本, str) or not 版本.strip():
-        return False
+        return 假
     值 = 版本.strip()
     if 值.lower() in 占位版本表:
-        return False
+        return 假
     if 值[0] in "=<>!~^*":
-        return False
+        return 假
     if any(标记 in 值 for 标记 in (" ", ",", ";", "[", "]", "(", ")", "+")):
-        return False
+        return 假
     if not 值[0].isdigit():
-        return False
+        return 假
     return all(字符.isalnum() or 字符 in "._-" for 字符 in 值)
 
 
@@ -73,7 +74,7 @@ def _归一化系统名(系统名: str) -> str:
 def 系统匹配(锁内系统: Any, 当前系统: str) -> bool:
     """锁内 操作系统 与当前系统是否匹配（兼容 "macOS（Darwin 26.5.2）" 写法）。"""
     if not isinstance(锁内系统, str) or not 锁内系统.strip():
-        return False
+        return 假
     return _归一化系统名(锁内系统) == _归一化系统名(当前系统)
 
 
@@ -129,7 +130,7 @@ class 校验结果:
         return {"成功": self.成功, "问题列表": [问题.转字典() for 问题 in self.问题列表]}
 
 
-def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自动清理: bool = True) -> 校验结果:
+def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自动清理: bool = 真) -> 校验结果:
     """提供者启动/装配前强制校验（fail-closed：任一规则不满足即拒绝运行）。
 
     提供者id 缺省取 提供者目录.name；自动清理 为真时校验失败会废弃半态环境。

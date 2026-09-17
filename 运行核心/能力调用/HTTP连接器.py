@@ -40,6 +40,7 @@ from 公共契约.错误结构 import (
     错误码_返回结果不符合契约,
 )
 from 公共契约.版本规则.契约版本 import 取契约版本
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class HTTP连接器:
@@ -72,7 +73,7 @@ class HTTP连接器:
     def 调用能力(self, 能力id: str, 参数: dict[str, Any] | None = None, *,
                  句柄: int | None = None, 项目id: str = "", 用户id: str = "",
                  超时秒: float | None = None, 契约版本: str = "",
-                 请求id: str = "", 获取句柄: bool = True) -> dict[str, Any]:
+                 请求id: str = "", 获取句柄: bool = 真) -> dict[str, Any]:
         """按能力 id 经 HTTP 网关调用，返回统一结果 dict（含 句柄 字段）。"""
         # 1. 参数基本校验
         if not isinstance(能力id, str) or not 能力id.strip():
@@ -125,7 +126,7 @@ class HTTP连接器:
                 数据 = self._解码JSON值(数据)
             except ValueError as 错误:
                 return self._失败(错误码_返回结果不符合契约, f"网关响应正文非法：{错误}", 请求id)
-        if 状态码 >= 500 and (数据 is None or not isinstance(数据, dict) or 数据.get("成功") is not False):
+        if 状态码 >= 500 and (数据 is None or not isinstance(数据, dict) or 数据.get("成功") is not 假):
             return self._失败(错误码_提供者不可用, f"网关服务错误（状态 {状态码}）：{错误说明}", 请求id)
         if 数据 is None:
             if 状态码 == 200:
@@ -191,21 +192,21 @@ class HTTP连接器:
     def _返回结构合法(数据: object) -> bool:
         """严格校验冻结返回契约，禁止 JSON 类型隐式转换。"""
         if not isinstance(数据, dict):
-            return False
+            return 假
         必填字段 = {"请求id", "成功", "值", "错误码", "错误说明", "句柄", "耗时毫秒"}
         if not 必填字段.issubset(数据):
-            return False
+            return 假
         if not isinstance(数据["请求id"], str):
-            return False
+            return 假
         if not isinstance(数据["成功"], bool):
-            return False
+            return 假
         if not isinstance(数据["错误码"], str) or not isinstance(数据["错误说明"], str):
-            return False
+            return 假
         句柄 = 数据["句柄"]
         if 句柄 is not None and (
             isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999
         ):
-            return False
+            return 假
         耗时 = 数据["耗时毫秒"]
         return (isinstance(耗时, (int, float)) and not isinstance(耗时, bool)
                 and math.isfinite(float(耗时)) and 耗时 >= 0)
@@ -232,7 +233,7 @@ class HTTP连接器:
             with 开放器.open(请求, timeout=float(self.默认超时秒)) as 响应:
                 return 响应.status == 200
         except Exception:
-            return False
+            return 假
 
     def _解析凭证(self) -> str:
         """网关凭证取值：显式 `凭证` 优先，其次 `凭证环境变量` 引用；都没有返回空串（不发凭证头）。"""
@@ -298,7 +299,7 @@ class HTTP连接器:
     @staticmethod
     def _失败(错误码: str, 错误说明: str, 请求id: str) -> dict[str, Any]:
         return {
-            "成功": False, "值": None, "错误码": 错误码,
+            "成功": 假, "值": None, "错误码": 错误码,
             "错误说明": 错误说明, "句柄": None, "请求id": 请求id,
             "耗时毫秒": 0,
         }

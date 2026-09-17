@@ -35,6 +35,7 @@ from 公共契约.运行时.有界IO import (
 )
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 运行核心.运行诊断.运行事件.脱敏工具 import 脱敏值
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 运行数据目录下的审计子目录名（`<解析运行数据根>/审计`）。
 审计子目录名 = "审计"
@@ -78,9 +79,9 @@ class 安全审计:
 
     def 记录(self, *, 操作: str, 用户id: str = "", 项目id: str = "",
              能力id: str = "", 版本: str = "", 请求id: str = "",
-             成功: bool = True, 失败原因: str = "", 被限流: bool = False,
-             权限拒绝: bool = False, 触发回滚: bool = False,
-             访问敏感配置: bool = False, 来源地址: str = "",
+             成功: bool = 真, 失败原因: str = "", 被限流: bool = 假,
+             权限拒绝: bool = 假, 触发回滚: bool = 假,
+             访问敏感配置: bool = 假, 来源地址: str = "",
              模块id: str = "", 任务id: str = "", 会话id: str = "",
              契约版本: str = "", 提供者: str = "", 错误码: str = "",
              权限范围: list[str] | None = None, 耗时毫秒: float = 0.0,
@@ -106,7 +107,7 @@ class 安全审计:
                 追加JSONL(
                     self.审计文件, 记录,
                     最大文件字节数=默认JSONL文件上限字节,
-                    强制落盘=True,
+                    强制落盘=真,
                 )
         except OSError as 错误:
             # 审计落盘失败必须留痕：调用方（统一网关）丢弃返回值，
@@ -211,7 +212,7 @@ class 安全审计:
                 当前 = 序号
                 序号 += 1
                 if 当前 < 起点:
-                    return False
+                    return 假
                 return not (截止 and str(记录.get("时间", "")) < 截止)
 
             保留条数, 删除条数 = 重写JSONL(self.审计文件, 保留判定)

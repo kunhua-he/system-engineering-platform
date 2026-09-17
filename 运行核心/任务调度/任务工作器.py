@@ -34,16 +34,17 @@ def 执行单次任务(
     取消事件: Any,
 ) -> None:
     """子进程入口；连接中只发送 UTF-8 JSON 字节。"""
+    from 公共契约.基础类型.逻辑类型 import 真, 假
     try:
         请求 = _统一值(请求)
         if 取消事件.is_set():
-            响应 = {"任务id": 请求.get("任务id", ""), "取消": True}
+            响应 = {"任务id": 请求.get("任务id", ""), "取消": 真}
         else:
             结果 = _调用能力(函数, 请求.get("参数") or {}, 取消事件)
             if isinstance(结果, tuple) and len(结果) == 2 and isinstance(结果[1], bool):
                 值, 成功 = 结果
             else:
-                值, 成功 = 结果, True
+                值, 成功 = 结果, 真
             响应 = {
                 "任务id": 请求.get("任务id", ""),
                 "成功": 成功,
@@ -57,7 +58,7 @@ def 执行单次任务(
     except Exception as 错误:  # noqa: BLE001 - 子进程边界必须把能力异常转换为协议错误
         响应 = {
             "任务id": 请求.get("任务id", "") if isinstance(请求, dict) else "",
-            "成功": False,
+            "成功": 假,
             "错误码": "内部错误",
             "错误说明": str(错误),
         }
@@ -76,6 +77,7 @@ def 注册能力(能力id: str, 函数: Callable) -> None:
 
 
 def 主循环() -> int:
+    from 公共契约.基础类型.逻辑类型 import 真, 假
     print("READY", flush=True)
     for 行 in sys.stdin:
         try:
@@ -88,16 +90,16 @@ def 主循环() -> int:
         if 函数 is None:
             响应 = {
                 "任务id": 请求.get("任务id", ""),
-                "成功": False,
+                "成功": 假,
                 "错误码": "能力不存在",
                 "错误说明": f"任务能力未注册: {请求.get('能力id', '')}",
             }
         else:
             try:
                 值 = _调用能力(函数, 请求.get("参数") or {}, _空取消事件())
-                响应 = {"任务id": 请求.get("任务id", ""), "成功": True, "值": _统一值(值)}
+                响应 = {"任务id": 请求.get("任务id", ""), "成功": 真, "值": _统一值(值)}
             except Exception as 错误:  # noqa: BLE001 - 独立脚本边界必须返回结构化失败
-                响应 = {"任务id": 请求.get("任务id", ""), "成功": False,
+                响应 = {"任务id": 请求.get("任务id", ""), "成功": 假,
                           "错误码": "内部错误", "错误说明": str(错误)}
         print(json.dumps(响应, ensure_ascii=False), flush=True)
     return 0
@@ -105,7 +107,8 @@ def 主循环() -> int:
 
 class _空取消事件:
     def is_set(self) -> bool:
-        return False
+        from 公共契约.基础类型.逻辑类型 import 真, 假
+        return 假
 
 
 if __name__ == "__main__":

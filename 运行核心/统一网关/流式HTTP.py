@@ -18,6 +18,7 @@ from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器  # 网关域唯一有界实现（429 结构化拒绝），勿改用 公共契约.运行时.有界HTTP 那份（满载不回响应）
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 日志 = logging.getLogger("流式HTTP")
 
@@ -77,12 +78,12 @@ class HTTP流式通道:
         self.序号 = 0
         self.事件队列: list[dict[str, Any]] = []
         self.条件 = threading.Condition(threading.RLock())
-        self.结束 = False
-        self.断开 = False
+        self.结束 = 假
+        self.断开 = 假
         self.开始时间 = time.monotonic()
         self.停止事件 = threading.Event()
         self.结束回调 = 结束回调
-        self._回调已执行 = False
+        self._回调已执行 = 假
 
     def _追加事件(self, 事件类型: str, 数据: Any = None) -> dict[str, Any]:
         self.序号 += 1
@@ -131,7 +132,7 @@ class HTTP流式通道:
                     "失败事件",
                     {"错误码": "事件负载超限", "错误说明": "终止事件负载超过流式预算"},
                 )
-            self.结束 = True
+            self.结束 = 真
             self.停止事件.set()
             self.条件.notify_all()
         self._执行结束回调(原因 or 事件类型)
@@ -141,7 +142,7 @@ class HTTP流式通道:
         with self.条件:
             if self._回调已执行:
                 return
-            self._回调已执行 = True
+            self._回调已执行 = 真
         if self.结束回调 is not None:
             try:
                 self.结束回调(原因)
@@ -177,8 +178,8 @@ class HTTP流式通道:
         with self.条件:
             if self.断开:
                 return
-            self.断开 = True
-            self.结束 = True
+            self.断开 = 真
+            self.结束 = 真
             self.停止事件.set()
             self.事件队列.clear()
             self.累计事件字节数 = 0
@@ -329,10 +330,10 @@ class HTTP流式管理器:
     def 取消(self, 请求id: str) -> bool:
         通道 = self.查询(请求id)
         if 通道 is None:
-            return False
+            return 假
         with 通道.条件:
             if 通道.结束:
-                return False
+                return 假
         return bool(通道.取消())
 
     def 断开(self, 请求id: str) -> None:
@@ -363,7 +364,7 @@ class 流式HTTP服务器:
                  管理器: HTTP流式管理器 | None = None,
                  调用器: Any = None,
                  凭证环境变量: str = "系统库网关凭证",
-                 要求凭证: bool = True,
+                 要求凭证: bool = 真,
                  允许来源表: set[str] | None = None,
                  并发上限: int = 64) -> None:
         self.地址 = 地址
@@ -391,7 +392,7 @@ class 流式HTTP服务器:
                  并发上限: int = 64) -> "流式HTTP服务器":
         """测试/演示显式免凭证构造器。"""
         return cls(
-            地址=地址, 端口=端口, 管理器=管理器, 要求凭证=False,
+            地址=地址, 端口=端口, 管理器=管理器, 要求凭证=假,
             调用器=调用器,
             允许来源表=允许来源表, 并发上限=并发上限,
         )
@@ -403,24 +404,24 @@ class 流式HTTP服务器:
         try:
             校验应用监听端口(self.端口)
         except (TypeError, ValueError) as 错误:
-            return False, str(错误)
+            return 假, str(错误)
         try:
             if not ipaddress.ip_address(str(self.地址)).is_loopback:
-                return False, "流式服务仅允许回环监听地址"
+                return 假, "流式服务仅允许回环监听地址"
         except ValueError:
-            return False, "流式服务监听地址不合法"
+            return 假, "流式服务监听地址不合法"
         if self.安全配置.要求凭证:
             已加载, 加载说明 = self.凭证管理器.加载()
             if not 已加载:
-                return False, f"流式服务启动拒绝：{加载说明}"
+                return 假, f"流式服务启动拒绝：{加载说明}"
         if self.调用器 is None:
             try:
                 from 公共契约.能力契约.调用器 import 获取能力调用器
                 self.调用器 = 获取能力调用器()
             except Exception as 错误:
-                return False, f"流式服务缺少统一能力调用器: {错误}"
+                return 假, f"流式服务缺少统一能力调用器: {错误}"
         if not callable(getattr(self.调用器, "调用能力", None)):
-            return False, "流式服务调用器不符合统一调用契约"
+            return 假, "流式服务调用器不符合统一调用契约"
         调用器 = self.调用器
 
         class 处理器(BaseHTTPRequestHandler):
@@ -455,7 +456,7 @@ class 流式HTTP服务器:
                 self.connection.settimeout(10.0)
                 数据, 错误 = self._读取()
                 if 错误:
-                    self._写JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": 错误})
+                    self._写JSON(400, {"成功": 假, "错误码": "参数不合法", "错误说明": 错误})
                     return None
                 return 数据
 
@@ -481,7 +482,7 @@ class 流式HTTP服务器:
                 except (TypeError, ValueError):
                     状态码 = 500
                     正文 = json.dumps({
-                        "成功": False, "值": None,
+                        "成功": 假, "值": None,
                         "错误码": "返回结果不符合契约",
                         "错误说明": "网关响应包含不可传输的数据类型",
                     }, ensure_ascii=False).encode("utf-8")
@@ -504,21 +505,21 @@ class 流式HTTP服务器:
 
             def _校验凭证(self) -> bool:
                 if not 服务器.安全配置.要求凭证:
-                    return True
+                    return 真
                 凭证 = 提取访问凭证(self.headers)
                 通过, _ = 服务器.凭证管理器.校验(凭证)
                 if 通过:
-                    return True
-                服务器.记录审计(self.path, "", "", False, "权限不足")
-                self._写JSON(401, {"成功": False, "错误码": "权限不足",
+                    return 真
+                服务器.记录审计(self.path, "", "", 假, "权限不足")
+                self._写JSON(401, {"成功": 假, "错误码": "权限不足",
                                    "错误说明": "访问凭证缺失或无效"})
-                return False
+                return 假
 
             def do_POST(self) -> None:
                 from urllib.parse import unquote
                 路径 = unquote(self.path)
                 if 路径 not in ("/网关/流式", "/网关/流式/取消"):
-                    self._写JSON(404, {"成功": False, "错误码": "未知路径"})
+                    self._写JSON(404, {"成功": 假, "错误码": "未知路径"})
                     return
                 if not self._校验凭证():
                     return
@@ -535,8 +536,8 @@ class 流式HTTP服务器:
                 能力id = str(数据.get("能力id", ""))
                 if not 能力id:
                     服务器.记录审计(路径, str(数据.get("请求id", "")), 能力id,
-                                  False, "参数不合法")
-                    self._写JSON(400, {"成功": False, "错误码": "参数不合法", "错误说明": "能力id不能为空"})
+                                  假, "参数不合法")
+                    self._写JSON(400, {"成功": 假, "错误码": "参数不合法", "错误说明": "能力id不能为空"})
                     return
                 参数 = 数据.get("参数") if isinstance(数据.get("参数"), dict) else {}
                 try:
@@ -546,13 +547,13 @@ class 流式HTTP服务器:
                     )
                 except Exception:
                     调用结果 = None
-                if 调用结果 is None or not getattr(调用结果, "成功", False):
+                if 调用结果 is None or not getattr(调用结果, "成功", 假):
                     错误码 = getattr(调用结果, "错误码", "提供者不可用") if 调用结果 is not None else "提供者不可用"
                     错误说明 = getattr(调用结果, "错误说明", "统一能力调用器未返回结果") if 调用结果 is not None else "统一能力调用器调用失败"
                     服务器.记录审计(路径, str(数据.get("请求id", "")), 能力id,
-                                  False, 错误码)
+                                  假, 错误码)
                     状态码 = 404 if 错误码 == "能力不存在" else 400
-                    self._写JSON(状态码, {"成功": False, "错误码": 错误码, "错误说明": 错误说明})
+                    self._写JSON(状态码, {"成功": 假, "错误码": 错误码, "错误说明": 错误说明})
                     return
                 事件值 = 调用结果.值
 
@@ -573,17 +574,17 @@ class 流式HTTP服务器:
                     )
                 except RuntimeError as 错误:
                     self._写JSON(429, {
-                        "成功": False, "错误码": "限流", "错误说明": str(错误),
+                        "成功": 假, "错误码": "限流", "错误说明": str(错误),
                     })
                     return
                 except (TypeError, ValueError) as 错误:
                     状态码 = 409 if "请求id已存在" in str(错误) else 400
                     错误码 = "幂等键冲突" if 状态码 == 409 else "参数不合法"
                     self._写JSON(状态码, {
-                        "成功": False, "错误码": 错误码, "错误说明": str(错误),
+                        "成功": 假, "错误码": 错误码, "错误说明": str(错误),
                     })
                     return
-                服务器.记录审计(路径, 通道.请求id, 能力id, True, "")
+                服务器.记录审计(路径, 通道.请求id, 能力id, 真, "")
                 # 生成器可能长时间没有新事件，单靠下一次 wfile.write 无法发现
                 # 客户端已断开。独立监视连接 EOF，统一走管理器断开清理路径。
                 断开监视停止 = threading.Event()
@@ -657,7 +658,7 @@ class 流式HTTP服务器:
                 if (路径 not in ("/网关/流式", "/网关/流式/取消")
                         or not 来源 or 来源 not in 服务器.安全配置.允许来源表):
                     self._写JSON(403, {
-                        "成功": False, "值": None, "错误码": "权限不足",
+                        "成功": 假, "值": None, "错误码": "权限不足",
                         "错误说明": "跨域来源未授权",
                     })
                     return
@@ -669,7 +670,7 @@ class 流式HTTP服务器:
                 if (服务器.安全配置.要求凭证
                         and not ({"authorization", "x-system-credential"} & 请求头表)):
                     self._写JSON(403, {
-                        "成功": False, "值": None, "错误码": "权限不足",
+                        "成功": 假, "值": None, "错误码": "权限不足",
                         "错误说明": "预检未声明受支持的凭证请求头",
                     })
                     return
@@ -689,7 +690,7 @@ class 流式HTTP服务器:
                     self.close_connection = True
 
             def _方法不允许(self) -> None:
-                self._写JSON(405, {"成功": False, "错误码": "方法不允许", "错误说明": "流式入口仅支持 POST"})
+                self._写JSON(405, {"成功": 假, "错误码": "方法不允许", "错误说明": "流式入口仅支持 POST"})
 
             def do_GET(self) -> None:
                 self._方法不允许()
@@ -704,11 +705,11 @@ class 流式HTTP服务器:
                 (self.地址, self.端口), 处理器, 最大工作线程=self.并发上限,
             )
         except (OSError, ValueError) as 错误:
-            return False, f"流式服务启动失败: {错误}"
+            return 假, f"流式服务启动失败: {错误}"
         self.端口 = int(self.服务器.server_address[1])
         self.线程 = threading.Thread(target=self.服务器.serve_forever, daemon=True)
         self.线程.start()
-        return True, f"流式服务已启动 http://{self.地址}:{self.端口}"
+        return 真, f"流式服务已启动 http://{self.地址}:{self.端口}"
 
     def 连接诊断快照(self) -> list[dict[str, Any]]:
         服务器 = self.服务器
@@ -744,11 +745,11 @@ class 流式HTTP服务器:
             self.服务器 = None
         # 有界 join 服务线程，确认线程已退出才返回，避免停止后生产/
         # 超时/断开监视线程仍持有生成器、socket 或外部资源。
-        收敛 = True
+        收敛 = 真
         if self.线程 is not None:
             self.线程.join(timeout=5.0)
             if self.线程.is_alive():
-                收敛 = False
+                收敛 = 假
             self.线程 = None
         with self.管理器.锁:
             self.管理器.通道表.clear()

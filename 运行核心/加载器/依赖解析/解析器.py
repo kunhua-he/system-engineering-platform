@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from 公共契约.包声明 import 包声明
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 版本约束正则 = re.compile(r"^(>=|<=|==|>|<)?\s*(\d+\.\d+\.\d+)$")
 
@@ -37,7 +38,7 @@ def _满足约束(实际版本: str, 约束: str) -> bool:
     """判断实际版本是否满足 >=/<=/==/>/< 约束；无约束视为满足。"""
     匹配 = 版本约束正则.match(约束.strip())
     if not 匹配:
-        return True
+        return 真
     运算符, 目标版本 = 匹配.group(1) or "==", 匹配.group(2)
     实际, 目标 = _版本元组(实际版本), _版本元组(目标版本)
     if 运算符 == ">=":

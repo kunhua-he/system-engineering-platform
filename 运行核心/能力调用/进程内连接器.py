@@ -19,6 +19,7 @@ import uuid
 from typing import Any
 
 from 运行核心.能力调用.唯一能力调用 import 获取唯一调用服务
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 进程内连接器:
@@ -30,7 +31,7 @@ class 进程内连接器:
     def 调用能力(self, 能力id: str, 参数: dict[str, Any] | None = None, *,
                  句柄: int | None = None, 项目id: str = "", 用户id: str = "",
                  超时秒: float | None = None, 契约版本: str = "",
-                 请求id: str = "", 获取句柄: bool = True) -> dict[str, Any]:
+                 请求id: str = "", 获取句柄: bool = 真) -> dict[str, Any]:
         """按能力 id 经唯一能力调用服务直调注册表，返回统一 dict。"""
         开始 = time.monotonic()
         请求id = 请求id or uuid.uuid4().hex[:16]
@@ -62,14 +63,14 @@ class 进程内连接器:
         except Exception as 错误:
             return self._失败("调用失败", f"{能力id} 调用异常: {错误}", 请求id, 开始)
         耗时毫秒 = round((time.monotonic() - 开始) * 1000, 3)
-        if getattr(结果, "成功", False):
+        if getattr(结果, "成功", 假):
             return {
-                "成功": True, "值": getattr(结果, "值", None),
+                "成功": 真, "值": getattr(结果, "值", None),
                 "错误码": "", "错误说明": "", "句柄": 句柄,
                 "请求id": 请求id, "耗时毫秒": 耗时毫秒,
             }
         return {
-            "成功": False, "值": None,
+            "成功": 假, "值": None,
             "错误码": getattr(结果, "错误码", "调用失败") or "调用失败",
             "错误说明": getattr(结果, "错误说明", "") or "",
             "句柄": 句柄, "请求id": 请求id, "耗时毫秒": 耗时毫秒,
@@ -79,14 +80,14 @@ class 进程内连接器:
         """进程内直通：唯一能力调用服务可用即视为健康。"""
         try:
             获取唯一调用服务()
-            return True
+            return 真
         except Exception:
-            return False
+            return 假
 
     @staticmethod
     def _失败(错误码: str, 错误说明: str, 请求id: str, 开始: float) -> dict[str, Any]:
         return {
-            "成功": False, "值": None, "错误码": 错误码,
+            "成功": 假, "值": None, "错误码": 错误码,
             "错误说明": 错误说明, "句柄": None, "请求id": 请求id,
             "耗时毫秒": round((time.monotonic() - 开始) * 1000, 3),
         }

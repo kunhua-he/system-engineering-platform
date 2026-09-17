@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 结论_兼容 = "兼容"
 结论_不兼容 = "不兼容"
@@ -23,8 +24,8 @@ class 兼容检查结果:
 
     结论: str = 结论_兼容
     原因列表: list[str] = field(default_factory=list)
-    是否需要适配器: bool = False
-    是否必须升主版本: bool = False
+    是否需要适配器: bool = 假
+    是否必须升主版本: bool = 假
 
     def 转字典(self) -> dict[str, Any]:
         return {"结论": self.结论, "原因": self.原因列表,
@@ -46,7 +47,7 @@ def 检查契约兼容(旧契约: dict[str, Any], 新契约: dict[str, Any]) -> 
         if 能力id not in 新能力表:
             结果.原因列表.append(f"删除能力: {能力id}")
             结果.结论 = 结论_不兼容
-            结果.是否必须升主版本 = True
+            结果.是否必须升主版本 = 真
 
     for 能力id, 新能力 in 新能力表.items():
         旧能力 = 旧能力表.get(能力id)
@@ -61,30 +62,30 @@ def 检查契约兼容(旧契约: dict[str, Any], 新契约: dict[str, Any]) -> 
             if 参数名 not in 新参数表:
                 结果.原因列表.append(f"删除参数 {参数名}（能力 {能力id}）")
                 结果.结论 = 结论_不兼容
-                结果.是否必须升主版本 = True
+                结果.是否必须升主版本 = 真
 
         # 3. 修改必填参数（新增必填 或 可选变必填）→ 不兼容
         for 参数名, 新参数 in 新参数表.items():
             旧参数 = 旧参数表.get(参数名)
             if 旧参数 is None:
-                if 新参数.get("必填", True):
+                if 新参数.get("必填", 真):
                     结果.原因列表.append(f"新增必填参数 {参数名}（能力 {能力id}）")
                     结果.结论 = 结论_不兼容
-                    结果.是否必须升主版本 = True
+                    结果.是否必须升主版本 = 真
                 else:
                     结果.原因列表.append(f"新增可选参数（兼容）: {参数名}")
-            elif 旧参数.get("必填", True) and not 新参数.get("必填", True):
+            elif 旧参数.get("必填", 真) and not 新参数.get("必填", 真):
                 结果.原因列表.append(f"必填改可选（兼容）: {参数名}")
-            elif not 旧参数.get("必填", True) and 新参数.get("必填", True):
+            elif not 旧参数.get("必填", 真) and 新参数.get("必填", 真):
                 结果.原因列表.append(f"可选改必填（不兼容）: {参数名}")
                 结果.结论 = 结论_不兼容
-                结果.是否必须升主版本 = True
+                结果.是否必须升主版本 = 真
 
         # 4. 修改返回结构 → 不兼容
         if 旧能力.get("返回") != 新能力.get("返回"):
             结果.原因列表.append(f"返回结构变化（能力 {能力id}）: {旧能力.get('返回')} → {新能力.get('返回')}")
             结果.结论 = 结论_不兼容
-            结果.是否必须升主版本 = True
+            结果.是否必须升主版本 = 真
 
     # 5. 删除错误码 → 不兼容
     旧错误码集合 = set(旧契约.get("错误码", []))
@@ -93,7 +94,7 @@ def 检查契约兼容(旧契约: dict[str, Any], 新契约: dict[str, Any]) -> 
         if 错误码 not in 新错误码集合:
             结果.原因列表.append(f"删除错误码: {错误码}")
             结果.结论 = 结论_不兼容
-            结果.是否必须升主版本 = True
+            结果.是否必须升主版本 = 真
 
     # 6. 内部实现修复/性能提升（无契约变化）→ 兼容
     if 结果.结论 == 结论_兼容 and 旧契约.get("说明") != 新契约.get("说明"):
@@ -101,5 +102,5 @@ def 检查契约兼容(旧契约: dict[str, Any], 新契约: dict[str, Any]) -> 
 
     if 结果.结论 == 结论_不兼容:
         结果.结论 = 结论_需要适配器  # 提供适配器可缓解；无适配器时无法升级
-        结果.是否需要适配器 = True
+        结果.是否需要适配器 = 真
     return 结果

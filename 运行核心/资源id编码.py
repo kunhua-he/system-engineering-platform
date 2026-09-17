@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 非法字符模式 = re.compile(r"[\\/]|\.\.|^\.|^$")
 合法字符模式 = re.compile(r"^[一-龥\w-]+$")
@@ -16,14 +17,14 @@ import re
 def 校验资源id(资源id: str) -> tuple[bool, str]:
     """校验资源 id 合法性。"""
     if not isinstance(资源id, str) or not 资源id:
-        return False, "资源 id 不能为空"
+        return 假, "资源 id 不能为空"
     if 资源id != 资源id.strip():
-        return False, "资源 id 不能含首尾空白"
+        return 假, "资源 id 不能含首尾空白"
     if 非法字符模式.search(资源id):
-        return False, f"资源 id 含非法字符（斜杠/上级目录/路径分隔）: {资源id}"
+        return 假, f"资源 id 含非法字符（斜杠/上级目录/路径分隔）: {资源id}"
     if len(资源id) > 200:
-        return False, "资源 id 过长"
-    return True, "资源 id 合法"
+        return 假, "资源 id 过长"
+    return 真, "资源 id 合法"
 
 
 def 安全资源id(资源id: str) -> str:
@@ -41,6 +42,6 @@ def 拒绝跨目录逃逸(路径: str, 根目录: str) -> tuple[bool, str]:
         目标 = Path(路径).resolve()
         根 = Path(根目录).resolve()
         目标.relative_to(根)
-        return True, "路径安全"
+        return 真, "路径安全"
     except (ValueError, OSError):
-        return False, f"路径逃逸被拒绝: {路径}"
+        return 假, f"路径逃逸被拒绝: {路径}"

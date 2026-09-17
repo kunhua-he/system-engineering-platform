@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from 公共契约.版本规则.契约版本 import 取契约版本
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 发布状态_已发布 = "已发布"
 发布状态_灰度中 = "灰度中"
@@ -105,7 +106,7 @@ class 版本注册表:
         契约版本 = 契约版本 or 取契约版本()
         键 = f"{包id}@{版本}"
         if 键 in self.版本表:
-            return False, f"版本包不可覆盖: {键} 已存在"
+            return 假, f"版本包不可覆盖: {键} 已存在"
         摘要 = 计算包摘要(声明字典 or {"包id": 包id, "版本": 版本})
         版本包记录 = 版本包(
             包id=包id, 版本=版本, 契约版本=契约版本, 提供者版本=提供者版本,
@@ -114,7 +115,7 @@ class 版本注册表:
         )
         self.版本表[键] = 版本包记录
         self.保存()
-        return True, 摘要
+        return 真, 摘要
 
     def 查询版本(self, 包id: str = "", 版本: str = "") -> list[版本包]:
         结果列表 = []
@@ -140,23 +141,23 @@ class 版本注册表:
         """确认版本可删除：无引用项目、无运行实例、无回滚任务。"""
         包 = self.获取版本(包id, 版本)
         if 包 is None:
-            return False, f"版本不存在: {包id}@{版本}"
+            return 假, f"版本不存在: {包id}@{版本}"
         if 包.引用项目:
-            return False, f"仍被项目引用: {', '.join(包.引用项目)}，禁止删除"
+            return 假, f"仍被项目引用: {', '.join(包.引用项目)}，禁止删除"
         if 运行实例数 > 0:
-            return False, f"仍有 {运行实例数} 个运行实例，禁止删除"
+            return 假, f"仍有 {运行实例数} 个运行实例，禁止删除"
         if 回滚任务数 > 0:
-            return False, f"仍有 {回滚任务数} 个回滚任务，禁止删除"
-        return True, "可以删除"
+            return 假, f"仍有 {回滚任务数} 个回滚任务，禁止删除"
+        return 真, "可以删除"
 
     def 删除版本(self, 包id: str, 版本: str, *, 运行实例数: int = 0, 回滚任务数: int = 0) -> tuple[bool, str]:
         """删除版本；未通过引用扫描禁止删除。"""
         可删, 原因 = self.确认可删除(包id, 版本, 运行实例数=运行实例数, 回滚任务数=回滚任务数)
         if not 可删:
-            return False, 原因
+            return 假, 原因
         del self.版本表[f"{包id}@{版本}"]
         self.保存()
-        return True, "已删除"
+        return 真, "已删除"
 
     def 标记引用(self, 包id: str, 版本: str, 项目id: str) -> None:
         包 = self.获取版本(包id, 版本)

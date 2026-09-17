@@ -10,19 +10,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass
 class 卸载条件:
     """版本卸载的全部前置条件。"""
 
-    无项目依赖: bool = True
-    无运行中任务: bool = True
-    无连接和句柄: bool = True
-    无待迁移状态: bool = True
-    无待处理失败记录: bool = True
-    无回滚窗口: bool = True
-    已超过弃用期限: bool = True
+    无项目依赖: bool = 真
+    无运行中任务: bool = 真
+    无连接和句柄: bool = 真
+    无待迁移状态: bool = 真
+    无待处理失败记录: bool = 真
+    无回滚窗口: bool = 真
+    已超过弃用期限: bool = 真
 
     def 全部满足(self) -> bool:
         return all([
@@ -48,7 +49,7 @@ class 卸载条件:
 class 卸载结果:
     """一次版本卸载的结果。"""
 
-    成功: bool = False
+    成功: bool = 假
     撤销清单: list[str] = field(default_factory=list)
     未满足条件: list[str] = field(default_factory=list)
 
@@ -69,8 +70,8 @@ def 执行卸载(条件: 卸载条件, *, 撤销清单: list[str] | None = None)
     未满足 = 检查卸载条件(条件)
     if 未满足:
         结果.未满足条件 = 未满足
-        结果.成功 = False
+        结果.成功 = 假
         return 结果
     结果.撤销清单 = 撤销清单 or list(标准撤销清单)
-    结果.成功 = True
+    结果.成功 = 真
     return 结果

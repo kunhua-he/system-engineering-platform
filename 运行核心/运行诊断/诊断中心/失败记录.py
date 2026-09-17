@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 状态_待诊断 = "待诊断"
 状态_已定位 = "已定位"
@@ -47,7 +48,7 @@ class 失败记录:
     错误说明: str = ""
     阶段: str = ""  # 失败发生在哪个阶段（发现/校验/锁定/装配/运行/停止/卸载）
     提供者: str = ""
-    是否可重试: bool = False
+    是否可重试: bool = 假
     归类: str = ""  # 契约漂移/配置问题/提供者问题/资源释放问题/未知
     状态: str = 状态_待诊断
     关联验证场景: str = ""
@@ -103,7 +104,7 @@ class 失败记录库:
 
     def 登记失败(self, *, 追踪id: str, 包id: str, 错误码: str, 错误说明: str,
                  模块id: str = "", 能力id: str = "", 版本: str = "", 阶段: str = "",
-                 提供者: str = "", 是否可重试: bool = False, 归类: str = "",
+                 提供者: str = "", 是否可重试: bool = 假, 归类: str = "",
                  关联验证场景: str = "", 复现输入: str = "") -> 失败记录:
         记录 = 失败记录(
             记录id=uuid.uuid4().hex[:16], 追踪id=追踪id,
@@ -121,19 +122,19 @@ class 失败记录库:
         """状态流转；已忽略必须填写原因与有效期。"""
         记录 = self.记录表.get(记录id)
         if 记录 is None:
-            return False, f"记录不存在: {记录id}"
+            return 假, f"记录不存在: {记录id}"
         if 目标状态 not in 允许流转表.get(记录.状态, set()):
-            return False, f"不允许从 {记录.状态} 流转到 {目标状态}"
+            return 假, f"不允许从 {记录.状态} 流转到 {目标状态}"
         if 目标状态 == 状态_已忽略:
             if not 忽略原因:
-                return False, "已忽略必须填写忽略原因"
+                return 假, "已忽略必须填写忽略原因"
             if not 忽略有效期:
-                return False, "已忽略必须填写忽略有效期（不能永久隐藏失败）"
+                return 假, "已忽略必须填写忽略有效期（不能永久隐藏失败）"
             记录.忽略原因 = 忽略原因
             记录.忽略有效期 = 忽略有效期
         记录.状态 = 目标状态
         self.保存()
-        return True, ""
+        return 真, ""
 
     def 查询(self, *, 包id: str = "", 模块id: str = "", 能力id: str = "",
              版本: str = "", 错误码: str = "", 追踪id: str = "", 状态: str = "",

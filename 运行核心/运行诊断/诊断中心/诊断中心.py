@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 归类_契约漂移 = "契约漂移"
 归类_配置问题 = "配置问题"
@@ -75,9 +76,9 @@ class 诊断结果:
     调用能力: str = ""
     依赖提供者: str = ""
     失败阶段: str = ""
-    是否可以重试: bool = False
+    是否可以重试: bool = 假
     推荐验证场景: str = ""
-    是否可以回滚: bool = False
+    是否可以回滚: bool = 假
     结论: str = ""
 
 

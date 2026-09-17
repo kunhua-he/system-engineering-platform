@@ -15,6 +15,7 @@ from typing import Any
 from 公共契约.包声明 import 包声明, 加载声明文件
 from 公共契约.能力契约 import 能力注册表
 from 运行核心.加载器.包安装.入口路径 import 解析入口路径
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 声明文件名 = "包声明.json"
 入口文件名 = "入口.py"
@@ -56,7 +57,7 @@ def 安装全部支持库(支持库根目录: Path, 注册表: 能力注册表) 
     """发现并安装全部支持库（跳过已废弃回滚版本），返回已注册能力 id 列表。"""
     已注册: list[str] = []
     for 声明 in 发现支持库(支持库根目录):
-        if getattr(声明, "已废弃", False):
+        if getattr(声明, "已废弃", 假):
             continue  # 已废弃包保留文件，不参与装配/注册
         安装支持库(声明, 注册表)
         已注册.extend(能力.能力id for 能力 in 声明.能力)

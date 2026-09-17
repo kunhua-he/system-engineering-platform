@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 阈值_失败率上限 = 0.05
 阈值_超时率上限 = 0.10
@@ -68,7 +69,7 @@ def _真值(值: Any) -> bool:
         return 值 != 0
     if isinstance(值, str):
         return 值.strip().lower() in {"1", "true", "是", "y", "yes"}
-    return False
+    return 假
 
 
 def _数(值: Any, 缺省: float) -> float:
@@ -110,7 +111,7 @@ class 灰度指标库:
         except Exception as 错误:  # 装配缺失/运行库异常都不能打断主调用
             self.同步错误 = f"灰度指标落库失败：{错误}"
             return None
-        if 结果对象 is None or not getattr(结果对象, "成功", False):
+        if 结果对象 is None or not getattr(结果对象, "成功", 假):
             self.同步错误 = f"灰度指标落库失败：{getattr(结果对象, '错误说明', '') or '运行库不可用'}"
             return None
         return 结果对象.值 if isinstance(结果对象.值, dict) else {}
@@ -129,8 +130,8 @@ class 灰度指标库:
         )
         if 值 is None:
             self.写入失败计数 += 1
-            return False
-        return True
+            return 假
+        return 真
 
     # ── 恢复与搬迁 ──────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ class 灰度指标库:
         self.保存状态()
 
     def 观测(self, *, 能力id: str, 版本: str, 成功: bool, 耗时毫秒: float = 0.0,
-             超时: bool = False) -> list[str]:
+             超时: bool = 假) -> list[str]:
         """记录一次观测；返回超阈值问题列表（空=正常）。"""
         键 = f"{能力id}@{版本}"
         写入成功 = self._写入行("灰度观测", {

@@ -21,6 +21,7 @@ from typing import Any
 
 from 运行核心.加载器.版本系统.版本注册表 import 版本包, 版本注册表
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 灰度指标阈值 = {"失败率上限": 0.05, "超时率上限": 0.10, "成功率下限": 0.95}
 
@@ -54,7 +55,7 @@ class 灰度指标:
         总数 = self.成功数 + self.失败数
         return self.超时数 / 总数 if 总数 else 0.0
 
-    def 记录(self, *, 成功: bool, 耗时毫秒: float = 0.0, 超时: bool = False) -> None:
+    def 记录(self, *, 成功: bool, 耗时毫秒: float = 0.0, 超时: bool = 假) -> None:
         if 成功:
             self.成功数 += 1
         else:
@@ -87,10 +88,10 @@ class 灰度指标:
 class 热切换结果:
     """一次热切换的结果。"""
 
-    成功: bool = False
+    成功: bool = 假
     步骤列表: list[str] = field(default_factory=list)
     问题列表: list[str] = field(default_factory=list)
-    自动回滚: bool = False
+    自动回滚: bool = 假
     回滚记录: str = ""
 
     def 打印(self) -> str:
@@ -162,9 +163,9 @@ class 热切换管理器:
         return 候选
 
     def 热切换(self, *, 能力id: str, 新版本: str, 回退版本: str,
-               影子启动结果: bool = True, 健康检查结果: bool = True,
-               中立宿主验证: bool = True, 项目装配验证: bool = True,
-               完整性校验: bool = True, 依赖契约校验: bool = True,
+               影子启动结果: bool = 真, 健康检查结果: bool = 真,
+               中立宿主验证: bool = 真, 项目装配验证: bool = 真,
+               完整性校验: bool = 真, 依赖契约校验: bool = 真,
                灰度比例: float = 1.0) -> 热切换结果:
         """执行热切换；任一关键校验失败即自动回滚。"""
         结果 = 热切换结果()
@@ -241,13 +242,13 @@ class 热切换管理器:
         旧包id = self._取包id(能力id)
         if 旧包id:
             self.版本注册表.标记弃用(旧包id, 回退版本, "已弃用（进入弃用期）")
-        结果.成功 = True
+        结果.成功 = 真
         return 结果
 
     def _回滚(self, 结果: 热切换结果, 能力id: str, 回退版本: str, 原因: str,
               原激活: str = "") -> 热切换结果:
         """自动回滚：恢复激活映射、保留证据、不删除版本。"""
-        结果.自动回滚 = True
+        结果.自动回滚 = 真
         self.激活映射[能力id] = 原激活 or 回退版本
         回滚记录 = {
             "回滚id": uuid.uuid4().hex[:16],
@@ -260,7 +261,7 @@ class 热切换管理器:
         结果.回滚记录 = f"{回滚记录['回滚id']} 恢复版本 {回滚记录['恢复版本']}（原因: {原因}）"
         return 结果
 
-    def 记录灰度观测(self, 能力id: str, *, 成功: bool, 耗时毫秒: float = 0.0, 超时: bool = False) -> list[str]:
+    def 记录灰度观测(self, 能力id: str, *, 成功: bool, 耗时毫秒: float = 0.0, 超时: bool = 假) -> list[str]:
         """记录一次灰度观测；返回超阈值问题列表（自动回滚由调用方执行）。
 
         返回空列表有两种含义，调用方必须自己区分（问 `灰度指标.样本充足()`）：
@@ -277,10 +278,10 @@ class 热切换管理器:
     # ============ 第六阶段：真实提供者进程热切换 ============
 
     def 真实热切换(self, *, 能力id: str, 新版本: str, 回退版本: str,
-                   灰度比例: float = 1.0, 状态可迁移: bool = True,
+                   灰度比例: float = 1.0, 状态可迁移: bool = 真,
                    指标库: Any = None, 工作器路径=None,
-                   新进程启动失败: bool = False, 新进程健康失败: bool = False,
-                   新进程最小调用失败: bool = False) -> 热切换结果:
+                   新进程启动失败: bool = 假, 新进程健康失败: bool = 假,
+                   新进程最小调用失败: bool = 假) -> 热切换结果:
         """真实热切换：启动旧→启动新→健康检查→最小调用→影子→灰度→切换→排空→停止。
 
         新提供者失败不得影响旧提供者；切换失败自动恢复旧路由并保留证据。
@@ -343,7 +344,7 @@ class 热切换管理器:
         # 7. 观察指标（持久化）——没接到指标库时不得声称「正常 / 已持久化」
         if 指标库 is not None:
             for _ in range(3):
-                问题 = 指标库.观测(能力id=能力id, 版本=新版本, 成功=True, 耗时毫秒=10)
+                问题 = 指标库.观测(能力id=能力id, 版本=新版本, 成功=真, 耗时毫秒=10)
             if 问题:
                 return self._真实回滚(结果, 能力id, 旧进程, 新进程, f"灰度指标超阈值: {问题[0]}")
             步骤.append("灰度观察指标正常（已持久化）")
@@ -366,16 +367,16 @@ class 热切换管理器:
         if 状态可迁移:
             停止结果, 停止消息 = 旧进程.优雅停止()
             if not 停止结果:
-                return self._真实回滚(结果, 能力id, 新进程, 旧进程, f"旧提供者停止失败: {停止消息}", 已切换=True)
+                return self._真实回滚(结果, 能力id, 新进程, 旧进程, f"旧提供者停止失败: {停止消息}", 已切换=真)
             步骤.append(f"旧提供者 {旧版本} 优雅停止")
 
-        结果.成功 = True
+        结果.成功 = 真
         return 结果
 
     def _真实回滚(self, 结果: 热切换结果, 能力id: str, 恢复进程: Any, 停止进程: Any,
-                  原因: str, 已切换: bool = False) -> 热切换结果:
+                  原因: str, 已切换: bool = 假) -> 热切换结果:
         """真实切换失败回滚：恢复旧路由、停止新进程、保留证据、不删旧版本。"""
-        结果.自动回滚 = True
+        结果.自动回滚 = 真
         import time as _时间, uuid as _uuid
         if 已切换:
             self.路由表[能力id] = 恢复进程

@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 结论_可稳定复现 = "可稳定复现"
 结论_无法复现 = "无法复现"
@@ -51,8 +52,8 @@ def 获取脱敏输入(失败记录: Any) -> str:
 
 
 def 复现执行(失败记录: Any, *, 临时目录: Path | None = None,
-             能力可用: bool = True, 配置完整: bool = True,
-             契约一致: bool = True, 提供者可用: bool = True) -> 复现结果:
+             能力可用: bool = 真, 配置完整: bool = 真,
+             契约一致: bool = 真, 提供者可用: bool = 真) -> 复现结果:
     """执行一次真实复现：临时目录 + 最小验证场景。
 
     默认按失败记录的错误码归类执行对应验证（模拟执行环境判定）。

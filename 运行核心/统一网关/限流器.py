@@ -24,6 +24,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 错误码_限流 = "限流"
 
@@ -190,7 +191,7 @@ class 限流器:
             if self.请求并发 >= self.最大并发请求:
                 原因 = f"并发请求数超过上限 {self.最大并发请求}"
                 self._记录拒绝(原因)
-                return False, f"{错误码_限流}: {原因}"
+                return 假, f"{错误码_限流}: {原因}"
             现在 = time.monotonic()
             状态列表 = [self._状态(维度, 键, 现在) for 维度, 键 in 维度表]
             for 状态 in 状态列表:
@@ -198,17 +199,17 @@ class 限流器:
                     状态.拒绝数 += 1
                     原因 = f"{状态.维度}并发超过上限"
                     self._记录拒绝(原因, 状态.维度, 状态.键)
-                    return False, f"{错误码_限流}: {原因}"
+                    return 假, f"{错误码_限流}: {原因}"
                 if 状态.窗口计数 >= 状态.上限:
                     状态.拒绝数 += 1
                     原因 = f"{状态.维度}调用频率超过上限"
                     self._记录拒绝(原因, 状态.维度, 状态.键)
-                    return False, f"{错误码_限流}: {原因}"
+                    return 假, f"{错误码_限流}: {原因}"
             self.请求并发 += 1
             for 状态 in 状态列表:
                 状态.当前并发 += 1
                 状态.窗口计数 += 1
-            return True, ""
+            return 真, ""
 
     def 离开请求(
         self,
@@ -241,9 +242,9 @@ class 限流器:
             if self.任务数 >= self.最大任务数:
                 原因 = f"任务数超过上限 {self.最大任务数}"
                 self._记录拒绝(原因, "任务", 任务id)
-                return False, f"{错误码_限流}: {原因}"
+                return 假, f"{错误码_限流}: {原因}"
             self.任务数 += 1
-            return True, ""
+            return 真, ""
 
     def 离开任务(self) -> None:
         with self.锁:
@@ -261,9 +262,9 @@ class 限流器:
             if self.流式连接数 >= self.最大流式连接:
                 原因 = f"流式连接数超过上限 {self.最大流式连接}"
                 self._记录拒绝(原因, "能力", 能力id)
-                return False, f"{错误码_限流}: {原因}"
+                return 假, f"{错误码_限流}: {原因}"
             self.流式连接数 += 1
-            return True, ""
+            return 真, ""
 
     def 离开流式(self) -> None:
         with self.锁:

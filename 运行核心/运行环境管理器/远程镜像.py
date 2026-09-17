@@ -45,6 +45,7 @@ from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 支持库.适配层.密码签名提供者 import 签名, 验证签名
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 镜像不可用 = "镜像不可用"
 镜像签名无效 = "镜像签名无效"
@@ -69,7 +70,7 @@ class 远程镜像配置:
     代理地址：可选 http(s) 代理（下载/清单请求走代理），留空则直连。
     """
 
-    启用: bool = False
+    启用: bool = 假
     镜像地址: str = ""
     信任指纹: str = ""
     公钥PEM: str = ""
@@ -120,7 +121,7 @@ def 读取远程镜像配置(配置文件: Path | None = None) -> 远程镜像�
         数据 = json.loads(Path(配置文件).read_text(encoding="utf-8"))
         if not isinstance(数据, dict):
             return 远程镜像配置()
-        启用 = bool(数据.get("启用", False))
+        启用 = bool(数据.get("启用", 假))
         镜像地址 = str(数据.get("镜像地址", "") or "")
         信任指纹 = str(数据.get("信任指纹", "") or "")
         公钥PEM = str(数据.get("公钥PEM", "") or "")
@@ -158,14 +159,14 @@ def _计入制品摘要(相对路径: Path) -> bool:
     """是否计入制品摘要（按制品根内相对路径判定易变/临时文件）。"""
     路径文本 = 相对路径.as_posix()
     if "__pycache__" in 路径文本:
-        return False
+        return 假
     if 路径文本.endswith(".pyc") or 路径文本.endswith(".pyo"):
-        return False
+        return 假
     if 路径文本.startswith(".构建中_") or 路径文本.startswith(".镜像中_"):
-        return False
+        return 假
     if 路径文本.startswith(".制品下载_"):
-        return False
-    return True
+        return 假
+    return 真
 
 
 def _清单稳定序列化(清单: dict) -> bytes:
@@ -225,7 +226,7 @@ def 验证清单签名(清单: dict, 公钥PEM: str) -> 结果:
                           f"镜像签名验证失败: {验证结果.错误码}: {验证结果.错误说明}")
     if not 验证结果.值:
         return 结果.失败(镜像签名无效, "镜像签名验证不通过，镜像不可信")
-    return 结果.成功结果(True)
+    return 结果.成功结果(真)
 
 
 def 远程镜像校验器(请求: 镜像校验请求, 清单: dict, 信任指纹: str,
@@ -245,14 +246,14 @@ def 远程镜像校验器(请求: 镜像校验请求, 清单: dict, 信任指纹
     缺失字段 = [字段 for 字段 in 必填字段
                 if not str(清单.get(字段, "") or "").strip()]
     if 缺失字段:
-        return 镜像校验结果(False, 错误码=镜像摘要不匹配,
+        return 镜像校验结果(假, 错误码=镜像摘要不匹配,
                              错误说明=f"镜像清单不完整，缺失字段: {','.join(缺失字段)}")
     签名验证 = 验证清单签名(清单, 公钥PEM)
     if not 签名验证.成功:
-        return 镜像校验结果(False, 错误码=镜像签名无效,
+        return 镜像校验结果(假, 错误码=镜像签名无效,
                              错误说明=签名验证.错误说明)
     if str(清单["信任指纹"]) != str(信任指纹):
-        return 镜像校验结果(False, 错误码=镜像摘要不匹配,
+        return 镜像校验结果(假, 错误码=镜像摘要不匹配,
                              错误说明="信任指纹不匹配，镜像不可信")
     比对表 = [
         ("依赖锁", 请求.依赖锁摘要, str(清单["依赖锁摘要"])),
@@ -262,12 +263,12 @@ def 远程镜像校验器(请求: 镜像校验请求, 清单: dict, 信任指纹
     ]
     for 名称, 期望值, 声明值 in 比对表:
         if str(期望值) != str(声明值):
-            return 镜像校验结果(False, 错误码=镜像摘要不匹配,
+            return 镜像校验结果(假, 错误码=镜像摘要不匹配,
                                  错误说明=f"{名称}不匹配（本地期望 {期望值}，镜像声明 {声明值}）")
     if 实际制品摘要 is not None and str(实际制品摘要) != str(清单["制品摘要"]):
-        return 镜像校验结果(False, 错误码=镜像摘要不匹配,
+        return 镜像校验结果(假, 错误码=镜像摘要不匹配,
                              错误说明=f"制品摘要不匹配（下载内容与镜像声明不符）")
-    return 镜像校验结果(True, 制品摘要=str(清单["制品摘要"]))
+    return 镜像校验结果(真, 制品摘要=str(清单["制品摘要"]))
 
 
 def _拼接镜像地址(镜像地址: str, 提供者id: str, 环境摘要: str, 文件名: str) -> str:
@@ -317,7 +318,7 @@ class _代理响应包装:
 
     def __exit__(self, *异常):
         self._连接.close()
-        return False
+        return 假
 
     def __getattr__(self, 名称):
         return getattr(self._响应, 名称)
@@ -354,9 +355,9 @@ def 获取镜像清单(镜像地址: str, 提供者id: str, 环境摘要: str,
         if not isinstance(清单, dict):
             raise ValueError("镜像清单必须是对象")
     except (OSError, ValueError, json.JSONDecodeError) as 错误:
-        return 镜像操作结果(False, 错误码=镜像不可用,
+        return 镜像操作结果(假, 错误码=镜像不可用,
                              错误说明=f"镜像清单获取失败: {错误}")
-    return 镜像操作结果(True, 清单=清单)
+    return 镜像操作结果(真, 清单=清单)
 
 
 def 计算文件清单摘要(制品目录: Path) -> str:
@@ -459,11 +460,11 @@ def 下载镜像制品(镜像地址: str, 提供者id: str, 环境摘要: str, �
             _复校验文件清单(镜像清单, 目标目录)
     except (OSError, ValueError, tarfile.TarError) as 错误:
         shutil.rmtree(目标目录, ignore_errors=True)
-        return 镜像操作结果(False, 错误码=镜像下载失败,
+        return 镜像操作结果(假, 错误码=镜像下载失败,
                              错误说明=f"制品下载或解压失败: {错误}")
     finally:
         临时制品文件.unlink(missing_ok=True)
-    return 镜像操作结果(True)
+    return 镜像操作结果(真)
 
 
 def 同步落盘(制品目录: Path) -> None:

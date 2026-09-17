@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from 公共契约.包声明 import 包声明
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def 定位系统根() -> Path:
@@ -41,10 +42,10 @@ def 解析入口路径(声明: 包声明, 类型名: str) -> Path:
     except Exception:
         包根 = Path(getattr(声明, "来源路径", "") or "").parent.resolve()
     入口路径 = (包根 / 相对入口).resolve()
-    使用系统根回退 = False
+    使用系统根回退 = 假
     if not 入口路径.is_file() or not 入口路径.is_relative_to(包根):
         入口路径 = (系统根 / 相对入口).resolve()
-        使用系统根回退 = True
+        使用系统根回退 = 真
     if 使用系统根回退 and not 入口路径.is_relative_to(系统根.resolve()):
         raise ValueError(f"{类型名}入口路径越界: {声明.入口}")
     if not 入口路径.is_file():

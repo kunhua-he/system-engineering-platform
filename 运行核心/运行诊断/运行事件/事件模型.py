@@ -15,6 +15,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 事件类型_调用开始 = "调用开始"
 事件类型_调用成功 = "调用成功"
@@ -41,7 +42,7 @@ class 运行事件:
 
     事件类型: str
     操作名称: str = ""
-    成功: bool = True
+    成功: bool = 真
     错误码: str = ""
     错误说明: str = ""
     追踪id: str = ""
@@ -53,7 +54,7 @@ class 运行事件:
     契约版本: str = ""
     提供者: str = ""
     生命周期状态: str = ""
-    是否可重试: bool = False
+    是否可重试: bool = 假
     耗时毫秒: float = 0.0
     配置来源: str = ""
     依赖摘要: str = ""
@@ -94,7 +95,7 @@ class 运行事件:
 def 生成事件(
     事件类型: str,
     *,
-    成功: bool = True,
+    成功: bool = 真,
     错误码: str = "",
     错误说明: str = "",
     追踪id: str = "",

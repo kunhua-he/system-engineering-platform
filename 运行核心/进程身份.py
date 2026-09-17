@@ -14,6 +14,7 @@ from typing import Any
 
 # 进程存活探测的跨平台实现只在 公共契约/运行时/ 收口层；本文件不裸调 os.kill。
 from 公共契约.运行时 import 进程终止
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass
@@ -70,5 +71,5 @@ def 系统进程存在(进程id: int) -> bool:
     ``进程终止.进程存活`` 按平台选 WinAPI 或 POSIX 探活，非法入参返回 False 不抛。
     """
     if 进程id <= 0:
-        return False
+        return 假
     return 进程终止.进程存活(进程id)

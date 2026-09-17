@@ -19,6 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 第三方版本探测 = {
     "cryptography": "cryptography",
@@ -36,7 +37,7 @@ from typing import Any
 class 环境指纹结果:
     """环境指纹计算/比较结果。"""
 
-    成功: bool = True
+    成功: bool = 真
     指纹: str = ""
     详细信息: dict[str, Any] = field(default_factory=dict)
     问题列表: list[str] = field(default_factory=list)
@@ -44,7 +45,7 @@ class 环境指纹结果:
     def __post_init__(self) -> None:
         # 成功 由问题列表决定（append 后自动失效）
         if self.问题列表:
-            self.成功 = False
+            self.成功 = 假
 
 
 def _包版本(模块名: str) -> str:
@@ -100,7 +101,7 @@ def 探测外部应用版本() -> dict[str, str]:
     return 结果
 
 
-def 计算环境指纹(*, 含外部应用: bool = True) -> 环境指纹结果:
+def 计算环境指纹(*, 含外部应用: bool = 真) -> 环境指纹结果:
     """计算当前环境指纹。"""
     详细信息: dict[str, Any] = {
         "python": sys.version.split()[0],
@@ -114,7 +115,7 @@ def 计算环境指纹(*, 含外部应用: bool = True) -> 环境指纹结果:
     指纹 = hashlib.sha256(
         json.dumps(详细信息, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()[:16]
-    return 环境指纹结果(True, 指纹=指纹, 详细信息=详细信息)
+    return 环境指纹结果(真, 指纹=指纹, 详细信息=详细信息)
 
 
 def 读取证据环境指纹(证据文件: Path) -> str:
@@ -128,7 +129,7 @@ def 读取证据环境指纹(证据文件: Path) -> str:
         return ""
 
 
-def 校验证据有效(证据文件: Path, *, 含外部应用: bool = True) -> 环境指纹结果:
+def 校验证据有效(证据文件: Path, *, 含外部应用: bool = 真) -> 环境指纹结果:
     """校验稳定证据是否仍有效：当前指纹 == 记录指纹。"""
     当前 = 计算环境指纹(含外部应用=含外部应用)
     if not 当前.成功:
@@ -136,13 +137,13 @@ def 校验证据有效(证据文件: Path, *, 含外部应用: bool = True) -> �
     记录指纹 = 读取证据环境指纹(证据文件)
     if not 记录指纹:
         当前.问题列表.append("无证据环境指纹记录（证据失效：无法验证）")
-        当前.成功 = False
+        当前.成功 = 假
         return 当前
     if 记录指纹 != 当前.指纹:
         当前.问题列表.append(
             f"环境指纹漂移（证据失效）：记录 {记录指纹} ≠ 当前 {当前.指纹}"
         )
-        当前.成功 = False
+        当前.成功 = 假
     return 当前
 
 

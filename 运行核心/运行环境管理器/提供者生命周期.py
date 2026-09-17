@@ -36,6 +36,7 @@ from 运行核心.加载器.提供者隔离.独立进程 import (
 )
 from 运行核心.运行环境管理器.环境管理器 import 确保环境, 读取依赖锁
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 默认最大进程数 = 8
 默认日志上限 = 200
@@ -50,10 +51,10 @@ def _进程已结束(进程: Any) -> bool:
     try:
         底层 = getattr(进程, "进程", None)
         if 底层 is None:
-            return True  # 无底层进程对象视为已结束
+            return 真  # 无底层进程对象视为已结束
         return 底层.poll() is not None
     except (AttributeError, OSError):
-        return False
+        return 假
 
 
 @dataclass
@@ -207,7 +208,7 @@ class 提供者生命周期管理器:
             return 结果.失败("内部错误", f"登记路由失败: {错误}", 来源="提供者生命周期")
         return 结果.成功结果(路由.提供者id)
 
-    def 对齐核对(self, *, 严格: bool = False) -> list[str]:
+    def 对齐核对(self, *, 严格: bool = 假) -> list[str]:
         """注册表 ↔ 实际进程 ↔ 依赖锁 三方对齐核对（fail-closed 报告）。
 
         规则：
@@ -288,24 +289,24 @@ class 提供者生命周期管理器:
             if 提供者id in self._进程表:
                 现有进程 = self._进程表[提供者id]
                 if 现有进程.状态 == 进程状态_运行中:
-                    return True, "已在运行"
+                    return 真, "已在运行"
                 现有进程.关闭并清理()
                 self._进程表.pop(提供者id, None)
             运行中数量 = sum(1 for 进程 in self._进程表.values()
                            if 进程.状态 == 进程状态_运行中)
             if 运行中数量 >= self._最大进程数:
-                return False, f"运行中进程数已达上限（{self._最大进程数}），拒绝启动 {提供者id}"
+                return 假, f"运行中进程数已达上限（{self._最大进程数}），拒绝启动 {提供者id}"
         路由 = self._路由表.get(提供者id)
         if 路由 is None:
-            return False, f"提供者未登记: {提供者id}"
+            return 假, f"提供者未登记: {提供者id}"
         目录 = Path(路由.提供者目录)
         if not 目录.is_dir():
-            return False, f"提供者目录不存在: {目录}"
+            return 假, f"提供者目录不存在: {目录}"
         解释器 = sys.executable
         if 路由.pip模块名表:
             环境结果 = 确保环境(目录)
             if not 环境结果.成功:
-                return False, f"独立环境构建失败: {环境结果.错误码}: {环境结果.错误说明}"
+                return 假, f"独立环境构建失败: {环境结果.错误码}: {环境结果.错误说明}"
             解释器 = 环境结果.解释器路径
         进程 = 独立进程(
             提供者id,
@@ -324,7 +325,7 @@ class 提供者生命周期管理器:
             if 成功 and 运行中数量 >= self._最大进程数:
                 进程.强制终止()
                 self._记录日志(提供者id, "启动拒绝：启动期间进程数达上限，新进程已终止")
-                return False, f"运行中进程数已达上限（{self._最大进程数}），拒绝启动 {提供者id}"
+                return 假, f"运行中进程数已达上限（{self._最大进程数}），拒绝启动 {提供者id}"
             self._进程表[提供者id] = 进程
             self._状态表[提供者id] = 进程.状态
             self._记录日志(提供者id, f"启动: {消息}")
@@ -334,16 +335,16 @@ class 提供者生命周期管理器:
         """进程健康检查（真实健康请求）。"""
         进程 = self._进程表.get(提供者id)
         if 进程 is None:
-            return False
+            return 假
         return 进程.健康检查()
 
     def 停止提供者(self, 提供者id: str) -> tuple[bool, str]:
         """停止提供者（优雅 → 强制兜底）；重复停止幂等。"""
         进程 = self._进程表.get(提供者id)
         if 进程 is None:
-            return True, "未启动（幂等）"
+            return 真, "未启动（幂等）"
         if 进程.状态 == 进程状态_已停止:
-            return True, "已停止（幂等）"
+            return 真, "已停止（幂等）"
         成功, 消息 = 进程.优雅停止()
         if not 成功:
             成功, 消息 = 进程.强制终止()
@@ -358,14 +359,14 @@ class 提供者生命周期管理器:
         if 进程 is not None and 进程.状态 == 进程状态_运行中:
             成功, 消息 = self.停止提供者(提供者id)
             if not 成功:
-                return False, f"停止失败，拒绝重启: {消息}"
+                return 假, f"停止失败，拒绝重启: {消息}"
         return self.启动提供者(提供者id)
 
     def 崩溃检测(self, 提供者id: str) -> bool:
         """崩溃检测：进程退出即崩溃并自动重启（重启次数有界）。"""
         进程 = self._进程表.get(提供者id)
         if 进程 is None:
-            return False
+            return 假
         未恢复 = 进程.崩溃检测()
         with self._锁:
             self._状态表[提供者id] = 进程.状态
@@ -386,10 +387,10 @@ class 提供者生命周期管理器:
         """
         进程 = self._进程表.get(提供者id)
         if 进程 is None or 进程.状态 != 进程状态_运行中:
-            return 进程调用结果(False, 错误码="外部不可访问",
+            return 进程调用结果(假, 错误码="外部不可访问",
                                 错误说明=f"提供者未运行: {提供者id}")
         if 取消事件 is not None and 取消事件.is_set():
-            return 进程调用结果(False, 错误码="已取消", 错误说明="调用在开始前已被取消")
+            return 进程调用结果(假, 错误码="已取消", 错误说明="调用在开始前已被取消")
         超时 = float(超时秒) if 超时秒 else self._调用超时秒
         原超时 = 进程.调用超时秒
         进程.调用超时秒 = 超时
@@ -397,8 +398,8 @@ class 提供者生命周期管理器:
             if not self._排空滞留响应(进程):  # 调用前排空滞留行（防超时响应错位）
                 self._终止并重启(提供者id)
                 return 进程调用结果(
-                    False, 错误码="滞留响应超预算",
-                    错误说明="调用前排空滞留响应超预算，进程已重置", 可重试=True)
+                    假, 错误码="滞留响应超预算",
+                    错误说明="调用前排空滞留响应超预算，进程已重置", 可重试=真)
             if 取消事件 is None:
                 结果 = 进程.调用(能力id=能力id, 参数=参数)
                 if not 结果.成功 and 结果.错误码 == "超时":
@@ -425,18 +426,18 @@ class 提供者生命周期管理器:
                 if 线程.is_alive():
                     self._终止并重启(提供者id)
                     return 进程调用结果(
-                        False, 错误码="已取消",
+                        假, 错误码="已取消",
                         错误说明="调用被取消（工作线程未及时返回，进程已重置）",
-                        可重试=True)
+                        可重试=真)
                 self._记录日志(提供者id, f"调用已取消: {能力id}")
-                return 进程调用结果(False, 错误码="已取消", 错误说明="调用被取消",
-                                    可重试=True)
+                return 进程调用结果(假, 错误码="已取消", 错误说明="调用被取消",
+                                    可重试=真)
             线程.join(超时 + 1.0)
             if 线程.is_alive():
-                return 进程调用结果(False, 错误码="超时",
-                                    错误说明="调用超时且未返回", 可重试=True)
+                return 进程调用结果(假, 错误码="超时",
+                                    错误说明="调用超时且未返回", 可重试=真)
             if not 结果盒:
-                return 进程调用结果(False, 错误码="内部错误", 错误说明="调用结果缺失")
+                return 进程调用结果(假, 错误码="内部错误", 错误说明="调用结果缺失")
             结果 = 结果盒[0]
             if not 结果.成功 and 结果.错误码 == "超时":
                 if not self._排空滞留响应(进程):
@@ -456,7 +457,7 @@ class 提供者生命周期管理器:
         import select as _select
         标准输出 = 进程.进程.stdout if 进程.进程 is not None else None
         if 标准输出 is None:
-            return True
+            return 真
         开始 = time.monotonic()
         累计字节 = 0
         try:
@@ -471,11 +472,11 @@ class 提供者生命周期管理器:
                 累计字节 += len(行.encode("utf-8", "ignore"))
         except Exception as 错误:
             self._记录日志(进程.名称, f"排空滞留响应异常: {错误}")
-            return False
+            return 假
         if (累计字节 >= 排空滞留预算字节
                 or time.monotonic() - 开始 > 排空滞留预算秒):
-            return False
-        return True
+            return 假
+        return 真
 
     def _终止并重启(self, 提供者id: str) -> None:
         """兜底：终止占用中的进程并自动重启（重启次数有界）。

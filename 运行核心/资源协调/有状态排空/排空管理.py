@@ -7,21 +7,22 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass
 class 排空结果:
-    成功: bool = False
+    成功: bool = 假
     步骤列表: list[str] = field(default_factory=list)
     未完成任务: list[str] = field(default_factory=list)
-    强制终止: bool = False
+    强制终止: bool = 假
     诊断记录: str = ""
 
 
 class 排空管理器:
     """停止新请求后等待活动资源归零，超时只在真实回收后成功。"""
 
-    def __init__(self, 排空超时秒: float = 3.0, 允许强制终止: bool = True) -> None:
+    def __init__(self, 排空超时秒: float = 3.0, 允许强制终止: bool = 真) -> None:
         self.排空超时秒 = max(0.0, float(排空超时秒))
         self.允许强制终止 = 允许强制终止
         self.活动请求数 = 0
@@ -30,7 +31,7 @@ class 排空管理器:
         self.活动句柄数 = 0
         self.锁 = threading.RLock()
         self.条件 = threading.Condition(self.锁)
-        self.停止接收新请求 = False
+        self.停止接收新请求 = 假
         self.强制终止器: list[tuple[str, Callable[[], Any]]] = []
         self.诊断历史: list[str] = []
 
@@ -52,10 +53,10 @@ class 排空管理器:
     def 开始请求(self) -> bool:
         with self.条件:
             if self.停止接收新请求:
-                return False
+                return 假
             self.活动请求数 += 1
             self._变化()
-            return True
+            return 真
 
     def 结束请求(self) -> None:
         with self.条件:
@@ -65,10 +66,10 @@ class 排空管理器:
     def 开始任务(self) -> bool:
         with self.条件:
             if self.停止接收新请求:
-                return False
+                return 假
             self.活动任务数 += 1
             self._变化()
-            return True
+            return 真
 
     def 结束任务(self) -> None:
         with self.条件:
@@ -78,10 +79,10 @@ class 排空管理器:
     def 记录连接(self, 数量: int = 1) -> bool:
         with self.条件:
             if 数量 < 0 or self.停止接收新请求:
-                return False
+                return 假
             self.活动连接数 += 数量
             self._变化()
-            return True
+            return 真
 
     def 释放连接(self, 数量: int = 1) -> None:
         with self.条件:
@@ -91,10 +92,10 @@ class 排空管理器:
     def 记录句柄(self, 数量: int = 1) -> bool:
         with self.条件:
             if 数量 < 0 or self.停止接收新请求:
-                return False
+                return 假
             self.活动句柄数 += 数量
             self._变化()
-            return True
+            return 真
 
     def 释放句柄(self, 数量: int = 1) -> None:
         with self.条件:
@@ -108,7 +109,7 @@ class 排空管理器:
         ]
 
     def _执行强制终止(self, 结果: 排空结果) -> None:
-        结果.强制终止 = True
+        结果.强制终止 = 真
         错误列表: list[str] = []
         with self.锁:
             终止器列表 = list(self.强制终止器)
@@ -125,11 +126,11 @@ class 排空管理器:
             剩余 = self._活动总数已加锁()
             结果.未完成任务 = self._未完成列表已加锁() if 剩余 else []
         if 剩余 == 0 and not 错误列表:
-            结果.成功 = True
+            结果.成功 = 真
             结果.步骤列表.append("强制终止后资源已验证归零")
             结果.诊断记录 += "；强制终止完成，资源计数已归零"
         else:
-            结果.成功 = False
+            结果.成功 = 假
             详情 = ", ".join(结果.未完成任务)
             错误详情 = f"；终止错误: {'; '.join(错误列表)}" if 错误列表 else ""
             结果.诊断记录 += f"；强制终止后资源未归零: {详情}{错误详情}"
@@ -137,7 +138,7 @@ class 排空管理器:
     def 排空(self) -> 排空结果:
         结果 = 排空结果()
         with self.条件:
-            self.停止接收新请求 = True
+            self.停止接收新请求 = 真
             结果.步骤列表.append("停止接收新请求")
             截止 = time.monotonic() + self.排空超时秒
             while self._活动总数已加锁() > 0:
@@ -150,12 +151,12 @@ class 排空管理器:
                 self.条件.wait(timeout=min(0.05, 剩余秒))
             else:
                 结果.步骤列表.extend(["活动请求归零", "任务完成或取消", "连接已关闭", "资源句柄已释放"])
-                结果.成功 = True
+                结果.成功 = 真
                 return 结果
         if self.允许强制终止:
             self._执行强制终止(结果)
         else:
-            结果.成功 = False
+            结果.成功 = 假
         with self.锁:
             if 结果.诊断记录 and (not self.诊断历史 or self.诊断历史[-1] != 结果.诊断记录):
                 self.诊断历史.append(结果.诊断记录)

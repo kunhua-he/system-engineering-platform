@@ -35,6 +35,7 @@ from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.版本规则.契约版本 import 取契约版本
 from 公共契约.运行时 import 平台适配, 进程终止, 有界IO
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 进程状态_已创建 = "已创建"
 进程状态_启动中 = "启动中"
@@ -90,7 +91,7 @@ class 进程调用结果:
     错误码: str = ""
     错误说明: str = ""
     来源: str = "独立进程"
-    可重试: bool = False
+    可重试: bool = 假
     详细信息: dict[str, Any] = field(default_factory=dict)
 
     def 转字典(self) -> dict[str, Any]:
@@ -126,8 +127,8 @@ class 独立进程:
         self._读取缓冲 = b""  # 后台读线程交接的行缓冲（os.read 直读内核，无预读）
         # 后台 stdout 读线程 ↔ 调用方的交接（条件变量：不用 sleep 轮询，也不用 select）
         self._读取条件 = threading.Condition()
-        self._读取结束 = False  # 后台读线程已 EOF/出错
-        self._读取超限 = False  # 单行超过 响应行上限字节
+        self._读取结束 = 假  # 后台读线程已 EOF/出错
+        self._读取超限 = 假  # 单行超过 响应行上限字节
         self._stdout线程: threading.Thread | None = None
         # JSON 行协议是一问一答；同一 Provider 进程不能让多个线程交叉
         # 写 stdin/读 stdout，否则迟到响应会被下一请求消费。
@@ -162,8 +163,8 @@ class 独立进程:
         """
         with self._读取条件:
             self._读取缓冲 = b""
-            self._读取结束 = False
-            self._读取超限 = False
+            self._读取结束 = 假
+            self._读取超限 = 假
         self._stdout线程 = threading.Thread(
             target=self._消费stdout, args=(进程,),
             name=f"Provider-stdout-{self.名称}-{进程.pid}", daemon=True)
@@ -175,7 +176,7 @@ class 独立进程:
             if not self._读取超限:
                 self._读取缓冲 += 块
                 if len(self._读取缓冲) > 响应行上限字节:
-                    self._读取超限 = True
+                    self._读取超限 = 真
                     self._读取缓冲 = self._读取缓冲[:响应行上限字节]
             self._读取条件.notify_all()
 
@@ -194,7 +195,7 @@ class 独立进程:
             pass
         finally:
             with self._读取条件:
-                self._读取结束 = True
+                self._读取结束 = 真
                 self._读取条件.notify_all()
 
     def _确定解释器(self) -> str:
@@ -262,7 +263,7 @@ class 独立进程:
     def 启动(self) -> tuple[bool, str]:
         """启动子进程并等待 READY（启动超时失败）。"""
         if self.状态 == 进程状态_运行中:
-            return True, "已在运行"
+            return 真, "已在运行"
         self.状态 = 进程状态_启动中
         try:
             # -S 跳过 site 初始化加速子进程启动（工作器自行注入系统根路径）
@@ -284,7 +285,7 @@ class 独立进程:
             self._启动stdout消费(self.进程)
         except OSError as 错误:
             self.状态 = 进程状态_故障
-            return False, f"启动失败: {错误}"
+            return 假, f"启动失败: {错误}"
         except RuntimeError as 错误:
             # 解释器解析/环境构建异常（如提供者隔离环境不可用）：状态置故障，
             # 清空句柄并统一返回失败结果，避免卡在“启动中”且进程表未登记。
@@ -293,14 +294,14 @@ class 独立进程:
                 self._关闭管道()
             except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条）
                 记录忽略('独立进程.启动', 错误)
-            return False, f"启动失败: {错误}"
+            return 假, f"启动失败: {错误}"
         开始 = time.monotonic()
         while time.monotonic() - 开始 < self.启动超时秒:
             if self.进程.poll() is not None:
                 self.状态 = 进程状态_故障
                 self.退出码 = self.进程.returncode
                 self._关闭管道()
-                return False, f"启动超时/提前退出（退出码 {self.退出码}）"
+                return 假, f"启动超时/提前退出（退出码 {self.退出码}）"
             try:
                 # 分段限时读取：每次最多等 0.5 秒，超时走外层整体超时判定并强杀
                 行 = self._读取一行(min(0.5, self.启动超时秒 - (time.monotonic() - 开始)))
@@ -309,10 +310,10 @@ class 独立进程:
             if "READY" in 行:
                 self.状态 = 进程状态_运行中
                 self._记录日志(f"启动成功（pid {self.进程.pid}）")
-                return True, "启动成功"
+                return 真, "启动成功"
         self.强制终止()
         self.状态 = 进程状态_故障
-        return False, f"启动超时（> {self.启动超时秒} 秒）"
+        return 假, f"启动超时（> {self.启动超时秒} 秒）"
 
     def _发送请求(self, 请求: dict) -> dict:
         with self._通信锁:
@@ -335,44 +336,44 @@ class 独立进程:
         """
         契约版本 = 契约版本 or 取契约版本()
         if self.状态 != 进程状态_运行中:
-            return 进程调用结果(False, 错误码="外部不可访问", 错误说明=f"进程未运行（状态 {self.状态}）")
+            return 进程调用结果(假, 错误码="外部不可访问", 错误说明=f"进程未运行（状态 {self.状态}）")
         请求 = {
             "请求id": uuid.uuid4().hex[:12], "类型": "调用",
             "能力id": 能力id, "契约版本": 契约版本, "参数": 参数 or {},
-            "超时秒": self.调用超时秒, "取消": False,
+            "超时秒": self.调用超时秒, "取消": 假,
         }
         try:
             响应 = self._发送请求(请求)
         except TimeoutError as 错误:
             self._记录日志(f"调用超时: {能力id}")
-            return 进程调用结果(False, 错误码="超时", 错误说明=str(错误), 可重试=True)
+            return 进程调用结果(假, 错误码="超时", 错误说明=str(错误), 可重试=真)
         except (ConnectionError, json.JSONDecodeError) as 错误:
             self.崩溃检测()
-            return 进程调用结果(False, 错误码="外部不可访问", 错误说明=str(错误), 可重试=True)
+            return 进程调用结果(假, 错误码="外部不可访问", 错误说明=str(错误), 可重试=真)
         return 进程调用结果(
-            成功=响应.get("成功", False), 值=响应.get("值"),
+            成功=响应.get("成功", 假), 值=响应.get("值"),
             错误码=响应.get("错误码", ""), 错误说明=响应.get("错误说明", ""),
-            来源=响应.get("来源", "独立进程"), 可重试=响应.get("可重试", False),
+            来源=响应.get("来源", "独立进程"), 可重试=响应.get("可重试", 假),
             详细信息=响应.get("详细信息", {}),
         )
 
     def 健康检查(self) -> bool:
         """健康检查：进程存活 + 健康请求响应。"""
         if self.进程 is None or self.进程.poll() is not None:
-            return False
+            return 假
         try:
             响应 = self._发送请求({"请求id": "健康", "类型": "健康"})
             return bool(响应.get("成功"))
         except (TimeoutError, ConnectionError, json.JSONDecodeError):
-            return False
+            return 假
 
     def 崩溃检测(self) -> bool:
         """崩溃检测：进程退出即崩溃；触发自动重启（限制次数）。"""
         if self.进程 is None:
-            return False
+            return 假
         退出码 = self.进程.poll()
         if 退出码 is None:
-            return False
+            return 假
         self.退出码 = 退出码
         self.状态 = 进程状态_故障
         self._记录日志(f"进程崩溃（退出码 {退出码}）")
@@ -386,9 +387,9 @@ class 独立进程:
             self._读取缓冲 = b""
             成功, 消息 = self.启动()
             if 成功:
-                return False  # 已重启恢复
+                return 假  # 已重启恢复
             self._记录日志(f"自动重启失败: {消息}")
-        return True  # 崩溃且未恢复
+        return 真  # 崩溃且未恢复
 
     def _进程组存活(self) -> bool:
         """成员进程组是否仍存活（组长已回收但同组子孙仍在也算存活）。
@@ -407,9 +408,9 @@ class 独立进程:
         """
         进程 = self.进程
         if 进程 is None:
-            return False
+            return 假
         if 进程.poll() is None:
-            return True
+            return 真
         return 进程终止.按组号探活(进程.pid)
 
     def _等待进程组退出(self, 超时秒: float) -> bool:
@@ -470,7 +471,7 @@ class 独立进程:
             未收敛.append(f"stdout线程仍存活:{self._stdout线程.name}")
         return 未收敛
 
-    def _关闭结果(self, *, 已使用SIGKILL: bool = False) -> dict[str, Any]:
+    def _关闭结果(self, *, 已使用SIGKILL: bool = 假) -> dict[str, Any]:
         self._关闭管道()
         if self._stderr线程 is not None:
             self._stderr线程.join(timeout=1.0)
@@ -489,7 +490,7 @@ class 独立进程:
     def 关闭(self) -> dict[str, Any]:
         """优雅请求后按 TERM→KILL 收口；只有全部资源核对通过才成功。"""
         进程 = self.进程
-        已使用SIGKILL = False
+        已使用SIGKILL = 假
         if self._进程组存活():
             if 进程 is not None and 进程.poll() is None:
                 try:
@@ -504,7 +505,7 @@ class 独立进程:
                 self._发进程组信号(信号_终止)
                 self._等待进程组退出(min(max(self.调用超时秒, 0.05), 1.0))
             if self._进程组存活():
-                已使用SIGKILL = True
+                已使用SIGKILL = 真
                 self._发进程组信号(信号_强杀)
                 self._等待进程组退出(2.0)
             if 进程 is not None:
@@ -520,12 +521,12 @@ class 独立进程:
 
     def 强制终止(self) -> tuple[bool, str]:
         进程 = self.进程
-        已使用SIGKILL = False
+        已使用SIGKILL = 假
         if self._进程组存活():
             self._发进程组信号(信号_终止)
             self._等待进程组退出(min(max(self.调用超时秒, 0.05), 1.0))
             if self._进程组存活():
-                已使用SIGKILL = True
+                已使用SIGKILL = 真
                 self._发进程组信号(信号_强杀)
                 self._等待进程组退出(2.0)
             if 进程 is not None:
@@ -572,10 +573,10 @@ class 提供者进程池:
                 for 已有成员 in 已启动:
                     已有成员.关闭并清理()
                 self.运行状态 = 进程状态_故障
-                return False, f"成员 {成员.名称} 启动失败: {消息}"
+                return 假, f"成员 {成员.名称} 启动失败: {消息}"
             已启动.append(成员)
         self.运行状态 = 进程状态_运行中
-        return True, f"Provider进程池启动成功（{self.池大小} 个成员）"
+        return 真, f"Provider进程池启动成功（{self.池大小} 个成员）"
 
     def _分配成员(self, 资源键: str) -> 独立进程 | None:
         with self._分配锁:
@@ -594,8 +595,8 @@ class 提供者进程池:
         键 = str(资源键 or 能力id)
         成员 = self._分配成员(键)
         if 成员 is None:
-            return 进程调用结果(False, 错误码="资源繁忙",
-                              错误说明="Provider资源键表已满", 可重试=True)
+            return 进程调用结果(假, 错误码="资源繁忙",
+                              错误说明="Provider资源键表已满", 可重试=真)
         return 成员.调用(能力id=能力id, 参数=参数, 契约版本=契约版本)
 
     def 健康检查(self) -> bool:
@@ -618,7 +619,7 @@ class 提供者进程池:
             "成功": 成功, "错误码": "" if 成功 else "资源未收敛",
             "错误说明": "Provider进程池资源已收敛" if 成功 else f"Provider进程池资源未收敛: {'；'.join(未收敛)}",
             "可重试": not 成功, "未收敛": 未收敛,
-            "已使用SIGKILL": any(项.get("已使用SIGKILL", False) for 项 in 成员结果),
+            "已使用SIGKILL": any(项.get("已使用SIGKILL", 假) for 项 in 成员结果),
             "成员结果": 成员结果,
         }
         self.关闭账本.append(dict(结果, 时间=time.time()))
@@ -659,10 +660,10 @@ class 进程管理器:
     def 启动并检查(self, 进程: 独立进程) -> tuple[bool, str]:
         成功, 消息 = 进程.启动()
         if not 成功:
-            return False, f"启动失败: {消息}"
+            return 假, f"启动失败: {消息}"
         if not 进程.健康检查():
-            return False, "健康检查失败（已触发崩溃重启）"
-        return True, f"运行正常（版本 {getattr(进程, '版本号', '未知')}）"
+            return 假, "健康检查失败（已触发崩溃重启）"
+        return 真, f"运行正常（版本 {getattr(进程, '版本号', '未知')}）"
 
     def 记录日志(self, 进程: 独立进程, 消息: str) -> None:
         self.日志表.append(f"[{进程.名称}:{getattr(进程, '进程', None).pid if 进程.进程 else '无pid'}] {消息}")
@@ -670,7 +671,7 @@ class 进程管理器:
     def 全部健康(self) -> bool:
         return all(进程.状态 == "运行中" for 进程 in self.进程表.values())
 
-    def 停止全部(self, *, 优雅: bool = True) -> list[str]:
+    def 停止全部(self, *, 优雅: bool = 真) -> list[str]:
         结果列表 = []
         for 进程 in self.进程表.values():
             if 进程.状态 == "运行中":

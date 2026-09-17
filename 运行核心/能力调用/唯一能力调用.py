@@ -18,6 +18,7 @@ from 公共契约.能力契约.契约 import 能力注册表, 能力实现
 from 公共契约.基础类型.结果类型 import 结果 as 统一结果类型
 from 运行核心.能力调用.控制调用.证据链 import 调用证据, 证据链, 版本锁定
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass
@@ -28,7 +29,7 @@ class 调用记录:
     请求id: str
     调用方: str = ""
     项目id: str = ""
-    成功: bool = True
+    成功: bool = 真
     错误码: str = ""
     错误说明: str = ""
     耗时秒: float = 0.0
@@ -63,7 +64,7 @@ class 唯一能力调用服务:
         return 服务.调用能力("办公文档支持库.表格文档.生成表格文档", {"内容参数": ...})
     """
 
-    def __init__(self, 注册表: 能力注册表, *, 启用证据链: bool = True) -> None:
+    def __init__(self, 注册表: 能力注册表, *, 启用证据链: bool = 真) -> None:
         if not isinstance(注册表, 能力注册表):
             raise TypeError("唯一能力调用服务必须绑定权威能力注册表")
         self.注册表 = 注册表
@@ -109,7 +110,7 @@ class 唯一能力调用服务:
                 try:
                     一致, 说明 = 校验器(包id)
                 except Exception as 异常:
-                    一致, 说明 = False, f"包指纹校验异常: {异常}"
+                    一致, 说明 = 假, f"包指纹校验异常: {异常}"
                 self._包指纹缓存[包id] = (现在, 一致, 说明)
         if 一致:
             return None
@@ -214,13 +215,13 @@ class 唯一能力调用服务:
             )
         锁定请求id = 证据.请求id if 证据 is not None else 请求id
         版本锁定 = self.版本锁定
-        已锁定 = False
+        已锁定 = 假
         if 实现 is not None and 版本锁定 is not None:
             if 版本锁定.锁定(
                 请求id=锁定请求id, 包id=实现.包id,
                 版本=实现.版本 or "", 提供者版本=实现.提供者版本 or "",
             ):
-                已锁定 = True
+                已锁定 = 真
         try:
             if 实现 is None:
                 return self._失败并记录(证据, "能力不存在", f"能力未注册: {能力id}",
@@ -284,10 +285,10 @@ class 唯一能力调用服务:
             错误说明 = f"{type(错误).__name__}: {错误}"
             资源释放结论 = _释放版本锁(版本锁定, 锁定请求id, 已锁定)
             if 证据 is not None:
-                self.证据链.记录结果(证据, 成功=False, 错误码=错误码)
+                self.证据链.记录结果(证据, 成功=假, 错误码=错误码)
                 self.证据链.记录资源释放结论(证据, 资源释放结论)
             self._记录历史(调用记录(能力id=能力id, 请求id=请求id, 调用方=调用方,
-                                     项目id=项目id or 上下文.项目id, 成功=False,
+                                     项目id=项目id or 上下文.项目id, 成功=假,
                                      错误码=错误码, 错误说明=错误说明, 耗时秒=耗时,
                                      模块版本=上下文.包版本,
                                      支持库包id=实现.包id if 实现 is not None else "",
@@ -343,17 +344,17 @@ class 唯一能力调用服务:
             "残留执行": 残留.转字典(),
         }
         if 证据 is not None and self.证据链 is not None:
-            self.证据链.记录结果(证据, 成功=False, 错误码="超时")
+            self.证据链.记录结果(证据, 成功=假, 错误码="超时")
             self.证据链.记录资源释放结论(证据, 资源释放结论)
         self._记录历史(调用记录(
             能力id=残留.能力id, 请求id=请求id, 调用方=调用方,
-            项目id=项目id or 上下文.项目id, 成功=False,
+            项目id=项目id or 上下文.项目id, 成功=假,
             错误码="超时", 错误说明=说明, 耗时秒=耗时,
             模块版本=上下文.包版本, 支持库包id=残留.包id,
             资源释放结论=资源释放结论, 证据=证据))
         from 公共契约.基础类型.结果类型 import 结果 as _结果
         return _结果.失败("超时", 说明, 来源="唯一能力调用服务",
-                        可重试=True, 详情=详情)
+                        可重试=真, 详情=详情)
 
     def _失败并记录(
         self, 证据: 调用证据 | None, 错误码: str, 错误说明: str,
@@ -366,11 +367,11 @@ class 唯一能力调用服务:
         耗时 = _时间模块.monotonic() - 开始
         资源释放结论 = _释放版本锁(版本锁定, 锁定请求id, 已锁定)
         if 证据 is not None:
-            self.证据链.记录结果(证据, 成功=False, 错误码=错误码)
+            self.证据链.记录结果(证据, 成功=假, 错误码=错误码)
             self.证据链.记录资源释放结论(证据, 资源释放结论)
         self._记录历史(调用记录(能力id=证据.能力id if 证据 is not None else "",
                                  请求id=请求id, 调用方=调用方,
-                                 项目id=项目id or 上下文.项目id, 成功=False,
+                                 项目id=项目id or 上下文.项目id, 成功=假,
                                  错误码=错误码, 错误说明=错误说明, 耗时秒=耗时,
                                  模块版本=模块版本, 支持库包id=支持库id,
                                  提供者版本=提供者版本, 制品摘要=制品摘要,
@@ -419,14 +420,14 @@ class 唯一能力调用服务:
         """
         实现 = self.注册表.获取(能力id)
         if 实现 is None:
-            return False
+            return 假
         try:
             声明参数名 = _声明参数名(实现)
             if len(声明参数名) == 1:
-                return True  # 单参数聚合契约：两种传法是同一形状
+                return 真  # 单参数聚合契约：两种传法是同一形状
             return set(参数) == 声明参数名
         except Exception:
-            return False
+            return 假
 
 
 def _声明参数名(实现: 能力实现) -> set[str]:
@@ -474,9 +475,9 @@ def _有时限(超时秒: Any) -> bool:
     这里再兜一层，绝不让「非法值」静默变成一个时限。
     """
     if 超时秒 is None or isinstance(超时秒, bool):
-        return False
+        return 假
     if not isinstance(超时秒, (int, float)):
-        return False
+        return 假
     return float(超时秒) > 0
 
 
@@ -539,7 +540,7 @@ def _公开错误码(错误: BaseException) -> str:
     return "内部错误"
 
 
-def _释放版本锁(锁定: 版本锁定 | None, 请求id: str, 已锁定: bool = False) -> str:
+def _释放版本锁(锁定: 版本锁定 | None, 请求id: str, 已锁定: bool = 假) -> str:
     """调用结束后释放版本锁，返回资源释放结论（失败必须如实记录）。
 
     未锁定/无锁 → 无版本锁定需求；已锁定 → 释放成功/失败如实记录。
@@ -648,7 +649,7 @@ def _惰性装配() -> None:
     注册表 = 能力注册表()
     发现 = 发现全部(系统根 / "支持库", 系统根 / "模块库")
     支持库声明 = [声明 for 声明 in 发现.声明列表
-                 if 声明.类型 == "支持库" and not getattr(声明, "已废弃", False)]
+                 if 声明.类型 == "支持库" and not getattr(声明, "已废弃", 假)]
     if not 支持库声明:
         raise RuntimeError("惰性装配失败：未发现任何支持库")
     安装全部支持库(系统根 / "支持库", 注册表)

@@ -15,6 +15,7 @@ from 公共契约.句柄体系 import (
 )
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 运行核心.权威状态 import 权威状态
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 资源句柄服务:
@@ -119,7 +120,7 @@ class 资源句柄服务:
         return None
 
     @staticmethod
-    def _校验文本(值: Any, 字段: str, *, 可空: bool = True) -> None:
+    def _校验文本(值: Any, 字段: str, *, 可空: bool = 真) -> None:
         if not isinstance(值, str) or (not 可空 and not 值):
             raise ValueError(f"{字段}必须是文本型")
 
@@ -133,7 +134,7 @@ class 资源句柄服务:
         self._校验文本(资源id, "资源id")
         self._校验文本(项目id, "项目id")
         self._校验文本(所有者, "所有者")
-        self._校验文本(句柄类型, "句柄类型", 可空=False)
+        self._校验文本(句柄类型, "句柄类型", 可空=假)
         if 元数据 is not None and not isinstance(元数据, dict):
             raise ValueError("元数据必须是字典型")
         已有 = self._加载句柄(句柄id)
@@ -147,10 +148,10 @@ class 资源句柄服务:
              句柄类型: str = 句柄类型_资源,
              元数据: dict[str, Any] | None = None) -> dict[str, Any]:
         """由状态机生成句柄，并在同一操作内写入权威生命周期账本。"""
-        self._校验文本(资源id, "资源id", 可空=False)
+        self._校验文本(资源id, "资源id", 可空=假)
         self._校验文本(项目id, "项目id")
         self._校验文本(所有者, "所有者")
-        self._校验文本(句柄类型, "句柄类型", 可空=False)
+        self._校验文本(句柄类型, "句柄类型", 可空=假)
         if 元数据 is not None and not isinstance(元数据, dict):
             raise ValueError("元数据必须是字典型")
         对象 = self.句柄体系.创建句柄(
@@ -231,7 +232,7 @@ class 资源句柄服务:
             raise ValueError("初始状态必须是字典型")
         公开句柄 = self.创建(
             资源id=资源id, 项目id=项目id, 所有者=所有者,
-            元数据={"受管状态": True},
+            元数据={"受管状态": 真},
         )
         self.权威状态.初始化资源(资源id, dict(初始状态))
         return self._受管状态结果(公开句柄["句柄"], 项目id=项目id, 所有者=所有者)

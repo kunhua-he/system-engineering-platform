@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from 公共契约.包声明.声明 import 包声明
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass
@@ -19,7 +20,7 @@ class 提供者选择结果:
     提供包id: str = ""
     提供版本: str = ""
     冲突列表: list[str] = field(default_factory=list)
-    缺失: bool = False
+    缺失: bool = 假
 
     @property
     def 成功(self) -> bool:
@@ -44,7 +45,7 @@ def 选择提供者(能力id: str, 声明列表: list[包声明]) -> 提供者�
     提供者列表 = 公开提供者列表 or 适配提供者列表
     结果 = 提供者选择结果(能力id=能力id)
     if not 提供者列表:
-        结果.缺失 = True
+        结果.缺失 = 真
         return 结果
     if len(提供者列表) > 1:
         结果.冲突列表 = [f"{包id}@{版本}" for 包id, 版本 in 提供者列表]
