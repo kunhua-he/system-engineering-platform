@@ -179,7 +179,7 @@ class Test生成文档(unittest.TestCase):
 
         注册能力(注册表)
         self.assertEqual(len(注册表.条目), 1)
-        self.assertEqual(注册表.条目[0].能力id, "办公文档支持库.文档生成.生成文档")
+        self.assertEqual(注册表.条目[0].能力id, "文档生成.生成文档")
         self.assertEqual(注册表.条目[0].包id, "模块库.文档生成")
 
     def test_平台不可用时返回提供者不可用(self):
