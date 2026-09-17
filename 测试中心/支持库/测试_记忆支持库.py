@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from 公共契约.能力契约.调用器 import 注册能力调用器
 
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.记忆支持库.实现 import 记忆
@@ -33,8 +33,11 @@ class 测试记忆支持库(unittest.TestCase):
 
     def test_生成向量只经统一调用器并释放句柄(self) -> None:
         调用器 = 假调用器()
-        with patch("公共契约.能力契约.调用器.获取能力调用器", return_value=调用器):
+        注册能力调用器(调用器)
+        try:
             向量 = 记忆._生成向量("测试文本")
+        finally:
+            注册能力调用器(None)
         self.assertEqual(向量, [0.1, 0.2, 0.3])
         self.assertEqual(
             [记录[0] for 记录 in 调用器.调用记录],
@@ -162,9 +165,12 @@ class 测试记忆项目维度(unittest.TestCase):
     def test_仅关键词模式一次大模型都不调(self) -> None:
         self._写入样例()
         调用器 = 记账调用器()
-        with patch("公共契约.能力契约.调用器.获取能力调用器", return_value=调用器):
+        注册能力调用器(调用器)
+        try:
             结果对象 = 记忆.搜索记忆(项目="A项目", 查询="部署",
                                     仅关键词=True, 库路径=self.库)
+        finally:
+            注册能力调用器(None)
         self.assertEqual(调用器.调用记录, [])
         self.assertTrue(结果对象.成功)
         self.assertEqual(结果对象.值["数量"], 1)
@@ -180,8 +186,11 @@ class 测试记忆项目维度(unittest.TestCase):
     def test_默认模式下大模型仍被调用(self) -> None:
         self._写入样例()
         调用器 = 记账调用器()
-        with patch("公共契约.能力契约.调用器.获取能力调用器", return_value=调用器):
+        注册能力调用器(调用器)
+        try:
             记忆.搜索记忆(查询="部署", 库路径=self.库)
+        finally:
+            注册能力调用器(None)
         self.assertIn("大语言模型支持库.模型连接器.连接向量模型", 调用器.调用记录)
 
     def test_项目内追加能命中同项目同名记忆(self) -> None:
