@@ -35,6 +35,7 @@ from 公共契约.错误结构 import (
     错误码_版本冲突,
     错误码_超时,
 )
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 本包自有码（不在平台规范集内）：仍各自持有，不与唯一源合并。
 错误码_资源不存在 = "资源不存在"
@@ -133,18 +134,18 @@ def 校验快照(快照目录: Path) -> tuple[bool, str]:
     快照目录 = Path(快照目录)
     摘要路径 = 快照目录 / "快照摘要.json"
     if not 摘要路径.is_file():
-        return False, "缺少 快照摘要.json"
+        return 假, "缺少 快照摘要.json"
     try:
         摘要数据 = json.loads(摘要路径.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        return False, "快照摘要.json 损坏"
+        return 假, "快照摘要.json 损坏"
     for 相对, 期望摘要 in 摘要数据.get("文件摘要", {}).items():
         文件 = 快照目录 / 相对
         if not 文件.is_file():
-            return False, f"快照缺少文件: {相对}"
+            return 假, f"快照缺少文件: {相对}"
         if 创建内容摘要(文件) != 期望摘要:
-            return False, f"快照文件被修改: {相对}"
-    return True, "快照完整"
+            return 假, f"快照文件被修改: {相对}"
+    return 真, "快照完整"
 
 
 def 创建唯一运行目录(基础目录: Path, 前缀: str = "运行") -> Path:
@@ -157,7 +158,7 @@ def 创建唯一运行目录(基础目录: Path, 前缀: str = "运行") -> Path
 def 原子写入(
     目标路径: Path,
     内容: str | bytes | None = None,
-    保留权限: bool = True,
+    保留权限: bool = 真,
     内容字节: bytes | None = None,
 ) -> bool:
     """原子写入：临时文件 + fsync + rename。
@@ -205,7 +206,7 @@ def 原子写入(
             os.close(目录描述符)
     except OSError:
         pass
-    return True
+    return 真
 
 
 # ── 读-比-写 的跨进程互斥（B-31 修复）──────────────────────────────
@@ -241,17 +242,17 @@ def 原子替换(目标路径: Path, 新内容: str | bytes, 期望版本: str =
     短锁 = _CAS短锁(目标路径)
     已获取, 锁说明 = 短锁.获取(CAS锁超时秒)
     if not 已获取:
-        return False, _带错误码(错误码_资源被占用, 锁说明)
+        return 假, _带错误码(错误码_资源被占用, 锁说明)
     try:
         if 期望版本 and 目标路径.is_file():
             try:
                 现有 = json.loads(目标路径.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
-                return False, "现有文件损坏，无法比较版本"
+                return 假, "现有文件损坏，无法比较版本"
             if str(现有.get("版本", "")) != str(期望版本):
-                return False, f"{错误码_版本冲突}: 期望版本 {期望版本}，实际 {现有.get('版本', '')}"
+                return 假, f"{错误码_版本冲突}: 期望版本 {期望版本}，实际 {现有.get('版本', '')}"
         原子写入(目标路径, 新内容)
-        return True, "原子替换完成"
+        return 真, "原子替换完成"
     finally:
         短锁.释放()
 
@@ -267,20 +268,20 @@ def 比较并交换(目标路径: Path, 期望值: Any, 新值: Any) -> tuple[bo
     短锁 = _CAS短锁(目标路径)
     已获取, 锁说明 = 短锁.获取(CAS锁超时秒)
     if not 已获取:
-        return False, _带错误码(错误码_资源被占用, 锁说明)
+        return 假, _带错误码(错误码_资源被占用, 锁说明)
     try:
         if not 目标路径.is_file():
-            return False, f"{错误码_资源不存在}: 目标文件不存在"
+            return 假, f"{错误码_资源不存在}: 目标文件不存在"
         try:
             现有 = json.loads(目标路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "目标文件损坏"
+            return 假, "目标文件损坏"
         if 现有.get("值") != 期望值:
-            return False, f"{错误码_版本冲突}: 期望值 {期望值}，实际 {现有.get('值')}"
+            return 假, f"{错误码_版本冲突}: 期望值 {期望值}，实际 {现有.get('值')}"
         现有["值"] = 新值
         现有["版本"] = str(int(现有.get("版本", 0)) + 1)
         原子写入(目标路径, json.dumps(现有, ensure_ascii=False, indent=2))
-        return True, "CAS 提交成功"
+        return 真, "CAS 提交成功"
     finally:
         短锁.释放()
 
@@ -289,7 +290,7 @@ def 比较并交换(目标路径: Path, 期望值: Any, 新值: Any) -> tuple[bo
 # 判定顺序是「先判活、后 TTL」：本机持有者进程还活着就**不回收**（TTL 不生效），
 # 所以 TTL 只在「判不了活」时兜底——旧锁文件缺进程号、锁目录在别的机器上建的情形。
 锁默认过期秒 = 300.0
-锁默认存活探测 = True
+锁默认存活探测 = 真
 锁最大回收次数 = 3
 
 
@@ -323,7 +324,7 @@ class 资源短锁:
                  *, 过期秒: float | None = None, 存活探测: bool | None = None) -> None:
         self.锁路径 = Path(锁目录) / f"锁_{资源id}"
         self.持有者 = 持有者
-        self.已持有 = False
+        self.已持有 = 假
         self.过期秒 = 锁默认过期秒 if 过期秒 is None else float(过期秒)
         self.存活探测 = 锁默认存活探测 if 存活探测 is None else bool(存活探测)
 
@@ -343,19 +344,19 @@ class 资源短锁:
         主机 = str(信息.get("主机", ""))
         if isinstance(进程号, int) and not isinstance(进程号, bool) and 主机 and 主机 == _本机名():
             if 进程存活(进程号):
-                return False, f"持有者进程 {进程号} 仍存活，不回收"
-            return True, f"持有者进程 {进程号} 已不存在（崩溃残留）"
+                return 假, f"持有者进程 {进程号} 仍存活，不回收"
+            return 真, f"持有者进程 {进程号} 已不存在（崩溃残留）"
         创建时间 = 信息.get("创建时间戳")
         if not isinstance(创建时间, (int, float)) or isinstance(创建时间, bool):
             try:
                 创建时间 = self.锁路径.stat().st_mtime
             except OSError:
-                return False, "锁目录不可读，暂不回收"
+                return 假, "锁目录不可读，暂不回收"
         年龄 = time.time() - float(创建时间)
         if self.过期秒 > 0 and 年龄 > self.过期秒:
-            return True, (f"无本机持有者信息（进程号/主机缺失或非本机）且已超 TTL："
+            return 真, (f"无本机持有者信息（进程号/主机缺失或非本机）且已超 TTL："
                           f"年龄 {年龄:.1f}s > {self.过期秒}s")
-        return False, (f"无本机持有者信息但未超 TTL（年龄 {年龄:.1f}s / TTL {self.过期秒}s），不回收")
+        return 假, (f"无本机持有者信息但未超 TTL（年龄 {年龄:.1f}s / TTL {self.过期秒}s），不回收")
 
     def _回收残留(self) -> tuple[bool, str]:
         """原子挪走残留锁目录；挪走后复核内容，若期间换主则原样放回。"""
@@ -364,9 +365,9 @@ class 资源短锁:
         try:
             os.rename(self.锁路径, 挪走)  # 同父目录 rename：原子
         except FileNotFoundError:
-            return False, "锁已被他人回收（目录已不存在）"
+            return 假, "锁已被他人回收（目录已不存在）"
         except OSError as 错误:
-            return False, f"残留锁回收失败: {错误}"
+            return 假, f"残留锁回收失败: {错误}"
         复核 = 挪走 / "持有者.json"
         try:
             新信息 = json.loads(复核.read_text(encoding="utf-8")) if 复核.is_file() else {}
@@ -377,9 +378,9 @@ class 资源短锁:
                 挪走.rename(self.锁路径)
             except OSError:
                 pass
-            return False, "残留锁复核不一致（期间换主），已放回不回收"
+            return 假, "残留锁复核不一致（期间换主），已放回不回收"
         shutil.rmtree(挪走, ignore_errors=True)
-        return True, "已回收崩溃残留锁"
+        return 真, "已回收崩溃残留锁"
 
     def 获取(self, 超时秒: float = 3.0) -> tuple[bool, str]:
         """获取锁（mkdir 原子创建，轮询等待）；超时返回明确错误。
@@ -400,10 +401,10 @@ class 资源短锁:
                                 "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
                                 "创建时间戳": time.time()}, ensure_ascii=False),
                     encoding="utf-8")
-                self.已持有 = True
+                self.已持有 = 真
                 if 回收次数:
-                    return True, f"锁已获取（回收崩溃残留锁 {回收次数} 次）"
-                return True, "锁已获取"
+                    return 真, f"锁已获取（回收崩溃残留锁 {回收次数} 次）"
+                return 真, "锁已获取"
             except FileExistsError:
                 if self.存活探测 and 回收次数 < 锁最大回收次数:
                     可回收, 判定说明 = self._判定残留()
@@ -415,7 +416,7 @@ class 资源短锁:
                         判定说明 = 回收说明
                 if time.monotonic() > 截止:
                     补充 = f"；{判定说明}" if 判定说明 else ""
-                    return False, (f"{错误码_资源被占用}: 锁被其他持有者占用"
+                    return 假, (f"{错误码_资源被占用}: 锁被其他持有者占用"
                                    f"（{self.锁路径.name}{补充}）")
                 time.sleep(0.01)
 
@@ -423,18 +424,18 @@ class 资源短锁:
         """释放锁。仅当锁内的持有者信息仍属于本进程时才删——锁被他人回收/接管后
         不许再删他人的锁（否则会把别人的互斥删掉）。"""
         if not self.已持有:
-            return False, "锁未持有（释放幂等）"
-        self.已持有 = False
+            return 假, "锁未持有（释放幂等）"
+        self.已持有 = 假
         信息 = self._读持有信息()
         进程号 = 信息.get("进程号")
         if isinstance(进程号, int) and not isinstance(进程号, bool) and 进程号 != os.getpid():
-            return False, (f"锁已被他人接管（持有者 {信息.get('持有者', '')}/进程 {进程号}），"
+            return 假, (f"锁已被他人接管（持有者 {信息.get('持有者', '')}/进程 {进程号}），"
                            f"拒绝删除他人锁")
         try:
             shutil.rmtree(self.锁路径)
-            return True, "锁已释放"
+            return 真, "锁已释放"
         except FileNotFoundError:
-            return True, "锁已释放（目录不存在）"
+            return 真, "锁已释放（目录不存在）"
 
     def 持有者是谁(self) -> str:
         return str(self._读持有信息().get("持有者", ""))
@@ -452,7 +453,7 @@ def 执行资源短锁(锁目录: str | None = None, 资源id: str | None = None
         return 结果.失败(错误码_资源被占用, 说明, 来源="资源管理")
     当前持有者 = 短锁.持有者是谁()
     已释放, 释放说明 = 短锁.释放()
-    return 结果.成功结果({"已获取": True, "已释放": 已释放, "持有者": 当前持有者,
+    return 结果.成功结果({"已获取": 真, "已释放": 已释放, "持有者": 当前持有者,
                       "锁路径": str(短锁.锁路径), "说明": 释放说明})
 
 
@@ -460,15 +461,15 @@ def 安全释放资源(路径: Path) -> tuple[bool, str]:
     """安全释放资源：文件删除或目录递归删除；不存在视为幂等成功。"""
     路径 = Path(路径)
     if not 路径.exists():
-        return True, "资源不存在（释放幂等）"
+        return 真, "资源不存在（释放幂等）"
     try:
         if 路径.is_dir():
             shutil.rmtree(路径)
         else:
             路径.unlink()
-        return True, f"已释放: {路径}"
+        return 真, f"已释放: {路径}"
     except OSError as 错误:
-        return False, f"释放失败: {错误}"
+        return 假, f"释放失败: {错误}"
 
 
 def 生成资源包声明() -> dict:
@@ -557,7 +558,7 @@ def 记审计事件(*, 账本名: str = None, 事件类型: str = None, 主体: 
             # 超上限批量修剪（OpenClaw：10万行上限/1024批修剪）
             if len(账本) > 审计默认上限:
                 del 账本[:审计默认修剪批]
-            return 结果.成功结果({"记录": True, "账本名": 名, "事件数": len(账本)})
+            return 结果.成功结果({"记录": 真, "账本名": 名, "事件数": len(账本)})
     except Exception as 异常:
         return 结果.失败("记录失败", str(异常), 来源="资源管理")
 
@@ -599,7 +600,7 @@ def 清空审计账本(*, 账本名: str = None) -> 结果:
                 return 结果.失败("账本不存在", f"审计账本 {名} 未创建", 来源="资源管理")
             数 = len(_审计账本[名])
             _审计账本[名] = []
-            return 结果.成功结果({"清空": True, "账本名": 名, "已清": 数})
+            return 结果.成功结果({"清空": 真, "账本名": 名, "已清": 数})
     except Exception as 异常:
         return 结果.失败("清空失败", str(异常), 来源="资源管理")
 
@@ -639,7 +640,7 @@ def 登记配置快照(*, 配置名: str = None, 配置: dict = None, 操作人:
                 "时间": _时间.strftime("%Y-%m-%d %H:%M:%S", _时间.localtime()),
                 "变更记录": [],
             }
-            return 结果.成功结果({"配置名": 名, "指纹": 指纹, "基线": True})
+            return 结果.成功结果({"配置名": 名, "指纹": 指纹, "基线": 真})
     except Exception as 异常:
         return 结果.失败("登记失败", str(异常), 来源="资源管理")
 
@@ -663,10 +664,10 @@ def 对比配置指纹(*, 配置名: str = None, 新配置: dict = None, 操作�
                     "时间": _时间.strftime("%Y-%m-%d %H:%M:%S", _时间.localtime()),
                     "变更记录": [],
                 }
-                return 结果.成功结果({"配置名": 名, "变更": False, "首登基线": True, "指纹": 新指纹})
+                return 结果.成功结果({"配置名": 名, "变更": 假, "首登基线": 真, "指纹": 新指纹})
             条目 = _配置指纹账本[名]
             if 条目["指纹"] == 新指纹:
-                return 结果.成功结果({"配置名": 名, "变更": False, "指纹": 新指纹})
+                return 结果.成功结果({"配置名": 名, "变更": 假, "指纹": 新指纹})
             # 有变更：记 journal
             条目["变更记录"].append({
                 "改前指纹": 条目["指纹"],
@@ -679,7 +680,7 @@ def 对比配置指纹(*, 配置名: str = None, 新配置: dict = None, 操作�
             条目["操作人"] = str(操作人 or "")
             条目["时间"] = _时间.strftime("%Y-%m-%d %H:%M:%S", _时间.localtime())
             return 结果.成功结果({
-                "配置名": 名, "变更": True,
+                "配置名": 名, "变更": 真,
                 "改前指纹": 条目["改前指纹"], "新指纹": 新指纹,
                 "操作人": str(操作人 or "未知"),
                 "变更序号": len(条目["变更记录"]),
@@ -754,7 +755,7 @@ def 登记回滚步骤(*, 事务id: str = None, 步骤名: str = None,
             return 结果.失败(错误码_参数不合法, "回滚动作必须是字典", 来源="资源管理")
         with _回滚锁:
             if 事务 not in _回滚事务表:
-                _回滚事务表[事务] = {"步骤列表": [], "状态": "进行中", "已回滚": False}
+                _回滚事务表[事务] = {"步骤列表": [], "状态": "进行中", "已回滚": 假}
             条目 = _回滚事务表[事务]
             条目["步骤列表"].append({"步骤名": 步骤, "回滚动作": 回滚动作})
             return 结果.成功结果({"事务id": 事务, "步骤数": len(条目["步骤列表"]),
@@ -819,7 +820,7 @@ def 执行逆序回滚(*, 事务id: str = None, 回滚器: dict = None) -> 结�
         回滚结果列表 = []
         for 步骤 in reversed(步骤们):
             动作 = 步骤["回滚动作"]
-            步骤结果 = {"步骤名": 步骤["步骤名"], "动作": 动作, "已执行": False, "说明": ""}
+            步骤结果 = {"步骤名": 步骤["步骤名"], "动作": 动作, "已执行": 假, "说明": ""}
             if 回滚函数 is None:
                 步骤结果["说明"] = 取函数错误
                 回滚结果列表.append(步骤结果)
@@ -839,7 +840,7 @@ def 执行逆序回滚(*, 事务id: str = None, 回滚器: dict = None) -> 结�
         失败数 = sum(1 for 项 in 回滚结果列表 if not 项["已执行"])
         with _回滚锁:
             条目["状态"] = "已回滚"
-            条目["已回滚"] = True
+            条目["已回滚"] = 真
             条目["回滚数"] = len(回滚结果列表)
             条目["失败数"] = 失败数
             条目["完成时间"] = time.strftime("%Y-%m-%d %H:%M:%S")
