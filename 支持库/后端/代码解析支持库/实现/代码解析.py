@@ -52,7 +52,7 @@ class _Html提取器(HTMLParser):
     def handle_starttag(self, tag: str, _attrs) -> None:
         标签 = tag.lower()
         if 标签 in {"script", "style"}:
-            self._flush_visible()
+            self._收束可见段()
             self._capture_tag = 标签
             self._buf = []
             self._start_line = self.getpos()[0]
@@ -60,7 +60,7 @@ class _Html提取器(HTMLParser):
         if 标签 in self._跳过标签集合:
             self._skip_depth += 1
         if 标签 in self._标题标签集合:
-            self._flush_visible()
+            self._收束可见段()
             self._capture_tag = "heading"
             self._buf = []
             self._start_line = self.getpos()[0]
@@ -85,7 +85,7 @@ class _Html提取器(HTMLParser):
             self._buf = []
             return
         if 标签 in self._段落标签集合:
-            self._flush_visible()
+            self._收束可见段()
 
     def handle_data(self, data: str) -> None:
         if self._capture_tag in {"script", "style", "heading"}:
@@ -96,7 +96,7 @@ class _Html提取器(HTMLParser):
                 self._visible_start = self.getpos()[0]
             self._visible_buf.append(data)
 
-    def _flush_visible(self) -> None:
+    def _收束可见段(self) -> None:
         文本 = "".join(self._visible_buf).strip()
         if 文本:
             self.blocks_raw.append(("paragraph", re.sub(r"\s+", " ", 文本), self._visible_start))
@@ -534,7 +534,7 @@ class 解析器基类:
             解析器实例.close()
         except Exception:
             return self.切正则(内容, 文件id, 文件格式, 规则)
-        解析器实例._flush_visible()
+        解析器实例._收束可见段()
         块列表: list[dict[str, object]] = []
         for 种类, 文本, 起始 in 解析器实例.blocks_raw:
             结束 = 起始 + max(文本.count("\n"), 0)

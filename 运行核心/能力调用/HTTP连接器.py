@@ -31,6 +31,7 @@ from typing import Any
 默认响应上限字节 = 4 * 1024 * 1024
 
 from 公共契约.运行时.JSON解码 import 解码冻结值
+from 公共契约.句柄体系 import 校验句柄型
 from 公共契约.错误结构 import (
     错误码_参数不合法,
     错误码_提供者不可用,
@@ -78,9 +79,10 @@ class HTTP连接器:
             return self._失败(错误码_参数不合法, "能力id 必须是非空文本", "")
         if 参数 is not None and not isinstance(参数, dict):
             return self._失败(错误码_参数不合法, "参数必须是对象", "")
-        if 句柄 is not None and (
-            isinstance(句柄, bool) or not isinstance(句柄, int) or not 1 <= 句柄 <= 999999
-        ):
+        # 句柄强度取唯一源（B-2）：`校验句柄型` 判「是不是句柄」；HTTP 边界只能承载 JSON
+        # 表达得出的整数字柄（回调句柄只存在于进程内直调），故在唯一判定之上再要求整数
+        # 形态——不放宽、也不另立一套位数/范围判定。
+        if 句柄 is not None and not (isinstance(句柄, int) and 校验句柄型(句柄)):
             return self._失败(错误码_参数不合法, "句柄必须是 1 到 999999 的整数，且只能使用网关返回的句柄", "")
         if not isinstance(请求id, str):
             return self._失败(错误码_参数不合法, "请求id 必须是文本型", "")

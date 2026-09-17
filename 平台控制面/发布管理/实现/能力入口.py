@@ -24,12 +24,12 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
+# 错误码唯一源 = `公共契约/错误结构/错误结构.py`（B-9 收口）：平台同义码只导入，不复制字面量。
+from 公共契约.错误结构 import 错误码_参数不合法
 
 # 存储目录缺省值：经唯一解析器取运行态存储根（源码态 = `<系统根>/工程缓存/平台控制面`，
 # 与旧的裸相对值同义；制品态 = 平台受管缓存）。裸相对路径在制品态会把运行态写进制品。
 默认存储目录 = str(解析运行缓存根(Path(__file__).resolve().parents[3]) / "平台控制面")
-
-错误_参数不合法 = "参数不合法"
 
 # (存储目录, 项目id) → 平台状态（同目录复用同一实例，避免每次调用重建状态库连接）。
 _状态表: dict[tuple[str, str], Any] = {}
@@ -72,7 +72,7 @@ def _取事务目录(存储目录: str) -> Any:
 def _失败存储目录(错误: Exception) -> Any:
     from 公共契约.基础类型.结果类型 import 结果
 
-    return 结果.失败(错误_参数不合法, f"存储目录不合法：{错误}", 来源="发布管理")
+    return 结果.失败(错误码_参数不合法, f"存储目录不合法：{错误}", 来源="发布管理")
 
 
 def 登记发布期望(包id: str = "", 期望版本: str = "", 调用者: str = "",
@@ -81,7 +81,7 @@ def 登记发布期望(包id: str = "", 期望版本: str = "", 调用者: str =
     from 公共契约.基础类型.结果类型 import 结果
 
     if not _文本(包id) or not _文本(期望版本):
-        return 结果.失败(错误_参数不合法, "包id 与 期望版本 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "包id 与 期望版本 不能为空", 来源="发布管理")
     try:
         服务 = _取发布服务(存储目录, 项目id)
     except (TypeError, ValueError, OSError) as 错误:
@@ -100,10 +100,10 @@ def 开始灰度发布(发布id: str = "", 候选版本: str = "", 比例: float
     from 公共契约.基础类型.结果类型 import 结果
 
     if not _文本(发布id) or not _文本(候选版本) or 比例 is None:
-        return 结果.失败(错误_参数不合法, "发布id、候选版本 与 比例 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "发布id、候选版本 与 比例 不能为空", 来源="发布管理")
     比例值 = float(比例)
     if not 0.0 <= 比例值 <= 1.0:
-        return 结果.失败(错误_参数不合法, "比例必须在 0.0 到 1.0 之间", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "比例必须在 0.0 到 1.0 之间", 来源="发布管理")
     try:
         服务 = _取发布服务(存储目录, 项目id)
     except (TypeError, ValueError, OSError) as 错误:
@@ -123,7 +123,7 @@ def 激活发布版本(发布id: str = "", 目标: str = "", 存储目录: str =
     from 公共契约.基础类型.结果类型 import 结果
 
     if not _文本(发布id) or not _文本(目标):
-        return 结果.失败(错误_参数不合法, "发布id 与 目标 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "发布id 与 目标 不能为空", 来源="发布管理")
     try:
         服务 = _取发布服务(存储目录, 项目id)
     except (TypeError, ValueError, OSError) as 错误:
@@ -145,7 +145,7 @@ def 切换激活指针(指针id: str = "", 目标: str = "", 期望版本: int |
     from 公共契约.基础类型.结果类型 import 结果
 
     if not _文本(指针id) or not _文本(目标) or 期望版本 is None or 期望令牌 is None:
-        return 结果.失败(错误_参数不合法, "指针id、目标、期望版本 与 期望令牌 不能为空",
+        return 结果.失败(错误码_参数不合法, "指针id、目标、期望版本 与 期望令牌 不能为空",
                         来源="发布管理")
     try:
         服务 = _取发布服务(存储目录, 项目id)
@@ -168,7 +168,7 @@ def 回滚发布(发布id: str = "", 回滚目标: str = "", 调用者: str = ""
     from 公共契约.基础类型.结果类型 import 结果
 
     if not _文本(发布id) or not _文本(回滚目标):
-        return 结果.失败(错误_参数不合法, "发布id 与 回滚目标 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "发布id 与 回滚目标 不能为空", 来源="发布管理")
     try:
         服务 = _取发布服务(存储目录, 项目id)
     except (TypeError, ValueError, OSError) as 错误:
@@ -222,7 +222,7 @@ def 执行互斥迁移(迁移任务id: str = "", 存储目录: str = "",
     from 平台控制面.发布管理.迁移互斥编排器 import 迁移互斥编排器
 
     if not _文本(迁移任务id) or not _文本(存储目录):
-        return 结果.失败(错误_参数不合法, "迁移任务id 与 存储目录 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "迁移任务id 与 存储目录 不能为空", 来源="发布管理")
     try:
         编排器 = 迁移互斥编排器(_取事务目录(存储目录))
     except (TypeError, ValueError, OSError) as 错误:
@@ -244,7 +244,7 @@ def 校验幂等恢复(发布id: str = "", 期望版本: str = "", 调用者: st
     from 平台控制面.发布管理.二阶恢复 import 幂等恢复校验
 
     if not _文本(发布id) or not _文本(期望版本):
-        return 结果.失败(错误_参数不合法, "发布id 与 期望版本 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "发布id 与 期望版本 不能为空", 来源="发布管理")
     try:
         状态 = _取状态(存储目录, 项目id)
     except (TypeError, ValueError, OSError) as 错误:
@@ -266,7 +266,7 @@ def 开始发布事务(包id: str = "", 版本: str = "", 存储目录: str = ""
     from 平台控制面.发布管理.发布事务.发布事务 import 发布事务管理器
 
     if not _文本(包id) or not _文本(版本):
-        return 结果.失败(错误_参数不合法, "包id 与 版本 不能为空", 来源="发布管理")
+        return 结果.失败(错误码_参数不合法, "包id 与 版本 不能为空", 来源="发布管理")
     try:
         管理器 = 发布事务管理器(_取事务目录(存储目录))
     except (TypeError, ValueError, OSError) as 错误:
