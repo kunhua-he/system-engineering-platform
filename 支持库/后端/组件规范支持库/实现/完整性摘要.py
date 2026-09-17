@@ -9,6 +9,11 @@
 }
 生成时排除 完整性摘要.json 自身与 __pycache__ 缓存，保证可重复生成。
 旧"能力数/能力清单"格式或缺失 文件清单 的输入一律校验失败（拒绝漂移）。
+
+B-14（2026-09-17 收口）：能力派生字段（能力数/能力清单/能力定义摘要）**写入后必须回读对账**。
+修前它们只有写者、全仓无读者，属"声明了字段却没人校验"。现在 ``校验完整性摘要`` 用同一个
+派生函数（``生成能力派生字段``）重算并逐字比对，口径三条：可派生 ⇒ 三字段必须齐全且相等；
+存在定义但派生不出 ⇒ 判红（不当作"没有派生字段"）；无定义却带派生字段 ⇒ 判红。
 """
 
 from __future__ import annotations
@@ -45,6 +50,42 @@ def 计算文件摘要(文件: Path) -> str:
     return 摘要器.hexdigest()
 
 
+def 生成能力派生字段(包目录: Path) -> dict[str, Any] | None:
+    """能力派生字段的**唯一派生者**：由 ``能力定义.json`` 算出 ``能力数/能力清单/能力定义摘要``。
+
+    读不成 / 不是对象 / 能力列表形状不合法时返回 ``None``——**不静默降级成空值集**：
+    「读不到」与「这个包真没有能力」是两件事，压成同一个空集就是 B-14 那条病根
+    （派生字段无人校验，且读写两侧各自解释）。``生成完整性摘要`` 与 ``校验完整性摘要``
+    共用本函数，保证「写进去的」与「回读比对的」是同一条算式。
+    """
+    定义路径 = 包目录 / "能力定义.json"
+    if not 定义路径.is_file():
+        return None
+    try:
+        定义 = json.loads(定义路径.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(定义, dict):
+        return None
+    能力列表 = 定义.get("能力列表")
+    if not isinstance(能力列表, list):
+        return None
+    清单: list[str] = []
+    for 能力 in 能力列表:
+        if not isinstance(能力, dict):
+            continue
+        能力id = 能力.get("能力id")
+        if isinstance(能力id, str) and 能力id:
+            清单.append(能力id)
+    return {
+        "能力数": len(能力列表),
+        "能力清单": 清单,
+        "能力定义摘要": hashlib.sha256(
+            json.dumps(定义, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        ).hexdigest()[:16],
+    }
+
+
 def 生成完整性摘要(包目录: Path, *, 包id: str, 版本: str) -> dict[str, Any]:
     """生成完整性摘要（**唯一生成器**：路径有序、与时间无关）。
 
@@ -72,18 +113,41 @@ def 生成完整性摘要(包目录: Path, *, 包id: str, 版本: str) -> dict[s
     }
     定义路径 = 包目录 / "能力定义.json"
     if 定义路径.is_file():
-        try:
-            定义 = json.loads(定义路径.read_text(encoding="utf-8"))
-            能力列表 = 定义.get("能力列表") or []
-            数据["能力数"] = len(能力列表)
-            数据["能力清单"] = [能力["能力id"] for 能力 in 能力列表 if 能力.get("能力id")]
-            数据["能力定义摘要"] = hashlib.sha256(
-                json.dumps(定义, ensure_ascii=False, sort_keys=True).encode("utf-8")
-            ).hexdigest()[:16]
-        except (json.JSONDecodeError, OSError, KeyError, TypeError):
-            # 能力定义不可读时只省略附加字段，不影响文件清单这一权威部分
-            pass
+        派生 = 生成能力派生字段(包目录)
+        if 派生 is not None:
+            数据.update(派生)
     return 数据
+
+
+def 校验能力派生字段(包目录: Path, 摘要: dict[str, Any]) -> list[str]:
+    """回读对账 ``能力数/能力清单/能力定义摘要``（B-14）。
+
+    修前这三个字段**只有写者没有读者**：``生成完整性摘要`` 写、全仓无任何校验者读，
+    于是「能力定义改了、摘要里的派生字段没跟」「派生字段被手改成别的数」都无人发现。
+    判据三条，全部 fail-closed（判不出即不通过）：
+
+    ① ``能力定义.json`` 存在且可派生 ⇒ 三个派生字段必须**齐全且逐字相等**；
+       缺一个字段即算漂移（生成侧对可读的定义一定写满三个字段）；
+    ② ``能力定义.json`` 存在但派生不出（不可读/形状坏）⇒ 判红并点名异常原因，
+       **不得**当作「这个包没有派生字段」放过；
+    ③ ``能力定义.json`` 不存在却带着派生字段 ⇒ 判红（字段无来源，必是漂移或误拷）。
+    """
+    声明派生键 = ("能力数", "能力清单", "能力定义摘要")
+    存在键 = [键 for 键 in 声明派生键 if 键 in 摘要]
+    定义路径 = 包目录 / "能力定义.json"
+    派生 = 生成能力派生字段(包目录)
+    if 派生 is None:
+        if 存在键:
+            return [f"派生字段存在但 能力定义.json 缺失或不可派生（无法回读对账: {存在键}）"]
+        return []
+    缺失 = [键 for 键 in 声明派生键 if 键 not in 摘要]
+    if 缺失:
+        return [f"能力派生字段缺失: {缺失}"]
+    问题: list[str] = []
+    for 键 in 声明派生键:
+        if 摘要.get(键) != 派生[键]:
+            问题.append(f"能力派生字段与能力定义不一致: {键}")
+    return 问题
 
 
 def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
@@ -152,7 +216,11 @@ def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
     多余清单 = sorted(声明路径集合 - 实际路径集合)
     if 缺少清单 or 多余清单:
         return False, [f"清单不闭合: 未登记{缺少清单[:3]} 多余{多余清单[:3]}"]
-    return True, []
+    # B-14：能力派生字段回读对账（能力数/能力清单/能力定义摘要）。
+    # 修前这三个字段只有 生成完整性摘要 一个写者、全仓零读者：能力定义改了摘要没跟、
+    # 字段被手改、字段整块缺失，三种漂移都无人发现。判据见 校验能力派生字段。
+    问题列表.extend(校验能力派生字段(包目录, 摘要))
+    return (not 问题列表), 问题列表
 
 
 def 扫描正式包(系统根: Path) -> list[Path]:
