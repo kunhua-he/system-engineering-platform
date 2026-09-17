@@ -1398,6 +1398,12 @@ def 检查依赖锁存在性(根: Path, 包目录们: list[Path]) -> list[dict]:
                  "路径": str(判据路径),
                  "详情": f"依赖锁唯一判据不存在，无法执行依赖锁环：{判据路径}"}]
     try:
+        # 按文件路径加载 `声明.py` 时，它内部的 `from 公共契约...` 需要**仓库根在 sys.path**
+        # ——否则子进程/隔离环境下报 `No module named '公共契约'` 并把这个载入失败
+        # 当成「依赖锁环缺口」报出去（实测：测试_公开调用完整性门禁 真仓扫描红 1 项）。
+        # 这里显式补根，与仓内其他按路径加载模块的写法同口径。
+        if str(根) not in sys.path:
+            sys.path.insert(0, str(根))
         规格 = importlib.util.spec_from_file_location("_依赖锁判据唯一源", 判据路径)
         if 规格 is None or 规格.loader is None:
             raise ImportError("无法构造模块规格")
@@ -1484,13 +1490,20 @@ def 检查消费者登记完整性(根: Path) -> list[dict]:
         if 已加路径 and 仓库根字符串 in sys.path:
             sys.path.remove(仓库根字符串)
 
+    # 判据返回的 `新增缺登记清单` 是**字符串键列表**（格式：`能力id <- 消费者包相对路径`），
+    # 不是 dict 列表 —— 早期版本按 dict 取键会抛 AttributeError（恒绿：异常被吞成空违规），
+    # 故此处按字符串键拆解，拆不出也照报（fail-closed，不静默丢弃）。
     违规: list[dict] = []
-    for 条 in (结果.get("新增缺登记清单") or []):
-        违规.append({"能力id": str(条.get("能力id") or ""), "包": str(条.get("消费者包") or ""),
+    for 键 in (结果.get("新增缺登记清单") or []):
+        键串 = str(键)
+        提供能力, 分隔, 消费者包 = 键串.partition(" <- ")
+        if not 分隔:
+            提供能力, 消费者包 = 键串, ""
+        违规.append({"能力id": 提供能力.strip() or "*", "包": 消费者包.strip() or "*",
                      "缺口类型": "消费者登记-基线外未登记",
                      "路径": "平台控制面/能力目录/消费者关系基线.json",
-                     "详情": f"缺项：{'、'.join(条.get('缺项') or [])}"})
-    for 包 in (结果.get("未覆盖提供包清单") or []):
+                     "详情": f"基线外真实跨包消费者关系缺登记（新增即必须登记）：{键串}"})
+    for 包 in (结果.get("新增提供包清单") or []):
         违规.append({"能力id": "*", "包": str(包),
                      "缺口类型": "消费者登记-新增提供包未覆盖",
                      "路径": "平台控制面/能力目录/消费者关系基线.json",
