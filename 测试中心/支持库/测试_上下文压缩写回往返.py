@@ -45,7 +45,7 @@ class 压缩写回往返用例(unittest.TestCase):
         self.原文: dict[int, tuple[str, str]] = {}
         for 序号 in range(1, 13):
             角色 = "用户" if 序号 % 2 == 1 else "助手"
-            正文 = f"{正文前缀.format(序号)}{'甲' * 40}{序号}"
+            正文 = f"{正文前缀.format(序号)}{'文' * 40}{序号}"
             self.原文[序号] = (角色, 正文)
             加 = 追加消息(句柄=self.句柄, 会话id=self.会话id, 角色=角色, 内容={"正文": 正文})
             self.assertTrue(加.成功, f"追加第 {序号} 条失败: {加.错误说明}")
@@ -185,9 +185,9 @@ class 测试中文键消息不丢内容(unittest.TestCase):
     阶段整批剪掉（保留消息 0、摘要空），且 压缩历史 会产出只有角色名的空壳摘要。
     """
 
-    英文键列表 = [{"role": "user" if i % 2 else "assistant", "content": f"第{i}条正文{'甲' * 30}"}
+    英文键列表 = [{"role": "user" if i % 2 else "assistant", "content": f"第{i}条正文{'文' * 30}"}
                   for i in range(1, 13)]
-    中文键列表 = [{"角色": "用户" if i % 2 else "助手", "内容": {"正文": f"第{i}条正文{'甲' * 30}"}}
+    中文键列表 = [{"角色": "用户" if i % 2 else "助手", "内容": {"正文": f"第{i}条正文{'文' * 30}"}}
                   for i in range(1, 13)]
 
     def test_压缩历史认中文键并产出含正文的摘要(self) -> None:

@@ -38,8 +38,8 @@ from 支持库.后端.测试支持库 import 注册能力, 验证命令白名单
 )
 有测试样例源码 = (
     "import unittest\n\n\nclass 有(unittest.TestCase):\n"
-    "    def test_甲(self) -> None:\n        self.assertTrue(True)\n\n"
-    "    def test_乙(self) -> None:\n        self.assertEqual(1 + 1, 2)\n"
+    "    def test_A(self) -> None:\n        self.assertTrue(True)\n\n"
+    "    def test_B(self) -> None:\n        self.assertEqual(1 + 1, 2)\n"
 )
 
 
@@ -132,16 +132,16 @@ class 测试测试支持库(unittest.TestCase):
     def test_验证计划支持点分模块名与关键词过滤(self) -> None:
         样例目录 = self.临时根 / "测试中心" / "样例域"
         样例目录.mkdir(parents=True)
-        (样例目录 / "测试_甲.py").write_text("import unittest\n", encoding="utf-8")
-        (样例目录 / "测试_乙.py").write_text("import unittest\n", encoding="utf-8")
+        (样例目录 / "测试_A.py").write_text("import unittest\n", encoding="utf-8")
+        (样例目录 / "测试_B.py").write_text("import unittest\n", encoding="utf-8")
         单文件 = 验证计划(
-            目标路径="测试中心.样例域.测试_甲", 仓库根目录=str(self.临时根),
+            目标路径="测试中心.样例域.测试_A", 仓库根目录=str(self.临时根),
         )
         self.assertEqual(单文件.值["命令数"], 1)
         带关键词 = 验证计划(
-            目标路径="测试中心/样例域", 仓库根目录=str(self.临时根), 关键词="测试_乙",
+            目标路径="测试中心/样例域", 仓库根目录=str(self.临时根), 关键词="测试_B",
         )
-        self.assertEqual(带关键词.值["测试模块列表"], ["测试中心.样例域.测试_乙"])
+        self.assertEqual(带关键词.值["测试模块列表"], ["测试中心.样例域.测试_B"])
 
     def test_验证计划阶段收口缺制品拒绝生成命令(self) -> None:
         样例目录 = self.临时根 / "测试中心" / "样例域"
