@@ -108,6 +108,53 @@ def 追加JSONL(
             os.fsync(输出.fileno())
 
 
+def 重写JSONL(
+    路径: str | Path, 保留判定: Callable[[dict[str, Any]], bool], *,
+    批次条数: int = 256,
+) -> tuple[int, int]:
+    """流式重写 JSONL：逐行判定保留，写临时文件后原子替换。
+
+    返回（保留条数、删除条数）。读的是唯一 JSONL 格式口径（与 `读取JSONL`
+    同一 `json.loads` 约定：非字典或坏行一律不保留），内存有界——一次只持有
+    一行 + 至多 `批次条数` 行待写缓冲，**不把整个文件读进内存**；写盘走临时文件 +
+    `os.replace` 原子替换，中途失败不留半截文件（原文件保持可读）。
+    """
+    文件 = Path(路径)
+    if not 文件.is_file():
+        return 0, 0
+    临时 = 文件.with_name(f"{文件.name}.重写中")
+    保留条数 = 0
+    删除条数 = 0
+    缓冲: list[str] = []
+    try:
+        with 文件.open("r", encoding="utf-8", errors="replace") as 输入:
+            with 临时.open("w", encoding="utf-8") as 输出:
+                for 行 in 输入:
+                    try:
+                        记录 = json.loads(行)
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        记录 = None
+                    if not isinstance(记录, dict) or not 保留判定(记录):
+                        删除条数 += 1
+                        continue
+                    缓冲.append(行 if 行.endswith("\n") else 行 + "\n")
+                    保留条数 += 1
+                    if len(缓冲) >= max(1, int(批次条数)):
+                        输出.write("".join(缓冲))
+                        缓冲.clear()
+                if 缓冲:
+                    输出.write("".join(缓冲))
+                    缓冲.clear()
+                if 保留条数 == 0:
+                    输出.flush()
+        import os
+        os.replace(临时, 文件)
+    finally:
+        if 临时.exists():
+            临时.unlink(missing_ok=True)
+    return 保留条数, 删除条数
+
+
 def 受限通信(
     进程: Any, *, 输入: bytes | None = None, 超时秒: float,
     输出上限字节: int = 默认子进程输出上限字节,
