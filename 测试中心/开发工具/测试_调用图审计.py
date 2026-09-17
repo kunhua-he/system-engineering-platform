@@ -18,6 +18,7 @@ from pathlib import Path
 系统根 = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.复用审计.能力调用图审计 import 审计模块库
 
 
@@ -207,7 +208,7 @@ class Test提供者直连规则解析失败口径(unittest.TestCase):
 
         注册表 = 直连规则注册表()
         self.assertEqual(注册表.审计源码("def 好(x):\n    return x + 1\n"), [])
-        self.assertEqual(注册表.门禁判定(""), (False, []))
+        self.assertEqual(注册表.门禁判定(""), (假, []))
 
 
 if __name__ == "__main__":
