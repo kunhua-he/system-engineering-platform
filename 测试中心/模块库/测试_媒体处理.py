@@ -307,7 +307,7 @@ class Test零残留与注册(unittest.TestCase):
         finally:
             设置惰性装配函数(原惰性)
 
-    def test_模块注册五个能力(self):
+    def test_模块注册六个能力(self):
         class 假注册表:
             def __init__(self):
                 self.条目 = []
@@ -319,11 +319,12 @@ class Test零残留与注册(unittest.TestCase):
         from 模块库.媒体处理 import 注册能力
 
         注册能力(注册表)
-        self.assertEqual(len(注册表.条目), 5)
+        self.assertEqual(len(注册表.条目), 6)
         self.assertEqual([条目.能力id for 条目 in 注册表.条目], [
             "媒体处理.检查提供者",
             "媒体处理.探测媒体",
             "媒体处理.提取音频",
+            "媒体处理.拼接媒体",
             "媒体处理.转码",
             "媒体处理.抽取帧",
         ])
