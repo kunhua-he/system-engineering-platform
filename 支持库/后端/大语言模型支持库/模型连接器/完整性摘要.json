@@ -20,8 +20,12 @@
       "sha256": "1d5e5a6a4fda43eaf847b3e97283925b6e7bcce1e939af14f44218ea273e4e7d"
     },
     {
+      "路径": "实现/响应归一化.py",
+      "sha256": "b20502a88bfdd5a2decfd3fe6025f3a753b7917532f30c5ca94cbda980746d97"
+    },
+    {
       "路径": "实现/模型连接器.py",
-      "sha256": "daef78110b9e890010f44a5184664fe7fbbdbb3eb11a0b175c095b61c8556153"
+      "sha256": "0e06da51674342ed2762c973fa6c65c139b0026c3ec59488b86e6cccb96d4ef8"
     },
     {
       "路径": "权限契约/权限契约.json",
