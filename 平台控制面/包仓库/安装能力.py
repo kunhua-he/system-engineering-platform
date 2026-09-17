@@ -35,6 +35,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from 支持库.后端.系统核心支持库.路径安全 import 校验文件名
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 缺省受控根名：平台存储目录下的 `已激活`（与发布链 统一入口.签名与发布 的安装落点同一形态）
 默认受控目录名 = "已激活"
@@ -61,22 +62,22 @@ def 校验安装目标目录(目标目录, 受控目录=None) -> tuple[bool, str
     路径 = Path(目标目录)
     名字结果 = 校验文件名(路径.name)
     if not 名字结果.成功:
-        return False, f"包id 非法: {名字结果.错误说明}"
+        return 假, f"包id 非法: {名字结果.错误说明}"
     if not 名字结果.值.get("通过"):
-        return False, f"包id 非法: {名字结果.值.get('原因', '')}"
+        return 假, f"包id 非法: {名字结果.值.get('原因', '')}"
     段表 = 路径.parts[1:] if 路径.is_absolute() else 路径.parts
     for 段 in 段表:
         if 段 in ("..", "."):
-            return False, f"安装目标含目录跳转段（. / ..）: {路径}"
+            return 假, f"安装目标含目录跳转段（. / ..）: {路径}"
     父目录 = 路径.parent.resolve()
     实际目录 = 路径.resolve()
     if 实际目录.parent != 父目录:
-        return False, f"安装目标未归位到父目录直接子项: {路径}"
+        return 假, f"安装目标未归位到父目录直接子项: {路径}"
     if 受控目录 is not None:
         根目录 = Path(受控目录).resolve()
         if 实际目录.parent != 根目录:
-            return False, f"安装目标越出受控目录 {根目录}: {实际目录}"
-    return True, ""
+            return 假, f"安装目标越出受控目录 {根目录}: {实际目录}"
+    return 真, ""
 
 
 class 安装能力:
@@ -130,7 +131,7 @@ class 安装能力:
         """
         制品 = self.状态.读取记录("制品", "制品摘要", 制品摘要)
         if 制品 is None:
-            return False, "制品不存在"
+            return 假, "制品不存在"
         目标目录 = Path(目标目录)
         受控根 = Path(受控目录) if 受控目录 is not None else self.默认受控目录()
         # 路径形态判定（唯一一处）：拼路径之后立刻挡目录逃逸/越出受控根。
@@ -140,26 +141,26 @@ class 安装能力:
             # 兜底断言：上面的形态判定已要求「解析后的父目录 == 受控根」，因此目标不可能
             # 等于受控根（受控根是父目录，不是子项）；这里再断言一次，防将来放宽形态判定时
             # 静默放开「整体替换受控根」这条路（实测该分支当前不可达，属纵深防御）。
-            目标通过, 目标原因 = False, f"安装目标不得是受控根本身（会整体替换受控根）: {受控根}"
+            目标通过, 目标原因 = 假, f"安装目标不得是受控根本身（会整体替换受控根）: {受控根}"
         # 安装前校验（签名 + 磁盘一致性）
         有效, 消息 = self.校验签名(制品摘要=制品摘要)
         if not 有效:
             # 签名原因优先于路径原因：目标非法与制品不可信同时成立时报**制品**原因。
             # 否则一个错传的路径会把「未签名/被篡改」这类直接指向制品的拒绝原因
             # 遮蔽成「路径非法」，既不可诊断，也让篡改检测看起来是「路径问题」。
-            return False, f"安装被拒: {消息}"
+            return 假, f"安装被拒: {消息}"
         if not 目标通过:
-            return False, f"安装被拒: {目标原因}"
+            return 假, f"安装被拒: {目标原因}"
         # 受控根：缺省场景下可能尚不存在（首次安装），只允许**单层**创建，
         # 其父目录必须已存在 —— 绝不自动补齐父目录链（否则等于把安装目标造到任意位置）。
         if not 受控根.is_dir():
             if not 受控根.parent.is_dir():
-                return False, (f"安装被拒: 受控目录的父目录不存在（禁止自动造父目录）: "
+                return 假, (f"安装被拒: 受控目录的父目录不存在（禁止自动造父目录）: "
                                f"{受控根.parent}")
             try:
                 受控根.mkdir()
             except OSError as 错误:
-                return False, f"安装被拒: 受控目录不可创建: {受控根}（{错误}）"
+                return 假, f"安装被拒: 受控目录不可创建: {受控根}（{错误}）"
         with self._安装串行锁(受控根, 目标目录.name):
             return self._安装到受控根(制品, 制品摘要, 目标目录, 受控根)
 
@@ -176,7 +177,7 @@ class 安装能力:
         临时目标 = 受控根 / f"{临时目录前缀}{uuid.uuid4().hex[:8]}"
         备份 = 受控根 / f"{备份目录前缀}{uuid.uuid4().hex[:8]}"
         # 备份只作旧版还原依据：仅当旧目标改名为备份后才会存在
-        已备份 = False
+        已备份 = 假
         # 受控根已由调用方保证存在：**不加 parents**，不自动造父目录
         临时目标.mkdir()
         try:
@@ -199,20 +200,20 @@ class 安装能力:
             # 禁止先 rmtree：rmtree 与 rename 之间中断会让 <受控根>/<包id> 彻底消失。
             if 目标目录.exists():
                 os.rename(目标目录, 备份)
-                已备份 = True
+                已备份 = 真
             try:
                 os.rename(临时目标, 目标目录)
             except OSError:
                 if 备份.exists() and not 目标目录.exists():
                     os.rename(备份, 目标目录)
-                    已备份 = False
+                    已备份 = 假
                 raise
         except Exception as 错误:
             shutil.rmtree(临时目标, ignore_errors=True)
             # 还原未完成时保留备份目录：旧版仍可人工恢复，不让旧版彻底消失
-            return False, f"安装失败: {错误}" + (f"（旧版已备份于 {备份}）" if 已备份 else "")
+            return 假, f"安装失败: {错误}" + (f"（旧版已备份于 {备份}）" if 已备份 else "")
         # 新目录已就位：旧版备份不再是回滚依据（回滚走 发布管理.回滚），丢弃
         if 已备份 and 备份.exists():
             shutil.rmtree(备份, ignore_errors=True)
         self.状态.条件更新("制品", {"状态": "已安装"}, "制品摘要=?", (制品摘要,))
-        return True, f"已安装到 {目标目录}"
+        return 真, f"已安装到 {目标目录}"

@@ -17,6 +17,7 @@ import uuid
 from pathlib import Path
 
 from 平台控制面.包仓库.版本仓库数据 import 安装记录, 计算目录摘要
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.版本规则.契约版本 import 契约版本
 
 
@@ -46,24 +47,24 @@ class 包仓库:
         源目录 = Path(源目录)
         声明路径 = 源目录 / "包声明.json"
         if not 声明路径.is_file():
-            return False, f"缺少包声明.json: {源目录}"
+            return 假, f"缺少包声明.json: {源目录}"
         try:
             声明 = json.loads(声明路径.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as 错误:
-            return False, f"包声明不可读: {错误}"
+            return 假, f"包声明不可读: {错误}"
         包id = 包id or str(声明.get("包id", ""))
         版本 = 版本 or str(声明.get("版本", ""))
         if not 包id or not 版本:
-            return False, "包id 或 版本 缺失"
+            return 假, "包id 或 版本 缺失"
 
         # 1. 不可覆盖检查
         if self.已安装(包id, 版本):
-            return False, f"同一包同一版本不能重复覆盖: {包id}@{版本}"
+            return 假, f"同一包同一版本不能重复覆盖: {包id}@{版本}"
 
         # 2. 包结构校验
         for 必需项 in ("包声明.json", "能力契约", "实现"):
             if not (源目录 / 必需项).exists():
-                return False, f"包结构不完整，缺少 {必需项}"
+                return 假, f"包结构不完整，缺少 {必需项}"
 
         # 3. 权限声明（必须存在；缺失视为无权限声明但允许）
         权限声明 = 源目录 / "权限声明"
@@ -72,7 +73,7 @@ class 包仓库:
             try:
                 权限数据 = json.loads((权限声明 / "权限声明.json").read_text(encoding="utf-8"))
             except json.JSONDecodeError:
-                return False, "权限声明.json 不可读"
+                return 假, "权限声明.json 不可读"
 
         # 4. 临时目录 + 原子替换
         临时路径 = self.版本目录 / f".临时_{包id}@{版本}_{uuid.uuid4().hex[:6]}"
@@ -83,7 +84,7 @@ class 包仓库:
             临时路径.rename(目标路径)  # 原子替换
         except OSError as 错误:
             shutil.rmtree(临时路径, ignore_errors=True)
-            return False, f"安装失败已清理临时目录: {错误}"
+            return 假, f"安装失败已清理临时目录: {错误}"
 
         # 5. 生成安装记录
         记录 = 安装记录(
@@ -94,7 +95,7 @@ class 包仓库:
         (self.安装记录目录 / f"{记录.记录id}.json").write_text(
             json.dumps(记录.转字典(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        return True, 记录
+        return 真, 记录
 
     def 查询安装记录(self, *, 包id: str = "", 版本: str = "") -> list[安装记录]:
         记录列表: list[安装记录] = []
@@ -114,24 +115,24 @@ class 包仓库:
         """校验已安装版本的完整性摘要。"""
         目标路径 = self.版本路径(包id, 版本)
         if not 目标路径.is_dir():
-            return False, f"版本未安装: {包id}@{版本}"
+            return 假, f"版本未安装: {包id}@{版本}"
         实际摘要 = 计算目录摘要(目标路径)
         if 期望摘要 and 实际摘要 != 期望摘要:
-            return False, f"完整性摘要不一致: 期望 {期望摘要} 实际 {实际摘要}"
-        return True, 实际摘要
+            return 假, f"完整性摘要不一致: 期望 {期望摘要} 实际 {实际摘要}"
+        return 真, 实际摘要
 
     def 删除(self, 包id: str, 版本: str, *, 引用项目: list[str] | None = None,
              运行实例数: int = 0, 回滚任务数: int = 0) -> tuple[bool, str]:
         """删除版本：先执行三重引用扫描。"""
         引用项目 = 引用项目 or []
         if 引用项目:
-            return False, f"仍被项目引用: {', '.join(引用项目)}，禁止删除"
+            return 假, f"仍被项目引用: {', '.join(引用项目)}，禁止删除"
         if 运行实例数 > 0:
-            return False, f"仍有 {运行实例数} 个运行实例，禁止删除"
+            return 假, f"仍有 {运行实例数} 个运行实例，禁止删除"
         if 回滚任务数 > 0:
-            return False, f"仍有 {回滚任务数} 个回滚任务，禁止删除"
+            return 假, f"仍有 {回滚任务数} 个回滚任务，禁止删除"
         目标路径 = self.版本路径(包id, 版本)
         if not 目标路径.is_dir():
-            return False, f"版本未安装: {包id}@{版本}"
+            return 假, f"版本未安装: {包id}@{版本}"
         shutil.rmtree(目标路径)
-        return True, "已删除"
+        return 真, "已删除"

@@ -12,6 +12,7 @@ import hashlib
 import shutil
 import tempfile
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 默认构建时刻 = "2000-01-01 00:00:00"
 默认主机名 = "可复现构建机"
@@ -119,5 +120,5 @@ class 可复现构建器:
         if 摘要1 != 摘要2:
             差异 = next((路径 for 路径 in set(摘要1) | set(摘要2)
                          if 摘要1.get(路径) != 摘要2.get(路径)), "未知")
-            return False, 摘要1, 摘要2, f"两个工作区摘要不一致，首个差异文件: {差异}"
-        return True, 摘要1, 摘要2, "两个工作区摘要完全一致"
+            return 假, 摘要1, 摘要2, f"两个工作区摘要不一致，首个差异文件: {差异}"
+        return 真, 摘要1, 摘要2, "两个工作区摘要完全一致"

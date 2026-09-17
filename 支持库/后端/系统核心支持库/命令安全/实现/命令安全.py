@@ -14,10 +14,15 @@ from __future__ import annotations
 
 import base64
 import re
+from collections import deque
 
 from 公共契约.基础类型.结果类型 import 结果
 
 来源标识 = "命令安全"
+
+# 尽力而为路径的降级留痕（不阻断主流程），有界保留 1000 条（照 模型连接器.py:64 口径）：
+# base64/hex 解码失败即该片段不参与二次检测，无痕会让「安全检测降级」不可观测。
+命令安全降级记录表: deque[str] = deque(maxlen=1000)
 
 输入长度上限 = 65536
 
@@ -85,7 +90,10 @@ def 提取解码片段(命令: str) -> list[str]:
         候选 = 匹配.group(0)
         try:
             解码 = base64.b64decode(候选, validate=True).decode("utf-8", errors="ignore")
-        except Exception:
+        except Exception as 错误:
+            # 允许忽略，但留痕（哲学第 3 条 2 项）：解码失败即该片段不参与二次检测，
+            # 无痕会让「安全检测降级」不可观测。
+            命令安全降级记录表.append(f"base64 解码片段失败: {错误}")
             continue
         if 解码 and 解码.strip() and 解码 != 候选:
             片段列表.append(解码)
@@ -94,7 +102,10 @@ def 提取解码片段(命令: str) -> list[str]:
         try:
             字节 = bytes(bytearray(int(原始[索引 + 2:索引 + 4], 16) for 索引 in range(0, len(原始), 4)))
             解码 = 字节.decode("utf-8", errors="ignore")
-        except Exception:
+        except Exception as 错误:
+            # 允许忽略，但留痕（哲学第 3 条 2 项）：同 base64 分支，
+            # 解码失败即该 hex 片段不参与二次检测。
+            命令安全降级记录表.append(f"hex 转义解码片段失败: {错误}")
             continue
         if 解码 and 解码.strip():
             片段列表.append(解码)

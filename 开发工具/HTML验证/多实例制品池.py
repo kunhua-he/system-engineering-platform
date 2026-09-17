@@ -12,6 +12,7 @@ from 开发工具.HTML验证.端口池 import _解析端口池, _分片场景
 from 开发工具.HTML验证.制品进程 import _启动制品, _回收进程组
 from 开发工具.HTML验证.单实例验证 import 验证全部
 from 开发工具.HTML验证.验证证据 import _校验制品前后绑定
+from 公共契约.诊断.忽略记录 import 记录忽略
 def _验证全部多实例(
     制品目录: Path,
     场景束: 验证场景束,
@@ -135,11 +136,15 @@ def _验证全部多实例(
                 结果 = 任务.result()
                 if isinstance(结果, tuple) and 结果 and 结果[0] not in 进程表:
                     进程表.append(结果[0])
-            except BaseException:
-                pass
+            except BaseException as 错误:
+                # 允许忽略，但留痕（哲学第 3 条 2 项）：结果收集失败会少回收一个进程，
+                # 捕 BaseException 保证清理不被任何异常打断，但真实故障必须可查。
+                记录忽略('多实例制品池.收集启动任务结果', 错误)
         for 进程 in 进程表:
             try:
                 _回收进程组(进程)
-            except BaseException:
-                pass
+            except BaseException as 错误:
+                # 允许忽略，但留痕（哲学第 3 条 2 项）：进程组回收失败 = 僵尸/孤儿进程
+                # 静默泄漏，清理失败可不阻断，但不能不记录。
+                记录忽略('多实例制品池.回收进程组', 错误)
         raise

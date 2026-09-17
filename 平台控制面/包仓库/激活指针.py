@@ -32,6 +32,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 唯一 schema：任何 `当前.json` 的正文都只有这五个键（顺序即落盘顺序）。
 指针键表 = ("摘要sha256", "制品目录", "制品摘要", "版本", "栅栏令牌")
@@ -82,7 +83,7 @@ def 读取激活指针(路径: Path | str) -> dict[str, Any] | None:
 
 
 def 写激活指针(路径: Path | str, 指针: dict[str, Any], *,
-               保留额外键: bool = False) -> None:
+               保留额外键: bool = 假) -> None:
     """按唯一 schema 原子写指针（临时文件 → fsync → `os.replace` → 目录 fsync）。
 
     **唯一落盘点**：入库/安装/重建/重置/回收规范化全部走这里，不得各写各的
@@ -123,9 +124,9 @@ def 指针形态(路径: Path | str) -> dict[str, Any]:
     """
     路径 = Path(路径)
     结论: dict[str, Any] = {
-        "存在": 路径.is_file(), "可读": False,
-        "原始键": [], "统一键": list(指针键表), "历史写法": False,
-        "归一键集": [], "已统一": False,
+        "存在": 路径.is_file(), "可读": 假,
+        "原始键": [], "统一键": list(指针键表), "历史写法": 假,
+        "归一键集": [], "已统一": 假,
     }
     if not 结论["存在"]:
         return 结论
@@ -137,7 +138,7 @@ def 指针形态(路径: Path | str) -> dict[str, Any]:
         return 结论
     归一 = 归一激活指针(原始)
     结论.update({
-        "可读": True,
+        "可读": 真,
         "原始键": sorted(原始.keys()),
         "历史写法": 兼容路径键 in 原始,
         "归一键集": sorted(归一.keys()),

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 状态链 = [
     "未安装", "安装中", "已安装", "校验中", "已校验", "已解析",
@@ -49,7 +50,7 @@ class 状态记录:
     从状态: str
     到状态: str
     操作名称: str = ""
-    成功: bool = True
+    成功: bool = 真
     错误码: str = ""
     错误说明: str = ""
 
@@ -72,7 +73,7 @@ class 包生命周期:
         self.历史记录: list[状态记录] = []
         self.事件日志 = 事件日志
 
-    def 流转(self, 目标状态: str, *, 操作名称: str = "", 成功: bool = True,
+    def 流转(self, 目标状态: str, *, 操作名称: str = "", 成功: bool = 真,
              错误码: str = "", 错误说明: str = "") -> 状态记录:
         """流转到目标状态；非法跳转拒绝；重复操作幂等。"""
         从状态 = self.状态
@@ -80,11 +81,11 @@ class 包生命周期:
         if 目标状态 not in 状态链:
             raise ValueError(f"未知状态: {目标状态}")
         if 目标状态 == 从状态 and 从状态 in 幂等操作表:
-            记录 = 状态记录(self.包id, self.版本, 从状态, 目标状态, 操作名称, True)
+            记录 = 状态记录(self.包id, self.版本, 从状态, 目标状态, 操作名称, 真)
             self.历史记录.append(记录)
             return 记录
         if 目标状态 not in 允许流转表.get(从状态, set()):
-            记录 = 状态记录(self.包id, self.版本, 从状态, 从状态, 操作名称, False,
+            记录 = 状态记录(self.包id, self.版本, 从状态, 从状态, 操作名称, 假,
                           错误码 or "状态跳转非法", 错误说明 or f"不允许从 {从状态} 跳转到 {目标状态}")
             self.历史记录.append(记录)
             return 记录
@@ -103,9 +104,9 @@ class 包生命周期:
     def 回滚(self, 错误码: str = "", 错误说明: str = "") -> None:
         """失败回滚：进入 回滚中 再回到失败前的稳定状态。"""
         上一状态 = self.历史记录[-1].从状态 if self.历史记录 else "未安装"
-        self.流转("回滚中", 操作名称="失败回滚", 成功=False, 错误码=错误码, 错误说明=错误说明)
+        self.流转("回滚中", 操作名称="失败回滚", 成功=假, 错误码=错误码, 错误说明=错误说明)
         if 上一状态 != "回滚中" and 上一状态 in 允许流转表.get("回滚中", set()):
-            self.流转(上一状态, 操作名称="回滚恢复", 成功=True)
+            self.流转(上一状态, 操作名称="回滚恢复", 成功=真)
 
     def 检查历史(self, 操作名称: str) -> bool:
         return any(记录.操作名称 == 操作名称 for 记录 in self.历史记录)

@@ -32,6 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 内容寻址摘要长度（sha256 前 32 位）= 内容寻址目录名形态
 内容寻址名长度 = 32
@@ -78,7 +79,7 @@ class 回收结果:
     失败项: list[str] = field(default_factory=list)
     释放字节: int = 0
     删除明细: list[str] = field(default_factory=list)
-    达到上限: bool = False
+    达到上限: bool = 假
     保底保留明细: list[str] = field(default_factory=list)
     未扫描根: list[str] = field(default_factory=list)
 
@@ -231,7 +232,7 @@ def 清理过期制品(根: Path | str, *, 当前摘要: str = "", 当前身份:
     结果.保留项 = 受管总数 - len(过期)
     for 目录 in 过期:
         if 结果.删除项 >= max(0, int(上限份数)):
-            结果.达到上限 = True
+            结果.达到上限 = 真
             break
         大小 = _目录字节数(目录)
         try:
@@ -250,7 +251,7 @@ def 清理过期制品(根: Path | str, *, 当前摘要: str = "", 当前身份:
         文件表 = sorted(目录.glob(模式), key=lambda 路径: 路径.stat().st_mtime)
         for 过期文件 in 文件表[:-1]:
             if 结果.删除项 >= max(0, int(上限份数)):
-                结果.达到上限 = True
+                结果.达到上限 = 真
                 break
             try:
                 大小 = 过期文件.stat().st_size

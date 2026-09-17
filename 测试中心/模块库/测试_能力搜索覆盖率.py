@@ -12,6 +12,10 @@ from pathlib import Path
 # 新实现自己定位项目根，因此下面两个适配器忽略 项目根 参数，只保持旧测试调用形状。
 实现目录 = Path(__file__).resolve().parents[2] / "模块库" / "能力目录" / "实现"
 sys.path.insert(0, str(实现目录.parent.parent.parent))          # 项目根入 path（新实现按包路径导入）
+
+# 留痕入口只能放在上面把项目根塞进 sys.path 之后：本文件可独立执行（`python3.14 测试_...py`），
+# 顶部直接 `from 公共契约...` 会在项目根入 path 之前 ImportError（实测 ModuleNotFoundError）。
+from 公共契约.诊断.忽略记录 import 记录忽略                    # noqa: E402
 规格 = importlib.util.spec_from_file_location("能力目录实现", 实现目录 / "能力目录.py")
 assert 规格 and 规格.loader
 公开能力模块 = importlib.util.module_from_spec(规格)
@@ -75,7 +79,10 @@ def _契约示例表构建() -> dict[str, object]:
             continue
         try:
             数据 = json.loads(契约路径.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception as 错误:
+            # 允许忽略，但留痕（哲学第 3 条 2 项）：契约读不出来即该能力无调用示例，
+            # 静默跳过会变成「覆盖率测试假绿」。
+            记录忽略('测试_能力搜索覆盖率.契约示例表构建', 错误)
             continue
         for 条目 in 数据.get("能力契约", []) or []:
             if isinstance(条目, dict) and 条目.get("能力id"):

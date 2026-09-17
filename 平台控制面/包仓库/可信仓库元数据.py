@@ -21,6 +21,7 @@ from pathlib import Path
 
 from 支持库.适配层 import 生成密钥对, 内容摘要, 签名 as 真实签名, 验证签名 as 真实验签
 from 支持库.适配层 import 创建密钥提供者
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def _签名正文(元数据: dict) -> bytes:
@@ -277,7 +278,7 @@ class 可信仓库元数据:
     def 校验元数据(self, 元数据类型: str, 元数据: dict) -> tuple[bool, str]:
         """真实验签+摘要比对+过期检查+版本回退检查；任一失败返回明确原因。"""
         原因 = self.阻断检查(元数据类型, 元数据)
-        return (False, 原因[0]) if 原因 else (True, "成功")
+        return (假, 原因[0]) if 原因 else (真, "成功")
 
     def _历史根公钥(self, 目标版本: int) -> str:
         候选 = [self._读取("根信任")]

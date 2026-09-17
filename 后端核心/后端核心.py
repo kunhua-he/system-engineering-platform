@@ -297,7 +297,10 @@ class 后端核心:
             self._包轻量指纹表[声明.包id] = self.计算包轻量指纹(声明)
             try:
                 self._包目录表[声明.包id] = Path(声明.来源路径).parent.resolve()
-            except Exception:
+            except Exception as 错误:
+                # 允许忽略，但留痕（哲学第 3 条 2 项）：目录登记失败即该包目录缺项，
+                # 会让「133 个包声明.json / 127 个声明」这类统计事实源静默变少。
+                记录忽略('后端核心.初始化包指纹表.目录登记', 错误)
                 continue
 
     def 热接入(self) -> 结果:

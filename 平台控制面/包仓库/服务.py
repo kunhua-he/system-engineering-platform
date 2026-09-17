@@ -22,6 +22,7 @@ from 平台控制面.包仓库.路径安全 import 规范化相对路径
 from 平台控制面.包仓库.签名能力 import 签名能力
 from 平台控制面.包仓库.安装能力 import 安装能力
 from 支持库.适配层 import 内容摘要
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 二进制资产 hex 前缀（与 平台客户端制品/_二进制前缀、可复现构建器 一致）
 _二进制前缀 = "hexfile:"
@@ -82,8 +83,8 @@ class 包仓库(签名能力, 安装能力):
         制品摘要 = 内容摘要(正文.encode("utf-8"))
         if 已有表:
             if 已有表[0]["制品摘要"] != 制品摘要:
-                return False, f"同一包同一版本禁止双摘要（已存在 {已有表[0]['制品摘要'][:12]}…）", 制品摘要
-            return True, "同版同摘要（幂等复用）", 制品摘要
+                return 假, f"同一包同一版本禁止双摘要（已存在 {已有表[0]['制品摘要'][:12]}…）", 制品摘要
+            return 真, "同版同摘要（幂等复用）", 制品摘要
         # 临时目录构建 → 校验 → 原子发布
         临时目录 = self.制品根目录 / f".临时_{uuid.uuid4().hex[:8]}"
         临时目录.mkdir(parents=True)
@@ -115,7 +116,7 @@ class 包仓库(签名能力, 安装能力):
                 shutil.rmtree(临时目录)
         except Exception as 错误:
             shutil.rmtree(临时目录, ignore_errors=True)
-            return False, f"构建失败: {错误}", ""
+            return 假, f"构建失败: {错误}", ""
         self.状态.写入记录("制品", {
             "制品摘要": 制品摘要, "包id": 包id, "版本": 版本,
             "文件清单": json.dumps(文件清单, ensure_ascii=False),
@@ -124,7 +125,7 @@ class 包仓库(签名能力, 安装能力):
             "签名": "", "签名者": "", "签名时间": "", "状态": "未签名",
             "构建输入": json.dumps(构建输入, ensure_ascii=False),
         })
-        return True, "制品已构建", 制品摘要
+        return 真, "制品已构建", 制品摘要
 
     def 可复现校验(self, *, 包id: str, 版本: str, 文件表: dict[str, str],
                   构建输入: dict[str, Any]) -> tuple[bool, str]:
@@ -137,27 +138,27 @@ class 包仓库(签名能力, 安装能力):
         成功1, 消息1, 摘要1 = self.构建制品(
             包id=包id, 版本=版本, 文件表=文件表, 构建输入=构建输入)
         if not 成功1:
-            return False, f"首次构建失败: {消息1}"
+            return 假, f"首次构建失败: {消息1}"
         独立仓库, 独立根 = self._新建独立仓库()
         try:
             成功2, 消息2, 摘要2 = 独立仓库.构建制品(
                 包id=包id, 版本=版本, 文件表=文件表, 构建输入=构建输入)
             if not 成功2:
-                return False, f"独立复现构建失败: {消息2}"
+                return 假, f"独立复现构建失败: {消息2}"
             if 摘要1 != 摘要2:
-                return False, f"同输入独立构建摘要不一致: {摘要1} vs {摘要2}"
+                return 假, f"同输入独立构建摘要不一致: {摘要1} vs {摘要2}"
             文件表2 = dict(文件表)
             文件表2["新增文件.txt"] = "x"
             成功3, 消息3, 摘要3 = 独立仓库.构建制品(
                 包id=包id, 版本=版本 + "b", 文件表=文件表2, 构建输入=构建输入)
             if not 成功3:
-                return False, f"输入变化构建失败: {消息3}"
+                return 假, f"输入变化构建失败: {消息3}"
         finally:
             独立仓库.状态.关闭()
             shutil.rmtree(独立根, ignore_errors=True)
         if 摘要3 == 摘要1:
-            return False, "输入变化但摘要未变化"
-        return True, "可复现构建验证通过"
+            return 假, "输入变化但摘要未变化"
+        return 真, "可复现构建验证通过"
 
     def _新建独立仓库(self) -> tuple["包仓库", Path]:
         """全新制品根目录 + 全新状态库的第二个仓库实例（含临时根，供调用方清理）。"""

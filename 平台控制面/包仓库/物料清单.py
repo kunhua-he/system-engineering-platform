@@ -11,6 +11,7 @@ import json
 import platform
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 构建器版本 = "可复现构建器-1.0.0"
 
@@ -117,15 +118,15 @@ class 物料清单与来源证明:
             for 条目 in 物料清单.get("正式文件", []):
                 期望摘要表[规范化相对路径(条目["路径"])] = 条目["sha256"]
         except (KeyError, TypeError, ValueError) as 错误:
-            return False, f"物料清单格式非法: {错误}"
+            return 假, f"物料清单格式非法: {错误}"
         实际文件表 = {文件.relative_to(构建目录).as_posix()
                     for 文件 in 构建目录.rglob("*") if 文件.is_file()}
         if 实际文件表 != set(期望摘要表):
             缺少 = sorted(set(期望摘要表) - 实际文件表)
             多余 = sorted(实际文件表 - set(期望摘要表))
-            return False, f"文件集合不一致（缺少 {缺少}，多余 {多余}）"
+            return 假, f"文件集合不一致（缺少 {缺少}，多余 {多余}）"
         for 路径, 期望摘要 in 期望摘要表.items():
             实际摘要 = 内容摘要((构建目录 / 路径).read_bytes())
             if 实际摘要 != 期望摘要:
-                return False, f"文件摘要不符: {路径}（清单 {期望摘要[:12]}… 实际 {实际摘要[:12]}…）"
-        return True, f"校验通过：{len(期望摘要表)} 个正式文件摘要一致"
+                return 假, f"文件摘要不符: {路径}（清单 {期望摘要[:12]}… 实际 {实际摘要[:12]}…）"
+        return 真, f"校验通过：{len(期望摘要表)} 个正式文件摘要一致"
