@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.能力目录.实现.文件租约申请 import 申请文件租约
 from 平台控制面.能力目录.实现.文件租约维护 import (
     回收过期文件租约,
@@ -212,7 +213,7 @@ class 统一结果契约测试(文件租约测试基类):
             self.assertIn(键, 结果.值)
         self.assertEqual(set(结果.值["租约清单"][0]) >= {"租约id", "键", "路径", "所有者",
                                                       "任务", "心跳", "申请时间", "过期时间",
-                                                      "状态"}, True)
+                                                      "状态"}, 真)
         self.assertEqual(结果.值["租约清单"][0]["键"], 文件键(文件1))
 
     def test_存储损坏必须报错不得静默当空库(self) -> None:

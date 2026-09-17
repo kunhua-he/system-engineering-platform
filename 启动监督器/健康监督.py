@@ -44,6 +44,7 @@ from 项目适配层.配置适配.配置合并 import (
     解析环境配置,
 )
 from 项目适配层.配置适配.配置校验 import 校验配置
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 系统根 = Path(__file__).resolve().parents[1]
 # 证据文件根一律经唯一解析器取（禁止裸拼 `工程缓存`）：源码态解析器回落
@@ -169,7 +170,7 @@ class 系统提供者健康监督:
                     状态["连续失败次数"] = 连续失败
                     if 连续失败 < self._失败阈值:
                         # 未达阈值：保持可用观察中，错误码保留分类不清空
-                        状态["健康"] = True
+                        状态["健康"] = 真
                         状态["诊断"] = (
                             f"{状态['诊断']}；连续失败 {连续失败}/"
                             f"{self._失败阈值} 次，未达不可用阈值")
@@ -182,7 +183,7 @@ class 系统提供者健康监督:
             状态表 = {名: dict(状态) for 名, 状态 in self._状态.items()}
         return {
             "成功": bool(状态表)
-            and all(状态.get("健康") and 状态.get("成功", True)
+            and all(状态.get("健康") and 状态.get("成功", 真)
                     for 状态 in 状态表.values())
             and 证据写入失败提供者数 == 0,
             "提供者数": len(状态表),
@@ -203,7 +204,7 @@ class 系统提供者健康监督:
         return {
             "成功": bool(状态表) and all(
                 状态.get("最后检查时间") and 状态.get("健康")
-                and 状态.get("成功", True) for 状态 in 状态表.values()
+                and 状态.get("成功", 真) for 状态 in 状态表.values()
             ) and not any(状态.get("证据写入失败") for 状态 in 状态表.values()),
             "提供者数": len(状态表),
             "健康提供者数": sum(1 for 状态 in 状态表.values()
@@ -227,8 +228,8 @@ class 系统提供者健康监督:
             for 提供者名, 状态 in 健康表.items():
                 合并状态 = dict(状态)
                 合并状态["提供者"] = 提供者名
-                合并状态.setdefault("健康", False)
-                合并状态.setdefault("成功", False)
+                合并状态.setdefault("健康", 假)
+                合并状态.setdefault("成功", 假)
                 合并状态.setdefault("错误码", "")
                 合并状态.setdefault("退出码", None)
                 合并状态.setdefault("版本", "")
@@ -236,9 +237,9 @@ class 系统提供者健康监督:
                 合并状态.setdefault("诊断", "运行核心进程健康汇入")
                 合并状态.setdefault("耗时秒", 0.0)
                 合并状态.setdefault("错误摘要", "")
-                合并状态.setdefault("可重试", False)
+                合并状态.setdefault("可重试", 假)
                 合并状态.setdefault("来源", "进程健康汇入")
-                合并状态["证据写入失败"] = False
+                合并状态["证据写入失败"] = 假
                 合并状态["最后检查时间"] = 时间戳
                 self._状态[提供者名] = 合并状态
 
@@ -246,14 +247,14 @@ class 系统提供者健康监督:
         """后台线程周期执行探针（间隔 周期秒），已运行返回 False。"""
         with self._锁:
             if self._线程 is not None and self._线程.is_alive():
-                return False
+                return 假
         self._停止事件.clear()
         线程 = threading.Thread(target=self._周期循环, daemon=True,
                                 name="系统提供者健康监督")
         with self._锁:
             self._线程 = 线程
         线程.start()
-        return True
+        return 真
 
     def 停止周期检查(self) -> bool:
         """停止周期线程并等待其退出；未启动返回 False。"""
@@ -261,7 +262,7 @@ class 系统提供者健康监督:
         with self._锁:
             线程 = self._线程
         if 线程 is None:
-            return False
+            return 假
         线程.join(timeout=self._周期秒 + 2.0)
         return not 线程.is_alive()
 
@@ -272,12 +273,12 @@ class 系统提供者健康监督:
     def _探针提供者(self, 定义: dict[str, Any], 时间戳: str) -> dict[str, Any]:
         提供者名 = 定义["提供者"]
         状态: dict[str, Any] = {
-            "提供者": 提供者名, "健康": False, "错误码": "",
+            "提供者": 提供者名, "健康": 假, "错误码": "",
             "退出码": None, "版本": "", "标准错误摘要": "", "诊断": "",
             "最后检查时间": 时间戳,
-            "成功": False, "耗时秒": 0.0, "错误摘要": "",
-            "可重试": False, "来源": "周期探针检查",
-            "证据写入失败": False,
+            "成功": 假, "耗时秒": 0.0, "错误摘要": "",
+            "可重试": 假, "来源": "周期探针检查",
+            "证据写入失败": 假,
         }
         try:
             命令 = (定义["命令"]() if callable(定义["命令"])
@@ -312,16 +313,16 @@ class 系统提供者健康监督:
         状态["错误摘要"] = 探针.错误摘要
         状态["可重试"] = 探针.可重试
         if 探针.成功:
-            状态["成功"] = True
-            状态["健康"] = True
+            状态["成功"] = 真
+            状态["健康"] = 真
             状态["错误码"] = ""
             # 无独立版本号的提供者（如 textutil）用版本回退（macOS 版本）
             状态["版本"] = 定义.get("版本回退") or 探针.版本 or ""
             return 状态
         # 探针失败：透传探针分类错误码（工具缺失/探针超时/退出码非零），
         # 不统一改写成「外部提供者不可用」；可重试透传（超时=True）
-        状态["成功"] = False
-        状态["健康"] = False
+        状态["成功"] = 假
+        状态["健康"] = 假
         状态["错误码"] = 探针.错误码 or "退出码非零"
         状态["诊断"] = (f"{提供者名} 探针失败（{探针.错误码}）: "
                         f"{探针.诊断 or '无明细'}")
@@ -353,15 +354,15 @@ class 系统提供者健康监督:
             with open(self._证据文件, "a", encoding="utf-8") as 文件:
                 文件.write(json.dumps(记录, ensure_ascii=False) + "\n")
         except OSError as 错误:
-            状态["证据写入失败"] = True
+            状态["证据写入失败"] = 真
             原因文本 = str(错误)[:标准错误摘要最大长度]
             原摘要 = 状态.get("错误摘要") or ""
             状态["错误摘要"] = (
                 f"{原摘要}；证据写入失败: {原因文本}" if 原摘要
                 else f"证据写入失败: {原因文本}")
-            return False
+            return 假
         self._裁剪证据(时间戳)
-        return True
+        return 真
 
     def _读尾部行(self, 行数上限: int) -> list[str]:
         """从文件尾部倒读最多 行数上限 行（大文件避免整体 O(n) 读取）。"""
@@ -425,7 +426,7 @@ class 系统提供者健康监督:
                 时间戳文本 = 记录.get("时间") or ""
                 # 成功字段在旧版证据中不存在；只要健康字段是严格逻辑值，
                 # 缺失成功按成功处理。损坏值仍然 fail-closed 为失败保护行。
-                成功 = 记录.get("成功", True)
+                成功 = 记录.get("成功", 真)
                 健康 = 记录["健康"]
                 if not isinstance(成功, bool) or not isinstance(健康, bool):
                     raise ValueError("健康证据成功/健康字段必须是逻辑值")
@@ -434,13 +435,13 @@ class 系统提供者健康监督:
             except (ValueError, TypeError, json.JSONDecodeError):
                 秒 = float("inf")  # 无法解析的时间戳保守保留
                 # 无法证明健康的记录必须按失败保护，不能被裁剪或计入绿状态。
-                成功, 健康 = False, False
-            是保护行 = False
-            if 成功 is False or 健康 is False:
-                是保护行 = True  # 失败证据行：软上限内不裁剪
+                成功, 健康 = 假, 假
+            是保护行 = 假
+            if 成功 is 假 or 健康 is 假:
+                是保护行 = 真  # 失败证据行：软上限内不裁剪
             elif 秒 != float("inf") and 本次时间秒 is not None \
                     and 秒 == 本次时间秒:
-                是保护行 = True  # 当前任务行：本轮刚写入
+                是保护行 = 真  # 当前任务行：本轮刚写入
             记录行表.append((序号, 秒, 行, 是保护行))
         if 保留TTL秒:
             截止时间 = time.time() - 保留TTL秒
@@ -552,7 +553,7 @@ def 读取健康监督配置(*, 项目配置目录=None,
         合并段, 子键来源表 = 段级深合并配置(层级表, "健康监督证据保留策略")
     except ValueError as 错误:
         # fail-closed：任何层 段名 非字典 → 配置错误，不静默接受
-        return 配置读取结果(成功=False, 问题列表=[str(错误)])
+        return 配置读取结果(成功=假, 问题列表=[str(错误)])
     if not 合并段:
         # 没有任何层提供策略：默认值兜底（来源=支持库默认配置）
         合并段 = {"保留条数": 0, "保留TTL秒": 0}
@@ -570,8 +571,8 @@ def 读取健康监督配置(*, 项目配置目录=None,
     校验结果 = 校验配置(健康配置, 声明表=健康监督声明表)
     问题列表 = list(校验结果.问题列表) + _校验健康监督值域(健康配置)
     if 问题列表:
-        return 配置读取结果(成功=False, 问题列表=问题列表)
-    return 配置读取结果(成功=True, 配置=健康配置, 来源表=来源表)
+        return 配置读取结果(成功=假, 问题列表=问题列表)
+    return 配置读取结果(成功=真, 配置=健康配置, 来源表=来源表)
 
 
 def 从配置创建健康监督(*, 项目配置目录=None,

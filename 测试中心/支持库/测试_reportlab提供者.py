@@ -20,6 +20,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 支持库.适配层.PDF隔离提供者 import 解析PDF隔离
 from 支持库.适配层.reportlab提供者 import 生成PDF, 注册能力
@@ -76,7 +77,7 @@ class TestReportlab提供者(unittest.TestCase):
     def test_段落渲染全部可提取(self):
         """多个段落（含加粗字典项）全部真实渲染可提取。"""
         结果 = 生成PDF({
-            "段落列表": ["第一段。", "第二段。", {"文本": "加粗段。", "加粗": True}],
+            "段落列表": ["第一段。", "第二段。", {"文本": "加粗段。", "加粗": 真}],
         })
         self.assertTrue(结果.成功, 结果.错误说明)
         路径 = self.临时目录 / "段落.pdf"

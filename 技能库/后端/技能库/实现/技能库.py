@@ -42,6 +42,7 @@ from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时 import 平台适配
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源标识 = "技能库"
 
@@ -417,7 +418,7 @@ def 审计脚本源码(脚本源码: str, 禁止导入前缀: tuple[str, ...] = 
                 if 根真名 in 硬禁止导入模块:
                     违规.append(f"禁止调用: {链}")
                 for 关键字 in 节点.keywords:
-                    if 关键字.arg == "shell" and isinstance(关键字.value, ast.Constant) and 关键字.value.value is True:
+                    if 关键字.arg == "shell" and isinstance(关键字.value, ast.Constant) and 关键字.value.value is 真:
                         违规.append("禁止 shell=True")
     return sorted(set(违规))
 
@@ -500,7 +501,7 @@ def 运行受控脚本(
     脚本路径 = Path(脚本路径).resolve()
     根 = Path(技能根目录).resolve()
     if 脚本路径 != 根 and 根 not in 脚本路径.parents:
-        return {"成功": False, "错误码": "脚本路径逃逸", "错误信息": f"脚本不在技能根目录内: {脚本路径}"}
+        return {"成功": 假, "错误码": "脚本路径逃逸", "错误信息": f"脚本不在技能根目录内: {脚本路径}"}
     try:
         环境 = 构造白名单环境(
             根,
@@ -509,7 +510,7 @@ def 运行受控脚本(
             注入环境=能力注入.环境附加 if 能力注入 else None,
         )
     except ValueError as 错误:
-        return {"成功": False, "错误码": "非法环境变量", "错误信息": str(错误)}
+        return {"成功": 假, "错误码": "非法环境变量", "错误信息": str(错误)}
     预算 = dict(资源预算 or {})
     预算.setdefault("CPU秒", 超时秒)
     预算.setdefault("文件大小", max(输出上限, 默认脚本大小上限))
@@ -525,7 +526,7 @@ def 运行受控脚本(
             preexec_fn=设置资源预算(预算),
         )
     except OSError as 错误:
-        return {"成功": False, "错误码": "启动失败", "错误信息": str(错误)}
+        return {"成功": 假, "错误码": "启动失败", "错误信息": str(错误)}
     开始 = time.monotonic()
     输出 = bytearray()
     错误输出 = bytearray()
@@ -547,7 +548,7 @@ def 运行受控脚本(
         if time.monotonic() - 开始 > 超时秒:
             进程组终止(进程)
             结果 = {
-                "成功": False,
+                "成功": 假,
                 "错误码": "超时",
                 "错误信息": f"脚本执行超过 {超时秒} 秒",
                 "标准错误": 错误输出.decode("utf-8", "replace")[-500:],
@@ -566,7 +567,7 @@ def 运行受控脚本(
                 输出.extend(块)
                 if len(输出) > 输出上限:
                     进程组终止(进程)
-                    结果 = {"成功": False, "错误码": "输出超限", "错误信息": f"stdout 超过 {输出上限} 字节"}
+                    结果 = {"成功": 假, "错误码": "输出超限", "错误信息": f"stdout 超过 {输出上限} 字节"}
                     break
             else:
                 错误输出.extend(块)
@@ -580,7 +581,7 @@ def 运行受控脚本(
     错误文本 = 错误输出.decode("utf-8", "replace")
     if 退出码 != 0:
         return {
-            "成功": False,
+            "成功": 假,
             "错误码": "脚本非零退出",
             "错误信息": f"退出码 {退出码}",
             "标准错误": 错误文本[-2000:],
@@ -590,7 +591,7 @@ def 运行受控脚本(
         解析结果 = json.loads(文本.strip() or "{}")
     except json.JSONDecodeError:
         return {
-            "成功": False,
+            "成功": 假,
             "错误码": "输出格式错误",
             "错误信息": "脚本 stdout 不是合法 JSON",
             "标准输出": 文本[-2000:],
@@ -598,9 +599,9 @@ def 运行受控脚本(
         }
     if isinstance(解析结果, dict):
         解析结果.setdefault("耗时秒", round(time.monotonic() - 开始, 3))
-        解析结果["成功"] = True
+        解析结果["成功"] = 真
         return 解析结果
-    return {"成功": True, "结果": 解析结果, "耗时秒": round(time.monotonic() - 开始, 3)}
+    return {"成功": 真, "结果": 解析结果, "耗时秒": round(time.monotonic() - 开始, 3)}
 
 
 # ── 对外三个能力 ──────────────────────────────────────────────────
@@ -761,9 +762,9 @@ def 扫描技能包(技能根目录: str = None) -> 结果:
         目录 = (根 / 相对).resolve()
         try:
             目录.relative_to(根)
-            在范围内 = True
+            在范围内 = 真
         except ValueError:
-            在范围内 = False
+            在范围内 = 假
         缺失 = 校验技能包结构(目录) if (在范围内 and 目录.is_dir()) else ["技能目录不存在或路径逃逸"]
         列表.append({
             "能力标识": 标识,
@@ -800,7 +801,7 @@ def 从契约派生索引条目(契约: dict) -> dict:
     }
 
 
-def 生成技能索引(技能根目录: str = None, 写回索引: bool = True) -> 结果:
+def 生成技能索引(技能根目录: str = None, 写回索引: bool = 真) -> 结果:
     """能力 技能库.技能索引.生成索引：扫描全部技能包，从契约派生索引并（可选）写回。"""
     if not 技能根目录:
         return 结果.失败("参数不合法", "技能根目录 必填", 来源=来源标识)

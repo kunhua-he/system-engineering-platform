@@ -35,6 +35,7 @@ if str(系统根) not in sys.path:
 from 公共契约.运行时.平台适配 import (  # noqa: E402
     平台不支持错误, 校验支持范围, 正式支持架构表, 正式支持平台,
 )
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 #: 入口里那段准入（反向样本按此精确替换；改入口时必须同步改这里，否则反向验证自己会报错）
 准入代码块 = (
@@ -80,7 +81,7 @@ runpy.run_path(str(_副本), run_name="__main__")
 平台标志表 = {"Windows": "win32", "Linux": "linux", "Darwin": "darwin"}
 
 
-def _跑入口(系统: str, 架构: str, *, 反向: bool = False) -> subprocess.CompletedProcess:
+def _跑入口(系统: str, 架构: str, *, 反向: bool = 假) -> subprocess.CompletedProcess:
     模板 = 反向子进程模板 if 反向 else 子进程模板
     填入 = {"系统": 系统, "架构": 架构, "入口": str(入口文件),
             "平台标志": 平台标志表[系统]}
@@ -135,7 +136,7 @@ class 测试平台准入(unittest.TestCase):
         判据故意用「不再出现准入文案」而不是「装配成功」：模拟平台下后续必然
         不可用，而且**不允许**放行到真实装配（会触发真实破坏动作）。
         """
-        结果 = _跑入口("Windows", "AMD64", 反向=True)
+        结果 = _跑入口("Windows", "AMD64", 反向=真)
         输出 = (结果.stdout or "") + (结果.stderr or "")
         self.assertIn("准入已移除（反向样本）", 输出, 输出)
         self.assertNotIn("启动被拒绝", 输出)
@@ -150,8 +151,8 @@ class 测试平台准入(unittest.TestCase):
             for 子 in ast.walk(节点):
                 if (isinstance(子, ast.Call) and isinstance(子.func, ast.Name)
                         and 子.func.id == "校验支持范围"):
-                    return True
-            return False
+                    return 真
+            return 假
 
         def _导入位置(模块名: str) -> int:
             return next((下标 for 下标, 节点 in enumerate(树.body)

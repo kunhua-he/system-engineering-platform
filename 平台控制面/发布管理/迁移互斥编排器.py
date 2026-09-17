@@ -9,6 +9,7 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 忙碌超时毫秒 = 3000
 
@@ -118,12 +119,12 @@ class 迁移互斥编排器:
         try:
             表行 = 连接.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='迁移目标表'").fetchone()
             if 表行 is None:
-                return False
+                return 假
             列集合 = {行[1] for 行 in 连接.execute("PRAGMA table_info(迁移目标表)").fetchall()}
             记录 = 连接.execute("SELECT 名称 FROM 迁移目标表 WHERE id='版本1'").fetchone()
             return {"id", "名称", "版本", "扩展列"} <= 列集合 and 记录 is not None
         except sqlite3.DatabaseError:
-            return False
+            return 假
 
     def _写状态(self, 连接, 记录: dict[str, Any]) -> None:
         连接.execute("INSERT OR REPLACE INTO 元信息(键, 值) VALUES('迁移状态', ?)",

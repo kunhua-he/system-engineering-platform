@@ -22,7 +22,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+# 系统根必须在取正式类型名**之前**算好并插入 sys.path —— 否则全新解释器
+# 下 `from 公共契约...` 会 ModuleNotFoundError（本工具的调用方常年在仓库外跑）。
 系统根 = Path(__file__).resolve().parents[1]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
+
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 git = "/Library/Developer/CommandLineTools/usr/bin/git"
 
 
@@ -54,9 +61,9 @@ def _打印(文件: str, 果: dict) -> bool:
         print("关键词命中（**先读这些提交，再决定派不派活**）：")
         for 词, 段 in 果["关键词命中"]:
             print(f"  [{词}] " + 段.replace("\n", "\n        "))
-        return True
+        return 真
     print("关键词无命中（该缺陷可能尚未修，可派活）")
-    return False
+    return 假
 
 
 def 主函数(argv: list[str] | None = None) -> int:

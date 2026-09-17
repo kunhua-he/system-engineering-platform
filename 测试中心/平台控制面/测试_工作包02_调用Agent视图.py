@@ -16,6 +16,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.统一入口 import 统一能力服务
 from 开发工具.统一能力入口.视图.调用Agent视图 import 调用Agent视图
 
@@ -42,11 +43,11 @@ class Test调用Agent视图(unittest.TestCase):
         # 登记能力：契约（指纹）+ 契约详情（资源字段，普通用户视图同款约定）
         self.能力id = "计算.返回答案"
         契约 = {"能力id": self.能力id, "名称": "返回答案",
-                "参数": [{"名称": "问题", "类型": "文本", "必填": False, "说明": "任意问题"}],
+                "参数": [{"名称": "问题", "类型": "文本", "必填": 假, "说明": "任意问题"}],
                 "返回": {"类型": "整数"}, "错误码": ["CALL_FAILED"],
                 "副作用": "无", "资源类型": "计算", "宿主": "本地", "权限": "调用Agent"}
         详情 = {"名称": "返回答案",
-                "参数": [{"名称": "问题", "类型": "文本", "必填": False, "说明": "任意问题"}],
+                "参数": [{"名称": "问题", "类型": "文本", "必填": 假, "说明": "任意问题"}],
                 "返回": {"类型": "整数", "说明": "固定答案42"},
                 "错误码": ["CALL_FAILED"], "副作用": "无", "资源类型": "计算",
                 "宿主": "本地", "权限": "调用Agent", "兼容范围": "1.x",
@@ -83,7 +84,7 @@ class Test调用Agent视图(unittest.TestCase):
         self.assertEqual(契约["版本"], "1")
         self.assertEqual(契约["参数"][0]["名称"], "问题")
         self.assertEqual(契约["参数"][0]["类型"], "文本")
-        self.assertEqual(契约["参数"][0]["必填"], False)
+        self.assertEqual(契约["参数"][0]["必填"], 假)
         self.assertEqual(契约["返回结构"]["类型"], "整数")
         self.assertIn("CALL_FAILED", 契约["错误码集"])
         self.assertIn("调用Agent", 契约["权限要求"])

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "媒体处理"
 默认超时秒 = 60.0
@@ -106,7 +107,7 @@ def 转码(
     超时秒: float = 默认超时秒,
     最大输出字节: int = 默认最大输出字节,
     最大时长秒: float | None = 默认最大时长秒,
-    返回字节: bool = True,
+    返回字节: bool = 真,
 ) -> 结果:
     """ffmpeg 转码（mp4/mkv/webm/mov/avi），编码选项白名单透传。
 
@@ -130,7 +131,7 @@ def 拼接媒体(
     输出路径: str | None = None,
     超时秒: float = 默认超时秒,
     最大输出字节: int = 默认最大输出字节,
-    返回字节: bool = False,
+    返回字节: bool = 假,
 ) -> 结果:
     """按顺序无损拼接多个同源分片（concat demuxer + -c copy，不重编码）。
 

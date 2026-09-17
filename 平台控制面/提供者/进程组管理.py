@@ -23,6 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
 
 树节点代码 = """import os, socket, subprocess, sys, time
@@ -82,9 +83,9 @@ def _端口可重绑(端口: int) -> bool:
         try:
             套接字.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             套接字.bind(("127.0.0.1", 端口))
-            return True
+            return 真
         except OSError:
-            return False
+            return 假
 
 
 def _等待节点就绪(工作目录: Path, 端口: int, 超时秒: float = 10.0) -> list[int]:

@@ -35,6 +35,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 运行核心.环境指纹 import 计算环境指纹, 生成证据记录, 校验证据有效
 from 支持库.适配层.系统探针 import 检查系统工具, 探针结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 macOSsoffice路径 = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
 
@@ -51,7 +52,7 @@ def _macOS版本() -> str:
 
 
 def _成功探针(版本: str) -> 探针结果:
-    return 探针结果(True, 退出码=0, 版本=版本, 耗时秒=0.05,
+    return 探针结果(真, 退出码=0, 版本=版本, 耗时秒=0.05,
                     诊断="探针成功")
 
 
@@ -156,7 +157,7 @@ class Test探针结果字段完整(unittest.TestCase):
         self.assertFalse(结果.可重试)
 
     def test_失败字段完整且错误摘要派生(self):
-        结果 = 探针结果(False, 错误码="退出码非零", 退出码=3,
+        结果 = 探针结果(假, 错误码="退出码非零", 退出码=3,
                         标准错误摘要="错误明细XYZ", 耗时秒=0.1,
                         诊断="soffice 退出码 3")
         self.assertFalse(结果.成功)
@@ -164,8 +165,8 @@ class Test探针结果字段完整(unittest.TestCase):
         self.assertIn("错误明细XYZ", 结果.标准错误摘要)
 
     def test_超时标记可重试(self):
-        结果 = 探针结果(False, 错误码="探针超时", 诊断="卡住已强杀",
-                        可重试=True)
+        结果 = 探针结果(假, 错误码="探针超时", 诊断="卡住已强杀",
+                        可重试=真)
         self.assertTrue(结果.可重试)
         self.assertEqual(结果.错误摘要, "卡住已强杀")
 
@@ -297,13 +298,13 @@ class Test主进程不加载原生扩展(unittest.TestCase):
         return json.loads(运行.stdout)
 
     def test_计算指纹不加载fitz(self):
-        数据 = self._子进程计算指纹(True)
+        数据 = self._子进程计算指纹(真)
         self.assertTrue(数据["成功"])
         self.assertFalse(数据["加载fitz"])
         self.assertFalse(数据["加载PyMuPDF"])
 
     def test_第三方版本经元数据非import(self):
-        数据 = self._子进程计算指纹(False)
+        数据 = self._子进程计算指纹(假)
         第三方 = 数据["详细信息"]["第三方"]
         self.assertIn("PyMuPDF", 第三方)
         self.assertTrue(第三方["PyMuPDF"])

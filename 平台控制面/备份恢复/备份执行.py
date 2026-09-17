@@ -8,6 +8,7 @@ import sqlite3
 import time
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 平台控制面.备份恢复.校验函数 import 内容摘要
 from 支持库.后端.数据库连接支持库.SQLite数据库 import 查询
@@ -60,7 +61,7 @@ def _尽力复制附加文件(源: Path, 目标: Path) -> bool:
     """
     try:
         shutil.copy2(源, 目标)
-        return True
+        return 真
     except FileNotFoundError:
         # 半份文件不留：copy2 抛错时目标要么未被创建、要么是被截断的半份。
         try:
@@ -68,7 +69,7 @@ def _尽力复制附加文件(源: Path, 目标: Path) -> bool:
         except OSError:
             pass
         记录忽略("备份执行.附加文件", f"{源} 在复制前被 SQLite 回收（WAL/SHM 属瞬时文件）")
-        return False
+        return 假
 
 
 class 备份执行能力:
@@ -77,7 +78,7 @@ class 备份执行能力:
     def _备份一类(self, 类名: str, 快照目录: Path) -> dict:
         """备份单类；数据源缺失时标记缺失（校验将失败）。"""
         源 = self.存储根目录 / ("权威状态.db" if 类名 == "证据账本" else self.文件名表[类名])
-        缺失项 = {"缺失": True, "文件": self.文件名表[类名]}
+        缺失项 = {"缺失": 真, "文件": self.文件名表[类名]}
         if 类名 == "包仓库":
             if not 源.is_dir():
                 return 缺失项

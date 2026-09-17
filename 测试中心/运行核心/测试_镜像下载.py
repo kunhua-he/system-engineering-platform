@@ -39,6 +39,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
     镜像下载失败, 读取远程镜像配置, 下载镜像制品, 签名清单, 原子落盘,
 )
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 测试指纹 = "测试信任指纹-7f3a"
 
@@ -142,7 +143,7 @@ def _真实系统版本() -> str:
 
 def 构造镜像(镜像仓库: Path, 摘要: str, 私钥PEM: str, *,
              清单覆盖: dict | None = None,
-             含文件清单摘要: bool = False) -> dict:
+             含文件清单摘要: bool = 假) -> dict:
     """在镜像仓库构造签名镜像（HTTP 可访问）；返回签名后清单。"""
     镜像项目录 = 镜像仓库 / "docx提供者" / 摘要
     环境体 = 镜像项目录 / "环境体"
@@ -250,7 +251,7 @@ class Test镜像下载代理(unittest.TestCase):
         """远程镜像配置 的 代理地址 字段解析；缺省为空。"""
         配置路径 = self.临时 / "远程镜像配置.json"
         配置路径.write_text(json.dumps({
-            "启用": True, "镜像地址": "http://镜像.example.com/环境制品",
+            "启用": 真, "镜像地址": "http://镜像.example.com/环境制品",
             "代理地址": self.代理地址,
         }, ensure_ascii=False), encoding="utf-8")
         配置 = 读取远程镜像配置(配置路径)
@@ -336,7 +337,7 @@ class Test镜像下载安全解包(unittest.TestCase):
         """文件清单摘要一致 → 解包后复校验通过，正常落盘。"""
         摘要 = "复校验摘要-0016"
         清单 = 构造镜像(self.镜像仓库, 摘要, self.私钥PEM,
-                       含文件清单摘要=True)
+                       含文件清单摘要=真)
         目标 = self.临时 / "解包目标"
         结果 = 下载镜像制品(self.镜像地址, "docx提供者", 摘要, 目标,
                           镜像清单=清单)
@@ -434,7 +435,7 @@ class Test镜像下载端到端回退(unittest.TestCase):
         (目标 / "bin").mkdir(parents=True, exist_ok=True)
         (目标 / "bin" / "python3").write_text(
             "#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
+        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
 
     def 放行本地构建(self):
         return (
@@ -447,7 +448,7 @@ class Test镜像下载端到端回退(unittest.TestCase):
     def 写镜像配置(self, 代理地址: str = "") -> None:
         self.配置路径.parent.mkdir(parents=True, exist_ok=True)
         self.配置路径.write_text(json.dumps({
-            "启用": True, "镜像地址": self.镜像地址, "信任指纹": 测试指纹,
+            "启用": 真, "镜像地址": self.镜像地址, "信任指纹": 测试指纹,
             "公钥PEM": self.公钥PEM, "代理地址": 代理地址,
         }, ensure_ascii=False), encoding="utf-8")
 

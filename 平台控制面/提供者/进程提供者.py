@@ -11,6 +11,7 @@ import uuid
 from collections import deque
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
 
 状态_已创建, 状态_运行中, 状态_故障, 状态_已停止 = "已创建", "运行中", "故障", "已停止"
@@ -80,14 +81,14 @@ class _进程成员:
 
     def 启动(self) -> dict[str, Any]:
         if self.进程 is not None and self.进程.poll() is None:
-            return {"成功": True, "消息": "已在运行"}
+            return {"成功": 真, "消息": "已在运行"}
         try:
             进程 = subprocess.Popen(
                 self.所有者.命令表, cwd=self.所有者.工作目录,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", bufsize=1, **平台适配.子进程组启动标志())
         except OSError as 错误:
-            return {"成功": False, "错误码": "启动失败", "消息": str(错误)}
+            return {"成功": 假, "错误码": "启动失败", "消息": str(错误)}
         self.进程 = 进程
         self.响应表.clear()
         self.读取线程 = threading.Thread(
@@ -102,8 +103,8 @@ class _进程成员:
         响应 = self.发送({"请求id": uuid.uuid4().hex[:12], "类型": "健康"}, self.所有者.启动超时秒)
         if 响应 is None:
             self.关闭()
-            return {"成功": False, "错误码": "启动失败", "消息": "健康握手失败"}
-        return {"成功": True, "消息": f"启动成功（pid {进程.pid}）"}
+            return {"成功": 假, "错误码": "启动失败", "消息": "健康握手失败"}
+        return {"成功": 真, "消息": f"启动成功（pid {进程.pid}）"}
 
     def 发送(self, 请求: dict, 超时秒: float) -> dict | None:
         进程 = self.进程
@@ -160,9 +161,9 @@ class _进程成员:
         """
         进程 = self.进程
         if 进程 is None:
-            return False
+            return 假
         if 进程.poll() is None:
-            return True
+            return 真
         return 进程终止.按组号探活(进程.pid)
 
     def _等待进程组退出(self, 超时秒: float) -> bool:
@@ -237,7 +238,7 @@ class _进程成员:
 
     def 关闭(self) -> dict[str, Any]:
         进程 = self.进程
-        已使用SIGKILL = False
+        已使用SIGKILL = 假
         if self._进程组存活():
             if 进程 is not None and 进程.poll() is None:
                 self.发送({"请求id": uuid.uuid4().hex[:12], "类型": "关闭"}, self.所有者.调用超时秒)
@@ -249,7 +250,7 @@ class _进程成员:
                 self._发信号(信号_终止)
                 self._等待进程组退出(min(max(self.所有者.调用超时秒, 0.05), 1.0))
             if self._进程组存活():
-                已使用SIGKILL = True
+                已使用SIGKILL = 真
                 self._发信号(信号_强杀)
                 self._等待进程组退出(2.0)
         退出证据 = self.记录退出()
@@ -306,7 +307,7 @@ class 本地进程提供者:
             self.工作目录 = str(工作目录)
         if self.运行状态 == 状态_运行中 and all(
                 成员.进程 is not None and 成员.进程.poll() is None for 成员 in self.成员表):
-            return {"成功": True, "消息": "已在运行"}
+            return {"成功": 真, "消息": "已在运行"}
         已启动: list[_进程成员] = []
         for 成员 in self.成员表:
             结果 = 成员.启动()
@@ -318,11 +319,11 @@ class 本地进程提供者:
                 return 结果
             已启动.append(成员)
         self.运行状态 = 状态_运行中
-        return {"成功": True, "消息": f"启动成功（{self.池大小} 个池成员）"}
+        return {"成功": 真, "消息": f"启动成功（{self.池大小} 个池成员）"}
 
     def _重启成员(self, 成员: _进程成员) -> bool:
         if self.重启次数 >= 最大重启次数:
-            return False
+            return 假
         self.重启次数 += 1
         self._记证据("重启", 成员=成员.索引, 次数=self.重启次数)
         成员._关闭管道线程()
@@ -330,15 +331,15 @@ class 本地进程提供者:
 
     def 调用(self, 请求, 超时秒=None):
         if self.运行状态 == 状态_已停止:
-            return {"成功": False, "错误码": "已关闭", "错误说明": "提供者已关闭，请先重新 启动()"}
+            return {"成功": 假, "错误码": "已关闭", "错误说明": "提供者已关闭，请先重新 启动()"}
         if not any(成员.进程 is not None for 成员 in self.成员表):
-            return {"成功": False, "错误码": "未启动", "错误说明": "请先调用 启动()"}
+            return {"成功": 假, "错误码": "未启动", "错误说明": "请先调用 启动()"}
         完整请求 = dict(请求)
         完整请求["请求id"] = 请求.get("请求id") or uuid.uuid4().hex[:12]
         键 = str(请求.get("资源键") or "默认")
         成员 = self._分配成员(键)
         if 成员 is None:
-            return {"成功": False, "错误码": "资源繁忙", "错误说明": "Provider资源键表已满", "可重试": True}
+            return {"成功": 假, "错误码": "资源繁忙", "错误说明": "Provider资源键表已满", "可重试": 真}
         超时 = float(超时秒 if 超时秒 is not None else self.调用超时秒)
         for _ in range(最大重启次数 + 1):
             响应 = 成员.发送(完整请求, 超时)
@@ -346,13 +347,13 @@ class 本地进程提供者:
                 return 响应
             退出证据 = 成员.记录退出()
             if 退出证据 is None:
-                return {"成功": False, "错误码": "超时", "错误说明": f"调用超过 {超时} 秒无响应"}
+                return {"成功": 假, "错误码": "超时", "错误说明": f"调用超过 {超时} 秒无响应"}
             self.运行状态 = 状态_故障
             if not self._重启成员(成员):
-                return {"成功": False, "错误码": "崩溃", "证据": list(self.证据列表),
+                return {"成功": 假, "错误码": "崩溃", "证据": list(self.证据列表),
                         "错误说明": f"崩溃且自动重启已达上限（{self.重启次数}/{最大重启次数}），退出证据 {退出证据}"}
             self.运行状态 = 状态_运行中
-        return {"成功": False, "错误码": "崩溃", "错误说明": "Provider不可恢复"}
+        return {"成功": 假, "错误码": "崩溃", "错误说明": "Provider不可恢复"}
 
     def _核对资源收敛(self) -> list[str]:
         未收敛: list[str] = []
@@ -372,7 +373,7 @@ class 本地进程提供者:
             "错误说明": "Provider进程池资源已收敛" if 成功 else f"Provider进程池资源未收敛: {'；'.join(未收敛)}",
             "消息": "已关闭" if 成功 else "关闭失败，账本已保留供重试",
             "可重试": not 成功, "未收敛": 未收敛,
-            "已使用SIGKILL": any(项.get("已使用SIGKILL", False) for 项 in 成员结果),
+            "已使用SIGKILL": any(项.get("已使用SIGKILL", 假) for 项 in 成员结果),
             "成员结果": 成员结果,
         }
         self.关闭账本.append(dict(结果, 时间=time.time()))

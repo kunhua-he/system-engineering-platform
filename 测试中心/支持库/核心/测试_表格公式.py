@@ -1,5 +1,6 @@
 import unittest
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.办公文档支持库.表格公式 import (
     求值公式, 解析单元格地址, 格式化单元格地址, 格式化列字母,
     列字母转索引, 解析单元格范围, 展开单元格范围, 批量格式化单元格地址,
@@ -80,7 +81,7 @@ class 测试批量格式化单元格地址(unittest.TestCase):
         self.assertFalse(批量格式化单元格地址("不是列表").成功)
         self.assertFalse(批量格式化单元格地址([1, 2]).成功)
         self.assertFalse(批量格式化单元格地址([{"行": "x", "列": 0}]).成功)
-        self.assertFalse(批量格式化单元格地址([{"行": True, "列": 0}]).成功)
+        self.assertFalse(批量格式化单元格地址([{"行": 真, "列": 0}]).成功)
 
 
 class 测试批量解析单元格地址(unittest.TestCase):

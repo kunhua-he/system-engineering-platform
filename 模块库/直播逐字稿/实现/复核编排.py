@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 默认轮数 = 3
 
@@ -33,7 +34,7 @@ def _异常复核(区间, 错误: BaseException) -> dict:
 
 def 跑复核(源文件路径: str, 区间表: dict, 复核目录: str, 调用能力,
            模型配置: dict | None = None, 超时秒: float = 600.0,
-           轮数: int = 默认轮数, 续跑: bool = True, *, 复核区间函数=None) -> dict:
+           轮数: int = 默认轮数, 续跑: bool = 真, *, 复核区间函数=None) -> dict:
     """对每个区间跑复核（已落盘可复用）；返回 {复核列表, 状态, 错误说明, 区间数, 完成数}。
 
     单区间复核实现（复核调度.复核区间）由调用方注入，本文件不 import 兄弟模块。

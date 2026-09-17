@@ -38,6 +38,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
     远程镜像校验器, 远程镜像配置,
 )
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 测试指纹 = "测试信任指纹-7f3a"
 
@@ -74,7 +75,7 @@ class Test远程镜像契约(unittest.TestCase):
         """配置文件 {启用/镜像地址/信任指纹/公钥PEM} 正确解析。"""
         配置路径 = self.临时 / "远程镜像配置.json"
         配置路径.write_text(json.dumps({
-            "启用": True, "镜像地址": "http://镜像.example.com/环境制品",
+            "启用": 真, "镜像地址": "http://镜像.example.com/环境制品",
             "信任指纹": "sha256-abc123", "公钥PEM": "-----BEGIN PUBLIC KEY-----\n测试",
         }, ensure_ascii=False), encoding="utf-8")
         配置 = 读取远程镜像配置(配置路径)
@@ -298,7 +299,7 @@ class Test远程镜像接入(unittest.TestCase):
         self.构建记录["次数"] += 1
         (目标 / "bin").mkdir(parents=True, exist_ok=True)
         (目标 / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
+        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
 
     def 放行本地构建(self):
         return (
@@ -308,7 +309,7 @@ class Test远程镜像接入(unittest.TestCase):
                        side_effect=self.假构建),
         )
 
-    def 写镜像配置(self, 镜像地址: str, 启用: bool = True) -> 远程镜像配置:
+    def 写镜像配置(self, 镜像地址: str, 启用: bool = 真) -> 远程镜像配置:
         self.配置路径.parent.mkdir(parents=True, exist_ok=True)
         self.配置路径.write_text(json.dumps({
             "启用": 启用, "镜像地址": 镜像地址, "信任指纹": 测试指纹,
@@ -319,8 +320,8 @@ class Test远程镜像接入(unittest.TestCase):
 
     def 构造镜像制品(self, 提供者: Path, 摘要: str, *,
                       锁摘要覆盖: str | None = None,
-                      不打包制品: bool = False,
-                      签名后篡改: bool = False) -> str:
+                      不打包制品: bool = 假,
+                      签名后篡改: bool = 假) -> str:
         """在临时目录构造 file:// 临时测试镜像（隔离地址，发布侧签名）。
 
         镜像结构：镜像仓库/<提供者id>/<摘要>/镜像清单.json + 制品.tar.gz。
@@ -417,7 +418,7 @@ class Test远程镜像接入(unittest.TestCase):
         """镜像清单签名被篡改 → 镜像签名无效 + 回退本地构建（信任指纹不足为凭）。"""
         提供者 = self.新提供者(锁=样例锁())
         摘要 = 计算环境摘要(样例锁(), 提供者.name)
-        镜像地址 = self.构造镜像制品(提供者, 摘要, 签名后篡改=True)
+        镜像地址 = self.构造镜像制品(提供者, 摘要, 签名后篡改=真)
         self.写镜像配置(镜像地址)
         with self.放行本地构建()[0], self.放行本地构建()[1]:
             结果 = 确保环境(提供者)
@@ -432,7 +433,7 @@ class Test远程镜像接入(unittest.TestCase):
         """清单匹配但制品缺失 → 镜像下载失败 + 回退本地构建。"""
         提供者 = self.新提供者(锁=样例锁())
         摘要 = 计算环境摘要(样例锁(), 提供者.name)
-        镜像地址 = self.构造镜像制品(提供者, 摘要, 不打包制品=True)
+        镜像地址 = self.构造镜像制品(提供者, 摘要, 不打包制品=真)
         self.写镜像配置(镜像地址)
         with self.放行本地构建()[0], self.放行本地构建()[1]:
             结果 = 确保环境(提供者)
@@ -450,7 +451,7 @@ class Test远程镜像接入(unittest.TestCase):
         self.写镜像配置(镜像地址)
         # 本地校验一律失败（含镜像复校验）→ 镜像不可信，禁止落盘
         with mock.patch("运行核心.运行环境管理器.环境管理器.校验环境",
-                        return_value=False), \
+                        return_value=假), \
                 mock.patch("运行核心.运行环境管理器.环境管理器._构建环境",
                            side_effect=self.假构建):
             结果 = 确保环境(提供者)

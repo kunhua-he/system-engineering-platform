@@ -36,6 +36,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.契约编译.消费者契约 import 操作契约, 全局错误码
 from 开发工具.统一能力入口.视图.普通用户视图 import 错误码建议表, 普通用户视图
 from 开发工具.统一能力入口.视图.调用Agent视图 import (
@@ -120,7 +121,7 @@ class _假服务:
 
     def 执行操作(self, **_: object) -> dict:
         self.调用次数 += 1
-        return {"成功": False, "结果": None, "错误码": self.错误码, "消息": "夹具失败"}
+        return {"成功": 假, "结果": None, "错误码": self.错误码, "消息": "夹具失败"}
 
 
 def _调用点文案(错误码: str) -> dict[str, str]:
@@ -149,7 +150,7 @@ def _调用点文案(错误码: str) -> dict[str, str]:
 
 def _普通用户文案(错误码: str) -> str:
     """走普通用户视图真实建议入口。"""
-    return 普通用户视图(None).失败处理建议({"成功": False, "错误码": 错误码})
+    return 普通用户视图(None).失败处理建议({"成功": 假, "错误码": 错误码})
 
 
 兜底文案 = {

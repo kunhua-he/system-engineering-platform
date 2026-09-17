@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
               / "文档转换支持库" / "python_pptx提供者")
 
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 def 加载模块(名称: str, 相对路径: str):
     规格 = importlib.util.spec_from_file_location(名称, 提供者目录 / 相对路径)
     模块 = importlib.util.module_from_spec(规格)
@@ -70,7 +71,7 @@ class Test解析演示文稿(unittest.TestCase):
     def test_转字典结构兼容(self):
         字典 = 实现模块.解析演示文稿(self.夹具路径).值.转字典()
         首块 = 字典["块列表"][0]
-        self.assertEqual((字典["文档类型"], 字典["格式"], 首块["类型"], 首块["来源位置"]["幻灯片"], "中文演示文稿测试" in 首块["文本"]), ("演示文稿", "pptx", "幻灯片", 1, True))
+        self.assertEqual((字典["文档类型"], 字典["格式"], 首块["类型"], 首块["来源位置"]["幻灯片"], "中文演示文稿测试" in 首块["文本"]), ("演示文稿", "pptx", "幻灯片", 1, 真))
 
     def test_文件不存在与格式非法(self):
         self.assertEqual(实现模块.解析演示文稿(self.临时目录 / "不存在.pptx").错误码, "文件不存在")
@@ -120,7 +121,7 @@ class Test生成演示文稿(unittest.TestCase):
         ]})
         self.assertTrue(结果.成功, 结果.错误说明)
         产物 = 结果.值
-        self.assertEqual((产物["格式"], 产物["媒体类型"], len(产物["摘要"]), "字节b64" in 产物), ("pptx", 实现模块.媒体类型pptx, 64, True))
+        self.assertEqual((产物["格式"], 产物["媒体类型"], len(产物["摘要"]), "字节b64" in 产物), ("pptx", 实现模块.媒体类型pptx, 64, 真))
         字节 = base64.b64decode(产物["字节b64"])
         self.assertGreater(len(字节), 1000)
         路径 = self.临时目录 / "往返.pptx"

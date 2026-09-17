@@ -45,6 +45,7 @@ from collections import deque
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "进程终止"
 
@@ -217,7 +218,7 @@ def 结束并留痕(
         位置 = f"{来源}.未标注调用点"
     回收结果 = 强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=等待秒)
     if 回收结果.成功:
-        return True
+        return 真
     _登记回收失败留痕(
         位置,
         回收结果.详细信息.get("进程ID"),
@@ -225,7 +226,7 @@ def 结束并留痕(
         _结果失败说明(回收结果),
         详情={"来源": 回收结果.来源, "可重试": 回收结果.可重试},
     )
-    return False
+    return 假
 
 
 # --------------------------------------------------------------------------- #
@@ -253,7 +254,7 @@ def 进程存活(进程ID: int) -> bool:
     而**不**静默返回 False（返回 False 会把活着的进程谎报成「不存在」，是危险的静默降级）。
     """
     if isinstance(进程ID, bool) or not isinstance(进程ID, int) or 进程ID <= 0:
-        return False
+        return 假
     if _是Windows():
         return _Windows进程存活(进程ID)
     return _POSIX进程存活(进程ID)
@@ -262,21 +263,21 @@ def 进程存活(进程ID: int) -> bool:
 def _POSIX进程存活(进程ID: int) -> bool:
     try:
         os.kill(进程ID, 0)
-        return True
+        return 真
     except ProcessLookupError:
-        return False
+        return 假
     except PermissionError:
-        return True
+        return 真
     except OSError as 错误:
         # 个别平台把 ESRCH/EPERM 以裸 OSError 抛出
         if 错误.errno == errno.ESRCH:
-            return False
+            return 假
         if 错误.errno == errno.EPERM:
-            return True
-        return False
+            return 真
+        return 假
     except AttributeError:
         # 理论上不可达（POSIX 必有 os.kill）；显式收口而不是让异常逸出
-        return False
+        return 假
 
 
 def _Windows进程存活(进程ID: int) -> bool:
@@ -323,28 +324,28 @@ def _回收自有子进程(进程ID: int) -> bool:
     也返回 False（Windows 无僵尸概念，不需要此步）。
     """
     if not hasattr(os, "waitpid"):
-        return False
+        return 假
     try:
         已回收PID, _状态 = os.waitpid(进程ID, os.WNOHANG)
     except ChildProcessError:
-        return False
+        return 假
     except OSError as 错误:
         if 错误.errno == errno.ECHILD:
-            return False
-        return False
+            return 假
+        return 假
     return 已回收PID == 进程ID
 
 
 def 等待进程消失(进程ID: int, 超时秒: float = 默认等待秒) -> bool:
     """轮询等待进程消失；返回是否已消失（超时返回 False）。不抛异常。"""
     if isinstance(超时秒, bool) or not isinstance(超时秒, (int, float)) or 超时秒 < 0:
-        return False
+        return 假
     截止 = time.monotonic() + float(超时秒)
     while True:
         if not 进程存活(进程ID):
-            return True
+            return 真
         if time.monotonic() >= 截止:
-            return False
+            return 假
         time.sleep(轮询间隔秒)
 
 
@@ -563,7 +564,7 @@ def _结束子进程核心(
 
     参数 = (进程ID, 进程, 宽限秒, 等待秒)
     说明表: list[str] = []
-    已使用强杀 = False
+    已使用强杀 = 假
 
     if _已结束(进程):
         说明表.append("目标进程此前已结束，无需终止（幂等）")
@@ -588,7 +589,7 @@ def _结束子进程核心(
     说明表.append(f"{宽限秒} 秒宽限内未退出，升级为强杀")
 
     # 阶段二：强杀
-    已使用强杀 = True
+    已使用强杀 = 真
     第二步 = 终止进程组(进程ID, 信号="强杀")
     if not 第二步.成功 and 第二步.错误码 != 结论_进程不存在:
         return _失败结果(
@@ -651,7 +652,7 @@ def _已结束(进程: subprocess.Popen | int) -> bool:
         try:
             return 进程.poll() is not None
         except OSError:
-            return False
+            return 假
     return not 进程存活(进程)
 
 
@@ -662,24 +663,24 @@ def _等待结束(进程: subprocess.Popen | int, 进程ID: int, 秒: float) -> 
         if _是进程句柄(进程):
             try:
                 进程.wait(timeout=轮询间隔秒)
-                return True
+                return 真
             except subprocess.TimeoutExpired:
                 pass
             except OSError:
                 pass
             try:
                 if 进程.poll() is not None:
-                    return True
+                    return 真
             except OSError:
                 pass
         else:
             # 裸进程号路径：先尝试回收自有子进程（僵尸），再按存活探测收口
             if _回收自有子进程(进程ID):
-                return True
+                return 真
             if not 进程存活(进程ID):
-                return True
+                return 真
         if time.monotonic() >= 截止:
-            return False
+            return 假
         time.sleep(轮询间隔秒)
 
 
@@ -732,7 +733,7 @@ __all__ = [
     "终止进程组",
     "强制结束子进程",
     # 2026-09-18 收口：`强制结束子进程` 返回值不得丢弃 —— 失败必须留痕。
-    # 三处调用点（资源硬限制 / 统一入口 / Tesseract 受管进程）共用 `结束并留痕`，不留单点口径。
+    # 三处消费方（资源硬限制 / 统一入口 / Tesseract 受管进程，共 4 个调用点）共用 `结束并留痕`，不留单点口径。
     "结束并留痕",
     "回收失败留痕快照",
     "回收失败留痕计数",
@@ -754,18 +755,18 @@ def 按组号探活(组号: int) -> bool:
     —— 「组长退出、同组子孙仍在」这类语义只有按组号的原语能表达。
     """
     if isinstance(组号, bool) or not isinstance(组号, int) or 组号 <= 0:
-        return False
+        return 假
     if _是Windows() or not hasattr(os, "killpg"):
-        return False
+        return 假
     try:
         os.killpg(组号, 0)
     except ProcessLookupError:
-        return False
+        return 假
     except PermissionError:
-        return True  # 组在，只是无权限发信号
+        return 真  # 组在，只是无权限发信号
     except OSError:
-        return False
-    return True
+        return 假
+    return 真
 
 
 def 按组号终止(组号: int, *, 信号: str = "终止") -> 结果[dict[str, Any]]:

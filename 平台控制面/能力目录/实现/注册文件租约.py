@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 本面五条能力（顺序 = 注册顺序，与 能力定义.json 的能力列表同序）。
 能力id表 = (
@@ -45,5 +46,5 @@ def 注册参数(契约条目: dict) -> list[dict]:
         if not isinstance(参数, dict) or not 参数.get("名称"):
             continue
         参数表.append({"名称": 参数["名称"], "类型": 参数.get("类型"),
-                     "必填": 参数.get("必填") is True})
+                     "必填": 参数.get("必填") is 真})
     return 参数表

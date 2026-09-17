@@ -22,6 +22,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 系统根 = Path(__file__).resolve().parents[2]
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时 import 进程终止, 平台适配
 from 支持库.后端.办公文档支持库.文字文档 import 解析文字文档
@@ -111,10 +112,10 @@ class 假调用器:
     """测试注入的假能力调用器：所有能力返回 提供者不可用。"""
 
     def 调用能力(self, 能力id, 参数=None, **关键字):
-        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=True)
+        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=真)
 
     def 幂等重放(self, *args, **kwargs):
-        return False
+        return 假
 
     def 查询调用历史(self, 上限=50):
         return []
@@ -126,7 +127,7 @@ class 假调用器:
         return {}
 
 
-def _生成docx(路径: Path, 中文: bool = True) -> None:
+def _生成docx(路径: Path, 中文: bool = 真) -> None:
     from docx import Document
     文档 = Document()
     文档.add_heading("测试标题", level=1)

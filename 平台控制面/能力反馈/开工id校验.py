@@ -25,6 +25,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any, Callable
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 开工id模式 = re.compile(r"^[0-9a-fA-F]{16}$")
 
@@ -104,18 +105,18 @@ class 协作状态登记源:
         开工id = 归一化(候选)
         if not 格式合法(开工id):
             self.最近说明 = "格式不合法"
-            return False
+            return 假
         查询 = self.查询运行态 or 默认查询运行态()
         if 查询 is None:
             self.最近说明 = "运行库查询不可用（唯一调用入口未装配）"
-            return False
+            return 假
         参数: dict[str, Any] = {"域": 默认协作状态域, "限制": 默认查询限制,
                               "超时秒": 默认查询超时秒,
                               "数据库路径": self.运行库路径 or 默认运行库路径()}
         结果对象 = 查询(参数)
-        if 结果对象 is None or not getattr(结果对象, "成功", False):
+        if 结果对象 is None or not getattr(结果对象, "成功", 假):
             self.最近说明 = "运行库不可用或查询失败"
-            return False
+            return 假
         值 = getattr(结果对象, "值", None)
         行列表 = (值 or {}).get("行列表") if isinstance(值, dict) else None
         for 行 in 行列表 or []:
@@ -133,9 +134,9 @@ class 协作状态登记源:
             键 = 归一化(记录.get("work_id") or 记录.get("开工id") or 行.get("id"))
             if 键 and 键 == 开工id:
                 self.最近说明 = "运行库已登记"
-                return True
+                return 真
         self.最近说明 = "运行库内无该开工id"
-        return False
+        return 假
 
 
 class 开工id校验器:
@@ -155,23 +156,23 @@ class 开工id校验器:
         开工id = 归一化(候选)
         if not 格式合法(开工id):
             self.最近说明 = f"开工id 格式不合法：{str(候选 or '')[:32]}"
-            return False, 错误_格式不合法, "开工id 必须为 16 位十六进制"
+            return 假, 错误_格式不合法, "开工id 必须为 16 位十六进制"
         if not self.登记源:
             self.最近说明 = "未装配开工登记源（fail-closed）"
-            return False, 错误_未登记, "未装配开工登记源，按 fail-closed 拒绝"
+            return 假, 错误_未登记, "未装配开工登记源，按 fail-closed 拒绝"
         异常表: list[str] = []
         for 源 in self.登记源:
             try:
                 if 源(开工id):
                     self.最近说明 = f"{type(源).__name__}：{getattr(源, '最近说明', '') or '已登记'}"
-                    return True, "", ""
+                    return 真, "", ""
             except Exception as 错误:  # noqa: BLE001 —— 登记源异常不得放行
                 异常表.append(str(错误))
         if len(异常表) == len(self.登记源):
             self.最近说明 = "全部登记源异常：" + "; ".join(异常表)[:200]
-            return False, 错误_校验不可用, "开工id 校验源不可用"
+            return 假, 错误_校验不可用, "开工id 校验源不可用"
         self.最近说明 = "所有登记源均判为未登记"
-        return False, 错误_未登记, "该开工id未在运行库登记"
+        return 假, 错误_未登记, "该开工id未在运行库登记"
 
     def __call__(self, 候选: Any) -> bool:
         return self.校验(候选)[0]

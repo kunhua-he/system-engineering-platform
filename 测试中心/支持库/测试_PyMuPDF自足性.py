@@ -22,6 +22,7 @@ from unittest import mock
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.适配层.PyMuPDF提供者 import 检测加密页数, 提取图像, 校验PDF, 渲染整页
 from 支持库.适配层.PyMuPDF提供者.实现 import 子进程入口
 
@@ -71,7 +72,7 @@ class TestPyMuPDF自足性(unittest.TestCase):
         self.assertTrue(base64.b64decode(结果.值).startswith(b"\x89PNG"))
         页数 = 检测加密页数(str(self.样本PDF))
         self.assertTrue(页数.成功)
-        self.assertEqual(页数.值, {"已加密": False, "页数": 1})
+        self.assertEqual(页数.值, {"已加密": 假, "页数": 1})
         图像 = 提取图像(str(self.样本PDF), 1)
         self.assertTrue(图像.成功)
         self.assertEqual(图像.值, [])

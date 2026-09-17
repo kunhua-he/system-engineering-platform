@@ -9,6 +9,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.MLXWhisper提供者 import 检查转写可用性, 获取模型版本, 转写音频文件
 from 支持库.适配层.MLXWhisper提供者.实现 import 提供者 as 提供者模块
@@ -60,7 +61,7 @@ class TestMLXWhisper未配置语义(unittest.TestCase):
 
     def test_未配置模型检查可用性如实返回未配置(self):
         结果 = 检查转写可用性()
-        self.assertEqual((结果.错误码, 结果.成功), ("未配置模型", False))
+        self.assertEqual((结果.错误码, 结果.成功), ("未配置模型", 假))
 
     def test_未配置模型转写如实返回未配置且不启动子进程(self):
         with mock.patch.object(提供者模块, "_启动子进程") as 启动:
@@ -99,12 +100,12 @@ class TestMLXWhisper受管子进程(unittest.TestCase):
         with mock.patch.object(提供者模块, "_启动子进程", return_value=进程):
             结果 = 提供者模块.执行任务({"操作": "检查可用性"}, 超时秒=0.3)
         _关闭进程(进程)
-        self.assertEqual((结果.错误码, 结果.可重试, 进程.poll() is not None), ("超时", True, True))
+        self.assertEqual((结果.错误码, 结果.可重试, 进程.poll() is not None), ("超时", 真, 真))
 
     def test_取消判断为真返回取消(self):
         进程 = _挂起进程()
         with mock.patch.object(提供者模块, "_启动子进程", return_value=进程):
-            结果 = 提供者模块.执行任务({"操作": "检查可用性"}, 超时秒=5, 取消判断=lambda: True)
+            结果 = 提供者模块.执行任务({"操作": "检查可用性"}, 超时秒=5, 取消判断=lambda: 真)
         _关闭进程(进程)
         self.assertEqual(结果.错误码, "取消")
 
@@ -139,7 +140,7 @@ class TestMLXWhisper受管子进程(unittest.TestCase):
         finally:
             import shutil
             shutil.rmtree(临时根, ignore_errors=True)
-        self.assertEqual((结果.错误码, 结果.可重试), ("提供者不可用", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("提供者不可用", 真))
 
     def test_无残留进程与临时文件(self):
         临时根 = Path(tempfile.mkdtemp(prefix="测试_MLXWhisper残留_"))

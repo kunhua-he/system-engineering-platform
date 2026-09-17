@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 
 from 平台控制面.能力目录.单文件互斥存储 import 单文件互斥存储
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 对外错误码（中文口径，决策记录 0003「不用英文枚举」）：错误返回的错误码一律中文，
 # 与 能力定义.json 声明的 消费者必填/能力必填/契约非法/未登记 逐字一致。
@@ -105,22 +106,22 @@ class 消费者契约注册表(单文件互斥存储):
         锁问题 = self.锁问题()
         if not 锁问题:
             return None
-        return 统一返回(False, "存储损坏", 锁问题, None)
+        return 统一返回(假, "存储损坏", 锁问题, None)
 
     def _损坏返回(self, 错误: 存储损坏错误, 数据=None) -> dict:
         """存储损坏统一返回：失败 + 明确中文错误码 + 原文原因，绝不静默放行。"""
-        return 统一返回(False, "存储损坏", str(错误), 数据)
+        return 统一返回(假, "存储损坏", str(错误), 数据)
 
     # ---- 登记与查询 ----
     def 登记契约(self, 消费者id: str, 能力id: str, 契约: dict) -> dict:
         """登记消费者对能力的契约（请求/响应约束/错误码/超时/释放要求）并落盘。"""
         if not 消费者id:
-            return 统一返回(False, "消费者必填", "消费者id不能为空")
+            return 统一返回(假, "消费者必填", "消费者id不能为空")
         if not 能力id:
-            return 统一返回(False, "能力必填", "能力id不能为空")
+            return 统一返回(假, "能力必填", "能力id不能为空")
         问题 = self._契约问题(契约)
         if 问题:
-            return 统一返回(False, "契约非法", 问题)
+            return 统一返回(假, "契约非法", 问题)
         记录 = {**契约, "消费者id": 消费者id, "能力id": 能力id,
                 "登记时间": time.strftime("%Y-%m-%d %H:%M:%S")}
         try:
@@ -135,8 +136,8 @@ class 消费者契约注册表(单文件互斥存储):
         except 存储损坏错误 as 错误:
             return self._损坏返回(错误)
         except OSError as 错误:
-            return 统一返回(False, "存储损坏", f"消费者契约写入失败: {错误}", None)
-        return 统一返回(True, "成功",
+            return 统一返回(假, "存储损坏", f"消费者契约写入失败: {错误}", None)
+        return 统一返回(真, "成功",
                         f"消费者 {消费者id} 对能力 {能力id} 的契约已登记", 记录)
 
     def 查询契约(self, 能力id: str) -> dict:
@@ -145,7 +146,7 @@ class 消费者契约注册表(单文件互斥存储):
             能力表 = self._读取().get(能力id, {})
         except 存储损坏错误 as 错误:
             return self._损坏返回(错误)
-        return 统一返回(True, "成功",
+        return 统一返回(真, "成功",
                         f"能力 {能力id} 共 {len(能力表)} 份消费者契约",
                         list(能力表.values()))
 
@@ -160,7 +161,7 @@ class 消费者契约注册表(单文件互斥存储):
                 存储 = self._读取()
                 能力表 = 存储.get(能力id, {})
                 if 消费者id not in 能力表:
-                    return 统一返回(False, "未登记",
+                    return 统一返回(假, "未登记",
                                     f"能力 {能力id} 未登记消费者 {消费者id} 的契约")
                 del 能力表[消费者id]
                 if not 能力表:
@@ -169,8 +170,8 @@ class 消费者契约注册表(单文件互斥存储):
         except 存储损坏错误 as 错误:
             return self._损坏返回(错误)
         except OSError as 错误:
-            return 统一返回(False, "存储损坏", f"消费者契约写入失败: {错误}", None)
-        return 统一返回(True, "成功",
+            return 统一返回(假, "存储损坏", f"消费者契约写入失败: {错误}", None)
+        return 统一返回(真, "成功",
                         f"已删除消费者 {消费者id} 对能力 {能力id} 的契约")
 
     # ---- 漂移判定 ----
@@ -186,7 +187,7 @@ class 消费者契约注册表(单文件互斥存储):
         漂移列表: list[dict] = []
         for 消费者id, 登记 in sorted(能力表.items()):
             漂移列表.extend(self._对比消费者(消费者id, 登记, 当前契约))
-        return 统一返回(True, "成功",
+        return 统一返回(真, "成功",
                         f"能力 {能力id} 发现 {len(漂移列表)} 处契约漂移", 漂移列表)
 
 
@@ -228,10 +229,10 @@ class 消费者契约注册表(单文件互斥存储):
         """
         结果 = self.漂移判定(能力id, 当前契约)
         if not 结果["成功"]:
-            return 统一返回(False, 结果["错误码"], 结果["消息"],
-                            {"是否阻断": True, "漂移列表": []})
+            return 统一返回(假, 结果["错误码"], 结果["消息"],
+                            {"是否阻断": 真, "漂移列表": []})
         漂移列表 = 结果["数据"]
-        return 统一返回(True, "成功",
+        return 统一返回(真, "成功",
                         f"门禁{'阻断' if 漂移列表 else '放行'}：发现 {len(漂移列表)} 处漂移",
                         {"是否阻断": bool(漂移列表), "漂移列表": 漂移列表})
 

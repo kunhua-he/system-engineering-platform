@@ -17,6 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 支持库.后端.测试支持库 import 注册能力, 验证命令白名单, 验证计划, 验证结果判定
 
@@ -127,7 +128,7 @@ class 测试测试支持库(unittest.TestCase):
             结果.值["命令列表"], [["python3.14", "-m", "测试中心.样例域.测试_样例"]]
         )
         self.assertEqual(结果.值["命令数"], 1)
-        self.assertIs(结果.值["只读"], True)
+        self.assertIs(结果.值["只读"], 真)
 
     def test_验证计划支持点分模块名与关键词过滤(self) -> None:
         样例目录 = self.临时根 / "测试中心" / "样例域"
@@ -193,24 +194,24 @@ class 测试测试支持库(unittest.TestCase):
 
     def test_白名单允许三种受控形态(self) -> None:
         模块 = 验证命令白名单(
-            命令=["python3.14", "-m", 实际测试模块], 校验存在=False,
+            命令=["python3.14", "-m", 实际测试模块], 校验存在=假,
         )
         self.assertTrue(模块.成功, 模块.错误说明)
-        self.assertIs(模块.值["允许"], True)
+        self.assertIs(模块.值["允许"], 真)
         self.assertEqual(模块.值["形态"], "unittest")
 
         黑盒 = 验证命令白名单(
             命令=["python3.14", "-m", "开发工具.HTML验证.验证器",
                  "--制品", "工程缓存/制品", "--并发", "32"],
-            校验存在=False,
+            校验存在=假,
         )
-        self.assertIs(黑盒.值["允许"], True)
+        self.assertIs(黑盒.值["允许"], 真)
         self.assertEqual(黑盒.值["形态"], "HTML验证")
 
         发布 = 验证命令白名单(
-            命令=["python3.14", "开发工具/发布门禁/运行发布门禁.py"], 校验存在=False,
+            命令=["python3.14", "开发工具/发布门禁/运行发布门禁.py"], 校验存在=假,
         )
-        self.assertIs(发布.值["允许"], True)
+        self.assertIs(发布.值["允许"], 真)
         self.assertEqual(发布.值["形态"], "正式发布")
 
     def test_白名单拒绝非法命令并给错误码(self) -> None:
@@ -225,9 +226,9 @@ class 测试测试支持库(unittest.TestCase):
             [],
         ]
         for 命令 in 拒绝样例:
-            结果 = 验证命令白名单(命令=命令, 校验存在=False)
+            结果 = 验证命令白名单(命令=命令, 校验存在=假)
             self.assertTrue(结果.成功, f"{命令} 不应抛失败")
-            self.assertIs(结果.值["允许"], False, f"{命令} 应被拒绝")
+            self.assertIs(结果.值["允许"], 假, f"{命令} 应被拒绝")
             self.assertEqual(结果.值["错误码"], "命令拒绝", f"{命令} 错误码不对")
             self.assertEqual(结果.值["形态"], "拒绝")
 
@@ -239,14 +240,14 @@ class 测试测试支持库(unittest.TestCase):
             命令=["python3.14", "-m", "测试中心.样例域.测试_样例"],
             仓库根目录=str(self.临时根),
         )
-        self.assertIs(存在.值["允许"], True)
-        self.assertIs(存在.值["存在性校验"], True)
+        self.assertIs(存在.值["允许"], 真)
+        self.assertIs(存在.值["存在性校验"], 真)
 
         缺失 = 验证命令白名单(
             命令=["python3.14", "-m", "测试中心.样例域.测试_不存在"],
             仓库根目录=str(self.临时根),
         )
-        self.assertIs(缺失.值["允许"], False)
+        self.assertIs(缺失.值["允许"], 假)
         self.assertIn("不存在", 缺失.值["消息"])
 
         坏根 = 验证命令白名单(
@@ -290,7 +291,7 @@ class 测试测试支持库(unittest.TestCase):
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["判定"], "通过")
         self.assertEqual(结果.值["阻断码"], "")
-        self.assertIs(结果.值["真实执行证据"], True)
+        self.assertIs(结果.值["真实执行证据"], 真)
 
     def test_判定零测试成功与缺证据均阻断(self) -> None:
         零测试 = 验证结果判定(
@@ -301,7 +302,7 @@ class 测试测试支持库(unittest.TestCase):
 
         无证据 = 验证结果判定(退出码=0, 标准输出="", 命令=["python3.14", "-m", 实际测试模块])
         self.assertEqual(无证据.值["阻断码"], "零测试")
-        self.assertIs(无证据.值["真实执行证据"], False)
+        self.assertIs(无证据.值["真实执行证据"], 假)
 
     def test_判定导入失败当跳过与未解释跳过阻断(self) -> None:
         导入失败 = 验证结果判定(
@@ -342,13 +343,13 @@ class 测试测试支持库(unittest.TestCase):
         )
         self.assertEqual(结果.值["判定"], "阻断")
         self.assertEqual(结果.值["阻断码"], "缓存假绿")
-        self.assertIs(结果.值["真实执行证据"], False)
+        self.assertIs(结果.值["真实执行证据"], 假)
 
     def test_判定收集错误与参数不合法(self) -> None:
         收集错误 = 验证结果判定(退出码=0, 标准输出="ERROR: 测试中心/支持库/测试_坏.py\n")
         self.assertEqual(收集错误.值["阻断码"], "验证失败")
 
-        逻辑退出码 = 验证结果判定(退出码=True, 标准输出="Ran 1 test\nOK")
+        逻辑退出码 = 验证结果判定(退出码=真, 标准输出="Ran 1 test\nOK")
         self.assertFalse(逻辑退出码.成功)
         self.assertEqual(逻辑退出码.错误码, "参数不合法")
 

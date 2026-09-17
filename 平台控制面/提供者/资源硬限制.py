@@ -22,6 +22,7 @@ import threading
 import signal
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
 
 模块路径 = str(Path(__file__).resolve())
@@ -92,9 +93,9 @@ def _终止进程组(进程: subprocess.Popen) -> bool:
     try:
         进程.wait(timeout=2.0)
     except subprocess.TimeoutExpired:
-        收敛 = False
+        收敛 = 假
     if 进程.poll() is None:
-        收敛 = False
+        收敛 = 假
     return 收敛
 
 
@@ -117,7 +118,7 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
     空表 = 所有终止路径都确认收敛；调用方必须把它带进错误说明，不得丢弃。
     """
     结果: dict[str, bytearray] = {"输出": bytearray(), "错误输出": bytearray()}
-    超限 = {"输出": False, "错误输出": False}
+    超限 = {"输出": 假, "错误输出": 假}
     回收失败: list[str] = []
 
     def 读取(名称: str, 流) -> None:
@@ -134,7 +135,7 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
                 if len(目标) < 输出上限:
                     目标.extend(块[:输出上限 - len(目标)])
                 if len(目标) >= 输出上限 and len(块) > 输出上限 - len(目标):
-                    超限[名称] = True
+                    超限[名称] = 真
                     if not _终止进程组(进程):
                         回收失败.append(f"输出达到上限后回收子进程组未确认收敛（{名称}）")
                     return
@@ -158,7 +159,7 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
                     流.close()
             except (OSError, ValueError):
                 pass
-        return (bytes(结果["输出"]), bytes(结果["错误输出"]), True,
+        return (bytes(结果["输出"]), bytes(结果["错误输出"]), 真,
                 any(线程.is_alive() for 线程 in 线程表), 回收失败)
     for 线程 in 线程表:
         线程.join(timeout=1.0)
@@ -168,7 +169,7 @@ def _受限通信(进程: subprocess.Popen, 超时秒: float,
                 流.close()
         except (OSError, ValueError):
             pass
-    return (bytes(结果["输出"]), bytes(结果["错误输出"]), False,
+    return (bytes(结果["输出"]), bytes(结果["错误输出"]), 假,
             any(超限.values()), 回收失败)
 
 
@@ -180,14 +181,14 @@ def 设置限制(类型: str, 软上限: int, 硬上限: int) -> dict:
     """
     常量 = 类型表.取(类型)
     if 常量 is None:
-        return {"成功": False, "值": None, "错误码": 未强制, "错误说明": f"未知限制类型: {类型}"}
+        return {"成功": 假, "值": None, "错误码": 未强制, "错误说明": f"未知限制类型: {类型}"}
     from resource import getrlimit, setrlimit  # 惰性导入：POSIX 专有
     try:
         setrlimit(常量, (软上限, 硬上限))
     except (OSError, ValueError) as 错误:
-        return {"成功": False, "值": None, "错误码": 未强制,
+        return {"成功": 假, "值": None, "错误码": 未强制,
                 "错误说明": f"{类型}上限设置失败，不具备硬限制能力: {错误}"}
-    return {"成功": True, "值": getrlimit(常量), "错误码": "", "错误说明": ""}
+    return {"成功": 真, "值": getrlimit(常量), "错误码": "", "错误说明": ""}
 
 
 def 验证文件句柄() -> tuple[bool, str]:
@@ -196,13 +197,13 @@ def 验证文件句柄() -> tuple[bool, str]:
     try:
         for _ in range(32):
             已开.append(os.open(os.devnull, os.O_RDONLY))
-        return False, "打开 32 个文件未被拒"
+        return 假, "打开 32 个文件未被拒"
     except OSError as 错误:
         for 句柄 in 已开:
             os.close(句柄)
         if 错误.errno == errno.EMFILE:
-            return True, f"上限5个句柄，打开{len(已开)}个后第{len(已开)+1}个被拒(EMFILE)"
-        return False, f"异常错误: {错误}"
+            return 真, f"上限5个句柄，打开{len(已开)}个后第{len(已开)+1}个被拒(EMFILE)"
+        return 假, f"异常错误: {错误}"
 
 
 def 验证进程数() -> tuple[bool, str]:
@@ -212,17 +213,17 @@ def 验证进程数() -> tuple[bool, str]:
     探测函数的契约是「能不能强制」，不是「能不能跑」，崩掉会让整条探测链失真。
     """
     if not hasattr(os, "fork"):
-        return False, "平台无 os.fork（非 POSIX），RLIMIT_NPROC 不可强制"
+        return 假, "平台无 os.fork（非 POSIX），RLIMIT_NPROC 不可强制"
     try:
         子进程号 = os.fork()
     except OSError as 错误:
         if 错误.errno == errno.EAGAIN:
-            return True, f"上限1个进程时fork被拒(EAGAIN: {错误})"
-        return False, f"异常错误: {错误}"
+            return 真, f"上限1个进程时fork被拒(EAGAIN: {错误})"
+        return 假, f"异常错误: {错误}"
     if 子进程号 == 0:
         os._exit(0)
     os.waitpid(子进程号, 0)
-    return False, "fork 未被拒绝"
+    return 假, "fork 未被拒绝"
 
 
 def 验证内存() -> tuple[bool, str]:
@@ -230,14 +231,14 @@ def 验证内存() -> tuple[bool, str]:
     try:
         映射 = mmap.mmap(-1, 1024 * 1024 * 1024)
         映射.close()
-        return False, "1GB 映射未被拒，内核未执行限制"
+        return 假, "1GB 映射未被拒，内核未执行限制"
     except (OSError, MemoryError, ValueError) as 错误:
-        return True, f"超限映射被拒: {错误}"
+        return 真, f"超限映射被拒: {错误}"
 
 
 自检表 = {"进程数": (1, 1, 验证进程数), "文件句柄": (5, 5, 验证文件句柄),
          "内存": (512 * 1024 * 1024, 512 * 1024 * 1024, 验证内存),
-         "核心转储": (0, 0, lambda: (True, "上限已设为 0，内核将抑制核心转储"))}
+         "核心转储": (0, 0, lambda: (真, "上限已设为 0，内核将抑制核心转储"))}
 
 
 def 自检记录(类型: str, 软上限: int, 硬上限: int, 验证) -> dict:
@@ -255,10 +256,10 @@ def 探测能力() -> dict:
         子进程 = subprocess.run([sys.executable, 模块路径, "--自检"],
                                 capture_output=True, text=True, timeout=60)
         报告 = json.loads(子进程.stdout.strip().splitlines()[-1])
-        return {"成功": True, "已生效": 报告.get("已生效", []),
+        return {"成功": 真, "已生效": 报告.get("已生效", []),
                 "不可强制": 报告.get("不可强制", []), "错误说明": ""}
     except Exception as 错误:
-        return {"成功": False, "已生效": [], "不可强制": [],
+        return {"成功": 假, "已生效": [], "不可强制": [],
                 "错误说明": f"能力探测子进程未返回有效报告: {错误}"}
 
 
@@ -290,14 +291,14 @@ def 在独立进程组中运行(命令列表: list[str], 预算: dict, 超时秒
     不可强制表 = {项["类型"] for 项 in 探测["不可强制"]}
     被拒 = [类型 for 键, 类型 in 预算对应表.items() if 键 in 预算 and 类型 in 不可强制表]
     if 被拒 or not 探测["成功"]:
-        return {"成功": False, "错误码": 未强制, "值": None,
+        return {"成功": 假, "错误码": 未强制, "值": None,
                 "错误说明": f"以下预算项不具备硬限制能力，拒绝启动（不能假装正常）: {被拒 or 探测['错误说明']}"}
     try:
         进程 = subprocess.Popen(命令列表, **平台适配.子进程组启动标志(),
                                 preexec_fn=lambda: _子进程应用预算(预算),
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except Exception as 错误:
-        return {"成功": False, "错误码": 未强制, "值": None,
+        return {"成功": 假, "错误码": 未强制, "值": None,
                 "错误说明": f"进程启动失败: {错误}"}
     try:
         输出, 错误输出, 已超时, 输出超限, 回收失败 = _受限通信(进程, 超时秒)
@@ -306,19 +307,19 @@ def 在独立进程组中运行(命令列表: list[str], 预算: dict, 超时秒
             回收失败 = [f"受限读取异常后回收子进程组未确认收敛（{type(错误).__name__}）"]
         else:
             回收失败 = []
-        return {"成功": False, "错误码": "命令失败", "值": None,
+        return {"成功": 假, "错误码": "命令失败", "值": None,
                 "错误说明": f"受限读取失败: {错误}{_回收失败提示(回收失败)}",
                 "回收失败留痕": 回收失败}
     if 已超时:
         进程.kill()
         进程.wait()
-        return {"成功": False, "错误码": "超时", "值": None,
+        return {"成功": 假, "错误码": "超时", "值": None,
                 "错误说明": f"命令 {超时秒} 秒未结束，已终止{_回收失败提示(回收失败)}",
                 "回收失败留痕": 回收失败}
     if 输出超限:
         if not _终止进程组(进程):
             回收失败.append("输出超限路径回收子进程组未确认收敛")
-        return {"成功": False, "错误码": "超出限制", "值": None,
+        return {"成功": 假, "错误码": "超出限制", "值": None,
                 "错误说明": f"命令输出超过上限 {默认输出上限} 字节，已终止{_回收失败提示(回收失败)}",
                 "回收失败留痕": 回收失败}
     return {"成功": 进程.returncode == 0,

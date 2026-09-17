@@ -18,6 +18,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 运行核心.运行环境管理器.环境管理器 import (
     计算环境摘要, 读取依赖锁, 确保环境, 废弃环境, 环境目录, 环境摘要信息,
 )
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def 样例锁(额外包: list | None = None) -> dict:
@@ -84,7 +85,7 @@ class Test运行环境管理器(unittest.TestCase):
         # 不实际创建解释器 → 校验失败 → 构建路径（真实构建可能慢，这里只验证不崩溃）
         结果 = 确保环境(self.提供者目录, 超时秒=10)
         self.assertIsInstance(结果, object)
-        self.assertIn(结果.成功, (True, False))
+        self.assertIn(结果.成功, (真, 假))
 
 
 if __name__ == "__main__":

@@ -60,6 +60,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 包级声明面的固定文件名（正式根下按包目录读取，口径与 正式包索引 一致）
 包声明名 = "包声明.json"
@@ -470,7 +471,7 @@ def 生成基线(系统根: Path, *, 注册表=None, 存储目录: str = "",
 
 def 登记消费者契约集(系统根: Path, *, 注册表=None, 存储目录: str = "",
                     包表: dict[str, dict] | None = None,
-                    只报: bool = False) -> dict:
+                    只报: bool = 假) -> dict:
     """按现场枚举把**字段齐备**的跨包消费者关系批量登记成消费者契约（幂等）。
 
     为什么收进包内而不是留一个一次性脚本：填表是这条判据的**正规落地动作**，

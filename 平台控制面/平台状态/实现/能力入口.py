@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from 平台控制面.平台状态.状态存储 import 平台状态
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 # 存储目录缺省值：经唯一解析器取运行态存储根（源码态 = `<系统根>/工程缓存/平台控制面`，
@@ -68,8 +69,8 @@ def 读取记录(存储目录: str = "", 表: str = "", 主键列: str = "", 主
     except sqlite3.Error as 错误:
         return 结果.失败("读取记录失败", f"读取 {表} 失败：{错误}", 来源=来源名称)
     if 记录 is None:
-        return 结果.成功结果({"记录": None, "是否命中": False})
-    return 结果.成功结果({"记录": 记录, "是否命中": True})
+        return 结果.成功结果({"记录": None, "是否命中": 假})
+    return 结果.成功结果({"记录": 记录, "是否命中": 真})
 
 
 def 查询记录(存储目录: str = "", 表: str = "", 条件: str = "", 参数: list | None = None,

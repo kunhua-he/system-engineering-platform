@@ -16,6 +16,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.PyMuPDF提供者 import 检测加密页数, 渲染整页, 提取图像, 校验PDF
 from 支持库.适配层.PyMuPDF提供者.实现 import 提供者 as 提供者模块
@@ -74,7 +75,7 @@ class TestPyMuPDF提供者(unittest.TestCase):
     def test_检测加密页数正常(self):
         结果 = 检测加密页数(str(self.文本PDF))
         self.assertTrue(结果.成功, 结果.错误说明)
-        self.assertEqual(结果.值, {"已加密": False, "页数": 2})
+        self.assertEqual(结果.值, {"已加密": 假, "页数": 2})
     def test_检测加密页数文件不存在(self):
         结果 = 检测加密页数(str(self.临时目录 / "不存在.pdf"))
         self.assertEqual(结果.错误码, "文件不存在")
@@ -83,7 +84,7 @@ class TestPyMuPDF提供者(unittest.TestCase):
         结果 = 检测加密页数(str(加密PDF))
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "文件加密")
-        self.assertEqual(结果.详细信息["值"], {"已加密": True, "页数": 0})
+        self.assertEqual(结果.详细信息["值"], {"已加密": 真, "页数": 0})
     def test_渲染整页返回PNG(self):
         结果 = 渲染整页(str(self.文本PDF), 1)
         self.assertTrue(结果.成功, 结果.错误说明)
@@ -118,13 +119,13 @@ class TestPyMuPDF提供者(unittest.TestCase):
             try:
                 进程.communicate(timeout=0.5)  # 不发请求 → 子进程阻塞 → 真实超时
             except subprocess.TimeoutExpired:
-                return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+                return 提供者模块._失败("超时", "模拟超时", 可重试=真)
             finally:
                 提供者模块._终止进程组(进程)
                 for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
                     if 流:
                         流.close()
-            return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+            return 提供者模块._失败("超时", "模拟超时", 可重试=真)
         with mock.patch.object(提供者模块, "执行任务", side_effect=挂起执行):
             结果 = 渲染整页(str(self.文本PDF), 1)
         self.assertEqual(结果.错误码, "超时")

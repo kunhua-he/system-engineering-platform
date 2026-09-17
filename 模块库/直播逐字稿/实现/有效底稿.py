@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 重复压缩正则 = re.compile(r"(.{1,3})\1{3,}")
 最大压缩轮数 = 6
@@ -30,13 +31,13 @@ def 是幻觉段(文本: str | None) -> bool:
     """整段基本由幻觉短语构成时判为幻觉段（含该短语且占比超过阈值）。"""
     干净 = re.sub(r"\s+", "", str(文本 or ""))
     if len(干净) < 4:
-        return False
+        return 假
     for 短语 in 幻觉短语表:
         if 短语 in 干净 and len(短语) / len(干净) >= 幻觉最大占比:
-            return True
+            return 真
         if 短语 in 干净 and len(干净) <= len(短语) * 3:
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _数(值, 默认: float = 0.0) -> float:
@@ -51,7 +52,7 @@ def 在死循环区间(段: dict, 死循环区间: list[dict] | None) -> bool:
     """分段开始秒是否落在任一死循环区间内。"""
     开始 = _数(段.get("开始秒"), -1.0)
     if 开始 < 0:
-        return False
+        return 假
     for 区间 in 死循环区间 or []:
         if not isinstance(区间, dict):
             continue
@@ -60,8 +61,8 @@ def 在死循环区间(段: dict, 死循环区间: list[dict] | None) -> bool:
         if 左 < 0 or 右 < 0:
             continue
         if 左 - 0.001 <= 开始 <= 右 + 0.001:
-            return True
-    return False
+            return 真
+    return 假
 
 
 def 剔除死循环(分段列表: list[dict], 死循环区间: list[dict] | None) -> list[dict]:

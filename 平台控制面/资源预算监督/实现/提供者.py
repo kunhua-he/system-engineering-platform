@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from 平台控制面.资源监督 import 资源监督器
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源名称 = "资源预算监督"
 预算非字典说明 = "资源预算必须是字典型"
@@ -40,12 +41,12 @@ def _是预算(资源预算: Any) -> bool:
 def _解析量纲(值: Any) -> tuple[bool, str]:
     """解析内存/临时空间类取值：数字或 '数字 单位'（KB/MB/GB）文本。"""
     if isinstance(值, bool):
-        return False, "不能是逻辑型"
+        return 假, "不能是逻辑型"
     if isinstance(值, (int, float)):
         return (值 > 0, "必须大于 0" if 值 <= 0 else "")
     文本 = str(值 or "").strip()
     if not 文本:
-        return False, "不能为空"
+        return 假, "不能为空"
     片段 = 文本.replace(" ", "").replace("\t", "")
     单位 = ""
     for 候选 in ("KB", "MB", "GB", "kb", "mb", "gb"):
@@ -56,12 +57,12 @@ def _解析量纲(值: Any) -> tuple[bool, str]:
     try:
         数 = float(片段)
     except ValueError:
-        return False, f"取值无法解析为数量：{文本}"
+        return 假, f"取值无法解析为数量：{文本}"
     if 数 <= 0:
-        return False, "必须大于 0"
+        return 假, "必须大于 0"
     if 单位 and 单位 not in ("KB", "MB", "GB"):
-        return False, f"单位不识别：{文本}"
-    return True, ""
+        return 假, f"单位不识别：{文本}"
+    return 真, ""
 
 
 def 查询必需预算项():

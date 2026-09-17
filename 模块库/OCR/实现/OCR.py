@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "OCR"
 默认语言 = "eng"
@@ -88,7 +89,7 @@ def 识别图片文字(
     图片路径: str | None = None,
     图片字节: bytes | None = None,
     语言: str = 默认语言,
-    词级数据: bool = False,
+    词级数据: bool = 假,
     超时秒: float = 60.0,
     取消令牌id: str = "",
     输出上限字节: int | None = None,
@@ -104,7 +105,7 @@ def 识别图片文字(
 def 识别图片文件(
     图片路径: str,
     语言: str = 默认语言,
-    词级数据: bool = False,
+    词级数据: bool = 假,
     超时秒: float = 60.0,
     取消令牌id: str = "",
     输出上限字节: int | None = None,

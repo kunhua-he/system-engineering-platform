@@ -22,6 +22,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 运行核心.加载器.版本系统.灰度指标 import 灰度指标库
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 灰度指标入库测试(unittest.TestCase):
@@ -40,7 +41,7 @@ class 灰度指标入库测试(unittest.TestCase):
         结果对象 = 获取能力调用器().调用能力(
             "数据库连接支持库.SQLite数据库.初始化运行数据库",
             {"数据库路径": str(self.运行库), "超时秒": 10.0})
-        self.assertTrue(getattr(结果对象, "成功", False), getattr(结果对象, "错误说明", ""))
+        self.assertTrue(getattr(结果对象, "成功", 假), getattr(结果对象, "错误说明", ""))
 
     def tearDown(self) -> None:
         if self._旧环境 is None:
@@ -77,7 +78,7 @@ class 灰度指标入库测试(unittest.TestCase):
         旧指标 = self.旧目录 / "灰度指标.jsonl"
         旧指标.write_text("\n".join(json.dumps({
             "时间": "2026-09-14 20:00:00", "能力id": "旧.能力", "版本": "1.0.0",
-            "成功": True, "耗时毫秒": 5.0, "超时": False}) for _ in range(3)) + "\n", encoding="utf-8")
+            "成功": 真, "耗时毫秒": 5.0, "超时": 假}) for _ in range(3)) + "\n", encoding="utf-8")
         旧状态 = self.旧目录 / "灰度状态.json"
         旧状态.write_text(json.dumps({"旧.能力@1.0.0": {"当前灰度比例": 0.5, "观察窗口秒": 300}},
                                      ensure_ascii=False), encoding="utf-8")
@@ -86,7 +87,7 @@ class 灰度指标入库测试(unittest.TestCase):
         self.assertEqual(库.搬迁观测数, 3)                      # 旧观测搬进运行库
         self.assertEqual(self._库行数("灰度观测"), 3)
         self.assertEqual(库.状态表.get("旧.能力@1.0.0", {}).get("当前灰度比例"), 0.5)
-        库.观测(能力id="新.能力", 版本="1.0.0", 成功=True, 耗时毫秒=1.0)
+        库.观测(能力id="新.能力", 版本="1.0.0", 成功=真, 耗时毫秒=1.0)
         self.assertEqual(self._库行数("灰度观测"), 4)
         self.assertEqual((旧指标.stat().st_size, 旧状态.stat().st_size), before)  # 旧文件字节不变
 

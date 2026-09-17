@@ -20,6 +20,7 @@ from typing import Any
 
 from 平台控制面.平台状态.状态存储 import 平台状态
 from 平台控制面.策略中心 import 策略中心
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 # 存储目录缺省值：经唯一解析器取运行态存储根（源码态 = `<系统根>/工程缓存/平台控制面`，
@@ -131,7 +132,7 @@ def 判定依赖策略(包id: str, 依赖: list, 存储目录: str = "", 项目i
     return _决定("依赖", 决定)
 
 
-def 判定签名策略(包id: str, 已签名: bool, 签名失效: bool = False, 签名者: str = "",
+def 判定签名策略(包id: str, 已签名: bool, 签名失效: bool = 假, 签名者: str = "",
                 存储目录: str = "", 项目id: str = ""):
     """签名策略判定（只读）：未签名/失效/发布者不受信一律拒绝。"""
     标识 = str(包id or "").strip()

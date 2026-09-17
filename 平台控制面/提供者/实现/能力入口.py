@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 来源名称 = "提供者"
@@ -116,5 +117,5 @@ def 只读激活指针(存储目录: str = "", 指针id: str = "") -> Any:
         return 结果.失败("存储目录不可用", f"只读打开权威状态库失败：{错误}",
                         来源=来源名称)
     if 指针 is None:
-        return 结果.成功结果({"指针": None, "是否命中": False})
-    return 结果.成功结果({"指针": 指针, "是否命中": True})
+        return 结果.成功结果({"指针": None, "是否命中": 假})
+    return 结果.成功结果({"指针": 指针, "是否命中": 真})

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "开工编排"
 
@@ -179,7 +180,7 @@ def _读取成功记录(账本路径: Path, 数量: int) -> tuple[list[dict], in
         坏行说明.append(f"第{行号}行 {原因}")
     成功记录 = [
         记录 for 记录 in 记录列表
-        if 记录.get("退出码") == 0 and (记录.get("判定") or {}).get("成功") is not False
+        if 记录.get("退出码") == 0 and (记录.get("判定") or {}).get("成功") is not 假
     ]
     账本问题 = ""
     if 坏行说明:
@@ -385,14 +386,14 @@ def 开工即占(任务: str | None = None, 项目根: str | None = None, 修改
     申请 = _调用(能力_申请文件租约, 申请参数)
     if not 申请.成功:
         return 结果.成功结果({
-            "已开工": False,
+            "已开工": 假,
             "开工上下文": 上下文,
             "租约": {"状态": "未认领", "租约id清单": [], "申请清单": 路径表},
             "失败原因": f"文件租约被占用，未开工：{申请.错误码} {申请.错误说明}",
         })
     租约id清单 = list((申请.值 or {}).get("租约id清单") or [])
     return 结果.成功结果({
-        "已开工": True,
+        "已开工": 真,
         "开工上下文": 上下文,
         "租约": {
             "状态": "已认领",

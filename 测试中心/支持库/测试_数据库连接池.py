@@ -25,6 +25,7 @@ from typing import Any, Callable
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 公共契约.版本规则.契约版本 import 契约版本
 from 支持库.后端.数据库连接支持库.psycopg数据库 import (
@@ -75,7 +76,7 @@ class 测试_参数校验(池基类):
             连接数据库(连接串, 0, 2),
             连接数据库(连接串, 101, 2),
             连接数据库(连接串, 2, 0),
-            连接数据库(连接串, True, 2),
+            连接数据库(连接串, 真, 2),
             调用(查询数据库, "x", "SELECT 1"),
             调用(查询数据库, 1, ""),
             调用(事务执行数据库, 1, []),

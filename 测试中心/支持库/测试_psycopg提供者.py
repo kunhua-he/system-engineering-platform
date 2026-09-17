@@ -31,6 +31,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 支持库.适配层 import psycopg提供者 as 包
 from 支持库.适配层.psycopg提供者 import (
@@ -71,7 +72,7 @@ class _假游标:
     """psycopg3 游标上下文管理器替身（真实驱动 API 形状，非生产路径）。"""
 
     def __init__(self) -> None:
-        self.已关闭 = False
+        self.已关闭 = 假
         self.记录: list[str] = []
 
     def __enter__(self):
@@ -79,21 +80,21 @@ class _假游标:
 
     def __exit__(self, *异常):
         self.close()
-        return False
+        return 假
 
     def execute(self, SQL, 参数=None):
         self.记录.append(SQL)
 
     def close(self) -> None:
-        self.已关闭 = True
+        self.已关闭 = 真
 
 
 class _假连接:
     """psycopg3 连接替身：记录 close/commit 与游标收口，用于验证句柄生命周期。"""
 
-    def __init__(self, 关闭即异常: bool = False) -> None:
-        self.已关闭 = False
-        self.已提交 = False
+    def __init__(self, 关闭即异常: bool = 假) -> None:
+        self.已关闭 = 假
+        self.已提交 = 假
         self.游标 = _假游标()
         self._关闭即异常 = 关闭即异常
 
@@ -101,10 +102,10 @@ class _假连接:
         return self.游标
 
     def commit(self) -> None:
-        self.已提交 = True
+        self.已提交 = 真
 
     def close(self) -> None:
-        self.已关闭 = True
+        self.已关闭 = 真
         if self._关闭即异常:
             raise RuntimeError("关闭失败")
 
@@ -134,7 +135,7 @@ class Testpsycopg提供者(unittest.TestCase):
 
     def test_校验超时非法入参明确拒绝(self) -> None:
         """超时必须是正数；布尔/文本/零/负数一律拒绝。"""
-        for 值 in (0, 0.0, -1, -0.5, None, "5", True, False, [], object()):
+        for 值 in (0, 0.0, -1, -0.5, None, "5", 真, 假, [], object()):
             问题 = 校验超时(值)
             self.assertIsNotNone(问题, f"非法超时未拒绝: {值!r}")
             self.assertIn("正数", str(问题), "拒绝原因必须指出正数要求")
@@ -265,7 +266,7 @@ class Testpsycopg提供者(unittest.TestCase):
     def test_释放连接对空句柄幂等且不吞关闭异常(self) -> None:
         """释放连接：空句柄视为干净（幂等）；驱动关闭异常必须报出，绝不静默。"""
         self.assertIsNone(释放连接(None), "空句柄释放必须视为干净")
-        坏连接 = _假连接(关闭即异常=True)
+        坏连接 = _假连接(关闭即异常=真)
         问题 = 释放连接(坏连接)
         self.assertIsNotNone(问题, "关闭异常不得被吞掉")
         self.assertIn("连接释放异常", str(问题))
@@ -283,13 +284,13 @@ class Testpsycopg提供者(unittest.TestCase):
         self.assertEqual(第一次.错误码, "", "成功结果不得携带错误码")
         探针值 = 第一次.值 if isinstance(第一次.值, dict) else {}
         self.assertTrue(探针值, "成功探针必须返回非空值字典")
-        self.assertIs(探针值["驱动可用"], True)
+        self.assertIs(探针值["驱动可用"], 真)
         版本 = 探针值["驱动版本"]
         self.assertIsInstance(版本, dict)
         self.assertIn("psycopg", 版本)
         self.assertRegex(str(版本["psycopg"]), r"^\d+\.\d+", "驱动版本必须是真实版本号")
         self.assertEqual(第一次.值, 第二次.值, "同环境连续调用结果必须一致")
-        self.assertIs(驱动可用(), True)
+        self.assertIs(驱动可用(), 真)
         self.assertEqual(驱动版本(), 版本, "驱动版本() 与探针值口径必须一致")
 
     # ---------- 八、接口面与旧能力残留（僵尸测试的直接防复发守卫） ----------

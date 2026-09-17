@@ -25,6 +25,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 五类角色（固定）
 普通用户 = "普通用户"
@@ -106,8 +107,8 @@ class 授权服务:
         """是否已有有效高权限授予（平台维护者/发布者）：引导只在初始化前有意义。"""
         for 角色 in (平台维护者, 发布者):
             if self.状态.查询记录("角色授予", "角色=? AND 撤销状态='有效'", (角色,)):
-                return True
-        return False
+                return 真
+        return 假
 
     def 发放引导令牌(self, *, 令牌文件: Path | str | None = None) -> tuple[bool, str, str]:
         """发放一次性引导令牌：返回 (成功, 消息, 令牌明文)。
@@ -118,9 +119,9 @@ class 授权服务:
         """
         文件 = self.引导令牌文件(令牌文件)
         if 文件.exists():
-            return False, f"引导令牌已存在（一次性，使用后即焚）: {文件}", ""
+            return 假, f"引导令牌已存在（一次性，使用后即焚）: {文件}", ""
         if self.平台已初始化():
-            return False, "平台已初始化（已有 平台维护者/发布者 授予），禁止再发放引导令牌", ""
+            return 假, "平台已初始化（已有 平台维护者/发布者 授予），禁止再发放引导令牌", ""
         令牌 = secrets.token_hex(16)
         文件.parent.mkdir(parents=True, exist_ok=True)
         文件.write_text(令牌, encoding="utf-8")
@@ -128,7 +129,7 @@ class 授权服务:
         self.状态.追加证据(类型="授权", 主题="发放引导令牌",
                           内容={"令牌文件": str(文件)}, 调用者="系统引导",
                           角色=平台维护者, 结果="发放")
-        return True, f"已发放一次性引导令牌: {文件}", 令牌
+        return 真, f"已发放一次性引导令牌: {文件}", 令牌
 
     def 引导授予(self, *, 身份id: str, 角色: str, 授予者: str,
                 引导令牌: str = "", 令牌文件: Path | str | None = None) -> tuple[bool, str]:
@@ -138,25 +139,25 @@ class 授权服务:
         不是注册后门：令牌文件存在即必须匹配并被删除；缺令牌/令牌不符一律拒绝。
         """
         if 角色 not in 可授予角色表:
-            return False, f"角色不可授予: {角色}"
+            return 假, f"角色不可授予: {角色}"
         if 授予者 != "系统引导":
-            return False, "引导授予必须显式指定 授予者=系统引导（受信引导，非注册后门）"
+            return 假, "引导授予必须显式指定 授予者=系统引导（受信引导，非注册后门）"
         文件 = self.引导令牌文件(令牌文件)
         提供令牌 = str(引导令牌 or "")
         if 文件.is_file():
             try:
                 应匹配 = 文件.read_text(encoding="utf-8").strip()
             except OSError as 错误:
-                return False, f"引导令牌文件不可读: {错误}"
+                return 假, f"引导令牌文件不可读: {错误}"
             if not 提供令牌:
-                return False, f"引导授予需要一次性引导令牌（先经 发放引导令牌 取得）: {文件}"
+                return 假, f"引导授予需要一次性引导令牌（先经 发放引导令牌 取得）: {文件}"
             # 按字节比较（compare_digest 不接受含非 ASCII 的 str：中文令牌会直接抛异常）
             if not secrets.compare_digest(提供令牌.encode("utf-8"), 应匹配.encode("utf-8")):
-                return False, "引导令牌不匹配：引导授予被拒"
+                return 假, "引导令牌不匹配：引导授予被拒"
             文件.unlink(missing_ok=True)   # 一次性：用后即焚
             凭证 = "一次性引导令牌"
         elif 提供令牌:
-            return False, f"引导令牌文件不存在，无法校验令牌: {文件}"
+            return 假, f"引导令牌文件不存在，无法校验令牌: {文件}"
         else:
             凭证 = "进程内受信直调（未配置引导令牌文件）"
         self._授予(身份id=身份id, 角色=角色, 项目范围="", 授予者=授予者,
@@ -164,25 +165,25 @@ class 授权服务:
         self.状态.追加证据(类型="授权", 主题=f"引导:{身份id}",
                           内容={"角色": 角色, "凭证": 凭证}, 调用者=身份id,
                           角色=角色, 结果="引导授予")
-        return True, f"引导授予: {身份id} → {角色}（凭证: {凭证}）"
+        return 真, f"引导授予: {身份id} → {角色}（凭证: {凭证}）"
 
     def 授予角色(self, *, 授予者令牌: str, 身份id: str, 角色: str,
                 项目范围: str = "", 有效期秒: float = 86400) -> tuple[bool, str]:
         """授予角色：授予者必须是 平台维护者（角色等级≥4），写信任目录+证据。"""
         会话 = self._会话表.get(授予者令牌)
         if 会话 is None:
-            return False, "授予者会话不存在"
+            return 假, "授予者会话不存在"
         if 会话["过期时间"] < time.time():
-            return False, 稳定错误码["会话过期"]
+            return 假, 稳定错误码["会话过期"]
         if 角色 not in 可授予角色表:
-            return False, f"角色不可授予: {角色}"
+            return 假, f"角色不可授予: {角色}"
         if 会话["角色"] not in (平台维护者, 发布者):
-            return False, 稳定错误码["越权操作"]
+            return 假, 稳定错误码["越权操作"]
         self._授予(身份id=身份id, 角色=角色, 项目范围=项目范围,
                    授予者=会话["身份id"], 有效期=time.time() + 有效期秒)
         self.状态.追加证据(类型="授权", 主题=f"授予:{身份id}", 内容={"角色": 角色, "项目范围": 项目范围},
                           调用者=会话["身份id"], 角色=会话["角色"], 结果="授予")
-        return True, f"已授予 {身份id} → {角色}"
+        return 真, f"已授予 {身份id} → {角色}"
 
     def _授予(self, *, 身份id: str, 角色: str, 项目范围: str,
               授予者: str, 有效期: float) -> None:
@@ -197,19 +198,19 @@ class 授权服务:
         """撤销角色：旧令牌立即失效；写证据。"""
         会话 = self._会话表.get(授予者令牌)
         if 会话 is None or 会话["角色"] != 平台维护者:
-            return False, 稳定错误码["越权操作"]
+            return 假, 稳定错误码["越权操作"]
         成功 = self.状态.条件更新(
             "角色授予", {"撤销状态": "已撤销"},
             "身份id=? AND 角色=? AND 撤销状态='有效'", (身份id, 角色))
         if not 成功:
-            return False, "无有效授予可撤销"
+            return 假, "无有效授予可撤销"
         self.状态.追加证据(类型="授权", 主题=f"撤销:{身份id}", 内容={"角色": 角色},
                           调用者=会话["身份id"], 角色=会话["角色"], 结果="撤销")
         # 撤销后强制会话降级为最低角色（旧会话立即失败）
         for 会话值 in self._会话表.values():
             if 会话值["身份id"] == 身份id and 会话值["角色"] == 角色:
                 会话值["角色"] = 普通用户
-        return True, f"已撤销 {身份id} 的 {角色}"
+        return 真, f"已撤销 {身份id} 的 {角色}"
 
     def 已授予角色(self, 身份id: str, 项目范围: str = "") -> list[str]:
         """该身份当前有效授予的角色集合（未撤销+未过期+项目范围匹配）。"""
@@ -227,51 +228,51 @@ class 授权服务:
         """切换角色：只能切换到该身份已授予的角色集合内；写证据。"""
         会话 = self._会话表.get(令牌)
         if 会话 is None:
-            return False, "会话不存在"
+            return 假, "会话不存在"
         if 会话["过期时间"] < time.time():
-            return False, 稳定错误码["会话过期"]
+            return 假, 稳定错误码["会话过期"]
         if 角色 not in 角色表:
-            return False, f"未知角色: {角色}"
+            return 假, f"未知角色: {角色}"
         已授予 = self.已授予角色(会话["身份id"], 项目范围)
         if 角色 not in 已授予:
             self.状态.追加证据(类型="授权拒绝", 主题=f"切换角色:{角色}",
                               内容={"身份": 会话["身份id"], "已授予": 已授予},
                               调用者=会话["身份id"], 角色=会话["角色"],
                               结果="拒绝", 错误码=稳定错误码["角色未授予"])
-            return False, f"角色未授予: {角色}（已授予: {已授予 or '仅普通用户'}）"
+            return 假, f"角色未授予: {角色}（已授予: {已授予 or '仅普通用户'}）"
         会话["角色"] = 角色
         self.状态.追加证据(类型="授权", 主题="切换角色",
                           内容={"身份": 会话["身份id"], "角色": 角色},
                           调用者=会话["身份id"], 角色=角色, 结果="成功")
-        return True, f"已切换为 {角色}"
+        return 真, f"已切换为 {角色}"
 
     def 校验操作(self, *, 令牌: str, 操作: str, 资源范围: str = "",
                  项目范围: str = "") -> tuple[bool, str, dict[str, Any]]:
         """校验操作权限；默认拒绝；返回 (允许, 错误码, 会话)。"""
         会话 = self._会话表.get(令牌)
         if 会话 is None:
-            return False, "会话不存在", {}
+            return 假, "会话不存在", {}
         if 会话["过期时间"] < time.time():
-            return False, 稳定错误码["会话过期"], {}
+            return 假, 稳定错误码["会话过期"], {}
         角色 = 会话["角色"]
         if 角色 not in 角色表:
-            return False, 稳定错误码["未知角色"], {}
+            return 假, 稳定错误码["未知角色"], {}
         # 会话角色必须仍在有效授予集合内（撤销后旧令牌立即失败）
         已授予 = self.已授予角色(会话["身份id"], 项目范围)
         if 角色 not in 已授予 and 角色 != 普通用户:
-            return False, 稳定错误码["角色未授予"], {}
+            return 假, 稳定错误码["角色未授予"], {}
         需要等级 = 操作最小角色.get(操作, 99)
         if 角色等级[角色] < 需要等级:
             self.状态.追加证据(类型="授权拒绝", 主题=操作,
                               内容={"身份": 会话["身份id"], "角色": 角色, "需要等级": 需要等级},
                               调用者=会话["身份id"], 角色=角色, 结果="拒绝",
                               错误码=稳定错误码["越权操作"])
-            return False, 稳定错误码["越权操作"], {}
-        return True, "", 会话
+            return 假, 稳定错误码["越权操作"], {}
+        return 真, "", 会话
 
     def 刷新会话(self, 令牌: str) -> bool:
         会话 = self._会话表.get(令牌)
         if 会话 is None:
-            return False
+            return 假
         会话["过期时间"] = time.time() + 3600
-        return True
+        return 真

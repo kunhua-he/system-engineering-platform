@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "直播逐字稿"
 模式数据路径 = Path(__file__).resolve().parent.parent / "模式数据" / "模式注册表.json"
@@ -23,10 +24,10 @@ def _底座(能力id: str, 参数: dict):
 
 
 def _成功(结果对象) -> bool:
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
-def 读取模式注册表(强制重载: bool = False) -> dict:
+def 读取模式注册表(强制重载: bool = 假) -> dict:
     """读取整张模式注册表；文件缺失或损坏时返回空注册表（不抛异常）。"""
     global _注册表缓存
     if _注册表缓存 is not None and not 强制重载:
@@ -120,7 +121,7 @@ def 取前置提示词(编号: int) -> str:
 def 取质检规则(编号: int) -> dict:
     条目 = 取模式(编号) or {}
     规则 = 条目.get("质检规则")
-    默认 = {"最小长度比": 0.7, "最小数字保留率": 0.85, "关键数字全保留": False, "禁止删减": False}
+    默认 = {"最小长度比": 0.7, "最小数字保留率": 0.85, "关键数字全保留": 假, "禁止删减": 假}
     if not isinstance(规则, dict):
         return 默认
     return {**默认, **规则}

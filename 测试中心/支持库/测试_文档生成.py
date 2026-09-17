@@ -18,6 +18,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 系统根 = Path(__file__).resolve().parents[2]
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.办公文档支持库.文档生成 import 生成DOCX, 生成PDF, 生成PPTX, 生成XLSX, 校验签名
 
@@ -31,10 +32,10 @@ class 假调用器:
     def 调用能力(self, 能力id, 参数=None, **关键字):
         if self.预设结果 is not None:
             return self.预设结果
-        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=True)
+        return 结果.失败("提供者不可用", f"{能力id} 不可用（模拟调用器）", 来源="测试", 可重试=真)
 
     def 幂等重放(self, *args, **kwargs):
-        return False
+        return 假
 
     def 查询调用历史(self, 上限=50):
         return []
@@ -48,7 +49,7 @@ class 假调用器:
 DOCX参数 = {
     "内容块列表": [
         {"类型": "标题", "文本": "测试标题", "级别": 1},
-        {"类型": "段落", "文本": "第一段中文内容", "加粗": True},
+        {"类型": "段落", "文本": "第一段中文内容", "加粗": 真},
         {"类型": "表格", "表头": ["姓名", "数量"], "行": [["值1", "值2"]]},
     ]
 }

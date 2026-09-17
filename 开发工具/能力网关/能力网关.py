@@ -17,19 +17,26 @@
 
 from __future__ import annotations
 
-import argparse
-import ipaddress
-import json
 import sys
-import socket
-import urllib.parse
-from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 # 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。
 _项目根 = Path(__file__).resolve().parents[2]
 if str(_项目根) not in sys.path:
     sys.path.insert(0, str(_项目根))
+
+# 环境准入（必须在任何装配与第三方导入之前）：平台判定的唯一来源是
+# `公共契约/运行时/平台适配`，本文件不自己写 sys.platform 判断。
+from 公共契约.运行时.平台适配 import 脚本入口准入
+
+脚本入口准入("启动 HTTP 能力网关（40006 只读发现）")
+
+import argparse
+import ipaddress
+import json
+import socket
+import urllib.parse
+from http.server import BaseHTTPRequestHandler
 
 from 开发工具.开发入口 import 搜索能力, 查看契约
 from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器

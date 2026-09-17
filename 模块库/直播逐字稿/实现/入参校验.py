@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "直播逐字稿"
 
@@ -24,7 +25,7 @@ def _底座(能力id: str, 参数: dict):
 
 
 def _成功(结果对象) -> bool:
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
 媒体扩展名表 = {
@@ -52,7 +53,7 @@ def _校验绝对路径(值: str, 名称: str) -> 结果 | None:
 
 
 def _校验可创建(目录: Path, 名称: str) -> 结果 | None:
-    创建 = _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(目录), "递归": True})
+    创建 = _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(目录), "递归": 真})
     if not _成功(创建):
         说明 = getattr(创建, "错误说明", "") or "底座不可用"
         return 结果.失败("写入失败", f"{名称} 无法创建: {说明}", 来源=来源)

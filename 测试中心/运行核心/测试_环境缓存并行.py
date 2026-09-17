@@ -23,6 +23,7 @@ from 运行核心.运行环境管理器.环境管理器 import (
     并行确保环境, 批量确保环境, 计算环境摘要, 环境结果,
     环境目录, 读取依赖锁, 确保环境,
 )
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 假构建耗时秒 = 0.4
 
@@ -69,7 +70,7 @@ class Test环境缓存并行(unittest.TestCase):
         time.sleep(假构建耗时秒)
         (目标 / "bin").mkdir(parents=True, exist_ok=True)
         (目标 / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
+        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
 
     def 放行构建(self):
         """patch 校验环境（目标解释器存在才通过）+ 构建换为 假构建。"""

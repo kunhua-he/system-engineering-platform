@@ -32,6 +32,7 @@ from 公共契约.运行时.进程终止 import 终止进程组
 from 启动监督器.健康监督 import 系统提供者健康监督
 from 运行核心.运行环境管理器.提供者生命周期 import 提供者生命周期管理器, 提供者路由
 from 支持库.适配层.提供者注册表.提供者注册表 import 提供者注册表
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 测试能力id = "进程.最小操作"
 
@@ -100,14 +101,14 @@ class 提供者生命周期测试(unittest.TestCase):
     def test_对齐核对_三方一致与严格检出(self):
         """登记后核对无问题；未登记含锁目录在严格模式检出。"""
         self.assertEqual(self.管理器.对齐核对(), [])
-        问题列表 = self.管理器.对齐核对(严格=True)
+        问题列表 = self.管理器.对齐核对(严格=真)
         self.assertTrue(any("含依赖锁但未登记" in 问题 for 问题 in 问题列表))
         # 登记第三方X 后严格核对无问题
         登记x = self.管理器.登记路由(
             提供者路由(提供者id="第三方X提供者", 提供者目录=self.第三方X目录,
                       运行方式="独立进程", 能力列表=["演示.扩展能力"]))
         self.assertTrue(登记x.成功)
-        self.assertEqual(self.管理器.对齐核对(严格=True), [])
+        self.assertEqual(self.管理器.对齐核对(严格=真), [])
 
     def test_对齐核对_登记目录缺失检出(self):
         """登记目录被删除 → 对齐核对检出，运行时不得继续选择。"""
@@ -304,9 +305,9 @@ class 提供者生命周期测试(unittest.TestCase):
         套接字 = socket.socket()
         try:
             套接字.bind(("127.0.0.1", 端口))
-            return True
+            return 真
         except OSError:
-            return False
+            return 假
         finally:
             套接字.close()
 
@@ -376,8 +377,8 @@ class 提供者生命周期测试(unittest.TestCase):
         监督 = 系统提供者健康监督(周期秒=1.0, 证据文件=证据文件,
                                   探针清单=[])  # 不探针，只验证汇入
         监督.汇入进程健康({
-            "测试提供者A": {"健康": True, "成功": True, "版本": "模拟1.0.0"},
-            "测试提供者B": {"健康": False, "成功": False, "错误码": "外部不可访问"},
+            "测试提供者A": {"健康": 真, "成功": 真, "版本": "模拟1.0.0"},
+            "测试提供者B": {"健康": 假, "成功": 假, "错误码": "外部不可访问"},
         })
         查询 = 监督.查询健康状态()
         self.assertEqual(查询["提供者数"], 2)

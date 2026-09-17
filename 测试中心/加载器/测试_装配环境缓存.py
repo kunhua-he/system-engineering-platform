@@ -24,6 +24,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 运行核心.环境指纹 import 计算环境指纹
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
@@ -34,7 +35,7 @@ from 运行核心.运行环境管理器.环境管理器 import 环境结果
 
 def 合法锁(提供者id: str, *, 版本: str = "1.2.0") -> dict:
     """构造通过 校验提供者环境 全部规则的合法依赖锁（环境指纹取当前运行环境）。"""
-    指纹 = 计算环境指纹(含外部应用=False).详细信息
+    指纹 = 计算环境指纹(含外部应用=假).详细信息
     系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
     return {
         "包": [{"名称": "python-docx", "版本": 版本, "模块名": "docx"}],
@@ -103,7 +104,7 @@ class Test装配接入环境缓存(unittest.TestCase):
         time.sleep(假构建耗时秒)
         (目标 / "bin").mkdir(parents=True, exist_ok=True)
         (目标 / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(True, 解释器路径=str(解释器), 环境摘要=摘要)
+        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
 
     def 放行构建(self):
         """patch 两处 校验环境（确保环境 + 强制校验终检）与 构建环境 换为 假构建。"""
@@ -214,7 +215,7 @@ class Test装配接入环境缓存(unittest.TestCase):
 
     def test_仅外部应用提供者真实命中路径(self):
         """仅外部应用（非 pip 包）提供者 → 无构建真实命中系统解释器，装配成功。"""
-        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        指纹 = 计算环境指纹(含外部应用=假).详细信息
         系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
         self.新支持库提供者("装配提供者", {
             "包": [{"名称": "LibreOffice soffice", "版本": "7.6",

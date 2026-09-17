@@ -10,6 +10,7 @@ import json
 import time
 import uuid
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 需求不存在错误(ValueError):
@@ -84,16 +85,16 @@ class 需求登记:
         """
         记录 = self.状态.读取记录("需求", "需求id", 需求id)
         if 记录 is None:
-            return False, f"需求不存在: {需求id}"
+            return 假, f"需求不存在: {需求id}"
         if 取登记快照(记录) is None:
-            return False, f"需求不存在: {需求id}（该行没有 登记需求 写入的需求快照，不能确认）"
+            return 假, f"需求不存在: {需求id}（该行没有 登记需求 写入的需求快照，不能确认）"
         if 记录["确认状态"] == "已确认":
-            return True, "需求已确认（幂等）"
+            return 真, "需求已确认（幂等）"
         self.状态.条件更新("需求", {"确认状态": "已确认", "状态": "已确认"},
                           "需求id=?", (需求id,))
-        self.状态.追加证据(类型="需求", 主题=需求id, 内容={"确认": True},
+        self.状态.追加证据(类型="需求", 主题=需求id, 内容={"确认": 真},
                           调用者=调用者, 角色=角色, 结果="确认")
-        return True, "需求已确认"
+        return 真, "需求已确认"
 
     def 需求已确认(self, 需求id: str) -> bool:
         """只读判定：登记过（有快照）且已确认才算 true（脏行一律不认，见 `取登记快照`）。"""

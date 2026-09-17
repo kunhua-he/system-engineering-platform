@@ -3,6 +3,7 @@
 import math
 import unittest
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.基础类型.数值类型 import (
     数值类型定义,
     校验数值类型,
@@ -42,8 +43,8 @@ class 数值类型契约测试(unittest.TestCase):
                 self.assertTrue(校验数值类型(定义.最大值, 名称))
                 self.assertFalse(校验数值类型(定义.最大值 + 1, 名称))
                 self.assertFalse(校验数值类型(定义.最小值 - 1, 名称))
-        self.assertFalse(校验数值类型(True, "整数型"))
-        self.assertFalse(校验数值类型(True, "长整数型"))
+        self.assertFalse(校验数值类型(真, "整数型"))
+        self.assertFalse(校验数值类型(真, "长整数型"))
 
     def test_浮点只接受有限数值并区分精度(self):
         self.assertTrue(校验数值类型(1.25, "单精度数型"))

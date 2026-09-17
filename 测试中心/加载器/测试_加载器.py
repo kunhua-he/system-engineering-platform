@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.包声明.声明 import 从字典构建
 from 运行核心.加载器.包发现.发现器 import 发现全部, 扫描目录
 from 运行核心.加载器.依赖解析.解析器 import 解析依赖
@@ -41,7 +42,7 @@ class Test包发现(unittest.TestCase):
         能力id列表 = [
             能力.能力id
             for 声明 in 发现.声明列表
-            if not getattr(声明, "已废弃", False)
+            if not getattr(声明, "已废弃", 假)
             for 能力 in 声明.能力
         ]
         self.assertEqual(len(能力id列表), len(set(能力id列表)), "能力id 必须全局唯一")

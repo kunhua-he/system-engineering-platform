@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 完整语法集识别规则（逐条对齐 V3 Markdown解析器路由原有语义）
 _标题 = re.compile(r"^(#{1,6})\s+(.+)$")
@@ -49,16 +50,16 @@ def _切行(文本: str) -> list[str]:
 
 def _解析完整(行序列: list[str]) -> list[dict]:
     块列表: list[dict] = []
-    在代码块 = False
+    在代码块 = 假
     代码起始: int | None = None
     代码语言 = ""
     代码行: list[str] = []
     段落行: list[str] = []
     段落起始: int | None = None
-    在表格 = False
+    在表格 = 假
     表格行: list[str] = []
     表格起始: int | None = None
-    在列表 = False
+    在列表 = 假
     列表行: list[str] = []
     列表起始: int | None = None
 
@@ -105,13 +106,13 @@ def _解析完整(行序列: list[str]) -> list[dict]:
         if 围栏匹配:
             if 在代码块:
                 刷新代码(行号)
-                在代码块 = False
+                在代码块 = 假
             else:
                 刷新段落(行号 - 1)
                 刷新表格(行号 - 1)
                 刷新列表(行号 - 1)
                 代码语言 = 围栏匹配.group(1) or ""
-                在代码块 = True
+                在代码块 = 真
                 代码起始 = 行号
             continue
 
@@ -125,14 +126,14 @@ def _解析完整(行序列: list[str]) -> list[dict]:
         if _表格行.match(行):
             刷新段落(行号 - 1)
             刷新列表(行号 - 1)
-            在表格 = True
+            在表格 = 真
             if 表格起始 is None:
                 表格起始 = 行号
             表格行.append(行)
             continue
         if 在表格:
             刷新表格(行号 - 1)
-            在表格 = False
+            在表格 = 假
 
         标题匹配 = _标题.match(行)
         if 标题匹配:
@@ -175,7 +176,7 @@ def _解析完整(行序列: list[str]) -> list[dict]:
 
         if _无序列表.match(行) or _有序列表.match(行):
             刷新段落(行号 - 1)
-            在列表 = True
+            在列表 = 真
             if 列表起始 is None:
                 列表起始 = 行号
             列表行.append(行)
@@ -183,7 +184,7 @@ def _解析完整(行序列: list[str]) -> list[dict]:
         if 在列表:
             if 行.strip() == "":
                 刷新列表(行号 - 1)
-                在列表 = False
+                在列表 = 假
                 continue
             if _无序列表.match(行) or _有序列表.match(行):
                 列表行.append(行)
@@ -206,7 +207,7 @@ def _解析完整(行序列: list[str]) -> list[dict]:
     if not 块列表:
         块列表.append(_中间块(
             "paragraph", _空文件占位, None, None,
-            {"章节": "body", "empty": True}))
+            {"章节": "body", "empty": 真}))
     return 块列表
 
 
@@ -218,7 +219,7 @@ def _解析简化(行序列: list[str]) -> list[dict]:
     段落起始: int | None = None
     代码行: list[str] = []
     代码起始: int | None = None
-    在代码块 = False
+    在代码块 = 假
 
     def 追加段落(结束行: int) -> None:
         nonlocal 段落行, 段落起始
@@ -237,12 +238,12 @@ def _解析简化(行序列: list[str]) -> list[dict]:
                     块列表.append(_中间块(
                         "code", "\n".join(代码行), 代码起始, 行号,
                         {"章节": "code"}))
-                在代码块 = False
+                在代码块 = 假
                 代码行 = []
                 代码起始 = None
             else:
                 追加段落(行号 - 1)
-                在代码块 = True
+                在代码块 = 真
                 代码起始 = 行号
             continue
         if 在代码块:

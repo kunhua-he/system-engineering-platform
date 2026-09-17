@@ -9,6 +9,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.文档转换支持库.openpyxl提供者 import 生成表格文档, 解析表格文档, 注册能力
 from 支持库.后端.文档转换支持库.openpyxl提供者.实现 import 表格文档 as 解析模块
 
@@ -70,10 +71,10 @@ class TestOpenpyxl提供者(unittest.TestCase):
     def test_公式值策略(self):
         路径 = self.临时目录 / "公式.xlsx"
         _造公式文件(路径)
-        真模式 = 解析表格文档(str(路径), 数据模式=True)
+        真模式 = 解析表格文档(str(路径), 数据模式=真)
         self.assertTrue(真模式.成功)
         self.assertEqual(真模式.值["块列表"][0]["表格数据"], [["10"], ["20"]])
-        假模式 = 解析表格文档(str(路径), 数据模式=False)
+        假模式 = 解析表格文档(str(路径), 数据模式=假)
         self.assertTrue(假模式.成功)
         self.assertEqual(假模式.值["块列表"][0]["表格数据"], [["10"], ["20"], ["=SUM(A1:A2)"]])
 

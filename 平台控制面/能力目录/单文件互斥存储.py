@@ -33,6 +33,7 @@ import uuid
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Self
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 try:  # POSIX（macOS / Linux）：本平台主路径
     import fcntl
@@ -100,7 +101,7 @@ class _独占区:
         if self._深度 == 0:
             存储.解跨进程锁()
         存储.线程锁.release()
-        return False
+        return 假
 
 
 class 单文件互斥存储:

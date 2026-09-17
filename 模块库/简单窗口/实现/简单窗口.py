@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 _连接器 = None
 来源 = "简单窗口"
@@ -24,7 +25,7 @@ def _转结果(响应: Any, 默认错误码: str = "提供者不可用") -> 结�
         return 响应
     if not isinstance(响应, dict):
         return _失败("返回结果不符合契约", "连接器返回不是对象")
-    if 响应.get("成功") is True:
+    if 响应.get("成功") is 真:
         return 结果.成功结果(响应.get("值"))
     return _失败(
         str(响应.get("错误码") or 默认错误码),

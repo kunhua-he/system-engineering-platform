@@ -12,6 +12,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.授权 import 发布者
 from 支持库.适配层 import 生成密钥对
@@ -130,7 +131,7 @@ class Test发布者视图(unittest.TestCase):
         self.assertFalse(检查2["成功"], "源码变化后旧签名必须失效")
         self.assertIn("篡改", 检查2["消息"])
         self.assertIn("被篡改", 检查2["检查表"]["安装目录"]["差异表"][0])
-        self.assertEqual(检查2["检查表"]["安装目录"]["一致"], False)
+        self.assertEqual(检查2["检查表"]["安装目录"]["一致"], 假)
         # 制品仓库未动 → 仓库级校验仍有效，差异真实定位在安装目录
         有效, _ = self.服务.仓库.校验签名(制品摘要=self.制品摘要)
         self.assertTrue(有效, "制品仓库未被篡改时仓库校验应仍有效")

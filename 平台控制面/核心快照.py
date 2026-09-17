@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from 平台控制面.包仓库 import 规范化相对路径
 from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证, 内容摘要
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 
@@ -33,7 +34,7 @@ class 核心快照管理:
         self.快照根目录.mkdir(parents=True, exist_ok=True)
 
     def 创建快照(self, *, 运行核心版本: str, 前端核心版本: str, 后端核心版本: str,
-                状态兼容范围: str = "1.0.0-1.3.0", 回滚许可: bool = True,
+                状态兼容范围: str = "1.0.0-1.3.0", 回滚许可: bool = 真,
                 迁移方式: str = "扩展", 文件表: dict[str, str] | None = None) -> str:
         """创建不可变核心快照；文件路径拒绝逃逸；同内容同摘要。"""
         快照id = uuid.uuid4().hex[:16]
@@ -62,32 +63,32 @@ class 核心快照管理:
     def 签名快照(self, *, 快照id: str, 私钥PEM: str, 发布者: str) -> tuple[bool, str]:
         记录 = self.状态.读取记录("核心快照", "快照id", 快照id)
         if 记录 is None:
-            return False, "快照不存在"
+            return 假, "快照不存在"
         正文 = json.dumps({"快照id": 快照id, "摘要": 记录["摘要"], "发布者": 发布者},
                           ensure_ascii=False, sort_keys=True)
         签名值 = Ed签名(私钥PEM, 正文.encode("utf-8"))
         信任 = self.状态.读取记录("信任", "发布者", 发布者)
         if 信任 is None or not Ed验证(信任["公钥"], 正文.encode("utf-8"), 签名值):
-            return False, "签名验证失败或发布者不受信"
+            return 假, "签名验证失败或发布者不受信"
         self.状态.条件更新("核心快照", {"签名": 签名值, "签名者": 发布者,
                                   "状态": "已签名"}, "快照id=?", (快照id,))
-        return True, "快照已签名"
+        return 真, "快照已签名"
 
     def 校验快照(self, *, 快照id: str) -> tuple[bool, str]:
         """校验：Ed25519 验证公钥+签名正文 + 实际快照文件摘要 + 信任/撤销/过期。"""
         记录 = self.状态.读取记录("核心快照", "快照id", 快照id)
         if 记录 is None:
-            return False, "快照不存在"
+            return 假, "快照不存在"
         if not 记录["签名"]:
-            return False, "快照未签名"
+            return 假, "快照未签名"
         信任 = self.状态.读取记录("信任", "发布者", 记录["签名者"])
         if 信任 is None or 信任["状态"] != "有效":
-            return False, f"发布者不受信或已撤销: {记录['签名者']}"
+            return 假, f"发布者不受信或已撤销: {记录['签名者']}"
         # 1. Ed25519 验证签名正文（防签名伪造）
         正文 = json.dumps({"快照id": 快照id, "摘要": 记录["摘要"], "发布者": 记录["签名者"]},
                           ensure_ascii=False, sort_keys=True)
         if not Ed验证(信任["公钥"], 正文.encode("utf-8"), 记录["签名"]):
-            return False, "签名伪造或失效（Ed25519 验证失败）"
+            return 假, "签名伪造或失效（Ed25519 验证失败）"
         # 2. 实际快照目录文件摘要（磁盘篡改检测）
         快照目录 = self.快照根目录 / 快照id
         核心版本 = json.loads(记录["核心版本"])
@@ -97,20 +98,20 @@ class 核心快照管理:
                 实际文件摘要[文件.relative_to(快照目录).as_posix()] = \
                     hashlib.sha256(文件.read_bytes()).hexdigest()
         if not 实际文件摘要:
-            return False, "快照目录无正式文件"
+            return 假, "快照目录无正式文件"
         实际摘要 = 内容摘要(json.dumps(
             {"快照id": 快照id, "核心版本": 核心版本, "文件摘要": 实际文件摘要},
             ensure_ascii=False, sort_keys=True).encode("utf-8"))
         if 实际摘要 != 记录["摘要"]:
-            return False, "快照内容被篡改（磁盘摘要与记录不符）"
-        return True, "快照完整且签名有效"
+            return 假, "快照内容被篡改（磁盘摘要与记录不符）"
+        return 真, "快照完整且签名有效"
 
     def 健康检查(self, *, 快照id: str, 调用: Callable[[], bool]) -> tuple[bool, str]:
         """影子启动/健康检查：调用方提供真实调用函数（真实执行）。"""
         有效, 消息 = self.校验快照(快照id=快照id)
         if not 有效:
-            return False, 消息
+            return 假, 消息
         try:
-            return (True, "健康") if 调用() else (False, "健康检查失败")
+            return (真, "健康") if 调用() else (假, "健康检查失败")
         except Exception as 错误:
-            return False, f"健康检查异常: {错误}"
+            return 假, f"健康检查异常: {错误}"

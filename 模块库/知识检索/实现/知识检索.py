@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def _调用支持库(能力id: str, 参数: dict, *, 失败错误码: str = "提供者不可用") -> 结果:
@@ -36,7 +37,7 @@ def 检索知识(查询: str = None, 知识库: str = None, 模型名: str = Non
 
     # 1. 查询嵌入缓存
     r1 = _调用支持库("大语言模型支持库.嵌入缓存.查询嵌入", {"文本": 查询, "模型名": 模型, "提供者": 提供者标识})
-    缓存命中 = r1.成功 and r1.值.get("命中") if r1.值 else False
+    缓存命中 = r1.成功 and r1.值.get("命中") if r1.值 else 假
 
     # 2. 从知识库加载文档（文件系统 + 数据集合）
     if not 知识库:

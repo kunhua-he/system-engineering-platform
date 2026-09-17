@@ -26,6 +26,7 @@ from 项目适配层.项目初始化.项目初始化 import 创建项目
 from 项目适配层.项目声明.项目声明 import 加载项目声明, 写入项目声明
 from 项目适配层.运行入口.项目入口 import 项目入口
 from 项目适配层.支持库绑定.支持库绑定 import 校验绑定 as 校验支持库
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class Test项目初始化(unittest.TestCase):
@@ -141,7 +142,7 @@ class Test项目入口(unittest.TestCase):
                 raise RuntimeError(f"后端核心启动失败: {启动结果.错误说明}")
             cls.网关 = 本地网关服务器(
                 网关核心实例=网关核心(cls.后端), 端口=0, 地址="127.0.0.1",
-                配置={"请求超时秒": 1800, "要求凭证": False, "禁止客户端身份": False},
+                配置={"请求超时秒": 1800, "要求凭证": 假, "禁止客户端身份": 假},
             )
             成功, 说明 = cls.网关.启动()
             if not 成功:

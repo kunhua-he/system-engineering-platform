@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from 运行核心.运行诊断.安全审计.安全审计 import 安全审计
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 安全审计有界测试(unittest.TestCase):
@@ -14,7 +15,7 @@ class 安全审计有界测试(unittest.TestCase):
         with tempfile.TemporaryDirectory() as 临时目录:
             审计 = 安全审计(Path(临时目录))
             for 索引 in range(25):
-                审计.记录(操作=f"操作{索引}", 成功=True)
+                审计.记录(操作=f"操作{索引}", 成功=真)
             结果 = 审计.查询(最大记录数=5)
             self.assertEqual(len(结果), 5)
             self.assertEqual([项["操作"] for 项 in 结果], [f"操作{i}" for i in range(20, 25)])

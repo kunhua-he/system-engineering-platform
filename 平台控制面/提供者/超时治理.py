@@ -12,6 +12,7 @@ from collections import deque
 from typing import Any, Callable
 
 from 平台控制面.资源监督 import 资源监督器
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 超时治理:
@@ -35,7 +36,7 @@ class 超时治理:
                                                 "单次调用超时": 超时秒, "每分钟重启次数": 2,
                                                 "空闲回收时间": 30})
             if not 有效:
-                return False, 消息, None
+                return 假, 消息, None
             self.监督器.注册执行单元(单元id=单元id, 预算={
                 "内存上限": 100, "线程上限": 2, "子进程上限": 1, "并发调用上限": 2,
                 "队列长度": 10, "文件句柄上限": 50, "临时空间上限": 100,
@@ -64,10 +65,10 @@ class 超时治理:
             记录表.popleft()  # 窗口滑动：过期记录移出
         if len(记录表) >= 每分钟上限:
             self.状态存储.追加证据(类型="重启治理", 主题=单元id,
-                                  内容={"拒绝": True, "窗口内重启": len(记录表), "上限": 每分钟上限},
+                                  内容={"拒绝": 真, "窗口内重启": len(记录表), "上限": 每分钟上限},
                                   结果="拒绝", 错误码="重启次数超限")
-            return False
-        return True
+            return 假
+        return 真
 
     def 治理状态(self) -> dict[str, Any]:
         """治理状态：各单元窗口内重启次数与超时取消次数。"""

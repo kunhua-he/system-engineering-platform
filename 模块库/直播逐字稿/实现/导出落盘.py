@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "直播逐字稿"
 
@@ -23,7 +24,7 @@ def _底座(能力id: str, 参数: dict):
 
 
 def _成功(结果对象) -> bool:
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
 def _失败说明(结果对象, 兜底: str) -> str:

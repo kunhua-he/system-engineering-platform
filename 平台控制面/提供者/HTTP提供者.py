@@ -18,6 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
 
 
@@ -155,7 +156,7 @@ class HTTP提供者:
                 return 结果
             最后错误 = 结果["错误"]
             time.sleep(self.重试退避基数 * (2 ** 尝试))
-        return {"成功": False, "状态码": 0, "响应": b"", "头部": {}, "截断": False,
+        return {"成功": 假, "状态码": 0, "响应": b"", "头部": {}, "截断": 假,
                 "错误": f"重试 {self.重试次数} 次后仍失败：{最后错误}",
                 "重试次数": self.重试次数}
 
@@ -164,28 +165,28 @@ class HTTP提供者:
         try:
             with urllib.request.urlopen(请求对象, timeout=超时秒) as 响应:
                 响应体, 截断 = self._受限读取(响应, 上限)
-                return {"成功": True, "状态码": 响应.status, "响应": 响应体,
+                return {"成功": 真, "状态码": 响应.status, "响应": 响应体,
                         "头部": dict(响应.headers.items()), "截断": 截断,
-                        "错误": "", "可重试": False, "重试次数": 0}
+                        "错误": "", "可重试": 假, "重试次数": 0}
         except urllib.error.HTTPError as 错误:
             try:
                 响应体, 截断 = self._受限读取(错误, 上限)
-                return {"成功": False, "状态码": 错误.code, "响应": 响应体,
+                return {"成功": 假, "状态码": 错误.code, "响应": 响应体,
                         "头部": dict(错误.headers.items()), "截断": 截断,
-                        "错误": f"HTTP 状态码 {错误.code}", "可重试": False, "重试次数": 0}
+                        "错误": f"HTTP 状态码 {错误.code}", "可重试": 假, "重试次数": 0}
             finally:
                 错误.close()
         except Exception as 错误:
             if isinstance(错误, socket.timeout) or (
                     isinstance(错误, urllib.error.URLError)
                     and isinstance(错误.reason, socket.timeout)):
-                return {"成功": False, "状态码": 0, "响应": b"", "头部": {}, "截断": False,
-                        "错误": f"请求超时（{超时秒} 秒）", "可重试": False, "重试次数": 0}
+                return {"成功": 假, "状态码": 0, "响应": b"", "头部": {}, "截断": 假,
+                        "错误": f"请求超时（{超时秒} 秒）", "可重试": 假, "重试次数": 0}
             可重试 = isinstance(错误, (ConnectionRefusedError, ConnectionResetError))
             if isinstance(错误, urllib.error.URLError):
                 可重试 = isinstance(错误.reason,
                                    (ConnectionRefusedError, ConnectionResetError))
-            return {"成功": False, "状态码": 0, "响应": b"", "头部": {}, "截断": False,
+            return {"成功": 假, "状态码": 0, "响应": b"", "头部": {}, "截断": 假,
                     "错误": f"请求失败：{错误}", "可重试": 可重试, "重试次数": 0}
 
     @staticmethod

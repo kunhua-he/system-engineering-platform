@@ -14,6 +14,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 class Test浏览器宿主(unittest.TestCase):
     def test_注册能力返回统一结果(self) -> None:
         from 支持库.前端.浏览器宿主 import 注册能力
@@ -27,8 +28,8 @@ class Test浏览器宿主(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="浏览器宿主状态_", dir="/tmp") as 状态目录:
             结果 = 表.能力.调用(
                 标题="统一结果测试", 页面说明="", 网关地址="", 能力id="",
-                端口=0, 自动打开=False, 受管验证=True, 状态目录=状态目录)
-        self.assertTrue(getattr(结果, "成功", False))
+                端口=0, 自动打开=假, 受管验证=真, 状态目录=状态目录)
+        self.assertTrue(getattr(结果, "成功", 假))
         self.assertEqual(getattr(结果, "错误码", "非统一结果"), "")
 
     def test_完整性摘要与当前源码一致(self) -> None:

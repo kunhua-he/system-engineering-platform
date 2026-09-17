@@ -21,6 +21,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 公共契约.版本规则.契约版本 import 契约版本
 from 公共契约.运行时.平台适配 import 子进程组启动标志
@@ -250,13 +251,13 @@ class TestPillow提供者(unittest.TestCase):
             try:
                 进程.communicate(timeout=0.5)  # 不发请求 → 子进程阻塞 → 真实超时
             except subprocess.TimeoutExpired:
-                return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+                return 提供者模块._失败("超时", "模拟超时", 可重试=真)
             finally:
                 提供者模块._终止进程组(进程)
                 for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
                     if 流:
                         流.close()
-            return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+            return 提供者模块._失败("超时", "模拟超时", 可重试=真)
         with mock.patch.object(提供者模块, "执行任务", side_effect=挂起执行):
             结果 = 解码图像(最小PNG)
         self.assertEqual(结果.错误码, "超时")
@@ -512,13 +513,13 @@ class TestPillow提供者(unittest.TestCase):
             try:
                 进程.communicate(timeout=0.3)  # 不发请求 → 真实挂起 → 超时
             except subprocess.TimeoutExpired:
-                return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+                return 提供者模块._失败("超时", "模拟超时", 可重试=真)
             finally:
                 提供者模块._终止进程组(进程)
                 for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
                     if 流:
                         流.close()
-            return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+            return 提供者模块._失败("超时", "模拟超时", 可重试=真)
         with mock.patch.object(提供者模块, "执行任务", side_effect=挂起执行):
             结果 = 解码图像(最小PNG)
         self.assertEqual(结果.错误码, "超时")

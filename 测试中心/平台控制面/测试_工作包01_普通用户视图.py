@@ -12,6 +12,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.统一能力入口.视图.普通用户视图 import 普通用户视图
 from 平台控制面.统一入口 import 统一能力服务
 
@@ -106,7 +107,7 @@ class Test普通用户视图(unittest.TestCase):
             "摘要": self.视图.展示能力摘要(),
             "详情": self.视图.查看能力详情("计算.求值"),
             "建议": self.视图.失败处理建议(
-                {"成功": False, "错误码": "越权操作"})},
+                {"成功": 假, "错误码": "越权操作"})},
             ensure_ascii=False)
         for 禁词 in ("私钥测试内容_勿外泄", "统一入口.py",
                      str(self.服务.状态.存储目录), "验证缓存"):

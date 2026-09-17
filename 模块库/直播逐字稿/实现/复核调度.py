@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 _来源 = "直播逐字稿"
 默认间隔秒 = 60
@@ -36,7 +37,7 @@ def _底座(能力id: str, 参数: dict):
 
 
 def _成功(结果对象) -> bool:
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
 def _失败说明(结果对象, 兜底: str) -> str:
@@ -102,23 +103,23 @@ def 聚类区间(疑难段: list[dict], 间隔秒: int = 默认间隔秒) -> dic
 def _执行一轮(调用能力, 源音频路径: str, 超时: float, 模型配置, 序号: int) -> dict:
     """跑一轮转写（每轮术语提示不同）；底层失败或异常记进该轮条目，文本留空。"""
     提示 = 轮次提示表[序号 - 1] if 1 <= 序号 <= len(轮次提示表) else f"第{序号}轮：独立复听，核对上轮未确认处。"
-    条目 = {"轮": 序号, "文本": "", "分段": [], "成功": False, "错误码": "", "错误说明": ""}
+    条目 = {"轮": 序号, "文本": "", "分段": [], "成功": 假, "错误码": "", "错误说明": ""}
     参数 = {"文件路径": 源音频路径, "超时秒": 超时, "配置": 模型配置,
-            "附加术语": 提示, "返回分段": True}
+            "附加术语": 提示, "返回分段": 真}
     try:
         结果 = 调用能力(转写能力id, 参数)
     except Exception as 错误:  # 底层异常不得外泄给调用方
         条目["错误码"] = "调用异常"
         条目["错误说明"] = f"第{序号}轮调用异常: {错误}"
         return 条目
-    if not bool(getattr(结果, "成功", False)):
+    if not bool(getattr(结果, "成功", 假)):
         条目["错误码"] = str(getattr(结果, "错误码", "") or "转写失败")
         条目["错误说明"] = str(getattr(结果, "错误说明", "") or f"第{序号}轮转写失败")
         return 条目
     值 = getattr(结果, "值", None)
     值字典 = 值 if isinstance(值, dict) else {}
     分段 = 值字典.get("分段")
-    条目.update({"成功": True, "文本": str(值字典.get("文本") or "").strip(),
+    条目.update({"成功": 真, "文本": str(值字典.get("文本") or "").strip(),
                 "分段": 分段 if isinstance(分段, list) else []})
     return 条目
 
@@ -163,7 +164,7 @@ def _区间可用(轮次: list, 开始, 结束) -> tuple:
     """
     条目们 = [条目 for 条目 in (轮次 or []) if isinstance(条目, dict)]
     if not 条目们:
-        return False, "无轮次记录"
+        return 假, "无轮次记录"
     失败轮 = [条目 for 条目 in 条目们 if not 条目.get("成功")]
     无文本 = [条目 for 条目 in 条目们 if not str(条目.get("文本") or "").strip()]
     try:
@@ -171,12 +172,12 @@ def _区间可用(轮次: list, 开始, 结束) -> tuple:
     except (TypeError, ValueError):
         时长 = 0.0
     if 失败轮 and len(无文本) == len(条目们) and 0.0 <= 时长 < 最小复核时长:
-        return True, "区间过短（%.2f 秒）且各轮均无文本，按无可用内容记账" % 时长
+        return 真, "区间过短（%.2f 秒）且各轮均无文本，按无可用内容记账" % 时长
     if 失败轮:
-        return False, "；".join("第%s轮: %s" % (条目.get("轮"),
+        return 假, "；".join("第%s轮: %s" % (条目.get("轮"),
                                              条目.get("错误说明") or 条目.get("错误码") or "未说明")
                                for 条目 in 失败轮)
-    return True, ""
+    return 真, ""
 
 
 def _截取区间(调用能力, 源音频路径: str, 开始: float, 结束: float,
@@ -197,7 +198,7 @@ def _截取区间(调用能力, 源音频路径: str, 开始: float, 结束: flo
                                     "最大时长秒": 43200.0})
     except Exception as 错误:  # 底层异常不得外泄给调用方
         return "", f"截取异常: {错误}"
-    if not bool(getattr(结果, "成功", False)):
+    if not bool(getattr(结果, "成功", 假)):
         return "", f"{str(getattr(结果, '错误码', '') or '截取失败')}: {str(getattr(结果, '错误说明', '') or '区间截取失败')}"
     return 输出路径, ""
 
@@ -236,12 +237,12 @@ def _读已有复核(复核目录: str, 区间id: int) -> dict | None:
     return {"区间id": 区间id, "开始秒": 数据.get("开始秒"), "结束秒": 数据.get("结束秒"),
             "轮次": 轮次, "区间音频路径": 数据.get("区间音频路径") or "",
             "状态": "完成", "错误码": "", "错误说明": "",
-            "写入路径": str(路径), "复用": True, "标注": 标注}
+            "写入路径": str(路径), "复用": 真, "标注": 标注}
 
 
 def 复核区间(源音频路径: str, 区间: dict, 复核目录: str, 调用能力,
              轮数: int = 默认轮数, 模型配置: dict | None = None,
-             超时秒: float = 默认超时秒, 续跑: bool = True) -> dict:
+             超时秒: float = 默认超时秒, 续跑: bool = 真) -> dict:
     """对单个区间先截取区间音频、再跑多轮独立转写并落盘；已落盘且区间一致时直接复用。"""
     区间id, 开始, 结束 = _区间信息(区间)
     超时 = _取数(超时秒)

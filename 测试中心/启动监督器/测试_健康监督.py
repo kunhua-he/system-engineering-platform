@@ -19,6 +19,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 启动监督器.健康监督 import (
     macOS版本,
     查找LibreOffice命令,
@@ -35,7 +36,7 @@ def _成功探针函数(调用记录: list | None = None):
             版本参数: str = "--version") -> 探针结果:
         if 调用记录 is not None:
             调用记录.append((名称, 命令列表, 版本参数))
-        return 探针结果(True, 退出码=0, 版本="9.9.9",
+        return 探针结果(真, 退出码=0, 版本="9.9.9",
                         诊断=f"{名称} 探针成功")
     return 探针
 
@@ -44,7 +45,7 @@ def _失败探针函数() -> None:
     """可控探针：失败返回「退出码非零」（测试注入，生产代码不用）。"""
     def 探针(名称: str, 命令列表: list[str], *, 超时秒: float = 5.0,
             版本参数: str = "--version") -> 探针结果:
-        return 探针结果(False, 错误码="退出码非零", 退出码=1,
+        return 探针结果(假, 错误码="退出码非零", 退出码=1,
                         标准错误摘要="模拟失败输出",
                         诊断=f"{名称} 退出码 1")
     return 探针
@@ -54,7 +55,7 @@ def _超时探针函数() -> None:
     """可控探针：超时失败（暂态、可重试）（测试注入，生产代码不用）。"""
     def 探针(名称: str, 命令列表: list[str], *, 超时秒: float = 5.0,
             版本参数: str = "--version") -> 探针结果:
-        return 探针结果(False, 错误码="探针超时", 可重试=True,
+        return 探针结果(假, 错误码="探针超时", 可重试=真,
                         诊断=f"{名称} 探针超时")
     return 探针
 
@@ -63,7 +64,7 @@ def _工具缺失探针函数() -> None:
     """可控探针：工具缺失失败（测试注入，生产代码不用）。"""
     def 探针(名称: str, 命令列表: list[str], *, 超时秒: float = 5.0,
             版本参数: str = "--version") -> 探针结果:
-        return 探针结果(False, 错误码="工具缺失",
+        return 探针结果(假, 错误码="工具缺失",
                         诊断=f"{名称} 未找到")
     return 探针
 
@@ -130,7 +131,7 @@ class Test健康监督失败语义(unittest.TestCase):
         self.assertEqual(
             结果["提供者"]["LibreOffice"]["错误码"], "探针异常")
         self.assertFalse(结果["提供者"]["LibreOffice"]["成功"])
-        self.assertEqual(结果["提供者"]["LibreOffice"]["可重试"], False)
+        self.assertEqual(结果["提供者"]["LibreOffice"]["可重试"], 假)
 
     def test_失败后主进程继续运行(self):
         调用记录: list = []
@@ -279,7 +280,7 @@ class Test健康监督诊断证据(unittest.TestCase):
         监督.执行一次周期检查()
         记录表 = [json.loads(行) for 行 in
                   证据文件.read_text(encoding="utf-8").strip().splitlines()]
-        self.assertTrue(all(记录["健康"] is False for 记录 in 记录表))
+        self.assertTrue(all(记录["健康"] is 假 for 记录 in 记录表))
         self.assertTrue(all(记录["标准错误摘要"] == "模拟失败输出"
                             for 记录 in 记录表))
 

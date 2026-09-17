@@ -12,6 +12,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 class 测试浏览器自动化Provider(unittest.TestCase):
     def test_provider超时有界(self) -> None:
         from 支持库.适配层.浏览器自动化提供者.实现.提供者 import 浏览器自动化提供者
@@ -28,22 +29,22 @@ class 测试浏览器自动化Provider(unittest.TestCase):
 
         class 假Provider:
             def 建立连接(self, **参数):
-                return {"成功": True, "值": {"会话名": "测试会话"}}
+                return {"成功": 真, "值": {"会话名": "测试会话"}}
 
             def 导航(self, **参数):
-                return {"成功": True, "值": {"地址": 参数["地址"], "标题": "测试"}}
+                return {"成功": 真, "值": {"地址": 参数["地址"], "标题": "测试"}}
 
             def 读取(self, **参数):
-                return {"成功": True, "值": {"地址": "about:blank", "标题": "测试", "内容": "正文"}}
+                return {"成功": 真, "值": {"地址": "about:blank", "标题": "测试", "内容": "正文"}}
 
             def 操作(self, **参数):
-                return {"成功": True, "值": {"状态": "已完成", "地址": "about:blank"}}
+                return {"成功": 真, "值": {"状态": "已完成", "地址": "about:blank"}}
 
             def 截图(self, **参数):
-                return {"成功": True, "值": {"路径": 参数["路径"], "字节数": 1, "格式": "png"}}
+                return {"成功": 真, "值": {"路径": 参数["路径"], "字节数": 1, "格式": "png"}}
 
             def 关闭会话(self, **参数):
-                return {"成功": True, "值": {"状态": "已关闭"}}
+                return {"成功": 真, "值": {"状态": "已关闭"}}
 
         原Provider = 模块._提供者
         模块._提供者 = 假Provider()
@@ -67,7 +68,7 @@ class 测试浏览器自动化Provider(unittest.TestCase):
 
         class 失败Provider:
             def 建立连接(self, **参数):
-                return {"成功": False, "错误码": "提供者不可用", "错误说明": "测试失败"}
+                return {"成功": 假, "错误码": "提供者不可用", "错误说明": "测试失败"}
 
         原Provider = 模块._提供者
         模块._提供者 = 失败Provider()

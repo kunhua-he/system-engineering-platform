@@ -19,6 +19,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 运行核心.任务调度.任务进程 import 任务进程池, 资源繁忙错误
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 终态集合 = {"成功", "失败", "已取消", "超时", "崩溃"}
 
@@ -27,7 +28,7 @@ def 等待条件(条件, 超时秒: float = 8.0) -> bool:
     截止 = time.monotonic() + 超时秒
     while time.monotonic() < 截止:
         if 条件():
-            return True
+            return 真
         time.sleep(0.01)
     return bool(条件())
 
@@ -170,11 +171,11 @@ class Test任务进程池有界(unittest.TestCase):
         池.注册执行函数("任务.停顿", 任务短暂停顿)
         for _ in range(4):
             池.提交(能力id="任务.停顿", 参数={"等待秒": 0.3})
-        池.注册执行函数("任务.快", lambda 参数: {"快": True})
+        池.注册执行函数("任务.快", lambda 参数: {"快": 真})
         池.提交(能力id="任务.快")
-        池.注册执行函数("任务.瞬", lambda 参数: {"瞬": True})
+        池.注册执行函数("任务.瞬", lambda 参数: {"瞬": 真})
         池.提交(能力id="任务.瞬")
-        池.注册执行函数("任务.短", lambda 参数: {"短": True})
+        池.注册执行函数("任务.短", lambda 参数: {"短": 真})
         池.提交(能力id="任务.短")
         # 提交再多任务，内部监视线程始终只有一个，总量不超过 最大活动数+1
         池.注册执行函数("任务.更多", 任务短暂停顿)

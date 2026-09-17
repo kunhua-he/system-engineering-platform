@@ -23,10 +23,11 @@ from unittest import mock
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.办公文档支持库.PDF文档 import 解析PDF
 
 
-def _生成文本PDF(路径: Path, 页数: int = 1, 加密: bool = False) -> Path:
+def _生成文本PDF(路径: Path, 页数: int = 1, 加密: bool = 假) -> Path:
     """reportlab 生成中文 PDF（内置 CID 字体，无需字体文件）。
 
     注：pdfminer 对 reportlab 非嵌入 CID 中文字体仅单页提取可靠
@@ -206,7 +207,7 @@ class TestPDF文档(unittest.TestCase):
         self.assertEqual(结果.错误码, "文件损坏")
 
     def test_加密文件(self):
-        加密 = _生成文本PDF(self.临时目录 / "加密.pdf", 加密=True)
+        加密 = _生成文本PDF(self.临时目录 / "加密.pdf", 加密=真)
         结果 = 解析PDF(str(加密))
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "文件加密")

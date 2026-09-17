@@ -37,11 +37,12 @@ from 运行核心.统一网关.网关核心 import 网关核心
 from 运行核心.统一网关.本地网关 import 本地网关服务器
 from 公共契约.基础类型.结果类型 import 结果
 from 运行核心.资源协调.句柄服务 import 资源句柄服务
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class _测试处理器(BaseHTTPRequestHandler):
     请求体: dict = {}
-    返回数据: object = {"成功": True, "值": {"结果": 42}, "错误码": "", "错误说明": ""}
+    返回数据: object = {"成功": 真, "值": {"结果": 42}, "错误码": "", "错误说明": ""}
     返回类型: str = "json"
     状态码 = 200
     请求次数 = 0
@@ -117,7 +118,7 @@ class 测试HTTP连接器(unittest.TestCase):
         _测试处理器.请求次数 = 0
         _测试处理器.返回类型 = "json"
         _测试处理器.状态码 = 200
-        _测试处理器.返回数据 = {"成功": True, "值": {"结果": 42}, "错误码": "", "错误说明": ""}
+        _测试处理器.返回数据 = {"成功": 真, "值": {"结果": 42}, "错误码": "", "错误说明": ""}
         _测试处理器.延迟秒 = 0.0
 
     def test_健康检查编码中文路径并返回成功(self) -> None:
@@ -147,7 +148,7 @@ class 测试HTTP连接器(unittest.TestCase):
 
     def test_真实HTTP成功并透传整数句柄(self) -> None:
         _测试处理器.返回数据 = {
-            "成功": True, "值": {"结果": 42}, "错误码": "", "错误说明": "", "句柄": 428101,
+            "成功": 真, "值": {"结果": 42}, "错误码": "", "错误说明": "", "句柄": 428101,
         }
         结果 = self.连接器.调用能力(
             "测试.读取", {"资源id": "资源1"}, 句柄=428101,
@@ -210,7 +211,7 @@ class 测试HTTP连接器(unittest.TestCase):
     def test_响应请求id不一致拒绝成功(self) -> None:
         """响应必须回显本次请求 id，防止响应串线。"""
         _测试处理器.返回数据 = {
-            "成功": True, "值": {"结果": 42}, "错误码": "", "错误说明": "",
+            "成功": 真, "值": {"结果": 42}, "错误码": "", "错误说明": "",
             "请求id": "伪造请求",
         }
         结果 = self.连接器.调用能力("测试.读取", {}, 请求id="本次请求")
@@ -260,7 +261,7 @@ class _假后端:
         type(self).最后句柄 = 上下文.句柄
         if type(self).返回对象 is not None:
             return type(self).返回对象
-        return 结果.成功结果({"收到": 参数, "通过": True})
+        return 结果.成功结果({"收到": 参数, "通过": 真})
 
 
 class 测试HTTP连接器接入统一网关(unittest.TestCase):
@@ -307,7 +308,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         """后端返回字符串成功标记时，网关不能把它当作逻辑型放行。"""
         原返回对象 = _假后端.返回对象
         _假后端.返回对象 = SimpleNamespace(
-            成功="false", 值={"伪成功": True}, 错误码="内部错误", 错误说明="真实失败",
+            成功="false", 值={"伪成功": 真}, 错误码="内部错误", 错误说明="真实失败",
         )
         try:
             结果字典 = self.连接器.调用能力("测试.HTTP能力", {})
@@ -390,7 +391,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
 
     def test_网关拒绝数值字段文本和逻辑值漂移(self) -> None:
         """超时秒显式传入文本或逻辑值时，网关不能隐式转换。"""
-        for 值 in ("1", True):
+        for 值 in ("1", 真):
             地址 = f"http://127.0.0.1:{self.网关.端口}/网关/调用"
             请求 = urllib.request.Request(
                 urllib.parse.quote(地址, safe=":/@._-"),
@@ -444,7 +445,7 @@ class 测试HTTP连接器接入统一网关(unittest.TestCase):
         self.assertTrue(all(结果["成功"] for 结果 in 结果表))
         self.assertEqual(
             {json.dumps(结果["值"], ensure_ascii=False, sort_keys=True) for 结果 in 结果表},
-            {json.dumps({"收到": {"输入": "并发相同"}, "通过": True}, ensure_ascii=False, sort_keys=True)},
+            {json.dumps({"收到": {"输入": "并发相同"}, "通过": 真}, ensure_ascii=False, sort_keys=True)},
         )
         self.assertEqual({结果["句柄"] for 结果 in 结果表}, {结果表[0]["句柄"]})
         self.assertEqual(_假后端.调用次数, 调用前 + 1)

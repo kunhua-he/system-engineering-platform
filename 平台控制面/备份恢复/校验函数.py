@@ -8,6 +8,7 @@
 from __future__ import annotations
 import hashlib, json, sqlite3
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 锁必填字段表 = ("项目id", "所有者", "锁定时间")
 
@@ -25,9 +26,9 @@ def 校验权威状态(目录: Path, 备份项: dict) -> tuple[bool, str]:
         连接 = sqlite3.connect(f"file:{目录 / 备份项['文件']}?mode=ro", uri=True)
         try: 结果 = 连接.execute("PRAGMA integrity_check").fetchone()
         finally: 连接.close()
-        return (True, "完整性检查通过") if 结果 and 结果[0] == "ok" else (False, f"完整性检查: {结果}")
+        return (真, "完整性检查通过") if 结果 and 结果[0] == "ok" else (假, f"完整性检查: {结果}")
     except (sqlite3.DatabaseError, OSError) as 错误:
-        return False, f"sqlite 打开或检查失败: {错误}"
+        return 假, f"sqlite 打开或检查失败: {错误}"
 
 
 def 校验证据账本(目录: Path, 备份项: dict) -> tuple[bool, str]:
@@ -37,17 +38,17 @@ def 校验证据账本(目录: Path, 备份项: dict) -> tuple[bool, str]:
     恒真（判据① 空跑），不能据此认证备份有效。
     """
     try: 证据表 = json.loads((目录 / 备份项["文件"]).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as 错误: return False, f"证据账本不可解析: {错误}"
+    except (OSError, json.JSONDecodeError) as 错误: return 假, f"证据账本不可解析: {错误}"
     if not isinstance(证据表, list) or not 证据表:
-        return False, "证据账本为空或不是数组（无可校验证据）"
+        return 假, "证据账本为空或不是数组（无可校验证据）"
     for 条 in 证据表:
         if not isinstance(条, dict):
-            return False, f"证据条目不是对象: {条!r}"
+            return 假, f"证据条目不是对象: {条!r}"
         内容 = 条.get("内容", "")
         正文 = 内容 if isinstance(内容, str) else json.dumps(内容, ensure_ascii=False)
         if 条.get("哈希") != hashlib.sha256(正文.encode("utf-8")).hexdigest()[:16]:
-            return False, f"证据哈希不符: {条.get('证据id')}"
-    return True, f"{len(证据表)} 条证据哈希全部一致"
+            return 假, f"证据哈希不符: {条.get('证据id')}"
+    return 真, f"{len(证据表)} 条证据哈希全部一致"
 
 
 def 校验包仓库(目录: Path, 备份项: dict) -> tuple[bool, str]:
@@ -58,18 +59,18 @@ def 校验包仓库(目录: Path, 备份项: dict) -> tuple[bool, str]:
     """
     文件摘要表 = 备份项.get("文件摘要表")
     if not isinstance(文件摘要表, dict) or not 文件摘要表:
-        return False, "制品摘要表为空或缺失（无可比对制品）"
+        return 假, "制品摘要表为空或缺失（无可比对制品）"
     for 相对路径, 期望摘要 in 文件摘要表.items():
         文件 = 目录 / 相对路径
         if not 文件.is_file() or 内容摘要(文件.read_bytes()) != 期望摘要:
-            return False, f"制品缺失或摘要不符: {相对路径}"
-    return True, "全部制品摘要一致"
+            return 假, f"制品缺失或摘要不符: {相对路径}"
+    return 真, "全部制品摘要一致"
 
 
 def 校验项目锁(目录: Path, 备份项: dict) -> tuple[bool, str]:
     """JSON 可解析且必填字段齐全。"""
     try: 锁 = json.loads((目录 / 备份项["文件"]).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as 错误: return False, f"项目锁不可解析: {错误}"
+    except (OSError, json.JSONDecodeError) as 错误: return 假, f"项目锁不可解析: {错误}"
     if not isinstance(锁, dict) or any(字段 not in 锁 for 字段 in 锁必填字段表):
-        return False, "项目锁必须为 JSON 对象且必填字段齐全"
-    return True, "必填字段齐全"
+        return 假, "项目锁必须为 JSON 对象且必填字段齐全"
+    return 真, "必填字段齐全"

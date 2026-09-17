@@ -39,6 +39,7 @@ from urllib.request import HTTPHandler, HTTPSHandler, ProxyHandler, build_opener
 
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.网络通信支持库.出站安全 import 校验出站URL
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 敏感头集合 = {"authorization", "x-api-key", "api-key", "cookie", "proxy-authorization"}
 默认超时秒 = 10
@@ -74,9 +75,9 @@ def _探是否纯回环目标(地址: str) -> bool:
     try:
         主机 = _解析地址(地址).hostname
     except ValueError:
-        return False
+        return 假
     if not 主机:
-        return False
+        return 假
     try:
         return _是回环地址(ipaddress.ip_address(主机))
     except ValueError:
@@ -84,18 +85,18 @@ def _探是否纯回环目标(地址: str) -> bool:
     try:
         地址信息 = socket.getaddrinfo(主机, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except OSError:
-        return False
+        return 假
     候选: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for 条目 in 地址信息:
         try:
             文本 = str(条目[4][0]).split("%")[0]
             候选.append(ipaddress.ip_address(文本))
         except (IndexError, TypeError, ValueError):
-            return False
+            return 假
     return bool(候选) and all(_是回环地址(单个) for 单个 in 候选)
 
 
-def _校验协议与SSRF(地址: str, 允许回环: bool = False) -> None:
+def _校验协议与SSRF(地址: str, 允许回环: bool = 假) -> None:
     """SSRF 强校验：**委托** 出站安全.校验出站URL（唯一判定实现），不复制判定逻辑。
 
     覆盖：协议白名单（仅 http/https）、URL 内嵌凭据、云元数据地址与主机名
@@ -108,7 +109,7 @@ def _校验协议与SSRF(地址: str, 允许回环: bool = False) -> None:
     云元数据、非 http(s) 或内嵌凭据目标。不通过时抛 ValueError，由各能力统一
     转成 结果.失败("参数不合法", "SSRF防护: …")。
     """
-    判定 = 校验出站URL(地址=地址, 解析DNS=True)
+    判定 = 校验出站URL(地址=地址, 解析DNS=真)
     if not 判定.成功:
         raise ValueError(f"SSRF防护: {判定.错误说明}")
     判定值 = 判定.值 if isinstance(判定.值, dict) else {}
@@ -129,7 +130,7 @@ def _判定单个IP是否放行(IP文本: str) -> str:
         规范化 = f"[{IP文本}]"
     else:
         规范化 = IP文本
-    判定 = 校验出站URL(地址=f"http://{规范化}/", 解析DNS=False)
+    判定 = 校验出站URL(地址=f"http://{规范化}/", 解析DNS=假)
     if not 判定.成功:
         return str(判定.错误说明)
     判定值 = 判定.值 if isinstance(判定.值, dict) else {}
@@ -138,7 +139,7 @@ def _判定单个IP是否放行(IP文本: str) -> str:
     return str(判定值.get("原因") or "未通过出站安全校验")
 
 
-def _解析候选地址(地址: str, 允许回环: bool = False) -> tuple[str, str, int, list[str]]:
+def _解析候选地址(地址: str, 允许回环: bool = 假) -> tuple[str, str, int, list[str]]:
     """解析 URL 并返回 (主机名, 协议, 端口, 已复核IP列表)。
 
     关键：候选 IP **逐个** 交给唯一判定实现（`校验出站URL`）复核，只保留复核通过
@@ -221,18 +222,18 @@ def _是否走代理(地址: str) -> bool:
         主机名 = 解析.hostname or ""
         协议 = (解析.scheme or "").lower()
     except ValueError:
-        return False
+        return 假
     try:
         if urllib.request.proxy_bypass(主机名):
-            return False
+            return 假
         代理表 = urllib.request.getproxies()
     except Exception:
-        return False
+        return 假
     return bool(代理表.get(协议) or 代理表.get("all"))
 
 
 def _绑定地址到请求(请求: urllib.request.Request, 地址: str,
-                    允许回环: bool = False, 显式代理: str = None) -> list[str]:
+                    允许回环: bool = 假, 显式代理: str = None) -> list[str]:
     """把「校验阶段解析并复核过的 IP」挂到请求上，供连接处理器绑定。
 
     两种走代理的情况都无法绑定（连接目标是代理，代理解析真实主机名）：
@@ -336,7 +337,7 @@ class _绑定地址HTTPSHandler(HTTPSHandler):
     https_request = HTTPSHandler.do_request_
 
 
-def _构造打开器(*, 代理: str = None, 允许回环: bool = False, 跟随重定向: bool = True,
+def _构造打开器(*, 代理: str = None, 允许回环: bool = 假, 跟随重定向: bool = 真,
                  ssl上下文=None) -> urllib.request.OpenerDirector:
     """统一构造 opener：逐跳 SSRF 校验 + 已校验 IP 绑定（两处连接点共用一份）。
 
@@ -362,7 +363,7 @@ def _构造打开器(*, 代理: str = None, 允许回环: bool = False, 跟随�
 
 def _构造SSL上下文(SSL验证: bool | None):
     """SSL验证=False → 不校验证书的上下文；否则 None（用默认上下文）。"""
-    if SSL验证 is False:
+    if SSL验证 is 假:
         try:
             return ssl._create_unverified_context()
         except Exception as 错误:
@@ -396,7 +397,7 @@ class 逐跳校验重定向(urllib.request.HTTPRedirectHandler):
     `启用绑定=False`（走代理时）则只做校验、不绑定，保持原代理路径行为。
     """
 
-    def __init__(self, 允许回环: bool = False, 启用绑定: bool = True) -> None:
+    def __init__(self, 允许回环: bool = 假, 启用绑定: bool = 真) -> None:
         super().__init__()
         self._允许回环 = bool(允许回环)
         self._启用绑定 = bool(启用绑定)
@@ -427,7 +428,7 @@ def 构建查询串(参数: dict = None) -> 结果:
 
 def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = None,
               请求体: Any = None, 超时秒: float = 默认超时秒,
-              最大字节数: int = 默认最大字节数, 允许回环: bool = False,
+              最大字节数: int = 默认最大字节数, 允许回环: bool = 假,
               代理: str = None, SSL验证: bool = None, 跟随重定向: bool = None,
               Cookie: str = None) -> 结果:
     """发送 HTTP 请求，适配所有主流场景。
@@ -486,7 +487,7 @@ def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = N
         打开器 = _构造打开器(
             代理=代理,
             允许回环=允许回环,
-            跟随重定向=跟随重定向 is not False,
+            跟随重定向=跟随重定向 is not 假,
             ssl上下文=_构造SSL上下文(SSL验证),
         )
 
@@ -579,7 +580,7 @@ def _构造multipart正文(字段名: str, 文件路径: str, 文件名: str,
 
 def 上传文件(*, 地址: str = None, 文件路径: str = None, 字段名: str = "file",
               额外字段: dict = None, 超时秒: float = 默认超时秒,
-              允许回环: bool = False, 代理: str = None) -> 结果:
+              允许回环: bool = 假, 代理: str = None) -> 结果:
     """上传文件（multipart/form-data）。返回 {状态码, 响应文本}。"""
     try:
         if not isinstance(地址, str) or 地址.strip() == "":
@@ -605,7 +606,7 @@ def 上传文件(*, 地址: str = None, 文件路径: str = None, 字段名: str
 
 
 def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dict = None,
-             超时秒: float = 默认超时秒, 允许回环: bool = False,
+             超时秒: float = 默认超时秒, 允许回环: bool = 假,
              代理: str = None, SSL验证: bool = None,
              最大字节数: int = 默认最大字节数) -> 结果:
     """从 URL 下载文件（流式写入，适配大文件）。返回 {状态码, 文件路径, 字节数}。
@@ -635,7 +636,7 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
         打开器 = _构造打开器(
             代理=代理,
             允许回环=允许回环,
-            跟随重定向=True,
+            跟随重定向=真,
             ssl上下文=_构造SSL上下文(SSL验证),
         )
 

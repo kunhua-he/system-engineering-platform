@@ -17,6 +17,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 排除包前缀 = ("支持库.适配层.",)
 数据根目录名 = ("支持库", "模块库")
@@ -95,8 +96,8 @@ def 是否公开包(声明: dict) -> bool:
     """适配层（内部实现边界）与 内部层 包一律不对外暴露。"""
     包id = str(声明.get("包id", ""))
     if not 包id or 包id.startswith(排除包前缀):
-        return False
-    return not bool(声明.get("内部层", False))
+        return 假
+    return not bool(声明.get("内部层", 假))
 
 
 def 读取包数据(包目录: Path) -> dict[str, Any]:
@@ -134,7 +135,7 @@ def 读取验证历史(项目根: Path) -> list[dict]:
     return 记录表
 
 
-def 匹配令牌(包id: str, 能力id: str, *, 含包名: bool = True) -> list[str]:
+def 匹配令牌(包id: str, 能力id: str, *, 含包名: bool = 真) -> list[str]:
     """验证历史匹配令牌：包id / 包中文名 / 能力id。
 
     记录里从不出现点号包id，故按包末段并查；`含包名=False` 用于「最近成功验证」
@@ -149,7 +150,7 @@ def 匹配令牌(包id: str, 能力id: str, *, 含包名: bool = True) -> list[s
 def 最近成功验证(记录表: list[dict], 包id: str, 能力id: str) -> str:
     """最近一次成功验证的时间（只认 包id/能力id 精确令牌；无记录如实返回暂无）。"""
     最近 = ""
-    令牌表 = 匹配令牌(包id, 能力id, 含包名=False)
+    令牌表 = 匹配令牌(包id, 能力id, 含包名=假)
     for 记录 in 记录表:
         文本 = json.dumps(记录, ensure_ascii=False)
         if not any(令牌 in 文本 for 令牌 in 令牌表):
@@ -193,7 +194,7 @@ def 转换参数表(来源列表: list[Any]) -> list[dict]:
             参数表.append({
                 "名称": str(参数["名称"]),
                 "类型": 未约束类型 if 类型 == "任意" else 类型,
-                "必填": bool(参数.get("必填", True)),
+                "必填": bool(参数.get("必填", 真)),
                 "默认值": 参数.get("默认值"),
                 "说明": str(参数.get("说明", "")),
             })

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 _来源 = "直播逐字稿"
 截取能力id = "媒体处理支持库.FFmpeg媒体.截取音频"
@@ -28,7 +29,7 @@ def _底座(能力id: str, 参数: dict):
 
 
 def _成功(结果对象) -> bool:
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
 def _读JSON(路径: Path) -> dict | None:
@@ -47,7 +48,7 @@ def _写JSON(路径: Path, 数据: dict) -> bool:
     """经底座序列化并写 JSON（utf-8、缩进 2）；成功返回 True。"""
     序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 数据})
     if not _成功(序列化) or not isinstance(getattr(序列化, "值", None), str):
-        return False
+        return 假
     写 = _底座("系统核心支持库.资源管理.原子写入",
              {"目标路径": str(路径), "内容": getattr(序列化, "值") + "\n"})
     return _成功(写)
@@ -72,7 +73,7 @@ def _截取分片(源文件路径: str, 缓存: dict, 区间: dict, 调用能力
     """把一片音频截到 02_分片/分片_NNNN.mp3；已存在直接复用。返回 (路径, 错误说明)。"""
     目标 = Path(缓存["分片"]) / f"分片_{区间['序号']:04d}.{分片音频格式}"
     存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(目标)})
-    if bool(getattr(存在, "值", False)):
+    if bool(getattr(存在, "值", 假)):
         大小 = _底座("文件系统支持库.文件操作.获取大小", {"文件路径": str(目标)})
         if int(getattr(大小, "值", 0) or 0) > 0:
             return str(目标), ""
@@ -118,7 +119,7 @@ def _区间吻合(已有: dict, 区间: dict) -> bool:
                 and abs(_取数(已有.get("开始秒"), -1.0) - float(区间["开始秒"])) < 0.01
                 and abs(_取数(已有.get("结束秒"), -1.0) - float(区间["结束秒"])) < 0.01)
     except (TypeError, ValueError, KeyError):
-        return False
+        return 假
 
 
 def _转写一片(音频路径: str, 区间: dict, 缓存: dict, 调用能力, 模型配置,
@@ -128,24 +129,24 @@ def _转写一片(音频路径: str, 区间: dict, 缓存: dict, 调用能力, �
     if 续跑:
         已有 = _读JSON(落盘)
         if isinstance(已有, dict) and isinstance(已有.get("分段"), list) and _区间吻合(已有, 区间):
-            return 已有, "", True
+            return 已有, "", 真
     参数 = {"文件路径": 音频路径, "超时秒": 超时秒, "配置": 模型配置,
-            "附加术语": 附加术语, "返回分段": True}
+            "附加术语": 附加术语, "返回分段": 真}
     结果对象 = 调用能力(转写能力id, 参数)
     if not 结果对象.成功:
-        return None, f"第{区间['序号']}片转写失败: {结果对象.错误码} {结果对象.错误说明}", False
+        return None, f"第{区间['序号']}片转写失败: {结果对象.错误码} {结果对象.错误说明}", 假
     值 = 结果对象.值 or {}
     条目 = {"分片序号": 区间["序号"], "开始秒": 区间["开始秒"], "结束秒": 区间["结束秒"],
             "文本": str(值.get("文本") or "").strip(),
             "分段": _绝对化分段(值.get("分段") or [], 区间["开始秒"]),
             "语言": str(值.get("语言") or "")}
     _写JSON(落盘, 条目)
-    return 条目, "", False
+    return 条目, "", 假
 
 
 def 分片转写(源文件路径: str, 缓存: dict, 时长秒: float, 分片秒数: int, 调用能力,
              模型配置: dict | None = None, 附加术语: str = "",
-             超时秒: float = 默认单片超时秒, 续跑: bool = True) -> dict:
+             超时秒: float = 默认单片超时秒, 续跑: bool = 真) -> dict:
     """逐片截取并转写，产出 分片转写列表（与单次整段转写同构，可直接喂疑难标记）。"""
     区间表 = 分片区间表(时长秒, 分片秒数)
     分片转写列表: list[dict] = []

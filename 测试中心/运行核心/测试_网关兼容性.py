@@ -10,6 +10,7 @@ if str(根) not in sys.path:
     sys.path.insert(0, str(根))
 
 from 运行核心.统一网关.网关核心 import 网关核心, 网关请求, 网关响应
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 网关兼容性回归(unittest.TestCase):
@@ -38,7 +39,7 @@ class 网关兼容性回归(unittest.TestCase):
     def test_缺少值键自动补空值(self):
         响应 = 网关响应()
         self.网关._设置后端字典结果(
-            响应, {"成功": True, "错误码": "", "错误说明": ""})
+            响应, {"成功": 真, "错误码": "", "错误说明": ""})
         self.assertTrue(响应.成功)
         self.assertIsNone(响应.值)
 
@@ -53,7 +54,7 @@ class 网关兼容性回归(unittest.TestCase):
 class 假实现:
     """最小能力声明：一个必填文本参数。"""
 
-    参数 = [{"名称": "输入文本", "类型": "文本型", "必填": True}]
+    参数 = [{"名称": "输入文本", "类型": "文本型", "必填": 真}]
 
 
 class 假注册表:

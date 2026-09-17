@@ -25,6 +25,7 @@ import uuid
 from typing import Any
 
 from 运行核心.权威状态 import 权威状态, 版本元组
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 能力条目契约指纹唯一索引（1.5.0 结构事实）：迁移与结构校验共用同一常量，禁止两处各写一遍。
 索引_能力条目契约指纹 = "索引_能力条目契约指纹"
@@ -260,8 +261,8 @@ class 平台状态(权威状态):
             占用者 = self._唯一列占用者(连接, 表, 主键, 唯一列, 记录)
             if not 占用者:
                 raise
-            return False, 占用者
-        return True, ""
+            return 假, 占用者
+        return 真, ""
 
     def _唯一列占用者(self, 连接, 表: str, 主键: str, 唯一列: str,
                     记录: dict[str, Any]) -> str:

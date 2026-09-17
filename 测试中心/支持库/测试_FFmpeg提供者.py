@@ -16,6 +16,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 进程终止
 from 公共契约.运行时.进程终止 import 按组号探活
 from 支持库.适配层.FFmpeg提供者 import 检查提供者, 探测媒体, 提取音频, 转码, 抽取帧
@@ -146,10 +147,10 @@ class TestFFmpeg提供者(unittest.TestCase):
         cls.临时目录 = Path(tempfile.mkdtemp(prefix="测试_FFmpeg提供者_"))
         cls.可用 = 探测模块.查找命令("ffmpeg") is not None and 探测模块.查找命令("ffprobe") is not None
         if cls.可用:
-            cls.带音频 = _生成视频(cls.临时目录 / "带音频.mp4", 含音频=True)
-            cls.纯视频 = _生成视频(cls.临时目录 / "纯视频.mp4", 含音频=False)
-            cls.标清视频 = _生成视频(cls.临时目录 / "标清.mp4", 含音频=False, 尺寸="320x240")
-            cls.低清视频 = _生成视频(cls.临时目录 / "低清.mp4", 含音频=False, 尺寸="160x120")
+            cls.带音频 = _生成视频(cls.临时目录 / "带音频.mp4", 含音频=真)
+            cls.纯视频 = _生成视频(cls.临时目录 / "纯视频.mp4", 含音频=假)
+            cls.标清视频 = _生成视频(cls.临时目录 / "标清.mp4", 含音频=假, 尺寸="320x240")
+            cls.低清视频 = _生成视频(cls.临时目录 / "低清.mp4", 含音频=假, 尺寸="160x120")
             cls.纯音频 = _生成纯音频(cls.临时目录 / "纯音频.wav")
             cls.损坏文件 = cls.临时目录 / "损坏.bin"
             cls.损坏文件.write_bytes(os.urandom(4096))
@@ -254,8 +255,8 @@ class TestFFmpeg提供者(unittest.TestCase):
 
         def 假执行(命令列表, *, 超时秒, 最大输出字节, 取消函数=None):
             if "ffmpeg" in " ".join(命令列表):
-                return 进程模块.受管结果(成功=False, 错误码="取消", 错误摘要="取消: 外部命令执行被终止")
-            return 进程模块.受管结果(成功=True, 退出码=0, 标准输出=探测输出)
+                return 进程模块.受管结果(成功=假, 错误码="取消", 错误摘要="取消: 外部命令执行被终止")
+            return 进程模块.受管结果(成功=真, 退出码=0, 标准输出=探测输出)
 
         with mock.patch.object(探测模块, "执行受管命令", side_effect=假执行), \
                 mock.patch.object(处理模块, "执行受管命令", side_effect=假执行):
@@ -286,8 +287,8 @@ class TestFFmpeg提供者(unittest.TestCase):
 
     def test_取消后进程组零残留(self):
         挂起脚本 = _写脚本(self.临时目录 / "挂起.sh", "#!/bin/sh\nsleep 30\n")
-        标志 = {"取消": False}
-        threading.Timer(0.3, lambda: 标志.update(取消=True)).start()
+        标志 = {"取消": 假}
+        threading.Timer(0.3, lambda: 标志.update(取消=真)).start()
         结果 = 进程模块.执行受管命令([挂起脚本], 超时秒=10,
                                  最大输出字节=1024,
                                  取消函数=lambda: 标志["取消"])

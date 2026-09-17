@@ -20,6 +20,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.版本规则.契约版本 import 契约版本
 
 前端包表 = [
@@ -116,13 +117,13 @@ class Test前端描述支持库功能(unittest.TestCase):
 
     def test_文件选择描述全流程(self) -> None:
         from 支持库.前端.文件选择描述 import 创建文件选择描述, 校验文件选择描述
-        结果 = 创建文件选择描述([".txt", ".md"], False)
+        结果 = 创建文件选择描述([".txt", ".md"], 假)
         self.assertTrue(结果.成功)
         self.assertIn(".txt", 结果.值["允许扩展名列表"])
         self.assertFalse(结果.值["多选"])
         校验 = 校验文件选择描述(结果.值)
         self.assertTrue(校验.成功)
-        失败 = 创建文件选择描述("不是列表", False)
+        失败 = 创建文件选择描述("不是列表", 假)
         self.assertFalse(失败.成功)
 
     def test_状态描述全流程(self) -> None:

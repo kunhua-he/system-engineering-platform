@@ -19,6 +19,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.发布管理 import 发布管理
 from 支持库.适配层 import 生成密钥对
@@ -179,7 +180,7 @@ class Test统一入口真实执行(unittest.TestCase):
         私钥, 公钥 = 生成密钥对()
         self.服务.仓库.登记发布者(发布者="发布者", 公钥PEM=公钥)
         self.服务.导入签名密钥(身份id="发布者", 私钥PEM=私钥, 调用者="发布者", 角色="发布者")
-        self.服务.注册健康检查(包id="链路包", 检查函数=lambda: True)
+        self.服务.注册健康检查(包id="链路包", 检查函数=lambda: 真)
         # 签名与发布
         结果 = self.服务.执行操作(令牌=发布令牌, 操作="签名与发布",
                                 参数={"制品摘要": 制品摘要, "需求id": 快照["需求id"], "灰度比例": 0.2})
@@ -205,7 +206,7 @@ class Test统一入口真实执行(unittest.TestCase):
         私钥, 公钥 = 生成密钥对()
         self.服务.仓库.登记发布者(发布者="发布者", 公钥PEM=公钥)
         self.服务.导入签名密钥(身份id="发布者", 私钥PEM=私钥)
-        self.服务.注册健康检查(包id="病包", 检查函数=lambda: False)
+        self.服务.注册健康检查(包id="病包", 检查函数=lambda: 假)
         快照 = self.服务.需求.登记需求(目标="病包")
         self.服务.需求.确认需求(需求id=快照["需求id"])
         结果 = self.服务.执行操作(令牌=提权(self.服务, "开发", "组件开发Agent"),

@@ -19,6 +19,7 @@ if str(系统根) not in sys.path:
 
 from 项目适配层.依赖锁定.依赖锁定 import 生成依赖锁定
 from 项目适配层.依赖锁定.传递闭包 import 校验传递闭包
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def _写项目声明(项目根: Path, 支持库绑定: list, 模块绑定: list) -> None:
@@ -53,7 +54,7 @@ def _锁条目(包id: str, 版本: str = "1.0.0", 提供者id: str = "",
             "环境摘要": "", "选择证据": "测试"}
 
 
-def _写迷你系统根(临时根: Path, *, 空提供者锁: bool = False) -> None:
+def _写迷你系统根(临时根: Path, *, 空提供者锁: bool = 假) -> None:
     """构造迷你系统根：示例提供者（第三方能力）+ 示例模块（依赖 能力.示例提供）。"""
     支持库 = 临时根 / "支持库" / "后端" / "示例提供者"
     支持库.mkdir(parents=True, exist_ok=True)
@@ -252,7 +253,7 @@ class Test传递闭包提供者锁(unittest.TestCase):
 
     def test_提供者锁为空失败(self):
         临时根 = Path(tempfile.mkdtemp(prefix="闭包锁空_"))
-        _写迷你系统根(临时根, 空提供者锁=True)
+        _写迷你系统根(临时根, 空提供者锁=真)
         项目根 = 临时根 / "项目"
         _写项目声明(
             项目根,

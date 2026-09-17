@@ -13,6 +13,7 @@ from pathlib import Path
 from 后端核心.后端核心 import 后端核心
 from 运行核心.统一网关.本地网关 import 本地网关服务器
 from 运行核心.统一网关.网关核心 import 网关核心
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 系统根 = Path(__file__).resolve().parents[2]
@@ -39,7 +40,7 @@ class 渐进能力目录测试(unittest.TestCase):
             assert 启动.成功, 启动.错误说明
             cls.服务器 = 本地网关服务器(
                 网关核心实例=网关核心(cls.后端), 端口=0,
-                配置={"要求凭证": False, "禁止客户端身份": False},
+                配置={"要求凭证": 假, "禁止客户端身份": 假},
             )
             成功, 消息 = cls.服务器.启动()
             assert 成功, 消息
@@ -178,7 +179,7 @@ class 渐进能力目录测试(unittest.TestCase):
 
     def test_目录数值参数类型错误不静默回退(self) -> None:
         """分页偏移/限制传文本或逻辑值时，网关必须直接拒绝。"""
-        for 参数 in ({"偏移": "0"}, {"限制": True}):
+        for 参数 in ({"偏移": "0"}, {"限制": 真}):
             请求 = urllib.request.Request(
                 self.地址,
                 data=json.dumps({"操作": "能力目录", "参数": 参数}).encode("utf-8"),

@@ -12,6 +12,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.包仓库 import 包仓库
 from 平台控制面.核心快照 import 核心快照管理
@@ -70,7 +71,7 @@ class Test内容寻址制品(unittest.TestCase):
         self.assertFalse(有效2, f"篡改后签名校验必须失败: {消息2}")
         # 策略层：签名失效 → 发布/安装被拒
         决定 = self.服务.策略.判定(类型="签名", 主题="篡改包",
-                                请求={"已签名": True, "签名失效": not 有效2,
+                                请求={"已签名": 真, "签名失效": not 有效2,
                                        "签名者": "发布者1"})
         self.assertFalse(决定["允许"], "签名失效后安装/发布必须被拒")
         # 安装被拒
@@ -195,7 +196,7 @@ class Test核心快照与发布(unittest.TestCase):
         发布 = 发布管理(self.服务.状态)
         成功, _ = 发布.激活(发布id=发布.登记期望版本(包id="服务", 期望版本="1"), 目标="旧快照")
         self.assertTrue(成功)
-        健康 = 快照.健康检查(快照id="不存在", 调用=lambda: True)
+        健康 = 快照.健康检查(快照id="不存在", 调用=lambda: 真)
         self.assertFalse(健康[0], "候选快照不存在/未签名 → 健康失败")
         指针 = 发布.当前激活("服务")
         self.assertEqual(指针["目标"], "旧快照", "健康失败后旧核心继续服务")

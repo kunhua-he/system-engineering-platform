@@ -15,6 +15,7 @@ from typing import Any
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.文件系统支持库.文本补丁 import (  # noqa: E402
     应用精确替换,
     计算文本摘要,
@@ -51,7 +52,7 @@ class 文本补丁路径边界测试(unittest.TestCase):
         self,
         文件路径: object,
         根目录: str | None = None,
-        写入: bool = True,
+        写入: bool = 真,
         旧文本: str = "旧值在这里",
         预期文件摘要: str = "",
     ):
@@ -98,7 +99,7 @@ class 文本补丁路径边界测试(unittest.TestCase):
         self.assertEqual(self.根外文件.read_text(encoding="utf-8"), 替换后)
 
     def test_写入假只预览不落盘(self) -> None:
-        结果 = self._替换(self.根内文件, 写入=False)
+        结果 = self._替换(self.根内文件, 写入=假)
         self.assertTrue(结果.成功, 结果.错误说明)
         值 = 取值(结果)
         self.assertFalse(值["已写入"])
@@ -150,7 +151,7 @@ class 文本补丁路径边界测试(unittest.TestCase):
         self.assertEqual(详情["原始文件路径"], str(self.根外文件))
 
     def test_越界在只读预览模式下同样拒绝(self) -> None:
-        结果 = self._替换(self.根外文件, 写入=False)
+        结果 = self._替换(self.根外文件, 写入=假)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "路径越界")
 

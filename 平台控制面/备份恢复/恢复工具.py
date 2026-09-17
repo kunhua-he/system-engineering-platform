@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def 计算摘要(文件: Path) -> str:
@@ -16,7 +17,7 @@ def 内容寻址名(文件名: str) -> bool:
     return len(文件名) == 64 and all(字符 in "0123456789abcdef" for 字符 in 文件名)
 
 
-def 收集文件(目录: Path, 排除缓存: bool = False) -> dict[str, str]:
+def 收集文件(目录: Path, 排除缓存: bool = 假) -> dict[str, str]:
     """返回目录内全部文件 {相对路径: sha256}；可选排除缓存目录。"""
     结果: dict[str, str] = {}
     for 文件 in 目录.rglob("*"):

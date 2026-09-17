@@ -20,6 +20,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 运行核心.环境指纹 import 计算环境指纹
 from 运行核心.运行环境管理器.环境管理器 import 计算环境摘要, 环境目录
 from 运行核心.运行环境管理器.强制校验 import 校验提供者环境
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 系统根 = Path(__file__).resolve().parents[2]
 真实提供者目录 = 系统根 / "支持库" / "适配层" / "reportlab提供者"
@@ -27,7 +28,7 @@ from 运行核心.运行环境管理器.强制校验 import 校验提供者环�
 
 def 合法锁(提供者id: str = "临时提供者", *, 版本: str = "5.0.0") -> dict:
     """构造通过全部规则的合法锁（环境指纹取当前运行环境）。"""
-    指纹 = 计算环境指纹(含外部应用=False).详细信息
+    指纹 = 计算环境指纹(含外部应用=假).详细信息
     系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
     return {
         "包": [{"名称": "reportlab", "版本": 版本, "模块名": "reportlab"}],
@@ -154,7 +155,7 @@ class Test提供者依赖锁强制校验(unittest.TestCase):
 
     def test_环境漂移拒绝(self):
         """锁内 环境（Python/操作系统/CPU）与当前不符 → 拒绝运行。"""
-        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        指纹 = 计算环境指纹(含外部应用=假).详细信息
         变体表 = [
             {"Python": "2.7.18"},
             {"操作系统": "Windows"},

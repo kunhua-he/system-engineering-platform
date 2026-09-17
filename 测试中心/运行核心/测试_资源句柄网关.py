@@ -8,6 +8,7 @@ from pathlib import Path
 from 后端核心.后端核心 import 后端核心
 from 公共契约.基础类型.结果类型 import 结果
 from 运行核心.统一网关.网关核心 import 网关核心, 网关请求
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 资源句柄网关测试(unittest.TestCase):
@@ -34,7 +35,7 @@ class 资源句柄网关测试(unittest.TestCase):
     def test_返回句柄后可查询并关闭(self) -> None:
         返回 = self.网关.处理(网关请求(
             操作="调用能力", 能力id="测试.创建批次",
-            获取句柄=True,
+            获取句柄=真,
             项目id="项目1", 用户id="用户1", 权限范围=["调用"],
         )).转字典()
         self.assertTrue(返回["成功"])
@@ -90,7 +91,7 @@ class 资源句柄网关测试(unittest.TestCase):
     def test_跨项目查询拒绝(self) -> None:
         返回 = self.网关.处理(网关请求(
             操作="调用能力", 能力id="测试.创建批次",
-            获取句柄=True,
+            获取句柄=真,
             项目id="项目1", 用户id="用户1", 权限范围=["调用"],
         )).转字典()
         self.assertTrue(返回["成功"])
@@ -128,7 +129,7 @@ class 资源句柄网关测试(unittest.TestCase):
 
     def test_资源续租已失效句柄报句柄已过期(self) -> None:
         返回 = self.网关.处理(网关请求(
-            操作="调用能力", 能力id="测试.创建批次", 获取句柄=True,
+            操作="调用能力", 能力id="测试.创建批次", 获取句柄=真,
             项目id="项目1", 用户id="用户1", 权限范围=["调用"],
         )).转字典()
         self.assertTrue(返回["成功"])
@@ -143,7 +144,7 @@ class 资源句柄网关测试(unittest.TestCase):
 
     def test_资源关闭已失效句柄仍幂等成功(self) -> None:
         返回 = self.网关.处理(网关请求(
-            操作="调用能力", 能力id="测试.创建批次", 获取句柄=True,
+            操作="调用能力", 能力id="测试.创建批次", 获取句柄=真,
             项目id="项目1", 用户id="用户1", 权限范围=["调用"],
         )).转字典()
         self.assertTrue(返回["成功"])
@@ -155,7 +156,7 @@ class 资源句柄网关测试(unittest.TestCase):
 
     def test_资源续租跨项目仍报权限不足(self) -> None:
         返回 = self.网关.处理(网关请求(
-            操作="调用能力", 能力id="测试.创建批次", 获取句柄=True,
+            操作="调用能力", 能力id="测试.创建批次", 获取句柄=真,
             项目id="项目1", 用户id="用户1", 权限范围=["调用"],
         )).转字典()
         self.assertTrue(返回["成功"])

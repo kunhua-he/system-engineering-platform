@@ -14,6 +14,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.备份恢复.恢复编排器 import 新机器恢复编排器
 
 最小能力内容 = "print(1 + 1)\n"
@@ -23,7 +24,7 @@ def 摘要(内容: bytes) -> str:
     return hashlib.sha256(内容).hexdigest()
 
 
-def 建造恢复输入(*, 快照含最小能力: bool = True, 依赖锁损坏: bool = False) -> dict:
+def 建造恢复输入(*, 快照含最小能力: bool = 真, 依赖锁损坏: bool = 假) -> dict:
     """建造一套真实输入：源码快照、内容寻址制品、依赖锁与备份目录。"""
     根 = Path(tempfile.mkdtemp(prefix="工作包10_"))
     空目录 = 根 / "恢复目标"
@@ -119,7 +120,7 @@ class Test快照缺文件部分失败(unittest.TestCase):
     """测试4：源码快照缺少最小能力样板时恢复部分失败并给出原因。"""
 
     def test_缺最小能力样板部分失败(self):
-        输入 = 建造恢复输入(快照含最小能力=False)
+        输入 = 建造恢复输入(快照含最小能力=假)
         结果 = 新机器恢复编排器().编排恢复(输入)
         self.assertEqual(结果["状态"], "部分失败")
         self.assertTrue(any("最小能力样板文件" in 原因 for 原因 in 结果["失败原因"]),
@@ -131,7 +132,7 @@ class Test依赖锁损坏拒绝执行(unittest.TestCase):
     """测试5：依赖锁定文件 JSON 非法时恢复拒绝执行且不产生副作用。"""
 
     def test_依赖锁损坏拒绝执行(self):
-        输入 = 建造恢复输入(依赖锁损坏=True)
+        输入 = 建造恢复输入(依赖锁损坏=真)
         with self.assertRaises(ValueError):
             新机器恢复编排器().编排恢复(输入)
         空目录 = Path(输入["空目录路径"])

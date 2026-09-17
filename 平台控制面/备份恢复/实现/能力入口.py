@@ -21,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 # 错误码唯一源 = `公共契约/错误结构/错误结构.py`（B-9 收口）：平台同义码只导入，不复制字面量。
 from 公共契约.错误结构 import 错误码_参数不合法
@@ -65,9 +66,9 @@ def _有备份(备份根: Path) -> bool:
     缺失即返回明确的 `备份不存在` 失败，绝不静默降级、绝不回退到别的备份。
     """
     if (备份根 / _备份清单文件名).is_file():
-        return True
+        return 真
     if not 备份根.is_dir():
-        return False
+        return 假
     return any((子目录 / _备份清单文件名).is_file()
                for 子目录 in 备份根.glob(_快照前缀 + "*"))
 

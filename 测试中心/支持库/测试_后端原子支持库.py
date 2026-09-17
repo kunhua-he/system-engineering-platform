@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.文件系统支持库.文件操作 import (
     复制文件, 判断存在, 读取文件, 删除文件, 获取大小, 列出目录, 移动文件, 写入文件,
 )
@@ -97,7 +98,7 @@ class Test文本处理(unittest.TestCase):
 class Test数据集合(unittest.TestCase):
     def test_列表操作(self):
         self.assertEqual(列表排序([3, 1, 2]).值, [1, 2, 3])
-        self.assertEqual(列表排序([3, 1, 2], 倒序=True).值, [3, 2, 1])
+        self.assertEqual(列表排序([3, 1, 2], 倒序=真).值, [3, 2, 1])
         self.assertEqual(列表查找([10, 20], 20).值, 1)
         self.assertEqual(列表查找([10, 20], 99).值, -1)
 

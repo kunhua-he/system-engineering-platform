@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析运行缓存根
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
@@ -55,12 +56,12 @@ def _归一超时秒(超时秒: Any) -> tuple[bool, float | None]:
     的实际语义）；非法值（布尔/非数值/<=0）→ `(False, None)`，由调用方明确拒绝。
     """
     if 超时秒 is None:
-        return True, None
+        return 真, None
     if isinstance(超时秒, bool) or not isinstance(超时秒, (int, float)):
-        return False, None
+        return 假, None
     if float(超时秒) <= 0:
-        return False, None
-    return True, float(超时秒)
+        return 假, None
+    return 真, float(超时秒)
 
 
 class 后端核心:
@@ -81,7 +82,7 @@ class 后端核心:
         self.状态 = 后端状态()
         self.权限表: dict[str, set[str]] = {}  # 能力id → 允许用户id集合
         self.请求锁 = threading.Lock()
-        self.停止标记 = False
+        self.停止标记 = 假
         self.事件日志 = None
         self.排空 = None  # 自动排空管理器（启动时装配）
         self.资源句柄服务 = 资源句柄服务(self.运行缓存根目录 / "权威状态")
@@ -172,7 +173,7 @@ class 后端核心:
 
     def 启动(self) -> 结果:
         """启动后端核心（装配 + 就绪）。"""
-        self.停止标记 = False
+        self.停止标记 = 假
         self.状态.状态 = "启动中"
         装配结果 = self.装配()
         if not 装配结果.成功:
@@ -260,25 +261,25 @@ class 后端核心:
         """
         基线 = self._包轻量指纹表.get(包id)
         if 基线 is None:
-            return True, ""
+            return 真, ""
         包根 = self._包目录表.get(包id)
         if 包根 is None:
-            return True, ""
+            return 真, ""
         if not 包根.is_dir():
-            return False, f"包 {包id} 目录缺失（制品或源码已被删除）"
+            return 假, f"包 {包id} 目录缺失（制品或源码已被删除）"
         if self._目录轻量指纹(包根) != 基线:
-            return False, f"包 {包id} 指纹已变化（被改动但未重新热接入/注册指纹）"
-        return True, ""
+            return 假, f"包 {包id} 指纹已变化（被改动但未重新热接入/注册指纹）"
+        return 真, ""
 
     def 启用包指纹校验(self) -> bool:
         """按环境开关把指纹校验器注入唯一调用服务（正式环境开启）。"""
         开关 = str(os.environ.get("系统底座_指纹校验", "")).strip().lower()
         if 开关 not in ("1", "true", "yes", "是"):
-            return False
+            return 假
         if self._唯一调用服务 is None:
-            return False
+            return 假
         self._唯一调用服务.设置包指纹校验器(self.校验包指纹)
-        return True
+        return 真
 
     def 初始化包指纹表(self) -> None:
         """首次全量装配成功后，为每个已装配包记录基线指纹（内容指纹 + 轻量指纹 + 目录）。"""
@@ -291,7 +292,7 @@ class 后端核心:
         self._包轻量指纹表 = {}
         self._包目录表 = {}
         for 声明 in 发现.声明列表:
-            if getattr(声明, "已废弃", False):
+            if getattr(声明, "已废弃", 假):
                 continue
             self._包指纹表[声明.包id] = self.计算包指纹(声明)
             self._包轻量指纹表[声明.包id] = self.计算包轻量指纹(声明)
@@ -332,16 +333,16 @@ class 后端核心:
             # 已独立发现的支持库/模块包 id：这些包的能力由它们自己的声明登记，
             # 不再算到同前缀父包的“注册未声明”账上（见 _校验热接入包）。
             已发现包id集合 = {声明.包id for 声明 in 声明列表
-                              if not getattr(声明, "已废弃", False)}
+                              if not getattr(声明, "已废弃", 假)}
 
             已注册包id集合 = {实现.包id for 能力id in self.注册表.能力id列表
                               for 实现 in [self.注册表.获取(能力id)] if 实现 is not None}
             新增声明 = [声明 for 声明 in 声明列表
                        if 声明.包id not in 已注册包id集合
-                       and not getattr(声明, "已废弃", False)]
+                       and not getattr(声明, "已废弃", 假)]
             变更声明 = []
             for 声明 in 声明列表:
-                if getattr(声明, "已废弃", False) or 声明.包id not in 已注册包id集合:
+                if getattr(声明, "已废弃", 假) or 声明.包id not in 已注册包id集合:
                     continue
                 if self.计算包指纹(声明) != self._包指纹表.get(声明.包id):
                     变更声明.append(声明)
@@ -349,7 +350,7 @@ class 后端核心:
             # ── 卸载目标：已注册但不再被发现 / 已标记废弃 的包 ──
             # 提前返回前必须先算出卸载集合，否则整包删除永远不触发。
             活跃包id集合 = {声明.包id for 声明 in 声明列表
-                           if not getattr(声明, "已废弃", False)}
+                           if not getattr(声明, "已废弃", 假)}
             卸载包id集合 = {
                 包id for 包id in 已注册包id集合
                 if 包id != "后端核心" and 包id not in 活跃包id集合
@@ -403,7 +404,7 @@ class 后端核心:
                                  声明.包id + ".")
                     for 键, 模块对象 in list(sys.modules.items()):
                         文件路径 = getattr(模块对象, "__file__", "") or ""
-                        属于包 = False
+                        属于包 = 假
                         try:
                             属于包 = bool(文件路径) and Path(文件路径).resolve().is_relative_to(包根)
                         except (OSError, ValueError):
@@ -456,7 +457,7 @@ class 后端核心:
                 from 运行核心.加载器.依赖解析.装配锁 import 构建装配锁, 记录装配状态
                 from 运行核心.加载器.提供者选择.选择器 import 选择全部提供者
                 from 运行核心.加载器.依赖解析.解析器 import 解析依赖
-                活跃声明 = [声明 for 声明 in 声明列表 if not getattr(声明, "已废弃", False)]
+                活跃声明 = [声明 for 声明 in 声明列表 if not getattr(声明, "已废弃", 假)]
                 提供者表 = 选择全部提供者(活跃声明)
                 能力提供者 = {能力id: (选择.提供包id, 选择.提供版本)
                               for 能力id, 选择 in 提供者表.items() if 选择.成功}
@@ -562,11 +563,11 @@ class 后端核心:
         if self.状态.状态 != "运行中":
             return 结果.失败("外部不可访问", f"后端核心未运行（状态 {self.状态.状态}）", 来源="后端核心")
         上下文 = 上下文 or 运行上下文()
-        排空活动 = False
+        排空活动 = 假
         if self.排空 is not None:
             if not self.排空.开始请求():
                 return 结果.失败("外部不可访问", "排空中，拒绝新请求", 来源="后端核心")
-            排空活动 = True
+            排空活动 = 真
         try:
             全局上下文管理器.进入(上下文)
             try:
@@ -773,7 +774,7 @@ class 后端核心:
         """优雅关闭：等待活动请求归零后停止。"""
         if self.状态.状态 == "已停止":
             return 结果.成功结果("已停止（幂等）")
-        self.停止标记 = True
+        self.停止标记 = 真
         if self.排空 is not None:
             排空结果 = self.排空.排空()
             if not 排空结果.成功:
@@ -788,7 +789,7 @@ class 后端核心:
         return 结果.成功结果("后端核心已优雅关闭")
 
     def 强制关闭(self) -> 结果:
-        self.停止标记 = True
+        self.停止标记 = 真
         if self.排空 is not None:
             排空结果 = self.排空.排空()
             if not 排空结果.成功:

@@ -13,13 +13,24 @@
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# 环境准入（必须在任何装配与第三方导入之前）：平台判定的唯一来源是
+# `公共契约/运行时/平台适配`，本文件不自己写 sys.platform 判断。
+# 热接入依赖 LaunchAgent plist（macOS 专有）与 40007 网关，本机只支持 macOS arm64。
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from 公共契约.运行时.平台适配 import 脚本入口准入
+
+脚本入口准入("热接入（增量装配，不重启 40007 网关）")
+
 import json
 import plistlib
-import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from urllib.parse import quote
 
 网关地址 = "http://127.0.0.1:40007"

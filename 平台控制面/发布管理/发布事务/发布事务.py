@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 操作_安装 = "安装"
 操作_校验 = "校验"
@@ -28,7 +29,7 @@ from typing import Any, Callable
 class 事务步骤:
     步骤名: str
     操作id: str = ""
-    成功: bool = False
+    成功: bool = 假
     详情: str = ""
 
 
@@ -120,7 +121,7 @@ class 发布事务管理器:
             事务.状态 = "失败"
         elif 一致性问题:
             事务.状态 = "失败"
-            self.记录步骤(事务, "一致性校验", False, "；".join(一致性问题))
+            self.记录步骤(事务, "一致性校验", 假, "；".join(一致性问题))
         elif all(步骤.成功 for 步骤 in 事务.步骤列表):
             事务.状态 = "已提交"
         else:

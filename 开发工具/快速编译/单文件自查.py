@@ -26,6 +26,8 @@ import sys
 import time
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 系统根 = Path(__file__).resolve().parents[2]
 git = "/Library/Developer/CommandLineTools/usr/bin/git"
 
@@ -40,25 +42,16 @@ def 查一个(相对路径: str) -> tuple[bool, str]:
     """查单个文件能否编译；返回 (是否通过, 说明)。"""
     路径 = 系统根 / 相对路径 if not Path(相对路径).is_absolute() else Path(相对路径)
     if not 路径.is_file():
-        return 假值(), f"文件不存在: {相对路径}"
+        return 假, f"文件不存在: {相对路径}"
     try:
         ast.parse(路径.read_text(encoding="utf-8"))
     except (SyntaxError, UnicodeDecodeError) as 错误:
         行号 = getattr(错误, "lineno", "?")
         文本 = getattr(错误, "text", "") or ""
-        return 假值(), f"{相对路径}:{行号} {type(错误).__name__}: {错误.msg if hasattr(错误,'msg') else 错误}\n      {文本.strip()[:110]}"
+        return 假, f"{相对路径}:{行号} {type(错误).__name__}: {错误.msg if hasattr(错误,'msg') else 错误}\n      {文本.strip()[:110]}"
     except OSError as 错误:
-        return 假值(), f"{相对路径}: 读取失败 {错误}"
-    return 真值(), f"{相对路径}: OK"
-
-
-def 假值() -> bool:
-    """裸布尔禁令（决策 0003）：本模块是正式源码，用中文口径。"""
-    return False
-
-
-def 真值() -> bool:
-    return True
+        return 假, f"{相对路径}: 读取失败 {错误}"
+    return 真, f"{相对路径}: OK"
 
 
 def _工作树改动的py() -> list[str]:

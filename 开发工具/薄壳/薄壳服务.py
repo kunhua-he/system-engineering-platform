@@ -9,22 +9,29 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
+# 环境准入（必须在任何装配与第三方导入之前）：平台判定的唯一来源是
+# `公共契约/运行时/平台适配`，本文件不自己写 sys.platform 判断。
 import sys
 from pathlib import Path
-from typing import Any
 
 _薄壳目录 = Path(__file__).resolve().parent
 if str(_薄壳目录) not in sys.path:
     sys.path.insert(0, str(_薄壳目录))
 
-# MCP SDK 只经适配层提供者的包级中文入口使用：薄壳不直接依赖第三方 mcp 包。
 # 项目根入 sys.path：薄壳由 MCP 客户端按绝对路径拉起，脚本目录不是项目根。
 _项目根 = _薄壳目录.parents[1]
 if str(_项目根) not in sys.path:
     sys.path.insert(0, str(_项目根))
 
+from 公共契约.运行时.平台适配 import 脚本入口准入
+
+脚本入口准入("启动平台 MCP 薄壳")
+
+import asyncio
+import json
+from typing import Any
+
+# MCP SDK 只经适配层提供者的包级中文入口使用：薄壳不直接依赖第三方 mcp 包。
 from 支持库.适配层.MCP协议提供者 import (
     构造服务,
     构造初始化选项,

@@ -1,5 +1,6 @@
 import unittest
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.办公文档支持库.轻量文本解析 import 解析Markdown块, 解析纯文本块
 
 
@@ -69,7 +70,7 @@ class 测试完整语法集(unittest.TestCase):
         块 = 解析Markdown块("").值["块列表"]
         self.assertEqual(块, [{"类型": "paragraph", "文本": "(empty markdown file)",
                              "行起": None, "行止": None,
-                             "属性": {"章节": "body", "empty": True}}])
+                             "属性": {"章节": "body", "empty": 真}}])
 
     def test_换行归一化(self):
         块 = 解析Markdown块("a\r\n\rb").值["块列表"]

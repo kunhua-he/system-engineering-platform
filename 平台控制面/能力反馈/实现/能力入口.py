@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from 平台控制面.能力反馈.反馈服务 import 能力反馈服务
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 # 存储目录缺省值：经唯一解析器取运行态存储根（源码态 = `<系统根>/工程缓存/平台控制面`，
@@ -141,4 +142,4 @@ def _查询用判定() -> Callable[[str], bool]:
     查询与状态迁移不校验「能力存在」（与收敛前的服务实现一致），
     这里给一个恒真的占位判定，保证构造服务时不会误触达装配。
     """
-    return _能力存在判定 or (lambda 能力id: True)
+    return _能力存在判定 or (lambda 能力id: 真)

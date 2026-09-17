@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "直播逐字稿"
 默认转写超时秒 = 300.0
@@ -42,14 +43,14 @@ def _底座(能力id: str, 参数: dict):
 
 
 def _成功(结果对象) -> bool:
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
 def _失败说明(结果对象, 兜底: str) -> str:
     return str(getattr(结果对象, "错误说明", "") or getattr(结果对象, "错误码", "") or 兜底)
 
 
-def _校验文本(值, 名称: str, *, 必填: bool = True) -> 结果 | None:
+def _校验文本(值, 名称: str, *, 必填: bool = 真) -> 结果 | None:
     if 值 is None and not 必填:
         return None
     if not isinstance(值, str) or not 值.strip():
@@ -57,7 +58,7 @@ def _校验文本(值, 名称: str, *, 必填: bool = True) -> 结果 | None:
     return None
 
 
-def _校验数值(值, 名称: str, 最小值: float = 0, *, 必填: bool = True) -> 结果 | None:
+def _校验数值(值, 名称: str, 最小值: float = 0, *, 必填: bool = 真) -> 结果 | None:
     if 值 is None and not 必填:
         return None
     if isinstance(值, bool) or not isinstance(值, (int, float)) or 值 < 最小值:
@@ -113,7 +114,7 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
         if 错误:
             return 错误
     存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(Path(文件路径))})
-    if not bool(getattr(存在, "值", False)):
+    if not bool(getattr(存在, "值", 假)):
         return 结果.失败("文件不存在", f"媒体文件不存在: {文件路径}", 来源=来源)
     错误 = _校验数值(分片秒数, "分片秒数", 1) or _校验数值(重叠秒数, "重叠秒数", 0) or _校验数值(超时秒, "超时秒", 1)
     if 错误:
@@ -122,7 +123,7 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
         return 结果.失败("参数不合法", "模型配置 必须为对象", 来源=来源)
 
     输出根 = Path(输出目录).expanduser().resolve()
-    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(输出根), "递归": True})
+    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(输出根), "递归": 真})
 
     探测 = _探测媒体(文件路径, 60.0)
     if not 探测.成功:
@@ -140,8 +141,8 @@ def 转写媒体文件(文件路径: str, 输出目录: str, 分片秒数: int =
 
     元数据目录 = 输出根 / "00_元数据"
     转录底稿目录 = 输出根 / "02_转录底稿"
-    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(元数据目录), "递归": True})
-    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(转录底稿目录), "递归": True})
+    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(元数据目录), "递归": 真})
+    _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(转录底稿目录), "递归": 真})
     原文路径 = 转录底稿目录 / "03_原始逐字稿.txt"
 
     行内容 = f"[00:00-{时长秒:06.1f}] {文本}" if 文本 else ""
@@ -189,7 +190,7 @@ def 读取项目状态(输出目录: str) -> 结果:
         return 错误
     状态路径 = Path(输出目录).expanduser().resolve() / "00_元数据" / "项目状态.json"
     存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(状态路径)})
-    if not bool(getattr(存在, "值", False)):
+    if not bool(getattr(存在, "值", 假)):
         return 结果.失败("目录不存在", f"未找到项目状态文件: {状态路径}", 来源=来源)
     读 = _底座("文件系统支持库.文件操作.读取文件",
               {"文件路径": str(状态路径), "编码": "utf-8"})

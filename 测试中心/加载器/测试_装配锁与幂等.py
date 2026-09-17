@@ -18,6 +18,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表, 能力实现
 from 运行核心.加载器.包发现.发现器 import 发现全部
 from 运行核心.加载器.依赖解析.装配锁 import 构建装配锁
@@ -60,7 +61,7 @@ def 写临时包(
         json.dumps(契约, ensure_ascii=False), encoding="utf-8")
     if "适配层" in str(声明.get("包id", "")):
         from 运行核心.环境指纹 import 计算环境指纹
-        指纹 = 计算环境指纹(含外部应用=False).详细信息
+        指纹 = 计算环境指纹(含外部应用=假).详细信息
         系统名 = "macOS" if 指纹["os"] == "Darwin" else 指纹["os"]
         (包目录 / "依赖锁.json").write_text(json.dumps({
             "包": [{"名称": "临时测试工具", "版本": "1.0.0",

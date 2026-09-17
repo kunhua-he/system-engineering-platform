@@ -15,6 +15,7 @@ import sys
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.并发控制支持库.实现 import 并发控制
 from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型连接器
 from 支持库.适配层 import 系统探针
@@ -52,11 +53,11 @@ class 测试模型连接器释放(unittest.TestCase):
             回调记录.append(已取得)
             if 已取得:
                 模型连接器.锁.release()
-            return True
+            return 真
 
         连接器["释放函数"] = 释放回调
         模型连接器._回收过期句柄()
-        self.assertEqual(回调记录, [True], "释放回调必须在全局锁外执行")
+        self.assertEqual(回调记录, [真], "释放回调必须在全局锁外执行")
         self.assertNotIn(句柄, 模型连接器.连接表)
         self.assertEqual(模型连接器.查询句柄状态(句柄).值["状态"], "已失效")
 
@@ -134,7 +135,7 @@ class 测试线程池释放(unittest.TestCase):
         self.assertTrue(再次.成功, 再次.错误说明)
         self.assertEqual(再次.值["状态"], "已结束并已释放")
         self.assertEqual(池.调用次数, 2)
-        self.assertEqual(池.assertions, (True, True))
+        self.assertEqual(池.assertions, (真, 真))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import ast
 from pathlib import Path
 
 from 运行核心.依赖防火墙 import 依赖审计结果, 依赖违规, 标准库前缀表
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 外部驱动模块表 = {"psycopg2", "psycopg", "pg8000", "pymysql", "pymongo", "redis"}
 # 路径标记动态拼接：避免审计规则自身的源码文本命中"实现目录路径"规则
@@ -54,7 +55,7 @@ def _是直连调用(节点: ast.Call) -> bool:
             模块 = 节点.func.value
             return isinstance(模块, ast.Name) and 模块.id in 外部驱动模块表
         return 节点.func.attr in 直连属性表
-    return False
+    return 假
 
 
 def _直连名称(节点: ast.Call) -> str:
@@ -87,8 +88,8 @@ def 审计文件(文件路径: Path, 登记表: set[str]) -> 依赖审计结果:
             当前 = 父表[id(当前)]
             if isinstance(当前, (ast.FunctionDef, ast.AsyncFunctionDef,
                                  ast.Lambda, ast.ClassDef)):
-                return True
-        return False
+                return 真
+        return 假
 
     for 节点 in ast.walk(树):
         函数名 = _函数名(节点) if isinstance(节点, ast.Call) else None

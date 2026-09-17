@@ -17,6 +17,7 @@ from 平台控制面.平台状态 import 平台状态
 # 机制收口（第 1 条 3 项）：文本校验 / 敏感脱敏 / 摘要上限 / 内容摘要由 反馈语义.py 唯一实现。
 from 平台控制面.能力反馈.反馈语义 import 文本, 文本上限, 摘要, 说明上限
 from 平台控制面.能力反馈.反馈语义 import 内容摘要 as 计算内容摘要
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 状态表 = {
     "已登记": {"已确认", "重复反馈", "无法复现", "修复中"},
@@ -65,7 +66,7 @@ class 能力反馈服务:
                 raise ValueError("契约版本必须是 主版本.次版本.修订版本")
             能力id = 字段值["能力id"]
             if not self.能力存在(能力id):
-                return False, "能力不存在", {}
+                return 假, "能力不存在", {}
             # 契约判据（平台控制面/能力反馈/能力契约/参数契约.json 的 请求 参数说明）：
             # 来源系统/来源版本/请求id/能力id/契约版本/错误码/错误说明 **必填**，
             # HTTP状态码 等五项 **可选**。可选字段缺省 != 值 0：缺省一律存 0 表示「未提供」，
@@ -99,33 +100,33 @@ class 能力反馈服务:
                     "创建时间": 时间, "更新时间": 时间, "处理者": "", "状态原因": "",
                     "关联提交": "", "验证证据": "", "发布制品": "", "内容摘要": 内容摘要}
             if self.状态.原子插入("能力反馈", 记录):
-                return True, "", {"反馈id": 反馈id, "状态": "已登记", "是否重复": False}
+                return 真, "", {"反馈id": 反馈id, "状态": "已登记", "是否重复": 假}
             旧记录 = self.状态.查询记录("能力反馈", "去重键=?", (去重键,))
             if not 旧记录:
-                return False, "反馈写入失败", {}
+                return 假, "反馈写入失败", {}
             if 旧记录[0].get("内容摘要") != 内容摘要:
-                return False, "幂等键冲突", {"反馈id": 旧记录[0]["反馈id"]}
-            return True, "", {"反馈id": 旧记录[0]["反馈id"], "状态": 旧记录[0]["状态"], "是否重复": True}
+                return 假, "幂等键冲突", {"反馈id": 旧记录[0]["反馈id"]}
+            return 真, "", {"反馈id": 旧记录[0]["反馈id"], "状态": 旧记录[0]["状态"], "是否重复": 真}
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
-            return False, "参数不合法", {}
+            return 假, "参数不合法", {}
 
     def 查询(self, 反馈id: str = "", 状态: str = "", 能力id: str = "", 限制: int = 50) -> tuple[bool, str, list[dict[str, Any]]]:
         if not isinstance(限制, int) or isinstance(限制, bool) or not 1 <= 限制 <= 100:
-            return False, "限制必须是 1 到 100 的整数", []
+            return 假, "限制必须是 1 到 100 的整数", []
         条件, 参数 = [], []
         if 反馈id:
             条件.append("反馈id=?"); 参数.append(反馈id)
         if 状态:
-            if 状态 not in 状态表: return False, "状态不合法", []
+            if 状态 not in 状态表: return 假, "状态不合法", []
             条件.append("状态=?"); 参数.append(状态)
         if 能力id:
             条件.append("能力id=?"); 参数.append(能力id)
         try:
             结果 = self.状态.查询记录("能力反馈", " AND ".join(条件) or "", tuple(参数))
             结果 = [_公开记录(项) for 项 in 结果[:限制]]
-            return True, "", 结果
+            return 真, "", 结果
         except (OSError, ValueError):
-            return False, "反馈查询失败", []
+            return 假, "反馈查询失败", []
 
     def 迁移状态(self, 反馈id: str, 请求: dict[str, Any]) -> tuple[bool, str, dict[str, Any]]:
         try:
@@ -142,23 +143,23 @@ class 能力反馈服务:
                 raise ValueError("状态不合法")
             记录 = self.状态.读取记录("能力反馈", "反馈id", 反馈id)
             if not 记录:
-                return False, "反馈不存在", {}
+                return 假, "反馈不存在", {}
             当前 = 记录["状态"]
             if 目标 not in 状态表.get(当前, set()):
-                return False, "状态迁移不允许", {"当前状态": 当前, "目标状态": 目标}
+                return 假, "状态迁移不允许", {"当前状态": 当前, "目标状态": 目标}
             字段 = {"处理者": 处理者, "状态原因": 原因,
                     "关联提交": 文本(请求.get("关联提交", ""), "关联提交") if 请求.get("关联提交") else "",
                     "验证证据": 文本(请求.get("验证证据", ""), "验证证据", 说明上限) if 请求.get("验证证据") else "",
                     "发布制品": 文本(请求.get("发布制品", ""), "发布制品", 说明上限) if 请求.get("发布制品") else "",
                     "状态": 目标, "更新时间": time.strftime("%Y-%m-%d %H:%M:%S")}
             if 目标 == "已修复" and (not 字段["验证证据"] or not 字段["发布制品"]):
-                return False, "已修复必须提供验证证据和发布制品", {}
+                return 假, "已修复必须提供验证证据和发布制品", {}
             if not self.状态.条件更新("能力反馈", 字段, "反馈id=? AND 状态=?", (反馈id, 当前)):
-                return False, "状态版本冲突", {}
+                return 假, "状态版本冲突", {}
             self.状态.追加证据(类型="能力反馈状态", 主题=反馈id,
                               内容={"从": 当前, "到": 目标, "原因": 原因,
                                     "关联提交": 字段["关联提交"], "验证证据": 字段["验证证据"],
                                     "发布制品": 字段["发布制品"]}, 调用者=处理者, 结果=目标)
-            return True, "", {"反馈id": 反馈id, "状态": 目标, "处理者": 处理者}
+            return 真, "", {"反馈id": 反馈id, "状态": 目标, "处理者": 处理者}
         except (OSError, TypeError, ValueError, KeyError):
-            return False, "参数不合法", {}
+            return 假, "参数不合法", {}

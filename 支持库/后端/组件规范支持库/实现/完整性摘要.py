@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from 公共契约.正式根 import 存在根名
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 摘要文件名 = "完整性摘要.json"
 排除目录名 = {"__pycache__", "工程缓存"}
@@ -34,10 +35,10 @@ from 公共契约.正式根 import 存在根名
 def 是否应当收录(文件: Path, 包目录: Path) -> bool:
     """文件是否属于正式包内容（排除摘要自身与缓存）。"""
     if not 文件.is_file() or 文件.name in 排除文件名:
-        return False
+        return 假
     相对路径 = 文件.relative_to(包目录)
     if any(部分 in 排除目录名 for 部分 in 相对路径.parts):
-        return False
+        return 假
     return 文件.suffix not in 排除文件后缀
 
 
@@ -160,33 +161,33 @@ def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
     问题列表: list[str] = []
     摘要路径 = 包目录 / 摘要文件名
     if not 摘要路径.is_file():
-        return False, ["缺少 完整性摘要.json"]
+        return 假, ["缺少 完整性摘要.json"]
     try:
         摘要 = json.loads(摘要路径.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as 错误:
-        return False, [f"摘要不可读: {错误}"]
+        return 假, [f"摘要不可读: {错误}"]
     文件清单 = 摘要.get("文件清单")
     if not isinstance(文件清单, list) or not 文件清单:
-        return False, ["文件清单缺失或为空（旧'能力数'格式或空清单；文件清单为唯一权威格式）"]
+        return 假, ["文件清单缺失或为空（旧'能力数'格式或空清单；文件清单为唯一权威格式）"]
     # 原判据放行「没有 摘要算法 字段」的摘要（`not in (None, "sha256")`），
     # 与本文档串「只允许一种格式」相冲：一份不带算法声明的摘要能被当成
     # sha256 通过，将来换成别的算法也无从发现。全仓 120 份 摘要文件实测
     # 摘要算法 全部为 "sha256"（无缺省），故收紧为必须显式声明。
     if 摘要.get("摘要算法") != "sha256":
-        return False, [f"摘要算法不合法: {摘要.get('摘要算法') or '未声明（必须显式声明 sha256）'}"]
+        return 假, [f"摘要算法不合法: {摘要.get('摘要算法') or '未声明（必须显式声明 sha256）'}"]
     声明路径 = 包目录 / "包声明.json"
     if 声明路径.is_file():
         try:
             声明 = json.loads(声明路径.read_text(encoding="utf-8"))
             if 摘要.get("包id") != 声明.get("包id") or 摘要.get("版本") != 声明.get("版本"):
-                return False, ["摘要中的包id或版本与包声明不一致"]
+                return 假, ["摘要中的包id或版本与包声明不一致"]
         except (json.JSONDecodeError, OSError):
-            return False, ["包声明.json 不可读"]
+            return 假, ["包声明.json 不可读"]
     声明路径集合: set[str] = set()
     包目录解析 = 包目录.resolve()
     for 条目 in 文件清单:
         if not isinstance(条目, dict):
-            return False, ["文件清单条目必须包含路径和sha256"]
+            return 假, ["文件清单条目必须包含路径和sha256"]
         相对路径 = str(条目.get("路径", ""))
         期望摘要 = str(条目.get("sha256", "")).lower()
         # 原实现只要求 ≥16 位十六进制，再用 startswith 比对：一个**截断到 16 位
@@ -195,17 +196,17 @@ def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
         # （全仓 2520 条实测全为 64 位），故要求完整长度 + 全十六进制 + 精确相等。
         if (not 相对路径 or len(期望摘要) != 64
                 or any(字符 not in "0123456789abcdef" for 字符 in 期望摘要)):
-            return False, [f"文件清单条目不完整（sha256 必须为 64 位十六进制）: {相对路径 or '缺少路径'}"]
+            return 假, [f"文件清单条目不完整（sha256 必须为 64 位十六进制）: {相对路径 or '缺少路径'}"]
         文件 = (包目录 / 相对路径).resolve()
         try:
             文件.relative_to(包目录解析)
         except ValueError:
-            return False, [f"文件路径越界: {相对路径}"]
+            return 假, [f"文件路径越界: {相对路径}"]
         if not 文件.is_file():
-            return False, [f"清单文件不存在: {相对路径}"]
+            return 假, [f"清单文件不存在: {相对路径}"]
         实际摘要 = hashlib.sha256(文件.read_bytes()).hexdigest()
         if 实际摘要 != 期望摘要:
-            return False, [f"文件摘要不一致: {相对路径}"]
+            return 假, [f"文件摘要不一致: {相对路径}"]
         声明路径集合.add(Path(相对路径).as_posix())
     实际路径集合 = {
         文件.relative_to(包目录).as_posix()
@@ -215,7 +216,7 @@ def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
     缺少清单 = sorted(实际路径集合 - 声明路径集合)
     多余清单 = sorted(声明路径集合 - 实际路径集合)
     if 缺少清单 or 多余清单:
-        return False, [f"清单不闭合: 未登记{缺少清单[:3]} 多余{多余清单[:3]}"]
+        return 假, [f"清单不闭合: 未登记{缺少清单[:3]} 多余{多余清单[:3]}"]
     # B-14：能力派生字段回读对账（能力数/能力清单/能力定义摘要）。
     # 修前这三个字段只有 生成完整性摘要 一个写者、全仓零读者：能力定义改了摘要没跟、
     # 字段被手改、字段整块缺失，三种漂移都无人发现。判据见 校验能力派生字段。

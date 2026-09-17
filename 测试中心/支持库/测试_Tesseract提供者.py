@@ -18,6 +18,7 @@ from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path: sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.进程终止 import 进程存活
 from 公共契约.版本规则.契约版本 import 契约版本
 from 支持库.适配层.Tesseract提供者 import 识别图片, 语言包列表, 版本探针
@@ -39,7 +40,7 @@ class Test版本探针(unittest.TestCase):
     def test_工具缺失语义(self):
         with mock.patch.object(提供者模块, "_查找工具", return_value=None):
             结果 = 版本探针()
-        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", 真))
 
     def test_版本探针真实调用(self):
         if not tesseract存在(): self.skipTest("本机未配置 tesseract")
@@ -87,7 +88,7 @@ class Test识别图片(unittest.TestCase):
 
     def test_真实OCR词级(self):
         if not tesseract存在(): self.skipTest("本机未配置 tesseract")
-        结果 = 识别图片(str(self.图片路径), 词级数据=True)
+        结果 = 识别图片(str(self.图片路径), 词级数据=真)
         self.assertTrue(结果.成功 and "文本" in 结果.值["词列表"][0], 结果.错误说明)
 
     def test_字节输入与临时目录零残留(self):
@@ -110,7 +111,7 @@ class Test识别图片(unittest.TestCase):
 
     def test_进程崩溃与取消透传(self):
         for 结果 in (提供者模块.结果.成功结果({"退出码": -9, "标准输出": "", "标准错误": ""}),
-                     提供者模块.结果.失败("取消", "任务已被取消", 可重试=True)):
+                     提供者模块.结果.失败("取消", "任务已被取消", 可重试=真)):
 
             with mock.patch.object(提供者模块, "执行命令", return_value=结果):
                 返回值 = 识别图片(str(self.图片路径))
@@ -122,7 +123,7 @@ class Test命令路径配置(unittest.TestCase):
 
     def test_显式配置伪路径工具缺失(self):
         结果 = 版本探针(命令路径="/不存在/tesseract伪路径")
-        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", 真))
 
     def test_显式配置不可执行命令失败(self):
         with tempfile.TemporaryDirectory(prefix="测试_Tesseract路径_") as 目录:
@@ -130,7 +131,7 @@ class Test命令路径配置(unittest.TestCase):
             不可执行.write_text("#!/bin/sh\nexit 0", encoding="utf-8")
             os.chmod(不可执行, 0o644)
             结果 = 版本探针(命令路径=str(不可执行))
-        self.assertEqual((结果.错误码, 结果.可重试), ("命令失败", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("命令失败", 真))
 
     def test_显式配置真实路径生效(self):
         if not tesseract存在(): self.skipTest("本机未配置 tesseract")
@@ -167,13 +168,13 @@ class Test命令路径配置(unittest.TestCase):
             _生成图片(图片)
             with mock.patch.dict(os.environ, {"Tesseract提供者_命令路径": "/不存在/tesseract伪路径"}):
                 结果 = 识别图片(str(图片))
-        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("工具缺失", 真))
 
     def test_版本不兼容(self):
         if not tesseract存在(): self.skipTest("本机未配置 tesseract")
         with mock.patch.object(提供者模块, "_提取版本", return_value="4.1.0"):
             结果 = 版本探针()
-        self.assertEqual((结果.错误码, 结果.可重试), ("版本不兼容", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("版本不兼容", 真))
         self.assertEqual(结果.详细信息.get("当前版本"), "4.1.0")
         self.assertEqual(结果.详细信息.get("最低版本"), "5.0.0")
 
@@ -268,7 +269,7 @@ class Test受管进程(unittest.TestCase):
     def test_超时强杀(self):
         开始 = time.monotonic()
         结果 = 受管模块.执行命令([sys.executable, "-c", "import time; time.sleep(30)"], 超时秒=0.5)
-        self.assertEqual((结果.错误码, 结果.可重试), ("超时", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("超时", 真))
         self.assertLess(time.monotonic() - 开始, 10)
 
     def test_取消(self):
@@ -300,7 +301,7 @@ class Test受管进程(unittest.TestCase):
         self.assertEqual(受管模块.执行命令(["echo"], 超时秒=0).错误码, "参数不合法")
         with mock.patch.object(subprocess, "Popen", side_effect=OSError("失败")):
             结果 = 受管模块.执行命令(["tesseract", "--version"])
-        self.assertEqual((结果.错误码, 结果.可重试), ("提供者不可用", True))
+        self.assertEqual((结果.错误码, 结果.可重试), ("提供者不可用", 真))
 
 
 if __name__ == "__main__": unittest.main()

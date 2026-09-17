@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源 = "直播逐字稿"
 指纹文件名 = "任务指纹.json"
@@ -28,7 +29,7 @@ def _底座(能力id: str, 参数: dict):
 
 def _成功(结果对象) -> bool:
     """结果对象是否成功。"""
-    return bool(结果对象 is not None and getattr(结果对象, "成功", False))
+    return bool(结果对象 is not None and getattr(结果对象, "成功", 假))
 
 
 def 现在文本() -> str:
@@ -54,7 +55,7 @@ def 准备缓存(缓存目录: str) -> dict[str, Path]:
     for 名称, 路径 in 路径表.items():
         if 名称 == "根":
             continue
-        _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(路径), "递归": True})
+        _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(路径), "递归": 真})
     路径表["疑难清单"] = 根 / "04_疑难清单.json"
     路径表["复核区间"] = 根 / "05_复核区间.json"
     路径表["指纹"] = 路径表["元数据"] / 指纹文件名
@@ -94,10 +95,10 @@ def 写JSON(路径: Path, 数据: dict) -> bool:
     """写 JSON（utf-8、缩进 2）；成功返回 True。"""
     序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 数据})
     if not _成功(序列化):
-        return False
+        return 假
     文本 = getattr(序列化, "值", None)
     if not isinstance(文本, str):
-        return False
+        return 假
     写 = _底座("文件系统支持库.文件操作.写入文件",
               {"文件路径": str(路径), "内容": 文本 + "\n", "编码": "utf-8"})
     return _成功(写)
@@ -120,14 +121,14 @@ def _未知(值) -> bool:
     绝不能判「指纹一致」，否则两个不同源文件会被判成同一任务而复用旧产物。
     """
     if 值 is None:
-        return True
+        return 真
     if isinstance(值, str):
         return not 值.strip()
     if isinstance(值, bool):
         return not 值
     if isinstance(值, (int, float)):
         return 值 == 0
-    return False
+    return 假
 
 
 # 必须有值的字段：值来自能力调用或数值口径，为空串/0 只可能来自兜底 → 未知，直接判不一致。
@@ -143,19 +144,19 @@ def 指纹一致(旧指纹: dict | None, 新指纹: dict) -> bool:
     即宁可重跑一遍，也不复用来源不明的旧产物。
     """
     if not isinstance(旧指纹, dict) or not isinstance(新指纹, dict):
-        return False
+        return 假
     for 字段 in 指纹必有值字段:
         旧值, 新值 = 旧指纹.get(字段), 新指纹.get(字段)
         if _未知(旧值) or _未知(新值):
-            return False
+            return 假
         if 旧值 != 新值:
-            return False
+            return 假
     for 字段 in 指纹可空字段:
         if 字段 not in 旧指纹 or 字段 not in 新指纹:
-            return False
+            return 假
         if 旧指纹.get(字段) != 新指纹.get(字段):
-            return False
-    return True
+            return 假
+    return 真
 
 
 def 写状态(缓存: dict, 状态: dict) -> bool:
@@ -178,22 +179,22 @@ def 产物状态(缓存: dict, 键: str, 子项: str | None = None) -> bool | No
     """
     路径 = 缓存.get(键) if isinstance(缓存, dict) else None
     if 路径 is None:
-        return False
+        return 假
     目标 = (Path(路径) / 子项) if 子项 else Path(路径)
     存在 = _底座("文件系统支持库.文件操作.判断存在", {"文件路径": str(目标)})
     if not _成功(存在):
         return None   # 判断存在都失败 → 判不了（绝不按「存在」放行）
-    if not bool(getattr(存在, "值", False)):
-        return False
+    if not bool(getattr(存在, "值", 假)):
+        return 假
     if 子项:
-        return True
+        return 真
     列 = _底座("文件系统支持库.文件操作.列出目录", {"目录路径": str(目标)})
     if not _成功(列):
         # 判断存在 已确认路径存在，列出目录 报「目录不存在」→ 存在但不是目录，是文件，视为已存在。
         # 其余失败（目录读取失败/参数不合法/调用器未装配）→ 拿不到结论，判不了。
         # 过去这里不分失败原因一律 return True，会把「没产出的阶段」当成已完成整段跳过。
         if str(getattr(列, "错误码", "") or "") == "目录不存在":
-            return True
+            return 真
         return None
     return bool(getattr(列, "值", None))
 
@@ -204,4 +205,4 @@ def 产物存在(缓存: dict, 键: str, 子项: str | None = None) -> bool:
     fail-closed：只有确凿「存在且有内容」才返回 True；判不了（能力调用失败）
     一律按不存在返回 False，调用方据此重跑该阶段，不跳过。
     """
-    return 产物状态(缓存, 键, 子项) is True
+    return 产物状态(缓存, 键, 子项) is 真

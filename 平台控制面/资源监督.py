@@ -15,6 +15,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as 未来超时
 from typing import Any, Callable
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 资源监督器:
@@ -36,24 +37,24 @@ class 资源监督器:
     def 校验预算声明(self, 预算: dict[str, Any]) -> tuple[bool, str]:
         缺失 = [键 for 键 in self.必需预算键 if 键 not in 预算]
         if 缺失:
-            return False, f"资源预算缺少必需项: {缺失}"
-        return True, "预算声明完整"
+            return 假, f"资源预算缺少必需项: {缺失}"
+        return 真, "预算声明完整"
 
     def 注册执行单元(self, *, 单元id: str, 预算: dict[str, Any]) -> tuple[bool, str]:
         """启动前注册：校验预算并创建有界池/信号量。"""
         有效, 消息 = self.校验预算声明(预算)
         if not 有效:
-            return False, 消息
+            return 假, 消息
         with self._锁:
             if 单元id in self._池表:
-                return False, f"执行单元已注册: {单元id}"
+                return 假, f"执行单元已注册: {单元id}"
             self._池表[单元id] = ThreadPoolExecutor(max_workers=int(预算["线程上限"]))
             self._信号量表[单元id] = threading.BoundedSemaphore(int(预算["并发调用上限"]))
             self._活跃表[单元id] = {}
             self._报告表[单元id] = {"线程峰值": 0, "并发峰值": 0, "队列峰值": 0,
                                    "内存峰值": 0, "超限次数": 0, "动作": [],
                                    "任务总数": 0, "成功": 0, "失败": 0, "取消": 0}
-        return True, "执行单元已注册"
+        return 真, "执行单元已注册"
 
     def 提交任务(self, 单元id: str, 任务: Callable[[], Any], *参数,
                  超时秒: float = 0) -> tuple[bool, str, Any]:
@@ -62,11 +63,11 @@ class 资源监督器:
         返回 (成功, 消息, 结果)。任务执行异常时 结果 为异常对象。
         """
         if 单元id not in self._池表:
-            return False, f"执行单元未注册: {单元id}", None
+            return 假, f"执行单元未注册: {单元id}", None
         信号量 = self._信号量表[单元id]
         if not 信号量.acquire(blocking=False):
             self._记录超限(单元id, "并发超限")
-            return False, "并发调用超限，任务被拒绝", None
+            return 假, "并发调用超限，任务被拒绝", None
         任务id = uuid.uuid4().hex[:12]
         未来 = self._池表[单元id].submit(任务, *参数)
         with self._锁:
@@ -102,17 +103,17 @@ class 资源监督器:
         if 超时秒 > 0:
             try:
                 结果值 = 未来.result(timeout=超时秒)
-                return True, "任务完成", 结果值
+                return 真, "任务完成", 结果值
             except 未来超时:
                 # 运行中任务的 Future.cancel() 无效：如实报告任务仍将运行至完成，
                 # 完成回调统一负责释放信号量+移除活跃表（防止双重释放），不再误报取消。
                 已取消 = 未来.cancel()
                 语义 = "任务已取消" if 已取消 else "任务仍将运行至完成，后续调用可能排队"
                 self._记录超限(单元id, f"单次调用超时({超时秒}s)，{语义}")
-                return False, f"单次调用超时({超时秒}s)，{语义}", None
+                return 假, f"单次调用超时({超时秒}s)，{语义}", None
             except Exception as 错误:
-                return False, f"任务失败: {错误}", 错误
-        return True, "任务已提交", None
+                return 假, f"任务失败: {错误}", 错误
+        return 真, "任务已提交", None
 
     def _记录超限(self, 单元id: str, 原因: str) -> None:
         with self._锁:
@@ -147,8 +148,8 @@ class 资源监督器:
         for 超限, 原因 in 检查表:
             if 超限:
                 self._记录超限(单元id, 原因)
-                return False, f"资源超限: {原因}"
-        return True, "资源正常"
+                return 假, f"资源超限: {原因}"
+        return 真, "资源正常"
 
     def 排空(self, 单元id: str) -> None:
         """排空已有任务（等待全部完成）。"""

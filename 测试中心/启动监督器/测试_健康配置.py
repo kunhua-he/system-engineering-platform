@@ -19,6 +19,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 启动监督器.健康监督 import (
     从配置创建健康监督,
     读取健康监督配置,
@@ -34,7 +35,7 @@ def _成功探针函数(调用记录: list | None = None):
              版本参数: str = "--version") -> 探针结果:
         if 调用记录 is not None:
             调用记录.append((名称, 命令列表, 版本参数, 超时秒))
-        return 探针结果(True, 退出码=0, 版本="9.9.9",
+        return 探针结果(真, 退出码=0, 版本="9.9.9",
                         诊断=f"{名称} 探针成功")
     return 探针
 
@@ -43,7 +44,7 @@ def _失败探针函数() -> None:
     """可控探针：失败返回「退出码非零」（测试注入，生产代码不用）。"""
     def 探针(名称: str, 命令列表: list[str], *, 超时秒: float = 5.0,
              版本参数: str = "--version") -> 探针结果:
-        return 探针结果(False, 错误码="退出码非零", 退出码=1,
+        return 探针结果(假, 错误码="退出码非零", 退出码=1,
                         标准错误摘要="模拟失败输出",
                         诊断=f"{名称} 退出码 1")
     return 探针
@@ -196,7 +197,7 @@ class Test健康配置非法值(unittest.TestCase):
             {"健康监督周期秒": "60"},        # 非数字
             {"健康监督周期秒": -5},          # 负数
             {"健康监督周期秒": 0.5},         # 过小（<1 秒）
-            {"健康监督周期秒": True},        # 布尔不是数字
+            {"健康监督周期秒": 真},        # 布尔不是数字
             {"健康监督探针超时秒": 0},       # 超时 <= 0
             {"健康监督探针超时秒": -1},
             {"健康监督失败阈值": 0},         # 阈值必须 >= 1
@@ -290,15 +291,15 @@ class Test健康配置生效行为(unittest.TestCase):
         self.assertEqual(状态["错误码"], "退出码非零")
 
     def test_探针成功后连续失败计数重置(self):
-        状态开关 = {"失败": True}
+        状态开关 = {"失败": 真}
 
         def 探针(名称: str, 命令列表: list[str], *, 超时秒: float = 5.0,
                  版本参数: str = "--version") -> 探针结果:
             if 状态开关["失败"]:
-                状态开关["失败"] = False
-                return 探针结果(False, 错误码="退出码非零", 退出码=1,
+                状态开关["失败"] = 假
+                return 探针结果(假, 错误码="退出码非零", 退出码=1,
                                 诊断="首次失败")
-            return 探针结果(True, 退出码=0, 版本="1.0")
+            return 探针结果(真, 退出码=0, 版本="1.0")
         监督 = 系统提供者健康监督(
             周期秒=0.5, 探针函数=探针, 证据文件=_临时证据文件(),
             失败阈值=3)
@@ -325,7 +326,7 @@ class Test健康配置生效行为(unittest.TestCase):
                                time.localtime(time.time() - 86400))
         预写行 = [
             json.dumps({"时间": 旧时间, "提供者": f"旧成功{i}",
-                        "健康": True}, ensure_ascii=False)
+                        "健康": 真}, ensure_ascii=False)
             for i in range(3)
         ]
         证据文件.write_text("\n".join(预写行) + "\n", encoding="utf-8")
@@ -342,7 +343,7 @@ class Test健康配置生效行为(unittest.TestCase):
         旧时间 = time.strftime(时间格式,
                                time.localtime(time.time() - 86400))
         证据文件.write_text(
-            json.dumps({"时间": 旧时间, "提供者": "旧", "健康": True},
+            json.dumps({"时间": 旧时间, "提供者": "旧", "健康": 真},
                        ensure_ascii=False) + "\n",
             encoding="utf-8")
         监督 = 系统提供者健康监督(
@@ -371,13 +372,13 @@ class Test健康配置生效行为(unittest.TestCase):
                                time.localtime(time.time() - 86400))
         预写行 = [
             json.dumps({"时间": 旧时间, "提供者": "旧失败1",
-                        "健康": False}, ensure_ascii=False),
+                        "健康": 假}, ensure_ascii=False),
             json.dumps({"时间": 旧时间, "提供者": "旧失败2",
-                        "健康": False}, ensure_ascii=False),
+                        "健康": 假}, ensure_ascii=False),
             json.dumps({"时间": 旧时间, "提供者": "旧成功1",
-                        "健康": True}, ensure_ascii=False),
+                        "健康": 真}, ensure_ascii=False),
             json.dumps({"时间": 旧时间, "提供者": "旧成功2",
-                        "健康": True}, ensure_ascii=False),
+                        "健康": 真}, ensure_ascii=False),
         ]
         证据文件.write_text("\n".join(预写行) + "\n", encoding="utf-8")
         监督 = 系统提供者健康监督(
@@ -399,7 +400,7 @@ class Test健康配置生效行为(unittest.TestCase):
                                time.localtime(time.time() - 86400))
         预写行 = [
             json.dumps({"时间": 旧时间, "提供者": f"旧失败{i}",
-                        "健康": False}, ensure_ascii=False)
+                        "健康": 假}, ensure_ascii=False)
             for i in range(3)
         ]
         证据文件.write_text("\n".join(预写行) + "\n", encoding="utf-8")
@@ -410,8 +411,8 @@ class Test健康配置生效行为(unittest.TestCase):
         监督.执行一次周期检查()  # 2 条成功行
         记录表 = [json.loads(行) for 行 in
                   证据文件.read_text(encoding="utf-8").strip().splitlines()]
-        失败行数 = sum(1 for 记录 in 记录表 if 记录.get("健康") is False)
-        成功行数 = sum(1 for 记录 in 记录表 if 记录.get("健康") is True)
+        失败行数 = sum(1 for 记录 in 记录表 if 记录.get("健康") is 假)
+        成功行数 = sum(1 for 记录 in 记录表 if 记录.get("健康") is 真)
         self.assertEqual(失败行数, 3, "失败行受保护不被条数裁剪")
         self.assertEqual(成功行数, 4, "非保护成功行保留最近 2 条 + 本轮 2 条保护行")
         self.assertEqual(len(记录表), 7)

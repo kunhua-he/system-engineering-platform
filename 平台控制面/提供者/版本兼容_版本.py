@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from 运行核心.权威状态 import 版本元组
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def 解析兼容范围(范围: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -16,4 +17,4 @@ def 版本在范围内(版本: str, 范围: str) -> bool:
         低, 高 = 解析兼容范围(范围)
         return 低 <= 版本元组(版本) <= 高
     except (ValueError, TypeError):
-        return False
+        return 假

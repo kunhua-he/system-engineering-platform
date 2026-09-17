@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 阶段_准备 = "准备"
 阶段_提交 = "提交"
@@ -143,14 +144,14 @@ class 事务恢复:
 
     def _校验通过(self, 记录: 操作记录) -> tuple[bool, str]:
         if not 记录.校验函数名:
-            return True, "未声明跨存储校验"
+            return 真, "未声明跨存储校验"
         函数 = self.校验函数表.get(记录.校验函数名)
         if 函数 is None:
-            return False, "一致性校验函数未注册"
+            return 假, "一致性校验函数未注册"
         try:
             结果 = 函数(记录)
         except Exception as 错误:
-            return False, f"一致性校验异常: {type(错误).__name__}"
+            return 假, f"一致性校验异常: {type(错误).__name__}"
         if isinstance(结果, tuple):
             return bool(结果[0]), str(结果[1]) if len(结果) > 1 else ""
         if isinstance(结果, list):
@@ -161,15 +162,15 @@ class 事务恢复:
         if 记录.回滚函数名:
             函数 = self.回滚函数表.get(记录.回滚函数名)
             if 函数 is None:
-                return False, "回滚函数未注册"
+                return 假, "回滚函数未注册"
             try:
                 函数(记录)
             except Exception as 错误:
-                return False, f"回滚执行失败: {type(错误).__name__}"
+                return 假, f"回滚执行失败: {type(错误).__name__}"
         self.记录回滚(记录.操作id, 原因)
-        return True, ""
+        return 真, ""
 
-    def 恢复(self, *, 自动回滚: bool = True) -> list[dict[str, Any]]:
+    def 恢复(self, *, 自动回滚: bool = 真) -> list[dict[str, Any]]:
         结果列表: list[dict[str, Any]] = []
         for 记录 in list(self.扫描未完成()):
             if 记录.阶段 == 阶段_准备:

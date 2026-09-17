@@ -16,6 +16,7 @@ from unittest import mock
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.密码签名提供者 import 生成密钥对, 签名
 from 支持库.适配层.密码签名提供者.实现 import 提供者管理器 as 提供者模块
@@ -55,10 +56,10 @@ class Test密码签名提供者生命周期(unittest.TestCase):
             try:
                 进程.communicate(timeout=0.5)  # 不写请求行 → 子进程阻塞读 stdin
             except subprocess.TimeoutExpired:
-                return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+                return 提供者模块._失败("超时", "模拟超时", 可重试=真)
             finally:
                 提供者模块._终止进程组(进程)
-            return 提供者模块._失败("超时", "模拟超时", 可重试=True)
+            return 提供者模块._失败("超时", "模拟超时", 可重试=真)
 
         with mock.patch.object(提供者模块, "执行任务", side_effect=挂起执行):
             结果 = 生成密钥对()

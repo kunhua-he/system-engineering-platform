@@ -28,6 +28,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
 
@@ -59,7 +60,7 @@ class 迷你根夹具(unittest.TestCase):
         能力: list[str],
         依赖: list[dict] | None = None,
         入口源码: str | None = None,
-        写入口: bool = True,
+        写入口: bool = 真,
         写契约: bool | None = None,
         契约文本: str | None = None,
         依赖锁: dict | None = None,
@@ -82,7 +83,7 @@ class 迷你根夹具(unittest.TestCase):
         if 契约文本 is not None:
             (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
             (目录 / "能力契约" / "参数契约.json").write_text(契约文本, encoding="utf-8")
-        elif 写契约 if 写契约 is not None else True:
+        elif 写契约 if 写契约 is not None else 真:
             (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
             (目录 / "能力契约" / "参数契约.json").write_text(json.dumps({
                 "契约版本": "1.0.0",
@@ -240,7 +241,7 @@ class Test跨包真冲突仍整体阻断(迷你根夹具):
         """删锁必须装配失败（fail-closed）：同根内有健康包也不许放行。"""
         self.写包("健康支持库", 包id="隔离.健康", 能力=["隔离.健康能力"])
         self.写包("缺锁提供者", 包id="支持库.适配层.缺锁提供者",
-                  能力=["隔离.缺锁提供者能力"], 写契约=False)
+                  能力=["隔离.缺锁提供者能力"], 写契约=假)
         注册表 = 能力注册表()
         结果 = self.装配(注册表)
         self.assertFalse(结果.成功, "适配层缺锁必须整体阻断")
@@ -252,7 +253,7 @@ class Test跨包真冲突仍整体阻断(迷你根夹具):
         """删契约 fail-closed（模块契约缺失仍整体阻断，隔离只管「契约不可读」）。"""
         self.写包("健康支持库", 包id="隔离.健康", 能力=["隔离.健康能力"])
         self.写包("缺契约模块", 包id="隔离.缺契约", 类型="基础模块",
-                  能力=["隔离.缺契约能力"], 写契约=False)
+                  能力=["隔离.缺契约能力"], 写契约=假)
         结果 = self.装配(能力注册表())
         self.assertFalse(结果.成功, "模块契约缺失必须整体阻断")
         self.assertTrue(any("聚合契约缺失（装配阻断）" in 问题 for 问题 in 结果.问题列表),

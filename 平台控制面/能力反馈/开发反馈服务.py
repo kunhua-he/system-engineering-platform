@@ -83,6 +83,7 @@ from 平台控制面.能力反馈.开工id校验 import (
     默认校验器,
 )
 from 平台控制面.需求登记 import 需求登记
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 证据类型_开发反馈 = "开发反馈"
 证据类型_升级候选 = "开发反馈升级候选"
@@ -225,7 +226,7 @@ class 开发反馈服务:
                 raise ValueError("请求必须是 JSON 对象")
             有效, 错误码, 说明 = self.校验器.校验(请求.get("开工id") or 请求.get("work_id"))
             if not 有效:
-                return False, 错误码, {"错误说明": 说明}
+                return 假, 错误码, {"错误说明": 说明}
             开工id = 归一化(请求.get("开工id") or 请求.get("work_id"))
             原文表: dict[str, str] = {}
             for 名称 in 五字段:
@@ -241,9 +242,9 @@ class 开发反馈服务:
             键 = _去重键(开工id, 原文表)
             已有 = self._按去重键找(开工id, 键)
             if 已有 is not None:
-                return True, 错误_成功, {"反馈id": 已有.get("反馈id", ""),
+                return 真, 错误_成功, {"反馈id": 已有.get("反馈id", ""),
                                         "开工id": 开工id, "门禁": "已满足",
-                                        "是否重复": True, "时间": 已有.get("时间", "")}
+                                        "是否重复": 真, "时间": 已有.get("时间", "")}
             时间 = time.strftime("%Y-%m-%d %H:%M:%S")
             记录 = {"反馈id": uuid.uuid4().hex[:20], "开工id": 开工id, "任务": 任务,
                     "角色": 角色, "时间": 时间, "去重键": 键, "来源": "账本", **记录表}
@@ -251,27 +252,27 @@ class 开发反馈服务:
                 类型=证据类型_开发反馈, 主题=开工id, 内容=记录,
                 操作id=记录["反馈id"], 调用者=角色, 结果="已登记")
             if not 证据id:
-                return False, 错误_写入失败, {}
-            return True, 错误_成功, {"反馈id": 记录["反馈id"], "证据id": 证据id,
+                return 假, 错误_写入失败, {}
+            return 真, 错误_成功, {"反馈id": 记录["反馈id"], "证据id": 证据id,
                                     "开工id": 开工id, "门禁": "已满足",
-                                    "是否重复": False, "时间": 时间}
+                                    "是否重复": 假, "时间": 时间}
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
-            return False, 错误_参数不合法, {}
+            return 假, 错误_参数不合法, {}
 
     # ---------- 能力 2：查询开发反馈状态 ----------
     def 查询状态(self, 开工id: str) -> tuple[bool, str, dict[str, Any]]:
         有效, 错误码, 说明 = self.校验器.校验(开工id)
         if not 有效:
-            return False, 错误码, {"错误说明": 说明}
+            return 假, 错误码, {"错误说明": 说明}
         标识 = 归一化(开工id)
         try:
             记录表 = self._合并记录(标识, 限制上限)
         except (OSError, ValueError, json.JSONDecodeError):
-            return False, 错误_查询失败, {}
+            return 假, 错误_查询失败, {}
         if not 记录表:
-            return True, 错误_成功, {"已反馈": False, "开工id": 标识, "反馈": {},
+            return 真, 错误_成功, {"已反馈": 假, "开工id": 标识, "反馈": {},
                                     "数量": 0, "来源": ""}
-        return True, 错误_成功, {"已反馈": True, "开工id": 标识, "反馈": 记录表[0],
+        return 真, 错误_成功, {"已反馈": 真, "开工id": 标识, "反馈": 记录表[0],
                                 "数量": len(记录表), "来源": 记录表[0].get("来源", "")}
 
     # ---------- 能力 3：复核开发反馈 ----------
@@ -289,7 +290,7 @@ class 开发反馈服务:
             for 候选 in 候选表:
                 有效, 错误码, 说明 = self.校验器.校验(候选)
                 if not 有效:
-                    return False, 错误码, {"错误说明": 说明}
+                    return 假, 错误码, {"错误说明": 说明}
                 标识 = 归一化(候选)
                 if 标识 not in 标识表:
                     标识表.append(标识)
@@ -300,7 +301,7 @@ class 开发反馈服务:
                 raise ValueError(f"限制必须是 1 到 {限制上限} 的整数")
             任务 = str(请求.get("任务", "")).strip()
             反馈表: list[dict[str, Any]] = []
-            截断 = False
+            截断 = 假
             for 标识 in 标识表:
                 命中, 该截断 = self._合并记录带截断(标识, 限制)
                 截断 = 截断 or 该截断
@@ -308,10 +309,10 @@ class 开发反馈服务:
                             if not 任务 or 任务 in str(项.get("任务", "")))
             反馈表.sort(key=lambda 项: str(项.get("时间", "")), reverse=True)
             升级候选 = self._聚合候选(反馈表)
-            return True, 错误_成功, {"数量": len(反馈表), "反馈列表": 反馈表,
+            return 真, 错误_成功, {"数量": len(反馈表), "反馈列表": 反馈表,
                                     "升级候选": 升级候选, "查询是否截断": 截断}
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
-            return False, 错误_参数不合法, {}
+            return 假, 错误_参数不合法, {}
 
     # ---------- 能力 4：登记升级候选（缺口②通道） ----------
     def 登记升级候选(self, 请求: dict[str, Any]) -> tuple[bool, str, dict[str, Any]]:
@@ -320,7 +321,7 @@ class 开发反馈服务:
                 raise ValueError("请求必须是 JSON 对象")
             有效, 错误码, 说明 = self.校验器.校验(请求.get("开工id") or 请求.get("work_id"))
             if not 有效:
-                return False, 错误码, {"错误说明": 说明}
+                return 假, 错误码, {"错误说明": 说明}
             开工id = 归一化(请求.get("开工id") or 请求.get("work_id"))
             来源反馈id = 文本(请求.get("来源反馈id"), "来源反馈id")
             类别 = 字段别名.get(str(请求.get("类别", "")).strip(), "")
@@ -329,18 +330,18 @@ class 开发反馈服务:
             来源记录 = next((项 for 项 in self._合并记录(开工id, 限制上限)
                           if 项.get("反馈id") == 来源反馈id), None)
             if 来源记录 is None:
-                return False, 错误_不存在, {}
+                return 假, 错误_不存在, {}
             内容 = str(来源记录.get(类别, "")).strip()
             if not 内容 or 内容 == "无":
-                return False, 错误_参数不合法, {"错误说明": f"{类别}为「无」，不构成升级候选"}
+                return 假, 错误_参数不合法, {"错误说明": f"{类别}为「无」，不构成升级候选"}
             摘要 = _候选摘要(开工id, 来源反馈id, 类别)
             已有 = next((项 for 项 in self._证据记录(开工id, 证据类型_升级候选)
                        if 项.get("候选摘要") == 摘要), None)
             if 已有 is not None:
-                return True, 错误_成功, {"需求id": 已有.get("需求id", ""),
+                return 真, 错误_成功, {"需求id": 已有.get("需求id", ""),
                                         "需求状态": 已有.get("需求状态", "待确认"),
                                         "开工id": 开工id, "来源反馈id": 来源反馈id,
-                                        "类别": 类别, "是否重复": True}
+                                        "类别": 类别, "是否重复": 真}
             目标 = str(请求.get("目标", "")).strip()[:说明上限] or (
                 f"开发反馈升级：{类别}｜{内容[:180]}")
             需求 = self.需求服务.登记需求(
@@ -350,18 +351,18 @@ class 开发反馈服务:
                 调用者=str(来源记录.get("角色", ""))[:文本上限], 角色="开发反馈")
             需求id = str(需求.get("需求id", ""))
             if not 需求id:
-                return False, 错误_升级登记失败, {}
+                return 假, 错误_升级登记失败, {}
             记录 = {"需求id": 需求id, "需求状态": "待确认", "来源反馈id": 来源反馈id,
                     "类别": 类别, "候选摘要": 摘要, "开工id": 开工id,
                     "时间": time.strftime("%Y-%m-%d %H:%M:%S")}
             self.状态.追加证据(类型=证据类型_升级候选, 主题=开工id, 内容=记录,
                               操作id=需求id, 调用者=str(来源记录.get("角色", "")),
                               结果="已登记")
-            return True, 错误_成功, {"需求id": 需求id, "需求状态": "待确认",
+            return 真, 错误_成功, {"需求id": 需求id, "需求状态": "待确认",
                                     "开工id": 开工id, "来源反馈id": 来源反馈id,
-                                    "类别": 类别, "是否重复": False}
+                                    "类别": 类别, "是否重复": 假}
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
-            return False, 错误_参数不合法, {}
+            return 假, 错误_参数不合法, {}
 
     # ---------- 账本与回退源 ----------
     def _证据记录(self, 开工id: str, 类型: str) -> list[dict[str, Any]]:
@@ -378,7 +379,7 @@ class 开发反馈服务:
     def _回退记录(self, 开工id: str, 限制: int) -> tuple[list[dict[str, Any]], bool]:
         """历史 JSONL **只读**回退（迁移期口径，与 协作状态.py 的「库优先＋旧文件只读」一致）。"""
         if self.回退文件 is None or not self.回退文件.is_file():
-            return [], False
+            return [], 假
         try:
             from 公共契约.运行时.有界IO import (
                 读取JSONL,
@@ -386,7 +387,7 @@ class 开发反馈服务:
                 默认JSONL读取上限记录,
             )
         except ImportError:
-            return [], False
+            return [], 假
         源表, 截断 = 读取JSONL(self.回退文件, 最大字节数=默认JSONL读取上限字节,
                             最大记录数=默认JSONL读取上限记录)
         记录表: list[dict[str, Any]] = []
@@ -454,7 +455,7 @@ def 调用能力(能力id: str, 参数: dict[str, Any], *, 服务: 开发反馈�
     }
     执行 = 分发.get(str(能力id))
     if 执行 is None:
-        return {"成功": False, "错误码": "能力不存在", "错误说明": "", "值": {}}
+        return {"成功": 假, "错误码": "能力不存在", "错误说明": "", "值": {}}
     成功, 错误码, 值 = 执行()
     return {"成功": 成功, "值": 值, "错误码": 错误码,
             "错误说明": 值.get("错误说明", "") if isinstance(值, dict) else "",
