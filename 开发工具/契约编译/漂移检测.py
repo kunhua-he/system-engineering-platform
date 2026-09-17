@@ -6,6 +6,23 @@
 通过——本仓实现文件是「一包一文件」，猜路径命中率实测为 0）、说明书与入口
 不一致、契约破坏但未升级主版本。
 
+**判据的两处口径修正（2026-09-18，实战 126 条缺口里 72 条是判据误判）**：
+
+1. **入口定位**（`定位对外入口`）：对外实现 = `__init__.py` 的 `注册能力` 登记
+   `实现函数` 指向的那份，依次按「包入口本文件（`_包装*` 闭包）→ 包入口导入目标 →
+   实现目录索引（对外优先、`子进程*` 垫底）→ 转调跟随」定位，**绝不**「按文件名字典序
+   取第一个同名函数」。原判据抓到的是子进程内部实现（`解码图像(字节b64)`）、
+   `实现/` 里的内部同名方法、或别名/转调形态下的不存在函数 —— 实测 32 条正确实现
+   被判「参数顺序漂移」、16 条被判「声明无实现」。
+2. **参数名序**（`检测参数漂移`）：按「**契约必填参数的相对顺序**在入口签名里做
+   **子序列匹配**」判。契约只登记对外参数面，实现签名里带默认值的可选参数
+   （`项目id: str = ""`）是平台允许的实现自由度：入口是契约超集时**判对不判错**，
+   多出的参数进 `只报列表`（`检测参数超出`），不进缺口计数；只有必填项**缺失**或
+   相对顺序**颠倒**才判「参数顺序漂移」。原判据按参数表严格相等判，实测 56 条假红。
+3. **同一根因只计一条**：声明无实现 / 转调目标未解析 命中时，不再连带报
+   「入口文件缺失」「实现文件未定位」。转调跟不到目标时单独报「转调目标未解析」，
+   与「真无实现」分开表述（判不出 ≠ 判绿，也不许混为一谈）。
+
 其余检测器（检测实现无声明 / 检测生成文件被改 / 检测完整性摘要格式 /
 检测能力定义漂移 / 检测注册口径漂移）供调用方按场景单独选用，不并入
 全面漂移检测——检测实现无声明 见其文档串（函数级粒度无法区分能力入口与内部
@@ -32,10 +49,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.基础类型.类型表 import 正式类型表
 from 公共契约.能力契约.契约 import 归一注册口径
 
 生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
+
+顶层目录名 = ("支持库", "模块库", "技能库")
+"""系统根下的顶层目录名：点分模块名首段 → 文件路径的解析起点。"""
+
+内部实现文件名前缀 = ("子进程",)
+"""`子进程*` 是**子进程内**的实现（协议侧），不是对外契约的对应物。
+
+实测形态：`图像解码`/`Pillow提供者`/`PyMuPDF提供者`/`转写`/`MLXWhisper提供者` 的实现目录里
+既有 `提供者.py`（对外实现，签名与契约一致）又有 `子进程解析.py`（子进程内协议实现，
+签名是 `解码图像(字节b64)` 这类内部形态）。判据若按文件名字典序取第一个定义同名函数的
+文件，就会抓错这份内部实现并把 32 条正确实现判成「参数顺序漂移」。对外实现的正确定位
+键是**注册映射**（`__init__.py` 的 `注册能力` → `实现函数`），不是文件名。
+"""
 
 
 class _未解析哨兵类型:
@@ -48,9 +79,15 @@ class _未解析哨兵类型:
 
 @dataclass
 class 漂移结果:
-    """一次漂移检测结果。"""
+    """一次漂移检测结果。
+
+    `问题列表` = 判红项（进缺口计数/基线）；`只报列表` = **只报不判**的度量项
+    （如「入口多出契约未登记的可选参数」——平台允许的实现自由度，判红会把正确实现
+    判成缺陷，但默默丢掉又丢失了「契约与实现对不齐」的事实）。
+    """
 
     问题列表: list[str] = field(default_factory=list)
+    只报列表: list[str] = field(default_factory=list)
 
     @property
     def 成功(self) -> bool:
@@ -65,16 +102,578 @@ def 主版本号(版本: str) -> int:
         return 0
 
 
-def 检测声明无实现(契约: dict[str, Any], 实现目录: Path) -> str | None:
-    """契约声明了能力但实现目录无对应实现。"""
+def _实现候选代价(文件: Path) -> int:
+    """同名函数出现在多个文件里时「谁更对外」的代价（越小越对外）。
+
+    子进程内实现排最后：它是协议侧产物，签名是内部形态（`字节b64`），拿它比对
+    对外契约必然假报漂移（见 `内部实现文件名前缀` 的说明）。
+    """
+    名 = 文件.stem
+    包名 = 文件.parent.parent.name if 文件.parent.name == "实现" else 文件.parent.name
+    if 名.startswith(内部实现文件名前缀):
+        return 30
+    if 名 == 包名:
+        return 0
+    if 名 == "提供者":
+        return 1
+    return 10
+
+
+def _实现函数索引(实现目录: Path) -> dict[str, tuple[Path, ast.AST]]:
+    """实现目录内 **函数名 → (文件, 函数节点)**（AST 静态索引，零副作用）。
+
+    为什么必须有它：本仓实现文件普遍是「一包一文件」（`实现/包名.py` 内含该包全部
+    能力），能力id 末段几乎**不等于文件名**。任何按文件名猜实现的判据在本仓命中率
+    实测为 0 —— 要么全仓假红（按「文件名含能力名」判声明无实现），要么永久空跑
+    （`检测返回漂移` 收到不存在的路径直接返回 None）。唯一可靠的定位键是**函数名**：
+    注册入口 `能力实现(实现函数=函数名)` 与能力id 末段同名是编译器生成口径
+    （`能力定义编译器.生成注册入口` 逐条 `from … import {能力id末段}`）。
+
+    同名函数跨文件时按**对外优先**取（`_实现候选代价`）：文件名==包名 > `提供者.py` >
+    其他 → `子进程*` 垫底。原实现按 `sorted(rglob)` 取**第一个**，实测抓到了
+    `子进程解析.py` 那份内部实现。定位对外实现的**首选**键仍是注册映射
+    （见 `定位对外入口`），本索引只是它的兜底。
+    """
+    表: dict[str, tuple[Path, ast.AST]] = {}
+    代价表: dict[str, tuple[int, str]] = {}
+    if not 实现目录.is_dir():
+        return 表
+    for 文件 in sorted(实现目录.rglob("*.py")):
+        if "__pycache__" in 文件.parts:
+            continue
+        try:
+            树 = ast.parse(文件.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            continue
+        for 节点 in ast.walk(树):
+            if not isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            代价 = (_实现候选代价(文件), str(文件))
+            if 节点.name not in 表 or 代价 < 代价表[节点.name]:
+                表[节点.name] = (文件, 节点)
+                代价表[节点.name] = 代价
+    return 表
+
+
+def _定位实现文件(契约: dict[str, Any], 实现目录: Path,
+                 实现索引: dict[str, tuple[Path, ast.AST]] | None = None) -> Path | None:
+    """按「能力id 末段 == 函数名」定位实现文件；定位不到返回 None（不臆造路径）。
+
+    **它只是兜底**：权威定位走 `定位对外入口`（注册映射 → 包入口导入目标 →
+    实现目录索引 → 转调跟随）。调用方不知道包目录时才用本函数。
+    """
+    能力名 = 契约.get("能力id", "").split(".")[-1]
+    if not 能力名:
+        return None
+    索引 = 实现索引 if 实现索引 is not None else _实现函数索引(实现目录)
+    命中 = 索引.get(能力名)
+    return 命中[0] if 命中 else None
+
+
+def _系统根(包目录: Path) -> Path | None:
+    """从包目录回溯系统根：**包相对路径的首段是 支持库/模块库/技能库** 的那个祖先。
+
+    判定不能用「祖先目录名 ∈ 顶层目录名」，也不能用「祖先下有同名子目录」：本仓存在
+    与顶层目录同名的包（`技能库/后端/技能库`），后者会把 `技能库/后端` 误当系统根。
+    取**最外层**的合格祖先（真根），保证 `A.B.C → A/B/C.py` 的模块名解析起点正确。
+    """
+    命中: Path | None = None
+    for 祖先 in (包目录, *包目录.parents):
+        try:
+            段列表 = 包目录.relative_to(祖先).parts
+        except ValueError:
+            continue
+        if len(段列表) >= 2 and 段列表[0] in 顶层目录名:
+            命中 = 祖先
+    return 命中
+
+
+def _模块名到文件(模块名: str, 系统根: Path | None) -> Path | None:
+    """点分模块名 → 文件（`A.B.C` → `系统根/A/B/C.py`，包取 `__init__.py`）。
+
+    只解析**本仓顶层名开头**的绝对模块名（`支持库`/`模块库`/`技能库`）；
+    解析不到就返回 None（不臆造路径）。
+    """
+    if not 模块名 or 系统根 is None:
+        return None
+    段列表 = [段 for 段 in str(模块名).split(".") if 段]
+    if len(段列表) < 2 or 段列表[0] not in 顶层目录名:
+        return None
+    候选 = 系统根.joinpath(*段列表).with_suffix(".py")
+    if 候选.is_file():
+        return 候选
+    包入口 = 系统根.joinpath(*段列表) / "__init__.py"
+    return 包入口 if 包入口.is_file() else None
+
+
+def _文件模块名(文件: Path, 系统根: Path | None) -> str | None:
+    """文件路径 → 点分模块名（`…/实现/PDF文本表格.py` → `….实现.PDF文本表格`）。"""
+    if 系统根 is None:
+        return None
+    try:
+        相对 = 文件.resolve().relative_to(系统根.resolve())
+    except (ValueError, OSError):
+        return None
+    段列表 = list(相对.parts)
+    if 段列表 and 段列表[-1] == "__init__.py":
+        段列表 = 段列表[:-1]
+    elif 段列表 and 段列表[-1].endswith(".py"):
+        段列表[-1] = 段列表[-1][:-3]
+    return ".".join(段列表) if 段列表 else None
+
+
+def _文件内函数名集(文件: Path) -> set[str]:
+    """文件内全部函数名（含嵌套闭包与方法）。解析失败返回空集。"""
+    try:
+        树 = ast.parse(文件.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return set()
+    return {节点.name for 节点 in ast.walk(树)
+            if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
+def _文件内定义(文件: Path, 函数名: str) -> bool:
+    """文件里是否定义了该函数（AST 判定，不导入模块 = 零副作用）。"""
+    return bool(函数名) and 函数名 in _文件内函数名集(文件)
+
+
+def _包入口导入表(包目录: Path) -> dict[str, tuple[str, str]]:
+    """包 `__init__.py` 的导入表：本地名 → (模块名, 模块内原名)。
+
+    `from 支持库.…实现.提供者 import 解码图像` → `{"解码图像": ("支持库.…实现.提供者", "解码图像")}`。
+    注册入口的 `实现函数=函数` 用的就是这张表里的**本地名**，所以「注册函数名 → 文件」
+    必须经它解析，不能按文件名猜。
+    """
+    入口 = 包目录 / "__init__.py"
+    if not 入口.is_file():
+        return {}
+    try:
+        树 = ast.parse(入口.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return {}
+    表: dict[str, tuple[str, str]] = {}
+    for 节点 in ast.walk(树):
+        if isinstance(节点, ast.ImportFrom) and 节点.module and not 节点.level:
+            for 别名 in 节点.names:
+                表.setdefault(别名.asname or 别名.name, (节点.module, 别名.name))
+        elif isinstance(节点, ast.Import):
+            for 别名 in 节点.names:
+                if 别名.asname:
+                    表.setdefault(别名.asname, (别名.name, ""))
+    return 表
+
+
+def _关键字字面量(调用: ast.Call, 键: str) -> str | None:
+    """取调用里某关键字参数的字符串字面量（非字面量返回 None）。"""
+    for 关键字 in 调用.keywords:
+        if 关键字.arg == 键 and isinstance(关键字.value, ast.Constant) \
+                and isinstance(关键字.value.value, str):
+            return 关键字.value.value
+    return None
+
+
+def _关键字名(调用: ast.Call, 键: str) -> str | None:
+    """取调用里某关键字参数引用的变量名（`实现函数=解析PDF` → `解析PDF`）。"""
+    for 关键字 in 调用.keywords:
+        if 关键字.arg == 键 and isinstance(关键字.value, ast.Name):
+            return 关键字.value.id
+    return None
+
+
+def 包入口映射(包目录: Path | None) -> dict[str, dict[str, str]]:
+    """包 `__init__.py` 里 `注册能力` 登记的 能力id → 实现函数名（**权威映射**）。
+
+    为什么必须用它：`能力id 末段 == 实现函数名` 只是编译器的**多数**口径，本仓有两类
+    合法例外，按末段猜名字必然假报「声明无实现 / 参数漂移」：
+      ① **别名**：`文档转换支持库.PDF隔离提供者.解析PDF` 的实现函数是 `解析PDF隔离`；
+         `内部.文字文档.解析` → `解析文字文档`；`技能库.技能索引.生成索引` → `生成技能索引`；
+         `转写支持库.转写.检查可用性` → `检查转写可用性`；`系统核心支持库.资源管理.资源短锁`
+         → `执行资源短锁`。
+      ② **包装闭包**：`代码解析支持库.*` 的实现函数是 `注册能力` 内的 `_包装*`
+         （**对外签名在那里**；`实现/代码解析.py` 里的同名方法是内部形态，参数面不同）。
+    解析不出的（动态拼装，如 `实现函数=globals()[能力["能力id"].split(".")[-1]]`）不进返回表，
+    由调用方按「能力id 末段」回退。
+    """
+    表: dict[str, dict[str, str]] = {}
+    if 包目录 is None:
+        return 表
+    入口 = 包目录 / "__init__.py"
+    if not 入口.is_file():
+        return 表
+    try:
+        树 = ast.parse(入口.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return 表
+    for 节点 in ast.walk(树):
+        if isinstance(节点, ast.Call) and isinstance(节点.func, ast.Name) \
+                and 节点.func.id == "能力实现":
+            能力id = _关键字字面量(节点, "能力id")
+            函数 = _关键字名(节点, "实现函数")
+            if 能力id and 函数:
+                表.setdefault(能力id, {"函数名": 函数, "来源": "注册表"})
+        elif isinstance(节点, (ast.Tuple, ast.List)) and len(节点.elts) >= 2:
+            # `for 能力id, 函数, 参数表, 说明 in [("能力id", 实现函数, …), …]` 的表格项
+            首位, 次位 = 节点.elts[0], 节点.elts[1]
+            if isinstance(首位, ast.Constant) and isinstance(首位.value, str) \
+                    and "." in 首位.value and isinstance(次位, ast.Name):
+                表.setdefault(首位.value, {"函数名": 次位.id, "来源": "注册表"})
+    return 表
+
+
+def _是sys模块下标(节点: ast.AST) -> ast.Subscript | None:
+    """`sys.modules[...]` 形态的下标节点（不是则 None）。"""
+    if (isinstance(节点, ast.Subscript)
+            and isinstance(节点.value, ast.Attribute) and 节点.value.attr == "modules"
+            and isinstance(节点.value.value, ast.Name) and 节点.value.value.id == "sys"):
+        return 节点
+    return None
+
+
+def _下标键(节点: ast.AST, 绑定: dict[str, str]) -> str | None:
+    """取 `sys.modules[…]` 的键：`__name__` 哨兵 / 字符串常量 / 已绑定的字符串变量。"""
+    if isinstance(节点, ast.Constant) and isinstance(节点.value, str):
+        return 节点.value
+    if isinstance(节点, ast.Name):
+        return "__name__" if 节点.id == "__name__" else 绑定.get(节点.id)
+    return None
+
+
+def _疑似模块名字符串(值: Any) -> bool:
+    """是否是「点分模块名」形状的字符串（每段都是合法标识符，至少两段）。"""
+    if not isinstance(值, str) or "." not in 值:
+        return False
+    return all(段.isidentifier() for 段 in 值.split("."))
+
+
+def 模块替换标记(文件: Path) -> dict[str, Any] | None:
+    """识别 **D-2 结构债收口**的「转调」形态：模块对象被替换成唯一实现。
+
+    形态（实测两例：`文档转换支持库/PDF文本表格/实现/PDF文本表格.py`、
+    `文档转换支持库/PDF隔离提供者/实现/子进程解析.py`）：
+    ```python
+    唯一实现名 = "支持库.适配层.pdfplumber提供者.实现.PDF文本表格"
+    if 唯一实现名 not in sys.modules:      # 兜底：按文件路径显式载入
+        … sys.modules[唯一实现名] = _模块 …
+    sys.modules[__name__] = sys.modules[唯一实现名]
+    ```
+    这类文件里当然没有 `def 解析PDF`（函数在适配层那份里），判据按 AST 找函数名必然
+    报「声明无实现」。返回 `{"自替换": bool, "候选模块": [...] }`；文件里没有
+    `sys.modules[…] =` 赋值时返回 None（= 不是转调文件，不许当转调放行）。
+    """
+    try:
+        树 = ast.parse(文件.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return None
+    本模块名 = _文件模块名(文件, _系统根(文件))
+    绑定: dict[str, str] = {}
+    for 节点 in ast.walk(树):
+        if isinstance(节点, ast.Assign) and len(节点.targets) == 1 \
+                and isinstance(节点.targets[0], ast.Name) \
+                and isinstance(节点.value, ast.Constant) \
+                and isinstance(节点.value.value, str):
+            绑定[节点.targets[0].id] = 节点.value.value
+    自替换 = False
+    命中替换赋值 = False
+    候选: list[str] = []
+    for 节点 in ast.walk(树):
+        if not isinstance(节点, ast.Assign):
+            continue
+        目标 = [项 for 项 in 节点.targets if _是sys模块下标(项) is not None]
+        if not 目标:
+            continue
+        命中替换赋值 = True
+        键 = _下标键(目标[0].slice, 绑定)
+        if 键 == "__name__" or (本模块名 is not None and 键 == 本模块名):
+            自替换 = True
+        取值 = 节点.value
+        取值下标 = _是sys模块下标(取值)
+        if 取值下标 is not None:
+            名 = _下标键(取值下标.slice, 绑定)
+            if 名:
+                候选.append(名)
+        elif isinstance(取值, ast.Name) and 取值.id in 绑定:
+            候选.append(绑定[取值.id])
+    if not 命中替换赋值:
+        return None
+    # 兜底候选：文件里出现的所有「点分模块名」字符串（含 `唯一实现名 = "…"` 这类绑定）
+    for 值 in list(绑定.values()):
+        if _疑似模块名字符串(值):
+            候选.append(值)
+    去重候选 = [名 for 名 in dict.fromkeys(候选) if _疑似模块名字符串(名)]
+    return {"自替换": 自替换, "候选模块": 去重候选}
+
+
+def _跟随转调(文件: Path, 函数名: str, 系统根: Path | None) -> tuple[Path | None, str]:
+    """跟随「模块对象替换」到被替换模块去定位函数。
+
+    返回 `(目标文件, 说明)`：
+      · 跟到了 → 目标文件非 None；
+      · 是转调但**跟不到**（目标模块名非静态/文件不存在/目标里也没有该函数）→
+        目标文件 None + 非空说明（调用方据此报「转调目标未解析」，与「真无实现」分开）；
+      · 根本不是转调 → `(None, "")`。
+    """
+    标记 = 模块替换标记(文件)
+    if 标记 is None:
+        return None, ""
+    if not 标记.get("自替换"):
+        # 有 sys.modules 改写但不是「替换本模块」（如主进程注释里的契约注入）→ 不当转调
+        return None, ""
+    候选 = list(标记.get("候选模块") or [])
+    for 名 in 候选:
+        目标 = _模块名到文件(名, 系统根)
+        if 目标 is not None and _文件内定义(目标, 函数名):
+            return 目标, f"转调跟随 {文件} → {名}（该模块对象替换的唯一实现）"
+    已解析文件 = [str(_模块名到文件(名, 系统根)) for 名 in 候选]
+    return None, (f"转调文件 {文件} 把本模块对象替换为唯一实现，但跟随不到目标"
+                f"（候选模块 {候选 or '（未解析出静态模块名）'}；"
+                f"可解析到文件 {[项 for 项 in 已解析文件 if 项 != 'None'] or '无'}；"
+                f"目标里也未定义函数 {函数名}）")
+
+
+@dataclass
+class 对外入口定位:
+    """一次「能力 → 对外实现函数所在文件」的定位结果。"""
+
+    文件: Path | None = None
+    函数名: str = ""
+    来源: str = ""
+    状态: str = "未定位"        # 已定位 / 转调未解析 / 未定位
+    详情: str = ""
+
+
+def 定位对外入口(契约: dict[str, Any], *, 实现目录: Path,
+                 包目录: Path | None = None,
+                 实现索引: dict[str, tuple[Path, ast.AST]] | None = None,
+                 系统根: Path | None = None) -> 对外入口定位:
+    """定位能力的**对外实现**（注册映射优先，绝不「按文件名猜第一个同名函数」）。
+
+    定位顺序（每一档都要「文件里真的有那个函数」才算命中）：
+      ① **注册映射**：`__init__.py` 的 `注册能力` 登记 `能力id → 实现函数`（别名/包装闭包靠它）；
+      ② **包入口本文件**：包装函数写在 `__init__.py` 里（`_包装解析代码文件`）；
+      ③ **包入口导入目标**：`from 支持库.…实现.提供者 import 检查转写可用性` → 该文件；
+      ④ **实现目录索引**：同名函数（对外优先，`子进程*` 垫底）；
+      ⑤ **转调跟随**：命中文件里没有该函数、但它把本模块对象替换成唯一实现时，
+         跟到被替换模块（D-2 收口形态）；跟不到 → 状态 `转调未解析`（与「真无实现」分开）。
+    """
+    能力id = str(契约.get("能力id") or "")
+    能力名 = 能力id.split(".")[-1]
+    if 实现索引 is None:
+        实现索引 = _实现函数索引(实现目录)
+    根 = 系统根 if 系统根 is not None else (_系统根(包目录) if 包目录 is not None else None)
+    if not 能力id:
+        return 对外入口定位(函数名=能力名, 来源="无能力id", 状态="未定位",
+                          详情="契约缺少 能力id")
+    登记 = 包入口映射(包目录).get(能力id) or {}
+    函数名 = str(登记.get("函数名") or 能力名)
+    来源 = str(登记.get("来源") or "能力名回退")
+    # 候选条目 = (文件, 出处, **在该文件里应当找到的函数名**)。第三项必须跟着候选走：
+    # 注册表里的 `实现函数` 是 `__init__` 里的**本地名**（可能是别名，如
+    # `from …实现.组件规范支持库 import 生成完整性摘要 as 生成完整性摘要能力`），
+    # 被导入模块里定义的是**原名**。
+    候选: list[tuple[Path, str, str]] = []
+    if 包目录 is not None:
+        入口 = 包目录 / "__init__.py"
+        if 入口.is_file() and _文件内定义(入口, 函数名):
+            候选.append((入口, "包入口本文件", 函数名))
+        导入表 = _包入口导入表(包目录)
+        for 查名 in dict.fromkeys((函数名, 能力名)):
+            条目 = 导入表.get(查名)
+            if not 条目:
+                continue
+            目标 = _模块名到文件(条目[0], 根)
+            if 目标 is not None:
+                候选.append((目标, f"包入口导入 {条目[0]}", 条目[1] or 能力名))
+                break
+    命中 = 实现索引.get(函数名)
+    if 命中:
+        候选.append((命中[0], "实现目录索引", 函数名))
+    命中能力名 = 实现索引.get(能力名)
+    if 命中能力名 and 命中能力名[0] != (命中[0] if 命中 else None):
+        候选.append((命中能力名[0], "实现目录索引（能力id 末段）", 能力名))
+    for 文件, 出处, 核对名 in 候选:
+        if 文件.is_file() and _文件内定义(文件, 核对名):
+            return 对外入口定位(文件=文件, 函数名=核对名, 来源=出处, 状态="已定位",
+                              详情=f"{出处}: {文件}（函数 {核对名}）")
+    for 文件, 出处, 核对名 in 候选:
+        if not 文件.is_file():
+            continue
+        目标, 说明 = _跟随转调(文件, 核对名, 根)
+        if 目标 is not None:
+            return 对外入口定位(文件=目标, 函数名=核对名, 来源=f"转调跟随（{出处}）",
+                              状态="已定位", 详情=说明)
+        if 说明:
+            return 对外入口定位(文件=None, 函数名=核对名, 来源=出处,
+                              状态="转调未解析", 详情=说明)
+    return 对外入口定位(文件=None, 函数名=函数名, 来源=来源, 状态="未定位",
+                      详情=f"{实现目录} 下未找到函数 {函数名}")
+
+
+def 检测声明无实现(契约: dict[str, Any], 实现目录: Path,
+                   实现索引: dict[str, tuple[Path, ast.AST]] | None = None) -> str | None:
+    """契约声明了能力但实现目录无对应实现（按**函数名**匹配，不按文件名）。
+
+    原实现按「文件名含能力名」判，在本仓（一包一文件）实测：108 包 570 条全红、
+    真缺口 0 条 —— 这是判据错误，不是被测缺陷（哲学 9.x：判据错误不得说成被测
+    缺陷）。改为按函数名索引后，真缺口才如实报出。
+
+    **它只认「能力id 末段 == 函数名」这一档**，故会把两类**合法**形态误报：
+    ① 别名（`…PDF隔离提供者.解析PDF` 的实现函数是 `解析PDF隔离`）；
+    ② 转调（`…PDF文本表格.实现/PDF文本表格.py` 用 `sys.modules[__name__] = 唯一实现`
+       把模块对象换掉，文件里当然没有 `def 解析PDF`）。
+    `全面漂移检测` 已改走 **`定位对外入口`**（注册映射 + 转调跟随）再判，不再直接调本
+    函数；本函数保留给「拿不到包目录」的调用方（如反向破坏验证的临时夹具）。
+    """
     能力id = 契约.get("能力id", "")
     if not 能力id:
         return None
-    实现名 = 能力id.split(".")[-1]
-    for 文件 in 实现目录.rglob("*.py"):
-        if 实现名 in 文件.name:
-            return None
-    return f"声明能力但无实现: {能力id}（{实现目录} 下未找到 {实现名}）"
+    if 实现索引 is None:
+        实现索引 = _实现函数索引(实现目录)
+    能力名 = 能力id.split(".")[-1]
+    if 能力名 in 实现索引:
+        return None
+    return f"声明能力但无实现: {能力id}（{实现目录} 下未找到函数 {能力名}）"
+
+
+def _取能力函数定义(树: ast.AST, 函数名: str, *,
+                   允许唯一函数回退: bool = False
+                   ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    """按**函数名**取函数定义（AST，含嵌套闭包）。
+
+    `允许唯一函数回退`：只在「文件里只有一个函数」时用它（生成入口/夹具即此形态）。
+    多函数文件里找不到同名函数 = 本能力无可比对签名，**不拿别人的签名顶替**（那是错归属）。
+    """
+    函数表 = [节点 for 节点 in ast.walk(树)
+            if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    命中 = next((节点 for 节点 in 函数表 if 节点.name == 函数名), None) if 函数名 else None
+    if 命中 is not None:
+        return 命中
+    if 允许唯一函数回退 and len(函数表) == 1:
+        return 函数表[0]
+    return None
+
+
+def _签名参数(函数定义: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[list[str], set[str]]:
+    """函数签名 → (参数名序, 带默认值的参数名集合)。
+
+    参数名序 = 位置参数（`posonlyargs + args`）紧接关键字专用参数（`kwonlyargs`）——
+    全 kw-only 的能力入口（`def 启动桌面窗口(*, 标题=…)`）必须认。`self`/`cls`/`无参数`
+    是平台占位形态，剔除。
+    """
+    位置 = list(函数定义.args.posonlyargs) + list(函数定义.args.args)
+    默认数 = len(函数定义.args.defaults)
+    有默认 = {参数.arg for 参数 in 位置[len(位置) - 默认数:]} if 默认数 else set()
+    有默认 |= {参数.arg for 参数, 默认 in zip(函数定义.args.kwonlyargs,
+                                           函数定义.args.kw_defaults)
+             if 默认 is not None}
+    参数名序 = [参数.arg for 参数 in 位置 + list(函数定义.args.kwonlyargs)
+             if 参数.arg not in ("无参数", "self", "cls")]
+    return 参数名序, 有默认
+
+
+def _必填名序问题(必填: list[str], 入口参数: list[str]) -> tuple[list[str], list[str]]:
+    """必填参数在入口签名里的**子序列**问题：返回 (缺失的必填项, 顺序颠倒的说明)。
+
+    只比必填项的相对顺序：入口签名里带默认值的可选参数是平台允许的实现自由度，
+    它们插在哪里都不算漂移（契约只登记对外必填面）。
+    """
+    位置表: dict[str, int] = {}
+    for 序号, 名 in enumerate(入口参数):
+        位置表.setdefault(名, 序号)
+    缺失 = [名 for 名 in 必填 if 名 not in 位置表]
+    顺序错: list[str] = []
+    上一位 = -1
+    上一个名 = ""
+    for 名 in 必填:
+        if 名 not in 位置表:
+            continue
+        位 = 位置表[名]
+        if 位 < 上一位:
+            顺序错.append(f"{名} 应在 {上一个名} 前")
+            continue
+        上一位 = 位
+        上一个名 = 名
+    return 缺失, 顺序错
+
+
+def 检测参数漂移(契约: dict[str, Any], 入口文件: Path, *,
+                函数名: str | None = None) -> str | None:
+    """契约参数与入口签名的**名序**一致性（ast 解析函数签名；名序过了再比类型）。
+
+    **名序判据（2026-09-18 修正）**：按「**契约必填参数的相对顺序**在入口签名里做
+    **子序列匹配**」判，不再按「入口参数表 == 契约参数表」严格相等判：
+      · 必填项按序全部命中（入口多出带默认值的可选参数）= **不漂移**（多出的只报不判，
+        见 `检测参数超出`）。本仓契约只登记必填面，实现签名里带默认值的可选参数
+        （`项目id: str = ""`）是平台允许的实现自由度——原严格相等判据实测把 56 条
+        正确实现判成「参数顺序漂移」；
+      · 必填项在入口里**缺失**或相对顺序**颠倒** = 漂移，且报清楚缺了哪些 / 哪两个颠倒。
+    `函数名`：入口文件里**对外函数**的名字。给了就用它（注册映射给的实现函数名可能与
+    能力id 末段不同：别名 / `__init__` 里的 `_包装*` 闭包），不给才按能力id 末段取。
+    形参名序 = 位置参数（`posonlyargs + args`）紧接关键字专用参数（`kwonlyargs`）——
+    全 kw-only 的能力入口（`def 启动桌面窗口(*, 标题=…)`，本仓实测 65 条）必须认它。
+    """
+    if not 入口文件.is_file():
+        return f"入口文件缺失: {入口文件}"
+    try:
+        树 = ast.parse(入口文件.read_text(encoding="utf-8"))
+    except SyntaxError as 错误:
+        return f"入口文件语法错误: {错误}"
+    参数表 = 契约.get("参数", [])
+    契约参数 = [参数["名称"] for 参数 in 参数表]
+    契约必填 = [参数["名称"] for 参数 in 参数表 if 参数.get("必填", True)]
+    # **必须按函数名取函数，不能取「文件里第一个函数」**：本仓一包一文件，文件里
+    # 通常先放私有辅助函数（`_失败`/`_校验`）→ 取首个函数等于拿别人的签名比对，
+    # 实测把 107 条真·参数名序差异里的 51 条变成了错归属的假红。
+    查名 = 函数名 or str(契约.get("能力id", "")).split(".")[-1]
+    函数定义 = _取能力函数定义(树, 查名, 允许唯一函数回退=True)
+    if 函数定义 is None:
+        # 找不到同名函数 = 本能力无可比对签名（不拿别人的签名顶替）；「函数根本不存在」
+        # 由同批的 声明无实现 / 转调目标未解析 / 实现文件未定位 如实报出。
+        return None
+    入口参数, _ = _签名参数(函数定义)
+    缺失, 顺序错 = _必填名序问题(契约必填, 入口参数)
+    if 缺失 or 顺序错:
+        明细 = []
+        if 缺失:
+            明细.append(f"必填参数缺失 {缺失}")
+        if 顺序错:
+            明细.append("必填参数顺序颠倒 " + "；".join(顺序错))
+        return (f"参数顺序漂移: 契约 {契约参数} ≠ 入口 {入口参数}"
+                f"（{'；'.join(明细)}）")
+    # 名序通过再看类型（**必须保留在同一个入口里**：反向破坏门禁的「参数类型修改」
+    # 场景正是靠 检测参数漂移 对类型差异报红来证明判据不恒真；把类型检查只放到
+    # 检测参数类型漂移 会让该场景变成恒真）。类型判据本体只有一处实现，见下。
+    return 检测参数类型漂移(契约, 入口文件, 函数名=函数名)
+
+
+def 检测参数超出(契约: dict[str, Any], 入口文件: Path, *,
+                函数名: str | None = None) -> list[str]:
+    """**只报不判**：入口签名里契约未登记的额外参数（实现自带的带默认值参数）。
+
+    契约只登记对外必填面，实现多带的参数是平台允许的实现自由度，**判红等于把正确实现
+    判成缺陷**（这正是原 56 条误判的形态之一）；但也不许默默丢掉——它是「契约与实现
+    参数面对不齐」的度量，进 `全面漂移扫描` 的 `只报列表`，不进缺口计数。
+    额外参数里**没有默认值**的那些要单独点名：那种形态会改变对外可用的必填面，值得复核。
+    """
+    if not 入口文件.is_file():
+        return []
+    try:
+        树 = ast.parse(入口文件.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return []
+    查名 = 函数名 or str(契约.get("能力id", "")).split(".")[-1]
+    函数定义 = _取能力函数定义(树, 查名)
+    if 函数定义 is None:
+        return []
+    入口参数, 有默认 = _签名参数(函数定义)
+    契约参数集 = {str(参数.get("名称", "")) for 参数 in 契约.get("参数", [])}
+    额外 = [名 for 名 in 入口参数 if 名 not in 契约参数集]
+    if not 额外:
+        return []
+    行 = f"入口多出契约未登记的参数 {额外}（契约只登记对外参数面，实现多带默认值参数属实现自由度，只报不判）"
+    无默认 = [名 for 名 in 额外 if 名 not in 有默认]
+    if 无默认:
+        行 += f"；其中 {无默认} 无默认值（会改变对外必填面，值得复核）"
+    return [行]
 
 
 def 检测实现无声明(实现目录: Path, 契约列表: list[dict]) -> list[str]:
@@ -102,43 +701,68 @@ def 检测实现无声明(实现目录: Path, 契约列表: list[dict]) -> list[
     return 问题列表
 
 
-def 检测参数漂移(契约: dict[str, Any], 入口文件: Path) -> str | None:
-    """契约参数与生成入口参数顺序/类型不一致（ast 解析函数签名+注解）。"""
+def _注解可比形状(注解: str) -> str:
+    """把入口注解归一成可比的窄形状，消除三类**判据读法不全造成的假红**：
+
+    ① `X | None` / `Optional[X]` —— 契约「必填=False」的可选参数，实现按 Python 惯例
+       写 `字典型 | None`；契约类型名本身不含 ` | None`，两者比对必然全红（实测
+       `技能库.受控执行.运行技能包` 的 `字典型` vs `dict | None`）。
+    ② `Any` / `object` —— 实现明确声明「不做静态约束」（校验器类能力普遍如此，如
+       `前端契约校验.校验页面定义` 的 `页面定义: Any`）。「不约束」不等于「类型写错」，
+       比不出差异就不报（判不出 ≠ 判红）。
+    ③ 前后空白与内部多余空格（`dict[str, Any]` 这类带参数化注解保持原样可比）。
+    """
+    形状 = " ".join(str(注解).split())
+    if 形状.startswith("Optional[") and 形状.endswith("]"):
+        形状 = 形状[len("Optional["):-1]
+    if 形状.endswith("| None"):
+        形状 = 形状[:-len("| None")].strip()
+    if 形状.startswith("None |"):
+        形状 = 形状[len("None |"):].strip()
+    return 形状
+
+
+def 检测参数类型漂移(契约: dict[str, Any], 入口文件: Path, *,
+                    函数名: str | None = None) -> str | None:
+    """参数**类型**漂移（与 检测参数漂移 分开：名序与类型是两类缺口，分别计数）。
+
+    归一后仍不一致才报：见 `_注解可比形状`（`Any` 视为未约束、可选参数剥 `| None`）。
+    `函数名`：对外函数名（注册映射给的实现函数名可能与能力id 末段不同）；不给按末段取。
+    """
     if not 入口文件.is_file():
-        return f"入口文件缺失: {入口文件}"
+        return None
     try:
         树 = ast.parse(入口文件.read_text(encoding="utf-8"))
-    except SyntaxError as 错误:
-        return f"入口文件语法错误: {错误}"
-    契约参数 = [参数["名称"] for 参数 in 契约.get("参数", [])]
-    函数定义 = next((节点 for 节点 in ast.walk(树) if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    except SyntaxError:
+        return None
+    查名 = 函数名 or str(契约.get("能力id", "")).split(".")[-1]
+    函数定义 = _取能力函数定义(树, 查名)
     if 函数定义 is None:
-        return "入口文件未找到函数定义"
-    入口参数 = []
-    入口注解表 = {}
-    for 参数 in 函数定义.args.args:
-        名称 = 参数.arg
-        if 名称 not in ("无参数", "self", "cls"):
-            入口参数.append(名称)
-        if 参数.annotation is not None:
-            try:
-                入口注解表[名称] = ast.unparse(参数.annotation)
-            except TypeError:
-                入口注解表[名称] = ""
-    if 入口参数 != 契约参数:
-        return f"参数顺序漂移: 契约 {契约参数} ≠ 入口 {入口参数}"
-    # 类型漂移：契约类型 vs 入口注解。短类型不再作为正式契约输入。
+        return None
     类型映射 = {"文本型": "str", "整数型": "int", "长整数型": "int",
               "逻辑型": "bool", "列表型": "list", "字典型": "dict",
               "字节集型": "bytes", "双精度数型": "float",
               "单精度数型": "float"}
+    注解表: dict[str, str] = {}
+    for 参数 in list(函数定义.args.posonlyargs) + list(函数定义.args.args) \
+            + list(函数定义.args.kwonlyargs):
+        if 参数.annotation is None:
+            continue
+        try:
+            注解表[参数.arg] = ast.unparse(参数.annotation)
+        except TypeError:
+            continue
     for 参数 in 契约.get("参数", []):
         名称 = 参数["名称"]
-        契约类型 = 参数.get("类型", "")
-        期望注解 = 类型映射.get(契约类型, "")
-        实际注解 = 入口注解表.get(名称, "")
-        if 期望注解 and 实际注解 and 期望注解 != 实际注解:
-            return f"参数类型漂移: {名称} 契约类型 {契约类型} ≠ 入口注解 {实际注解}"
+        期望注解 = 类型映射.get(参数.get("类型", ""), "")
+        实际注解 = 注解表.get(名称)
+        if not 期望注解 or 实际注解 is None:
+            continue
+        形状 = _注解可比形状(实际注解)
+        if not 形状 or 形状 in ("Any", "object"):
+            continue        # 实现声明「不做静态约束」：比不出差异，不判红
+        if 期望注解 != 形状:
+            return f"参数类型漂移: {名称} 契约类型 {参数.get('类型', '')} ≠ 入口注解 {实际注解}"
     return None
 
 
@@ -177,13 +801,37 @@ def 检测返回漂移(契约: dict[str, Any], 实现文件: Path) -> str | None
 
 
 def 检测错误码漂移(契约: dict[str, Any], 实现文件: Path) -> list[str]:
-    """错误码漂移：实现引用的错误码不在契约声明中。"""
+    """错误码漂移：实现引用的错误码不在契约声明中。
+
+    **作用域口径（2026-09-18 修正）**：只扫**该能力自己的函数段**，不扫整份文件。
+    本仓实现是「一包一文件」（一个 `实现/xxx.py` 里放该包全部能力），扫整份文件等于
+    把同包其它能力的码全算到本能力头上 —— 实测 `大语言模型支持库/模型连接器` 一个包
+    就报出 110 条这种**错归属**的假红（真问题 0 条）。定位不到该能力的函数时返回空表
+    （无法归属），由 `全面漂移检测` 按「实现文件未定位」如实登记「未执行」，本函数
+    不臆造归属、也不静默通过。
+    """
     问题列表 = []
     if not 实现文件.is_file():
         return 问题列表
     内容 = 实现文件.read_text(encoding="utf-8")
     声明错误码 = set(契约.get("错误码", []))
-    for 错误码 in re.findall(r'"(参数不合法|能力不存在|权限不足|外部不可访问|超时|内部错误|契约不兼容|资源泄漏)"', 内容):
+    能力名 = 契约.get("能力id", "").split(".")[-1]
+    函数段 = None
+    if 能力名:
+        try:
+            树 = ast.parse(内容)
+        except SyntaxError:
+            return 问题列表
+        节点 = next((节点 for 节点 in ast.walk(树)
+                    if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and 节点.name == 能力名), None)
+        if 节点 is None:
+            return 问题列表
+        行表 = 内容.splitlines()
+        函数段 = "\n".join(行表[节点.lineno - 1: 节点.end_lineno])
+    if 函数段 is None:
+        return 问题列表
+    for 错误码 in re.findall(r'"(参数不合法|能力不存在|权限不足|外部不可访问|超时|内部错误|契约不兼容|资源泄漏)"', 函数段):
         if 错误码 not in 声明错误码:
             问题列表.append(f"错误码漂移: 实现引用 {错误码} 但契约未声明（{实现文件.name}）")
     return 问题列表
@@ -1170,43 +1818,93 @@ def 入口() -> int:
 def 全面漂移检测(*, 契约: dict[str, Any], 实现目录: Path,
                   入口文件: Path, 说明书文件: Path,
                   旧契约: dict[str, Any] | None = None,
-                  实现文件: Path | None = None) -> 漂移结果:
+                  实现文件: Path | None = None,
+                  实现索引: dict[str, tuple[Path, ast.AST]] | None = None,
+                  包目录: Path | None = None) -> 漂移结果:
     """执行全部漂移检测。
 
-    实现文件：返回结构漂移与错误码漂移都要读「实现该能力的那个 .py」。
-    调用方知道就显式传入；不传时按 实现目录/{能力id末段}.py 猜想，猜不中
-    就如实登记「未执行」而不是当成「无漂移」——见下方 3./4. 说明。
+    **入口定位（2026-09-18 修正）**：给了 `包目录` 时，一律以 `定位对外入口` 的结果为
+    权威入口——注册映射（`注册能力` 登记的 `实现函数`，含别名与 `__init__` 里的
+    `_包装*` 闭包）→ 包入口导入目标 → 实现目录索引（对外优先，`子进程*` 垫底）→
+    转调跟随。原实现按「能力id 末段 == 函数名」在**文件名字典序**里取第一个命中，
+    实测把正确实现判成缺陷：抓到子进程内部实现（`子进程解析.py` 的 `解码图像(字节b64)`）、
+    抓到 `实现/` 里的内部同名方法（`解析代码文件` 的类方法是内部形态）、抓错别名（
+    `解析PDF` 的实现函数是 `解析PDF隔离`），三类合计 32 条。
+
+    实现文件：返回结构漂移与错误码漂移都要读「实现该能力的那个 .py」；按权威入口定位，
+    定位不到就如实登记「未执行」而不是当成「无漂移」。
+
+    **同一根因只计一条**：声明无实现 / 转调目标未解析 命中时，不再连带报
+    「入口文件缺失」「实现文件未定位」（那是同一根因的三种说法，原实现把它们各计一条，
+    把一条缺陷放大成三条）。
     """
     结果 = 漂移结果()
-    # 1. 声明能力但没有实现
-    声明无实现 = 检测声明无实现(契约, 实现目录)
-    if 声明无实现:
-        结果.问题列表.append(声明无实现)
-    # 2. 参数顺序漂移
-    参数漂移 = 检测参数漂移(契约, 入口文件)
+    if 实现索引 is None:
+        实现索引 = _实现函数索引(实现目录)
+    能力id = str(契约.get("能力id") or "")
+    能力名 = 能力id.split(".")[-1]
+    定位 = (定位对外入口(契约, 实现目录=实现目录, 包目录=包目录, 实现索引=实现索引)
+            if 包目录 is not None else None)
+    # 1. 声明能力但没有实现 / 转调目标未解析（同一根因只计一条）
+    实现缺口: str | None = None
+    if 定位 is not None:
+        if 定位.状态 == "转调未解析":
+            实现缺口 = f"转调目标未解析: {能力id}（{定位.详情}）"
+        elif 定位.文件 is None:
+            实现缺口 = (f"声明能力但无实现: {能力id}"
+                       f"（{实现目录} 下未找到函数 {定位.函数名 or 能力名}）")
+    else:
+        实现缺口 = 检测声明无实现(契约, 实现目录, 实现索引)
+    if 实现缺口:
+        结果.问题列表.append(实现缺口)
+    权威入口 = 定位.文件 if 定位 is not None else None
+    if 权威入口 is not None and not 权威入口.is_file():
+        权威入口 = None
+    查名 = (定位.函数名 if 定位 is not None and 定位.函数名 else None)
+    定位文件 = 权威入口 or 实现文件
+    if 定位文件 is None and 实现目录.is_dir():
+        定位文件 = _定位实现文件(契约, 实现目录, 实现索引)
+    # 2. 参数顺序漂移 + 参数类型漂移（权威入口文件、同一函数，分别计两类缺口）
+    参数入口 = 权威入口
+    if 参数入口 is None and 入口文件.is_file():
+        参数入口 = 入口文件
+    if 参数入口 is None and 定位文件 is not None and 定位文件.is_file():
+        参数入口 = 定位文件
+    if 参数入口 is None:
+        # 只报「实现未定位」一条：参数顺序/类型漂移与返回结构/错误码漂移都依赖同一份
+        # 实现文件，未定位时它们是**同一个根因**；实现缺口已报就不再重复计一条。
+        if not 实现缺口:
+            结果.问题列表.append(
+                f"实现文件未定位，参数顺序/类型、返回结构/错误码漂移均未执行: "
+                f"{能力id or '（无能力id）'}"
+                f"（{实现目录} 下无函数 {能力名 or '（无能力名）'}）"
+            )
+        说明书问题_仅缺文件 = 检测说明书一致(契约, 说明书文件)
+        if 说明书问题_仅缺文件:
+            结果.问题列表.append(说明书问题_仅缺文件)
+        if 旧契约 is not None:
+            升级问题_仅缺文件 = 检测契约升级(旧契约, 契约)
+            if 升级问题_仅缺文件:
+                结果.问题列表.append(升级问题_仅缺文件)
+        return 结果
+    # 一次调用覆盖名序与类型两类缺口（`检测参数漂移` 内含类型判据，见其文档串）：
+    # 同一能力不重复计两类 —— 名序错了，逐参数类型比对已无意义（那是同一根因）。
+    参数漂移 = 检测参数漂移(契约, 参数入口, 函数名=查名)
     if 参数漂移:
         结果.问题列表.append(参数漂移)
+    else:
+        # 只报不判：入口多出的契约未登记参数（实现自带的带默认值参数 = 平台允许的
+        # 实现自由度）。判红会把正确实现判成缺陷，默默丢掉又丢失了「契约与实现对不齐」。
+        结果.只报列表.extend(f"{能力id}: {行}"
+                          for 行 in 检测参数超出(契约, 参数入口, 函数名=查名))
     # 3./4. 返回结构漂移 + 错误码漂移（都需要真实实现文件）
     # 原实现按 实现目录/{能力id末段}.py 拼接后直接传给两个检测器：路径不存在时
     # 检测返回漂移 返回 None、检测错误码漂移 返回 []，二者都不产生任何问题，
     # 即「找不到实现文件」被静默当成「无漂移」。而本仓实现文件普遍是「一包一文件」
     # （实现/包名.py 内含该包全部能力，如 支持库/前端/桌面宿主/实现/桌面宿主.py），
     # 能力id 末段几乎不与文件名相同——全仓 549 条能力实测两项检测命中 0，属永久空跑。
-    # 契约本身不含实现文件信息，注册入口又有多种数据流写法（静态解析不可靠），
-    # 故不再臆造路径：猜不中时显式登记「未执行」，由调用方决定传入 实现文件。
-    能力名 = 契约.get("能力id", "").split(".")[-1]
-    定位文件 = 实现文件
-    if 定位文件 is None and 实现目录.is_dir() and 能力名:
-        直接候选 = 实现目录 / f"{能力名}.py"
-        if 直接候选.is_file():
-            定位文件 = 直接候选
-    if 定位文件 is None or not 定位文件.is_file():
-        结果.问题列表.append(
-            f"实现文件未定位，返回结构/错误码漂移未执行: "
-            f"{契约.get('能力id') or '（无能力id）'}"
-            f"（{实现目录} 下无 {能力名 or '（无能力名）'}.py，契约亦不含实现文件信息）"
-        )
-    else:
+    # 现按权威入口（注册映射定位）取实现文件；仍定位不到时已在上方如实登记「未执行」。
+    if 定位文件 is not None and 定位文件.is_file():
         返回漂移 = 检测返回漂移(契约, 定位文件)
         if 返回漂移:
             结果.问题列表.append(返回漂移)
@@ -1221,6 +1919,232 @@ def 全面漂移检测(*, 契约: dict[str, Any], 实现目录: Path,
         if 升级问题:
             结果.问题列表.append(升级问题)
     return 结果
+
+
+def 全面漂移存量基线文件名() -> str:
+    """全面漂移存量基线文件名（与本模块同目录）。"""
+    return "全面漂移存量基线.json"
+
+
+def 全面漂移默认存量基线路径() -> Path:
+    """基线文件位置：本模块同目录（判据的组成部分，跟着代码走，不跟着系统根走）。"""
+    return Path(__file__).resolve().with_name(全面漂移存量基线文件名())
+
+
+def 全面漂移扫描(系统根: Path, *,
+                基线文件: Path | None = None) -> dict[str, Any]:
+    """全仓逐能力跑 `全面漂移检测`，按「包×缺口类型」分桶并消费存量基线（只读）。
+
+    为什么要整仓跑而不是「逐包跑 `检测能力定义漂移` 就够」：`检测能力定义漂移` 只比
+    「能力定义 ↔ 派生物」，**不看实现、不看说明书**——实现缺函数、参数名序漂移、
+    错误码未声明、说明书缺参数/版本，它一条都拦不住。`全面漂移检测` 才是覆盖
+    「契约 ↔ 实现 ↔ 说明书」三方的检测器，接线前它零调用方（第 24 项）。
+
+    分桶与豁免口径与 `公开调用完整性门禁` 完全同形（键 = `包相对路径|缺口类型`，
+    基线只减不增，基线读不成 → 全部算新增即 fail-closed），不造第二套豁免机制。
+
+    返回：{`能力数`,`包数`,`问题列表`（判红=基线外新增）,`存量列表`,`收敛列表`,
+    `缺口计数`,`定位失败数`,`只报列表`（只报不判的参数超出口径）,`基线`}。
+    """
+    路径 = 基线文件 if 基线文件 is not None else 全面漂移默认存量基线路径()
+    基线 = 读取全面漂移基线(路径)
+    条目列表: list[dict] = []
+    只报列表: list[dict] = []
+    包数 = 能力数 = 0
+    for 顶层 in ("支持库", "模块库", "技能库"):
+        根目录 = 系统根 / 顶层
+        if not 根目录.is_dir():
+            continue
+        for 契约文件 in sorted(根目录.glob("**/能力契约/参数契约.json")):
+            包目录 = 契约文件.parent.parent
+            包相对路径 = (str(包目录.relative_to(系统根)) if 包目录.is_relative_to(系统根)
+                        else str(包目录))
+            try:
+                契约条目表 = (json.loads(契约文件.read_text(encoding="utf-8"))
+                          .get("能力契约") or [])
+            except (OSError, json.JSONDecodeError):
+                契约条目表 = []
+            包数 += 1
+            实现目录 = 包目录 / "实现"
+            实现索引 = _实现函数索引(实现目录)
+            说明书文件 = 包目录 / "说明" / "使用说明.md"
+            for 契约 in 契约条目表:
+                能力id = 契约.get("能力id") or ""
+                if not 能力id:
+                    continue
+                能力数 += 1
+                定位文件 = _定位实现文件(契约, 实现目录, 实现索引)
+                结果 = 全面漂移检测(
+                    契约=契约, 实现目录=实现目录,
+                    入口文件=定位文件 or (实现目录 / f"{能力id.split('.')[-1]}.py"),
+                    说明书文件=说明书文件, 实现文件=定位文件, 实现索引=实现索引,
+                    包目录=包目录)
+                for 问题 in 结果.问题列表:
+                    条目列表.append({
+                        "包": 包相对路径, "包id": str(契约.get("包id") or 包目录.name),
+                        "能力id": 能力id, "缺口类型": _漂移缺口类型(问题), "详情": 问题,
+                    })
+                for 行 in 结果.只报列表:
+                    只报列表.append({
+                        "包": 包相对路径, "能力id": 能力id, "详情": 行,
+                    })
+    新增, 存量, 收敛 = _应用全面漂移基线(条目列表, 基线)
+    缺口计数: dict[str, int] = {}
+    for 条 in 条目列表:
+        缺口计数[条["缺口类型"]] = 缺口计数.get(条["缺口类型"], 0) + 1
+    return {
+        "包数": 包数, "能力数": 能力数,
+        "问题列表": 新增, "存量列表": 存量, "收敛列表": 收敛,
+        "缺口计数": dict(sorted(缺口计数.items(), key=lambda 项: -项[1])),
+        "定位失败数": 缺口计数.get("实现文件未定位（返回结构/错误码未执行）", 0),
+        "只报列表": 只报列表, "只报计数": len(只报列表),
+        "基线": {"路径": str(路径), "生效": 基线 is not None,
+                "版本": (基线 or {}).get("版本", 0),
+                "条目数": (基线 or {}).get("条目", {})},
+    }
+
+
+def 全面漂移检测门禁(系统根: Path, *,
+                    基线文件: Path | None = None) -> tuple[bool, str]:
+    """发布门禁用的「全面漂移」判据：**基线外新增必须阻断，基线内存量只报**。
+
+    与 `注册口径新增判据` 同一分治口径（存量冻结 + 新增即红），不把已有的存量
+    一次打成永久红。基线缺失/非法时降级为「全部算新增」（fail-closed）——判不出
+    新增就不静默放过，也**不**静默判绿。
+    """
+    统计 = 全面漂移扫描(系统根, 基线文件=基线文件)
+    新增数 = len(统计["问题列表"])
+    台账 = (f"能力 {统计['能力数']}／包 {统计['包数']}；"
+          f"缺口合计 {sum(统计['缺口计数'].values())} 条"
+          f"（{_缺口摘要(统计['缺口计数'])}）；"
+          f"存量豁免 {len(统计['存量列表'])} 条；"
+          f"基线生效={统计['基线']['生效']}")
+    if 新增数 == 0:
+        return 真, f"无基线外新增（{台账}）"
+    样例 = "；".join(f"{条['包']}|{条['缺口类型']}|{条['能力id']}: {条['详情'][:80]}"
+                   for 条 in 统计["问题列表"][:5])
+    return False, f"基线外新增 {新增数} 条（{台账}）：{样例}"
+
+
+def _漂移缺口类型(问题: str) -> str:
+    """按问题文案归到稳定的缺口类型桶（桶键进基线，必须稳定）。"""
+    for 前缀, 名 in (
+        ("声明能力但无实现", "声明无实现"),
+        ("转调目标未解析", "转调目标未解析"),
+        ("参数顺序漂移", "参数顺序漂移"),
+        ("参数类型漂移", "参数类型漂移"),
+        ("入口文件缺失", "入口文件缺失"),
+        ("入口文件语法错误", "入口文件语法错误"),
+        ("入口文件未找到函数定义", "入口无函数定义"),
+        ("返回结构漂移", "返回结构漂移"),
+        ("失败语义漂移", "失败语义漂移"),
+        ("错误码漂移", "错误码漂移"),
+        ("说明书缺失", "说明书缺失"),
+        ("说明书与契约不一致", "说明书版本不一致"),
+        ("说明书与入口不一致", "说明书缺参数/错误码"),
+        ("契约破坏但未升级主版本", "契约破坏未升主版本"),
+        ("实现文件未定位", "实现文件未定位（返回结构/错误码未执行）"),
+    ):
+        if 问题.startswith(前缀):
+            return 名
+    return "其他"
+
+
+def _缺口摘要(缺口计数: dict[str, int]) -> str:
+    """缺口计数 → 一行摘要（门禁详情文案用）。"""
+    if not 缺口计数:
+        return "无"
+    return "／".join(f"{名} {数}" for 名, 数 in 缺口计数.items())
+
+
+def _应用全面漂移基线(条目列表: list[dict],
+                   基线: dict[str, Any] | None) -> tuple[list[dict], list[dict], list[dict]]:
+    """按「包×缺口类型」消费存量基线，返回 (新增, 存量, 收敛)；基线为 None → 全算新增。"""
+    上限表: dict[str, int] = ((基线 or {}).get("条目") or {}) if isinstance(基线, dict) else {}
+    桶: dict[str, list[dict]] = {}
+    for 条 in 条目列表:
+        桶.setdefault(f"{条['包']}|{条['缺口类型']}", []).append(条)
+    新增: list[dict] = []
+    存量: list[dict] = []
+    收敛: list[dict] = []
+    for 键 in sorted(set(桶) | set(上限表)):
+        条们 = 桶.get(键, [])
+        上限 = int(上限表.get(键, 0) or 0)
+        if len(条们) > 上限:
+            新增.extend(条们[上限:])
+        存量.extend(条们[:上限])
+        if len(条们) < 上限:
+            收敛.append({"桶": 键, "当前": len(条们), "基线": 上限})
+    return 新增, 存量, 收敛
+
+
+def 读取全面漂移基线(路径: Path | None) -> dict[str, Any] | None:
+    """读 `{版本, 条目: {包|缺口类型: 允许条数}}`；读不成返回 None（= 不豁免任何条目）。"""
+    if 路径 is None or not Path(路径).is_file():
+        return None
+    try:
+        数据 = json.loads(Path(路径).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(数据, dict) or not isinstance(数据.get("条目"), dict):
+        return None
+    return 数据
+
+
+def 写入全面漂移基线(基线文件: Path, 基线数据: dict[str, Any]) -> None:
+    """写盘：缩进 2 + 结尾换行（与仓库其它 JSON 产物一致，便于 git diff 人工裁决）。"""
+    基线文件.parent.mkdir(parents=True, exist_ok=True)
+    基线文件.write_text(json.dumps(基线数据, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+
+
+def 生成全面漂移基线(系统根: Path) -> dict[str, Any]:
+    """按当前仓库实测**重建**基线（仅首次初始化；日常只允许收缩，见 `全面漂移检测门禁`）。"""
+    条目列表: list[dict] = []
+    包数 = 能力数 = 0
+    for 顶层 in ("支持库", "模块库", "技能库"):
+        根目录 = 系统根 / 顶层
+        if not 根目录.is_dir():
+            continue
+        for 契约文件 in sorted(根目录.glob("**/能力契约/参数契约.json")):
+            包目录 = 契约文件.parent.parent
+            包相对路径 = (str(包目录.relative_to(系统根)) if 包目录.is_relative_to(系统根)
+                        else str(包目录))
+            try:
+                契约条目表 = (json.loads(契约文件.read_text(encoding="utf-8"))
+                          .get("能力契约") or [])
+            except (OSError, json.JSONDecodeError):
+                契约条目表 = []
+            包数 += 1
+            实现目录 = 包目录 / "实现"
+            实现索引 = _实现函数索引(实现目录)
+            说明书文件 = 包目录 / "说明" / "使用说明.md"
+            for 契约 in 契约条目表:
+                能力id = 契约.get("能力id") or ""
+                if not 能力id:
+                    continue
+                能力数 += 1
+                定位文件 = _定位实现文件(契约, 实现目录, 实现索引)
+                结果 = 全面漂移检测(
+                    契约=契约, 实现目录=实现目录,
+                    入口文件=定位文件 or (实现目录 / f"{能力id.split('.')[-1]}.py"),
+                    说明书文件=说明书文件, 实现文件=定位文件, 实现索引=实现索引,
+                    包目录=包目录)
+                for 问题 in 结果.问题列表:
+                    条目列表.append({"包": 包相对路径, "缺口类型": _漂移缺口类型(问题)})
+    条目: dict[str, int] = {}
+    for 条 in 条目列表:
+        键 = f"{条['包']}|{条['缺口类型']}"
+        条目[键] = 条目.get(键, 0) + 1
+    return {
+        "版本": 1,
+        "口径": ("全仓逐能力跑 `全面漂移检测`（契约↔实现↔说明书三方），"
+               "按「包相对路径|缺口类型」分桶计数；检测器为 python3.14 现场实跑。"),
+        "说明": ("全面漂移存量基线（只减不增）：基线命中=存量（只报）；基线外=新增（判红）；"
+               "基线读不成 → 全部算新增（fail-closed）。"),
+        "包数": 包数, "能力数": 能力数,
+        "条目": dict(sorted(条目.items())),
+    }
 
 
 if __name__ == "__main__":
