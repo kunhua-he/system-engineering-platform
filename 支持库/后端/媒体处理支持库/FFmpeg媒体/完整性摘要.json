@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "525c27fbac0ae3eafb67b5a9640fd9d1b49cbb64d59870b3d103fcf988bfc5a7"
+      "sha256": "94cba5383634ce596bf3c55964b7fd9604b63cdb7d46a4423b35162a7b16db70"
     },
     {
       "路径": "依赖锁.json",
@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "dd8bc44c8baec2eabf6431ca9b0fbca17fb8661c0a7f0744550ba5531c77890c"
+      "sha256": "b6e13215201ca8bda1795371fb77ad6c2849a0bf856da21bf525d6cee5ad7dac"
     },
     {
       "路径": "复用决策.json",
@@ -22,6 +22,10 @@
     {
       "路径": "实现/处理.py",
       "sha256": "36055d75dba41209e66a9d22c54e497db894de04642396b46a2e5285e616a9bd"
+    },
+    {
+      "路径": "实现/拼接.py",
+      "sha256": "a99c16b8b75019e7aded94c6b2c6580f5a8797f4e4ad13074c7cca2627514950"
     },
     {
       "路径": "实现/探测.py",
@@ -41,23 +45,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "bcc987f7bf2a4298cf3cbcbf47ef9f77c47f7e39a011bca9953f5138c18b5d48"
+      "sha256": "f01bfcc14dbe9fbda1e85e51be862508ce9de8d6f66bcfaed9bd8a68f4474fa4"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "8ade309354d3b13fafe3823df4fe22a90a824450bbac4fe5246e9d03a7df5cc4"
+      "sha256": "947dd403037f229a2f37c05d06178a7bad83f3222c050b1aaf2ef9e0b338e72f"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "eb21e0ba6f56136e06403b53c43c1a4ca44080f7c130d90433c81a891c169479"
+      "sha256": "e697af918a6d97cdfcd0bc13f753503240cbec31da89fd934c7ba0a88a6b30ff"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "545ae6ed4040a7a7c13d80f3e23151b0a3bd3a6b126b09460353d25d95e55aca"
+      "sha256": "bcb8017cc9e02adef0e977509f6819281d8307a1ebc5306a4fd1f499202c5d1b"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "f7a94b7de047802c50e6a4ed3cc8779ed24330c4565dfa18dd32980bf73ed91c"
+      "sha256": "fbfd1a66d10d057a7369c103e68c4ac2cf9c322e3447048b99ae3a3b81b569a2"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -77,7 +81,7 @@
     },
     {
       "路径": "验证场景.json",
-      "sha256": "7b9f6ec7094341dc74abc60ef906d1c4466bf10fc212138f7e9e9ea8043d0da2"
+      "sha256": "d455abd6ccdcb5cf8db030427e646bbcf519799298a589e6ce0e76f01c56f6bf"
     },
     {
       "路径": "验证场景引用.json",
@@ -88,14 +92,15 @@
       "sha256": "b6f8b7d6b04e0c49181aaaea1abdf4b688edf79b1775bdfd5aef2aefeb8d31c2"
     }
   ],
-  "能力数": 6,
+  "能力数": 7,
   "能力清单": [
     "媒体处理支持库.FFmpeg媒体.检查提供者",
     "媒体处理支持库.FFmpeg媒体.探测媒体",
     "媒体处理支持库.FFmpeg媒体.提取音频",
     "媒体处理支持库.FFmpeg媒体.转码",
     "媒体处理支持库.FFmpeg媒体.抽取帧",
-    "媒体处理支持库.FFmpeg媒体.截取音频"
+    "媒体处理支持库.FFmpeg媒体.截取音频",
+    "媒体处理支持库.FFmpeg媒体.拼接媒体"
   ],
-  "能力定义摘要": "2c6ee922b047c718"
+  "能力定义摘要": "4f771e490e4bce81"
 }
