@@ -273,7 +273,10 @@ def _扫描英文函数命名() -> str:
     """使用 Python AST 扫描正式源码，避免依赖平台差异化 grep -P。"""
     # 正式源码边界必须与项目目录约定一致；漏扫任一正式层都会产生假绿。
     扫描根列表 = [系统根 / 名称 for 名称 in 正式源码目录名表]
-    协议方法 = {"log_message", "do_GET", "do_POST", "setup", "finish", "read", "close", "headers", "status",
+    # `connect` 是 urllib 的 `HTTPSConnection.connect` 覆写点：SSRF 修复把「校验解析出的 IP
+    # 绑定到实际连接」正是靠覆写它（2026-09-18）。与已在表内的 `close`/`read`/`setup` 同族 ——
+    # 名字由标准库按协议约定调用，改中文即失效。漏登记会让该条恒红、把真实问题淹掉。
+    协议方法 = {"log_message", "do_GET", "do_POST", "setup", "finish", "read", "close", "connect", "do_open", "https_open", "headers", "status",
                 "handle_error",
                 "is_set", "handle_starttag", "handle_endtag", "handle_data",
                 "redirect_request", "http_error_302", "http_error_301",
@@ -295,7 +298,9 @@ def _扫描英文函数命名() -> str:
                 if not isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
                 名称 = 节点.name
-                if 名称.startswith("__") or 名称 in 协议方法:
+                # `main` 是 Python 脚本入口惯例名（`raise SystemExit(main())`），
+                # 与 `__xxx__` 同族：外部工具/IDE/`python -m` 都按这个名字找入口。
+                if 名称.startswith("__") or 名称 in 协议方法 or 名称 == "main":
                     continue
                 # ast.NodeVisitor 回调族：名字由 Python 按节点类名拼出
                 # （visit_FunctionDef/visit_ClassDef/…）或固定为 generic_visit，
