@@ -41,6 +41,7 @@ from dataclasses import (
     replace as _replace,
 )
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 #: 中文参数名 → 标准库参数名（只映射本平台用得上的那几个；英文原名原样透传）
 参数名对照 = {
@@ -100,7 +101,7 @@ def 不可变数据类(目标: Any = None, /, **参数: Any) -> Any:
     单独给出这个名字，是因为「不可变」在本平台是**默认倾向**（结果、契约这类值对象
     都要求不可变），写 ``@不可变数据类`` 比 ``@数据类(不可变=True)`` 更短也更难写错。
     """
-    return 数据类(目标, 不可变=True, **参数) if 目标 is None else _dataclass(目标, frozen=True)
+    return 数据类(目标, 不可变=真, **参数) if 目标 is None else _dataclass(目标, frozen=True)
 
 
 def 字段(默认值: Any = _未给, /, **参数: Any) -> Any:

@@ -21,6 +21,7 @@ from __future__ import annotations
 import threading
 import time
 from typing import Any, Protocol
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 能力调用器(Protocol):
@@ -86,7 +87,7 @@ def _写装配状态(状态: str, *, 错误码: str = "", 错误说明: str = ""
         _装配次数 += 1
 
 
-def 标记装配中(*, 允许已装配: bool = True) -> bool:
+def 标记装配中(*, 允许已装配: bool = 真) -> bool:
     """装配开始：CAS 抢占 「装配中」，返回是否抢到。
 
     原子性：状态读取与写入在同一次 ``_全局锁`` 内完成。旧实现是无条件写
@@ -99,11 +100,11 @@ def 标记装配中(*, 允许已装配: bool = True) -> bool:
     """
     with _全局锁:
         if _装配状态 == "装配中":
-            return False
+            return 假
         if _装配状态 == "已装配" and not 允许已装配:
-            return False
+            return 假
         _写装配状态("装配中")
-        return True
+        return 真
 
 
 def 标记装配完成() -> None:

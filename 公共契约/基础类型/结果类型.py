@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 from 公共契约.错误结构 import 错误结构
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 值类型 = TypeVar("值类型")
 
@@ -37,7 +38,7 @@ class 结果(Generic[值类型]):
 
     @property
     def 可重试(self) -> bool:
-        return self.错误.可重试 if self.错误 else False
+        return self.错误.可重试 if self.错误 else 假
 
     @property
     def 详细信息(self) -> dict[str, Any]:
@@ -45,11 +46,11 @@ class 结果(Generic[值类型]):
 
     @classmethod
     def 成功结果(cls, 值: 值类型 | None = None) -> "结果[值类型]":
-        return cls(成功=True, 值=值)
+        return cls(成功=真, 值=值)
 
     @classmethod
     def 失败结果(cls, 错误: 错误结构) -> "结果[值类型]":
-        return cls(成功=False, 错误=错误)
+        return cls(成功=假, 错误=错误)
 
     @classmethod
     def 失败(
@@ -58,12 +59,12 @@ class 结果(Generic[值类型]):
         消息: str,
         *,
         来源: str = "",
-        可恢复: bool = False,
-        可重试: bool = False,
+        可恢复: bool = 假,
+        可重试: bool = 假,
         详情: dict[str, Any] | None = None,
     ) -> "结果[值类型]":
         return cls(
-            成功=False,
+            成功=假,
             错误=错误结构(
                 错误码=错误码,
                 消息=消息,

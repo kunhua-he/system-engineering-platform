@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.运行时 import 进程终止
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 句柄类型_读取 = "读取句柄"
 句柄类型_修改事务 = "修改事务句柄"
@@ -99,7 +100,7 @@ def 校验句柄型(值: Any) -> bool:
     调用方一律经本函数或 `确保句柄型`，不得自造第二套判定。
     """
     if callable(值):
-        return True
+        return 真
     return 是合法句柄id(值)
 
 
@@ -217,11 +218,11 @@ class 句柄体系:
 
     def 校验(self, 句柄id: int, *, 项目id: str = "", 所有者: str = "") -> tuple[bool, str]:
         对象 = self.查询句柄(句柄id)
-        if 对象 is None: return False, f"句柄不存在: {句柄id}"
-        if 对象.状态 != 状态_有效: return False, f"句柄已失效（{对象.失效原因}），不能自动复活"
-        if 对象.项目id and 对象.项目id != 项目id: return False, f"跨项目复用被拒绝: 句柄属 {对象.项目id}，请求 {项目id or '未提供'}"
-        if 对象.所有者 and 对象.所有者 != 所有者: return False, f"跨所有者复用被拒绝: 句柄属 {对象.所有者}，请求 {所有者 or '未提供'}"
-        return True, "句柄有效"
+        if 对象 is None: return 假, f"句柄不存在: {句柄id}"
+        if 对象.状态 != 状态_有效: return 假, f"句柄已失效（{对象.失效原因}），不能自动复活"
+        if 对象.项目id and 对象.项目id != 项目id: return 假, f"跨项目复用被拒绝: 句柄属 {对象.项目id}，请求 {项目id or '未提供'}"
+        if 对象.所有者 and 对象.所有者 != 所有者: return 假, f"跨所有者复用被拒绝: 句柄属 {对象.所有者}，请求 {所有者 or '未提供'}"
+        return 真, "句柄有效"
 
     # ── 资源登记（状态机内置，华哥口径）────────────────
 
@@ -230,15 +231,15 @@ class 句柄体系:
         """把资源绑定到句柄，由状态机统一监控/回收。资源类型：进程/端口/连接/临时文件。"""
         with self._锁:
             对象 = self.句柄表.get(句柄id)
-            if 对象 is None: return False, f"句柄不存在: {句柄id}"
-            if 对象.状态 != 状态_有效: return False, f"句柄已失效，不能登记资源: {句柄id}"
+            if 对象 is None: return 假, f"句柄不存在: {句柄id}"
+            if 对象.状态 != 状态_有效: return 假, f"句柄已失效，不能登记资源: {句柄id}"
             if len(对象.绑定资源) >= 句柄绑定资源上限:
-                return False, f"句柄绑定资源超过上限 {句柄绑定资源上限}"
+                return 假, f"句柄绑定资源超过上限 {句柄绑定资源上限}"
             对象.绑定资源.append({
                 "资源类型": 资源类型, "PID": PID, "端口": 端口, "资源路径": 资源路径,
-                "清理函数": 清理函数, "已回收": False, "回收说明": "",
+                "清理函数": 清理函数, "已回收": 假, "回收说明": "",
             })
-            return True, "资源已绑定句柄"
+            return 真, "资源已绑定句柄"
 
     def 查询资源(self, 句柄id: int) -> list[dict[str, Any]]:
         """查询句柄绑定的资源（审计）。"""
@@ -257,28 +258,28 @@ class 句柄体系:
         ``进程终止.进程存活``，由收口层按平台选 WinAPI 或 POSIX 探活。
         """
         if not isinstance(pid, int) or pid <= 0:
-            return False
+            return 假
         if not 进程终止.进程存活(pid):
-            return False
+            return 假
         try:
             r = subprocess.run(["ps", "-o", "state=", "-p", str(pid)], capture_output=True, text=True, timeout=3)
             if r.stdout.strip() and r.stdout.strip()[0] in ("Z", "X"):
-                return False
+                return 假
         except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
             记录忽略('句柄体系._检查进程存活', 错误)
-        return True
+        return 真
 
     def _端口被占用(self, 端口: int) -> bool:
         """检查本机端口是否仍被监听占用（与 进程 分支的存活复查对称）。"""
         if not isinstance(端口, int) or 端口 <= 0:
-            return False
+            return 假
         import socket
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(1)
                 return s.connect_ex(("127.0.0.1", 端口)) == 0
         except Exception:
-            return False
+            return 假
 
     def _端口归属PID(self, 端口资源: dict, 同句柄资源: list[dict] | None = None) -> set[int]:
         """端口归属判定（第 9 条 5 项：回收必须自证归属，不猜、不误杀）。
@@ -433,7 +434,7 @@ class 句柄体系:
             待回收 = [资源 for 资源 in 资源快照
                       if not 资源["已回收"] and not 资源.get("回收中")]
             for 资源 in 待回收:
-                资源["回收中"] = True
+                资源["回收中"] = 真
 
         # ── 第二段（锁外）：回收动作全在这里，锁已释放，热路径不受影响 ──
         本轮结果: dict[int, tuple[bool, str]] = {}
@@ -451,12 +452,12 @@ class 句柄体系:
                     已回收, 说明 = 本轮
                     资源["已回收"] = 已回收
                     资源["回收说明"] = 说明
-                    资源["回收中"] = False
+                    资源["回收中"] = 假
                 elif 资源["已回收"]:
-                    已回收, 说明 = True, "已在先前回收（幂等）"
+                    已回收, 说明 = 真, "已在先前回收（幂等）"
                 else:
                     # 并发回收方仍持「回收中」标记：本轮如实报告进行中，不冒充成功。
-                    已回收, 说明 = False, "回收进行中（并发回收方持有）"
+                    已回收, 说明 = 假, "回收进行中（并发回收方持有）"
                 回收清单.append({"资源类型": 资源["资源类型"], "已回收": 已回收, "说明": 说明})
                 已回收数 += 1 if 已回收 else 0
             资源总数 = len(现有对象.绑定资源) if 现有对象 is not None else len(资源快照)
@@ -493,12 +494,12 @@ class 句柄体系:
                     # 依赖「重复释放返回成功」的调用方不因淘汰而变成硬失败。
                     # 注意：这里能到「行不存在」分支，说明该 id 当前未被复用为有效句柄（复用则 对象 非空）。
                     if 句柄id in self.失效id留痕:
-                        return True, "句柄已失效（已淘汰，幂等）"
-                    return False, f"句柄不存在: {句柄id}"
+                        return 真, "句柄已失效（已淘汰，幂等）"
+                    return 假, f"句柄不存在: {句柄id}"
                 回收方 = self._失效进行中.get(句柄id)
                 if 回收方 is None:
                     if 对象.状态 == 状态_已失效:
-                        return True, "句柄已失效（幂等）"
+                        return 真, "句柄已失效（幂等）"
                     # 成为本句柄唯一的回收方：登记事件 → 锁内完成状态迁移 → 出锁做 I/O
                     回收事件 = self._登记失效回收方()
                     self._失效进行中[句柄id] = 回收事件
@@ -507,7 +508,7 @@ class 句柄体系:
                     break
             # 另一个线程正在回收本句柄：等它收口（事件驱动，不轮询、不占锁），再按真实终态重判
             if not 回收方.wait(_失效回收等待上限秒):
-                return False, f"句柄失效等待回收收口超时（{_失效回收等待上限秒:g} 秒），可重试"
+                return 假, f"句柄失效等待回收收口超时（{_失效回收等待上限秒:g} 秒），可重试"
 
         回收结果 = None
         异常说明 = ""
@@ -519,17 +520,17 @@ class 句柄体系:
         with self._锁:
             try:
                 if 回收结果 is None:
-                    回滚 = True
-                    结论 = (False, 异常说明)
+                    回滚 = 真
+                    结论 = (假, 异常说明)
                 elif 回收结果["已回收数"] != 回收结果["资源总数"]:
-                    回滚 = True
-                    结论 = (False, f"资源未收敛（{回收结果['已回收数']}/{回收结果['资源总数']}）")
+                    回滚 = 真
+                    结论 = (假, f"资源未收敛（{回收结果['已回收数']}/{回收结果['资源总数']}）")
                 else:
-                    回滚 = False
+                    回滚 = 假
                     self.回收证据表.append({"句柄id": 句柄id, "资源id": 对象.资源id, "类型": 对象.句柄类型,
                                           "失效原因": 原因, "时间": 对象.失效时间, "版本": 对象.版本})
                     self._淘汰失效句柄(time.time())
-                    结论 = (True, f"句柄已失效（{原因}）")
+                    结论 = (真, f"句柄已失效（{原因}）")
                 # 回滚只在「该行仍是本回收方置的失效态」时执行：并发/淘汰改过状态就不覆盖它
                 if 回滚 and 对象.状态 == 状态_已失效:
                     对象.状态, 对象.失效时间, 对象.失效原因 = 原状态, 原失效时间, 原失效原因

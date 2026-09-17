@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from 公共契约.包声明 import 能力声明
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 def _参数名(参数: Any) -> str:
@@ -160,11 +161,11 @@ class 能力注册表:
         """
         已有 = self._实现表.get(能力id)
         if 已有 is None:
-            return False
+            return 假
         if 包id and 已有.包id != 包id:
-            return False
+            return 假
         del self._实现表[能力id]
-        return True
+        return 真
 
     def 获取(self, 能力id: str) -> 能力实现 | None:
         return self._实现表.get(能力id)

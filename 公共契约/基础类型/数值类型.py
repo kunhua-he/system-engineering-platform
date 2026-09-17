@@ -10,6 +10,7 @@ import math
 import struct
 from dataclasses import dataclass
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass(frozen=True)
@@ -43,13 +44,13 @@ def 校验数值类型(值: Any, 类型名: str) -> bool:
             and 定义.最小值 <= 值 <= 定义.最大值
         )
     if not isinstance(值, float) or not math.isfinite(值):
-        return False
+        return 假
     if 类型名 == "单精度数型":
         try:
             # struct 使用 IEEE 754 binary32，并可捕获超出单精度范围的值。
             struct.pack(">f", 值)
         except (OverflowError, struct.error):
-            return False
+            return 假
     return 定义.最小值 <= 值 <= 定义.最大值
 
 

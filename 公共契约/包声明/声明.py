@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 版本正则 = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -52,8 +53,8 @@ class 包声明:
     能力: list[能力声明] = field(default_factory=list)
     配置项: list[dict] = field(default_factory=list)
     来源路径: str = ""
-    已废弃: bool = False
-    内部层: bool = False   # 第三方能力内部支持库：装配可用、网关 0 暴露
+    已废弃: bool = 假
+    内部层: bool = 假   # 第三方能力内部支持库：装配可用、网关 0 暴露
     #: 依赖类别：`第三方库`（代码级依赖，落适配层提供者）或 `环境依赖`（运行级依赖，独立进程/服务/
     #: 动态库/外部接口）。空串＝未声明（历史包）。**为什么进契约**：不进契约则 `转字典()` 会把它丢掉，
     #: 读包声明的消费方（包仓库/客户端）就拿不到该字段——决策记录 `0021` 要求它可被机器读取。
@@ -118,8 +119,8 @@ def 从字典构建(数据: dict[str, Any], *, 来源路径: str = "") -> 包声
         能力=能力列表,
         配置项=数据.get("配置项") or [],
         来源路径=来源路径,
-        已废弃=bool(数据.get("已废弃", False)),
-        内部层=bool(数据.get("内部层", False)),
+        已废弃=bool(数据.get("已废弃", 假)),
+        内部层=bool(数据.get("内部层", 假)),
         依赖类别=str(数据.get("依赖类别", "") or ""),
     )
 

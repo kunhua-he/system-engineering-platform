@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 @dataclass(frozen=True)
@@ -18,8 +19,8 @@ class 错误结构:
     错误码: str
     消息: str
     来源: str = ""
-    可恢复: bool = False
-    可重试: bool = False
+    可恢复: bool = 假
+    可重试: bool = 假
     详情: dict[str, Any] = field(default_factory=dict)
 
     def 转字典(self) -> dict[str, Any]:
