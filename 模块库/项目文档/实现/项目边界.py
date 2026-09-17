@@ -16,6 +16,7 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 模块库.项目文档.实现.调用 import 失败, 取值, 文本, 调用
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 支持库包 = "项目文档支持库"
 判据文件相对文档根 = "规范/Markdown 文档体例判据.json"
@@ -25,7 +26,7 @@ def 目录存在(路径: str) -> bool:
     """经 文件系统支持库.文件操作.判断存在 判定路径存在（本模块不自算文件系统事实）。"""
     结果对象 = 调用("文件系统支持库.文件操作.判断存在", {"文件路径": 路径})
     if not 结果对象.成功:
-        return False
+        return 假
     值 = 结果对象.值
     if isinstance(值, dict):
         return bool(值.get("存在"))
@@ -81,7 +82,7 @@ def 目标在根内(根目录: str, 目标: str) -> bool:
     根 = posixpath.normpath(文本(根目录).rstrip("/")) if 文本(根目录).strip() else ""
     路径 = posixpath.normpath(文本(目标)) if 文本(目标).strip() else ""
     if not 根 or not 路径 or not 根.startswith("/") or not 路径.startswith("/"):
-        return False
+        return 假
     return 路径 == 根 or 路径.startswith(根 + "/")
 
 
