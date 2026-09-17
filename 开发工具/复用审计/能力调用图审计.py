@@ -120,13 +120,94 @@ def _检查导入(文件: Path, 模块名: str, 行号: int, 报告: 审计报�
     if 类型:
         报告.违规列表.append(审计违规(str(文件), 行号, 类型, 模块名))
 
-def _入口能力(包目录: Path) -> tuple[set[str], set[str]]:
-    """AST 提取 __init__.py 的 注册能力id 集与 __all__ 函数名集（含循环注册）。"""
+def _模块级常量(树: ast.Module) -> dict[str, object]:
+    """抽出模块级 `名字 = 字面量` 的常量绑定（能力id 常量折叠，路线 A）。
+
+    判据工具原先只认两种 能力id 写法：字面量常量、`for 能力id, … in [...]` 列表首项。
+    `模块库/文档生成/__init__.py:25` 的 `本模块能力id = "文档生成.生成文档"` 在 `:45`
+    被当 能力id 用时就恒抽不到 → 注册集为空 → 报「漂移」**假红**。归因是**判据工具能力不足**
+    （② 架构错位），不在被审包写法，故在审计器侧补常量折叠，而不是要求被审包改成字面量。
+
+    判定规则：模块顶层语句顺序执行，**后写覆盖前写**（最后一次赋值为运行期真值）。
+    只登记：**模块顶层**语句、**简单名目标**（`名字 = …`）、右值为**字面量**或**已绑定的
+    模块级常量名**（单层别名传播）的绑定。以下一律**不登记**（不猜测、不冒充常量）：
+    - 元组解包 / 下标 / 属性目标、函数/条件/循环等嵌套作用域里的赋值；
+    - 右值为函数调用、下标、属性、拼接、跨模块引用等非常量表达式；
+    - 引用“尚未绑定”的名字（正常 Python 会 NameError，静态不可定）。
+    后写若是非常量表达式，前值的登记会被清掉 —— 折不出就走「无法静态确定」，不拿旧值蒙。
+    """
+    表: dict[str, object] = {}
+    for 语句 in 树.body:
+        if not isinstance(语句, ast.Assign):
+            continue
+        for 目标 in 语句.targets:
+            if not isinstance(目标, ast.Name):
+                continue
+            表.pop(目标.id, None)  # 后写覆盖前写：先清掉旧绑定，再按本次右值决定是否重新登记
+            if isinstance(语句.value, ast.Name):
+                # 单层别名传播：`别名 = 本模块能力id`（只认已登记的模块级常量）。
+                if 语句.value.id in 表:
+                    表[目标.id] = 表[语句.value.id]
+                continue
+            try:
+                表[目标.id] = ast.literal_eval(语句.value)
+            except (ValueError, SyntaxError, TypeError):
+                continue
+    return 表
+
+
+def _常量串(节点: ast.expr, 常量表: dict[str, object]) -> str | None:
+    """把表达式折成常量字符串；折不出返回 None（**不猜**）。
+
+    只认两种可静态确定的形态：字符串字面量、已登记的模块级常量名（值须为 str）。
+    函数调用/下标/属性/拼接/跨模块引用一律返回 None，交由调用方如实记「无法静态确定」。
+    """
+    if isinstance(节点, ast.Constant):
+        return 节点.value if isinstance(节点.value, str) else None
+    if isinstance(节点, ast.Name):
+        值 = 常量表.get(节点.id)
+        return 值 if isinstance(值, str) else None
+    return None
+
+
+def _循环表(节点: ast.expr, 常量表: dict[str, object]) -> tuple[set[str], list[tuple[int, str]]]:
+    """把 `for 能力id, … in [ (...), ... ]` 的列表折成 能力id 集 + 无法确定清单。
+
+    每个元素的首项逐个走 `_常量串`（故列表里也能吃到模块级常量折叠）；折不出的元素
+    按行号如实记进未定清单，**不静默丢**——漏一条就是漂移核对少一条，等于放行。
+    """
+    能力id集: set[str] = set()
+    未定: list[tuple[int, str]] = []
+    if not isinstance(节点, ast.List):
+        return 能力id集, 未定
+    for 元素 in 节点.elts:
+        首项 = 元素.elts[0] if isinstance(元素, (ast.Tuple, ast.List)) and 元素.elts else None
+        折 = _常量串(首项, 常量表) if 首项 is not None else None
+        if 折 is None:
+            未定.append((元素.lineno, ast.unparse(首项) if 首项 is not None else "<空元素>"))
+        else:
+            能力id集.add(折)
+    return 能力id集, 未定
+
+
+def _入口能力(包目录: Path) -> tuple[set[str], set[str], list[tuple[int, str]]]:
+    """AST 提取 __init__.py 的 注册能力id 集、__all__ 函数名集、**无法静态确定**清单。
+
+    注册 能力id 实参的静态取值支持三态（全部纯 AST，不导入被审包、不执行任何代码）：
+      ① 字符串字面量；
+      ② for 列表循环变量（`for 能力id, … in [("id", …)]`）——逐元素折首项；
+      ③ **模块级常量**（`本模块能力id = "…"`，含一层别名传播）——常量折叠，本处新支持。
+    三态之外的实参（函数调用、下标、属性、拼接、跨模块引用、循环表里折不出的首项）
+    **不静默丢弃**：记进 无法确定 清单，由 `_审计包` 如实报「能力id 无法静态确定」。
+    抽不到 ≠ 通过（13.1）：宁可显式报「判不了」，也不让漂移核对静默变绿。
+    """
     注册集, 导出集, 循环映射 = set(), set(), {}
+    无法确定: list[tuple[int, str]] = []
     try:
         树 = ast.parse((包目录 / "__init__.py").read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
-        return 注册集, 导出集
+        return 注册集, 导出集, 无法确定
+    常量表 = _模块级常量(树)
     for 节点 in ast.walk(树):
         if isinstance(节点, ast.Assign) and any(isinstance(目标, ast.Name) and 目标.id == "__all__" for 目标 in 节点.targets):
             导出集 = {元素.value for 元素 in 节点.value.elts if isinstance(元素, ast.Constant) and 元素.value not in {"注册能力", "设置HTTP连接器"}}
@@ -134,15 +215,24 @@ def _入口能力(包目录: Path) -> tuple[set[str], set[str]]:
             目标 = 节点.target
             变量名 = 目标.id if isinstance(目标, ast.Name) else (目标.elts[0].id if isinstance(目标, ast.Tuple) and 目标.elts and isinstance(目标.elts[0], ast.Name) else None)
             if 变量名:
-                循环映射[变量名] = [元素.elts[0].value for 元素 in 节点.iter.elts if isinstance(元素, ast.Tuple) and 元素.elts and isinstance(元素.elts[0], ast.Constant)]
+                循环映射[变量名] = _循环表(节点.iter, 常量表)
         elif isinstance(节点, ast.Call) and isinstance(节点.func, ast.Attribute) and 节点.func.attr == "注册" and 节点.args and isinstance(节点.args[0], ast.Call):
             for 关键字 in 节点.args[0].keywords:
                 if 关键字.arg == "能力id":
-                    if isinstance(关键字.value, ast.Constant):
-                        注册集.add(关键字.value.value)
-                    elif isinstance(关键字.value, ast.Name) and 关键字.value.id in 循环映射:
-                        注册集.update(循环映射[关键字.value.id])
-    return 注册集, 导出集
+                    值 = 关键字.value
+                    if isinstance(值, ast.Name) and 值.id in 循环映射:
+                        # 循环变量优先于同名模块常量：循环体内该名字已被重新绑定。
+                        循环集, 循环未定 = 循环映射[值.id]
+                        注册集.update(循环集)
+                        无法确定 += 循环未定
+                        continue
+                    折 = _常量串(值, 常量表)
+                    if 折 is None:
+                        表达式 = 值.id if isinstance(值, ast.Name) else ast.unparse(值)
+                        无法确定.append((getattr(值, "lineno", 节点.lineno), 表达式))
+                    else:
+                        注册集.add(折)
+    return 注册集, 导出集, 无法确定
 
 def _导出名(能力id: str, 包名: str) -> str:
     """能力id → 该包 __all__ 里的函数名。
@@ -169,7 +259,13 @@ def _审计包(包目录: Path, 报告: 审计报告) -> None:
             报告.违规列表.append(审计违规(f"{包目录.name}/{路径.name}", 0, "漂移", f"{路径.name}缺失或不可解析"))
         else:
             (声明集 if 是声明 else 契约集).update(集)
-    注册集, 导出集 = _入口能力(包目录)
+    注册集, 导出集, 无法确定 = _入口能力(包目录)
+    # 13.1：抽不到 ≠ 放行。能力id 实参无法静态确定（常量折叠也定不了）时，
+    # 注册集天然不全 —— 此时**不能**因为「集合看起来相等」就判通过，必须如实报
+    # 「无法静态确定」并连同漂移一起红，避免判据工具的能力不足被静默吸收成绿灯。
+    for 行号, 表达式 in 无法确定:
+        报告.违规列表.append(审计违规(f"{包目录.name}/__init__.py", 行号, "漂移",
+                                        f"能力id 实参 {表达式} 无法静态确定（模块级常量折叠未命中）"))
     if 声明集 != 注册集 or 声明集 != 契约集 or 导出集 != {_导出名(名, 包目录.name) for 名 in 注册集}:
         报告.违规列表.append(审计违规(f"{包目录.name}/__init__.py", 0, "漂移",
                                         f"声明:{sorted(声明集)} 契约:{sorted(契约集)} 注册:{sorted(注册集)} __all__:{sorted(导出集)}"))

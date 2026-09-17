@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "002ee9fffd5c817777352fd309e22b13fdd3dbce34cccd86fa434859d7932c46"
+      "sha256": "bbbd17526dbd31ac52fba0831d20558c5fe3a52bda8d998945a91e20b600ba03"
     },
     {
       "路径": "复用决策.json",
@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/PDF文本表格.py",
-      "sha256": "9651df343dc219be6284be96b6caf217ad2b1ed479d5b0a647634af4685aeaad"
+      "sha256": "77e4b8a791b3fe7f51260ebc5950e6d9254e627490209daf650e202f7ffb2ec2"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -29,7 +29,7 @@
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "4b97ba36acdc04a0484432afe1f1dcaa35fa2aee74da5bdd61fb7741ba2a43b6"
+      "sha256": "c16e5412d9cbc969113594da6d96a36ece9d452e70fc1ca6ace37a1c853244e1"
     },
     {
       "路径": "示例/示例.pdf",

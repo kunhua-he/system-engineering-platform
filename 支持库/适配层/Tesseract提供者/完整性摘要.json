@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "141f7cbfee835e2c51892557c044830d196de2d681ce7d27e604c8b8c043b988"
+      "sha256": "3d4ebd9b878d78b92ef9b5ccb29bf7602c92a1149190812ca5f43fe5faabd1e1"
     },
     {
       "路径": "复用决策.json",
@@ -25,7 +25,7 @@
     },
     {
       "路径": "实现/受管进程.py",
-      "sha256": "ec7947aeaea10bbefa88d7c3e713bccf8a8d4d1843007e38475654150edf33be"
+      "sha256": "249313d9e2dfa6ea3b099fbbf0b00c84890aa4eaecc1a9978099615ff0421e70"
     },
     {
       "路径": "实现/提供者.py",
