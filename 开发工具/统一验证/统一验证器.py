@@ -7,6 +7,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import argparse
 import json
@@ -256,11 +257,11 @@ def _执行grep(命令: list[str]) -> tuple[bool, str, str]:
     try:
         进程 = subprocess.run(命令, cwd=str(系统根), capture_output=True, text=True)
     except OSError as 错误:
-        return False, "", f"{type(错误).__name__}: {错误}"
+        return 假, "", f"{type(错误).__name__}: {错误}"
     if 进程.returncode not in (0, 1):
         错误信息 = (进程.stderr or "").strip()[:200]
-        return False, 进程.stdout or "", f"grep 退出码 {进程.returncode}: {错误信息 or '无 stderr'}"
-    return True, 进程.stdout or "", ""
+        return 假, 进程.stdout or "", f"grep 退出码 {进程.returncode}: {错误信息 or '无 stderr'}"
+    return 真, 进程.stdout or "", ""
 
 
 def _项目适配验证(报告: 验证报告) -> None:

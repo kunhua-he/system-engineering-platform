@@ -1,7 +1,8 @@
 """未解释跳过检查（静态）：跳过没有理由即违规。
 
-口径与 `MCP工具箱/验证门禁.py:169 _检出未解释跳过` 一致——**存在跳过标记但
-没有说明（skip 无原因）即失败**（`AGENTS.md:135-139`）。本门禁不执行用例，
+口径承自已退役的 `MCP工具箱/验证门禁.py::_检出未解释跳过`（该目录已收敛移除，
+现由本模块自身实现该口径）——**存在跳过标记但
+没有说明（skip 无原因）即失败**（`AGENTS.md:156`、`:283-284`）。本门禁不执行用例，
 所以判定落在源码静态层：`skip` / `skipIf` / `skipUnless` / `skipTest` /
 `SkipTest` 缺少理由实参，或理由实参是空/纯空白常量，即违规。
 
@@ -16,6 +17,7 @@
 本模块不打印、不退出。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import ast
 
@@ -39,13 +41,13 @@ def _调用名(节点: ast.AST) -> str:
 def _是空理由(节点: ast.AST | None) -> bool:
     """缺省、None 或纯空白字符串常量即「没有说明」；非常量表达式视为已解释。"""
     if 节点 is None:
-        return True
+        return 真
     if isinstance(节点, ast.Constant):
         if 节点.value is None:
-            return True
+            return 真
         if isinstance(节点.value, str):
             return not 节点.value.strip()
-    return False
+    return 假
 
 
 def _位置理由问题(节点: ast.Call, 需个数: int) -> str:

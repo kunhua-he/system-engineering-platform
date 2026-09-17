@@ -5,6 +5,7 @@
 各算一套含义不同的“工作区摘要”。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import hashlib
 import os
@@ -51,13 +52,13 @@ def _路径表(原始: bytes) -> list[str]:
 def _是正式路径(相对路径: str) -> bool:
     规范 = 相对路径.replace("\\", "/").strip("/")
     if not 规范 or Path(规范).name in 固定排除文件:
-        return False
+        return 假
     for 排除 in 固定排除目录:
         if "/" in 排除:
             if 规范 == 排除 or 规范.startswith(排除 + "/"):
-                return False
+                return 假
         elif 排除 in 规范.split("/"):
-            return False
+            return 假
     return not 规范.endswith((".pyc", ".pyo"))
 
 

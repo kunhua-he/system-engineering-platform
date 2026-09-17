@@ -11,6 +11,7 @@ S0 缺项阻断清单（正式包形态一律阻断）：配置契约/权限契�
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
 import base64
@@ -286,11 +287,11 @@ def _是聚合视图包(组件目录: Path) -> bool:
     按与索引同一判据放行，避免门禁长期空转（哲学第 1 条 4 项）。
     """
     if (组件目录 / "能力定义.json").is_file():
-        return False
+        return 假
     for 子 in 组件目录.iterdir():
         if 子.is_dir() and (子 / "包声明.json").is_file():
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _读取聚合契约(组件目录: Path) -> tuple[list[dict[str, Any]], bool, list[str]]:
@@ -305,18 +306,18 @@ def _读取聚合契约(组件目录: Path) -> tuple[list[dict[str, Any]], bool,
         try:
             数据 = json.loads(聚合路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return [], True, ["参数契约.json JSON 解析失败"]
+            return [], 真, ["参数契约.json JSON 解析失败"]
         问题: list[str] = []
         if not isinstance(数据, dict) or not 数据.get("契约版本"):
             问题.append("聚合契约缺少 契约版本")
         能力表 = 数据.get("能力契约", []) if isinstance(数据, dict) else []
         if not isinstance(能力表, list) or not 能力表:
             问题.append("聚合契约 能力契约 为空（禁整文件当一个能力）")
-            return [], True, 问题
-        return [能力 for 能力 in 能力表 if isinstance(能力, dict)], True, 问题
+            return [], 真, 问题
+        return [能力 for 能力 in 能力表 if isinstance(能力, dict)], 真, 问题
     契约目录 = 组件目录 / "能力契约"
     if not 契约目录.is_dir():
-        return [], False, ["缺少 能力契约/"]
+        return [], 假, ["缺少 能力契约/"]
     能力表: list[dict[str, Any]] = []
     for 契约文件 in sorted(契约目录.glob("*.json")):
         try:
@@ -325,7 +326,7 @@ def _读取聚合契约(组件目录: Path) -> tuple[list[dict[str, Any]], bool,
             continue
         if isinstance(契约, dict) and 契约.get("能力id"):
             能力表.append(契约)
-    return 能力表, False, ["能力契约/ 为空（无契约 JSON）"] if not 能力表 else []
+    return 能力表, 假, ["能力契约/ 为空（无契约 JSON）"] if not 能力表 else []
 
 
 def _提取函数错误码(实现目录: Path, 函数名: str) -> list[str]:
@@ -365,7 +366,7 @@ def _提供者锁定(系统根: Path, 组件目录: Path, 声明: dict[str, Any]
     """锁定提供者：依赖声明（能力+版本）必须能定位到 支持库/模块库 真实提供者包。"""
     依赖列表 = 声明.get("依赖", []) if isinstance(声明.get("依赖"), list) else []
     if not 依赖列表:
-        return True, "无依赖（独立组件，无需锁定提供者）"
+        return 真, "无依赖（独立组件，无需锁定提供者）"
     提供者能力表: set[str] = set()
     支持库根 = 系统根 / "支持库"
     模块库根 = 系统根 / "模块库"
@@ -407,8 +408,8 @@ def _提供者锁定(系统根: Path, 组件目录: Path, 声明: dict[str, Any]
         if 能力id and 能力id not in 提供者能力表:
             未锁定.append(能力id)
     if 未锁定:
-        return False, f"依赖能力无锁定提供者: {未锁定}"
-    return True, f"依赖 {len(依赖列表)} 项全部锁定真实提供者"
+        return 假, f"依赖能力无锁定提供者: {未锁定}"
+    return 真, f"依赖 {len(依赖列表)} 项全部锁定真实提供者"
 
 
 class 组件合规:
@@ -476,8 +477,8 @@ class 组件合规:
             缺 = [名 for 名 in ("包声明.json", "__init__.py")
                  if not (self.组件目录 / 名).is_file()]
             if 缺:
-                return False, f"聚合视图包缺少 {缺}"
-            return True, "聚合视图包：包声明 + 注册入口齐全（九要素由子包承载）"
+                return 假, f"聚合视图包缺少 {缺}"
+            return 真, "聚合视图包：包声明 + 注册入口齐全（九要素由子包承载）"
         from 支持库.后端.组件规范支持库 import 校验组件规范
         结果 = 校验组件规范(self.组件目录)
         问题列表 = list(结果.问题列表)
@@ -528,7 +529,7 @@ class 组件合规:
         from 开发工具.契约编译.契约编译器 import 校验契约结构
         能力表, 是否聚合, 问题列表 = _读取聚合契约(self.组件目录)
         if 问题列表 and not 能力表:
-            return False, "; ".join(问题列表)
+            return 假, "; ".join(问题列表)
         实现目录 = self.组件目录 / "实现"
         if not 实现目录.is_dir():
             实现目录 = self.组件目录 / "执行单元"
@@ -579,16 +580,16 @@ class 组件合规:
         if not 依赖路径.is_file():
             # 无文件 = 无内部依赖（2026-09-15 定：空白的内部依赖声明一并删掉，不留占位文件；
             # 判据与实现同源 —— 声明缺失即独立组件，不再要求空文件存在）
-            return True, "无依赖（未声明内部依赖）"
+            return 真, "无依赖（未声明内部依赖）"
         try:
             依赖数据 = json.loads(依赖路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "依赖契约 JSON 解析失败"
+            return 假, "依赖契约 JSON 解析失败"
         依赖列表 = 依赖数据.get("依赖", []) if isinstance(依赖数据, dict) else 依赖数据
         if not isinstance(依赖列表, list):
-            return False, "依赖必须是列表"
+            return 假, "依赖必须是列表"
         if not 依赖列表:
-            return True, "无依赖（独立组件）"
+            return 真, "无依赖（独立组件）"
         # 依赖契约实际有三种形状：能力项（能力/版本）、包id项（包id/版本）、外部依赖项
         # （模块名/名称，如 Python 标准库 sqlite3）。原实现一律取 依赖["包id"]，能力形状
         # 恒为空串、`if 依赖包id and ...` 恒短路，等于对所有包一项都不检查却报「经真实包
@@ -610,7 +611,7 @@ class 组件合规:
             else:
                 无法核验项.append(依赖)
         if 无法核验项:
-            return False, f"依赖项未声明 能力/包id/模块名，无从核验: {无法核验项[:3]}"
+            return 假, f"依赖项未声明 能力/包id/模块名，无从核验: {无法核验项[:3]}"
         问题列表: list[str] = []
         if 包id项:
             from 运行核心.加载器.包发现.发现器 import 发现全部
@@ -624,24 +625,24 @@ class 组件合规:
             if not 锁定成功:
                 问题列表.append(锁定证据)
         if 问题列表:
-            return False, "; ".join(问题列表)
+            return 假, "; ".join(问题列表)
         摘要 = f"依赖 {len(依赖列表)} 项：能力 {len(能力项)} 项锁定真实提供者、包 {len(包id项)} 项经真实包发现确认"
         if 外部项:
             外部名 = [str(依赖.get("模块名") or 依赖.get("名称") or "") for 依赖 in 外部项]
             摘要 += f"；外部依赖 {len(外部项)} 项不在系统内包发现核验范围: {外部名}"
-        return True, 摘要
+        return 真, 摘要
 
     def _场景配置(self) -> tuple[bool, str]:
         """配置：配置契约存在（缺则阻断）并按契约真实执行缺失/类型/未知项检查。"""
         配置路径 = self.组件目录 / "配置契约" / "配置契约.json"
         if not 配置路径.is_file():
-            return False, "缺少 配置契约/配置契约.json"
+            return 假, "缺少 配置契约/配置契约.json"
         try:
             配置契约 = json.loads(配置路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "配置契约 JSON 解析失败"
+            return 假, "配置契约 JSON 解析失败"
         if not isinstance(配置契约, dict) or not 配置契约:
-            return False, "配置契约不能为空"
+            return 假, "配置契约不能为空"
         from 项目适配层.配置适配.配置校验 import 校验配置
         try:
             声明表 = {键: {"类型": _值类型(值), "必填": False}
@@ -649,53 +650,53 @@ class 组件合规:
             校验结果 = 校验配置(配置契约, 声明表=声明表)
             问题 = 校验结果.问题列表 if hasattr(校验结果, "问题列表") else []
             if 问题:
-                return False, "; ".join(问题)
+                return 假, "; ".join(问题)
         except (ImportError, AttributeError) as 错误:
-            return False, f"生产配置校验器不可用: {错误}"
-        return True, f"配置项 {len(配置契约)} 项（经生产校验器检查）"
+            return 假, f"生产配置校验器不可用: {错误}"
+        return 真, f"配置项 {len(配置契约)} 项（经生产校验器检查）"
 
     def _场景权限(self) -> tuple[bool, str]:
         """权限：遍历聚合契约每个能力都必须有权限声明（缺权限契约阻断）。"""
         权限路径 = self.组件目录 / "权限契约" / "权限契约.json"
         if not 权限路径.is_file():
-            return False, "缺少 权限契约/权限契约.json"
+            return 假, "缺少 权限契约/权限契约.json"
         try:
             权限 = json.loads(权限路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "权限契约 JSON 解析失败"
+            return 假, "权限契约 JSON 解析失败"
         能力表, _, 问题列表 = _读取聚合契约(self.组件目录)
         if 问题列表 and not 能力表:
-            return False, "; ".join(问题列表)
+            return 假, "; ".join(问题列表)
         公开能力表 = [能力.get("能力id", "") for 能力 in 能力表 if 能力.get("能力id")]
         if not 公开能力表:
-            return False, "无公开能力可校验权限"
+            return 假, "无公开能力可校验权限"
         if not isinstance(权限, dict):
-            return False, f"权限契约顶层必须是对象（映射 能力id → 权限声明），实为 {type(权限).__name__}"
+            return 假, f"权限契约顶层必须是对象（映射 能力id → 权限声明），实为 {type(权限).__name__}"
         缺失权限 = [能力id for 能力id in 公开能力表 if 能力id not in 权限]
         if 缺失权限:
-            return False, f"公开能力缺权限声明（逐能力遍历检出）: {缺失权限}"
-        return True, f"聚合契约 {len(公开能力表)} 个能力全部有权限声明"
+            return 假, f"公开能力缺权限声明（逐能力遍历检出）: {缺失权限}"
+        return 真, f"聚合契约 {len(公开能力表)} 个能力全部有权限声明"
 
     def _场景生命周期(self) -> tuple[bool, str]:
         """生命周期：实际执行合法流转/非法流转/重复操作/失败回滚。"""
         声明路径 = self.组件目录 / "包声明.json"
         if not 声明路径.is_file():
-            return False, "缺少 包声明.json"
+            return 假, "缺少 包声明.json"
         try:
             声明 = json.loads(声明路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "包声明 JSON 解析失败"
+            return 假, "包声明 JSON 解析失败"
         if not 声明.get("版本"):
-            return False, "缺少 版本（生命周期依据）"
+            return 假, "缺少 版本（生命周期依据）"
         调用结果 = _调用包仓库能力("平台控制面.包仓库.校验包生命周期", {
             "包id": str(声明.get("包id", "合规组件")),
             "版本": str(声明.get("版本", "1.0.0"))})
         if not 调用结果.成功:
-            return False, f"生命周期校验不可用: {调用结果.错误说明}"
+            return 假, f"生命周期校验不可用: {调用结果.错误说明}"
         问题 = list(调用结果.值["问题列表"])
         if 问题:
-            return False, "; ".join(问题)
-        return True, f"版本 {声明['版本']}（合法/非法/重复/回滚全部真实执行）"
+            return 假, "; ".join(问题)
+        return 真, f"版本 {声明['版本']}（合法/非法/重复/回滚全部真实执行）"
 
     def _场景资源释放(self) -> tuple[bool, str]:
         """资源释放：真实创建资源并验证关闭/句柄归零/锁释放；文本扫描仅辅助。"""
@@ -703,7 +704,7 @@ class 组件合规:
         if not 实现目录.is_dir():
             实现目录 = self.组件目录 / "执行单元"
         if not 实现目录.is_dir():
-            return False, "缺少 实现/ 或 执行单元/"
+            return 假, "缺少 实现/ 或 执行单元/"
         问题列表 = []
         for 文件 in 实现目录.rglob("*.py"):
             内容 = 文件.read_text(encoding="utf-8")
@@ -716,7 +717,7 @@ class 组件合规:
             if "while True" in 内容 and "break" not in 内容 and "return" not in 内容:
                 问题列表.append(f"{文件.name} 存在无退出无限循环")
         if 问题列表:
-            return False, "; ".join(问题列表)
+            return 假, "; ".join(问题列表)
         import tempfile as _临时
         from 支持库.后端.系统核心支持库.资源管理 import (
             创建唯一运行目录, 原子写入, 安全释放资源, 资源短锁,
@@ -728,25 +729,25 @@ class 组件合规:
             锁 = 资源短锁(运行目录 / "锁", "合规资源", 持有者="合规测试")
             锁成功, _ = 锁.获取()
             if not 锁成功:
-                return False, "资源短锁获取失败"
+                return 假, "资源短锁获取失败"
             锁释放, _ = 锁.释放()
             if not 锁释放:
-                return False, "资源短锁释放失败"
+                return 假, "资源短锁释放失败"
             释放成功, 释放消息 = 安全释放资源(运行目录)
             if not 释放成功:
-                return False, f"资源释放失败: {释放消息}"
+                return 假, f"资源释放失败: {释放消息}"
             if 运行目录.exists():
-                return False, "资源释放后目录仍存在"
+                return 假, "资源释放后目录仍存在"
         except Exception as 错误:
-            return False, f"真实资源释放异常: {错误}"
-        return True, "真实创建并释放资源（目录/文件/短锁全部归零）"
+            return 假, f"真实资源释放异常: {错误}"
+        return 真, "真实创建并释放资源（目录/文件/短锁全部归零）"
 
     def _场景版本升级(self) -> tuple[bool, str]:
         """版本升级：遍历聚合契约每个能力的版本号格式合法。"""
         from 开发工具.契约编译.漂移检测 import 主版本号
         能力表, _, 问题列表 = _读取聚合契约(self.组件目录)
         if 问题列表 and not 能力表:
-            return False, "; ".join(问题列表)
+            return 假, "; ".join(问题列表)
         for 契约 in 能力表:
             版本 = 契约.get("版本", "")
             if not 版本 or 主版本号(版本) < 0 or "." not in str(版本):
@@ -757,7 +758,7 @@ class 组件合规:
         """失败语义：实现有失败路径的能力必须声明对应错误码；实现不吞异常。"""
         能力表, _, 问题列表 = _读取聚合契约(self.组件目录)
         if 问题列表 and not 能力表:
-            return False, "; ".join(问题列表)
+            return 假, "; ".join(问题列表)
         实现目录 = self.组件目录 / "实现"
         if not 实现目录.is_dir():
             实现目录 = self.组件目录 / "执行单元"
@@ -784,39 +785,39 @@ class 组件合规:
         if 说明目录.is_dir():
             文件列表 = list(说明目录.rglob("*.md"))
             if not 文件列表:
-                return False, "说明/ 目录为空"
-            return True, f"说明书 {len(文件列表)} 份"
+                return 假, "说明/ 目录为空"
+            return 真, f"说明书 {len(文件列表)} 份"
         if 说明书.is_file() and 说明书.read_text(encoding="utf-8").strip():
-            return True, "说明书.md 存在"
-        return False, "缺少 说明/ 或 说明书.md"
+            return 真, "说明书.md 存在"
+        return 假, "缺少 说明/ 或 说明书.md"
 
     def _场景完整性摘要(self) -> tuple[bool, str]:
         """完整性摘要：经唯一校验器验证文件清单格式闭合（拒绝旧格式与自比较）。"""
         from 支持库.后端.组件规范支持库 import 校验完整性摘要
         通过, 问题列表 = 校验完整性摘要(self.组件目录)
         if not 通过:
-            return False, "; ".join(问题列表) or "完整性摘要校验失败"
-        return True, "文件清单格式校验通过（唯一校验器）"
+            return 假, "; ".join(问题列表) or "完整性摘要校验失败"
+        return 真, "文件清单格式校验通过（唯一校验器）"
 
     def _场景公共入口(self) -> tuple[bool, str]:
         """公共入口：入口文件存在且可导入；正式包形态必须有 __all__ 与 注册能力。"""
         声明路径 = self.组件目录 / "包声明.json"
         if not 声明路径.is_file():
-            return False, "缺少 包声明.json"
+            return 假, "缺少 包声明.json"
         try:
             声明 = json.loads(声明路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "包声明 JSON 解析失败"
+            return 假, "包声明 JSON 解析失败"
         入口 = 声明.get("入口", "")
         if not 入口:
-            return False, "包声明缺少 入口"
+            return 假, "包声明缺少 入口"
         入口路径 = self.组件目录 / 入口
         if not 入口路径.is_file():
-            return False, f"入口文件不存在: {入口}"
+            return 假, f"入口文件不存在: {入口}"
         try:
             入口模块 = _加载入口(self.组件目录, 入口路径)
         except Exception as 错误:
-            return False, f"入口不可导入: {错误}"
+            return 假, f"入口不可导入: {错误}"
         问题列表 = []
         if self._正式包形态 and 入口路径.name == "__init__.py":
             if not getattr(入口模块, "__all__", None):
@@ -829,16 +830,16 @@ class 组件合规:
         """真实返回：经 公开入口.注册能力 + 能力注册表 + 锁定提供者 调用真实实现。"""
         声明路径 = self.组件目录 / "包声明.json"
         if not 声明路径.is_file():
-            return False, "缺少 包声明.json"
+            return 假, "缺少 包声明.json"
         try:
             声明 = json.loads(声明路径.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return False, "包声明 JSON 解析失败"
+            return 假, "包声明 JSON 解析失败"
         from 公共契约.能力契约.契约 import 能力实现, 能力注册表
         # 1. 锁定提供者：依赖能力必须锁定真实提供者包
         锁定成功, 锁定证据 = _提供者锁定(self._系统根, self.组件目录, 声明)
         if not 锁定成功:
-            return False, 锁定证据
+            return 假, 锁定证据
         # 2. 公开入口：经入口模块的 注册能力 注册实现（正式包形态强制）
         入口 = 声明.get("入口", "")
         入口模块 = None
@@ -878,7 +879,7 @@ class 组件合规:
                     except (ImportError, AttributeError):
                         continue
         if not 已注册:
-            return False, "公开入口未提供 注册能力 且无可用实现（真实返回不可达）"
+            return 假, "公开入口未提供 注册能力 且无可用实现（真实返回不可达）"
         # 3. 装配最小合规调用器（模块实现经 获取能力调用器 调用的唯一装配路径）
         from 公共契约.能力契约.调用器 import 注册能力调用器
 
@@ -901,7 +902,7 @@ class 组件合规:
                 return 返回值
 
             def 幂等重放(self, *args, **kwargs) -> bool:
-                return False
+                return 假
 
             def 查询调用历史(self, 上限: int = 50) -> list:
                 return []
@@ -918,8 +919,8 @@ class 组件合规:
         finally:
             注册能力调用器(None)
         if 问题:
-            return False, "；".join(问题)
-        return True, f"真实调用 {len(注册表.能力id列表)} 个能力全部非空返回"
+            return 假, "；".join(问题)
+        return 真, f"真实调用 {len(注册表.能力id列表)} 个能力全部非空返回"
 
     def _遍历真实调用(self, 注册表) -> list[str]:
         """遍历注册表每个能力：成功路径 + 缺必填失败路径。"""

@@ -5,6 +5,7 @@
 被排除的包，必须由调用方得到明确的阻断，而不是静默忽略。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
 from pathlib import Path
@@ -22,11 +23,11 @@ from 公共契约.正式根 import 存在根名
 def _是聚合父包(系统根: Path, 包路径: Path, 类型目录: str) -> bool:
     """判断只作目录视图的聚合父包，与运行时发现器保持同一口径。"""
     if 类型目录 != "支持库":
-        return False
+        return 假
     try:
         相对部分 = 包路径.resolve().relative_to((系统根 / "支持库").resolve()).parts
     except ValueError:
-        return False
+        return 假
     return (len(相对部分) >= 2
             and 相对部分[1] in 聚合支持库名表
             and not (包路径 / "能力定义.json").is_file())
@@ -45,15 +46,15 @@ def _读取(路径: Path) -> dict[str, Any]:
 def _是非生产包(声明路径: Path, 声明: dict[str, Any], 包id: str) -> bool:
     """按物理目录和显式声明双重判断，避免模板改名后漏入生产索引。"""
     if any(片段 in 非生产路径片段 for 片段 in 声明路径.parent.parts):
-        return True
+        return 真
     if 包id.startswith("模块库._模板"):
-        return True
+        return 真
     for 字段 in 非生产字段:
         值 = 声明.get(字段)
         if isinstance(值, bool) and 值:
-            return True
+            return 真
         if isinstance(值, str) and 值.strip().lower() in {"是", "true", "1", "非生产"}:
-            return True
+            return 真
     状态 = str(声明.get("状态", "")).strip().lower()
     return 状态 in {"非生产", "草稿", "模板", "样板", "deprecated", "废弃"}
 

@@ -2,6 +2,7 @@
 完整性摘要重算比对/健康探针能力/停止释放入口），不写被审计文件、不 import 其实现。"""
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import ast
 import json
@@ -314,12 +315,12 @@ def _停止入口真实存在(目录: Path, 停止入口文本: str) -> bool:
     """
     实现目录 = 目录 / "实现"
     if not 实现目录.is_dir():
-        return False
+        return 假
     候选 = re.findall(r"([A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]{1,40})\s*\(\)", 停止入口文本)
     if not 候选:
         候选 = re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,40}", 停止入口文本)
     if not 候选:
-        return False
+        return 假
     实际函数名: set[str] = set()
     for 文件 in 实现目录.rglob("*.py"):
         try:

@@ -28,6 +28,7 @@
 （用于把符号分成「本体成员 / 依赖边界」，见 `命名空间.模块成员分类`）。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import ast
 from dataclasses import dataclass
@@ -80,7 +81,7 @@ def _是补丁基(节点: ast.AST) -> bool:
         return 节点.attr == "patch"
     if isinstance(节点, ast.Name):
         return 节点.id == "patch"
-    return False
+    return 假
 
 
 def _补丁种类(节点: ast.AST, 导入表: dict[str, str]) -> str:
@@ -111,7 +112,7 @@ def _常量文本(节点: ast.AST) -> str | None:
 def _显式new(节点: ast.Call) -> bool:
     """是否显式传了替换对象（第 2 位置参数 / `new=` / `new_callable=`）。"""
     if len(节点.args) > 1:
-        return True
+        return 真
     return any(键.arg in ("new", "new_callable") for 键 in 节点.keywords if 键.arg)
 
 
@@ -133,12 +134,12 @@ def _真实对象替换(节点: ast.Call, 形式: str) -> bool:
                 值节点 = 键.value
                 break
     if 值节点 is None:
-        return False
+        return 假
     if isinstance(值节点, ast.Call):
         名 = _调用名(值节点.func)
         return not (名.endswith("Mock") or 名.endswith("MagicMock") or 名 in ("mock",))
     if isinstance(值节点, ast.Lambda):
-        return False
+        return 假
     return isinstance(值节点, (ast.Name, ast.Attribute))
 
 

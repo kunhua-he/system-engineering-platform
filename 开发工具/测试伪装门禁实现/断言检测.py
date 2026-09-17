@@ -16,9 +16,10 @@
 3. `量级`：计数量级守卫——`assertGreater/assertGreaterEqual/assertLess/
    assertLessEqual/assertAlmostEqual` 且含数值。
 
-**恒真（无条件违规）**：`assertEqual(x, x)`（两侧同一表达式，全仓唯一真恒真
-断言在 `测试中心/平台控制面/测试_工作包11_消费者契约注册表.py:61`）、
-`assertTrue(True)` 式字面量断言。
+**恒真（无条件违规）**，两种形态：①`assertEqual(x, x)`／`assertNotEqual(x, x)`
+（两侧同一表达式；原文称「全仓唯一真恒真断言在
+`测试中心/平台控制面/测试_工作包11_消费者契约注册表.py:61`」——2026-09-18 实测有 **2** 处，
+另一处在 `测试中心/公共契约/测试_数据类.py:58`）；②`assertTrue(True)` 式字面量断言。
 
 **弱断言（单列违规，条件：用例名含负面关键词）**：反断言（`assertFalse`/
 `assertNotEqual(值,"未知")`/`assertNotIn`）、桩计数（`assert_not_called`/
@@ -32,6 +33,7 @@
 本模块只读 AST：不导入被测模块、不执行用例、不打印。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import ast
 from dataclasses import dataclass
@@ -110,36 +112,36 @@ class 用例断言:
 def _含字面量(节点: ast.AST) -> bool:
     for 子 in ast.walk(节点):
         if isinstance(子, ast.Constant) and 子.value not in 真值常量:
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _含结构字段(节点: ast.AST) -> bool:
     for 子 in ast.walk(节点):
         if isinstance(子, ast.Attribute) and 子.attr in 命名空间.结构字段名:
-            return True
+            return 真
         if isinstance(子, ast.Name) and 子.id in 命名空间.结构字段名:
-            return True
+            return 真
         if isinstance(子, ast.Subscript) and isinstance(子.slice, ast.Constant) \
                 and 子.slice.value in 命名空间.结构字段名:
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _含副作用调用(节点: ast.AST) -> bool:
     for 子 in ast.walk(节点):
         if isinstance(子, ast.Call) and isinstance(子.func, ast.Attribute) \
                 and 子.func.attr in 命名空间.副作用调用名:
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _含数值(节点: ast.AST) -> bool:
     for 子 in ast.walk(节点):
         if isinstance(子, ast.Constant) and isinstance(子.value, (int, float)) \
                 and not isinstance(子.value, bool):
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _含形状调用(节点: ast.AST) -> bool:
@@ -147,8 +149,8 @@ def _含形状调用(节点: ast.AST) -> bool:
         if isinstance(子, ast.Call):
             名 = ast.unparse(子.func).split(".")[-1]
             if 名 in 形状调用名:
-                return True
-    return False
+                return 真
+    return 假
 
 
 def _是具体异常(节点: ast.AST | None) -> bool:
@@ -160,13 +162,13 @@ def _是具体异常(节点: ast.AST | None) -> bool:
     `强度_结构异常` 从 `强强度` 里移除即可（一处改动）。
     """
     if 节点 is None:
-        return False
+        return 假
     if isinstance(节点, ast.Tuple):
         return any(_是具体异常(元素) for 元素 in 节点.elts)
     if isinstance(节点, (ast.Name, ast.Attribute)):
         名 = ast.unparse(节点).split(".")[-1]
         return bool(名) and 名 not in 通用异常名
-    return False
+    return 假
 
 
 def 分类断言(节点: ast.Call) -> tuple[str, str, bool]:

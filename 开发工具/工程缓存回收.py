@@ -13,6 +13,7 @@
     python3.14 开发工具/工程缓存回收.py --试运行    # 只打印待清理清单
 """
 import argparse
+from 公共契约.基础类型.逻辑类型 import 真, 假
 import hashlib
 import json
 import shutil
@@ -87,7 +88,7 @@ def 在边界内(路径: Path) -> bool:
     try:
         相对 = 路径.resolve().relative_to(工程缓存根.resolve())
     except ValueError:
-        return False
+        return 假
     return bool(相对.parts) and 相对.parts[0] in 边界保护目录
 
 

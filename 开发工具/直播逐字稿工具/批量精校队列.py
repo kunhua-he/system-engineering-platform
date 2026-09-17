@@ -33,6 +33,7 @@ HERMES_CUSTOM_CUSTOM_API_KEY / 逐字稿模型端点 / 逐字稿模型名 /
 逐字稿附加术语 / 逐字稿输出结构 / 逐字稿附加要求 / 逐字稿队列配置（配置包路径）。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import argparse
 import json
@@ -196,13 +197,13 @@ def 跑一场(配置: 运行配置, 源文件: Path, 场次目录名: str, 主�
         with urllib.request.urlopen(请求, timeout=超时秒 + 600) as 响应:
             数据 = json.loads(响应.read().decode("utf-8"))
     except Exception as 错误:
-        return False, f"{type(错误).__name__} {错误}"
+        return 假, f"{type(错误).__name__} {错误}"
     值 = 数据.get("值") or {}
     报告 = 值.get("质检") or {}
     用时 = time.time() - 开始
     if 数据.get("成功") and 报告.get("通过") and 导出.is_file():
-        return True, f"{用时:.0f}秒 | {值.get('字数')}字 | 裁决失败窗口 {报告.get('裁决失败窗口')}"
-    return False, (f"{用时:.0f}秒 | 错误码 {数据.get('错误码')} {str(数据.get('错误说明'))[:60]}"
+        return 真, f"{用时:.0f}秒 | {值.get('字数')}字 | 裁决失败窗口 {报告.get('裁决失败窗口')}"
+    return 假, (f"{用时:.0f}秒 | 错误码 {数据.get('错误码')} {str(数据.get('错误说明'))[:60]}"
                    f" | 质检通过={报告.get('通过')} 异常残句={报告.get('异常残句')}")
 
 

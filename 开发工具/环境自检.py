@@ -36,6 +36,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import argparse
 import contextlib
@@ -363,9 +364,9 @@ def _探_句柄枚举目录表() -> 自检项:
 def _可列目录(目录: str) -> bool:
     try:
         os.listdir(目录)
-        return True
+        return 真
     except OSError:
-        return False
+        return 假
 
 
 def _探_内存峰值原始单位() -> 自检项:

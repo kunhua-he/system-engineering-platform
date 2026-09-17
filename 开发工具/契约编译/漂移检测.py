@@ -341,7 +341,7 @@ def _下标键(节点: ast.AST, 绑定: dict[str, str]) -> str | None:
 def _疑似模块名字符串(值: Any) -> bool:
     """是否是「点分模块名」形状的字符串（每段都是合法标识符，至少两段）。"""
     if not isinstance(值, str) or "." not in 值:
-        return False
+        return 假
     return all(段.isidentifier() for 段 in 值.split("."))
 
 
@@ -2023,7 +2023,7 @@ def 全面漂移检测门禁(系统根: Path, *,
         return 真, f"无基线外新增（{台账}）"
     样例 = "；".join(f"{条['包']}|{条['缺口类型']}|{条['能力id']}: {条['详情'][:80]}"
                    for 条 in 统计["问题列表"][:5])
-    return False, f"基线外新增 {新增数} 条（{台账}）：{样例}"
+    return 假, f"基线外新增 {新增数} 条（{台账}）：{样例}"
 
 
 def _漂移缺口类型(问题: str) -> str:

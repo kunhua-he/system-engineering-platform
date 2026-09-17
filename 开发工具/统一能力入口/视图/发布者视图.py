@@ -24,6 +24,7 @@
 已于本批清除，仅存于 `开发文档/归档/2026-08_第十四阶段/公开操作契约.json`）。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import hashlib
 import json
@@ -167,7 +168,7 @@ class 发布者视图:
     def _重算对比(目录: Path, 冻结清单: dict[str, dict]) -> tuple[bool, list[str]]:
         """读取目录实际文件重算 sha256，与签名冻结清单逐项对比。"""
         if not 目录.is_dir():
-            return False, ["目录缺失"]
+            return 假, ["目录缺失"]
         差异表 = []
         for 路径, 摘要信息 in 冻结清单.items():
             文件 = 目录 / 路径

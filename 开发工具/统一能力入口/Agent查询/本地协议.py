@@ -10,6 +10,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
 import sys
@@ -66,13 +67,13 @@ def _子结果失败(子结果: Any) -> tuple[bool, str, str]:
         错误码 = str(子结果.get("错误码") or "")
         说明 = str(子结果.get("错误说明") or 子结果.get("说明") or "")
         if 成功 is False or 错误码:
-            return True, 错误码 or "子操作失败", 说明
-        return False, "", 说明
+            return 真, 错误码 or "子操作失败", 说明
+        return 假, "", 说明
     成功 = getattr(子结果, "成功", True)
     说明 = str(getattr(子结果, "说明", "") or "")
     if 成功 is False:
-        return True, str(getattr(子结果, "错误码", "") or "子操作失败"), 说明
-    return False, "", 说明
+        return 真, str(getattr(子结果, "错误码", "") or "子操作失败"), 说明
+    return 假, "", 说明
 
 
 class 本地协议服务器:

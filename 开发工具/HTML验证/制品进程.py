@@ -5,6 +5,7 @@
 ``公共契约.运行时`` 的收口层（``平台适配.子进程组启动标志``、``进程终止``）。
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 import os, queue, re, shutil, subprocess, sys, threading, time
 from pathlib import Path
 from typing import Any
@@ -66,8 +67,8 @@ def _进程组活跃(进程组id: int) -> bool:
             for 行 in 结果.stdout.splitlines():
                 部分 = 行.strip().split(None, 1)
                 if len(部分) == 2 and int(部分[0]) == 进程组id and not 部分[1].startswith("Z"):
-                    return True
-            return False
+                    return 真
+            return 假
         except (OSError, ValueError, subprocess.TimeoutExpired):
             pass
     return 进程终止.按组号探活(进程组id)

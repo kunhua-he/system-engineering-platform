@@ -5,6 +5,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
 import shutil
@@ -83,8 +84,8 @@ def 校验临时文件名(文件: Path, 操作id: str) -> bool:
     """临时文件必须包含操作id（禁止共享 依赖锁定.tmp 等固定名）。"""
     名称 = 文件.name
     if 名称.endswith(".tmp") and 操作id not in 名称:
-        return False
-    return True
+        return 假
+    return 真
 
 
 def 校验不写正式目录(路径: Path, 正式目录表: list[Path]) -> bool:
@@ -93,7 +94,7 @@ def 校验不写正式目录(路径: Path, 正式目录表: list[Path]) -> bool:
     for 正式目录 in 正式目录表:
         try:
             路径.relative_to(Path(正式目录).resolve())
-            return False  # 路径在正式目录内 → 会写入正式资产 → 拒绝
+            return 假  # 路径在正式目录内 → 会写入正式资产 → 拒绝
         except ValueError:
             pass
-    return True
+    return 真

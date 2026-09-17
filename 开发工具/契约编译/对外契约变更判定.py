@@ -75,6 +75,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
 import re
@@ -162,10 +163,10 @@ def _是文档形态(值: Any) -> bool:
     （`返回.值结构` 里出现过 bool 叶子，这类条目会整条留在契约面内）。
     """
     if 值 is None or isinstance(值, str):
-        return True
+        return 真
     if isinstance(值, dict):
         return all(_是文档形态(子值) for 子值 in 值.values())
-    return False
+    return 假
 
 
 def 规范化契约面(契约: dict[str, Any]) -> dict[str, Any]:
@@ -454,15 +455,15 @@ def _版本元组(版本: str) -> tuple[int, ...] | None:
 def 判定版本递增(基线版本: str, 新版本: str) -> tuple[bool, str]:
     """版本是否已合法递增：返回 (是否递增, 版本判定说明)。"""
     if not 基线版本 or not 新版本:
-        return False, "版本号缺失"
+        return 假, "版本号缺失"
     旧元, 新元 = _版本元组(基线版本), _版本元组(新版本)
     if 旧元 is None or 新元 is None:
-        return False, "版本号格式非法"
+        return 假, "版本号格式非法"
     if 新元 > 旧元:
-        return True, "版本已递增"
+        return 真, "版本已递增"
     if 新元 == 旧元:
-        return False, "版本未递增"
-    return False, "版本回退"
+        return 假, "版本未递增"
+    return 假, "版本回退"
 
 
 # ---------------- 基线定位 ----------------

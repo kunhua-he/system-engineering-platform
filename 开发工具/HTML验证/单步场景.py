@@ -1,5 +1,6 @@
 """单步验证场景和有序验证步骤。"""
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import copy
 from dataclasses import dataclass, field
@@ -22,9 +23,9 @@ def 包含是恒真(期望: Any) -> bool:
     把这种恒真期望当空气断言挡掉；执行期另有匹配目标收窄（只匹配 `值` 的序列化）。
     """
     if not isinstance(期望, str) or not 期望:
-        return False
+        return 假
     if 期望 in "".join(统一返回字段):
-        return True
+        return 真
     return all(字符 in _信封必现标点 for 字符 in 期望)
 
 
@@ -50,15 +51,15 @@ def 正向断言有实断言(*, 关键值: Any = None, 值类型: Any = "", 必�
     > 仅「包含」的 2 条是真实业务值断言，见体检器 0 不合格的验收口径）。
     """
     if isinstance(关键值, dict) and 关键值:
-        return True
+        return 真
     if isinstance(值类型, str) and 值类型 in 正式类型表:
-        return True
+        return 真
     if isinstance(必需字段, list) and 必需字段:
-        return True
+        return 真
     if isinstance(字段类型, dict) and 字段类型:
-        return True
+        return 真
     if 有完整值:
-        return True
+        return 真
     return bool(包含) and not 包含是恒真(包含)
 
 

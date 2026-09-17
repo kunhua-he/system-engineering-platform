@@ -1,5 +1,6 @@
 """端口池、资源键和场景分片。"""
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.HTML验证.多步场景 import 多步骤验证场景, 验证场景束
 def _解析端口池(端口池: str) -> list[int]:
     """解析端口池表达式："45080-45180" 区间 或 "45080,45082" 枚举。"""
@@ -82,8 +83,8 @@ def _检查端口可用(端口: int) -> tuple[bool, str]:
     测试 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         测试.bind(("127.0.0.1", 端口))
-        return True, ""
+        return 真, ""
     except OSError as 错误:
-        return False, f"端口 {端口} 已被占用: {错误}"
+        return 假, f"端口 {端口} 已被占用: {错误}"
     finally:
         测试.close()

@@ -19,6 +19,7 @@
     python3.14 开发工具/验证场景体检.py --覆盖 <制品目录>      # 覆盖率预检：公开能力取自制品 + 场景取自源码，**不重编译**就能报出还缺谁
 """
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import argparse
 import json
@@ -138,9 +139,9 @@ def 覆盖预检(根: Path, 制品: Path) -> tuple[bool, str]:
         场景原始表 += _解析场景引用(目录)
     try:
         _校验场景全集(公开能力, 场景原始表, "预检")
-        return True, f"公开能力 {len(公开能力)} 个全部有正向目标步骤（源码场景 {len(场景原始表)} 条）"
+        return 真, f"公开能力 {len(公开能力)} 个全部有正向目标步骤（源码场景 {len(场景原始表)} 条）"
     except Exception as 异常:
-        return False, f"{type(异常).__name__}: {异常}"
+        return 假, f"{type(异常).__name__}: {异常}"
 
 
 def 主() -> int:
