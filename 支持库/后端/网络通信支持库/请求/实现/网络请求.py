@@ -4,24 +4,38 @@
 - SSRF 防护：仅允许 http/https；默认拒绝 回环/内网/私有/保留/链路本地/多播/
   未指定地址、云元数据、运营商 NAT 100.64.0.0/10、IPv4-mapped IPv6 与内嵌凭据。
   判定**不在本文件重复实现**，统一委托 出站安全.校验出站URL（唯一判定实现）。
+- **校验地址与连接地址绑定**：校验通过后，本能力自己解析出候选 IP、逐个交给同一份
+  权威判定（`校验出站URL`）复核，随后**只连这些已复核的 IP**（显式指定连接目标，
+  不再让 urllib 二次解析主机名）。URL 的 host 原样保留，`Host` 头与 TLS SNI 均为
+  原始主机名，因此不破坏 TLS 校验与虚拟主机。修复前：校验解析一次、urllib 连接时
+  再解析一次，两次解析之间可被 DNS 重绑定（首次返回公网 IP 通过校验、二次返回
+  127.0.0.1/内网）绕过。任一跳找不到可用候选 IP 时 fail-closed 拒绝。
 - 重定向逐跳校验：默认跟随重定向时每一跳在发起前重跑同一份强校验，任何一跳
   命中禁目标即中止；不允许「首跳合法、第二跳打到内网/元数据」。
+  逐跳同样重做 IP 绑定（每一跳各自解析、各自复核、各自绑定）。
 - 响应大小上限：max_bytes 超限即中止，防止无界读入
-- 凭证安全：不记录请求头中的敏感字段到错误信息
+- 凭据安全：不记录请求头中的敏感字段到错误信息
 - 超时：connect/read 统一超时
+
+已知边界（不扩大授权，只如实标注）：显式传 `代理` 或命中系统代理时，连接目标由
+代理决定、代理自行解析主机名，本能力无法把 IP 绑定到「代理→目标」那一段；此路径
+下 IP 绑定不生效（代理可信时才应使用 `代理` 参数）。
 """
 
 from __future__ import annotations
 
 import base64
+import http.client
 import ipaddress
 import json
 import os
 import socket
+import ssl
 import urllib.parse
 import urllib.request
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.request import HTTPHandler, HTTPSHandler, ProxyHandler, build_opener
 
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.网络通信支持库.出站安全 import 校验出站URL
@@ -29,6 +43,8 @@ from 支持库.后端.网络通信支持库.出站安全 import 校验出站URL
 敏感头集合 = {"authorization", "x-api-key", "api-key", "cookie", "proxy-authorization"}
 默认超时秒 = 10
 默认最大字节数 = 5 * 1024 * 1024
+默认端口表 = {"http": 80, "https": 443}
+已校验地址属性 = "已校验地址列表"  # 挂在 urllib Request 上，供连接处理器取用
 
 
 
@@ -104,6 +120,256 @@ def _校验协议与SSRF(地址: str, 允许回环: bool = False) -> None:
     raise ValueError(f"SSRF防护: {原因}")
 
 
+def _判定单个IP是否放行(IP文本: str) -> str:
+    """把单个 IP 交给唯一判定实现复核（不改写判定逻辑）。
+
+    返回 "" 表示放行；否则返回中文拒绝原因。
+    """
+    if ":" in IP文本:
+        规范化 = f"[{IP文本}]"
+    else:
+        规范化 = IP文本
+    判定 = 校验出站URL(地址=f"http://{规范化}/", 解析DNS=False)
+    if not 判定.成功:
+        return str(判定.错误说明)
+    判定值 = 判定.值 if isinstance(判定.值, dict) else {}
+    if 判定值.get("允许"):
+        return ""
+    return str(判定值.get("原因") or "未通过出站安全校验")
+
+
+def _解析候选地址(地址: str, 允许回环: bool = False) -> tuple[str, str, int, list[str]]:
+    """解析 URL 并返回 (主机名, 协议, 端口, 已复核IP列表)。
+
+    关键：候选 IP **逐个** 交给唯一判定实现（`校验出站URL`）复核，只保留复核通过
+    的地址；随后连接阶段只连这些地址。这样「校验的 IP」与「连的 IP」是同一批，
+    两次 DNS 解析之间的重绑定无法生效。
+
+    一次都解析不出可用地址时抛 ValueError（fail-closed），绝不放行到第二次解析。
+    `允许回环=True` 时回环 IP 才可能进候选（与 `_校验协议与SSRF` 同一口径）。
+    """
+    解析 = _解析地址(地址)
+    协议 = (解析.scheme or "").lower()
+    主机名 = (解析.hostname or "").strip()
+    if not 主机名:
+        raise ValueError("SSRF防护: URL缺少主机名")
+    try:
+        端口 = 解析.port or 默认端口表.get(协议, 0)
+    except ValueError as 错误:
+        raise ValueError(f"SSRF防护: 端口非法（{错误}）") from 错误
+    if not 端口:
+        raise ValueError("SSRF防护: 无法确定端口")
+
+    规范化主机 = 主机名.split("%")[0]
+
+    # 字面 IP：无需解析，直接构造为唯一候选（URL 级判定已在 _校验协议与SSRF 做过）
+    try:
+        字面对象 = ipaddress.ip_address(规范化主机)
+    except ValueError:
+        字面对象 = None
+    if 字面对象 is not None:
+        if _判定单个IP是否放行(规范化主机):
+            if 允许回环 and _是回环地址(字面对象):
+                return 规范化主机, 协议, 端口, [规范化主机]
+            raise ValueError(f"SSRF防护: 字面地址 {规范化主机} 未通过出站安全校验")
+        return 规范化主机, 协议, 端口, [规范化主机]
+
+    try:
+        地址信息 = socket.getaddrinfo(规范化主机, 端口, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except OSError as 错误:
+        raise ValueError(f"SSRF防护: DNS解析失败：{规范化主机}") from 错误
+
+    全部文本: list[str] = []
+    for 条目 in 地址信息:
+        try:
+            文本 = str(条目[4][0]).split("%")[0]
+        except (IndexError, TypeError):
+            continue
+        if 文本 not in 全部文本:
+            全部文本.append(文本)
+
+    # 整体纯回环：只有「所有解析结果都是回环」才允许调用方以 允许回环=True 放行本机
+    # 自测链路（与 _探是否纯回环目标 同一口径）。混合解析（公网+回环）不放行。
+    整体纯回环 = bool(全部文本) and all(_是回环地址(ipaddress.ip_address(文本)) for 文本 in 全部文本)
+
+    候选: list[str] = []
+    原因池: list[str] = []
+    for IP文本 in 全部文本:
+        否定原因 = _判定单个IP是否放行(IP文本)
+        if not 否定原因:
+            候选.append(IP文本)
+            continue
+        if 允许回环 and 整体纯回环 and _是回环地址(ipaddress.ip_address(IP文本)):
+            候选.append(IP文本)
+            continue
+        原因池.append(f"{IP文本}（{否定原因}）")
+
+    if not 候选:
+        明细 = "；".join(原因池) if 原因池 else "无可用解析结果"
+        raise ValueError(f"SSRF防护: 主机名{规范化主机}没有可用的安全解析地址：{明细}")
+    return 规范化主机, 协议, 端口, 候选
+
+
+def _是否走代理(地址: str) -> bool:
+    """判定该 URL 是否会经 **系统代理**（显式 `代理` 参数由调用方另判）。
+
+    走代理时连接目标由代理决定、代理解析主机名，IP 绑定无法生效；此时保持原有
+    路径不变（不绑定），避免把发往代理的连接错误地钉到目标 IP 上。
+    """
+    try:
+        解析 = urllib.parse.urlsplit(地址)
+        主机名 = 解析.hostname or ""
+        协议 = (解析.scheme or "").lower()
+    except ValueError:
+        return False
+    try:
+        if urllib.request.proxy_bypass(主机名):
+            return False
+        代理表 = urllib.request.getproxies()
+    except Exception:
+        return False
+    return bool(代理表.get(协议) or 代理表.get("all"))
+
+
+def _绑定地址到请求(请求: urllib.request.Request, 地址: str,
+                    允许回环: bool = False, 显式代理: str = None) -> list[str]:
+    """把「校验阶段解析并复核过的 IP」挂到请求上，供连接处理器绑定。
+
+    两种走代理的情况都无法绑定（连接目标是代理，代理解析真实主机名）：
+    - 调用方显式传了 `代理`；
+    - 未传 `代理` 但命中系统代理（`build_opener` 会自动挂上系统代理处理器）。
+    这两种情况返回 [] 且不挂属性，保持原有代理路径行为不变，避免把发往代理的连接
+    错误地钉到目标 IP 上。
+    """
+    if 显式代理 or _是否走代理(地址):
+        return []
+    主机名, 协议, 端口, 候选IP列表 = _解析候选地址(地址, 允许回环=允许回环)
+    setattr(请求, 已校验地址属性, {"主机": 主机名, "端口": 端口, "协议": 协议, "IP列表": 候选IP列表})
+    return 候选IP列表
+
+
+class _绑定IP连接处理器:
+    """混入类：把连接目标固定为 **已校验的 IP**，同时保留 Host 头与 TLS SNI。
+
+    继承链：`绑定地址HTTP连接` / `绑定地址HTTPS连接` 把本类排在 http.client 连接类
+    之前，`__init__` 收下已复核 IP 列表后照常用**原始主机名**调父类构造 —— 因此
+    `self.host` 仍是主机名，HTTP 的 `Host` 头（urllib 用 req.host 生成）与 HTTPS 的
+    `server_hostname`（SNI + 证书校验用）都是原始主机名，虚拟主机与 TLS 不受影响。
+
+    真正建立套接字的 `_create_connection` 被换成「只连已复核 IP」：按序尝试候选 IP，
+    全部失败才抛错。**主机名从未交给系统解析器**，所以不存在第二次解析，DNS 重绑定
+    没有生效窗口；候选 IP 为空时也不会退回按主机名解析（fail-closed）。
+    """
+
+    def __init__(self, *参数, 已校验IP列表=None, **关键字):
+        self._已校验IP列表 = [str(单项) for 单项 in (已校验IP列表 or [])]
+        super().__init__(*参数, **关键字)
+
+    def connect(self):
+        原始创建连接 = socket.create_connection
+        候选IP列表 = self._已校验IP列表
+        if 候选IP列表:
+            def 只连已校验IP(地址二元组, *参数, **关键字):
+                端口 = 地址二元组[1]
+                最后错误: Exception | None = None
+                for IP文本 in 候选IP列表:
+                    try:
+                        # IP 字面量：create_connection 内部 getaddrinfo 只做数字解析，
+                        # 不会触发 DNS 查询 —— 这正是「不再二次解析」的关键。
+                        return 原始创建连接((IP文本, 端口), *参数, **关键字)
+                    except OSError as 错误:
+                        最后错误 = 错误
+                raise 最后错误 or OSError("SSRF防护: 没有可用的已校验连接地址")
+            self._create_connection = 只连已校验IP
+        return super().connect()
+
+
+class 绑定地址HTTP连接(_绑定IP连接处理器, http.client.HTTPConnection):
+    """http.client.HTTPConnection + 已校验 IP 绑定。"""
+
+
+class 绑定地址HTTPS连接(_绑定IP连接处理器, http.client.HTTPSConnection):
+    """http.client.HTTPSConnection + 已校验 IP 绑定（SNI 仍是原始主机名）。"""
+
+
+def _取已校验IP列表(请求: urllib.request.Request) -> list[str]:
+    元信息 = getattr(请求, 已校验地址属性, None)
+    if isinstance(元信息, dict):
+        列表 = 元信息.get("IP列表")
+        if isinstance(列表, list) and 列表:
+            return 列表
+    return []
+
+
+class _绑定地址HTTPHandler(HTTPHandler):
+    """http 处理器：请求带已校验 IP 时，连接只打那些 IP。"""
+
+    def do_open(self, http_class, req, **额外参数):
+        已校验 = _取已校验IP列表(req)
+        if 已校验:
+            return super().do_open(绑定地址HTTP连接, req, 已校验IP列表=已校验, **额外参数)
+        return super().do_open(http_class, req, **额外参数)
+
+    http_request = HTTPHandler.do_request_
+
+
+class _绑定地址HTTPSHandler(HTTPSHandler):
+    """https 处理器：连接只打已校验 IP，TLS 用原始主机名做 SNI 与证书校验。
+
+    urllib 的 `AbstractHTTPHandler.do_open` 用 `http_class(host, ...)` 建连接，host
+    仍是主机名，故 `HTTPSConnection.connect` 里的 `server_hostname = self.host` 天然
+    就是原主机名 —— SNI 与虚拟主机不受影响，只有套接字目标被换成已复核 IP。
+    """
+
+    def https_open(self, req):
+        已校验 = _取已校验IP列表(req)
+        if 已校验:
+            # 只传 `context`，**不要传 check_hostname**：CPython 3.14 的 `HTTPSHandler.__init__`
+            # 虽收 `check_hostname` 参数，却只把 `_debuglevel`/`_context` 存成实例属性
+            # （3.9 会存 `self._check_hostname`）→ 取 `self._check_hostname` 会 AttributeError。
+            # 证书校验开关本就在 `context` 里（`check_hostname` 是 context 的属性），
+            # 传 context 已足够，无需再传该参数。
+            return self.do_open(绑定地址HTTPS连接, req, 已校验IP列表=已校验,
+                                context=self._context)
+        return super().https_open(req)
+
+    https_request = HTTPSHandler.do_request_
+
+
+def _构造打开器(*, 代理: str = None, 允许回环: bool = False, 跟随重定向: bool = True,
+                 ssl上下文=None) -> urllib.request.OpenerDirector:
+    """统一构造 opener：逐跳 SSRF 校验 + 已校验 IP 绑定（两处连接点共用一份）。
+
+    - 显式 `代理`：连接目标由代理决定，逐跳校验保留、IP 绑定关闭（原行为不变）；
+    - `跟随重定向=False`：不挂重定向器，3xx 原样交回调用方；
+    - https 恒用 `_绑定地址HTTPSHandler` 承载 ssl 上下文，避免出现两个 https 处理器
+      导致绑定被旁路。
+    """
+    处理程序: list[Any] = []
+    if 代理:
+        处理程序.append(ProxyHandler({"http": 代理, "https": 代理}))
+    if 跟随重定向:
+        处理程序.append(逐跳校验重定向(允许回环=允许回环, 启用绑定=not bool(代理)))
+    else:
+        class 不重定向(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        处理程序.append(不重定向())
+    处理程序.append(_绑定地址HTTPHandler())
+    处理程序.append(_绑定地址HTTPSHandler(context=ssl上下文))
+    return build_opener(*处理程序)
+
+
+def _构造SSL上下文(SSL验证: bool | None):
+    """SSL验证=False → 不校验证书的上下文；否则 None（用默认上下文）。"""
+    if SSL验证 is False:
+        try:
+            return ssl._create_unverified_context()
+        except Exception as 错误:
+            降级记录表.append(str(错误))
+    return None
+
+
 class 逐跳校验重定向(urllib.request.HTTPRedirectHandler):
     """默认跟随重定向时的逐跳 SSRF 校验器。
 
@@ -123,16 +389,27 @@ class 逐跳校验重定向(urllib.request.HTTPRedirectHandler):
 
     显式 `跟随重定向=False` 时不使用本类（改为 不重定向，把 3xx + Location 原样
     交回调用方）。
+
+    **逐跳 IP 绑定**：`redirect_request` 里对 newurl 重跑校验后立刻重做解析与复核，
+    把新的已复核 IP 列表挂到新的 Request 上；下一跳的连接只打这批 IP。这样每一跳
+    各自「校验解析 = 连接目标」，302 也无法借第二次解析把请求引向内网。
+    `启用绑定=False`（走代理时）则只做校验、不绑定，保持原代理路径行为。
     """
 
-    def __init__(self, 允许回环: bool = False) -> None:
+    def __init__(self, 允许回环: bool = False, 启用绑定: bool = True) -> None:
         super().__init__()
         self._允许回环 = bool(允许回环)
+        self._启用绑定 = bool(启用绑定)
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         放行回环 = self._允许回环 and _探是否纯回环目标(str(getattr(req, "full_url", "")))
         _校验协议与SSRF(newurl, 放行回环)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        新请求 = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if 新请求 is not None and self._启用绑定:
+            已校验IP列表 = _绑定地址到请求(新请求, newurl, 允许回环=放行回环)
+            if not 已校验IP列表 and _是否走代理(newurl):
+                降级记录表.append(f"逐跳地址经代理，未启用IP绑定：{newurl}")
+        return 新请求
 
 
 def 编码中文地址(地址: str) -> str:
@@ -201,33 +478,17 @@ def 发送请求(*, 地址: str = None, 方法: str = "GET", 请求头: dict = N
         except (TypeError, ValueError) as 错误:
             return 结果.失败("参数不合法", f"请求构造失败: {错误}", 来源="网络请求")
 
-        # 代理 + 重定向 统一用 opener；默认路径必须挂逐跳 SSRF 校验器
-        from urllib.request import HTTPSHandler, ProxyHandler, build_opener
-        处理程序 = []
-        if 代理:
-            处理程序.append(ProxyHandler({"http": 代理, "https": 代理}))
-        if 跟随重定向 is False:
-            class 不重定向(urllib.request.HTTPRedirectHandler):
-                def redirect_request(self, req, fp, code, msg, headers, newurl):
-                    return None
-            处理程序.append(不重定向())
-        else:
-            # 默认（含显式 跟随重定向=True）走逐跳校验：3xx 的每一跳都重跑 SSRF 校验。
-            处理程序.append(逐跳校验重定向(允许回环=允许回环))
+        # 关键安全步骤：把「校验阶段解析并复核过的 IP」绑定到本次连接上（走代理时不绑定）。
+        # 绑定后连接只打这些 IP，urllib 不再二次解析主机名 —— DNS 重绑定失去生效窗口。
+        _绑定地址到请求(请求, 地址, 允许回环=允许回环, 显式代理=代理)
 
-        # SSL 验证：关掉验证时把上下文挂到 HTTPSHandler 上。
-        # 旧实现只在 `urlopen` 分支传 context，一挂上 opener（代理或禁止重定向）
-        # 就静默丢弃 SSL验证=False；现统一由 HTTPSHandler 承载，两条路径一致。
-        ssl上下文 = None
-        if SSL验证 is False:
-            try:
-                import ssl
-                ssl上下文 = ssl._create_unverified_context()
-            except Exception as 错误:
-                降级记录表.append(str(错误))
-        if ssl上下文 is not None:
-            处理程序.append(HTTPSHandler(context=ssl上下文))
-        打开器 = build_opener(*处理程序)
+        # 代理 + 重定向 + IP 绑定 + SSL 上下文 统一由 _构造打开器 装配（两处连接点同一份）
+        打开器 = _构造打开器(
+            代理=代理,
+            允许回环=允许回环,
+            跟随重定向=跟随重定向 is not False,
+            ssl上下文=_构造SSL上下文(SSL验证),
+        )
 
         # 普通请求
         try:
@@ -368,23 +629,15 @@ def 下载文件(*, 地址: str = None, 保存路径: str = None, 请求头: dic
 
         请求 = urllib.request.Request(地址, headers=dict(请求头 or {}), method="GET")
 
-        # 代理 + 重定向：下载同样必须挂逐跳校验（修复前 302 可打到内网/元数据）
-        from urllib.request import HTTPSHandler, ProxyHandler, build_opener
-        处理程序 = []
-        if 代理:
-            处理程序.append(ProxyHandler({"http": 代理, "https": 代理}))
-        处理程序.append(逐跳校验重定向(允许回环=允许回环))
+        # 下载同样必须绑定已校验 IP（修复前 302 与二次解析都能打到内网/元数据）
+        _绑定地址到请求(请求, 地址, 允许回环=允许回环, 显式代理=代理)
 
-        ssl上下文 = None
-        if SSL验证 is False:
-            try:
-                import ssl
-                ssl上下文 = ssl._create_unverified_context()
-            except Exception as 错误:
-                降级记录表.append(str(错误))
-        if ssl上下文 is not None:
-            处理程序.append(HTTPSHandler(context=ssl上下文))
-        打开器 = build_opener(*处理程序)
+        打开器 = _构造打开器(
+            代理=代理,
+            允许回环=允许回环,
+            跟随重定向=True,
+            ssl上下文=_构造SSL上下文(SSL验证),
+        )
 
         import uuid as _uuid
         临时路径 = f"{保存路径}.{_uuid.uuid4().hex}.part"
