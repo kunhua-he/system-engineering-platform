@@ -62,9 +62,14 @@ def 写(开工ID: str, 题目: str, 正文: str) -> Path:
 - **记忆包是只读输入**：不许改写、不许在本目录新增文件。回传只写在最终回答；确要落盘写
   `开发文档/分析/<任务名>_回传_20260918.md`。
 - **临时脚本一律放 `/private/tmp/系统平台临时脚本_20260918/`**，禁止留在仓库内。
+- **提交三件套（★ 实测踩过：别人已暂存的文件被卷进你的提交）**：
+  1. `git status --short` 先看**索引里有没有别人的**（第二列是工作树，**第一列非空 = 已在索引**）；
+  2. **`git commit -m "…" -- <精确路径1> <精确路径2>`** —— **commit 也必须带 pathspec**！
+     只 `git add` 自己文件、却跑不带 pathspec 的 `git commit`，会把**别的会话已经 staged 的文件
+     一起提交**（索引是全局共享的，不是你私有的）；
+  3. 提交后 `git show --stat HEAD` 核对**文件数与你预期一致**。
+- **禁止 `git add -A` / `git add .`**。
 - **自述「已提交」必须附提交哈希**；只 `git add` 没 `commit` 不算完成。
-  提交用 `git -c user.name="huage-agent" -c user.email="agent@local" commit -- <精确路径>`；
-  **禁止 `git add -A` / `git add .`**；提交前 `git status --short` 核对。
 - **命令环境**：项目全线用 `python3.14`（`python3` 是 3.9.6）；跑前 `unset PYTHONPATH`；
   `node` 在 `/usr/local/bin`。
 - **哲学 3.1**：同一现象连续两次失败 → **停手转原理级调查**，不许「换个参数再试」。
