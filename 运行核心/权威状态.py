@@ -33,6 +33,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import json
+import os
 import shutil
 import sqlite3
 import threading
@@ -127,6 +128,40 @@ def 异常转错误码(异常: Exception) -> tuple[str, str]:
     return 稳定错误码["内部错误"], "内部错误"
 
 
+def 只读库URI(数据库路径: Path | str, 参数: str = "mode=ro") -> str:
+    """SQLite 只读连接 URI 的**唯一构造口径**：百分号编码的 file URI + 查询参数。
+
+    为什么必须编码（P2-13③，2026-09-18 现场实测，`运行核心/权威状态.py` 原先裸拼
+    `f"file:{路径}?mode=ro"`）：`file:` URI 里 `#` 起 fragment、`?` 起 query，路径含
+    这两个字符时被**静默截断到前缀**——`#` 那支把后面拼的 `?mode=ro` 整体算进 fragment，
+    `?` 那支把路径尾部连同 `?mode=ro` 一起吞掉（URI 里再无任何查询参数 ⇒ **只读彻底失效**，
+    实测该连接 `CREATE TABLE` 落盘成功）；截断出来的前缀名还会被 SQLite **现场新建**成一个空库，
+    而空库的 `PRAGMA integrity_check` 返回 `ok` ⇒ **真实损坏被掩盖**。三层后果全不报错。
+
+    为什么用 `as_uri()` 而不是 `urllib.parse.quote()`：`Path.as_uri()` 是标准库里
+    「路径 → file URI」的现成能力，除 `#`/`?`/空格/百分号外还管 `.`/`..` 规范化与
+    `quote` 的 `safe` 字符（报告建议的 `quote(str(路径))` 默认 `safe='/'`，在 Windows
+    反斜杠与冒号上会走偏）。`as_uri()` 要求绝对路径，故先 `resolve()`。
+
+    参数为什么固定 `mode=ro`：只读校验连接不得改写任何库。**不要**加 `immutable=1`——
+    该选项断言「文件不会变」，而权威状态库是 WAL 活库，正在追加的 WAL 在 immutable
+    连接下读不到（会把活跃内容误判成缺失）；「不建 side 文件」的诉求在这里不成立，
+    库是我们自己的、本来就在读写。
+    """
+    return Path(数据库路径).resolve().as_uri() + "?" + 参数
+
+
+def 连接真实库路径(连接: sqlite3.Connection) -> str:
+    """取连接实际打开的 main 库路径（`PRAGMA database_list` 的设备路径列）。
+
+    用途：区别「我连到的是我要的那个库」与「连到了另一个（空）库」——空库的
+    `integrity_check` 照样 `ok`，只有比对真实路径才能拆穿这种掩盖。
+    空库、内存库（`''`）都如实返回空串，交给调用方判不等。
+    """
+    行 = 连接.execute("PRAGMA database_list").fetchone()
+    return "" if 行 is None else str(行[2] or "")
+
+
 def 版本元组(版本: str) -> tuple[int, ...]:
     """版本字符串 → 比较元组（禁止字符串字典序比较）。"""
     return tuple(int(段) for 段 in 版本.split("."))
@@ -181,7 +216,23 @@ atexit.register(_退出时关闭状态连接)
 
 
 class 权威状态:
-    """权威状态存储（sqlite3 WAL）。"""
+    """权威状态存储（sqlite3 WAL）。
+
+    只读校验的两个坑（P2-13③，2026-09-18 现场实测钉死，下一个人别再踩）：
+
+    1. **空库的 `PRAGMA integrity_check` 照样返回 `ok`** —— 这是 SQLite 的既定行为
+       （实测空库、截断前缀现场新建的库都返回 `ok`），不是缺陷。
+       推论：「完整性 ok」单独**不足以**证明「我读的就是目标库」：只要连接开到了
+       另一个（哪怕是现场新建的）空库，检查就恒过 ⇒ **真实损坏被掩盖**。
+       故凡是用只读连接判完整性，必须先断言「连接实际打开的库 == 目标库路径」
+       （`只读库URI()` + `连接真实库路径()`），不许用「再查一次 integrity_check」
+       这种同源判据糊过去。
+    2. **`file:` URI 必须 percent-encode**（唯一构造口径 = `只读库URI()`）：
+       `f"file:{路径}?mode=ro"` 在路径含 `#`/`?` 时被 URI 解析器**静默截断**——
+       `#` 起（含其后拼的 `?mode=ro`）整体算 fragment；`?` 起算 query，把路径尾部
+       连同 `?mode=ro` 一起吞掉。后果有三层且**全不报错**：打开截断前缀名的空库、
+       **只读模式彻底失效（该连接实测可写）**、`integrity_check` 对空库返回 `ok`。
+    """
 
     # 类属性（子类可覆盖扩展）：目标结构版本 / 迁移序列表 / 结构校验规则表 / 账本保留窗口
     目标版本 = 状态结构版本
@@ -482,6 +533,12 @@ class 权威状态:
                            CAST(0 AS REAL) FROM 锁旧表;
                 DROP TABLE 锁旧表;
             """)
+            # 旧布局的 `获取时间` 按 0 写入（无可信来源），`租约截止` 保持 0 = 无租约。
+            # 但 进程.最后心跳 的历史行是**墙钟**值：不补这一列的话，同一列里会混着
+            # 「旧墙钟值」与「新单调值」两种时基，心跳新鲜判据（单调）会把历史行
+            # 一律算成「很远」（墙钟 epoch 远大于 monotonic），判死回收会**误杀仍活着的
+            # 进程行**。故重建时同事务补一列时基标记，只影响迁移前的历史行。
+            self._补列(连接, "进程", "心跳时基", "TEXT DEFAULT '墙钟'")
         else:
             # 结构化布局：逐列补回缺失列（假升级 / 手工删列的错误历史状态）。
             # 原判据只认 操作id 一列，缺 进程身份键 等列时整段跳过 → 假升级状态
@@ -1316,6 +1373,48 @@ class 权威状态:
         except Exception as 错误:  # 允许忽略，但留痕（哲学第 3 条 2 项）
             记录忽略('权威状态.__del__', 错误)
 
+    def _校验目标库(self, 连接: sqlite3.Connection) -> None:
+        """只读校验连接必须真的开在 `self.数据库路径` 上；否则抛 sqlite3.DatabaseError。
+
+        为什么单列一条判据（P2-13③）：`PRAGMA integrity_check` 对**任何**容器的空库
+        都返回 `ok`（含 SQLite 现场新建的空文件），拿它单独判完整性会**掩盖真实损坏**
+        —— 只要连接开到别处（另一个库、截断出来的空库），它就恒过。
+
+        两级判据，先精后宽（都是为了「既不放过错误库、也不冤枉正确库」，因为判红的
+        后果是走备份覆盖 ⇒ 假红会拿旧备份盖掉好库）：
+        1. `os.path.samefile` 比 **inode + 设备号**：同一文件的不同写法（软链接、
+           `/var` 与 `/private/var`、`..` 段）全判等，这是「是不是同一个文件」的精确答案；
+        2. 任一侧不存在时降级比**规范化路径双向包含**（`abspath`/`realpath` 各一份，
+           任一命中即算等）。
+
+        路径判据里禁止出现 `#`/`?` 这类**拼进 URI 就会被改写语义**的字符（哲学第 2 条 2 项）：
+        这里的比对全在文件系统路径层做，URI 编码只发生在 `只读库URI()` 一处。
+        """
+        目标 = str(self.数据库路径)
+        自报 = 连接真实库路径(连接)
+        if 自报 and self._判定同一库(目标, 自报):
+            return
+        # 用 sqlite3.DatabaseError 而不是 RuntimeError：本方法专为「损坏恢复」的
+        # 校验段服务，语义就是「这个连接不可信 ⇒ 当作数据库不可用」，
+        # 复用既有的损坏→备份恢复分支，不新增未处理异常类型。
+        raise sqlite3.DatabaseError(
+            f"只读校验连接未开在目标库: 目标={os.path.realpath(目标)} "
+            f"实际={os.path.realpath(自报) if 自报 else '（空）'}")
+
+    @staticmethod
+    def _判定同一库(目标: str, 自报: str) -> bool:
+        """两个路径是否指向同一个库文件（同 inode 优先，路径双向包含兜底）。"""
+        try:
+            if os.path.samefile(目标, 自报):
+                return True
+        except OSError:
+            pass  # 任一侧不存在（如截断出来又没建成的前缀）→ 降级比路径
+        for 规约 in (os.path.abspath, os.path.realpath):
+            甲, 乙 = 规约(目标), 规约(自报)
+            if 甲 in 乙 or 乙 in 甲:
+                return True
+        return False
+
     def 校验结构(self) -> tuple[bool, str]:
         """结构校验：版本一致 + 必需列齐全 + integrity_check 返回 ok。"""
         try:
@@ -1333,10 +1432,16 @@ class 权威状态:
         """数据库损坏恢复：integrity_check 返回 ok 才认为完整；损坏则从最新备份恢复。
 
         恢复后重新校验 结构版本/必需列/完整性，再允许继续运行。
+
+        判据顺序（P2-13③，2026-09-18 收口）：① 只读连接必须真开在目标库上
+        （`_校验目标库`，先拆「连到空库」这种掩盖）→ ② 才看 `integrity_check`。
+        顺序不能反：空库的完整性检查恒返回 `ok`，先看它就等于给假绿开门
+        （类 docstring 第 1 条）。
         """
         try:
-            校验连接 = sqlite3.connect(f"file:{self.数据库路径}?mode=ro", uri=True)
+            校验连接 = sqlite3.connect(只读库URI(self.数据库路径), uri=True)
             try:
+                self._校验目标库(校验连接)
                 结果 = 校验连接.execute("PRAGMA integrity_check").fetchone()
             finally:
                 # 库损坏时 integrity_check 先抛 sqlite3.DatabaseError，原写法
