@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "dbc58da70638b557c4aefdc861b80c07104cab6a07fe198a7b6bffc72f3b9e4b"
+      "sha256": "0cac8fdd574cb0a861cb3c5cd50fbcdabe7aaf839dfddb29de56d1cea1114a39"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -25,7 +25,7 @@
     },
     {
       "路径": "实现/全自动精校.py",
-      "sha256": "8db480b421f564338dc8d99034d30ac8f7d087b5333c2b62c7c643047b9db64a"
+      "sha256": "b6c1e4706bab8a0673d40cdb8b76ae23a5bed9da15f537ccd4b4363b9757b617"
     },
     {
       "路径": "实现/分片转写.py",
@@ -69,7 +69,7 @@
     },
     {
       "路径": "实现/精校裁决.py",
-      "sha256": "5753208d62fc9c47b4c95d1c7a6eb3d346acee906e10d04678582184ae0183de"
+      "sha256": "a6d6a58b5c2461fe70fe7e883fd7f043467e015c775231a51303bc5cb0d7ef3f"
     },
     {
       "路径": "实现/缓存与续跑.py",
