@@ -15,11 +15,38 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from 公共契约.基础类型.结果类型 import 结果
 
-项目时区 = ZoneInfo("Asia/Shanghai")
+项目时区名 = "Asia/Shanghai"
 默认格式 = "%Y-%m-%d %H:%M:%S"
 
-# 可注入时钟：生产默认 datetime.now(项目时区)；测试可替换为固定时钟
-时钟提供者: Callable[[], datetime] = lambda: datetime.now(项目时区)
+
+def _取项目时区() -> ZoneInfo:
+    """取项目时区（IANA 数据缺失时如实报错，不静默降级）。
+
+    **为什么不能在模块顶层直接 `ZoneInfo("Asia/Shanghai")`（2026-09-19 修）**：
+    `zoneinfo` 是标准库，但它依赖 IANA 时区库——Linux/macOS 由系统自带
+    （`/usr/share/zoneinfo`），**Windows 没有**，须装 PyPI 包 `tzdata`。
+    顶层求值会在 **Windows 上于「入口装配」阶段抛 `ZoneInfoNotFoundError`**，
+    整包被跳过（真机实测：`已跳过 …时间日期｜入口装配｜装配失败（'No time zone
+    found with key Asia/Shanghai'）`，并连带 3 个依赖它的包一起挂，能力数 677/699）。
+    装配期不该被"数据包没装"拖垮；装载失败只应在**调用时**如实暴露。
+    """
+    try:
+        return ZoneInfo(项目时区名)
+    except ZoneInfoNotFoundError as 错误:
+        raise ZoneInfoNotFoundError(
+            f"本平台缺少 IANA 时区数据（{项目时区名}）：Linux/macOS 由系统自带，"
+            f"Windows 需安装 tzdata（经 支持库.适配层.时区提供者 的依赖锁声明）"
+        ) from 错误
+
+
+# 可注入时钟：生产默认当前时刻；测试可替换为固定时钟。
+# 注意：这里**不做时区解析**，把 IANA 依赖推迟到真正调用时（理由见 _取项目时区）。
+时钟提供者: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+
+
+def _现在(目标时区: ZoneInfo) -> datetime:
+    """取当前时刻并换算到目标时区（可注入时钟在此换算，保持测试可控）。"""
+    return 时钟提供者().astimezone(目标时区)
 
 
 def 注入时钟(提供者: Callable[[], datetime]) -> None:
@@ -31,7 +58,7 @@ def 注入时钟(提供者: Callable[[], datetime]) -> None:
 def 恢复默认时钟() -> None:
     """恢复系统时钟（测试 tearDown 用）。"""
     global 时钟提供者
-    时钟提供者 = lambda: datetime.now(项目时区)
+    时钟提供者 = lambda: datetime.now(timezone.utc)
 
 
 def _成功(值: Any = None) -> 结果:
@@ -45,7 +72,7 @@ def _失败(错误码: str, 消息: str) -> 结果:
 def _解析时区(时区名: str) -> ZoneInfo:
     """解析 IANA 时区名（默认项目时区）。"""
     if not 时区名:
-        return 项目时区
+        return _取项目时区()
     return ZoneInfo(时区名)
 
 
@@ -55,9 +82,12 @@ def 获取当前时间(时区: str = "Asia/Shanghai") -> 结果:
         return _失败("参数不合法", "时区必须为文本")
     try:
         目标时区 = _解析时区(时区)
-    except ZoneInfoNotFoundError:
+    except ZoneInfoNotFoundError as 错误:
+        # 区分两类：时区名本身不合法 vs 本平台根本没有 IANA 数据（如 Windows 缺 tzdata）
+        if 时区 == 项目时区名 or "缺少 IANA 时区数据" in str(错误):
+            return _失败("依赖不可用", str(错误))
         return _失败("参数不合法", f"未知时区: {时区}")
-    return _成功(时钟提供者().astimezone(目标时区).isoformat(timespec="seconds"))
+    return _成功(_现在(目标时区).isoformat(timespec="seconds"))
 
 
 def 格式化为文本(时间戳: float = None, 格式: str = 默认格式) -> 结果:
@@ -67,7 +97,10 @@ def 格式化为文本(时间戳: float = None, 格式: str = 默认格式) -> �
     if not isinstance(格式, str):
         return _失败("参数不合法", "格式必须为文本")
     try:
+        项目时区 = _取项目时区()
         return _成功(datetime.fromtimestamp(float(时间戳), 项目时区).strftime(格式))
+    except ZoneInfoNotFoundError as 错误:
+        return _失败("依赖不可用", str(错误))
     except (ValueError, OSError) as 错误:
         return _失败("参数不合法", f"时间戳无效: {错误}")
 
@@ -79,8 +112,11 @@ def 解析文本时间(文本: str = None, 格式: str = 默认格式) -> 结果
     if not isinstance(格式, str):
         return _失败("参数不合法", "格式必须为文本")
     try:
+        项目时区 = _取项目时区()
         时刻 = datetime.strptime(文本, 格式).replace(tzinfo=项目时区)
         return _成功(时刻.timestamp())
+    except ZoneInfoNotFoundError as 错误:
+        return _失败("依赖不可用", str(错误))
     except ValueError as 错误:
         return _失败("参数不合法", f"时间文本无效: {错误}")
 
@@ -90,11 +126,14 @@ def 时间戳转换(时间戳: float = None) -> 结果:
     if 时间戳 is None or isinstance(时间戳, bool) or not isinstance(时间戳, (int, float)):
         return _失败("参数不合法", "时间戳必须为数字")
     try:
+        项目时区 = _取项目时区()
         结构 = datetime.fromtimestamp(float(时间戳), 项目时区).timetuple()
         return _成功({
             "年": 结构.tm_year, "月": 结构.tm_mon, "日": 结构.tm_mday,
             "时": 结构.tm_hour, "分": 结构.tm_min, "秒": 结构.tm_sec,
         })
+    except ZoneInfoNotFoundError as 错误:
+        return _失败("依赖不可用", str(错误))
     except (ValueError, OSError) as 错误:
         return _失败("参数不合法", f"时间戳无效: {错误}")
 
@@ -108,3 +147,4 @@ def 计算间隔(起始时间戳: float = None, 结束时间戳: float = None) -
             or not isinstance(结束时间戳, (int, float)):
         return _失败("参数不合法", "结束时间戳必须为数字")
     return _成功(round(float(结束时间戳) - float(起始时间戳), 3))
+
