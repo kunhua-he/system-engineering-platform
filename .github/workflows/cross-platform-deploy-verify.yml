@@ -76,9 +76,21 @@ jobs:
       - name: 打印环境三元组（真机事实）
         shell: bash
         run: |
-          # Windows runner 上 setup-python 装的是 python.exe，POSIX 上是 python3；
-          # 这里统一探测，避免「解释器名不同」被误读成「平台不支持」。
-          if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+          # 实测坑（2026-09-19，Windows runner 首跑复现）：Windows 上
+          # `command -v python3` 会命中 Microsoft Store 的**应用执行别名桩**
+          # （路径存在、能通过 command -v，但一跑就 exit 1）。
+          # 故这里不按名字猜，而是**逐个真跑一次**取第一个真正可用的解释器。
+          PY=""
+          for 候选 in python3 python; do
+            if command -v "$候选" >/dev/null 2>&1 && "$候选" -c "pass" >/dev/null 2>&1; then
+              PY="$候选"
+              break
+            fi
+          done
+          if [ -z "$PY" ]; then
+            echo "找不到可用的 Python 解释器（已试 python3 / python）" >&2
+            exit 1
+          fi
           echo "解释器命令: $PY"
           echo "PYTHON=$PY" >> "$GITHUB_ENV"
           "$PY" -V
