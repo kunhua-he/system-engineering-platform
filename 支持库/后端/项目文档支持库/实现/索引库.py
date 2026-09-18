@@ -9,52 +9,17 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
-from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.基础类型.逻辑类型 import 假
 
-系统根 = Path(__file__).resolve().parents[4]
-默认库文件 = 解析运行数据根(系统根) / "项目文档库.db"
+from .检索粒度 import 收敛返回粒度, 返回粒度表, 投影记录
+from .未命中词 import 取建议词
 
-建表语句 = (
-    """CREATE TABLE IF NOT EXISTS 项目登记(
-       项目名 TEXT PRIMARY KEY, 项目根目录 TEXT NOT NULL, 文档根相对路径 TEXT NOT NULL,
-       规范文件 TEXT NOT NULL, 登记时间 TEXT NOT NULL, 更新时间 REAL NOT NULL);""",
-    """CREATE TABLE IF NOT EXISTS 文档索引(
-       项目名 TEXT NOT NULL, 文档相对路径 TEXT NOT NULL, 标题 TEXT NOT NULL,
-       文档类型 TEXT NOT NULL, 内容摘要 TEXT NOT NULL, 段数 INTEGER NOT NULL,
-       字节数 INTEGER NOT NULL, 文件修改时间 REAL NOT NULL, 入库时间 REAL NOT NULL,
-       PRIMARY KEY(项目名, 文档相对路径));""",
-    """CREATE TABLE IF NOT EXISTS 块索引(
-       块id INTEGER PRIMARY KEY AUTOINCREMENT, 项目名 TEXT NOT NULL, 文档相对路径 TEXT NOT NULL,
-       起始行 INTEGER NOT NULL, 结束行 INTEGER NOT NULL, 块类型 TEXT NOT NULL, 块文本 TEXT NOT NULL);""",
-    "CREATE INDEX IF NOT EXISTS 文档索引_项目_时间 ON 文档索引(项目名, 入库时间 DESC);",
-    "CREATE INDEX IF NOT EXISTS 块索引_项目_文档 ON 块索引(项目名, 文档相对路径);",
-)
-
-
-def _库路径(库文件: str) -> Path:
-    """归一化库文件参数：留空取默认；给值必须是绝对路径（相对路径一律拒绝）。"""
-    if 库文件 is None or not str(库文件).strip():
-        return 默认库文件
-    文本 = str(库文件).strip()
-    if not Path(文本).is_absolute():
-        raise ValueError(f"库文件必须是绝对路径: {文本}")
-    return Path(文本)
-
-
-def _连接(库文件: str) -> sqlite3.Connection:
-    """打开库并确保表齐（幂等）；父目录不存在则创建（运行数据根可能尚未建）。"""
-    路径 = _库路径(库文件)
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    连接 = sqlite3.connect(路径, timeout=10)
-    连接.execute("PRAGMA journal_mode=WAL")
-    for 语句 in 建表语句:
-        连接.execute(语句)
-    连接.commit()
-    return 连接
+# 库路径解析 / 连接 / 建表统一在 `库连接.py`（本文件与 `未命中词.py` 共用，
+# 各自定义一份会形成循环 import —— 实测已踩过）
+from .库连接 import _连接, _库路径, 建表语句, 默认库文件
 
 
 def 建索引库(库文件: str = None) -> 结果:
@@ -123,43 +88,158 @@ def 写入索引(项目名: str = None, 文档相对路径: str = None, 块列�
 
 
 def 查询索引(项目名: str = None, 关键词: str = None, 返回条数: int = 20,
-            库文件: str = None) -> 结果:
+            库文件: str = None, 返回粒度: str = None, 搜索词: list = None,
+            截断上限: int = 0) -> 结果:
     """按项目名与关键词查询块索引（大小写不敏感子串匹配）。
 
-    多词查询：全命中优先，其次按命中词数降序、行号升序稳定排序。
-    参数：项目名 / 关键词（空白分隔多词）/ 返回条数 / 库文件
-    返回：``{项目名, 关键词, 命中列表, 命中数, 是否截断}``
+    **多词两组口径（并存，只增不改）**：
+    - `关键词`（老参数）：空白分隔多词，**同一条查询里 AND 式匹配**，全命中优先；
+    - `搜索词`（新参数）：**一组一组的候选**，如 `[["开通","流程"],["签约","步骤"]]`，
+      每组独立检索打分，**只返回评分最高的那一组**。
+    传了 `搜索词` 时 `关键词` 只原样带回、不参与检索；两个都不传则报参数不合法。
+
+    **返回粒度四档**（`返回粒度`）：标题 / 简介（默认）/ 内容 / 完整。
+    默认档与改前返回**逐字段兼容**（老调用零行为变化）。
+
+    **未命中词扩词**：某组词零命中时，读该项目的「未命中词」表取建议词重查
+    （只读，不写库）；只对零命中的那一组生效，不做全局替换。
+
+    参数：项目名 / 关键词 / 返回条数 / 库文件 / 返回粒度 / 搜索词 / 截断上限
+    返回：``{项目名, 关键词, 命中列表, 命中数, 是否截断, 返回粒度,
+            生效搜索词, 搜索词组数, 扩词记录}``
     """
     if not isinstance(项目名, str) or not 项目名.strip():
         return 结果.失败("参数不合法", "项目名必须是非空文本", 来源="项目文档支持库")
-    if not isinstance(关键词, str) or not 关键词.strip():
-        return 结果.失败("参数不合法", "关键词必须是非空文本", 来源="项目文档支持库")
-    词表 = [w for w in re.split(r"\s+", 关键词.strip()) if w]
+    档 = 收敛返回粒度(返回粒度)
+    if 档 is None:
+        return 结果.失败("参数不合法",
+                         f"返回粒度 必须是 {'/'.join(返回粒度表)} 之一，收到 {返回粒度!r}",
+                         来源="项目文档支持库")
+
+    词组表 = _归一词组(关键词, 搜索词)
+    if 词组表 is None:
+        return 结果.失败("参数不合法",
+                         "关键词与搜索词至少给一个非空值；搜索词须是非空列表，每项是一组词",
+                         来源="项目文档支持库")
     上限 = max(1, int(返回条数 or 20))
     try:
         with _连接(库文件) as 连接:
             行表 = 连接.execute(
                 "SELECT 文档相对路径,起始行,结束行,块类型,块文本 FROM 块索引 WHERE 项目名=?",
                 (项目名,)).fetchall()
+            标题表 = {行[0]: 行[1] for 行 in 连接.execute(
+                "SELECT 文档相对路径,标题 FROM 文档索引 WHERE 项目名=?", (项目名,)).fetchall()}
     except ValueError as 错误:
         return 结果.失败("参数不合法", str(错误), 来源="项目文档支持库")
     except sqlite3.Error as 错误:
         return 结果.失败("索引库不可用", f"查询失败: {错误}", 来源="项目文档支持库")
 
-    命中列表 = []
+    # 逐组检索并按评分定序；同时记录「零命中」的组（供扩词）
+    组结果 = []
+    零命中组 = []
+    for 组词 in 词组表:
+        命中 = _扫一组(行表, 标题表, 组词)
+        if 命中:
+            组结果.append((组词, 命中))
+        else:
+            零命中组.append(组词)
+
+    # 扩词：只对零命中的组生效，读未命中词表取建议词重查（只读，不写库）
+    扩词记录 = []
+    if 零命中组:
+        建议表 = 取建议词(项目名, [w for 组词 in 零命中组 for w in 组词], 库文件)
+        for 组词 in 零命中组:
+            命中, 来源 = _扫扩词组(行表, 标题表, 组词, 建议表)
+            if 命中:
+                组结果.append((组词, 命中))
+                扩词记录.append({"原始词": 组词, "扩词来源": 来源})
+
+    if not 组结果:
+        return 结果.成功结果({
+            "项目名": 项目名, "关键词": 关键词 or "", "命中列表": [], "命中数": 0,
+            "是否截断": 假, "返回粒度": 档, "生效搜索词": [], "搜索词组数": len(词组表),
+            "扩词记录": 扩词记录,
+        })
+
+    # 择优：先比最优块评分，再比命中块数，再取组序（稳定，不随机）
+    组词, 命中 = max(组结果, key=lambda x: (x[1][0]["覆盖率"], x[1][0]["命中词数"],
+                                            x[1][0]["命中次数"], len(x[1])))
+    扩词来源 = next((r["扩词来源"] for r in 扩词记录 if r["原始词"] == 组词), "")
+
+    # 按文档聚合（标题档要「命中块数」，且避免同一文档刷屏）
+    聚合: dict[str, dict] = {}
+    for 记录 in 命中:
+        if 扩词来源:
+            记录 = {**记录, "扩词来源": 扩词来源}
+        键 = 记录["文档相对路径"]
+        if 键 not in 聚合:
+            聚合[键] = {**记录, "命中块数": 1}
+        else:
+            聚合[键]["命中块数"] += 1
+    条目表 = sorted(聚合.values(),
+                    key=lambda x: (-x["覆盖率"], -x["命中词数"], -x["命中次数"],
+                                   x["文档相对路径"], x["起始行"]))
+    投影 = [投影记录(记录, 档, 截断上限=int(截断上限 or 0)) for 记录 in 条目表[:上限]]
+    return 结果.成功结果({
+        "项目名": 项目名, "关键词": 关键词 or "", "命中列表": 投影,
+        "命中数": len(条目表), "是否截断": len(条目表) > 上限, "返回粒度": 档,
+        "生效搜索词": 组词, "搜索词组数": len(词组表), "扩词记录": 扩词记录,
+    })
+
+
+def _归一词组(关键词: str, 搜索词: list) -> list[list[str]] | None:
+    """把两种入参归一到「一组一组的词」；都不合法返回 None。
+
+    - `搜索词` 给了：必须是列表，每项是非空字符串或字符串列表（空组剔除）；
+    - `搜索词` 没给：`关键词` 按空白切成**唯一一组**（老行为逐字保留）。
+    """
+    if 搜索词 is not None:
+        if not isinstance(搜索词, list) or not 搜索词:
+            return None
+        组表: list[list[str]] = []
+        for 项 in 搜索词:
+            词 = [w for w in re.split(r"\s+", 项.strip()) if w] if isinstance(项, str) \
+                else [str(w).strip() for w in 项 if str(w).strip()] if isinstance(项, list) else []
+            if 词:
+                组表.append(词)
+        return 组表 or None
+    if not isinstance(关键词, str) or not 关键词.strip():
+        return None
+    return [[w for w in re.split(r"\s+", 关键词.strip()) if w]]
+
+
+def _扫一组(行表: list, 标题表: dict, 组词: list[str]) -> list[dict]:
+    """扫全表命中某一组词，返回带评分字段的命中列表（不改行表）。"""
+    命中 = []
     for 路径, 起始行, 结束行, 块类型, 块文本 in 行表:
         小写 = 块文本.lower()
-        命中词 = [w for w in 词表 if w.lower() in 小写]
+        命中词 = [w for w in 组词 if w.lower() in 小写]
         if not 命中词:
             continue
-        片段 = 块文本.strip().replace("\n", " ")[:180]
-        命中列表.append({
-            "文档相对路径": 路径, "起始行": 起始行, "结束行": 结束行, "块类型": 块类型,
-            "命中词数": len(命中词), "命中次数": sum(小写.count(w.lower()) for w in 命中词),
-            "片段": 片段,
+        命中.append({
+            "文档相对路径": 路径, "标题": 标题表.get(路径, ""),
+            "起始行": 起始行, "结束行": 结束行, "块类型": 块类型,
+            "块文本": 块文本, "命中词": 命中词, "命中词数": len(命中词),
+            "命中次数": sum(小写.count(w.lower()) for w in 命中词),
+            "覆盖率": len(命中词) / len(组词) if 组词 else 0.0,
         })
-    命中列表.sort(key=lambda x: (-x["命中词数"], -x["命中次数"], x["文档相对路径"], x["起始行"]))
-    return 结果.成功结果({
-        "项目名": 项目名, "关键词": 关键词, "命中列表": 命中列表[:上限],
-        "命中数": len(命中列表), "是否截断": len(命中列表) > 上限,
-    })
+    命中.sort(key=lambda x: (-x["覆盖率"], -x["命中词数"], -x["命中次数"],
+                             x["文档相对路径"], x["起始行"]))
+    return 命中
+
+
+def _扫扩词组(行表: list, 标题表: dict, 组词: list[str],
+             建议表: dict[str, str]) -> tuple[list[dict], str]:
+    """对零命中组用建议词重查：返回（命中列表, 扩词来源文案）。
+
+    只有当该组**全部词**都能取到建议词时才扩（部分扩会让评分口径混乱）；
+    否则原样返回空，如实承认这组确实搜不到。
+    """
+    新词 = [建议表.get(w, "") for w in 组词]
+    if not all(新词):
+        return [], ""
+    命中 = _扫一组(行表, 标题表, 新词)
+    if not 命中:
+        return [], ""
+    来源 = " → ".join(f"{旧}→{新}" for 旧, 新 in zip(组词, 新词))
+    return 命中, 来源
