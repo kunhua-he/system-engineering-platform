@@ -18,7 +18,6 @@ import hashlib
 import json
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import threading
@@ -49,7 +48,7 @@ from 公共契约.运行时.运行缓存 import 解析运行缓存根
 from 运行核心.运行环境管理器.远程镜像 import (
     下载镜像制品, 获取镜像清单, 计算制品摘要, 镜像不可用, 镜像下载失败,
     镜像校验请求, 远程镜像校验器, 远程镜像配置,
-    读取远程镜像配置, 原子落盘,
+    读取远程镜像配置, 原子落盘, 清只读后删除树,
 )
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
@@ -387,11 +386,11 @@ def _尝试镜像命中(提供者目录: Path, 依赖锁: dict, 目标: Path,
         return 环境结果(假, 错误码=校验结果.错误码, 错误说明=校验结果.错误说明)
     临时目录 = 目标.parent / f".镜像中_{摘要[:8]}"
     if 临时目录.exists():
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
     下载结果 = 下载镜像制品(配置.镜像地址, 提供者目录.name, 摘要, 临时目录,
                           代理地址=配置.代理地址, 镜像清单=清单结果.清单)
     if not 下载结果.成功:
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         _记录证据(提供者目录, "失败", 摘要, 输入哈希,
                    错误码=镜像下载失败, 错误说明=下载结果.错误说明)
         return 环境结果(假, 错误码=镜像下载失败, 错误说明=下载结果.错误说明)
@@ -401,13 +400,13 @@ def _尝试镜像命中(提供者目录: Path, 依赖锁: dict, 目标: Path,
                             公钥PEM=配置.公钥PEM,
                             实际制品摘要=实际制品摘要)
     if not 复校验.允许命中:
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         _记录证据(提供者目录, "失败", 摘要, 输入哈希,
                    错误码=复校验.错误码, 错误说明=复校验.错误说明)
         return 环境结果(假, 错误码=复校验.错误码, 错误说明=复校验.错误说明)
     # 本地复校验：镜像环境必须通过与本地一致的环境校验才允许落盘
     if not 校验环境(平台适配.虚拟环境解释器路径(临时目录), 依赖锁):
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         _记录证据(提供者目录, "失败", 摘要, 输入哈希,
                    错误码=镜像下载失败, 错误说明="镜像环境复校验失败，制品不可用")
         return 环境结果(假, 错误码=镜像下载失败, 错误说明="镜像环境复校验失败，制品不可用")
@@ -652,7 +651,7 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
     目标.parent.mkdir(parents=True, exist_ok=True)
     临时目录 = 目标.parent / f".构建中_{摘要[:8]}"
     if 临时目录.exists():
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
     当前阶段 = "创建虚拟环境"
     try:
         _报告阶段(进度回调, 当前阶段)
@@ -667,7 +666,7 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
                 capture_output=True, timeout=超时秒, env=环境变量,
             )
         if 创建结果 is not None and 创建结果.returncode != 0:
-            shutil.rmtree(临时目录, ignore_errors=True)
+            清只读后删除树(临时目录, 忽略失败=真)
             详情 = 创建结果.stderr.decode("utf-8", "ignore")[-300:]
             return 环境结果(
                 假, 错误码="提供者不可用",
@@ -693,7 +692,7 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
             安装参数.append(f"{包['名称']}=={包['版本']}")
             结果 = subprocess.run(安装参数, capture_output=True, timeout=超时秒, env=环境变量)
             if 结果.returncode != 0:
-                shutil.rmtree(临时目录, ignore_errors=True)
+                清只读后删除树(临时目录, 忽略失败=真)
                 return 环境结果(
                     假, 错误码="提供者不可用",
                     错误说明=f"{当前阶段}失败: {结果.stderr.decode('utf-8', 'ignore')[-300:]}",
@@ -701,7 +700,7 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
         当前阶段 = "校验环境"
         _报告阶段(进度回调, 当前阶段)
         if not 校验环境(临时解释器, 依赖锁):
-            shutil.rmtree(临时目录, ignore_errors=True)
+            清只读后删除树(临时目录, 忽略失败=真)
             return 环境结果(假, 错误码="提供者不可用", 错误说明="校验环境失败")
         当前阶段 = "提交环境缓存"
         _报告阶段(进度回调, 当前阶段)
@@ -715,13 +714,13 @@ def _构建环境(提供者目录: Path, 依赖锁: dict, 目标: Path,
         原子落盘(临时目录, 目标)
         return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
     except subprocess.TimeoutExpired:
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         return 环境结果(
             假, 错误码="提供者不可用",
             错误说明=f"{当前阶段}超时（阶段上限 {超时秒} 秒）",
         )
     except OSError as 错误:
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         return 环境结果(
             假, 错误码="提供者不可用", 错误说明=f"{当前阶段}失败: {错误}")
 
@@ -732,7 +731,7 @@ def 废弃环境(提供者目录: Path) -> 环境结果:
     摘要 = 计算环境摘要(依赖锁, 提供者目录.name) if 依赖锁 else ""
     目标 = 环境目录(提供者目录, 摘要) if 摘要 else None
     if 目标 and 目标.exists():
-        shutil.rmtree(目标, ignore_errors=True)
+        清只读后删除树(目标, 忽略失败=真)
     return 环境结果(真, 错误说明="已废弃环境")
 
 

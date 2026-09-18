@@ -34,6 +34,7 @@ import http.client
 import json
 import os
 import shutil
+import stat
 import tarfile
 import urllib.parse
 import urllib.request
@@ -459,7 +460,7 @@ def 下载镜像制品(镜像地址: str, 提供者id: str, 环境摘要: str, �
         if 镜像清单 is not None:
             _复校验文件清单(镜像清单, 目标目录)
     except (OSError, ValueError, tarfile.TarError) as 错误:
-        shutil.rmtree(目标目录, ignore_errors=True)
+        清只读后删除树(目标目录, 忽略失败=真)
         return 镜像操作结果(假, 错误码=镜像下载失败,
                              错误说明=f"制品下载或解压失败: {错误}")
     finally:
@@ -467,23 +468,158 @@ def 下载镜像制品(镜像地址: str, 提供者id: str, 环境摘要: str, �
     return 镜像操作结果(真)
 
 
+def 清除只读属性(路径: str | Path) -> None:
+    """清掉路径（文件或目录）的只读属性；失败**原样报错**，不降级。
+
+    **为什么需要它（2026-09-19）**：Windows 上 `venv` 建出来的环境里，pip 自带
+    的 license 文件（`Lib/site-packages/pip-*.dist-info/licenses/**`）带**只读属性**，
+    `shutil.rmtree` 内部的 `os.unlink` 会抛 `PermissionError`（POSIX 上同样的文件
+    能直接删，所以这是平台差异）。
+
+    **一份实现跨平台**：`os.chmod(路径, stat.S_IWRITE)` 在 POSIX 上同样合法
+    （清掉只读位不改变可删除性），因此本函数**不含任何平台判断**——
+    符「平台差异只在收口层判断、调用点不许自带分叉」的铁律。
+    """
+    try:
+        os.chmod(路径, stat.S_IWRITE)
+    except OSError as 错误:
+        raise OSError(f"清除只读属性失败（{路径}）: {错误}") from 错误
+
+
+def 确保可删(路径: str | Path) -> None:
+    """让「删除 路径」这件事可做：清掉路径自身的只读位，并确保**父目录可写**。
+
+    两件事都需要，缺一不可：
+
+    - **路径自身只读**（Windows 只读属性 / POSIX 无写位）→ `os.unlink` 拒绝；
+    - **父目录不可写**（POSIX 删除条目要求父目录有写位，`0o555` 的目录就删不掉
+      里面的东西）→ `os.unlink`/`os.rmdir` 同样拒绝。
+
+    平台差异用**能力探测**（`os.access(父, os.W_OK)`）而不是平台名判断，
+    所以一份实现跨平台、调用点无分叉。
+    """
+    目标 = Path(路径)
+    父目录 = 目标.parent
+    if 父目录 != 目标 and not os.access(父目录, os.W_OK):
+        # 目录得同时可读可执行才谈得上遍历删除，不能只加写位
+        os.chmod(父目录, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+    清除只读属性(目标)
+
+
+def 清只读后删除树(目录: Path, *, 忽略失败: bool = 假) -> None:
+    """删除目录树；遇只读属性造成的 `PermissionError` 时先清只读再重试删除。
+
+    判定依据不靠注释靠真实副作用：钩子只在 `rmtree` **真的**抛 `PermissionError`
+    时才动。POSIX 上通常不触发（同样的文件在 POSIX 上能直接删），Windows 上由
+    `os.unlink`/`os.rmdir` 触发，正是要修的那条路径。
+
+    语义：
+
+    - ``忽略失败=假``（默认）：清只读后仍失败就**原样抛出**，错误说明点名路径与原因
+      —— 不许宽 `except` 吞错。
+    - ``忽略失败=真``：逐条经 `记录忽略` 留痕（可查询），并**额外检查目录是否真的删干净**；
+      残留同样留痕。这修掉了原先 `rmtree(..., ignore_errors=True)` 的缺陷：
+      它**连残留都不留痕**，事后无法判断「本来就没东西」还是「删失败了」。
+    """
+    目录 = Path(目录)
+
+    def _清只读后重试(函数, 路径, 异常) -> None:
+        """rmtree 的 onexc 钩子：非 PermissionError 不越权处理，其余先清只读再重试。"""
+        if not isinstance(异常, PermissionError):
+            if 忽略失败:
+                记录忽略("远程镜像.清只读后删除树", 异常)
+                return
+            raise 异常
+        try:
+            确保可删(路径)
+            结果 = 函数(路径)
+            if 函数 is os.scandir and 结果 is not None:
+                结果.close()  # 官方配方会漏关的迭代器，这里显式关掉
+        except OSError as 重试错误:
+            if 忽略失败:
+                记录忽略("远程镜像.清只读后删除树.重试", 重试错误)
+                return
+            raise OSError(f"清只读后重试删除仍失败（{路径}）: {重试错误}") from 重试错误
+
+    try:
+        shutil.rmtree(目录, onexc=_清只读后重试)
+    except OSError as 错误:
+        if not 忽略失败:
+            raise
+        记录忽略("远程镜像.清只读后删除树", 错误)
+    if 忽略失败 and 目录.exists():
+        记录忽略("远程镜像.清只读后删除树.残留",
+                 f"删除流程已返回但目录仍在（有内容未删净）: {目录}")
+
+
+def _同步目录项(目录: Path) -> None:
+    """fsync 单个目录项；本平台拿不到目录句柄/不支持目录 fsync 时**如实留痕**。
+
+    Windows 上 `os.open(目录, os.O_RDONLY)` **必然**抛
+    `PermissionError: [Errno 13] Permission denied: '<目录>'`——CPython 的 `os.open()`
+    对目录走 `CreateFileW` 且不带 `FILE_FLAG_BACKUP_SEMANTICS`，这**不是权限不足**，
+    是「Windows 不允许把目录当文件打开」；POSIX 上同一调用合法（本机实测成功）。
+    """
+    try:
+        目录句柄 = os.open(目录, os.O_RDONLY)
+    except OSError as 错误:
+        记录忽略("远程镜像.同步落盘.目录", 错误)
+        return
+    try:
+        os.fsync(目录句柄)
+    except OSError as 错误:
+        记录忽略("远程镜像.同步落盘.目录", 错误)
+    finally:
+        try:
+            os.close(目录句柄)
+        except OSError as 错误:
+            记录忽略("远程镜像.同步落盘.目录关闭", 错误)
+
+
+def _同步文件项(文件: Path) -> None:
+    """fsync 单个文件；拿不到可 fsync 的句柄时**如实留痕**，不升级为落盘失败。
+
+    Windows 的 `FlushFileBuffers` 要求句柄带写权限，`open("rb")` 的只读句柄会失败；
+    而 venv 里 pip 的 license 文件本就是只读的 → 拿不到写句柄。POSIX 上 `rb` 句柄
+    可直接 fsync（本机实测成功）。
+    """
+    try:
+        文件句柄 = 文件.open("rb")
+    except OSError as 错误:
+        记录忽略("远程镜像.同步落盘.文件", 错误)
+        return
+    try:
+        os.fsync(文件句柄.fileno())
+    except OSError as 错误:
+        记录忽略("远程镜像.同步落盘.文件", 错误)
+    finally:
+        文件句柄.close()
+
+
 def 同步落盘(制品目录: Path) -> None:
-    """fsync 制品目录下全部文件与目录（自底向上），保证改名前数据落盘。"""
+    """fsync 制品目录下全部文件与目录（自底向上），保证改名前数据落盘。
+
+    **跨平台口径（2026-09-19 修 Windows 专有「提交环境缓存失败: [Errno 13]
+    Permission denied」）**：目录 fsync 与只读句柄 fsync 在 Windows 上**做不到**
+    （机制见 `_同步目录项`、`_同步文件项`）。这**不是降级**：数据本身已在上一阶段
+    写出（pip/venv 写文件时已落盘，`原子落盘` 之后也不再改写），本函数是「改名前
+    可见性」的加固，不是「数据是否写出」的判据 —— 拿不到句柄的项经 `记录忽略`
+    **如实留痕（可查询）**，不上报成落盘失败把整轮装配带偏。
+
+    这与 `运行核心/任务调度/任务进程.py::_同步目录` 的既有口径一致（原文：
+    「非 POSIX 平台可能拒绝目录 fsync —— 此时快照文件**已经写出**（数据没丢），
+    不能把『目录 fsync 不可用』升级成『落盘失败』…因此如实记进任务日志，不静默」）。
+    """
     制品根 = Path(制品目录).resolve()
     if not 制品根.is_dir():
         raise OSError(f"制品目录不存在: {制品根}")
     目录表 = [目录 for 目录 in 制品根.rglob("*") if 目录.is_dir()]
     目录表.append(制品根)
     for 目录 in sorted(目录表, key=lambda 项: len(项.parts), reverse=True):
-        目录句柄 = os.open(目录, os.O_RDONLY)
-        try:
-            os.fsync(目录句柄)
-        finally:
-            os.close(目录句柄)
+        _同步目录项(目录)
     for 文件 in 制品根.rglob("*"):
         if 文件.is_file():
-            with 文件.open("rb") as 文件句柄:
-                os.fsync(文件句柄.fileno())
+            _同步文件项(文件)
 
 
 def 原子落盘(临时目录: Path, 目标目录: Path) -> None:
@@ -503,7 +639,7 @@ def 原子落盘(临时目录: Path, 目标目录: Path) -> None:
     try:
         同步落盘(临时目录)
     except OSError:
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         raise
     目标目录.parent.mkdir(parents=True, exist_ok=True)
     让位目录: Path | None = None
@@ -513,13 +649,13 @@ def 原子落盘(临时目录: Path, 目标目录: Path) -> None:
         try:
             os.replace(目标目录, 让位目录)  # 旧环境改名让位：不删除，可回滚
         except OSError as 错误:
-            shutil.rmtree(临时目录, ignore_errors=True)
+            清只读后删除树(临时目录, 忽略失败=真)
             raise OSError(
                 f"旧环境让位失败（旧环境原样保留在 {目标目录}）: {错误}") from 错误
     try:
         os.replace(临时目录, 目标目录)
     except OSError as 错误:
-        shutil.rmtree(临时目录, ignore_errors=True)
+        清只读后删除树(临时目录, 忽略失败=真)
         回滚说明 = _回滚让位(让位目录, 目标目录) if 让位目录 is not None else "无旧环境需要回滚"
         raise OSError(f"新环境顶位失败: {错误}；{回滚说明}") from 错误
     if 让位目录 is not None:
@@ -540,6 +676,6 @@ def _回滚让位(让位目录: Path, 目标目录: Path) -> str:
 def _清理让位(让位目录: Path) -> None:
     """新环境顶位成功后清理让位目录；失败只留痕，不影响新环境可用。"""
     try:
-        shutil.rmtree(让位目录)
+        清只读后删除树(让位目录)
     except OSError as 错误:
         记录忽略("远程镜像.原子落盘.清理让位", 错误)
