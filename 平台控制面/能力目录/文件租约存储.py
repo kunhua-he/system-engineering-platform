@@ -124,8 +124,9 @@ def 计算内容指纹(项目根: Path | str, 相对路径: str) -> tuple[str, s
 
 def 指纹是否一致(声明: object, 现在: object) -> bool:
     """声明指纹与现场指纹是否一致（空/缺声明一律视为「无可比」→ 不一致）。"""
-    甲, 乙 = str(声明 or "").strip(), str(现在 or "").strip()
-    return bool(甲) and bool(乙) and 甲 == 乙
+    声明值 = str(声明 or "").strip()
+    现场值 = str(现在 or "").strip()
+    return bool(声明值) and bool(现场值) and 声明值 == 现场值
 
 
 def 留言条目(作者: str, 正文: str, 现在: float | None = None) -> dict:
