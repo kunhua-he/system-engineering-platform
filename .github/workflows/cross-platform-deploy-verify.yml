@@ -14,6 +14,14 @@
 #     它不表示「允许失败」，而表示「先把真实现状采下来」。
 #   - 触发方式：手动（workflow_dispatch）或指定路径变更的 push。
 #   - 结果只作证据，不作发布门禁；发布门禁仍以本机正式链路为准。
+#
+# 实测踩坑（登记防重犯，两条都在 2026-09-19 首推时真撞过）：
+#   ① 工作流**文件名必须是 ASCII**：曾用 `.github/workflows/跨平台部署验证.yml`，
+#      推上去后 `gh workflow list` 为空、dispatch 返回 404 —— 中文文件名不被识别。
+#   ② GitHub 表达式 `${{ }}` 里的**标识符必须是 ASCII**：曾写 `${{ matrix.名称 }}`，
+#      dispatch 返回 422 `Unexpected symbol: '名称'`。
+#      故 matrix 的**键与 job id 用 ASCII**，**值**仍可中文。
+#      （列名/步骤名/日志中文没问题，被拒的只是表达式里的标识符。）
 
 name: 跨平台部署验证
 
@@ -35,9 +43,9 @@ permissions:
   contents: read
 
 jobs:
-  验证:
-    name: ${{ matrix.名称 }}
-    runs-on: ${{ matrix.系统 }}
+  verify:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     # 首轮跑不通是预期：见文件头「口径」
     continue-on-error: true
@@ -45,15 +53,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - 名称: macOS-arm64（对照基线·有验收记录）
-            系统: macos-14
-            期望: 通过
-          - 名称: Linux-x86_64（待取证）
-            系统: ubuntu-latest
-            期望: 观察
-          - 名称: Windows-x86_64（待取证）
-            系统: windows-latest
-            期望: 观察
+          - label: macOS-arm64（对照基线·有验收记录）
+            os: macos-14
+            expect: 通过
+          - label: Linux-x86_64（待取证）
+            os: ubuntu-latest
+            expect: 观察
+          - label: Windows-x86_64（待取证）
+            os: windows-latest
+            expect: 观察
 
     steps:
       - name: 取代码
@@ -83,9 +91,9 @@ jobs:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: "utf-8"
         run: |
-          "$PYTHON" -m 开发工具.环境自检 > 自检-before.log 2>&1
+          "$PYTHON" -m 开发工具.环境自检 > selfcheck-before.log 2>&1
           echo "环境自检退出码=$?"
-          tail -30 自检-before.log
+          tail -30 selfcheck-before.log
 
       - name: 跨平台部署验证（重建依赖锁 + 装配冒烟，机器判定）
         shell: bash
@@ -94,9 +102,9 @@ jobs:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: "utf-8"
         run: |
-          "$PYTHON" -m 开发工具.跨平台部署验证 > 部署验证.log 2>&1
+          "$PYTHON" -m 开发工具.跨平台部署验证 > deploy-verify.log 2>&1
           echo "部署验证退出码=$?"
-          tail -30 部署验证.log
+          tail -40 deploy-verify.log
 
       - name: 装配冒烟（README 部署第 3 步的三条断言，独立复跑一遍）
         shell: bash
@@ -105,7 +113,7 @@ jobs:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: "utf-8"
         run: |
-          "$PYTHON" - <<'PY' > 装配冒烟.log 2>&1
+          cat > assembly-smoke.py <<'PY'
           import sys
           from pathlib import Path
           from 后端核心.后端核心 import 后端核心
@@ -126,22 +134,23 @@ jobs:
               sys.exit(1)
           print('[装配冒烟] 通过：装配成功、能力数 > 0、无跳过包')
           PY
+          "$PYTHON" assembly-smoke.py > assembly-smoke.log 2>&1
           echo "装配冒烟退出码=$?"
-          tail -20 装配冒烟.log
+          tail -20 assembly-smoke.log
 
       - name: 汇总本平台结论（写进工作流摘要，便于审阅）
         shell: bash
         if: always()
         run: |
           {
-            echo "## ${{ matrix.名称 }}"
+            echo "## ${{ matrix.label }}"
             echo ""
-            echo "- 期望：${{ matrix.期望 }}"
+            echo "- 期望：${{ matrix.expect }}"
             echo "- 说明：本平台证据用于决定是否把该平台加入《当前支持矩阵》；**跑不通不阻断本工作流**。"
             echo ""
             echo '```text'
             echo "── 部署验证结论 ──"
-            tail -25 部署验证.log 2>/dev/null || echo "（部署验证未产出日志）"
+            tail -30 deploy-verify.log 2>/dev/null || echo "（部署验证未产出日志）"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -149,10 +158,10 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: 部署验证日志-${{ matrix.系统 }}
+          name: deploy-verify-logs-${{ matrix.os }}
           path: |
-            自检-before.log
-            部署验证.log
-            装配冒烟.log
+            selfcheck-before.log
+            deploy-verify.log
+            assembly-smoke.log
           if-no-files-found: warn
           retention-days: 30
