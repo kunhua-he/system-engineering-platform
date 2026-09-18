@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import time
 import uuid
@@ -32,6 +33,107 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 # 索引只约束「非空契约指纹」：空指纹（如发布门禁直接写入的 `契约指纹=''` 行）
 # 不在「相同契约指纹阻断重复实现」的语义内，多条空白行仍合法。
 能力条目指纹索引条件 = "契约指纹 IS NOT NULL AND 契约指纹 <> ''"
+
+# ---- 标识符白名单（P2-10①，2026-09-18 硬化）----
+# 为什么需要：本类的 `表`/`列名`/`条件` 是**拼进 SQL 文本**的位置（值已参数化，这些
+# 不是值），而 `读取记录`/`查询记录`/`写入记录` 同时是公开能力——`表`/`主键列`/`条件`
+# 由调用方（Agent、网关、门禁）给，不是全部来自代码常量。白名单是纵深防御的最后一层。
+# 六服务与门禁的全部调用点现场核对过：传的都是代码常量（条件字面量只有标识符/占位符/
+# 比较与逻辑运算符/括号/逗号），因此白名单不会拦住任何既有调用。
+标识符白名单 = re.compile(r"^[\u4e00-\u9fa5A-Za-z0-9_]+$")
+# 裸条件（WHERE 之后）允许的词法：字符串字面量 / 参数占位符 / 标识符 / 数字 /
+# 比较与逻辑运算符 / 括号 / 逗号 / 空白。分号、注释符（-- /*）、引号拼接、
+# 反斜杠一律不在允许集内——它们进不了 SQL。
+条件片段词法 = re.compile(
+    r"\s*(?:'(?:[^']|'')*'|\?|[A-Za-z\u4e00-\u9fa5_][A-Za-z0-9_\u4e00-\u9fa5]*"
+    r"|[0-9]+(?:\.[0-9]+)?|<>|!=|<=|>=|=|<|>|\(|\)|,)\s*")
+# 裸条件里禁止出现的结构关键字（按大写比对，大小写不敏感）：词法上它们是标识符，
+# 语义上绝不属于 WHERE 条件（DDL/DML/子查询注入骨架），逐个拒绝做纵深防御。
+条件禁止关键字 = frozenset({
+    "SELECT", "INSERT", "UPDATE", "DELETE", "REPLACE", "DROP", "ALTER", "CREATE",
+    "UNION", "ATTACH", "DETACH", "PRAGMA", "VACUUM", "TRIGGER", "EXEC", "EXECUTE",
+    "WITH", "RECURSIVE", "RETURNING", "INTO", "TABLE", "INDEX", "VIEW", "TEMP",
+    "TEMPORARY", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "REINDEX", "ANALYZE",
+    "LOAD_EXTENSION", "GRANT", "REVOKE", "MASTER", "SQLITE_MASTER",
+})
+
+
+class 标识符不合法(sqlite3.OperationalError):
+    """表名/列名/条件片段不在白名单内（P2-10① 纵深防御的拒答类型）。
+
+    为什么继承 `sqlite3.OperationalError`：这些参数是**拼进 SQL 的文本**，被拒等价于
+    「这条语句无法执行」——与 sqlite 自己的 `no such table` 同一错误类。于是
+    `平台控制面/平台状态/实现/能力入口.py`（只捕 `sqlite3.Error`）仍能把拒答收成既有的
+    `读取记录失败`/`查询记录失败`/`写入记录失败`（网关 → 400 调用方输入问题），
+    不会退化成 500 内部错误；也不需要新增任何错误码。
+
+    机器判据用**异常类型**（`isinstance`），禁止解析本类的文案。
+    """
+
+
+def _校验标识符(值: Any, 用途: str) -> str:
+    """表名/列名白名单校验（纵深防御）：不合法直接拒答，绝不拼进 SQL。"""
+    if not isinstance(值, str) or not 标识符白名单.match(值):
+        raise 标识符不合法(f"{用途}不在标识符白名单内: {值!r}")
+    return 值
+
+
+def _校验条件片段(条件: Any) -> str:
+    """裸条件词法校验（纵深防御）：逐段吃掉允许的词法，出现禁止关键字即拒答。"""
+    if 条件 is None or 条件 == "":
+        return ""
+    if not isinstance(条件, str):
+        raise 标识符不合法(f"条件必须是文本: {条件!r}")
+    位置 = 0
+    长度 = len(条件)
+    while 位置 < 长度:
+        匹配 = 条件片段词法.match(条件, 位置)
+        if 匹配 is None or 匹配.end() == 位置:
+            raise 标识符不合法(f"条件片段含未允许的词法（位置 {位置}）: {条件!r}")
+        词 = 匹配.group(0).strip().upper()
+        if 词 in 条件禁止关键字:
+            raise 标识符不合法(f"条件片段含禁止关键字 {词}: {条件!r}")
+        位置 = 匹配.end()
+    return 条件
+
+
+def _校验写入参数(表: str, 记录: dict[str, Any], 主键: str = "", 唯一列: str = "") -> None:
+    """写入路径的标识符白名单：表名 / 主键 / 唯一列 / 记录里的每个列名。"""
+    _校验标识符(表, "表名")
+    if 主键:
+        _校验标识符(主键, "主键")
+    if 唯一列:
+        _校验标识符(唯一列, "唯一列")
+    for 字段 in 记录:
+        _校验标识符(字段, "列名")
+
+
+def _列名表(连接, 表: str) -> list[str]:
+    """取表的列名清单（每次调用执行一次 `PRAGMA table_info`，P2-10②）。
+
+    前置条件：调用方已过 `_校验标识符(表, "表名")`（本函数只拼已白名单化的表名）。
+    """
+    return [描述[1] for 描述 in 连接.execute(f"PRAGMA table_info({表})").fetchall()]
+
+
+def _拼UPSERT(表: str, 记录: dict[str, Any], 主键: str) -> str:
+    """单事务 UPSERT 语句（`写入记录` 与 `写入记录或唯一冲突` 共用，禁止各写一套）。
+
+    只在记录含主键之外的列时挂 `ON CONFLICT(主键) DO UPDATE`，且**只更新本次传入的列**
+    （`excluded.列`）：未传入的列保持原值，不做「先读整行再整行覆盖」，
+    也不用 REPLACE（REPLACE = DELETE+INSERT，会触发级联、换 rowid、清未传列）。
+    只带主键列的记录走纯 INSERT（没有可更新的列）；不带主键的记录同样走纯 INSERT，
+    与原先「无主键即不合并」逐字一致。
+    """
+    字段表 = list(记录)
+    占位符 = ", ".join(["?"] * len(字段表))
+    列名 = ", ".join(字段表)
+    语句 = f"INSERT INTO {表}({列名}) VALUES({占位符})"
+    更新列 = [字段 for 字段 in 字段表 if 字段 != 主键]
+    if 更新列:
+        语句 += (f" ON CONFLICT({主键}) DO UPDATE SET "
+                + ", ".join(f"{字段}=excluded.{字段}" for 字段 in 更新列))
+    return 语句
 
 
 class 平台状态(权威状态):
@@ -204,24 +306,24 @@ class 平台状态(权威状态):
 
     # ---- 六服务通用读写（唯一写入口） ----
     def 写入记录(self, 表: str, 记录: dict[str, Any], 主键: str = "id") -> None:
-        """按主键写入记录；已存在时只更新传入字段（合并，不丢其他字段）。
+        """按主键写入记录；已存在时**只更新本次传入的字段**（不读旧行、不整行覆盖）。
 
-        注意：部分更新（如 生成装配计划 只写 装配计划 字段）不得清空
-        同一记录的其他字段（需求确认状态等）。
+        单事务 UPSERT（P2-10③）：原先「先 SELECT 整行 → 合并 → INSERT OR REPLACE」跨
+        两个事务，并发写同一主键的不同字段会互相覆盖（丢失更新窗口），且 REPLACE 是
+        DELETE+INSERT（触发级联、换 rowid、清未传字段）。现改为
+        `INSERT … ON CONFLICT(主键) DO UPDATE SET 仅传入列=excluded.列`：不先读、
+        不整行替换，未传入的列原样保留，判冲突与写入在同一事务内原子完成。
+
+        部分更新（如 生成装配计划 只写 装配计划 字段）不得清空同一记录的其他字段
+        （需求确认状态等）——UPSERT 只写传入列，正是这条口径。
+        表名/列名/主键走标识符白名单（P2-10①）。
         """
-        主键值 = 记录.get(主键)
-        if 主键值 is not None:
-            已有 = self.读取记录(表, 主键, str(主键值))
-            if 已有 is not None:
-                记录 = {**已有, **记录}
+        _校验写入参数(表, 记录, 主键)
         字段表 = list(记录)
-        占位符 = ", ".join(["?"] * len(字段表))
-        列名 = ", ".join(字段表)
         连接 = self._连接()
         with 连接:
-            连接.execute(
-                f"INSERT OR REPLACE INTO {表}({列名}) VALUES({占位符})",
-                [记录[字段] for 字段 in 字段表])
+            连接.execute(_拼UPSERT(表, 记录, 主键),
+                        [记录[字段] for 字段 in 字段表])
 
     def 写入记录或唯一冲突(self, 表: str, 记录: dict[str, Any], 主键: str = "id",
                           唯一列: str = "") -> tuple[bool, str]:
@@ -235,22 +337,15 @@ class 平台状态(权威状态):
         别的主键占着 `唯一列` 时原样抛 `IntegrityError`，由本方法收成返回值——
         谁该消失不由存储层替调用方决定。
 
+        P2-10③：与 `写入记录` 共用 `_拼UPSERT`（单事务 UPSERT，只更新本次传入的列），
+        不再「先 SELECT 整行合并再写」——并发写同一主键的不同字段不再有丢失更新窗口。
+
         返回：`(True, "")` 写入成功；`(False, 占用者主键值)` 唯一列被占用，调用方按既有
         错误码/文案回话（占用者定位不到时**不吞异常**，原样抛出，绝不假装成功）。
         """
-        主键值 = 记录.get(主键)
-        if 主键值 is not None:
-            已有 = self.读取记录(表, 主键, str(主键值))
-            if 已有 is not None:
-                记录 = {**已有, **记录}
+        _校验写入参数(表, 记录, 主键, 唯一列)
         字段表 = list(记录)
-        占位符 = ", ".join(["?"] * len(字段表))
-        列名 = ", ".join(字段表)
-        更新列 = [字段 for 字段 in 字段表 if 字段 != 主键]
-        语句 = f"INSERT INTO {表}({列名}) VALUES({占位符})"
-        if 更新列:
-            语句 += (f" ON CONFLICT({主键}) DO UPDATE SET "
-                    + ", ".join(f"{字段}=excluded.{字段}" for 字段 in 更新列))
+        语句 = _拼UPSERT(表, 记录, 主键)
         连接 = self._连接()
         try:
             with 连接:
@@ -274,7 +369,11 @@ class 平台状态(权威状态):
         return str(行[0]) if 行 else ""
 
     def 原子插入(self, 表: str, 记录: dict[str, Any]) -> bool:
-        """INSERT OR IGNORE：唯一约束冲突返回 False（并发互斥的原子防线）。"""
+        """INSERT OR IGNORE：唯一约束冲突返回 False（并发互斥的原子防线）。
+
+        表名/列名走标识符白名单（P2-10①）。
+        """
+        _校验写入参数(表, 记录)
         字段表 = list(记录)
         占位符 = ", ".join(["?"] * len(字段表))
         列名 = ", ".join(字段表)
@@ -286,23 +385,40 @@ class 平台状态(权威状态):
             return 游标.rowcount > 0
 
     def 读取记录(self, 表: str, 主键列: str, 主键值: str) -> dict[str, Any] | None:
+        """读取一条记录（列名按实际表结构取，不依赖位置索引）。
+
+        P2-10①：表名/主键列走标识符白名单；P2-10②：`PRAGMA table_info` 每次调用
+        只执行一次（原先在结果行循环里每行执行一次，纯浪费）。
+        """
+        _校验标识符(表, "表名")
+        _校验标识符(主键列, "主键列")
         连接 = self._连接()
+        列名 = _列名表(连接, 表)
         行 = 连接.execute(f"SELECT * FROM {表} WHERE {主键列}=?", (主键值,)).fetchone()
         if 行 is None:
             return None
-        列名 = [描述[1] for 描述 in 连接.execute(f"PRAGMA table_info({表})").fetchall()]
         return dict(zip(列名, 行))
 
     def 查询记录(self, 表: str, 条件: str = "", 参数: tuple = ()) -> list[dict[str, Any]]:
+        """按条件查询记录（列名按实际表结构取，不依赖位置索引）。
+
+        P2-10①：表名与条件片段走白名单/词法校验；P2-10②：`PRAGMA table_info`
+        提到结果行循环外，每次查询只执行一次。
+        """
+        _校验标识符(表, "表名")
+        _校验条件片段(条件)
         连接 = self._连接()
+        列名 = _列名表(连接, 表)
         条件SQL = f"WHERE {条件}" if 条件 else ""
         结果表 = []
         for 行 in 连接.execute(f"SELECT * FROM {表} {条件SQL}", 参数):
-            列名 = [描述[1] for 描述 in 连接.execute(f"PRAGMA table_info({表})").fetchall()]
             结果表.append(dict(zip(列名, 行)))
         return 结果表
 
     def 条件更新(self, 表: str, 更新: dict[str, Any], 条件SQL: str, 参数: tuple) -> bool:
+        """按条件更新（表名/列名/条件片段走标识符白名单与条件词法，P2-10①）。"""
+        _校验写入参数(表, 更新)
+        _校验条件片段(条件SQL)
         赋值 = ", ".join([f"{字段}=?" for 字段 in 更新])
         连接 = self._连接()
         with 连接:

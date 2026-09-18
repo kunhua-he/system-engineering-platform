@@ -17,6 +17,16 @@
 
 锁所有权结构化（总补修）：锁记录保存 操作id/事务id/进程身份键/项目id/
 所有者/栅栏令牌/获取时间/租约截止，不再拼接字符串猜测所有权。
+
+锁租约语义（P2-7，2026-09-18 硬化）：`锁.租约截止 > 0` 表示持有者**只在租约内**
+持有锁；租约截止早于当前时刻即为弃锁，其它持有者可 CAS 抢占（判据 = 观察到的
+`租约截止` 原值；同一事务内递增栅栏令牌并写回收证据）。被抢占者的提交/续期/释放
+都会因令牌判据被拒。`租约截止 = 0` 表示**无租约**（只有进程死亡清理能回收该锁），
+与硬化前逐字一致。
+
+机器判据（P1-6 / P2-8，2026-09-18 硬化）：迁移可恢复性判 **sqlite 错误码**
+（`迁移可重试主码`）、并发冲突判 **sqlite 错误码 + 异常类型**（`是并发冲突`），
+禁止解析 sqlite 英文消息文本做控制分支——文案给人看，错误码给机器判。
 """
 from __future__ import annotations
 
@@ -69,6 +79,39 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
     "数据库损坏": "数据库损坏",
     "内部错误": "内部错误",
 }
+
+# —— 机器判据（P1-6 / P2-8，2026-09-18 硬化）：sqlite 一律判错误码，禁止解析英文消息 ——
+# sqlite 主错误码 = 错误码去掉扩展位（SQLITE_BUSY_SNAPSHOT=517 → 主码 5，
+# SQLITE_BUSY_TIMEOUT=773 → 主码 5）。现场实测（python3.14 + sqlite 3.53）：
+# `错误.sqlite_errorcode` 给的是**扩展码**（517），所以必须取主码再比对。
+sqlite主码掩码 = 0xFF
+# 并发冲突主码（P2-8）：写事务撞上其它进程/线程 → 可重试，不是内部错误。
+并发冲突主码 = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+# 结构迁移可重试主码（P1-6）：原判据解析三条英文消息（no such table /
+# database is locked / database table is locked），现按同一批错误的**主码**判定：
+# SQLITE_ERROR=1（no such table）、SQLITE_BUSY=5（database is locked）、
+# SQLITE_LOCKED=6（database table is locked）。SQLITE_ERROR 是 sqlite 的通用码，
+# 该判据因此略宽于原文案（no such column 之类也会重试）——代价有界（最多 4 次尝试、
+# 合计 ≤0.3 秒），最终抛出的仍是同一条「结构迁移失败」异常。
+迁移可重试主码 = frozenset({sqlite3.SQLITE_ERROR, sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+
+
+def sqlite主错误码(错误: BaseException) -> int:
+    """取 sqlite 主错误码（去扩展位）；非 sqlite 异常或取不到码时返回 0。
+
+    0 是「未知码」：任何 `in 主码集合` 的判据都不会命中——绝不把未知情况当可重试。
+    自造 `sqlite3.Error` 子类没有 `sqlite_errorcode` 属性（现场实测），走的就是这条。
+    """
+    码 = getattr(错误, "sqlite_errorcode", None)
+    if not isinstance(码, int):
+        return 0
+    return 码 & sqlite主码掩码
+
+
+def 是并发冲突(错误: BaseException) -> bool:
+    """并发冲突判定（P2-8）：机器判据 = 异常类型 + sqlite 错误码，不看文案。"""
+    return (isinstance(错误, sqlite3.OperationalError)
+            and sqlite主错误码(错误) in 并发冲突主码)
 
 
 def 异常转错误码(异常: Exception) -> tuple[str, str]:
@@ -253,14 +296,16 @@ class 权威状态:
                 # 迁移脚本包含历史 DDL；旧版本 SQLite 的 executescript 可能在
                 # 并发进程间短暂暴露中间 schema。对可恢复的 schema 竞态重试，
                 # 其它迁移错误仍立即失败，避免吞掉真实损坏。
+                # P1-6（2026-09-18 硬化）：可恢复性判 **sqlite 错误码**（原始异常由
+                # `_迁移结构` 挂在 `__cause__` 上），禁止解析 sqlite 英文消息文本。
                 for 次数 in range(4):
                     try:
                         self._迁移结构()
                         break
                     except RuntimeError as 错误:
-                        文本 = str(错误)
-                        可恢复 = ("no such table" in 文本 or "database is locked" in 文本
-                                  or "database table is locked" in 文本)
+                        原因 = 错误.__cause__
+                        可恢复 = (isinstance(原因, sqlite3.OperationalError)
+                                  and sqlite主错误码(原因) in 迁移可重试主码)
                         if not 可恢复 or 次数 == 3:
                             raise
                         time.sleep(0.05 * (次数 + 1))
@@ -311,7 +356,8 @@ class 权威状态:
                                             ensure_ascii=False),))
                             连接.commit()
                             raise RuntimeError(
-                                f"结构迁移失败 {当前版本}→{目标}: {错误}（已回滚，版本保持 {当前版本}）")
+                                f"结构迁移失败 {当前版本}→{目标}: {错误}（已回滚，版本保持 {当前版本}）"
+                            ) from 错误
                         连接.execute("INSERT OR REPLACE INTO 元信息(键, 值) VALUES('结构版本', ?)", (目标,))
                 # for 循环后兜底：版本匹配但结构不完整的错误历史状态无法修复时失败。
                 # 原判据 `版本元组(状态结构版本) < 版本元组("1.0.0")` 拿模块常量
@@ -415,6 +461,8 @@ class 权威状态:
             # 半结构化表也缺 操作id，走重建会因 锁旧表 无 持有者 列而报错。
             连接.execute("ALTER TABLE 锁 RENAME TO 锁旧表")
             连接.executescript("""
+                -- 租约截止：> 0 表示该锁带租约（过期即可被 CAS 抢占，见 获取锁 P2-7）；
+                --           = 0 表示无租约，只有进程死亡清理能回收该锁。
                 CREATE TABLE 锁(
                     资源id TEXT PRIMARY KEY, 操作id TEXT DEFAULT '',
                     事务id TEXT DEFAULT '', 进程身份键 TEXT DEFAULT '',
@@ -776,9 +824,35 @@ class 权威状态:
 
         拒绝：版本不匹配、旧栅栏令牌、锁不属于该事务/进程、项目或所有者不匹配。
         写入使用单条条件 UPDATE（WHERE 资源id AND 版本 AND 栅栏令牌），无 SELECT 后无条件 UPDATE 竞态。
+
+        并发冲突（P2-8）：写事务撞上其它进程/线程（sqlite 主码 BUSY/LOCKED，含
+        SQLITE_BUSY_SNAPSHOT）时返回 `(假, "并发冲突: …可原样重试")`——**可重试**语义，
+        不再冒泡成「内部错误」。判据是 sqlite 错误码，不是文案。
         """
         进程身份键 = 进程身份键 or self.身份.身份键()
         连接 = self._连接()
+        try:
+            return self._提交资源单事务(
+                连接=连接, 资源id=资源id, 期望版本=期望版本, 期望令牌=期望令牌,
+                事务id=事务id, 进程身份键=进程身份键, 项目id=项目id,
+                所有者=所有者, 新值=新值, 新摘要=新摘要)
+        except sqlite3.OperationalError as 错误:
+            if not 是并发冲突(错误):
+                raise
+            # P2-8（2026-09-18 硬化）：WAL 下「先读后写」的写事务后到者会撞
+            # SQLITE_BUSY / SQLITE_BUSY_SNAPSHOT（busy handler 对快照冲突不自动
+            # 重试）。这是**并发冲突（可重试）**，不是内部错误——归成明确失败交回
+            # 调用方重试，禁止冒泡成「内部错误」丢掉可重试语义。
+            # 判据是 sqlite 错误码（`是并发冲突`），不是文案。
+            名称 = getattr(错误, "sqlite_errorname", "") or "并发写冲突"
+            return 假, (f"并发冲突: 资源 {资源id} 的写事务与其它进程/线程重叠（{名称}），"
+                        f"本次未提交，可原样重试")
+
+    def _提交资源单事务(self, *, 连接: sqlite3.Connection, 资源id: str,
+                        期望版本: str, 期望令牌: str, 事务id: str,
+                        进程身份键: str, 项目id: str, 所有者: str,
+                        新值: Any, 新摘要: str) -> tuple[bool, str]:
+        """提交的读校验 + 条件更新（事务边界与并发冲突归类由 `提交资源` 统一负责）。"""
         with 连接:
             锁行 = 连接.execute(
                 "SELECT 事务id, 进程身份键, 项目id, 所有者, 栅栏令牌 FROM 锁 WHERE 资源id=?",
@@ -866,6 +940,12 @@ class 权威状态:
 
         令牌在锁授予时原子递增，永不回退（释放/失败/崩溃都不回退）。
         锁等待有明确超时、退避与总耗时，禁止无限自旋。
+
+        租约与抢占（P2-7，2026-09-18 硬化）：`租约秒 > 0` 时锁带租约（`租约截止`），
+        租约过期即视为弃锁——其它持有者用「观察到的 `租约截止` 原值」做 CAS 抢占，
+        同一事务内递增栅栏令牌并写一条回收证据（`类型='锁租约过期抢占'`）；被抢占者
+        的提交/续期/释放都会被令牌判据拒绝。`租约秒 = 0`（缺省）时 `租约截止 = 0`
+        即**无租约**：只有进程死亡清理能回收该锁，与硬化前逐字一致。
         """
         进程身份键 = 进程身份键 or self.身份.身份键()
         截止 = time.time() + 超时秒
@@ -873,7 +953,10 @@ class 权威状态:
         while True:
             连接 = self._连接()
             with 连接:
-                行 = 连接.execute("SELECT 资源id FROM 锁 WHERE 资源id=?", (资源id,)).fetchone()
+                现在 = time.time()
+                行 = 连接.execute(
+                    "SELECT 操作id, 事务id, 进程身份键, 项目id, 所有者, 栅栏令牌, "
+                    "获取时间, 租约截止 FROM 锁 WHERE 资源id=?", (资源id,)).fetchone()
                 if 行 is None:
                     令牌行 = 连接.execute(
                         "SELECT 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()
@@ -884,18 +967,46 @@ class 权威状态:
                         "项目id, 所有者, 栅栏令牌, 获取时间, 租约截止) "
                         "VALUES(?, ?, ?, ?, ?, ?, 0, ?, ?)",
                         (资源id, 操作id, 事务id, 进程身份键, 项目id, 所有者,
-                         time.time(), time.time() + 租约秒 if 租约秒 > 0 else 0.0))
+                         现在, 现在 + 租约秒 if 租约秒 > 0 else 0.0))
                     if 游标.rowcount > 0:
                         # 同一原子事务内递增令牌（签发后不回退）
-                        连接.execute("UPDATE 资源版本 SET 栅栏令牌=栅栏令牌+1 WHERE 资源id=?", (资源id,))
-                        新令牌 = 连接.execute(
-                            "SELECT 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()[0]
-                        连接.execute("UPDATE 锁 SET 栅栏令牌=? WHERE 资源id=?", (新令牌, 资源id))
-                        return 真, "锁已获取", 新令牌
+                        return 真, "锁已获取", self._签发新令牌(连接, 资源id)
+                elif 行[7] and 0 < 行[7] < 现在:
+                    # 租约过期抢占：CAS 判据是观察到的 `租约截止` 原值，
+                    # 并发抢占只有一个进程 rowcount=1（其余回到等待/超时路径）。
+                    新租约截止 = 现在 + 租约秒 if 租约秒 > 0 else 0.0
+                    游标 = 连接.execute(
+                        "UPDATE 锁 SET 操作id=?, 事务id=?, 进程身份键=?, 项目id=?, 所有者=?, "
+                        "获取时间=?, 租约截止=? WHERE 资源id=? AND 租约截止=?",
+                        (操作id, 事务id, 进程身份键, 项目id, 所有者, 现在, 新租约截止,
+                         资源id, 行[7]))
+                    if 游标.rowcount == 1:
+                        新令牌 = self._签发新令牌(连接, 资源id)
+                        连接.execute(
+                            "INSERT INTO 回收证据(证据id, 句柄id, 资源id, 类型, 失效原因, "
+                            "时间, 版本) VALUES(?, ?, ?, ?, ?, ?, ?)",
+                            (uuid.uuid4().hex[:16], "", 资源id, "锁租约过期抢占",
+                             f"原持有者（事务{行[1] or '未记'} / 进程{行[2] or '未记'}）"
+                             f"租约截止 {行[7]:.3f} 已过期，"
+                             f"事务{事务id or '未记'} / 进程{进程身份键} 抢占并递增令牌",
+                             time.strftime("%Y-%m-%d %H:%M:%S"), str(新令牌)))
+                        return 真, "锁已获取（原持有者租约过期，已抢占）", 新令牌
             if time.time() > 截止:
                 return 假, f"锁获取超时: 资源 {资源id} 被占用", 0
             time.sleep(退避)
             退避 = min(退避 * 2, 0.1)  # 指数退避，有界
+
+    def _签发新令牌(self, 连接: sqlite3.Connection, 资源id: str) -> int:
+        """锁授予的令牌签发（新授锁与租约抢占共用，禁止各写一套）：同事务内递增并回写。
+
+        签发后永不回退：被抢占/已释放的旧令牌再也通不过 `提交资源`/`续期锁`/
+        `释放锁` 的令牌判据。
+        """
+        连接.execute("UPDATE 资源版本 SET 栅栏令牌=栅栏令牌+1 WHERE 资源id=?", (资源id,))
+        新令牌 = 连接.execute(
+            "SELECT 栅栏令牌 FROM 资源版本 WHERE 资源id=?", (资源id,)).fetchone()[0]
+        连接.execute("UPDATE 锁 SET 栅栏令牌=? WHERE 资源id=?", (新令牌, 资源id))
+        return 新令牌
 
     def 续期锁(self, 资源id: str, *, 操作id: str = "", 事务id: str = "",
                进程身份键: str = "", 令牌: int = 0, 租约秒: float = 10.0) -> bool:
