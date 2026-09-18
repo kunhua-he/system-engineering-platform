@@ -82,7 +82,9 @@ jobs:
           #      → 故不按名字猜，而是**逐个真跑一次**取第一个真正可用的。
           #   ② bash 的**变量名必须是 ASCII**：曾写 `for 候选 in ...`，
           #      Linux runner 直接报 ``候选': not a valid identifier``。
-          #      （同族约束：GitHub 表达式 `${{ }}` 的标识符也必须 ASCII。）
+          #      （同族约束：GitHub 表达式里的标识符也必须 ASCII —— 注意
+          #      工作流文件里**不能出现表达式定界符的字面写法**，否则解析报
+          #      「An expression was expected」；本条注释原先就踩了这个坑。）
           #      ——本仓「全中文命名」管的是 Python 生产代码；shell / 工作流
           #      语法属「语言级强制英文」，按仓库铁律保留英文。
           PY=""
