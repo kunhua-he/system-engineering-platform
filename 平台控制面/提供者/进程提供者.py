@@ -8,7 +8,7 @@ import subprocess
 import threading
 import time
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from typing import Any
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
@@ -280,7 +280,11 @@ class 本地进程提供者:
         self.运行状态, self.重启次数 = 状态_已创建, 0
         self.证据列表: list[dict[str, Any]] = []
         self.成员表 = [_进程成员(self, 索引) for 索引 in range(self.池大小)]
-        self.资源分配: dict[str, int] = {}
+        # 资源键 → 成员索引的**有界 LRU** 映射（字典保序 + 命中/插入即移到队尾）。
+        # 键只作等价绑定用（索引本身由 sha256(键) % 池大小 纯函数决定），故淘汰键**不需要**
+        # 释放任何池内资源——池成员数与池的关闭语义都不由该表持有（成员生命周期由 关闭() 负责）。
+        # 淘汰只丢「缓存行」，被淘汰的键下次进来按同一哈希重新绑定到同一成员，行为等价、无泄漏。
+        self.资源分配: OrderedDict[str, int] = OrderedDict()
         self._分配锁 = threading.Lock()
         self.关闭账本: list[dict[str, Any]] = []
 
@@ -294,12 +298,17 @@ class 本地进程提供者:
     def _分配成员(self, 资源键: str) -> _进程成员 | None:
         with self._分配锁:
             索引 = self.资源分配.get(资源键)
-            if 索引 is None:
-                if len(self.资源分配) >= self.最大资源键数:
-                    return None
-                摘要 = hashlib.sha256(资源键.encode("utf-8")).digest()
-                索引 = int.from_bytes(摘要[:8], "big") % self.池大小
-                self.资源分配[资源键] = 索引
+            if 索引 is not None:
+                self.资源分配.move_to_end(资源键)   # 命中即刷新为「最近使用」
+                return self.成员表[索引]
+            # 满表淘汰最久未用键，再接收新键 —— 换出即丢弃映射行，永不拒绝新键。
+            # 池成员是**共享**的（不是「一键一成员」），一行过期不带走任何池内资源，
+            # 故被换出的旧键若再次到来，按同一 sha256 判据重新绑定到同一成员，语义不变。
+            while len(self.资源分配) >= self.最大资源键数:
+                self.资源分配.popitem(last=False)
+            摘要 = hashlib.sha256(资源键.encode("utf-8")).digest()
+            索引 = int.from_bytes(摘要[:8], "big") % self.池大小
+            self.资源分配[资源键] = 索引
             return self.成员表[索引]
 
     def 启动(self, 工作目录=None):
