@@ -39,8 +39,16 @@ while 系统根.name and not (系统根 / "开发文档").is_dir():
 条款_工具姿势 = """## 工具姿势（固定条款；四类黑洞实测占 68% 工具调用）
 - 读文件用 **`read_file`**（带行号、可翻页），**禁止** `cat/head/tail/sed`。
 - 找文件用 **`search_files`**（ripgrep 内核，遵守忽略规则），**禁止** `ls -R` / `find` 全仓。
-- 查符号/调用链**先查代码地图**（`.codegraph/codegraph.db`），**禁止**全仓 `grep -r`。
-  真要全仓遍历就写 Python `os.walk` + `ThreadPoolExecutor`（实测 2106 文件 0.2 秒）。
+- 查符号/调用链**先查代码地图**（`.codegraph/codegraph.db`）。
+- **全仓搜索一律用 `rg`（ripgrep），禁止 `grep -r`** —— 2026-09-18 实测（同一查询、同一仓库：
+  该仓 `工程缓存/` 9.8GB）：
+  | 写法 | 耗时 |
+  |---|---|
+  | `grep -rln … .`（含 .git 与工程缓存） | **15.62 秒** |
+  | `grep -rln … --exclude-dir={工程缓存,.git,__pycache__} .` | 0.13 秒 |
+  | **`rg -l … -g '*.py'`（默认遵守 .gitignore）** | **0.07 秒** |
+  且 `rg` 默认**不漏**（实测 83 条 == grep 排除缓存的 83 条；全仓 grep 那 2592 条是把制品副本也算进去了）。
+  真要全仓遍历（含被忽略目录）就写 Python `os.walk` + `ThreadPoolExecutor`（实测 2106 文件 0.2 秒）。
 - 成组动作**落一个脚本跑一次**，不要反复 `python3.14 -c`（每次付解释器冷启动）。
 - 长探索用 `background=true`，**禁止**写阻塞轮询（`for _ in range(40): sleep(5)` 必撞工具超时）。"""
 
