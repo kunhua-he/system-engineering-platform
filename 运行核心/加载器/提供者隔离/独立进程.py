@@ -47,7 +47,7 @@ import sys
 import time
 import threading
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -914,7 +914,7 @@ class 提供者进程池:
             启动超时秒=启动超时秒, 调用超时秒=调用超时秒,
             最大重启次数=最大重启次数, 解释器路径=解释器路径,
             提供者目录=提供者目录) for 序号 in range(self.池大小)]
-        self.资源分配: dict[str, int] = {}
+        self.资源分配: OrderedDict[str, int] = OrderedDict()
         self._分配锁 = threading.Lock()
         self.关闭账本: list[dict[str, Any]] = []
         self.运行状态 = 进程状态_已创建
@@ -933,14 +933,33 @@ class 提供者进程池:
         return 真, f"Provider进程池启动成功（{self.池大小} 个成员）"
 
     def _分配成员(self, 资源键: str) -> 独立进程 | None:
+        """按资源键分配池成员（**有界 LRU**：满表淘汰最久未用，不拒绝新键）。
+
+        **为什么必须淘汰而不是拒绝**（同一缺陷在本仓已出现三次：
+        `平台控制面/提供者/进程提供者.py`、本文件、以及审计报告点的同构副本）：
+        资源键是**单调增长**的 —— 长驻服务上每见过一个新键就占一格，满
+        `最大资源键数` 后旧实现直接 `return None`，调用侧永久拿「资源繁忙」，
+        等于**软性自我 DoS**：用过的键越多、可用键越少，且永不恢复。
+
+        **为什么淘汰不需要释放池内资源**：本表是「键 → 成员索引」的**等价绑定**，
+        索引由 `sha256(键) % 池大小` 纯函数决定，池成员是**共享的**（不是一键一成员），
+        生命周期归 `关闭()` 统一管理。淘汰只丢一行缓存记录；被淘汰的键再次到来时，
+        按同一哈希必然绑回**同一个成员对象**（`is` 同一性已实测）。
+
+        命中时 `move_to_end` 刷「最近使用」才是真 LRU —— 少了它退化成 FIFO，
+        会把仍活跃的键淘汰掉（反向验证拍2 专测这条）。
+        """
         with self._分配锁:
             索引 = self.资源分配.get(资源键)
             if 索引 is None:
-                if len(self.资源分配) >= self.最大资源键数:
-                    return None
+                # 满表：先淘汰最久未用的键，再接受新键（**不再有「满表拒绝」分支**）
+                while len(self.资源分配) >= self.最大资源键数:
+                    self.资源分配.popitem(last=False)
                 摘要 = hashlib.sha256(资源键.encode("utf-8")).digest()
                 索引 = int.from_bytes(摘要[:8], "big") % self.池大小
                 self.资源分配[资源键] = 索引
+            else:
+                self.资源分配.move_to_end(资源键)
             return self.成员表[索引]
 
     def 调用(self, *, 能力id: str, 参数: dict | None = None,
