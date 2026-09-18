@@ -13,6 +13,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -114,6 +117,37 @@ def _场次标题(源文件: Path) -> str:
     if 主名.lower() in 泛化文件名 or 主名 in 泛化文件名:
         return 源文件.parent.name.strip() or 主名
     return 主名
+
+
+def _读已有裁决(裁决目录) -> dict:
+    """读 08_裁决/窗口_*.json 里「状态=完成且精校文本非空」的窗口，供裁决阶段复用。
+
+    为什么必须复用（2026-09-18 实测）：长场次 29 个窗口单轮要十几分钟且几乎必然有个别窗口
+    遇瞬时超时/句柄失效；不复用时每次重跑都从第 1 窗重来，可能不断碰上新的瞬时失败而收不了口。
+    """
+    表: dict = {}
+    try:
+        文件们 = sorted(os.listdir(裁决目录))
+    except OSError:
+        return 表
+    for 名 in 文件们:
+        if not (名.startswith("窗口_") and 名.endswith(".json")):
+            continue
+        try:
+            with open(os.path.join(裁决目录, 名), encoding="utf-8") as f:
+                数据 = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(数据, dict) or 数据.get("状态") != "完成":
+            continue
+        if not str(数据.get("精校文本") or "").strip():
+            continue
+        try:
+            键 = int(数据.get("区间id"))
+        except (TypeError, ValueError):
+            continue
+        表[键] = 数据
+    return 表
 
 
 def _有音轨(流表) -> bool:
@@ -252,7 +286,8 @@ def 全自动精校(源文件路径: str, 导出路径: str, 缓存目录: str, 
     步骤["挂证据"](窗口列表, 复核结果.get("复核列表") or [])
     裁决结果 = 步骤["裁决窗口列表"](窗口列表, 步骤["取裁决提示词"](模式), _调用, 裁决模型配置, 附加术语,
                         重试次数=裁决重试次数, 前置提示词=步骤["取前置提示词"](模式),
-                        输出结构=输出结构, 附加要求=附加要求, 外部句柄=裁决模型句柄)
+                        输出结构=输出结构, 附加要求=附加要求, 外部句柄=裁决模型句柄,
+                        已有窗口=_读已有裁决(缓存["裁决"]))
     段落列表 = 裁决结果.get("段落列表") or []
     if not 段落列表:
         return _失败(缓存, "裁决失败", 裁决结果.get("错误说明") or "裁决未产出任何段落", "裁决",
@@ -279,7 +314,8 @@ def 全自动精校(源文件路径: str, 导出路径: str, 缓存目录: str, 
     分片状态 = str(分片结果.get("状态") or "")
     复核状态 = str(复核结果.get("状态") or "")
     报告 = 步骤["质检"](底稿文本, 全文, 模式条目)
-    报告.update({"模式": 步骤["模式摘要"](模式), "裁决模型": 裁决结果.get("模型") or "",
+    report.update({"裁决窗口复用": {"复用": 裁决结果.get("复用窗口数"), "重跑": 裁决结果.get("重跑窗口数")},
+                   "模式": 步骤["模式摘要"](模式), "裁决模型": 裁决结果.get("模型") or "",
                 "复核": 步骤["复核摘要"](复核结果), "死循环剔除": 剔除信息,
                 "时间": 步骤["现在文本"]()})
     # ── 硬判据：交付门禁（只判「分片列表非空」会把整片丢失当完成交付）──
