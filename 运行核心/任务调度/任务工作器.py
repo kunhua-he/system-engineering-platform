@@ -71,9 +71,9 @@ def _是失败信封(结果: Any) -> bool:
     from 公共契约.基础类型.逻辑类型 import 假
 
     if not isinstance(结果, tuple) or len(结果) != 2:
-        return False
+        return 假
     if 结果[1] is not 假:
-        return False
+        return 假
     首项 = 结果[0]
     return isinstance(首项, dict) and "错误码" in 首项 and "错误说明" in 首项
 
