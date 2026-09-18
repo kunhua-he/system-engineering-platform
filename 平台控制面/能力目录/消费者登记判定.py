@@ -57,7 +57,6 @@
 """
 from __future__ import annotations
 
-import ast
 import json
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
@@ -67,9 +66,6 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 能力定义名 = "能力定义.json"
 参数契约相对路径 = ("能力契约", "参数契约.json")
 资源预算名 = "资源预算.json"
-# 正式根清单的**唯一事实源**（顶层正式包根）：不硬编码三根，见 决策记录 0012
-正式根事实源 = ("公共契约", "正式根.py")
-正式根名表变量 = "正式根名表"
 
 # 「无外部资源」类释放要求的既有写法（逐字枚举，不靠子串猜测）
 无释放写法 = frozenset({"", "无", "无外部资源", "不涉及", "无（失败即不落盘，不留半份状态）"})
@@ -87,69 +83,41 @@ def _读JSON(路径: Path):
         return None
 
 
-def 正式根名表(系统根: Path) -> tuple[str, ...]:
-    """读正式根清单（AST 取字面量，不 import：直跑与包式调用同一结果）。
-
-    读不成即抛错——**不退回硬编码三根**：那正是「正式包面有 37 个圈外却恒绿」的老病根
-    （见 `开发工具/公开调用完整性门禁.py` 的 E-2 段）。判不出扫描面就必须判红，
-    绝不用一份可能漏掉整个正式根的名表继续算。
-    """
-    路径 = Path(系统根).joinpath(*正式根事实源)
-    try:
-        树 = ast.parse(路径.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, SyntaxError) as 错误:
-        raise RuntimeError(f"正式根清单不可读，扫描面未知: {路径}（{错误.__class__.__name__}）") from 错误
-    for 节点 in 树.body:
-        # 既支持 `正式根名表 = (...)`，也支持带类型标注的 `正式根名表: tuple[str, ...] = (...)`
-        if isinstance(节点, ast.AnnAssign):
-            目标列表 = [节点.target]
-            值节点 = 节点.value
-        elif isinstance(节点, ast.Assign):
-            目标列表 = list(节点.targets)
-            值节点 = 节点.value
-        else:
-            continue
-        if 值节点 is None:
-            continue
-        if any(isinstance(目标, ast.Name) and 目标.id == 正式根名表变量 for 目标 in 目标列表):
-            return tuple(ast.literal_eval(值节点))
-    raise RuntimeError(f"正式根清单缺少 {正式根名表变量}: {路径}")
-
-
 def 枚举正式包(系统根: Path) -> dict[str, dict]:
     """枚举正式包声明面：{包目录相对路径 → {包id, 包目录, 能力列表, 依赖}}。
 
     只收录**自持 `能力定义.json`** 的包为「公开能力包」（聚合父包是子包的对外视图，
     能力 owner 在子包，判据与 `正式包索引` 的 owner 规则一致）；无 `能力定义.json`
     的包仍收录（它的 `依赖` 是消费者方证据的来源，例如 `模块库/开工编排`）。
+
+    **扫描面与过滤规则不在这里**（2026-09-18 债务 #38 收口）：包目录清单取唯一
+    事实源 `公共契约.正式根` 的 `全仓口径`（全正式根 + 含聚合视图父包，因为聚合
+    父包的 `依赖` 也是消费者证据）。此前本函数自带 `正式根名表` AST 读取 +
+    `__pycache__` 跳过，属第 7 份自定口径。
     """
+    from 公共契约.正式根 import 全仓口径, 枚举包目录
+
     系统根 = Path(系统根)
     出: dict[str, dict] = {}
-    for 根名 in 正式根名表(系统根):
-        基 = 系统根 / 根名
-        if not 基.is_dir():
+    for 包目录 in 枚举包目录(系统根, 全仓口径):
+        相对 = 包目录.relative_to(系统根).as_posix()
+        声明 = _读JSON(包目录 / 包声明名)
+        if not isinstance(声明, dict):
             continue
-        for 声明路径 in sorted(基.rglob(包声明名)):
-            if "__pycache__" in 声明路径.parts:
-                continue
-            声明 = _读JSON(声明路径)
-            if not isinstance(声明, dict):
-                continue
-            包目录 = 声明路径.parent
-            相对 = 包目录.relative_to(系统根).as_posix()
-            能力列表 = []
-            定义 = _读JSON(包目录 / 能力定义名)
-            if isinstance(定义, dict) and isinstance(定义.get("能力列表"), list):
-                能力列表 = [条 for 条 in 定义["能力列表"] if isinstance(条, dict) and 条.get("能力id")]
-            出[相对] = {
-                "包id": str(声明.get("包id") or 相对),
-                "包目录": 包目录,
-                "相对路径": 相对,
-                "声明": 声明,
-                "能力列表": 能力列表,
-                "依赖": [条 for 条 in (声明.get("依赖") or []) if isinstance(条, dict)],
-            }
+        能力列表 = []
+        定义 = _读JSON(包目录 / 能力定义名)
+        if isinstance(定义, dict) and isinstance(定义.get("能力列表"), list):
+            能力列表 = [条 for 条 in 定义["能力列表"] if isinstance(条, dict) and 条.get("能力id")]
+        出[相对] = {
+            "包id": str(声明.get("包id") or 相对),
+            "包目录": 包目录,
+            "相对路径": 相对,
+            "声明": 声明,
+            "能力列表": 能力列表,
+            "依赖": [条 for 条 in (声明.get("依赖") or []) if isinstance(条, dict)],
+        }
     return 出
+
 
 
 def _提供者索引(包表: dict[str, dict]) -> dict[str, list[str]]:
@@ -521,7 +489,7 @@ def 登记消费者契约集(系统根: Path, *, 注册表=None, 存储目录: s
 
 
 __all__ = [
-    "正式根名表", "枚举正式包", "枚举消费者关系", "取能力契约", "消费者id",
+    "枚举正式包", "枚举消费者关系", "取能力契约", "消费者id",
     "判定登记完整性", "判定全部漂移", "清单上限", "登记消费者契约集",
     "基线文件名", "载入基线", "关系键", "判定登记完整性带基线", "生成基线",
 ]
