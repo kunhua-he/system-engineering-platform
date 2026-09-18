@@ -11,6 +11,7 @@ import uuid
 from collections import OrderedDict, deque
 from typing import Any
 
+from 公共契约.运行时.资源键表 import 取成员索引
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
 
@@ -296,19 +297,15 @@ class 本地进程提供者:
         self.证据列表.append(dict(类型=类型, 时间=time.strftime("%Y-%m-%d %H:%M:%S"), **字段))
 
     def _分配成员(self, 资源键: str) -> _进程成员 | None:
+        """按资源键分配池成员（**有界 LRU**：满表淘汰最久未用，永不拒绝新键）。
+
+        键 → 成员索引的语义**已收口到 `公共契约/运行时/资源键表.py`**（本文件与
+        `运行核心/加载器/提供者隔离/独立进程.提供者进程池` 曾是两份同构实现 —— 哲学 1.2
+        不允许同一件事两套实现）。本方法只负责「持锁 + 取索引 + 查成员表」。
+        """
         with self._分配锁:
-            索引 = self.资源分配.get(资源键)
-            if 索引 is not None:
-                self.资源分配.move_to_end(资源键)   # 命中即刷新为「最近使用」
-                return self.成员表[索引]
-            # 满表淘汰最久未用键，再接收新键 —— 换出即丢弃映射行，永不拒绝新键。
-            # 池成员是**共享**的（不是「一键一成员」），一行过期不带走任何池内资源，
-            # 故被换出的旧键若再次到来，按同一 sha256 判据重新绑定到同一成员，语义不变。
-            while len(self.资源分配) >= self.最大资源键数:
-                self.资源分配.popitem(last=False)
-            摘要 = hashlib.sha256(资源键.encode("utf-8")).digest()
-            索引 = int.from_bytes(摘要[:8], "big") % self.池大小
-            self.资源分配[资源键] = 索引
+            索引 = 取成员索引(self.资源分配, self._分配锁, 资源键,
+                           池大小=self.池大小, 最大资源键数=self.最大资源键数)
             return self.成员表[索引]
 
     def 启动(self, 工作目录=None):
