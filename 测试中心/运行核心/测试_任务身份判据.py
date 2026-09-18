@@ -34,9 +34,9 @@ from 公共契约.基础类型.逻辑类型 import 真, 假  # noqa: E402
 
 def 造配对任务() -> tuple[独立任务, 独立任务]:
     """造两个**字段逐字相同**但身份不同的任务对象（孪生对象的构造方式）。"""
-    甲 = 独立任务(任务id="身份判据同id", 能力id="示例.快", 项目id="p", 用户id="u", 请求id="r")
-    乙 = 独立任务(任务id="身份判据同id", 能力id="示例.快", 项目id="p", 用户id="u", 请求id="r")
-    return 甲, 乙
+    本体 = 独立任务(任务id="身份判据同id", 能力id="示例.快", 项目id="p", 用户id="u", 请求id="r")
+    孪生 = 独立任务(任务id="身份判据同id", 能力id="示例.快", 项目id="p", 用户id="u", 请求id="r")
+    return 本体, 孪生
 
 
 class Test任务身份判据(unittest.TestCase):
@@ -92,22 +92,22 @@ class Test任务身份判据(unittest.TestCase):
     # ---- 第二层：身份语义的**行为**判据 ----
 
     def test_字段逐字相同的两个对象互不相等且可独立哈希(self):
-        甲, 乙 = 造配对任务()
-        self.assertFalse(甲 == 乙, "字段逐字相同的两个独立任务必须互不相等（按身份比较）")
-        self.assertTrue(甲 == 甲, "对象必须等于它自己（身份比较的自反性，队列 remove 靠它）")
-        self.assertIsNot(甲, 乙)
+        本体, 孪生 = 造配对任务()
+        self.assertFalse(本体 == 孪生, "字段逐字相同的两个独立任务必须互不相等（按身份比较）")
+        self.assertTrue(本体 == 本体, "对象必须等于它自己（身份比较的自反性，队列 remove 靠它）")
+        self.assertIsNot(本体, 孪生)
         # 可哈希：身份语义下对象能进 set/dict（按值比较会 `__hash__ = None` 而抛 TypeError）
-        self.assertEqual(len({甲, 乙}), 2, "两个身份不同的任务必须能同时进集合（身份可哈希）")
-        self.assertEqual({甲: "本体", 乙: "孪生"}[甲], "本体",
+        self.assertEqual(len({本体, 孪生}), 2, "两个身份不同的任务必须能同时进集合（身份可哈希）")
+        self.assertEqual({本体: "本体", 孪生: "孪生"}[本体], "本体",
                          "身份可哈希：两个对象可同时作字典键且各自命中自己的条目（哈希与判等口径一致）")
 
     def test_列表判身份按对象而非按字段(self):
         """`in` / `remove` 是队列的两条身份判定原语；按字段比较时它们会命中孪生对象。"""
-        甲, 乙 = 造配对任务()
-        队列 = [甲]
-        self.assertIn(甲, 队列, "自己必须在自己的队列里")
-        self.assertNotIn(乙, 队列, "孪生对象不得被当成『我在队列里』（否则提交会跳过入队）")
-        self.assertEqual(len({*队列} & {乙}), 0, "集合判定同样必须只认身份")
+        本体, 孪生 = 造配对任务()
+        队列 = [本体]
+        self.assertIn(本体, 队列, "自己必须在自己的队列里")
+        self.assertNotIn(孪生, 队列, "孪生对象不得被当成『我在队列里』（否则提交会跳过入队）")
+        self.assertEqual(len({*队列} & {孪生}), 0, "集合判定同样必须只认身份")
 
     # ---- 第三层：`_退出排队` 会计不变式（死条目永久占槽的现场）----
 
@@ -122,27 +122,27 @@ class Test任务身份判据(unittest.TestCase):
         （`提交条件` 就是建在池锁上的），故本用例同样持锁调用。
         """
         池 = self._新池()
-        甲, 乙 = 造配对任务()
-        池.等待队列.append(甲)
+        本体, 孪生 = 造配对任务()
+        池.等待队列.append(本体)
         with 池.锁:
-            self.assertFalse(池._退出排队(乙),
+            self.assertFalse(池._退出排队(孪生),
                              "孪生对象不得被认为占用过排队槽（按值比较会让它误命中并移除别人的槽）")
-            self.assertEqual(池.等待队列, [甲], "孪生对象归还失败后，真正的排队槽必须原样保留")
-            self.assertTrue(池._退出排队(甲), "本体必须能归还自己的排队槽")
+            self.assertEqual(池.等待队列, [本体], "孪生对象归还失败后，真正的排队槽必须原样保留")
+            self.assertTrue(池._退出排队(本体), "本体必须能归还自己的排队槽")
             self.assertEqual(池.等待队列, [], "本体归还后排队槽必须真正释放")
-            self.assertFalse(池._退出排队(甲), "重复归还是幂等的（返回 假，不再报占槽）")
+            self.assertFalse(池._退出排队(本体), "重复归还是幂等的（返回 假，不再报占槽）")
 
     def test_排队槽记账与队列长度一致(self):
         """「入队即占槽、归还即释放」在身份语义下逐次对齐 —— 队列长度就是容量判据。"""
         池 = self._新池()
-        甲, 乙 = 造配对任务()
+        本体, 孪生 = 造配对任务()
         with 池.锁:
-            池.等待队列.append(甲)
-            池.等待队列.append(乙)
+            池.等待队列.append(本体)
+            池.等待队列.append(孪生)
             self.assertEqual(len(池.等待队列), 2, "两个身份不同的任务必须各占一个槽")
-            self.assertTrue(池._退出排队(甲))
+            self.assertTrue(池._退出排队(本体))
             self.assertEqual(len(池.等待队列), 1, "归还一个槽后长度必须减一（不是一还全清）")
-            self.assertEqual(池.等待队列, [乙], "剩下的必须是没归还的那个对象本体")
+            self.assertEqual(池.等待队列, [孪生], "剩下的必须是没归还的那个对象本体")
 
     # ---- 第四层：磁盘快照重建路径（孪生对象真实来源）----
 
@@ -153,38 +153,38 @@ class Test任务身份判据(unittest.TestCase):
         重建对象字段与本体逐字相同 —— 这正是「按值比较会静默顶替」的现场。
         """
         池 = self._新池()
-        甲 = 独立任务(任务id="快照孪生id", 能力id="示例.快", 项目id="p", 用户id="u", 请求id="r")
-        甲.状态 = "运行中"
-        快照文件 = self.存储目录 / f"{甲.任务id}.json"
-        快照文件.write_text(json.dumps(甲.转字典(), ensure_ascii=False), encoding="utf-8")
+        本体 = 独立任务(任务id="快照孪生id", 能力id="示例.快", 项目id="p", 用户id="u", 请求id="r")
+        本体.状态 = "运行中"
+        快照文件 = self.存储目录 / f"{本体.任务id}.json"
+        快照文件.write_text(json.dumps(本体.转字典(), ensure_ascii=False), encoding="utf-8")
 
         重建 = 池.查询("快照孪生id")
 
-        self.assertIsNot(重建, 甲, "查询必须新建对象（同一逻辑任务的两个对象）")
-        self.assertEqual(重建.任务id, 甲.任务id)
-        self.assertEqual(重建.状态, 甲.状态, "重建对象字段与本体逐字相同 —— 按值比较必误判")
-        self.assertFalse(重建 == 甲, "重建的孪生对象与本体必须互不相等（身份比较）")
+        self.assertIsNot(重建, 本体, "查询必须新建对象（同一逻辑任务的两个对象）")
+        self.assertEqual(重建.任务id, 本体.任务id)
+        self.assertEqual(重建.状态, 本体.状态, "重建对象字段与本体逐字相同 —— 按值比较必误判")
+        self.assertFalse(重建 == 本体, "重建的孪生对象与本体必须互不相等（身份比较）")
 
         # 把本体放进等待队列，再用重建对象去做归还动作：绝不许动本体的槽
-        池.等待队列.append(甲)
+        池.等待队列.append(本体)
         self.assertNotIn(重建, 池.等待队列, "孪生对象不得被当成『本体已在队列里』")
         with 池.锁:
             self.assertFalse(池._退出排队(重建), "孪生对象不得归还本体的排队槽")
-        self.assertIn(甲, 池.等待队列, "本体的排队槽必须完好保留")
+        self.assertIn(本体, 池.等待队列, "本体的排队槽必须完好保留")
 
     def test_快照往返不改变身份判定结论(self):
         """序列化 → 反序列化往返后，队列判定仍只认身份（防「往返后变按值比较」）。"""
-        甲, 乙 = 造配对任务()
-        往返 = json.loads(json.dumps(甲.转字典(), ensure_ascii=False))
+        本体, 孪生 = 造配对任务()
+        往返 = json.loads(json.dumps(本体.转字典(), ensure_ascii=False))
         重建 = 独立任务(任务id=往返["任务id"], 能力id=往返["能力id"])
         for 键, 值 in 往返.items():
             if hasattr(重建, 键):
                 setattr(重建, 键, 值)
-        self.assertEqual(重建.任务id, 乙.任务id)
-        self.assertFalse(重建 == 乙, "往返重建的对象与字段相同的既有对象必须互不相等")
-        队列 = [乙]
+        self.assertEqual(重建.任务id, 孪生.任务id)
+        self.assertFalse(重建 == 孪生, "往返重建的对象与字段相同的既有对象必须互不相等")
+        队列 = [孪生]
         self.assertNotIn(重建, 队列, "往返后 `in` 判定必须仍是身份判定")
-        self.assertIn(乙, 队列)
+        self.assertIn(孪生, 队列)
 
 
 if __name__ == "__main__":

@@ -1547,8 +1547,8 @@ class 权威状态:
         except OSError:
             pass  # 任一侧不存在（如截断出来又没建成的前缀）→ 降级比路径
         for 规约 in (os.path.abspath, os.path.realpath):
-            甲, 乙 = 规约(目标), 规约(自报)
-            if 甲 in 乙 or 乙 in 甲:
+            规约目标, 规约自报 = 规约(目标), 规约(自报)
+            if 规约目标 in 规约自报 or 规约自报 in 规约目标:
                 return True
         return False
 

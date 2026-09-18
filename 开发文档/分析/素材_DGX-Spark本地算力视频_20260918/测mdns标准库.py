@@ -26,20 +26,20 @@ def 构造查询(名称: str, 记录类型: int = 12) -> bytes:
 def 解析应答(数据: bytes) -> list:
     """粗解析应答中的名称标签（只取可见字符串，足够判断是否有人应答）。"""
     找到 = []
-    甲 = 0
-    while 甲 < len(数据):
-        长度 = 数据[甲]
-        if 0 < 长度 < 64 and 甲 + 1 + 长度 <= len(数据):
-            段 = 数据[甲 + 1 : 甲 + 1 + 长度]
+    游标 = 0
+    while 游标 < len(数据):
+        长度 = 数据[游标]
+        if 0 < 长度 < 64 and 游标 + 1 + 长度 <= len(数据):
+            段 = 数据[游标 + 1 : 游标 + 1 + 长度]
             try:
                 文本 = 段.decode("ascii")
                 if 文本.isprintable() and len(文本) > 1:
                     找到.append(文本)
-                甲 += 1 + 长度
+                游标 += 1 + 长度
                 continue
             except UnicodeDecodeError:
                 pass
-        甲 += 1
+        游标 += 1
     return 找到
 
 
