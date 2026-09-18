@@ -45,7 +45,7 @@ class 假模型端点(BaseHTTPRequestHandler):
         type(self).记录.append(("GET", self.path))
         if self.path.endswith("/models") and self.允许GET模型清单:
             return self._回(200, {"object": "list", "data": [
-                {"id": "夹具模型甲"}, {"id": "夹具模型乙"}]})
+                {"id": "夹具模型主"}, {"id": "夹具模型备"}]})
         return self._回(404, {"error": "not found"})
 
     def do_POST(self):
@@ -62,11 +62,11 @@ class 假模型端点(BaseHTTPRequestHandler):
             return self._回(200, {"随便": "什么东西"})   # 无任何协议特征
         映射 = {
             "/chat/completions": ("chat_completions",
-                                  {"model": "夹具模型甲", "choices": [{"message": {"content": "回包"}}]}),
+                                  {"model": "夹具模型主", "choices": [{"message": {"content": "回包"}}]}),
             "/responses": ("codex_responses",
-                           {"model": "夹具模型甲", "output": [{"content": "回包"}]}),
+                           {"model": "夹具模型主", "output": [{"content": "回包"}]}),
             "/messages": ("anthropic_messages",
-                          {"model": "夹具模型甲", "type": "message",
+                          {"model": "夹具模型主", "type": "message",
                            "content": [{"type": "text", "text": "回包"}]}),
         }
         for 后缀, (协议名, 体) in 映射.items():
@@ -121,7 +121,7 @@ class 测试_取模型与试协议(探针测试基类):
         v = r.值
         self.assertTrue(v["可用"], f"应可用：{v}")
         self.assertEqual(v["命中协议"], "chat_completions")
-        self.assertEqual(v["模型"], "夹具模型甲", "应用清单第一个模型")
+        self.assertEqual(v["模型"], "夹具模型主", "应用清单第一个模型")
         self.assertEqual(len(v["逐项结果"]), 1, "命中即停：只应留 1 项")
 
     def test_命中即停不试后面的协议(self):
@@ -144,7 +144,7 @@ class 测试_取模型与试协议(探针测试基类):
     def test_回带模型名(self):
         假模型端点.开启协议 = {"chat_completions"}
         v = 探测模型端点(url=self.基址, api_key="123").值
-        self.assertEqual(v["逐项结果"][0].get("回带模型"), "夹具模型甲")
+        self.assertEqual(v["逐项结果"][0].get("回带模型"), "夹具模型主")
 
 
 class 测试_参数缺省行为(探针测试基类):
