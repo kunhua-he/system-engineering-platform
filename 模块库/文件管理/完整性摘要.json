@@ -65,7 +65,7 @@
     },
     {
       "路径": "验证场景/正向HTTP场景.json",
-      "sha256": "33f0f883bbd79568bf99708cff7c5af67410423d41b1fb2bd1e3cb01e01ed1eb"
+      "sha256": "19dfc00e46f09c592b00431d23a50ebc923efb851361da80cdfaea2631bd1aa8"
     },
     {
       "路径": "验证场景引用.json",
