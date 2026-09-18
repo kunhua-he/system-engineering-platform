@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import shutil
 import subprocess
@@ -330,6 +331,49 @@ class Test零残留与注册(unittest.TestCase):
         ])
         for 条目 in 注册表.条目:
             self.assertEqual(条目.包id, "模块库.媒体处理")
+
+    def test_注册参数整条含必填与默认值(self):
+        """注册参数项必须**整条**含 必填/默认值，且键集不得超出契约 —— 缺任一个，
+        网关必填校验就静默失效。
+
+        判据来自 `运行核心/统一网关/类型规格.py:168`：`项.get("必填") is 真`
+        —— `None is 真` = 假，少传参数不再拦在网关，直接落实现体抛 TypeError，
+        用户拿到 HTTP 500 而不是干净的 400。本包 2026-09-18 两轮修复的落点，
+        因此在这里钉死（缺键即红，不靠人记性）。
+
+        为什么只硬要求 名称/类型/必填/默认值 四键、不要求 `说明`：`说明` 是
+        `对外契约变更判定` 明文列为「可剔除的纯文档字段」，且**没有任何门禁比对它**；
+        带上它就是同一段文档文本的第三份副本。四键才是网关校验 + 漂移检测真读的口径。
+        反向不放松：注册键集必须是契约键集的子集（多出契约没声明的键 = 造漂移）。
+        """
+        class 假注册表:
+            def __init__(self):
+                self.条目 = []
+
+            def 注册(self, 能力):
+                self.条目.append(能力)
+
+        注册表 = 假注册表()
+        from 模块库.媒体处理 import 注册能力
+
+        注册能力(注册表)
+        契约 = json.loads(
+            (Path(__file__).resolve().parents[2] / "模块库" / "媒体处理"
+             / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+        契约表 = {条目["能力id"]: 条目.get("参数", []) for 条目 in 契约["能力契约"]}
+        核过参数数 = 0
+        for 条目 in 注册表.条目:
+            契约参数 = 契约表[条目.能力id]
+            self.assertEqual(len(条目.参数), len(契约参数), f"{条目.能力id} 参数条数不一致")
+            for 注册参数, 契约参数项 in zip(条目.参数, 契约参数):
+                for 键 in ("名称", "类型", "必填", "默认值"):
+                    self.assertIn(键, 注册参数, f"{条目.能力id}.{注册参数.get('名称')} 注册项缺 {键}")
+                    self.assertEqual(注册参数[键], 契约参数项[键],
+                                     f"{条目.能力id}.{注册参数['名称']} 的 {键} 与契约不符")
+                self.assertLessEqual(set(注册参数), set(契约参数项),
+                                     f"{条目.能力id}.{注册参数['名称']} 注册键集超出契约")
+                核过参数数 += 1
+        self.assertEqual(核过参数数, 30, "本包契约参数总数（6 能力 / 30 参数）—— 数目变了请同步契约")
 
 
 if __name__ == "__main__":
