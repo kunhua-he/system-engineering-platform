@@ -126,6 +126,53 @@ class Test时间日期(unittest.TestCase):
         结构 = 时间戳转换(0).值
         self.assertEqual(结构["年"], 1970)
 
+    def test_未知时区报参数不合法(self):
+        """时区名拼错属输入问题，必须报 参数不合法（与 依赖不可用 分开）。"""
+        结果 = 获取当前时间("Asia/Shanghai1")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_平台缺IANA数据报依赖不可用(self):
+        """模拟 Windows 未装 tzdata：调用期如实报 依赖不可用，且说明为中文。
+
+        判据用「连 UTC 都取不到」——不依赖平台名，故本用例在 macOS/Linux 上
+        也能真跑（清空 tzpath 即模拟无 IANA 数据的环境）。
+        """
+        import zoneinfo
+        from 支持库.后端.数据操作支持库.时间日期.实现 import 时间日期 as 实现
+        原路径 = zoneinfo.TZPATH
+        zoneinfo.ZoneInfo.clear_cache()
+        try:
+            zoneinfo.reset_tzpath([])
+            for 名, 调用 in (("获取当前时间", lambda: 获取当前时间()),
+                             ("格式化为文本", lambda: 格式化为文本(1700000000)),
+                             ("时间戳转换", lambda: 时间戳转换(1700000000))):
+                with self.subTest(能力=名):
+                    结果 = 调用()
+                    self.assertFalse(结果.成功)
+                    self.assertEqual(结果.错误码, "依赖不可用")
+                    self.assertIn("本平台缺少 IANA 时区数据", str(结果.错误说明))
+        finally:
+            zoneinfo.reset_tzpath(原路径)
+            zoneinfo.ZoneInfo.clear_cache()
+        # 还原后必须恢复正常（证明上面确由清空 tzpath 引起，非别的原因）
+        self.assertTrue(获取当前时间().成功)
+
+    def test_缺数据说明为中文(self):
+        """对外错误说明必须中文（项目铁律：不得泄漏底层英文异常文本）。"""
+        import zoneinfo
+        原路径 = zoneinfo.TZPATH
+        zoneinfo.ZoneInfo.clear_cache()
+        try:
+            zoneinfo.reset_tzpath([])
+            说明 = str(获取当前时间().错误说明)
+            self.assertIn("tzdata", 说明)
+            self.assertIn("Windows", 说明)
+            self.assertNotIn("No time zone found", 说明)
+        finally:
+            zoneinfo.reset_tzpath(原路径)
+            zoneinfo.ZoneInfo.clear_cache()
+
 
 class Test数据交换(unittest.TestCase):
     def test_JSON往返(self):

@@ -14,13 +14,38 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 项目时区名 = "Asia/Shanghai"
 默认格式 = "%Y-%m-%d %H:%M:%S"
+缺数据标记 = "本平台缺少 IANA 时区数据"
+
+
+def _缺IANA数据() -> bool:
+    """本平台是否**根本没有** IANA 时区数据。
+
+    Windows 不携带时区库（须装 PyPI 包 `tzdata`），Linux/macOS 系统自带
+    （`/usr/share/zoneinfo`）。用「连 UTC 都取不到」作判据：这是平台级缺失，
+    与「时区名本身拼错」是两回事——前者 `依赖不可用`（可重试），后者 `参数不合法`。
+    """
+    try:
+        ZoneInfo("UTC")
+        return 假
+    except ZoneInfoNotFoundError:
+        return 真
+
+
+def _缺数据说明(时区名: str) -> str:
+    """缺 IANA 数据时的中文说明（对外错误说明必须中文，见项目铁律）。"""
+    return (
+        f"{缺数据标记}（{时区名}）：Linux/macOS 由系统自带（/usr/share/zoneinfo），"
+        f"Windows 需在运行环境安装 PyPI 包 tzdata（pip install tzdata）；"
+        f"数据包缺失只影响对应能力，不阻断装配"
+    )
 
 
 def _取项目时区() -> ZoneInfo:
-    """取项目时区（IANA 数据缺失时如实报错，不静默降级）。
+    """取项目时区（IANA 数据缺失时如实报带中文说明的错误，不静默降级）。
 
     **为什么不能在模块顶层直接 `ZoneInfo("Asia/Shanghai")`（2026-09-19 修）**：
     `zoneinfo` 是标准库，但它依赖 IANA 时区库——Linux/macOS 由系统自带
@@ -30,13 +55,7 @@ def _取项目时区() -> ZoneInfo:
     found with key Asia/Shanghai'）`，并连带 3 个依赖它的包一起挂，能力数 677/699）。
     装配期不该被"数据包没装"拖垮；装载失败只应在**调用时**如实暴露。
     """
-    try:
-        return ZoneInfo(项目时区名)
-    except ZoneInfoNotFoundError as 错误:
-        raise ZoneInfoNotFoundError(
-            f"本平台缺少 IANA 时区数据（{项目时区名}）：Linux/macOS 由系统自带，"
-            f"Windows 需安装 tzdata（经 支持库.适配层.时区提供者 的依赖锁声明）"
-        ) from 错误
+    return _解析时区(项目时区名)
 
 
 # 可注入时钟：生产默认当前时刻；测试可替换为固定时钟。
@@ -70,10 +89,21 @@ def _失败(错误码: str, 消息: str) -> 结果:
 
 
 def _解析时区(时区名: str) -> ZoneInfo:
-    """解析 IANA 时区名（默认项目时区）。"""
+    """解析 IANA 时区名（空名取项目时区）。
+
+    **两类失败必须分开**（否则用户拿不到可执行的修复动作）：
+    - 平台**根本没有** IANA 数据（Windows 缺 `tzdata`）→ 抛带 `缺数据标记` 的错误，
+      由能力层翻成 `依赖不可用`（可重试：装好 tzdata 即恢复）；
+    - 时区名本身不合法（`Asia/Shanghai1`）→ 原样抛，由能力层翻成 `参数不合法`。
+    """
     if not 时区名:
-        return _取项目时区()
-    return ZoneInfo(时区名)
+        时区名 = 项目时区名
+    try:
+        return ZoneInfo(时区名)
+    except ZoneInfoNotFoundError as 错误:
+        if _缺IANA数据():
+            raise ZoneInfoNotFoundError(_缺数据说明(时区名)) from 错误
+        raise
 
 
 def 获取当前时间(时区: str = "Asia/Shanghai") -> 结果:
@@ -83,8 +113,8 @@ def 获取当前时间(时区: str = "Asia/Shanghai") -> 结果:
     try:
         目标时区 = _解析时区(时区)
     except ZoneInfoNotFoundError as 错误:
-        # 区分两类：时区名本身不合法 vs 本平台根本没有 IANA 数据（如 Windows 缺 tzdata）
-        if 时区 == 项目时区名 or "缺少 IANA 时区数据" in str(错误):
+        # 平台缺 IANA 数据（Windows 未装 tzdata）报 依赖不可用；时区名拼错报 参数不合法
+        if 缺数据标记 in str(错误):
             return _失败("依赖不可用", str(错误))
         return _失败("参数不合法", f"未知时区: {时区}")
     return _成功(_现在(目标时区).isoformat(timespec="seconds"))

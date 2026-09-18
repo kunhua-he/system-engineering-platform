@@ -873,13 +873,21 @@ python3.14 -m 开发工具.跨平台部署验证 --只报    # 只干跑重建�
 > **注意**：清单里**不再有 `libpq`** —— 2026-09-19 起数据库能力自带 libpq
 > （`psycopg` 与 `psycopg-binary` 同装 ≡ `psycopg[binary]`，实测 `psycopg.pq.__impl__ == 'binary'`），
 > 所以干净机器**不需要**预装 PostgreSQL 客户端。
-> 下表剩下三项都是**可选能力**：缺了只影响对应能力，不影响平台本体与装配（环境自检第 9 项只警告不阻断）。
+> 下表都是**可选能力依赖**：缺了只影响对应能力，不影响平台本体与装配
+> （`tzdata` 也如此——装配期只装载不求值时区，缺它不会阻断装配，只是调时间能力时报 `依赖不可用`）。
 
 | 依赖 | 谁需要 | macOS | Debian/Ubuntu | RHEL/Alibaba Cloud Linux | Windows |
 |---|---|---|---|---|---|
 | `ffmpeg` / `ffprobe` | 音视频转码/抽帧 | `brew install ffmpeg` | `apt install ffmpeg` | **官方源无此包**，需 RPM Fusion / 第三方源 | 官网 zip 或 `winget install ffmpeg` |
 | `tesseract` | OCR | `brew install tesseract tesseract-lang` | `apt install tesseract-ocr tesseract-ocr-chi-sim` | `dnf install tesseract`（中文包另装） | UB Mannheim 安装包 |
 | `soffice` / `libreoffice` | Office 文档转换 | `brew install --cask libreoffice` | `apt install libreoffice` | `dnf install libreoffice-writer` | 官网安装包 |
+| `tzdata`（pip 包） | 时间日期能力（IANA 时区数据） | **系统自带，不用装** | **系统自带，不用装** | **系统自带，不用装** | **要装**才能用时间能力：`pip install tzdata`（不装也能装配，只是调时间能力报 `依赖不可用`） |
+
+> **`tzdata` 为什么要单列**：`zoneinfo` 是 Python 标准库，但它自己不携带时区数据——
+> Linux/macOS 由系统提供（`/usr/share/zoneinfo`），**Windows 没有**。
+> Windows 不装 `tzdata` 时，`时间日期` 等能力会在**调用时**如实报 `依赖不可用`
+> （不会静默降级，也**不会阻断装配**——装配期只装载不求值时区）。
+> 这是「装配期不许被数据包缺失拖垮」的既定口径。
 
 缺这些**只影响对应能力**（环境自检第 9 项只提示不阻断），不影响平台本体与装配。
 
