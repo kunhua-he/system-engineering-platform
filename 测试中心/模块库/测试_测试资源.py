@@ -36,6 +36,111 @@ class Test测试资源模块(unittest.TestCase):
         for 能力id in ['测试资源.申请资源', '测试资源.回收资源']:
             self.assertIn(能力id, 注册表.能力id列表)
 
+    # ── 注册参数口径（2026-09-18 两拍缺陷的回归护盾）────────
+
+    def test_注册参数逐条镜像契约JSON不丢必填默认值(self):
+        """注册参数项必须逐字等于 能力契约/参数契约.json 的原值（含 必填/默认值）。
+
+        这是「丢参」缺陷的正面判据：入口一旦只抽 名称+类型（第一拍形态）或改回
+        函数内推导（第二拍形态），本用例即红。
+        """
+        import json
+
+        from 公共契约.能力契约.契约 import 能力注册表 as 注册表类
+
+        契约 = json.loads(
+            (Path(__file__).resolve().parents[2]
+             / "模块库" / "测试资源" / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+        契约参数表 = {条["能力id"]: [dict(参数) for 参数 in 条["参数"]]
+                  for 条 in 契约["能力契约"]}
+        注册表 = 注册表类()
+        注册能力(注册表)
+        for 能力id, 契约参数 in 契约参数表.items():
+            在线实现 = 注册表.获取(能力id)
+            self.assertIsNotNone(在线实现, f"{能力id} 未注册")
+            assert 在线实现 is not None
+            在线参数 = 在线实现.参数
+            self.assertEqual([参数["名称"] for 参数 in 在线参数],
+                             [参数["名称"] for 参数 in 契约参数],
+                             f"{能力id} 注册参数名序与契约不一致")
+            for 在线, 期望 in zip(在线参数, 契约参数):
+                self.assertIn("必填", 在线, f"{能力id}.{期望['名称']} 注册项丢了 必填")
+                self.assertIn("默认值", 在线, f"{能力id}.{期望['名称']} 注册项丢了 默认值")
+                self.assertEqual(在线["必填"], 期望["必填"],
+                                 f"{能力id}.{期望['名称']} 必填 与契约不一致")
+                self.assertEqual(在线["默认值"], 期望["默认值"],
+                                 f"{能力id}.{期望['名称']} 默认值 与契约不一致")
+                # 契约没声明的键不得补（补出来的默认值就是第二套事实源）
+                self.assertEqual(set(在线) - {"名称", "类型", "必填", "默认值"}, set(),
+                                 f"{能力id}.{期望['名称']} 注册项多出契约未声明的键")
+
+    def test_注册参数表在注册能力函数体内可静态解析(self):
+        """`_参数契约表` 必须是 `注册能力` **函数体内的字面量**，且含 必填 键。
+
+        为什么要有它：`开发工具/契约编译/漂移检测` 的 AST 读取器只收 `注册能力`
+        函数体内的 `ast.List/ast.Dict` 字面量赋值。参数表一旦改成「函数内推导」
+        （`_参数声明(能力id, …)`）或「运行时读 JSON」，本包两条能力的参数口径就
+        全判「未解析」——门禁看不见 = 等于没有（判据是 AST 能否解出含 必填 的整条参数）。
+        """
+        import ast
+        import inspect
+
+        import 模块库.测试资源 as 模块入口
+
+        树 = ast.parse(inspect.getsource(模块入口.注册能力))
+        # 用与漂移检测同一支 AST 静态求值：解不出即判「不可静态判定」，本用例红。
+        from 开发工具.契约编译.漂移检测 import _静态字面量, 未解析哨兵
+
+        函数体 = 树.body[0].body if isinstance(树.body[0], ast.FunctionDef) else 树.body
+        绑定: dict = {}
+        for 节点 in 函数体:
+            if isinstance(节点, ast.Assign) and isinstance(节点.targets[0], ast.Name):
+                绑定[节点.targets[0].id] = 节点.value
+        self.assertIn("_参数契约表", 绑定, "`_参数契约表` 未写在 注册能力 函数体内")
+        self.assertIn("_注册参数名序", 绑定, "`_注册参数名序` 未写在 注册能力 函数体内")
+        契约表 = _静态字面量(绑定["_参数契约表"], 绑定)
+        self.assertIsNot(契约表, 未解析哨兵,
+                         "_参数契约表 静态解析不出（AST 门禁看不见 → 参数口径判未解析）")
+        assert isinstance(契约表, dict)
+        self.assertEqual(sorted(契约表),
+                         sorted(["测试资源.申请资源", "测试资源.回收资源"]))
+        for 能力id, 参数列表 in 契约表.items():
+            self.assertTrue(参数列表, f"{能力id} 参数表为空")
+            self.assertTrue(all("必填" in 参数 for 参数 in 参数列表),
+                            f"{能力id} 参数表有项不含 必填（AST 门禁读不到必填口径）")
+            self.assertTrue(all("默认值" in 参数 for 参数 in 参数列表),
+                            f"{能力id} 参数表有项不含 默认值")
+
+    def test_网关按注册参数拦下缺必填参数(self):
+        """真注册表 → 网关唯一校验点：缺必填即 400 文案，不落进实现体抛 TypeError。
+
+        这是「500 改回 400」的回归护盾：注册项一旦丢 必填，网关 `项.get("必填") is 真`
+        判假、必填校验静默失效，用户拿到的是 HTTP 500 而不是干净的 400。
+        """
+        from 公共契约.能力契约.契约 import 能力注册表 as 注册表类
+        from 运行核心.统一网关.类型规格 import 校验能力参数
+
+        注册表 = 注册表类()
+        注册能力(注册表)
+        申请实现 = 注册表.获取("测试资源.申请资源")
+        self.assertIsNotNone(申请实现)
+        assert 申请实现 is not None
+        self.assertEqual(校验能力参数("测试资源.申请资源", 申请实现.参数, {}),
+                         "参数不合法：能力 测试资源.申请资源 缺少必填参数 临时根目录")
+        self.assertEqual(校验能力参数("测试资源.申请资源", 申请实现.参数,
+                                 {"临时根目录": "/tmp"},
+                                 ),
+                         "参数不合法：能力 测试资源.申请资源 缺少必填参数 清单路径")
+        回收实现 = 注册表.获取("测试资源.回收资源")
+        self.assertIsNotNone(回收实现)
+        assert 回收实现 is not None
+        self.assertEqual(校验能力参数("测试资源.回收资源", 回收实现.参数, {}),
+                         "参数不合法：能力 测试资源.回收资源 缺少必填参数 临时根目录")
+        全给 = 校验能力参数("测试资源.申请资源", 申请实现.参数, {
+            "临时根目录": "/tmp", "清单路径": "/tmp/清单.jsonl", "资源路径": "/tmp/x.txt",
+            "资源类型": "文件", "保留": False, "开工id": "", "句柄": 0})
+        self.assertEqual(全给, "", f"参数齐全却被判不合法: {全给}")
+
     def test_申请资源_返回统一结果(self):
         返回值 = 申请资源("", "", "", "", False, "", 0)
         self.assertIsInstance(返回值, 结果)
