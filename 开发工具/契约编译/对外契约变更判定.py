@@ -75,12 +75,21 @@
 """
 
 from __future__ import annotations
+import sys
+from pathlib import Path
+
+# 仓库根入 sys.path：README 把它写成「python3.14 开发工具/契约编译/对外契约变更判定.py」直接跑，
+# 而直接跑脚本时 sys.path[0] 是 开发工具/契约编译/，导不到仓库根的 `公共契约`
+# （实测报 ModuleNotFoundError，看着像工具坏了 —— 2026-09-18 与验证场景体检.py 同类缺陷一并修）
+_仓库根 = str(Path(__file__).resolve().parents[2])
+if _仓库根 not in sys.path:
+    sys.path.insert(0, _仓库根)
+
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 # ---- 唯一事实源（哲学 5.3：不得另写第二套指纹算法 / 兼容算法）----

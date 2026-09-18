@@ -19,15 +19,23 @@
     python3.14 开发工具/验证场景体检.py --覆盖 <制品目录>      # 覆盖率预检：公开能力取自制品 + 场景取自源码，**不重编译**就能报出还缺谁
 """
 from __future__ import annotations
+import sys
+from pathlib import Path
+
+# 仓库根入 sys.path：本工具既支持 `python3.14 -m 开发工具.验证场景体检`，
+# 也支持 `python3.14 开发工具/验证场景体检.py`（直接跑脚本时 sys.path[0] 是 开发工具/，
+# 导不到仓库根的 `公共契约` —— 否则报 ModuleNotFoundError，看着像工具坏了）
+_仓库根 = str(Path(__file__).resolve().parent.parent)
+if _仓库根 not in sys.path:
+    sys.path.insert(0, _仓库根)
+
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import argparse
 import json
 import os
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 
 def _载入判据(根: Path):
@@ -120,6 +128,55 @@ def 批量修(根: Path) -> int:
     return 改动
 
 
+def 状态码一致性预检(根: Path) -> tuple[bool, str]:
+    """期望失败用例的 `状态码` 必须与网关真源映射表逐码一致。**不重编译、不跑黑盒**。
+
+    为什么单独做：验证器与 HTML 黑盒只在**跑制品**时才暴露「状态码 != 预期」，
+    于是工作循环退化成「改场景 → 重编译 → 跑黑盒 → 才发现状态码猜错」。
+    本条把判据前移到源码侧：错误码确定 → 状态码就确定。
+
+    判据源（不复制、不猜）：`运行核心/统一网关/本地网关.py::公开错误码状态映射`，
+    与 `网关核心.公开错误说明表` 逐码一一对应。
+
+    > 血泪教训（2026-09-18，连续 7 轮才归因，违反哲学 3.1/3.3）：
+    > 我按「能力级失败经网关包成 200」猜写 `状态码: 200`，实际网关对映射为 400 的错误码
+    > **直接返回 400**，于是同一句 `状态码 400 != 预期 200` 报了 7 次。
+    > 凡是「错误码已确定」的场景，状态码必须查表，不许猜。
+    """
+    if str(根) not in sys.path:
+        sys.path.insert(0, str(根))
+    from 运行核心.统一网关.本地网关 import 公开错误码状态映射
+
+    不符: list[str] = []
+    总数 = 0
+    for 目录 in _收集包目录(根, 含缓存=False):
+        # ★ 场景正文在 `验证场景/` 子目录，必须递归扫（用 glob 只扫包根会漏掉全部内联场景 → 假绿）
+        for 引用文件 in sorted(目录.rglob("*场景*.json")):
+            try:
+                数据 = json.loads(引用文件.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for 场景 in 数据.get("验证场景", []) if isinstance(数据, dict) else []:
+                for 阶段 in ("前置步骤", "目标步骤", "清理步骤"):
+                    for 步骤 in 场景.get(阶段, []) or []:
+                        预期 = (步骤 or {}).get("预期") or {}
+                        if 预期.get("成功") is not False:
+                            continue
+                        总数 += 1
+                        错误码 = (预期.get("返回断言") or {}).get("错误码") or ""
+                        真值 = 公开错误码状态映射.get(错误码)
+                        写的 = 预期.get("状态码")
+                        if 真值 is not None and 写的 != 真值:
+                            不符.append(
+                                f"{引用文件.name}｜{场景.get('场景id', '')}｜{步骤.get('步骤id', '')}"
+                                f"：写 {写的} 真源 {真值}（{错误码}）"
+                            )
+    if 不符:
+        头 = "\n      ".join(不符[:20])
+        return 假, f"期望失败用例 {总数} 个，{len(不符)} 个状态码与真源不符：\n      {头}"
+    return 真, f"期望失败用例 {总数} 个，状态码与网关映射表全部一致"
+
+
 def 覆盖预检(根: Path, 制品: Path) -> tuple[bool, str]:
     """用**制品的公开能力** + **源码的场景**跑验证器自己的全集判据，无需重编译。
 
@@ -165,6 +222,12 @@ def 主() -> int:
         print(("  ✅ " if 通过 else "  ❌ ") + 详情)
         if not 通过:
             return 1
+
+    # 状态码一致性：源码侧可判的前置检查（不重编译、不跑黑盒），先跑它避免整轮返工
+    码通过, 码详情 = 状态码一致性预检(根)
+    print(("[状态码一致性] ✅ " if 码通过 else "[状态码一致性] ❌ ") + 码详情)
+    if not 码通过:
+        return 1
 
     if 参数.修:
         print("批量修（只动源码侧，只修判据明确的两类）…")
