@@ -34,6 +34,7 @@ from 运行核心.运行环境管理器.环境管理器 import (
     校验环境,
     环境目录,
     _是pip包,
+    _适用当前平台,
 )
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
@@ -162,15 +163,27 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
         结果.问题列表.append(校验问题(提供者id, "包/直接依赖 必须是列表", str(锁文件)))
 
     # 规则 2：空锁（包 与 直接依赖 均为空 → 无可校验内容，直接拒绝）
+    # ★ 判定用**未过滤**的原始条目（2026-09-19 跨平台双后端）：空锁是「锁本身没声明任何
+    #   依赖」这一**结构属性**，与平台无关。若改用过滤后的集合判空，一份只声明了别平台
+    #   依赖的合法锁会在本平台被判「空锁」——那是平台引起的假红，不是锁的问题。
     if isinstance(包表, list) and isinstance(直接依赖, list) and not 包表 and not 直接依赖:
         结果.问题列表.append(校验问题(
             提供者id, "空锁（包 与 直接依赖 均为空），禁止运行", str(锁文件),
         ))
         return 结果
 
+    # **按平台过滤**（2026-09-19 跨平台双后端）：`适用平台` 不含当前平台的条目**不参与
+    # 校验**。理由：mlx 相关依赖是 Apple Silicon 专有（实测 Linux 上 `import mlx.core`
+    # 恒报 libmlx.so 缺失），在 Windows/Linux 上它既不安装也不校验；若仍拿它做版本与
+    # 闭包判定，规则 4 会报「直接依赖 mlx-whisper 未纳入 依赖闭包」这类**假红**
+    # （条目就在闭包里，只是被平台过滤掉了），把「本平台不适用」误报成「锁写错了」。
+    # 不写该字段的条目全平台适用，行为与改动前逐字一致（旧锁不改也能读）。
+    适用包表 = [项 for 项 in 包表 if _适用当前平台(项)] if isinstance(包表, list) else 包表
+    适用直接依赖 = [项 for 项 in 直接依赖 if _适用当前平台(项)] if isinstance(直接依赖, list) else 直接依赖
+
     # 规则 3：精确版本（包）
-    if isinstance(包表, list):
-        for 项 in 包表:
+    if isinstance(适用包表, list):
+        for 项 in 适用包表:
             if not isinstance(项, dict):
                 结果.问题列表.append(校验问题(提供者id, "包条目必须是对象", str(锁文件)))
                 continue
@@ -187,8 +200,8 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
                 ))
 
     # 规则 3：精确版本（直接依赖）+ 规则 4：依赖闭包覆盖
-    if isinstance(直接依赖, list):
-        for 项 in 直接依赖:
+    if isinstance(适用直接依赖, list):
+        for 项 in 适用直接依赖:
             if not isinstance(项, dict):
                 结果.问题列表.append(校验问题(提供者id, "直接依赖条目必须是对象", str(锁文件)))
                 continue
@@ -207,8 +220,11 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
             提供者id, "依赖闭包 缺失（必须声明直接依赖的完整传递闭包）", str(锁文件),
         ))
     else:
+        # 闭包同样按平台过滤：跨平台双后端下，mlx 闭包（macOS）与 faster-whisper 闭包
+        # （Windows/Linux）本就**不该**同时出现在同一平台的校验集合里。
+        适用闭包 = [项 for 项 in 闭包 if _适用当前平台(项)]
         # 规则 4：直接依赖必须已全部纳入闭包（覆盖判定，非"闭包非空"判定）
-        for 项 in 直接依赖 if isinstance(直接依赖, list) else []:
+        for 项 in 适用直接依赖 if isinstance(适用直接依赖, list) else []:
             if not isinstance(项, dict) or not 项.get("名称"):
                 continue
             名称 = 项.get("名称", "")
@@ -217,14 +233,14 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
                 isinstance(闭包项, dict)
                 and 闭包项.get("名称") == 名称
                 and str(闭包项.get("版本", "")) == 版本
-                for 闭包项 in 闭包
+                for 闭包项 in 适用闭包
             )
             if not 已纳入:
                 结果.问题列表.append(校验问题(
                     提供者id, f"直接依赖 {名称}=={版本} 未纳入 依赖闭包（闭包必须完整覆盖直接依赖）", str(锁文件),
                 ))
         # 规则 3：闭包内版本同样必须精确
-        for 闭包项 in 闭包:
+        for 闭包项 in 适用闭包:
             if not isinstance(闭包项, dict):
                 结果.问题列表.append(校验问题(提供者id, "依赖闭包条目必须是对象", str(锁文件)))
                 continue
@@ -275,7 +291,11 @@ def 校验提供者环境(提供者目录: Path, 提供者id: str = "", *, 自�
 
     # 规则 6：隔离环境（独立受管环境必须已按当前锁摘要就绪）
     # 仅外部应用/系统工具（非 pip 包）的提供者使用系统解释器，无独立 venv
-    pip包表 = [包 for 包 in 锁.get("包", []) if _是pip包(包)]
+    # **按平台过滤**（2026-09-19 跨平台双后端）：若某提供者的全部 pip 依赖都只适用于
+    # 别的平台（例如只声明 mlx 的 macOS 专有提供者在 Windows/Linux 上），则本平台
+    # 没有可校验的 pip 集合、也不需要 venv —— 按「无 pip 依赖」放行，而不是要求一个
+    # 本平台永远不会构建的环境（那会让规则 6 在非 macOS 上恒定报「环境缺失」）。
+    pip包表 = [包 for 包 in 锁.get("包", []) if _是pip包(包) and _适用当前平台(包)]
     if not pip包表:
         return 结果
     摘要 = 计算环境摘要(锁, 提供者id)

@@ -1,7 +1,8 @@
-"""子进程入口：mlx-whisper 独立子进程 Worker。
+"""子进程入口：跨平台语音转写独立子进程 Worker（**一份实现 + 按平台选后端**）。
 
 只在独立子进程中运行，由 实现/提供者.py 通过 subprocess 启动。
-子进程内才允许加载 mlx_whisper；完成后 os._exit(0) 直接退出，
+子进程内才允许加载转写库（Apple Silicon → mlx_whisper；Windows/Linux → faster_whisper，
+由 `公共契约/运行时/平台适配.转写后端()` 唯一判定）；完成后 os._exit(0) 直接退出，
 崩溃不影响平台主进程/测试器。解析逻辑见 子进程解析.py。
 
 协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。

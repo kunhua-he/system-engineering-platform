@@ -5,15 +5,15 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "afe645508f9b71e0cadec5223c8bd6f5b7115e44d7868cb3498ba6e8a0d87820"
+      "sha256": "af8d80607c770f623216ffec45d0d40d46fedd8e62bf98301ec88881543ae475"
     },
     {
       "路径": "依赖锁.json",
-      "sha256": "83ddcdc16cfa9694de2797bd797f860aed6c2461943fc110dfa5c47da3237ca7"
+      "sha256": "514ea6d7f5b0b0596b80381d7402e16d52f69be86c83f85af0a55514e9e5bc34"
     },
     {
       "路径": "包声明.json",
-      "sha256": "9be8d196bfb20ff5c9c31ae70a19c79dff00e02394a1d3f8bb8acd6710bde859"
+      "sha256": "4b467b08f54ea70e8c118dfd31f9b418138989ef173e5034ae6b09ee9a7a662b"
     },
     {
       "路径": "复用决策.json",
@@ -25,15 +25,15 @@
     },
     {
       "路径": "实现/子进程入口.py",
-      "sha256": "bfdb2a843edc0271a8b8a8025e0411babf98262b91f5ec04309b60b5ebe681d3"
+      "sha256": "5e9dedbb4fd013557b889ff676e3735db23b8e5e50f9d4017e22d7bf59b0cb1b"
     },
     {
       "路径": "实现/子进程解析.py",
-      "sha256": "968665b475f52386280aaa4e2977929042ca3a79e333faf0212673ddf84e5f88"
+      "sha256": "d57ac44f205380b6785a681e96a0f066143f41fbd597195e18355f784068fda1"
     },
     {
       "路径": "实现/提供者.py",
-      "sha256": "b357240b44745b37e210e5dea763bb7465e954cad00fd7b5979543a3fdd42d7b"
+      "sha256": "efd25ad0ff06f32b88924cb9db50eeceea8ac2e67b8ff0db70239c7c0dfef31b"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -45,11 +45,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "ab5ec807a38060b59297a7cc6bef63ac1e5a7e699f8ca0ea00c39eb2c6bd4665"
+      "sha256": "7db21ac18a8fccb62cb2b773e3a13a81eb4798b5bd665ee60461847a76afb30d"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "2dab417e3ec43dcd2be4d4e61f499d188e62e92d54245ec9bf4123721cb82fe2"
+      "sha256": "465bf5d9b1030a0f37e7e9246b2f53c65d86d6a6fc3d09d8424f498ae7408606"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -57,19 +57,19 @@
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "6e9bc596504fb26e119e3ba4196b9dd2d89e9b9d25cc144a2a23c4e92c19aca1"
+      "sha256": "888621b88e219b7c93af101ad764378c45473a8b28bdfacb55ecdaa544102e1a"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "3b82f326ba7d8ec10f678fe76b7415f3e1b892e255dd09bb9e1c0f89efa40cd1"
+      "sha256": "3bbfdeb4956ddae113b235a326b9d2ea4133759016fd939ba13649bbba030f1d"
     },
     {
       "路径": "说明/目录树与命令.md",
-      "sha256": "cfd9e544032727d7b7e84b5c0806a83450b656a0b0a63fd035f974266a7fedb6"
+      "sha256": "8df7d2a1f0fe199eef6902207f22bd427bbc94492bf29c73364348e0a43c5218"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "85f2433d46a4844dbc27776abe351685c95a6d83eb1449e8f1d9b54a0ae32fab"
+      "sha256": "3f9173e261955bb75c12682b148b863f05dc786747b046f1d7bb24b5c6ee10ee"
     },
     {
       "路径": "资源预算.json",
@@ -94,5 +94,5 @@
     "转写支持库.转写.转写音频文件",
     "转写支持库.转写.获取模型版本"
   ],
-  "能力定义摘要": "826073ca73142a81"
+  "能力定义摘要": "9716805f90f340c5"
 }
