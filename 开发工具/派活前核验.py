@@ -251,13 +251,95 @@ def 查重(目录: Path) -> int:
     return 冲突数 + len(未声明)
 
 
+def 核验债务清单(清单文件: Path) -> int:
+    """逐条核验债务清单里的条目：从**条目正文**里抽出文件路径与状态标注，去 git 历史核。
+
+    **为什么要有它（2026-09-18 夜实测）**：清单是「待办线索」不是事实（§8.3.1 已立规），
+    但实测 #50/#51/#54/#69 四条都已被提交，清单仍标「未派 / 维修中」——按字面派活就是
+    派空任务。本函数把「逐条现场核实」做成一条命令，而不是每次靠人记得。
+
+    抽法（只做能自证的机械抽取，抽不到就如实报「抽不出」不猜）：
+    - 文件路径：条目正文里形如 `xxx.py` / `xxx.json` 的反引号内容；
+    - 状态标注：条目末列的 ✅/⏳/🔧/📋 记号。
+    判据：**标 ✅ 但 git 历史里找不到对应提交** ⇒ 可疑（假完成）；
+    **标 ⏳/🔧 但正文里的文件近期有相关提交** ⇒ 可疑（过时条目，已修）。
+    """
+    文字 = 清单文件.read_text(encoding="utf-8")
+    行表 = [行 for 行 in 文字.splitlines() if 行.startswith("| ") and " | " in 行]
+    条目: list[tuple[str, str, list[str]]] = []
+    for 行 in 行表:
+        格 = [x.strip() for x in 行.strip().strip("|").split("|")]
+        if len(格) < 3 or not 格[0] or not 格[0][0].isdigit():
+            continue
+        编号, 事项, 状态 = 格[0], 格[1], 格[2]
+        文件 = re.findall(r"`([^`]+\.(?:py|json|md|plist))`", " ".join(格))
+        条目.append((编号, 状态, [f for f in dict.fromkeys(文件)][:4]))
+    if not 条目:
+        print(f"⚠️ 未从 {清单文件.name} 抽出任何条目（表格形态变了？）")
+        return 2
+    可疑 = 0
+    print(f"逐条核验 {清单文件.name}：共 {len(条目)} 条带状态的条目")
+    print("-" * 66)
+    for 编号, 状态, 文件 in 条目:
+        已完成标 = "✅" in 状态
+        在办标 = any(x in 状态 for x in ("⏳", "🔧"))
+        if not 文件:
+            print(f"  {编号:<4} {状态[:14]:<16} （正文无文件路径，抽不出，需人核）")
+            continue
+        # 正文里写的可能是**裸文件名或包内相对路径**（如 `停机编排.py`），git 却不认；
+        # 用全仓路径表按「后缀唯一命中」解析成真路径，多义/零命中一律如实标注（不猜）。
+        全仓 = 取全仓路径表()
+        真路径, 歧义 = [], []
+        for f in 文件:
+            if f in 全仓:
+                真路径.append(f)
+                continue
+            命中 = [x for x in 全仓 if x.endswith("/" + f)]
+            if len(命中) == 1:
+                真路径.append(命中[0])
+            else:
+                歧义.append(f"{f}（{'多义' if 命中 else '零命中'}）")
+        近期 = ""
+        for f in 真路径:
+            段 = 跑(["log", "--oneline", "-1", "--format=%h %ad %s", "--date=short", "--", f])
+            if 段:
+                近期 = f"{f} → {段}"
+                break
+        if not 真路径:
+            print(f"  {编号:<4} {状态[:14]:<16} （路径解析不出，需人核：{'、'.join(歧义)}）")
+            continue
+        if 在办标 and 近期:
+            可疑 += 1
+            print(f"  ⚠️ {编号:<4} 标「{状态[:12]}」但正文文件近期有提交 → 疑似已修（复核后改标）")
+            print(f"        {文件[0]}：{近期}")
+        elif 已完成标 and not 近期:
+            可疑 += 1
+            print(f"  ⚠️ {编号:<4} 标「✅」但正文文件在 git 历史里查不到提交 → 疑似假完成")
+            print(f"        查过的文件：{'、'.join(真路径)}")
+        else:
+            print(f"  ✓ {编号:<4} {状态[:14]:<16} 与现场一致")
+    print("-" * 66)
+    print(f"可疑 {可疑} 条 / 共 {len(条目)} 条。判据：可疑条目**逐条现场复核**，"
+          f"已修的直接改标并删过程（华哥口径：已修条目不留流水账）")
+    return 1 if 可疑 else 0
+
+
 def 主函数(argv: list[str] | None = None) -> int:
     解析 = argparse.ArgumentParser(description="派活前核验：这条待办是否已经修好 / 落点是否仍成立 / 任务包是否重复")
     解析.add_argument("--文件", default="", help="待修文件的仓库相对路径")
     解析.add_argument("--关键词", nargs="*", default=[], help="缺陷关键词（如 A1 原子性）")
     解析.add_argument("--落点", default="", help="核验任务包的落点是否仍成立（传任务包路径或目录）")
     解析.add_argument("--查重", default="", help="任务包查重：找「允许修改」有交集的包（传目录）")
+    解析.add_argument("--多条", default="", help="逐条核验债务清单（传 未完成事项.md）")
     参 = 解析.parse_args(argv)
+    if 参.多条:
+        目标 = Path(参.多条)
+        if not 目标.is_absolute():
+            目标 = 系统根 / 参.多条
+        if not 目标.is_file():
+            print(f"⚠️ 需要文件：{参.多条}")
+            return 2
+        return 核验债务清单(目标)
     if 参.查重:
         目标 = Path(参.查重)
         if not 目标.is_absolute():
