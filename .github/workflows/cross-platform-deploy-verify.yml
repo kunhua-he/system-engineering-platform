@@ -28,7 +28,7 @@ on:
       - "开发工具/跨平台部署验证.py"
       - "开发工具/环境自检.py"
       - "开发工具/重建依赖锁.py"
-      - ".github/workflows/跨平台部署验证.yml"
+      - ".github/workflows/cross-platform-deploy-verify.yml"
 
 # 只读：本工作流永不写仓库
 permissions:
