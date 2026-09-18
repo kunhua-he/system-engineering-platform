@@ -3,6 +3,12 @@
 这里是快速编译与独立项目编译共同使用的包发现事实源。模板、样板和
 其它明确标记为非生产的包永远不会进入正式索引；如果调用方显式引用
 被排除的包，必须由调用方得到明确的阻断，而不是静默忽略。
+
+**包发现口径不在这里**（2026-09-18 债务 #38 收口）：保留目录、非生产声明、
+聚合视图父包的判据唯一住在 `公共契约.正式根`。本文件此前自带
+`非生产路径片段` / `非生产字段` / `聚合支持库名表` 三份常量，与运行时发现器
+的 `_` 前缀 + 6 聚合库名表是**两套口径**（对同一目录可给出相反结论）。
+现本文件只负责「读声明、建 owner、报冲突」，收录判据一律委托唯一源。
 """
 from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
@@ -11,26 +17,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from 公共契约.正式根 import 存在根名
-
-
-非生产路径片段 = {"_模板", "模板", "样板", "非生产", "开发样例"}
-非生产字段 = ("非生产", "仅供复制", "仅供开发", "模板", "样板")
-聚合支持库名表 = {"系统核心支持库", "大语言模型支持库", "办公文档支持库",
-              "文件系统支持库", "数据操作支持库", "网络通信支持库"}
-
-
-def _是聚合父包(系统根: Path, 包路径: Path, 类型目录: str) -> bool:
-    """判断只作目录视图的聚合父包，与运行时发现器保持同一口径。"""
-    if 类型目录 != "支持库":
-        return 假
-    try:
-        相对部分 = 包路径.resolve().relative_to((系统根 / "支持库").resolve()).parts
-    except ValueError:
-        return 假
-    return (len(相对部分) >= 2
-            and 相对部分[1] in 聚合支持库名表
-            and not (包路径 / "能力定义.json").is_file())
+from 公共契约.正式根 import (
+    是保留目录,
+    是聚合视图包,
+    是非生产声明,
+    存在根名,
+)
 
 
 def _读取(路径: Path) -> dict[str, Any]:
@@ -43,40 +35,30 @@ def _读取(路径: Path) -> dict[str, Any]:
     return 数据
 
 
-def _是非生产包(声明路径: Path, 声明: dict[str, Any], 包id: str) -> bool:
-    """按物理目录和显式声明双重判断，避免模板改名后漏入生产索引。"""
-    if any(片段 in 非生产路径片段 for 片段 in 声明路径.parent.parts):
-        return 真
-    if 包id.startswith("模块库._模板"):
-        return 真
-    for 字段 in 非生产字段:
-        值 = 声明.get(字段)
-        if isinstance(值, bool) and 值:
-            return 真
-        if isinstance(值, str) and 值.strip().lower() in {"是", "true", "1", "非生产"}:
-            return 真
-    状态 = str(声明.get("状态", "")).strip().lower()
-    return 状态 in {"非生产", "草稿", "模板", "样板", "deprecated", "废弃"}
-
-
 def _扫描包(系统根: Path, 类型目录: str) -> tuple[
     dict[str, tuple[Path, dict[str, Any]]], dict[str, str]
 ]:
-    """扫描一种包类型，返回正式包和被排除包的原因表。"""
+    """扫描一种包类型，返回正式包和被排除包的原因表。
+
+    只做三件事：按唯一口径判收录 → 读声明 → 查 包id 重复。过滤规则全部
+    来自 `公共契约.正式根`（`是保留目录` / `是聚合视图包` / `是非生产声明`）。
+    """
     正式: dict[str, tuple[Path, dict[str, Any]]] = {}
     排除: dict[str, str] = {}
     根 = 系统根 / 类型目录
     if not 根.is_dir():
         return 正式, 排除
     for 声明路径 in sorted(根.rglob("包声明.json")):
+        if 是保留目录(声明路径.parent, 根):
+            continue
+        if 是聚合视图包(声明路径.parent):
+            continue
         声明 = _读取(声明路径)
         包id = str(声明.get("包id", "")).strip()
         if not 包id:
             raise ValueError(f"包声明缺少包id: {声明路径}")
-        if _是非生产包(声明路径, 声明, 包id):
+        if 是非生产声明(声明, 包id):
             排除[包id] = f"非生产包排除: {声明路径.parent}"
-            continue
-        if _是聚合父包(系统根, 声明路径.parent, 类型目录):
             continue
         if 包id in 正式 and 正式[包id][0] != 声明路径.parent:
             raise ValueError(f"正式包id重复: {包id} -> {正式[包id][0]} / {声明路径.parent}")

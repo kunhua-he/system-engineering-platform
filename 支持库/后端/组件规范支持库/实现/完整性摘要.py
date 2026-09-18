@@ -23,7 +23,6 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from 公共契约.正式根 import 存在根名
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 摘要文件名 = "完整性摘要.json"
@@ -225,15 +224,18 @@ def 校验完整性摘要(包目录: Path) -> tuple[bool, list[str]]:
 
 
 def 扫描正式包(系统根: Path) -> list[Path]:
-    """查找全部拥有包声明的正式支持库、模块与技能库包目录。"""
-    包目录集合: set[Path] = set()
-    for 根目录名 in 存在根名(系统根):
-        根目录 = 系统根 / 根目录名
-        if not 根目录.is_dir():
-            continue
-        for 声明路径 in 根目录.rglob("包声明.json"):
-            包目录集合.add(声明路径.parent)
-    return sorted(包目录集合, key=lambda 路径: 路径.relative_to(系统根).as_posix())
+    """查找全部拥有包声明的正式包目录（**含聚合视图父包**）。
+
+    口径唯一来自 `公共契约.正式根`（`全仓口径`：全正式根 + 含聚合视图父包）：
+    本函数要的是「哪些目录有 `包声明.json`」——完整性摘要、说明书每个包声明
+    目录都有一份，聚合视图父包**必须**含在内（`开发文档/项目证据/说明书白名单.json`
+    的 6 个聚合父包就靠这条进账）。此前本函数自带一份 `rglob` + 只读 `存在根名`，
+    与装配口径的差别没有写明白，是债务 #38 的分叉面之一。
+    """
+    from 公共契约.正式根 import 全仓口径, 枚举包目录
+
+    return 枚举包目录(系统根, 全仓口径)
+
 
 
 def 迁移旧格式摘要(系统根: Path, 排除路径: Iterable[Path] = ()) -> list[Path]:
