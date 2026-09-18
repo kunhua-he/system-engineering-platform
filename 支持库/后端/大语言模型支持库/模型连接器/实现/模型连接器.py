@@ -352,7 +352,13 @@ def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
         headers=出站请求头,
     )
     try:
-        with urllib.request.urlopen(请求, timeout=_HTTP请求超时秒(配置)) as 响应:
+        # 绕开系统代理探测：macOS 的 urllib 默认走 _scproxy 读系统代理设置，
+        # 而 _scproxy 在「fork 出来的子进程 + 多线程」下会触发 CFPreferences 非线程安全
+        # 崩溃（实测 SIGSEGV，栈顶 _os_log_preferences_refresh → SCDynamicStoreCopyProxies）。
+        # 底座 HTTP连接器早已按同一口径用 ProxyHandler({}) 绕开，此处补齐。
+        # 语义不变：本机模型端点（127.0.0.1）本就不该走代理。
+        开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with 开放器.open(请求, timeout=_HTTP请求超时秒(配置)) as 响应:
             原始 = 响应.read(4 * 1024 * 1024 + 1)
             if len(原始) > 4 * 1024 * 1024:
                 return _失败("超出限制", f"{连接类型} HTTP响应超过4MB上限")
@@ -856,10 +862,16 @@ def _读启动日志尾部(模型路径: str, 行数: int = 12) -> str:
 def _等待本地健康(端口: int, 超时秒: int) -> bool:
     import urllib.request
     网址 = f"http://127.0.0.1:{端口}/v1/models"
+    # 必须绕开系统代理探测：本函数在任务子进程（fork 出来）里 **循环** 调用，
+    # 而 macOS 的 urllib 默认经 _scproxy 读系统代理（_scproxy → SCDynamicStoreCopyProxies
+    # → CFPreferences），该路径在「fork 子进程 + 多线程」下非线程安全 ——
+    # 实测段错误 SIGSEGV（栈顶 _os_log_preferences_refresh），整场任务崩溃退出 -11。
+    # 本机模型端点本就不该走代理，ProxyHandler({}) 语义等价。
+    开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     截止时间 = time.monotonic() + min(max(10, 超时秒), 900)
     while time.monotonic() < 截止时间:
         try:
-            with urllib.request.urlopen(网址, timeout=3) as 响应:
+            with 开放器.open(网址, timeout=3) as 响应:
                 if 200 <= 响应.status < 300:
                     return True
         except Exception as 错误:

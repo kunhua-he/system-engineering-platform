@@ -124,7 +124,13 @@ def _发请求(
         method=方法,
     )
     try:
-        with urllib.request.urlopen(请求, timeout=超时秒) as 响应:
+        # 绕开系统代理探测：macOS 的 urllib 默认走 _scproxy 读系统代理设置，
+        # 而 _scproxy 在「fork 出来的子进程 + 多线程」下会触发 CFPreferences 非线程安全
+        # 崩溃（实测 SIGSEGV，栈顶 _os_log_preferences_refresh → SCDynamicStoreCopyProxies）。
+        # 底座 HTTP连接器早已按同一口径用 ProxyHandler({}) 绕开，此处补齐。
+        # 语义不变：本机模型端点（127.0.0.1）本就不该走代理。
+        开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with 开放器.open(请求, timeout=超时秒) as 响应:
             原文 = 响应.read().decode("utf-8", "replace")
             状态码 = int(响应.status)
     except urllib.error.HTTPError as 异常:
