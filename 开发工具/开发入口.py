@@ -11,6 +11,8 @@ Agent 调用必须经过公开能力注册表，并返回完整调用证据链�
 
 from __future__ import annotations
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 import json
 import sys
 from pathlib import Path
@@ -160,7 +162,7 @@ def 创建模块模板(名称: str, 目录: Path | None = None) -> str:
     from 支持库.后端.组件规范支持库 import 生成模块模板
     结果 = 生成模块模板(
         模块名=名称, 类型="基础模块",
-        能力清单=[{"名称": "示例流程", "参数": [{"名称": "输入", "类型": "文本型", "必填": True}],
+        能力清单=[{"名称": "示例流程", "参数": [{"名称": "输入", "类型": "文本型", "必填": 真}],
                    "返回": "结果型", "说明": "示例流程"}],
         依赖能力清单=[], 模块库根=目录.parent if 目录 else None,
     )

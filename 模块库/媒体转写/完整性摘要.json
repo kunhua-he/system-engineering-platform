@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "26db983e42244d5abecc6d2024cf2d0c497026f864c4a00b57e71436a9bf8ebc"
+      "sha256": "042d123a9b22fecfedb39529ef78dbdb367af31722b1a88818f7e4fcdf0cd429"
     },
     {
       "路径": "依赖契约/依赖契约.json",

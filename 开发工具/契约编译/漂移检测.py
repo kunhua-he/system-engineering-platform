@@ -1278,6 +1278,57 @@ def _扫描注册语句(语句列表: list[ast.stmt], 绑定: dict[str, Any],
             _收集注册调用(语句.value, 绑定, 表)
 
 
+#: 静态可求值的常量导入源：模块路径 → {模块内名: 常量值}。
+#:
+#: **为什么必须补这一层（2026-09-18 实测踩坑）**：正式代码的布尔位一律写中文
+#: `真`／`假`（真源 `公共契约/基础类型/逻辑类型.py`：「两者在 Python 里是同一个对象」），
+#: 而 `注册能力` 是真源 `逻辑类型` 的**导入方**——`from 公共契约.基础类型.逻辑类型 import 真, 假`
+#: 是模块级 import。但本读取器的绑定表原先**只收赋值语句、不收 import**（`_扫描注册语句`
+#: 从空字典起步），于是 `真`／`假` 全落「未解析哨兵」，参数表整块解析失败：
+#: 实测 `模块库/开工编排/__init__.py` 迁成 `真/假` 后 4/4 能力「参数口径未解析」，
+#: 改回裸布尔立刻恢复 —— 即「用中文口径」与「被门禁看见」原先**不可兼得**。
+#: 把「已知常量模块的导入名」纳入种子绑定，两件事才同时成立。
+#:
+#: 只收**值被冻结在真源里**的常量，且**只在文件真的 import 了才绑**（见 `_导入常量绑定`）：
+#: 文件没 import 却用 `真` 是 NameError 级真缺陷，必须继续落「未解析」，不许被这里掩盖。
+_常量导入源: dict[str, dict[str, Any]] = {
+    "公共契约.基础类型.逻辑类型": {"真": 真, "假": 假},
+}
+
+
+def 常量种子绑定() -> dict[str, Any]:
+    """`_常量导入源` 展平后的「名字 → 常量值」种子绑定。
+
+    给**只解析 `注册能力` 函数体**的调用方复用：它们拿到的是 `inspect.getsource(注册能力)`
+    的函数体 AST，模块级 import 不在那棵树里，`真`／`假` 会落「未解析」。
+    与 `_导入常量绑定` 的差别：这里不要求文件里出现 import 语句（调用方已确认源码
+    上下文就是该模块本体）；生产路径一律用 `_导入常量绑定`，不用本函数。
+    两份「名字 → 值」不会漂移：都从 `_常量导入源` 这一个字典派生。
+    """
+    种子: dict[str, Any] = {}
+    for 常量表 in _常量导入源.values():
+        种子.update(常量表)
+    return 种子
+
+
+def _导入常量绑定(树: ast.AST, 绑定: dict[str, Any]) -> None:
+    """把「已知常量模块」的导入名绑进绑定表；非白名单模块一概不解析。
+
+    不做通用 import 解析（那要先定位并读被导入模块，等于把「零依赖静态解析」换成
+    一个依赖解析器）；这里只认 `_常量导入源` 列出的**值已冻结**的模块。别名形态
+    （`import 真 as 是`）按 asname 绑定，与 `_静态字面量` 的 `ast.Name` 分支对齐。
+    """
+    for 节点 in ast.walk(树):
+        if not isinstance(节点, ast.ImportFrom) or 节点.level or not 节点.module:
+            continue
+        常量表 = _常量导入源.get(节点.module)
+        if not 常量表:
+            continue
+        for 别名 in 节点.names:
+            if 别名.name in 常量表:
+                绑定[别名.asname or 别名.name] = 常量表[别名.name]
+
+
 def 读取注册口径(入口文件: Path) -> dict[str, dict[str, Any]]:
     """AST 抽取包入口 `注册能力` 的真实注册口径：能力id → {返回, 参数}。
 
@@ -1295,15 +1346,17 @@ def 读取注册口径(入口文件: Path) -> dict[str, dict[str, Any]]:
         树 = ast.parse(入口文件.read_text(encoding="utf-8"))
     except (SyntaxError, UnicodeDecodeError, OSError):
         return {}
+    种子: dict[str, Any] = {}
+    _导入常量绑定(树, 种子)
     表: dict[str, dict[str, Any]] = {}
     注册函数表 = [节点 for 节点 in ast.walk(树)
                 if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and 节点.name == "注册能力"]
     if 注册函数表:
         for 函数 in 注册函数表:
-            _扫描注册语句(函数.body, {}, 表)
+            _扫描注册语句(函数.body, dict(种子), 表)
     else:
-        _扫描注册语句(树.body, {}, 表)
+        _扫描注册语句(树.body, dict(种子), 表)
     return 表
 
 

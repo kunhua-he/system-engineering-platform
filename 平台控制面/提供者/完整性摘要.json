@@ -9,7 +9,7 @@
     },
     {
       "路径": "__init__.py",
-      "sha256": "0e303183adfe83c1305212026311260ee33e8bd2ae52a891277ed40d930e18bb"
+      "sha256": "99f7811ac5b2b9795e6c788e1ffe3b157a7bf1a7353cf7efab260e2b56c56b81"
     },
     {
       "路径": "会话恢复.py",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "动态库提供者/__init__.py",
-      "sha256": "ae70973beca87ad25b6382d6c26461d27f5a9badc8b629e3c5875ff6cd3ffbfb"
+      "sha256": "402f7b5a575c41005c22425cddce5c7eea28b1e3c0b93b218d608a6e2f47f0b3"
     },
     {
       "路径": "动态库提供者/动态库实现.py",
@@ -101,7 +101,7 @@
     },
     {
       "路径": "注册表/__init__.py",
-      "sha256": "aec54bea57d6aa745d5ac4c263ddb7ebd48f1a3a9b750fdf2111e1470e1e9e9e"
+      "sha256": "00dbba0916858036c3307edd966e666d66c3fa73f0ab7241463057b4f7728f9a"
     },
     {
       "路径": "注册表/包声明.json",

@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 import json
 import sys
 from pathlib import Path
@@ -124,7 +126,7 @@ def _规范能力(能力: dict) -> dict:
     """规范单条能力；自动补齐 超时秒 参数（保证测试骨架可测超时）。"""
     参数表 = list(能力.get("参数") or [])
     if not any(p.get("名称") == "超时秒" for p in 参数表):
-        参数表.append({"名称": "超时秒", "类型": "双精度数型", "必填": False, "默认值": 60.0,
+        参数表.append({"名称": "超时秒", "类型": "双精度数型", "必填": 假, "默认值": 60.0,
                       "说明": "子进程超时"})
     return {"能力id": str(能力["能力id"]),
             "中文名称": str(能力.get("中文名称") or str(能力["能力id"]).split(".")[-1]),

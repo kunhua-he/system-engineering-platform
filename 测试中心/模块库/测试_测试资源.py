@@ -89,10 +89,13 @@ class Test测试资源模块(unittest.TestCase):
 
         树 = ast.parse(inspect.getsource(模块入口.注册能力))
         # 用与漂移检测同一支 AST 静态求值：解不出即判「不可静态判定」，本用例红。
-        from 开发工具.契约编译.漂移检测 import _静态字面量, 未解析哨兵
+        from 开发工具.契约编译.漂移检测 import _静态字面量, 常量种子绑定, 未解析哨兵
 
         函数体 = 树.body[0].body if isinstance(树.body[0], ast.FunctionDef) else 树.body
-        绑定: dict = {}
+        # 种子绑定与生产读取器同源（`常量种子绑定` 从 `_常量导入源` 派生）：
+        # 本用例只解析 注册能力 的**函数体**，模块级 import 不在这棵树里，
+        # 不播种子则中文 `真`/`假` 会落「未解析」（与生产侧同一坑，勿各写一份）。
+        绑定: dict = dict(常量种子绑定())
         for 节点 in 函数体:
             if isinstance(节点, ast.Assign) and isinstance(节点.targets[0], ast.Name):
                 绑定[节点.targets[0].id] = 节点.value

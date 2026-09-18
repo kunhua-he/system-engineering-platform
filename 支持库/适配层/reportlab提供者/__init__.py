@@ -8,6 +8,8 @@ reportlab 为纯 Python 库，主进程 import，不启用子进程隔离；
 
 from __future__ import annotations
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 from 支持库.适配层.reportlab提供者.实现.生成PDF import 生成PDF
 
 __all__ = ["生成PDF", "注册能力"]
@@ -22,7 +24,7 @@ def 注册能力(注册表) -> None:
             能力id="PDF生成.生成PDF",
             包id="支持库.适配层.reportlab提供者",
             实现函数=生成PDF,
-            参数=[{"名称": "内容参数", "类型": "字典型", "必填": True, "默认值": None}],
+            参数=[{"名称": "内容参数", "类型": "字典型", "必填": 真, "默认值": None}],
             返回="结果型",
             说明="按 内容参数（标题/段落列表/表格列表）生成 PDF，返回 结果[生成产物字典]（字节b64/媒体类型/摘要/字节数/诊断）",
         )

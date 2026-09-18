@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "0cc76d2ea7c9a4aecd8d2a0848ff08171ba60f8dc679ba52fbbcd5c19e585e24"
+      "sha256": "ff2457387a0349df439330b47998a9157514d7c2eabe3188432b3bd92c464deb"
     },
     {
       "路径": "依赖锁.json",

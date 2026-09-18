@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 from 支持库.适配层.TreeSitter提供者.实现.提供者 import 解析语法树
 from 支持库.适配层.TreeSitter提供者.实现.提供者 import 检查可用性
 from 支持库.适配层.TreeSitter提供者.实现.提供者 import TreeSitter解析错误
@@ -49,8 +51,8 @@ def 注册能力(注册表) -> None:
 
     for 能力id, 函数, 参数表, 说明 in [
         ("适配层.TreeSitter提供者.解析语法树", 解析语法树能力,
-         [{"名称": "代码文本", "类型": "文本型", "必填": True},
-          {"名称": "语言", "类型": "文本型", "必填": False}],
+         [{"名称": "代码文本", "类型": "文本型", "必填": 真},
+          {"名称": "语言", "类型": "文本型", "必填": 假}],
          "把 TypeScript/TSX 源码解析为底座中性语法树（中文种类与中文字段名）"),
         ("适配层.TreeSitter提供者.检查可用性", 检查可用性能力,
          [], "探针：报告 tree-sitter 依赖可用性与版本"),

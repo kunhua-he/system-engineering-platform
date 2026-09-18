@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 from 支持库.后端.系统核心支持库.协议白名单.实现.协议白名单 import 校验端点
 from 支持库.后端.系统核心支持库.协议白名单.实现.协议白名单 import 查询白名单
 
@@ -23,7 +25,7 @@ def 注册能力(注册表) -> None:
     from 公共契约.能力契约.契约 import 能力实现
 
     for 能力id, 函数, 参数表 in [
-        ("系统核心支持库.协议白名单.校验端点", 校验端点, [{"名称": "api类型", "类型": "文本型", "必填": True, "默认值": None, "说明": "协议类型（openai/anthropic/openai-compatible）"}, {"名称": "base_url", "类型": "文本型", "必填": False, "默认值": None, "说明": "端点地址（openai-compatible 必填）"}]),
+        ("系统核心支持库.协议白名单.校验端点", 校验端点, [{"名称": "api类型", "类型": "文本型", "必填": 真, "默认值": None, "说明": "协议类型（openai/anthropic/openai-compatible）"}, {"名称": "base_url", "类型": "文本型", "必填": 假, "默认值": None, "说明": "端点地址（openai-compatible 必填）"}]),
         ("系统核心支持库.协议白名单.查询白名单", 查询白名单, []),
     ]:
         注册表.注册(

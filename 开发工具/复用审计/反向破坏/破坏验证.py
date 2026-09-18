@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 import json
 import shutil
 import tempfile
@@ -73,7 +75,7 @@ def _临时组件() -> Path:
     (目录 / "实现").mkdir()
     (目录 / "能力契约" / "示例契约.json").write_text(json.dumps({
         "能力id": "示例.能力", "版本": "1.0.0", "说明": "反向破坏测试",
-        "参数": [{"名称": "文本", "类型": "文本型", "必填": True}],
+        "参数": [{"名称": "文本", "类型": "文本型", "必填": 真}],
         "返回": "普通返回", "错误码": ["参数不合法", "内部错误"],
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     (目录 / "实现" / "能力.py").write_text(
