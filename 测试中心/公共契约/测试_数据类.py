@@ -42,9 +42,9 @@ class 测试裸用等价(unittest.TestCase):
             名称: str
             年龄: int = 0
 
-        甲, 乙 = 中文版("甲", 3), 标准版("甲", 3)
-        self.assertEqual(甲.名称, 乙.名称)
-        self.assertEqual(甲.年龄, 乙.年龄)
+        中文版实例, 标准版实例 = 中文版("示例名称", 3), 标准版("示例名称", 3)
+        self.assertEqual(中文版实例.名称, 标准版实例.名称)
+        self.assertEqual(中文版实例.年龄, 标准版实例.年龄)
 
     def test_相等语义一致(self):
         @数据类
@@ -67,15 +67,15 @@ class 测试裸用等价(unittest.TestCase):
     def test_打印与字段清单一致(self):
         @数据类
         class 中文版:
-            甲: int
-            乙: str = "x"
+            首个字段: int
+            次个字段: str = "x"
 
         @dataclasses.dataclass
         class 标准版:
-            甲: int
-            乙: str = "x"
+            首个字段: int
+            次个字段: str = "x"
 
-        # 标准库 repr 形如 `<模块.类名(甲=1, 乙='x')>`：类名本来就不同，
+        # 标准库 repr 形如 `<模块.类名(首个字段=1, 次个字段='x')>`：类名本来就不同，
         # 故只比「字段=值」那一段（门面不参与类名与 repr 格式）。
         self.assertEqual(repr(中文版(1)).split("(", 1)[1], repr(标准版(1)).split("(", 1)[1])
         self.assertEqual([f.name for f in 字段们(中文版)], [f.name for f in dataclasses.fields(标准版)])
@@ -111,20 +111,20 @@ class 测试不可变等价(unittest.TestCase):
 
     def test_简写与带参写法等价(self):
         @不可变数据类
-        class 甲:
+        class 简写版:
             值: int
 
         @数据类(不可变=True)
-        class 乙:
+        class 带参版:
             值: int
 
         # 标准库 __eq__ 要求 `other.__class__ is self.__class__`（同类才相等），
-        # 甲乙是两个类，故比「类参数 + 字段清单」而不是比实例相等。
-        甲参, 乙参 = 甲.__dataclass_params__, 乙.__dataclass_params__
-        self.assertEqual(甲参.frozen, 乙参.frozen)
-        self.assertEqual(甲参.eq, 乙参.eq)
-        self.assertEqual([f.name for f in 字段们(甲)], [f.name for f in 字段们(乙)])
-        self.assertEqual(repr(甲(1)).split("(", 1)[1], repr(乙(1)).split("(", 1)[1])
+        # 简写版与带参版是两个类，故比「类参数 + 字段清单」而不是比实例相等。
+        简写参数, 带参参数 = 简写版.__dataclass_params__, 带参版.__dataclass_params__
+        self.assertEqual(简写参数.frozen, 带参参数.frozen)
+        self.assertEqual(简写参数.eq, 带参参数.eq)
+        self.assertEqual([f.name for f in 字段们(简写版)], [f.name for f in 字段们(带参版)])
+        self.assertEqual(repr(简写版(1)).split("(", 1)[1], repr(带参版(1)).split("(", 1)[1])
 
     def test_中文参数与英文原名同结果(self):
         """两套写法不得得到不同结果（兼容既有英文写法）。"""
@@ -180,13 +180,13 @@ class 测试字段等价(unittest.TestCase):
     def test_三写法与标准库逐字一致(self):
         @数据类
         class 中文版:
-            甲: int = 字段(默认值=1)
-            乙: list = 字段(默认工厂=list, 比较=False)
+            首个字段: int = 字段(默认值=1)
+            次个字段: list = 字段(默认工厂=list, 比较=False)
 
         @dataclasses.dataclass
         class 标准版:
-            甲: int = dataclasses.field(default=1)
-            乙: list = dataclasses.field(default_factory=list, compare=False)
+            首个字段: int = dataclasses.field(default=1)
+            次个字段: list = dataclasses.field(default_factory=list, compare=False)
 
         中字段 = {f.name: (f.default, f.compare) for f in 字段们(中文版)}
         标字段 = {f.name: (f.default, f.compare) for f in dataclasses.fields(标准版)}

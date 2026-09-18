@@ -241,7 +241,7 @@ class Test重复装配幂等与漂移(unittest.TestCase):
         # 同一能力改由另一个包提供：改声明包id后重新装配，提供者锁漂移必须冲突失败
         声明路径 = self.临时 / "支持库" / "模块1" / "包声明.json"
         数据 = json.loads(声明路径.read_text(encoding="utf-8"))
-        数据["包id"] = "幂等.丙"
+        数据["包id"] = "幂等.示例3"
         声明路径.write_text(json.dumps(数据, ensure_ascii=False, indent=2), encoding="utf-8")
         结果二 = 装配系统(self.临时 / "支持库", self.临时 / "模块库", self.注册表)
         self.assertFalse(结果二.成功)

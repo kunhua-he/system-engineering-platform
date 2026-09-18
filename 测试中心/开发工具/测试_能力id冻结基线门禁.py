@@ -25,8 +25,8 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 门禁 = 仓库根 / "开发工具" / "能力id冻结基线门禁.py"
 真基线 = 仓库根 / "开发文档" / "项目证据" / "能力id冻结基线.json"
 
-能力甲 = "夹具.包甲.能力一"
-能力乙 = "夹具.包乙.能力二"
+能力1 = "夹具.包1.能力一"
+能力2 = "夹具.包2.能力二"
 
 
 def 写(路径: Path, 文本: str) -> None:
@@ -52,9 +52,9 @@ class 冻结门禁夹具(unittest.TestCase):
     def setUp(self) -> None:
         self.临时 = Path(tempfile.mkdtemp(prefix="能力id冻结单测_"))
         self.夹具 = self.临时 / "夹具根"
-        self.甲 = self.夹具 / "支持库" / "后端" / "夹具包甲"
-        写包(self.甲, "支持库.后端.夹具包甲", [能力条(能力甲)])
-        写包(self.夹具 / "支持库" / "后端" / "夹具包乙", "支持库.后端.夹具包乙", [能力条(能力乙)])
+        self.示例包1 = self.夹具 / "支持库" / "后端" / "夹具包1"
+        写包(self.示例包1, "支持库.后端.夹具包1", [能力条(能力1)])
+        写包(self.夹具 / "支持库" / "后端" / "夹具包2", "支持库.后端.夹具包2", [能力条(能力2)])
         self.基线 = self.临时 / "夹具基线.json"
         结果 = subprocess.run(
             [sys.executable, str(门禁), str(self.夹具), "--冻结", "--基线", str(self.基线)],
@@ -78,19 +78,19 @@ class 冻结门禁夹具(unittest.TestCase):
         self.assertIn("通过", 出)
 
     def test_删一条基线里的id必红(self) -> None:
-        """① 把能力甲从 能力定义.json + 包声明.json 同步摘除 → 必红。"""
-        写包(self.甲, "支持库.后端.夹具包甲", [])
+        """① 把能力1从 能力定义.json + 包声明.json 同步摘除 → 必红。"""
+        写包(self.示例包1, "支持库.后端.夹具包1", [])
         码, 出 = self.跑()
         self.assertEqual(1, 码, 出)
         self.assertIn("能力id消失", 出)
-        self.assertIn(能力甲, 出)
+        self.assertIn(能力1, 出)
 
     def test_改id名必红(self) -> None:
         """改名的老 id 消失 → 必红；新 id 同时作为「新增」报到（只增方向合法）。"""
-        写包(self.甲, "支持库.后端.夹具包甲", [能力条("夹具.包甲.能力一改名")])
+        写包(self.示例包1, "支持库.后端.夹具包1", [能力条("夹具.包1.能力一改名")])
         码, 出 = self.跑()
         self.assertEqual(1, 码, 出)
-        self.assertIn(能力甲, 出)
+        self.assertIn(能力1, 出)
         self.assertIn("新增能力id", 出)
 
     def test_基线文件缺失必红_fail_closed(self) -> None:
@@ -139,19 +139,19 @@ class 冻结门禁夹具(unittest.TestCase):
     # ---- 正向对照：防门禁退化成恒红 ----
     def test_契约变更允许但留痕(self) -> None:
         """已存 id 的内容指纹变化**不拦**，但要报到（契约变更合法，须留痕）。"""
-        写包(self.甲, "支持库.后端.夹具包甲",
-            [能力条(能力甲, 版本="1.1.0", 参数=[{"名称": "编码", "类型": "文本型"}])])
+        写包(self.示例包1, "支持库.后端.夹具包1",
+            [能力条(能力1, 版本="1.1.0", 参数=[{"名称": "编码", "类型": "文本型"}])])
         码, 出 = self.跑()
         self.assertEqual(0, 码, 出)
         self.assertIn("内容指纹变化", 出)
 
     def test_新增id允许只报(self) -> None:
         """「只增」是合法方向：新增 id 不拦，只报。"""
-        写包(self.甲, "支持库.后端.夹具包甲", [能力条(能力甲), 能力条("夹具.包甲.能力三")])
+        写包(self.示例包1, "支持库.后端.夹具包1", [能力条(能力1), 能力条("夹具.包1.能力三")])
         码, 出 = self.跑()
         self.assertEqual(0, 码, 出)
         self.assertIn("新增能力id", 出)
-        self.assertIn("夹具.包甲.能力三", 出)
+        self.assertIn("夹具.包1.能力三", 出)
 
 
 class 真实仓库口径(unittest.TestCase):

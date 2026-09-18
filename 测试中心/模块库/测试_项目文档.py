@@ -60,17 +60,17 @@ class 测试写文档前置校验(unittest.TestCase):
         self.assertEqual(结果对象.错误码, "参数不合法")
 
     def test_文档相对路径缺失(self):
-        结果对象 = 写文档模块.写文档(项目名="甲", 文档相对路径="  ", 正文="# x\n")
+        结果对象 = 写文档模块.写文档(项目名="示例项目", 文档相对路径="  ", 正文="# x\n")
         self.assertFalse(结果对象.成功)
         self.assertEqual(结果对象.错误码, "参数不合法")
 
     def test_正文空白(self):
-        结果对象 = 写文档模块.写文档(项目名="甲", 文档相对路径="a.md", 正文="\n\n  ")
+        结果对象 = 写文档模块.写文档(项目名="示例项目", 文档相对路径="a.md", 正文="\n\n  ")
         self.assertFalse(结果对象.成功)
         self.assertEqual(结果对象.错误码, "参数不合法")
 
     def test_正文非文本(self):
-        结果对象 = 写文档模块.写文档(项目名="甲", 文档相对路径="a.md", 正文=None)
+        结果对象 = 写文档模块.写文档(项目名="示例项目", 文档相对路径="a.md", 正文=None)
         self.assertFalse(结果对象.成功)
         self.assertEqual(结果对象.错误码, "参数不合法")
 
@@ -86,7 +86,7 @@ class 测试登记前置校验(unittest.TestCase):
 
     def test_项目根相对路径被拒(self):
         from 模块库.项目文档.实现.登记项目 import 登记项目
-        结果对象 = 登记项目(项目名="甲", 项目根目录="相对/路径")
+        结果对象 = 登记项目(项目名="示例项目", 项目根目录="相对/路径")
         self.assertFalse(结果对象.成功)
         self.assertEqual(结果对象.错误码, "参数不合法")
 
@@ -96,7 +96,7 @@ class 测试查文档守卫(unittest.TestCase):
 
     def test_查文档关键词缺失(self):
         from 模块库.项目文档.实现.查文档 import 查文档
-        结果对象 = 查文档(项目名="甲", 关键词="  ")
+        结果对象 = 查文档(项目名="示例项目", 关键词="  ")
         self.assertFalse(结果对象.成功)
         self.assertEqual(结果对象.错误码, "参数不合法")
 

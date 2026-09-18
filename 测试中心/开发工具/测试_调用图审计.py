@@ -86,16 +86,16 @@ class Test能力调用图审计(unittest.TestCase):
         self.assertEqual(len(命中), 1)
 
     def test_tempfile检出(self) -> None:
-        构造包(self.模块库根, "样本丙",
-               "import tempfile\n\ndef 能力丙():\n    return tempfile.mkdtemp()\n",
-               ["样本丙.能力丙"])
+        构造包(self.模块库根, "样本临时目录",
+               "import tempfile\n\ndef 能力临时目录():\n    return tempfile.mkdtemp()\n",
+               ["样本临时目录.能力临时目录"])
         命中 = self._检出类型("原子旁路-临时目录")
         self.assertGreaterEqual(len(命中), 1)
 
     def test_subprocess检出(self) -> None:
-        构造包(self.模块库根, "样本丁",
-               "import subprocess\n\ndef 能力丁():\n    return subprocess.run(['ls'])\n",
-               ["样本丁.能力丁"])
+        构造包(self.模块库根, "样本子进程",
+               "import subprocess\n\ndef 能力子进程():\n    return subprocess.run(['ls'])\n",
+               ["样本子进程.能力子进程"])
         命中 = self._检出类型("原子旁路-进程")
         self.assertGreaterEqual(len(命中), 1)
 
