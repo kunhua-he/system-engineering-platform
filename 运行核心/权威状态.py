@@ -132,40 +132,6 @@ def 异常转错误码(异常: Exception) -> tuple[str, str]:
     return 稳定错误码["内部错误"], "内部错误"
 
 
-def 只读库URI(数据库路径: Path | str, 参数: str = "mode=ro") -> str:
-    """SQLite 只读连接 URI 的**唯一构造口径**：百分号编码的 file URI + 查询参数。
-
-    为什么必须编码（P2-13③，2026-09-18 现场实测，`运行核心/权威状态.py` 原先裸拼
-    `f"file:{路径}?mode=ro"`）：`file:` URI 里 `#` 起 fragment、`?` 起 query，路径含
-    这两个字符时被**静默截断到前缀**——`#` 那支把后面拼的 `?mode=ro` 整体算进 fragment，
-    `?` 那支把路径尾部连同 `?mode=ro` 一起吞掉（URI 里再无任何查询参数 ⇒ **只读彻底失效**，
-    实测该连接 `CREATE TABLE` 落盘成功）；截断出来的前缀名还会被 SQLite **现场新建**成一个空库，
-    而空库的 `PRAGMA integrity_check` 返回 `ok` ⇒ **真实损坏被掩盖**。三层后果全不报错。
-
-    为什么用 `as_uri()` 而不是 `urllib.parse.quote()`：`Path.as_uri()` 是标准库里
-    「路径 → file URI」的现成能力，除 `#`/`?`/空格/百分号外还管 `.`/`..` 规范化与
-    `quote` 的 `safe` 字符（报告建议的 `quote(str(路径))` 默认 `safe='/'`，在 Windows
-    反斜杠与冒号上会走偏）。`as_uri()` 要求绝对路径，故先 `resolve()`。
-
-    参数为什么固定 `mode=ro`：只读校验连接不得改写任何库。**不要**加 `immutable=1`——
-    该选项断言「文件不会变」，而权威状态库是 WAL 活库，正在追加的 WAL 在 immutable
-    连接下读不到（会把活跃内容误判成缺失）；「不建 side 文件」的诉求在这里不成立，
-    库是我们自己的、本来就在读写。
-    """
-    return Path(数据库路径).resolve().as_uri() + "?" + 参数
-
-
-def 连接真实库路径(连接: sqlite3.Connection) -> str:
-    """取连接实际打开的 main 库路径（`PRAGMA database_list` 的设备路径列）。
-
-    用途：区别「我连到的是我要的那个库」与「连到了另一个（空）库」——空库的
-    `integrity_check` 照样 `ok`，只有比对真实路径才能拆穿这种掩盖。
-    空库、内存库（`''`）都如实返回空串，交给调用方判不等。
-    """
-    行 = 连接.execute("PRAGMA database_list").fetchone()
-    return "" if 行 is None else str(行[2] or "")
-
-
 def 版本元组(版本: str) -> tuple[int, ...]:
     """版本字符串 → 比较元组（禁止字符串字典序比较）。"""
     return tuple(int(段) for 段 in 版本.split("."))

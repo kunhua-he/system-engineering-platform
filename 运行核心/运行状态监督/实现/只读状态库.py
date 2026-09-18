@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from 运行核心.权威状态 import 权威状态, 版本元组
+from 公共契约.运行时.数据库URI import 只读库URI
 
 库文件名 = "权威状态.db"
 结构版本键 = "结构版本"
@@ -38,8 +39,8 @@ def 安全版本元组(版本: Any) -> tuple[int, ...] | None:
 
 
 def 只读连接(库文件: Path) -> sqlite3.Connection:
-    """打开只读连接：URI `mode=ro`，不建库、不迁移、不写盘（`as_uri` 负责路径转义）。"""
-    return sqlite3.connect(Path(库文件).resolve().as_uri() + "?mode=ro", uri=True, timeout=5.0)
+    """打开只读连接：URI `mode=ro`，不建库、不迁移、不写盘（编码走唯一构造口径）。"""
+    return sqlite3.connect(只读库URI(库文件), uri=True, timeout=5.0)
 
 
 def 借校验器() -> 权威状态:

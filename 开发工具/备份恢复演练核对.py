@@ -22,10 +22,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.数据库URI import 只读库URI
+
 
 def _查询(库: Path, SQL: str, 参数: tuple = ()) -> list:
     """只读查询并**立即关闭连接**（打开态会挡住恢复的 BEGIN EXCLUSIVE 独占锁）。"""
-    with contextlib.closing(sqlite3.connect(f"file:{库}?mode=ro", uri=True, timeout=10)) as 连接:
+    with contextlib.closing(sqlite3.connect(只读库URI(库), uri=True, timeout=10)) as 连接:
         return 连接.execute(SQL, 参数).fetchall()
 
 
@@ -113,7 +115,7 @@ def 建源副本(生产根: Path, 副本根: Path, 制品夹具: Path) -> dict:
     来源: dict[str, str] = {}
     if (生产根 / "权威状态.db").is_file():
         with contextlib.closing(sqlite3.connect(
-                f"file:{生产根 / '权威状态.db'}?mode=ro", uri=True, timeout=10)) as 连接:
+                只读库URI(生产根 / '权威状态.db'), uri=True, timeout=10)) as 连接:
             连接.execute("VACUUM INTO ?", (str(副本根 / "权威状态.db"),))
         来源["权威状态"] = "生产副本（VACUUM INTO 一致性快照）"
     if (生产根 / "制品").is_dir():

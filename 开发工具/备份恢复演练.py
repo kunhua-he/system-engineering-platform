@@ -36,6 +36,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.运行时.数据库URI import 只读库URI
 from 开发工具.备份恢复演练核对 import 反向验证 as 跑反向验证, 建源副本, 核对一致性
 
 #: 生产数据根当前缺 `制品/` 时用的真实文件夹具（`工程缓存/` 不入库，缺则该类如实报缺）。
@@ -62,7 +63,7 @@ def _调用(能力id: str, 参数: dict) -> Any:
 
 def _只读一处(库: Path, SQL: str, 参数: tuple) -> list:
     """只读一次并立即关闭连接：留在打开态会挡住恢复能力的 `BEGIN EXCLUSIVE` 独占锁。"""
-    with contextlib.closing(sqlite3.connect(f"file:{库}?mode=ro", uri=True, timeout=10)) as 连接:
+    with contextlib.closing(sqlite3.connect(只读库URI(库), uri=True, timeout=10)) as 连接:
         return 连接.execute(SQL, 参数).fetchall()
 
 

@@ -15,6 +15,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.数据库URI import 只读库URI
+
 
 def 只读激活指针(存储目录: Path | str, 指针id: str) -> dict[str, Any] | None:
     """控制面不可用时的调用面读取：只读持久化激活指针，不依赖控制面服务。
@@ -25,7 +27,7 @@ def 只读激活指针(存储目录: Path | str, 指针id: str) -> dict[str, Any
     数据库路径 = Path(存储目录) / "权威状态.db"
     if not 数据库路径.exists():
         return None
-    连接 = sqlite3.connect(f"file:{数据库路径}?mode=ro", uri=True)
+    连接 = sqlite3.connect(只读库URI(数据库路径), uri=True)
     try:
         行 = 连接.execute(
             "SELECT 指针id, 目标, 版本, 栅栏令牌, 状态 FROM 激活指针 WHERE 指针id=?",

@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.数据库URI import 只读库URI实参
 
 可执行名 = "codegraph"
 兜底目录 = ("/usr/local/bin", "/opt/homebrew/bin")  # ★ node 常在 /usr/local/bin，不在 homebrew
@@ -53,12 +54,12 @@ def _库路径(项目根: Path) -> Path:
 
 
 def _计数(库路径: Path) -> dict:
-    """只读统计地图规模；中文路径用 as_uri() 转义，不建 side 文件。"""
+    """只读统计地图规模；走唯一构造口径转义（含中文/`#`/`?` 路径），不建 side 文件。"""
     if not 库路径.is_file():
         return {"存在": False, "文件数": 0, "节点数": 0, "边数": 0}
     计数 = {}
     try:
-        连接 = sqlite3.connect(库路径.resolve().as_uri() + "?mode=ro&immutable=1",
+        连接 = sqlite3.connect(只读库URI实参(库路径),
                               uri=True, timeout=5.0)
         try:
             for 表 in 计数表名:

@@ -16,14 +16,15 @@ import sqlite3
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.数据库URI import 只读库URI实参
 
 来源 = "代码地图"
 必需表表 = ("nodes", "edges")
 
 
 def 只读URI(路径: Path) -> str:
-    """代码地图只读 URI：绝对路径 as_uri()（自动百分号转义）+ 只读不可变参数。"""
-    return 路径.resolve().as_uri() + "?mode=ro&immutable=1"
+    """代码地图只读 URI：唯一构造口径 `只读库URI实参`（本文件原先各写一份 as_uri 拼串）。"""
+    return 只读库URI实参(路径)
 
 
 def 打开代码地图(代码地图路径: str) -> 结果:

@@ -25,6 +25,7 @@ from typing import Any
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.数据库URI import 只读库URI
 from 支持库.后端.数据库连接支持库.SQLite数据库 import (
     初始化运行数据库, 写入运行态, 查询运行态,
 )
@@ -176,7 +177,7 @@ class 运行数据库回归(unittest.TestCase):
         if not 正式库.is_file():
             self.skipTest("正式库不存在（全新工作区），跳过只读巡检")
         命中: list[str] = []
-        连接对象 = _sqlite3.connect(f"file:{正式库}?mode=ro", uri=True)
+        连接对象 = _sqlite3.connect(只读库URI(正式库), uri=True)
         try:
             表集合 = [行[0] for 行 in 连接对象.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'")]

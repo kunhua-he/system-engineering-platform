@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib, json, sqlite3
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.数据库URI import 只读库URI
 
 锁必填字段表 = ("项目id", "所有者", "锁定时间")
 
@@ -23,7 +24,7 @@ def 校验权威状态(目录: Path, 备份项: dict) -> tuple[bool, str]:
     # 统一入口的 查询 以读写方式开库，对不存在的文件会**隐式建库**并让 PRAGMA integrity_check
     # 返回 ok，缺失快照会被误判「完整性通过」；且校验不得在可能改写快照的连接上跑。
     try:
-        连接 = sqlite3.connect(f"file:{目录 / 备份项['文件']}?mode=ro", uri=True)
+        连接 = sqlite3.connect(只读库URI(目录 / 备份项['文件']), uri=True)
         try: 结果 = 连接.execute("PRAGMA integrity_check").fetchone()
         finally: 连接.close()
         return (真, "完整性检查通过") if 结果 and 结果[0] == "ok" else (假, f"完整性检查: {结果}")
