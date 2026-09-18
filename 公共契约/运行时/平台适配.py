@@ -11,7 +11,9 @@
 
 **设计约束**
 
-1. **只依赖标准库**（``sys`` / ``subprocess`` / ``pathlib`` / ``platform``），不引入第三方。
+1. **不引入第三方**：只用标准库（``sys`` / ``subprocess`` / ``platform`` / ``pathlib`` /
+   ``re``）与**同一 ``公共契约`` 根内**的 `基础类型.逻辑类型`（中文逻辑字面量 `真`/`假`，
+   见《类型目录》：正式代码一律从该模块取，不散写英文 ``True``/``False``）。
 2. **平台判定在「调用时」读取** ``sys.platform``，不在导入时冻结——这样测试可以用
    monkeypatch 把整个模块切到 Windows 形态验证分支选择，也为将来可能的平台探测留口。
 3. **平台不支持的能力显式报错**（``平台不支持错误``），绝不静默降级成别的语义。
@@ -24,9 +26,12 @@
 from __future__ import annotations
 
 import platform
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 平台表 = ("macOS", "Windows", "Linux", "未知")
 
@@ -263,6 +268,301 @@ def 要求POSIX能力(能力名: str) -> None:
         )
 
 
+# ── 硬件画像采样（OS 差异的**唯一**落点）─────────────────────────
+#
+# 口径（决策记录 `0045` §五「零新增第三方依赖的取法」）：硬件画像要
+# 「只准标准库」，但每个字段的**取法**本身就是平台差异 —— macOS 走
+# `sysctl` / `vm_stat` / `system_profiler`，Linux 走 `/proc` 伪文件，
+# Windows 两者都没有。按本模块既定纪律（**平台差异只在本模块判断，
+# 调用点不许写 `sys.platform`、不许自带平台分支**），这些取法一律收口
+# 到这里：上层 `支持库/适配层/硬件画像探针.py` 只拿事实，既不碰命令名，
+# 也不判断自己跑在哪个平台。
+#
+# **三态语义**（与 `句柄枚举目录表` 同口径）：``支持=假`` 是「本平台无此
+# 能力」的**显式信号**，不是「值等于 0」—— 调用方必须据此保守降级
+# （fail-closed），不得把 0 当成真实读数。这与 `内存峰值原始单位` 那种
+# 「不认识就抛异常」不同，原因是：画像探针跑在**启动期诊断路径**上，
+# 采样失败绝不能拖垮启动；失败必须在返回值里显名（``原因`` 字段），
+# 由调用方决定降级策略，而不是让异常替调用方做决定。
+#
+# **诚实标注**：`Linux` 分支与 `句柄枚举目录表` 的既有标注同一处境 ——
+# 开发机为 macOS，Linux 取法（`/proc/meminfo`、`/proc/cpuinfo`）只按
+# 内核文档写就，**未经真机实测**；`Windows` 分支明确返回「不支持」，
+# 不猜、不降级成别的语义。
+
+#: 内存/处理核采样命令的超时秒（`sysctl`/`vm_stat` 都是毫秒级返回，留足裕量）
+内存采样超时秒 = 5.0
+#: 图形加速采样命令的超时秒（`system_profiler` 明显更慢，实测 0.26 秒，留足裕量）
+图形采样超时秒 = 8.0
+#: 采样命令标准输出的**有界**上限字节（只解析首几十行，不把整份输出读进内存）
+采样命令输出上限字节 = 256 * 1024
+#: `/proc` 伪文件读取的**有界**上限字节（内核生成，大小固定，有界只为可证）
+伪文件读取上限字节 = 256 * 1024
+#: macOS 采样命令候选绝对路径（按优先级；用绝对路径而不是 `shutil.which`，
+#: 避免 PATH 被调用方进程污染后取到另一个同名可执行文件）
+sysctl候选路径 = ("/usr/sbin/sysctl", "/usr/bin/sysctl")
+vm_stat候选路径 = ("/usr/bin/vm_stat", "/usr/sbin/vm_stat")
+system_profiler候选路径 = ("/usr/sbin/system_profiler", "/usr/bin/system_profiler")
+#: Linux 伪文件路径
+Linux内存信息路径 = "/proc/meminfo"
+Linux处理器信息路径 = "/proc/cpuinfo"
+
+
+def _执行只读采样命令(候选路径表: tuple[str, ...], 参数表: tuple[str, ...],
+                     超时秒: float) -> tuple[int, str] | None:
+    """按候选绝对路径逐个尝试执行只读采样命令；全部不可用/失败返回 ``None``。
+
+    输出**有界**（超 `采样命令输出上限字节` 即截断），失败一律收敛为 ``None``
+    而不抛异常 —— 采样是只读诊断动作，任何失败都必须是「拿不到事实」，
+    不能变成「调用方崩了」。
+    """
+    for 路径 in 候选路径表:
+        if not Path(路径).is_file():
+            continue
+        try:
+            完成 = subprocess.run([路径, *参数表], capture_output=True, timeout=超时秒)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        return int(完成.returncode), 完成.stdout[:采样命令输出上限字节].decode(
+            "utf-8", errors="replace")
+    return None
+
+
+def _读伪文件(路径: str) -> str | None:
+    """有界读一个伪文件（前 `伪文件读取上限字节` 字节）；读不到返回 ``None``。"""
+    try:
+        with open(路径, "rb") as 流:
+            数据 = 流.read(伪文件读取上限字节)
+    except OSError:
+        return None
+    return 数据.decode("utf-8", errors="replace")
+
+
+def _macOS可用内存字节() -> tuple[int, str]:
+    """macOS 可用内存（字节）与失败原因：`vm_stat` 的 free+inactive+speculative+purgeable。
+
+    **为什么不用 `sysctl vm.page_free_count` 单一字段**：macOS 的
+    `Pages inactive` / `Pages purgeable` 都是**可立即回收**的页，只算 free
+    会系统性低估可用内存（本机实测：free 25.7GB 对 四类合计 54.6GB），
+    而容量高水位正是按可用内存推的，低估会把基线压得过紧。
+    口径与 macOS 官方 `memory_pressure` 的 "available" 统计一致。
+    """
+    结果 = _执行只读采样命令(vm_stat候选路径, (), 内存采样超时秒)
+    if 结果 is None or 结果[0] != 0:
+        return 0, "vm_stat 不可用，可用内存按未知处理"
+    页大小匹配 = re.search(r"page size of (\d+) bytes", 结果[1])
+    if not 页大小匹配:
+        return 0, "vm_stat 输出缺少页大小，可用内存按未知处理"
+    页大小 = int(页大小匹配.group(1))
+    累计页 = 0
+    for 行 in 结果[1].splitlines():
+        匹配 = re.match(r"([A-Za-z][A-Za-z ]*):\s+(\d+)\.", 行)
+        if not 匹配:
+            continue
+        if 匹配.group(1).strip() in ("Pages free", "Pages inactive",
+                                     "Pages speculative", "Pages purgeable"):
+            累计页 += int(匹配.group(2))
+    if 累计页 <= 0:
+        return 0, "vm_stat 输出未解析到可用页，可用内存按未知处理"
+    return 累计页 * 页大小, ""
+
+
+def _Linux内存容量() -> dict[str, object]:
+    """Linux 内存容量（`/proc/meminfo` 的 MemTotal / MemAvailable）。"""
+    依据 = f"/proc/meminfo（{Linux内存信息路径}）"
+    文本 = _读伪文件(Linux内存信息路径)
+    if 文本 is None:
+        return {"支持": 假, "物理字节": 0, "可用字节": 0, "依据": 依据,
+                "原因": "读不到 /proc/meminfo"}
+    字段: dict[str, int] = {}
+    for 行 in 文本.splitlines():
+        名, 分隔符, 值 = 行.partition(":")
+        if not 分隔符:
+            continue
+        数字 = 值.strip().split()
+        if not 数字:
+            continue
+        try:
+            字段[名.strip()] = int(数字[0])
+        except ValueError:
+            continue
+    总量 = 字段.get("MemTotal", 0) * 1024
+    if 总量 <= 0:
+        return {"支持": 假, "物理字节": 0, "可用字节": 0, "依据": 依据,
+                "原因": "MemTotal 缺失或非整数"}
+    可用 = 字段.get("MemAvailable", 0) * 1024
+    原因 = "" if 可用 > 0 else "MemAvailable 缺失（内核过旧），可用内存按未知处理"
+    return {"支持": 真, "物理字节": 总量, "可用字节": 可用, "依据": 依据,
+            "原因": 原因}
+
+
+def 内存容量信息() -> dict[str, object]:
+    """物理内存与可用内存（字节）。返回 ``{支持, 物理字节, 可用字节, 依据, 原因}``。
+
+    - macOS：`sysctl -n hw.memsize` 取物理内存；`vm_stat` 取可用内存；
+    - Linux：`/proc/meminfo` 的 `MemTotal` / `MemAvailable`；
+    - 其余平台：``支持=假``（显式「无此能力」，不是「内存为 0」）。
+
+    `可用字节=0` 且 ``支持=真`` 表示「物理内存读到了、可用内存没读到」
+    （此时 `原因` 非空），调用方按保守比例降级，不得当成「可用内存为零」。
+    """
+    if 是macOS():
+        总量 = _执行只读采样命令(sysctl候选路径, ("-n", "hw.memsize"), 内存采样超时秒)
+        依据 = "sysctl -n hw.memsize + vm_stat（free+inactive+speculative+purgeable）"
+        if 总量 is None or 总量[0] != 0:
+            return {"支持": 假, "物理字节": 0, "可用字节": 0, "依据": 依据,
+                    "原因": "sysctl 不可用或退出码非零，物理内存读取失败"}
+        try:
+            物理字节 = int(总量[1].strip())
+        except ValueError:
+            return {"支持": 假, "物理字节": 0, "可用字节": 0, "依据": 依据,
+                    "原因": "hw.memsize 输出不是整数"}
+        if 物理字节 <= 0:
+            return {"支持": 假, "物理字节": 0, "可用字节": 0, "依据": 依据,
+                    "原因": "hw.memsize 返回非正数"}
+        可用字节, 可用原因 = _macOS可用内存字节()
+        return {"支持": 真, "物理字节": 物理字节, "可用字节": 可用字节,
+                "依据": 依据, "原因": 可用原因}
+    if 是Linux():
+        return _Linux内存容量()
+    return {"支持": 假, "物理字节": 0, "可用字节": 0,
+            "依据": f"平台 {当前平台()}", "原因": "本平台无标准库内存容量取法"}
+
+
+def 物理核数信息() -> dict[str, object]:
+    """物理核数（区别于 `os.cpu_count()` 给的逻辑核数）。返回 ``{支持, 物理核, 依据, 原因}``。
+
+    - macOS：`sysctl -n hw.physicalcpu`；
+    - Linux：`/proc/cpuinfo` 里 `(physical id, core id)` 去重计数；
+    - 其余平台：``支持=假``。
+
+    这个数字只用于**离散档位的核数档**（每档容量参数），不是任何硬校验的上限：
+    读不到时调用方按「最小档」保守降级，不得拿逻辑核数冒充物理核数。
+    """
+    if 是macOS():
+        结果 = _执行只读采样命令(sysctl候选路径, ("-n", "hw.physicalcpu"), 内存采样超时秒)
+        依据 = "sysctl -n hw.physicalcpu"
+        if 结果 is None or 结果[0] != 0:
+            return {"支持": 假, "物理核": 0, "依据": 依据,
+                    "原因": "sysctl 不可用或退出码非零"}
+        try:
+            核数 = int(结果[1].strip())
+        except ValueError:
+            return {"支持": 假, "物理核": 0, "依据": 依据, "原因": "输出不是整数"}
+        if 核数 <= 0:
+            return {"支持": 假, "物理核": 0, "依据": 依据, "原因": "返回非正数"}
+        return {"支持": 真, "物理核": 核数, "依据": 依据, "原因": ""}
+    if 是Linux():
+        依据 = f"/proc/cpuinfo（{Linux处理器信息路径}）"
+        文本 = _读伪文件(Linux处理器信息路径)
+        if 文本 is None:
+            return {"支持": 假, "物理核": 0, "依据": 依据, "原因": "读不到 /proc/cpuinfo"}
+        对: set[tuple[str, str]] = set()
+        for 块 in 文本.split("\n\n"):
+            物理id = 核id = None
+            for 行 in 块.splitlines():
+                名, 分隔符, 值 = 行.partition(":")
+                if not 分隔符:
+                    continue
+                名, 值 = 名.strip(), 值.strip()
+                if 名 == "physical id":
+                    物理id = 值
+                elif 名 == "core id":
+                    核id = 值
+            if 物理id is not None and 核id is not None:
+                对.add((物理id, 核id))
+        if not 对:
+            return {"支持": 假, "物理核": 0, "依据": 依据,
+                    "原因": "cpuinfo 无 physical id / core id 字段（虚拟机常见）"}
+        return {"支持": 真, "物理核": len(对), "依据": 依据, "原因": ""}
+    return {"支持": 假, "物理核": 0, "依据": f"平台 {当前平台()}",
+            "原因": "本平台无标准库物理核数取法"}
+
+
+def 处理器型号信息() -> dict[str, object]:
+    """处理器型号原文（画像里的「芯片」字段）。返回 ``{支持, 型号, 依据, 原因}``。
+
+    - macOS：`sysctl -n machdep.cpu.brand_string`（Apple Silicon 上实测如 ``Apple M3 Ultra``）；
+    - Linux：`/proc/cpuinfo` 首个 `model name`；
+    - 其余平台：``支持=假``。
+
+    型号只作**画像展示**（启动日志/诊断端点），不参与任何档位判定 ——
+    只用于人读，故不做归一化、不改写厂商字样。
+    """
+    if 是macOS():
+        结果 = _执行只读采样命令(sysctl候选路径, ("-n", "machdep.cpu.brand_string"),
+                                  内存采样超时秒)
+        依据 = "sysctl -n machdep.cpu.brand_string"
+        if 结果 is None or 结果[0] != 0:
+            return {"支持": 假, "型号": "", "依据": 依据,
+                    "原因": "sysctl 不可用或退出码非零"}
+        型号 = 结果[1].strip()
+        if not 型号:
+            return {"支持": 假, "型号": "", "依据": 依据, "原因": "型号输出为空"}
+        return {"支持": 真, "型号": 型号, "依据": 依据, "原因": ""}
+    if 是Linux():
+        依据 = f"/proc/cpuinfo（{Linux处理器信息路径}）"
+        文本 = _读伪文件(Linux处理器信息路径)
+        if 文本 is None:
+            return {"支持": 假, "型号": "", "依据": 依据, "原因": "读不到 /proc/cpuinfo"}
+        for 行 in 文本.splitlines():
+            名, 分隔符, 值 = 行.partition(":")
+            if 分隔符 and 名.strip() == "model name" and 值.strip():
+                return {"支持": 真, "型号": 值.strip(), "依据": 依据, "原因": ""}
+        return {"支持": 假, "型号": "", "依据": 依据, "原因": "cpuinfo 无 model name 字段"}
+    return {"支持": 假, "型号": "", "依据": f"平台 {当前平台()}",
+            "原因": "本平台无标准库处理器型号取法"}
+
+
+def 图形加速信息() -> dict[str, object]:
+    """图形加速事实：图形芯片与 Metal 支持版本。``{支持, 图形芯片, Metal版本, 依据, 原因}``。
+
+    - macOS：`system_profiler SPDisplaysDataType`（**较慢，实测 0.26 秒**，
+      调用方必须缓存，全程只调一次）；
+    - 其余平台：``支持=假``。
+
+    ``支持=真`` 而 ``Metal版本=""`` 表示「探到了图形信息但没有 Metal 支持行」；
+    ``支持=假`` 表示「探不到」——**两者对调用方是同一处置：按「无 Metal」保守降级**
+    （fail-closed）。“探不到” 绝不允许被解释成 “有 Metal”。
+    """
+    if 是macOS():
+        结果 = _执行只读采样命令(system_profiler候选路径, ("SPDisplaysDataType",),
+                                  图形采样超时秒)
+        依据 = "system_profiler SPDisplaysDataType"
+        if 结果 is None or 结果[0] != 0:
+            return {"支持": 假, "图形芯片": "", "Metal版本": "", "依据": 依据,
+                    "原因": "system_profiler 不可用或退出码非零"}
+        图形芯片 = ""
+        Metal版本 = ""
+        当前芯片 = ""
+        for 行 in 结果[1].splitlines():
+            名, 分隔符, 值 = 行.partition(":")
+            if not 分隔符:
+                if 行.strip().endswith(":") and 行.strip():
+                    当前芯片 = 行.strip().rstrip(":").strip()
+                continue
+            名, 值 = 名.strip(), 值.strip()
+            if 名 == "Chipset Model" and not 图形芯片:
+                图形芯片 = 值 or 当前芯片
+            elif 名 == "Metal Support" and not Metal版本:
+                Metal版本 = 值
+        return {"支持": 真, "图形芯片": 图形芯片, "Metal版本": Metal版本,
+                "依据": 依据, "原因": "" if (图形芯片 or Metal版本) else "输出未解析到芯片/Metal 行"}
+    return {"支持": 假, "图形芯片": "", "Metal版本": "", "依据": f"平台 {当前平台()}",
+            "原因": "本平台无标准库图形加速取法"}
+
+
+def 是否AppleSilicon() -> bool:
+    """是否 Apple Silicon（macOS + `正式支持架构表` 内的架构）。
+
+    复用本模块既有的 `正式支持平台` / `正式支持架构表` 口径，**不另立第二套
+    arm64 判定**：`运行核心/环境指纹` 与本模块的 `当前架构()` 已是同一份采样。
+    非 macOS 或架构不在表内一律返回 ``假``（不抛异常：这是画像字段，不是准入判据；
+    环境准入仍由 `校验支持范围()` 负责）。
+    """
+    return 是macOS() and 当前架构() in 正式支持架构表
+
+
 __all__ = [
     "平台表",
     "POSIX解释器相对路径",
@@ -287,4 +587,13 @@ __all__ = [
     "当前架构",
     "校验支持范围",
     "脚本入口准入",
+    # 2026-09-18 H 簇补列：硬件画像采样的四个取法与 Apple Silicon 判定是**新公开原语**
+    # （`支持库/适配层/硬件画像探针.py` 跨层调用它们），未列入 `__all__` 时型检会报
+    # `reportAttributeAccessIssue`（运行时可用，但公开面自述与实际不符）。
+    # 与 `进程终止.py` 补 `__all__` 同一处置：新原语必须同时进公开面。
+    "内存容量信息",
+    "物理核数信息",
+    "处理器型号信息",
+    "图形加速信息",
+    "是否AppleSilicon",
 ]
