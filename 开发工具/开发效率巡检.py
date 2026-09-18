@@ -45,6 +45,19 @@ from pathlib import Path
 系统根 = Path(__file__).resolve().parents[1]
 快照根 = 系统根 / "工程缓存/运行数据/开发效率巡检"
 
+# 任务信标志串：**纪律是否真的送达子代理**的唯一判据（2026-09-18 新增）。
+# 为什么必须有这一项：实测本批 8 路 kickoff 里「工具姿势/提交纪律/pathspec/禁甲乙丙丁」命中
+# **全 0** —— 生成器 `开发工具/任务记忆/派活任务信.py` 已建好，但派活时仍手写 context，
+# 而**没有任何检查会因此报红**。判据不挂在产出点 = 纪律随时静默丢失（哲学 14.3）。
+纪律标志 = {
+    "工具姿势": "工具姿势",
+    "提交纪律": "提交纪律",
+    "pathspec": "pathspec",
+    "命令环境": "命令环境",
+}
+#: kickoff 段落在日志里的形态（append-only 转录的首行 user 条目）。
+kickoff标记 = "| kickoff:"
+
 探索词 = ("grep", "read_file", "search_files", "git show", "git log", "cat ", "head ", "tail ", "sed ",
         "ls ", "find ", "查询节点", "查询关系", "查询文件")
 验证词 = ("py_compile", "pytest", "unittest", "反向", "验证", "assert", "curl")
@@ -128,7 +141,36 @@ def 剖析一篇(路径: Path) -> dict:
     }
 
 
-def 汇总(剖析表: list[dict]) -> dict:
+def 查纪律送达(日志表: list[Path]) -> dict:
+    """逐路检查 kickoff 里有没有任务信的固定条款（**唯一判据在产出点**）。
+
+    返回 `{已送达, 未送达, 缺项表}`：
+    - `已送达`：kickoff 里四个标志串全中的路由数；
+    - `未送达`：缺任一标志串的路（**这就是纪律丢失的铁证**）；
+    - `缺项表`：`[{"路": 文件名, "缺": [标志, …]}, …]`，便于直接照单修。
+    """
+    已送到, 未送到, 缺项表 = 0, 0, []
+    for 日志 in 日志表:
+        try:
+            文 = 日志.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # kickoff 只取首行（append-only 转录第一段 user 条目即派活原文）。
+        行表 = [行 for 行 in 文.splitlines() if kickoff标记 in 行]
+        if not 行表:
+            continue
+        段 = 行表[0]
+        缺 = [名 for 名, 串 in 纪律标志.items() if 串 not in 段]
+        if 缺:
+            未送到 += 1
+            缺项表.append({"路": 日志.name, "缺": 缺})
+        else:
+            已送到 += 1
+    return {"已送达": 已送到, "未送达": 未送到, "缺项表": 缺项表}
+
+
+def 汇总(剖析表: list[dict], 纪律结论: dict | None = None) -> dict:
+    纪律结论 = 纪律结论 or {"已送达": 0, "未送达": 0, "缺项表": []}
     合计工具: dict[str, int] = {}
     合计分类 = {"探索": 0, "修改": 0, "验证": 0, "其他": 0}
     合计黑洞 = {"terminal读文件": 0, "一次性python": 0, "命令超时": 0, "全仓grep": 0}
@@ -155,6 +197,7 @@ def 汇总(剖析表: list[dict]) -> dict:
         "黑洞": 合计黑洞,
         "反复读": dict(sorted(反复读.items(), key=lambda x: -x[1])[:10]),
         "累计耗时秒": round(sum(a["耗时秒"] for a in 剖析表), 1),
+        "纪律": 纪律结论,
     }
 
 
@@ -191,6 +234,16 @@ def 归因(果: dict) -> list[str]:
     if 果["超时"]:
         结语.append(f"⚠ 本批超时 {果['超时']} 路 → 先现场盘点产物（超时≠零产出），"
                     "再判是任务过大还是探索过多。")
+    纪律 = 果.get("纪律") or {}
+    送达, 未送达 = 纪律.get("已送达", 0), 纪律.get("未送达", 0)
+    if 未送达:
+        示例 = "、".join(f"{x['路']}（缺 {'/'.join(x['缺'])}）"
+                      for x in (纪律.get("缺项表") or [])[:3])
+        结语.insert(0, f"⛔ 任务信纪律未送达 {未送达} 路（已送达 {送达} 路）→ "
+                       f"派活**必须经 `开发工具/任务记忆/派活任务信.py` 生成**，"
+                       f"手写 context 会整批丢失固定条款。示例：{示例}")
+    elif 送达:
+        结语.append(f"✓ 任务信纪律已送达 {送达} 路（工具姿势/提交纪律/pathspec/命令环境 全中）。")
     if not 结语:
         结语.append("✓ 未发现已知黑洞（四类黑审计数与占比均在阈值内）。")
     return 结语
@@ -310,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     剖析表 = [剖析一篇(p) for p in 日志]
     剖析表 = [a for a in 剖析表 if a["调用数"]]
-    果 = 汇总(剖析表)
+    果 = 汇总(剖析表, 查纪律送达(日志))
     归因表 = 归因(果)
     趋势 = 比趋势(果)
     打印报告(果, 剖析表, 归因表, 趋势)
