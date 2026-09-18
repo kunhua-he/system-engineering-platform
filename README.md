@@ -542,9 +542,9 @@ python3.14 -m 开发工具.环境自检               # 体检：依赖锁一致
 
 | 平台 | 状态 | 依据（均为真机实测，可复跑） |
 |---|---|---|
-| **macOS / arm64 / Python 3.14.x** | **完整可用（唯一支持范围，入口强校验）** | 开发机：环境自检 21 项全过、装配冒烟通过（能力数 > 0、无跳过包）；依赖锁按此锁定 |
-| Linux / x86_64 | **未入表（入口拒绝）—— 已取证，剩 1 个卡点** | GitHub Actions `ubuntu-latest` **与**阿里云 ECS（Alibaba Cloud Linux 4）两个环境**独立复现同一结论**：环境自检 19/21 通过（含进程组收口层全链真跑、`os.fork`、`dir_fd`、`preexec_fn`、中文环境变量名），**唯一卡点是 `mlx-whisper`**（Apple Silicon 专有，Linux 上 `import mlx.core` 恒报 `libmlx.so` 缺失） |
-| **Windows / x64** | **未入表（入口拒绝）—— 已取证，剩 2 个卡点** | GitHub Actions `windows-latest` 实测：① `mlx-whisper`（同上）；② **Windows 专有**：`venv` 生成的 pip license 文件带只读属性，原子落盘阶段删不掉临时目录（`[Errno 13] Permission denied`），12 个提供者受影响 |
+| **macOS / arm64 / Python 3.14.x** | **完整可用（唯一支持范围，入口强校验）** | 开发机与**干净 runner 双证**：环境自检 21 项全过、装配冒烟通过（**699 能力、跳过 0**）；依赖锁按此锁定 |
+| Linux / x86_64 | **未入表（入口拒绝）—— 装机链路已跑通** | GitHub Actions `ubuntu-latest` **与**阿里云 ECS（Alibaba Cloud Linux 4）**两环境独立复现同一结论**：环境自检 **21 项全过**（「没有【不支持】项，本机可以跑」）、装配冒烟通过（**699 能力、跳过 0**）。未入表只因准入表尚未随证据更新（见下「准入表随证据增长」） |
+| **Windows / x64** | **未入表（入口拒绝）—— 装配链路已跑通** | GitHub Actions `windows-latest` 实测：装配冒烟通过（**699 能力、跳过 0**）；环境自检 10/21 通过，其余 11 项**均为 Windows 本就没有的 POSIX 能力**（`os.fork`、进程组号、`preexec_fn`、`dir_fd`、`resource`、`/proc`、POSIX 信号）—— 按契约如实报「不支持」，不是缺陷 |
 
 **取证方式**（任何人都能自己复跑，不用信这张表）：
 ```bash
@@ -552,11 +552,19 @@ gh workflow run cross-platform-deploy-verify.yml     # GitHub 免费 runner 三�
 python3.14 -m 开发工具.跨平台部署验证                  # 在本机/目标机上跑同一套判定
 ```
 
-**另有一条与平台无关的部署事实**（2026-09-19 干净 runner 取证暴露，此前文档未记）：
-**干净机器上连 macOS 也装配不起来**——因为 `psycopg` 需要系统 `libpq`，而开发机早就装过了。
-这说明「本机能跑」不等于「clone 下来能跑」；部署前提必须包含系统级环境依赖，见 README《部署》与《换平台》。
+**准入表随证据增长**（不是「没做完的兼容」）：`校验支持范围` 当前只放行 macOS/arm64，
+这是 **2026-09-18 的有意裁决**（原文：「只写真实实测/验收过的环境，不为未验收环境背书」）。
+因此 Linux/Windows 的**下一步是把上述真机证据与整机自检差异逐项核过，再入表** ——
+不得在调用点写 `if 是Windows()` 绕过（违跨平台收口铁律），也不得「偷偷放开」。
 
 **已修复的平台相关缺陷（留痕，防误判为「还没做」）**：
+- ✅ **干净机器装不起来（连 macOS 也是）**：`psycopg` 需系统 `libpq` → 改为自带 libpq（`psycopg-binary` 同装）；
+  另有 `YAML提供者` 严格 `import yaml`、`时间日期` 顶层 `ZoneInfo(...)` 两处「缺数据包即整包被跳过」，
+  均改为**容忍式导入 + 调用期报中文错误码**。
+- ✅ **Windows 专有**：① venv 里 pip/numpy license 目录导致原子落盘 `[Errno 13] Permission denied`
+  （12 个提供者连锁全挂）；② `zoneinfo` 在 Windows 无 IANA 数据库（4 个包被跳过）。两条均已修并真机复验。
+- ✅ **转写能力的跨平台后端**：`mlx` 是 Apple Silicon/Metal 专有（Linux 装得上、用不了）；
+  已补 `faster-whisper` 后端并按平台自动选，**一份实现 + 模式变量**，不开第二执行腿。
 - ✅ **依赖锁换平台重建**：33 份锁可在目标平台用 `重建依赖锁 --写入 --全部` 一键重建（Linux 实测 33/33 通过）。
 - ✅ **部署诊断入口**：`开发工具/跨平台部署验证.py` 把「三道门禁的正确拆解顺序」做成一条命令 + 机器判定。
 
@@ -740,8 +748,10 @@ env 系统库网关凭证="$(plutil -extract EnvironmentVariables.系统库网�
   python3.14 -m 开发工具.重建依赖锁 --全部          # 先干跑看差异
   python3.14 -m 开发工具.重建依赖锁 --写入 --全部    # 确认后写盘
   ```
-- **系统级环境依赖要先装**（pip 装不出来）：至少 `libpq`（`psycopg` 需要）。
-  **实测：干净机器上没装 libpq、连 macOS 都装配不起来**——「本机能跑」不等于「clone 下来能跑」。完整清单见下文《换平台》。
+- **系统级环境依赖要先装**（pip 装不出来）：完整清单见下文《换平台》第 ① 条。
+  **实测教训：干净机器上连 macOS 都装配不起来**——当时是 `psycopg` 缺系统 `libpq`（现已改为自带 libpq，不再需要）。
+  其余三项（`ffmpeg`/`tesseract`/`soffice`）是可选能力，**缺了只影响对应能力、不阻断装配**。
+  ⇒ **「本机能跑」不等于「clone 下来能跑」**，换机器务必先跑 `python3.14 -m 开发工具.跨平台部署验证`。
 - 第三方（pip 包）由 `支持库/适配层` 的提供者按依赖锁声明自行安装，不需要你手动 pip install。
 
 下面命令都在**仓库根目录**执行。
@@ -826,27 +836,47 @@ python3.14 -m 开发工具.跨平台部署验证 --只报    # 只干跑重建�
 
 命令：`gh workflow run cross-platform-deploy-verify.yml`（工作流只读取证，不改仓库、不传凭证）
 
-| 平台 | 环境自检 | 装配冒烟 | 卡点（真机点名） |
-|---|---|---|---|
-| **macOS / arm64（开发机）** | 21 项全过 | ✅ 通过（能力数 > 0、无跳过包） | 无（唯一支持范围） |
-| **macOS / arm64（干净 runner）** | 有【不支持】项 | ❌ 未通过 | **`psycopg` 缺系统 `libpq`** ← 干净机器上连 macOS 都装不起来 |
-| **Linux / x86_64（干净 runner）** | 19/21 通过 | ❌ 仅剩 1 个卡点 | **`mlx-whisper`（Apple Silicon 专有）** |
-| **Linux / x86_64（阿里云 ECS）** | 19/21 通过 | 同上一行（独立复现） | 同上 ← **两个环境独立复现同一结论** |
-| **Windows / x64（干净 runner）** | 有【不支持】项 | ❌ 未通过 | **① `mlx-whisper`；② venv 环境提交时 `Permission denied`（Windows 专有，12 个提供者受影响）** |
+**最终结果（2026-09-19 06:15，六轮真机迭代后的稳定态）**：
 
-> 两条值得注意的**新事实**（都是这轮真机取证才暴露的，此前文档没有）：
-> ① **干净机器上连 macOS 也起不来**——不是因为平台，而是 `psycopg` 依赖系统 `libpq`，
->    而开发机早就装过了。这说明「本机能跑」不等于「clone 下来能跑」。
-> ② **Windows 的问题不止 `mlx`**：`venv` 生成的 pip license 文件在 Windows 上带只读属性，
->    原子落盘阶段删不掉临时目录（POSIX 上同样文件能直接删）。这是**独立的第二个 Windows 阻碍点**。
+| 平台 | 环境自检 | 装配冒烟 | 结论 |
+|---|---|---|---|
+| **macOS / arm64（干净 runner）** | 21 项全过 | ✅ **699 能力 / 跳过 0** | **✅ 已跑通** |
+| **Linux / x86_64（干净 runner）** | **21 项全过**（「没有【不支持】项，本机可以跑」） | ✅ **699 能力 / 跳过 0** | **✅ 已跑通** |
+| **Linux / x86_64（阿里云 ECS 真机）** | 同上一行（独立环境复现） | ✅ 同上 | **✅ 已跑通**（两环境独立复现） |
+| **Windows / x64（干净 runner）** | 10/21 通过（余 11 项**均为 POSIX 结构性差异**，非缺陷） | ✅ **699 能力 / 跳过 0** | **装配已跑通**；整机自检要等准入放开 |
+
+> **Windows 的 11 项「不支持」是什么**（真机点名，全部是 Windows 本来就没有的东西）：
+> `os.fork` / 进程组号（Windows 无进程组概念）/ `preexec_fn` / `dir_fd` / `resource` 模块（内存峰值采样）/
+> `/proc` 句柄目录 / POSIX 信号语义。**平台按契约如实报「不支持」，不是假装成功** —— 这正是设计要的行为。
+> 因此 Windows 当前状态是「**装配链路已通、整机能力受 POSIX 差异限制**」。
+
+**修复前面貌（同一套工作流，六轮迭代前）**——留证对比，说明这些不是"本来就能跑"：
+
+| 平台 | 修前 | 修后 |
+|---|---|---|
+| macOS（干净） | ❌ 能力数 **0** | ✅ 699 |
+| Windows | ❌ 能力数 **0**（12 个提供者全挂） | ✅ 699 |
+| Linux | ❌ 696 / 跳过 1 | ✅ 699 / 跳过 0 |
+
+> 三条值得注意的事实（**全是这轮真机取证才暴露的，此前文档与 8 份人工审计都没发现**）：
+> ① **干净机器上连 macOS 也起不来**——不是平台问题，是 `psycopg` 依赖系统 `libpq`，而开发机早装过。
+>    ⇒ **「本机能跑」不等于「clone 下来能跑」**，这正是本节加「系统级依赖」清单的原因。
+> ② **`YAML提供者` 也一样**：主进程里写的是严格 `import yaml`，缺包即抛 → 整包被跳过。
+>    开发机上 PyYAML 恰好装进了用户级 site-packages，所以没暴露。已改容忍式导入（调用期报中文错误码）。
+> ③ **`mlx-whisper` 是 Apple Silicon 专有**（Metal 运行时），Linux 上装得上、用不了（缺 `libmlx.so`），
+>    且装配是「任一提供者环境失败即整体阻断」，于是它一个就把 Windows/Linux 整体卡死。已补跨平台后端。
 
 #### 换平台前必须做的两件事
 
 **① 系统级环境依赖**（pip 装不出来，必须系统装）：
 
+> **注意**：清单里**不再有 `libpq`** —— 2026-09-19 起数据库能力自带 libpq
+> （`psycopg` 与 `psycopg-binary` 同装 ≡ `psycopg[binary]`，实测 `psycopg.pq.__impl__ == 'binary'`），
+> 所以干净机器**不需要**预装 PostgreSQL 客户端。
+> 下表剩下三项都是**可选能力**：缺了只影响对应能力，不影响平台本体与装配（环境自检第 9 项只警告不阻断）。
+
 | 依赖 | 谁需要 | macOS | Debian/Ubuntu | RHEL/Alibaba Cloud Linux | Windows |
 |---|---|---|---|---|---|
-| `libpq` | `psycopg`（PostgreSQL 数据库能力） | `brew install libpq` | `apt install libpq-dev` | `dnf install libpq libpq-devel` | 随 PostgreSQL 客户端安装 |
 | `ffmpeg` / `ffprobe` | 音视频转码/抽帧 | `brew install ffmpeg` | `apt install ffmpeg` | **官方源无此包**，需 RPM Fusion / 第三方源 | 官网 zip 或 `winget install ffmpeg` |
 | `tesseract` | OCR | `brew install tesseract tesseract-lang` | `apt install tesseract-ocr tesseract-ocr-chi-sim` | `dnf install tesseract`（中文包另装） | UB Mannheim 安装包 |
 | `soffice` / `libreoffice` | Office 文档转换 | `brew install --cask libreoffice` | `apt install libreoffice` | `dnf install libreoffice-writer` | 官网安装包 |
