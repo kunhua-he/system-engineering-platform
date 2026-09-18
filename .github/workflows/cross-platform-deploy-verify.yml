@@ -49,6 +49,14 @@ jobs:
     timeout-minutes: 40
     # 首轮跑不通是预期：见文件头「口径」
     continue-on-error: true
+    # 实测坑（2026-09-19，真机复现，属审计已登记的 B13 类）：
+    #   Windows runner 上 Python 的 stdout 默认走 **cp1252**，
+    #   打印中文直接 `UnicodeEncodeError: 'charmap' codec can't encode`。
+    #   → 本仓库全程中文输出，故**所有平台统一切 UTF-8**（不是只给 Windows 加）。
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+      PYTHONLEGACYWINDOWSSTDIO: "0"
     strategy:
       fail-fast: false
       matrix:
