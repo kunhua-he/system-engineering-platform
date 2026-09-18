@@ -335,5 +335,81 @@ class Test注册能力(unittest.TestCase):
         self.assertTrue(callable(入口函数))
 
 
+class Test注册参数口径(unittest.TestCase):
+    """注册参数必须**整条**来自 能力契约/参数契约.json（含 必填/默认值）。
+
+    为什么单独立一档：AST 门禁（`开发工具/契约编译/漂移检测.读取注册口径`）只认
+    `注册能力` **函数体内字面量**，能证明「注册侧声明了 必填」；但「装配后注册表里的
+    参数声明真的带着 必填」只能运行时验。网关唯一校验点
+    `运行核心/统一网关/类型规格.py` 的判据是 `项.get("必填") is 真` —— 少一个键
+    就是必填校验静默失效（少传参数落进实现体抛 TypeError，用户拿 500 而非 400）。
+    """
+
+    @staticmethod
+    def _注册参数表() -> dict:
+        class 假注册表:
+            def __init__(self):
+                self.条目 = []
+
+            def 注册(self, 能力):
+                self.条目.append(能力)
+
+        注册表 = 假注册表()
+        from 模块库.媒体转写 import 注册能力
+
+        注册能力(注册表)
+        return {条目.能力id: 条目.参数 for 条目 in 注册表.条目}
+
+    def test_注册参数与契约口径逐条相同(self):
+        """注册参数按**注册口径四键**（名称/类型/必填/默认值）与契约逐条相同。
+
+        为什么不是「整条含 说明」：契约的 `说明` 不进注册口径 —— 漂移检测的
+        `_参数项` 只归一这四键，网关只读 名称/类型/必填。所以镜像是**四键口径镜像**
+        （与全仓已落地的 31 包同形），多出来的键反而会造出「注册声明了契约没声明的东西」。
+        反过来，少任一键就是缺陷：缺 `必填` → 网关 `项.get("必填") is 真` 判假 →
+        必填校验静默失效（用户拿 500 不拿 400）。
+        """
+        import json
+        from pathlib import Path
+        契约路径 = (Path(__file__).resolve().parents[2] / "模块库" / "媒体转写"
+                 / "能力契约" / "参数契约.json")
+        契约 = json.loads(契约路径.read_text(encoding="utf-8"))
+        契约表 = {条目["能力id"]: 条目.get("参数", []) for 条目 in 契约["能力契约"]}
+        注册表 = self._注册参数表()
+        self.assertEqual(sorted(注册表), sorted(契约表))
+        允许键集 = {"名称", "类型", "必填", "默认值"}
+        for 能力id, 契约参数 in 契约表.items():
+            self.assertEqual([项["名称"] for 项 in 注册表[能力id]],
+                             [项["名称"] for 项 in 契约参数], f"{能力id} 参数名序不一致")
+            for 注册项, 契约项 in zip(注册表[能力id], 契约参数):
+                self.assertEqual(set(注册项) - 允许键集, set(),
+                                 f"{能力id}.{注册项['名称']} 注册参数出现口径外的键")
+                for 键 in ("名称", "类型", "必填", "默认值"):
+                    self.assertIn(键, 注册项, f"{能力id}.{注册项['名称']} 漏声明 {键}")
+                    self.assertEqual(注册项[键], 契约项[键],
+                                     f"{能力id}.{注册项['名称']} 的 {键} 与契约不一致")
+
+    def test_必填项按网关判据可见(self):
+        """网关判据 `项.get("必填") is 真` 必须能把契约的必填项识别出来。"""
+        from 公共契约.基础类型.逻辑类型 import 真
+        注册表 = self._注册参数表()
+        必填项 = {能力id: [项["名称"] for 项 in 参数表 if 项.get("必填") is 真]
+                for 能力id, 参数表 in 注册表.items()}
+        self.assertEqual(必填项["媒体转写.转写视频文件"], ["文件路径"])
+        self.assertEqual(必填项["媒体转写.转写音频文件"], ["文件路径"])
+        self.assertEqual(必填项["媒体转写.检查可用性"], [])
+        self.assertEqual(必填项["媒体转写.获取模型版本"], [])
+
+    def test_默认值与契约一致(self):
+        注册表 = self._注册参数表()
+        取值 = {(能力id, 项["名称"]): 项.get("默认值")
+              for 能力id, 参数表 in 注册表.items() for 项 in 参数表}
+        self.assertEqual(取值[("媒体转写.转写音频文件", "超时秒")], 300)
+        self.assertEqual(取值[("媒体转写.转写视频文件", "转写超时秒")], 300)
+        self.assertEqual(取值[("媒体转写.转写音频文件", "取消令牌id")], "")
+        self.assertIsNone(取值[("媒体转写.转写音频文件", "配置")])
+        self.assertIsNone(取值[("媒体转写.转写音频文件", "文件路径")])
+
+
 if __name__ == "__main__":
     unittest.main()
