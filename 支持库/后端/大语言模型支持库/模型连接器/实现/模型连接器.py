@@ -19,11 +19,13 @@ import threading
 import time
 import uuid
 from collections import deque
+from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 from 公共契约.运行时 import 平台适配, 进程终止
+from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型供应链校验 as _供应链校验
 
 # ── 句柄与连接管理 ──────────────────────────────
 
@@ -635,19 +637,109 @@ def _识别模型源(模型路径: str) -> tuple[str, str]:
     return "不支持", str(路径)
 
 
-def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: str, 端口: int, 参数: dict) -> list[str]:
+def _供应链系统根() -> Path:
+    """本包所在系统根（源码态 = 仓库根；制品态 = 平台客户端根）。"""
+    return Path(__file__).resolve().parents[5]
+
+
+def _供应链守卫(规范路径: str, 源格式: str) -> 结果 | None:
+    """启动前的模型二进制供应链校验（版本固定 + 哈希校验 + fail-closed）。
+
+    审计报告 §B9：模型权重与启动器原先完全没有校验，被替换/截断/换版本都不会有人发现。
+    本层把校验挂在**启动动作之前**（不是「检查可用性」这种只读探针上），
+    判定顺序 = 存在性 → 字节数 → sha256，任一层不符即拒绝启动并返回中文原因。
+
+    判定语义（与 实现/模型供应链校验.py 同一份实现，不另写第二套）：
+      * 权重文件：受管模型库内未登记 → 拒绝；调用方自备路径未登记 → 放行并如实标注；
+      * 启动器二进制：必须已登记（版本固定），未登记一律拒绝；
+      * 清单自身读不成（丢失/损坏）→ 拒绝启动，绝不「校验不了就放行」。
+    逃生口是显式的：环境变量 `系统工程平台_模型校验=关闭` 只报不拦（留痕，不做默认）。
+    """
+    系统根 = _供应链系统根()
+    try:
+        格式 = _供应链校验.校验模型目录(规范路径, 系统根=系统根) if 源格式 == "HuggingFace" \
+            else _供应链校验.校验模型文件(规范路径, 系统根=系统根)
+    except Exception as 错误:  # 校验层自身异常同样 fail-closed，不让「校验不了」变成「放行」
+        return _失败("模型完整性校验失败", f"模型二进制供应链校验执行失败: {错误}")
+    if not 格式.get("通过"):
+        return _失败(str(格式.get("错误码") or "模型完整性校验失败"),
+                     str(格式.get("错误说明") or "模型二进制供应链校验未通过"),
+                     详情={k: v for k, v in 格式.items() if k != "错误说明"})
+    return None
+
+
+def _启动器守卫(二进制: str) -> 结果 | None:
+    """启动器二进制的版本固定校验（未登记即拒绝）。"""
+    try:
+        判定 = _供应链校验.校验模型启动器(二进制, 系统根=_供应链系统根())
+    except Exception as 错误:
+        return _失败("模型完整性校验失败", f"模型启动器供应链校验执行失败: {错误}")
+    if not 判定.get("通过"):
+        return _失败(str(判定.get("错误码") or "模型完整性校验失败"),
+                     str(判定.get("错误说明") or "模型启动器供应链校验未通过"),
+                     详情={k: v for k, v in 判定.items() if k != "错误说明"})
+    return None
+
+
+def _启动前供应链阻断(规范路径: str, 模型类型: str, 启动器: str) -> 结果 | None:
+    """启动前的唯一阻断判定：**通过返回 None，不通过返回失败结果**。
+
+    ⚠️ 形状铁律：本函数是「谓词」，通过必须返回 None。绝不能让「校验通过」的
+    **成功结果**漏出去 —— 调用点写的是 `if 阻断 is not None: return 阻断`，
+    一个成功结果会被当成阻断返回，把「校验通过」变成「启动被取消」。
+    （实测踩过：反向验证第三拍报「启动本地模型必须失败」而实际它返回了成功结果，
+    句柄却是 None —— 正是这个形状病。）
+
+    对外仍提供结果型入口 `校验模型完整性`（成功/失败都是结果），
+    两者共用 `_供应链判定`，判定逻辑只有一份。
+    """
+    判定 = _供应链判定(规范路径, 模型类型, 启动器)
+    return None if 判定.get("通过") else 判定["失败结果"]
+
+
+def _供应链判定(规范路径: str, 模型类型: str, 启动器: str) -> dict[str, Any]:
+    """三层校验的公共内核：返回 {"通过": bool, "失败结果": 结果, "值": dict}。"""
+    类型 = (模型类型 or "LLM").lower()
+    类型 = "LLM" if 类型 in ("对话", "llm") else "向量" if 类型 in ("嵌入", "向量", "embedding") \
+        else "重排" if 类型 in ("排序", "重排", "rerank") else "LLM"
+    源格式, 规范 = _识别模型源(规范路径)
+    if 源格式 == "不支持":
+        return {"通过": False, "值": {},
+                "失败结果": _失败("参数不合法",
+                                  "底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")}
+    权重 = _供应链守卫(规范, 源格式)
+    if 权重 is not None:
+        return {"通过": False, "失败结果": 权重, "值": {}}
+    启动器错误 = _启动器校验(启动器, 源格式)
+    if 启动器错误 is not None:
+        return {"通过": False, "失败结果": 启动器错误, "值": {}}
+    return {"通过": True, "失败结果": None,
+            "值": {"模型类型": 类型, "模型路径": 规范, "模型源格式": 源格式,
+                   "校验模式": _供应链校验.解析校验模式(),
+                   "说明": "模型源通过供应链校验（存在性 → 字节数 → sha256；受管外未登记为如实标注放行）"}}
+
+
+def 校验模型完整性(模型路径: str, 模型类型: str = None, 启动器: str = None) -> 结果:
+    """校验单个模型源（权重 + 启动器）的供应链完整性，供装载前自检与巡检复用。
+
+    与启动路径**同一份判据**（都走 `_供应链判定`）。返回统一结果：
+    通过 → `结果.成功结果({模型类型, 模型路径, 模型源格式, 校验模式, 说明})`；
+    不通过 → 供应链类失败结果（错误码 `未登记` / `文件摘要不符`，中文原因可直接读）。
+    """
+    if not isinstance(模型路径, str) or not 模型路径.strip():
+        return _失败("参数不合法", "模型路径必须是非空文本")
+    判定 = _供应链判定(模型路径, 模型类型 or "LLM", str(启动器 or ""))
+    return 结果.成功结果(判定["值"]) if 判定.get("通过") else 判定["失败结果"]
+
+
+def _解析启动器二进制(启动器: str = "") -> str:
+    """按唯一候选顺序解析真实启动器二进制（`latest` 优先）；找不到返回空串。
+
+    `_构建本地启动命令` 与 `_启动器校验` 共用本函数 —— 校验的必须是**真正会被执行的那个二进制**，
+    否则「校验通过」与「实际运行」就不是同一个对象（供应链治理最典型的假绿）。
+    """
     import shutil
-    from pathlib import Path
-    格式, 规范路径 = _识别模型源(模型路径)
-    if 格式 == "HuggingFace":
-        import sys
-        服务脚本 = Path(__file__).resolve().parents[5] / "支持库" / "适配层" / "模型服务.py"
-        if not 服务脚本.is_file():
-            raise FileNotFoundError(f"底座内部模型加载器不存在: {服务脚本}")
-        return [sys.executable, str(服务脚本), "--model-path", 规范路径, "--model-type", 模型类型, "--port", str(端口)]
-    if 格式 != "GGUF":
-        raise ValueError("底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")
-    候选二进制 = [启动器, os.environ.get("LLAMA_CPP_SERVER_BIN", ""), shutil.which("llama-server")]
+    候选二进制 = [启动器 or "", os.environ.get("LLAMA_CPP_SERVER_BIN", ""), shutil.which("llama-server")]
     候选二进制.extend(str(Path.home() / 路径) for 路径 in (
         # 2026-09-16 实测修正：原顺序把 llama.cpp-old 排在 latest 前面。
         # 旧版二进制不支持新架构（实测 Qwen3.6-27B 的 SSM 张量
@@ -658,7 +750,34 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
         # 环境变量 LLAMA_CPP_SERVER_BIN。
         "llama.cpp-latest/build/bin/llama-server",
         "llama.cpp-old/build/bin/llama-server"))
-    二进制 = next((路径 for 路径 in 候选二进制 if 路径 and os.path.isfile(路径) and os.access(路径, os.X_OK)), "")
+    return next((路径 for 路径 in 候选二进制
+                 if 路径 and os.path.isfile(路径) and os.access(路径, os.X_OK)), "")
+
+
+def _启动器校验(启动器: str = "", 源格式: str = "GGUF") -> 结果 | None:
+    """解析真实启动器二进制并校验；HuggingFace 目录走底座内部加载器，不涉及启动器。"""
+    if 源格式 == "HuggingFace":
+        return None
+    二进制 = _解析启动器二进制(启动器)
+    if not 二进制:
+        return _失败("提供者不可用", "未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
+    return _启动器守卫(二进制)
+
+
+def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: str, 端口: int, 参数: dict) -> list[str]:
+    from pathlib import Path
+    格式, 规范路径 = _识别模型源(模型路径)
+    if 格式 == "HuggingFace":
+        import sys
+        服务脚本 = Path(__file__).resolve().parents[5] / "支持库" / "适配层" / "模型服务.py"
+        if not 服务脚本.is_file():
+            raise FileNotFoundError(f"底座内部模型加载器不存在: {服务脚本}")
+        return [sys.executable, str(服务脚本), "--model-path", 规范路径, "--model-type", 模型类型, "--port", str(端口)]
+    if 格式 != "GGUF":
+        raise ValueError("底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")
+    # 候选顺序唯一实现在 `_解析启动器二进制`（latest 优先，理由见该函数），
+    # 供应链校验与真实启动共用它 —— 校验的与执行的是同一个二进制。
+    二进制 = _解析启动器二进制(启动器)
     if not 二进制:
         raise FileNotFoundError("未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
     # 2026-09-17 修复（P0·阻塞生产）：「上下文长度」参数原来收了不用 —— 启动命令里
@@ -773,6 +892,11 @@ def _启动本地模型(模型路径: str | None = None, 启动器: str | None =
             全局模型索引.pop(模型身份, None)
             连接表.pop(现有句柄, None)
             句柄系统.失效(int(现有句柄), "进程暴毙")
+    # 供应链校验（B9）：必须在**创建句柄与拉起进程之前**——校验不过就不该产生任何资源。
+    # 被替换/截断的权重、未登记的启动器、清单读不成，都在这里被拦下并给出中文原因。
+    供应链阻断 = _启动前供应链阻断(规范路径, 类型, str(启动器 or ""))
+    if 供应链阻断 is not None:
+        return 供应链阻断
     端口 = _分配端口(端口)
     启动参数 = dict(参数 or {})
     if 类型 == "LLM":
