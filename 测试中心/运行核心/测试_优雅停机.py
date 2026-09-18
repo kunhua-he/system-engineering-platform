@@ -124,8 +124,8 @@ class 四段状态机用例(unittest.TestCase):
             停收函数=lambda: (执行记录.append("停收") or (真, "已停收")),
             排空函数=lambda 上限: (执行记录.append(f"排空{上限:.0f}") or (真, "已排空")),
             在途快照函数=lambda: [],
-            收尾链=[("丙", lambda: 执行记录.append("收尾丙")),
-                    ("甲", lambda: 执行记录.append("收尾甲"))],
+            收尾链=[("收尾1", lambda: 执行记录.append("收尾1")),
+                    ("收尾2", lambda: 执行记录.append("收尾2"))],
             持久化链=[("落库", lambda: 执行记录.append("落库"))],
             非终态任务函数=lambda: 3,
         )
@@ -136,7 +136,7 @@ class 四段状态机用例(unittest.TestCase):
         self.assertTrue(报告["成功"])
         # 收尾链顺序 = 登记顺序；排空上限取自 排空上限秒（有界）
         self.assertEqual(执行记录, ["停收", f"排空{默认排空上限秒:.0f}",
-                                    "收尾丙", "收尾甲", "落库"])
+                                    "收尾1", "收尾2", "落库"])
         self.assertEqual(报告["持久化"]["非终态任务数"], 3)
         self.assertEqual(编排.状态, 停机阶段_已停机)
 
