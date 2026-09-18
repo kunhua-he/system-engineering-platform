@@ -1,0 +1,158 @@
+# 跨平台部署验证（真机矩阵）
+#
+# 为什么有这个工作流（设计哲学第 11 条「判定必须用数字」）：
+#   本底座的《当前支持矩阵》只声明 macOS / arm64 —— 因为**只有那个环境有实测证据**。
+#   换平台放开准入（`平台适配.校验支持范围`）的前置条件，是**先拿到真机证据**，
+#   不是「文档里写了跨平台」（决策 0042 §四：不能偷偷放开 fail-closed）。
+#
+#   这份工作流就是那个取证入口：在 GitHub 免费 runner 上跑**真实**的
+#   环境自检 + 跨平台部署验证，把每个平台「卡在哪一步、退什么码」原样记下来。
+#
+# 口径（重要，防误读）：
+#   - 本工作流只做**只读取证**：不改仓库、不提交、不上传任何凭证。
+#   - `continue-on-error: true` 是刻意的：**首轮跑不通是预期结果**，跑通才是要上报的结论。
+#     它不表示「允许失败」，而表示「先把真实现状采下来」。
+#   - 触发方式：手动（workflow_dispatch）或指定路径变更的 push。
+#   - 结果只作证据，不作发布门禁；发布门禁仍以本机正式链路为准。
+
+name: 跨平台部署验证
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "公共契约/运行时/平台适配.py"
+      - "运行核心/运行环境管理器/**"
+      - "支持库/适配层/*/依赖锁.json"
+      - "支持库/后端/转写支持库/**"
+      - "开发工具/跨平台部署验证.py"
+      - "开发工具/环境自检.py"
+      - "开发工具/重建依赖锁.py"
+      - ".github/workflows/跨平台部署验证.yml"
+
+# 只读：本工作流永不写仓库
+permissions:
+  contents: read
+
+jobs:
+  验证:
+    name: ${{ matrix.名称 }}
+    runs-on: ${{ matrix.系统 }}
+    timeout-minutes: 40
+    # 首轮跑不通是预期：见文件头「口径」
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - 名称: macOS-arm64（对照基线·有验收记录）
+            系统: macos-14
+            期望: 通过
+          - 名称: Linux-x86_64（待取证）
+            系统: ubuntu-latest
+            期望: 观察
+          - 名称: Windows-x86_64（待取证）
+            系统: windows-latest
+            期望: 观察
+
+    steps:
+      - name: 取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: 打印环境三元组（真机事实）
+        shell: bash
+        run: |
+          # Windows runner 上 setup-python 装的是 python.exe，POSIX 上是 python3；
+          # 这里统一探测，避免「解释器名不同」被误读成「平台不支持」。
+          if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+          echo "解释器命令: $PY"
+          echo "PYTHON=$PY" >> "$GITHUB_ENV"
+          "$PY" -V
+          "$PY" -c "import platform,sys; print('操作系统:', platform.system(), '| CPU:', platform.machine(), '| Python:', sys.version.split()[0])"
+
+      - name: 环境自检（换平台后第一条该跑的命令）
+        shell: bash
+        continue-on-error: true
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          "$PYTHON" -m 开发工具.环境自检 > 自检-before.log 2>&1
+          echo "环境自检退出码=$?"
+          tail -30 自检-before.log
+
+      - name: 跨平台部署验证（重建依赖锁 + 装配冒烟，机器判定）
+        shell: bash
+        continue-on-error: true
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          "$PYTHON" -m 开发工具.跨平台部署验证 > 部署验证.log 2>&1
+          echo "部署验证退出码=$?"
+          tail -30 部署验证.log
+
+      - name: 装配冒烟（README 部署第 3 步的三条断言，独立复跑一遍）
+        shell: bash
+        continue-on-error: true
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          "$PYTHON" - <<'PY' > 装配冒烟.log 2>&1
+          import sys
+          from pathlib import Path
+          from 后端核心.后端核心 import 后端核心
+          b = 后端核心(Path('.'))
+          装配 = b.启动()
+          快照 = b.状态快照()
+          print('[装配冒烟] 状态=' + str(快照['状态']) + ' 能力数=' + str(快照['能力数']) + ' 跳过包=' + str(len(快照['装配跳过包'])))
+          问题 = []
+          if not 装配.成功:
+              问题.append('装配失败（' + str(装配.错误码) + '）：' + str(装配.错误说明))
+          if 快照['能力数'] <= 0:
+              问题.append('能力数为 0：一个能力都没装配出来，不能算部署成功')
+          if 快照['装配跳过包']:
+              问题.append('有 ' + str(len(快照['装配跳过包'])) + ' 个包被跳过：' + '；'.join(快照['装配跳过包']))
+          if 问题:
+              for 项 in 问题:
+                  print('[装配冒烟] 失败：' + 项, file=sys.stderr)
+              sys.exit(1)
+          print('[装配冒烟] 通过：装配成功、能力数 > 0、无跳过包')
+          PY
+          echo "装配冒烟退出码=$?"
+          tail -20 装配冒烟.log
+
+      - name: 汇总本平台结论（写进工作流摘要，便于审阅）
+        shell: bash
+        if: always()
+        run: |
+          {
+            echo "## ${{ matrix.名称 }}"
+            echo ""
+            echo "- 期望：${{ matrix.期望 }}"
+            echo "- 说明：本平台证据用于决定是否把该平台加入《当前支持矩阵》；**跑不通不阻断本工作流**。"
+            echo ""
+            echo '```text'
+            echo "── 部署验证结论 ──"
+            tail -25 部署验证.log 2>/dev/null || echo "（部署验证未产出日志）"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 上传完整日志（证据留档）
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: 部署验证日志-${{ matrix.系统 }}
+          path: |
+            自检-before.log
+            部署验证.log
+            装配冒烟.log
+          if-no-files-found: warn
+          retention-days: 30
