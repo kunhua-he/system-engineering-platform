@@ -116,23 +116,35 @@ def _列名表(连接, 表: str) -> list[str]:
     return [描述[1] for 描述 in 连接.execute(f"PRAGMA table_info({表})").fetchall()]
 
 
-def _拼UPSERT(表: str, 记录: dict[str, Any], 主键: str) -> str:
-    """单事务 UPSERT 语句（`写入记录` 与 `写入记录或唯一冲突` 共用，禁止各写一套）。
+def _拼UPSERT(表: str, 记录: dict[str, Any], 主键: str, *,
+              主键缺失时替换: bool = True) -> str:
+    """单事务写语句（`写入记录` 与 `写入记录或唯一冲突` 共用，禁止各写一套）。
 
-    只在记录含主键之外的列时挂 `ON CONFLICT(主键) DO UPDATE`，且**只更新本次传入的列**
-    （`excluded.列`）：未传入的列保持原值，不做「先读整行再整行覆盖」，
-    也不用 REPLACE（REPLACE = DELETE+INSERT，会触发级联、换 rowid、清未传列）。
-    只带主键列的记录走纯 INSERT（没有可更新的列）；不带主键的记录同样走纯 INSERT，
-    与原先「无主键即不合并」逐字一致。
+    记录带主键列 → `INSERT … ON CONFLICT(主键) DO UPDATE SET 仅传入列=excluded.列`
+    （P2-10③：不先读整行、不整行覆盖，未传入的列保持原值；只带主键列时 DO NOTHING
+    即「无字段可更新」的幂等空操作）。
+
+    记录不带主键列（如 `需求登记.登记需求` 只传业务列、主键走默认 "id"，主键值在业务列里）
+    → 按 `主键缺失时替换` 走老语义：
+    - True（`写入记录`）：`INSERT OR REPLACE`，与硬化前逐字一致——这些调用点传的是整行，
+      没有「同主键不同字段并发合并」可言；
+    - False（`写入记录或唯一冲突`）：纯 `INSERT`，绝不 REPLACE（REPLACE 会删掉占着
+      `唯一列` 的那一行，与本方法「谁该消失不由存储层决定」的契约相反）。
     """
     字段表 = list(记录)
     占位符 = ", ".join(["?"] * len(字段表))
     列名 = ", ".join(字段表)
     语句 = f"INSERT INTO {表}({列名}) VALUES({占位符})"
     更新列 = [字段 for 字段 in 字段表 if 字段 != 主键]
-    if 更新列:
-        语句 += (f" ON CONFLICT({主键}) DO UPDATE SET "
-                + ", ".join(f"{字段}=excluded.{字段}" for 字段 in 更新列))
+    if 主键 in 记录:
+        if 更新列:
+            语句 += (f" ON CONFLICT({主键}) DO UPDATE SET "
+                    + ", ".join(f"{字段}=excluded.{字段}" for 字段 in 更新列))
+        else:
+            语句 += f" ON CONFLICT({主键}) DO NOTHING"
+        return 语句
+    if 主键缺失时替换:
+        return f"INSERT OR REPLACE INTO {表}({列名}) VALUES({占位符})"
     return 语句
 
 
@@ -345,7 +357,7 @@ class 平台状态(权威状态):
         """
         _校验写入参数(表, 记录, 主键, 唯一列)
         字段表 = list(记录)
-        语句 = _拼UPSERT(表, 记录, 主键)
+        语句 = _拼UPSERT(表, 记录, 主键, 主键缺失时替换=假)
         连接 = self._连接()
         try:
             with 连接:
