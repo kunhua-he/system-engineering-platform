@@ -285,6 +285,60 @@ class 搜索能力测试(能力目录测试基类):
         for 字段 in 旧实现字段 + 开发入口字段 + 十四字段:
             self.assertIn(字段, 记录, f"完整契约档记录缺少旧实现字段: {字段}")
 
+    def test_反向_游标改成偏移量必然漏项(self):
+        """反向验证：把起点改成「偏移量 + 漏一项」，本类的翻页断言必须真的变红。
+
+        **为什么这条必须在测试里（不是跑一次就扔）**：断言「合计 == 总数」只有在**能失败**时
+        才有意义。若游标实现被改成偏移量而断言仍绿，说明它压根没在判分页正确性。
+        这里用 importlib 加载一份**改过的实现副本**（不动磁盘上的正式实现），
+        断言同一套走查在副本上得到「合计 < 总数」——证明断言有分辨力，不是恒绿。
+        """
+        import importlib.util
+        import tempfile
+
+        源文件 = 系统根 / "模块库" / "能力目录" / "实现" / "能力目录.py"
+        原文 = 源文件.read_text(encoding="utf-8")
+        锚 = "        起点 = bisect_right(编号表, 锚点id)"
+        self.assertIn(锚, 原文,
+                      "反向实验锚点未找到：游标实现已变形态，请同步更新本用例（否则它变成空转）")
+        坏文 = 原文.replace(
+            锚, "        起点 = 编号表.index(锚点id) + 2  # 反向实验：偏移量 + 故意漏一项")
+
+        临时目录 = Path(tempfile.mkdtemp(prefix="能力目录反向_", dir="/tmp"))
+        副本路径 = 临时目录 / "能力目录_反向实验.py"
+        副本路径.write_text(坏文, encoding="utf-8")
+        规格 = importlib.util.spec_from_file_location("能力目录_反向实验", 副本路径)
+        assert 规格 and 规格.loader
+        副本 = importlib.util.module_from_spec(规格)
+        sys.modules["能力目录_反向实验"] = 副本
+        规格.loader.exec_module(副本)
+        副本.定位项目根 = lambda: 系统根          # 夹具：只注入项目根，逻辑本体未改
+        self.assertIs(副本.定位项目根(), 系统根)  # 夹具生效自证
+
+        def 走查(模块, 关键词: str, 页大小: int) -> tuple[list[str], int]:
+            游标, 汇总 = "", []
+            while True:
+                值 = 模块.搜索能力(关键词, 页大小, 游标).值
+                汇总.extend(记录["能力id"] for 记录 in 值["能力列表"])
+                游标 = 值["下一条游标"]
+                if not 游标 or len(汇总) > 10000:
+                    break
+            return 汇总, 值["总数"]
+
+        from 模块库.能力目录.实现.能力目录 import 搜索能力 as 正式实现
+
+        for 关键词, 页大小 in (("OCR", 1), ("解析", 17), ("", 100)):
+            with self.subTest(关键词=关键词, 页大小=页大小):
+                好集, 好总数 = 走查(sys.modules["模块库.能力目录.实现.能力目录"], 关键词, 页大小)
+                坏集, 坏总数 = 走查(副本, 关键词, 页大小)
+                # 前置（SoT）：正式实现本来是绿的
+                self.assertEqual(好总数, len(好集), "前置：正式实现应合计==总数")
+                self.assertEqual(len(好集), len(set(好集)), "前置：正式实现应无重复")
+                # EoT：偏移量实现必须真的漏项（否则断言无分辨力）
+                self.assertLess(len(坏集), 坏总数,
+                                f"偏移量实现竟然没漏项（{len(坏集)} vs {坏总数}）——"
+                                "「合计==总数」这条断言是恒绿的，抓不出分页缺陷")
+
     def test_不暴露适配层与内部层包(self):
         调用结果 = self.搜索("", 100)
         self.assertTrue(调用结果.成功, 调用结果.错误说明)
