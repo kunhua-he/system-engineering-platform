@@ -93,7 +93,7 @@
     },
     {
       "路径": "控制面对账.py",
-      "sha256": "e22d96916c84146e748942d7bc8548b4340f78d98b3074b34a6cb4ef7b3b30f0"
+      "sha256": "ebe507c0feadbacdb8af801b314b12ec92c9e4b18819edf0a9cf036334bb26c5"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -221,7 +221,7 @@
     },
     {
       "路径": "进程提供者.py",
-      "sha256": "1ff7a59f22690bd7723591c9f63f3baa56a40d3d5894b8b9a07c4e257966b309"
+      "sha256": "8fdc82dfebb73d712f828012c4dbaab58f3ebfbea6fe579a5bdc19de4917888a"
     },
     {
       "路径": "进程组管理.py",
