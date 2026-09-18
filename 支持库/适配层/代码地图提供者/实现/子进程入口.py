@@ -17,6 +17,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 可执行名 = "codegraph"
 兜底目录 = ("/usr/local/bin", "/opt/homebrew/bin")  # ★ node 常在 /usr/local/bin，不在 homebrew
 重建方式表 = {"同步": "sync", "全量": "index"}
@@ -72,10 +74,10 @@ def _取项目根(参数: dict) -> tuple[Path | None, dict | None]:
     """校验并返回 (项目根 Path, None)；不合法时返回 (None, 错误字典)。"""
     文本 = str(参数.get("项目根目录") or "").strip()
     if not 文本:
-        return None, {"成功": False, "错误码": "参数不合法", "错误说明": "缺少必填参数 项目根目录"}
+        return None, {"成功": 假, "错误码": "参数不合法", "错误说明": "缺少必填参数 项目根目录"}
     项目根 = Path(文本).expanduser()
     if not 项目根.is_dir():
-        return None, {"成功": False, "错误码": "参数不合法",
+        return None, {"成功": 假, "错误码": "参数不合法",
                       "错误说明": f"项目根目录不存在或不是目录: {项目根}"}
     return 项目根, None
 
@@ -84,15 +86,15 @@ def 检查提供者(参数: dict) -> dict:
     """真实版本探针；缺失即 提供者不可用，不伪装成功。"""
     可执行 = _找可执行()
     if not 可执行:
-        return {"成功": False, "错误码": "提供者不可用",
+        return {"成功": 假, "错误码": "提供者不可用",
                 "错误说明": f"未找到 {可执行名} 外部命令（已查 PATH 与 {'、'.join(兜底目录)}）"}
     try:
         探针 = subprocess.run([可执行, "--version"], capture_output=True, text=True,
                              timeout=30, env=_环境())
     except subprocess.TimeoutExpired:
-        return {"成功": False, "错误码": "超时", "错误说明": "版本探针超过 30 秒"}
+        return {"成功": 假, "错误码": "超时", "错误说明": "版本探针超过 30 秒"}
     文本 = (探针.stdout or 探针.stderr or "").strip()
-    return {"成功": True, "值": {"可执行路径": 可执行, "版本": 文本.splitlines()[0] if 文本 else "",
+    return {"成功": 真, "值": {"可执行路径": 可执行, "版本": 文本.splitlines()[0] if 文本 else "",
                                 "退出码": 探针.returncode}}
 
 
@@ -117,7 +119,7 @@ def 查询项目地图状态(参数: dict) -> dict:
             待同步 = 段[1].strip()[:200] if len(段) > 1 else ""
         except subprocess.TimeoutExpired:
             状态输出 = "（status 超时）"
-    return {"成功": True, "值": {"项目根目录": str(项目根), "地图路径": str(库路径),
+    return {"成功": 真, "值": {"项目根目录": str(项目根), "地图路径": str(库路径),
                                 "索引时间": 索引时间, **规模,
                                 "待同步变更": 待同步, "状态输出": 状态输出}}
 
@@ -129,11 +131,11 @@ def 重建项目地图索引(参数: dict) -> dict:
         return 错误
     重建方式 = str(参数.get("重建方式") or "同步").strip()
     if 重建方式 not in 重建方式表:
-        return {"成功": False, "错误码": "参数不合法",
+        return {"成功": 假, "错误码": "参数不合法",
                 "错误说明": f"重建方式 只能是 {' / '.join(重建方式表)}，实际 {重建方式!r}"}
     可执行 = _找可执行()
     if not 可执行:
-        return {"成功": False, "错误码": "提供者不可用", "错误说明": f"未找到 {可执行名} 外部命令"}
+        return {"成功": 假, "错误码": "提供者不可用", "错误说明": f"未找到 {可执行名} 外部命令"}
     库路径 = _库路径(项目根)
     之前 = _计数(库路径)
     子命令 = 重建方式表[重建方式]
@@ -142,15 +144,15 @@ def 重建项目地图索引(参数: dict) -> dict:
         执行 = subprocess.run([可执行, 子命令, "."], cwd=str(项目根), capture_output=True, text=True,
                              timeout=float(参数.get("超时秒") or 1800), env=_环境())
     except subprocess.TimeoutExpired:
-        return {"成功": False, "错误码": "超时",
+        return {"成功": 假, "错误码": "超时",
                 "错误说明": f"codegraph {子命令} 超过 {参数.get('超时秒') or 1800} 秒"}
     耗时秒 = round(time.monotonic() - 开始, 2)
     if 执行.returncode != 0:
         尾巴 = (执行.stderr or 执行.stdout or "").strip()[-500:]
-        return {"成功": False, "错误码": "执行失败",
+        return {"成功": 假, "错误码": "执行失败",
                 "错误说明": f"codegraph {子命令} 退出码 {执行.returncode}: {尾巴}"}
     之后 = _计数(库路径)
-    return {"成功": True, "值": {"项目根目录": str(项目根), "重建方式": 重建方式, "子命令": 子命令,
+    return {"成功": 真, "值": {"项目根目录": str(项目根), "重建方式": 重建方式, "子命令": 子命令,
                                 "耗时秒": 耗时秒, "之前规模": 之前, "之后规模": 之后,
                                 "是否刷新": 之前 != 之后,
                                 "输出": (执行.stdout or "").strip()[-800:]},
@@ -188,7 +190,7 @@ def 主循环() -> int:
     try:
         应答 = 函数(请求.get("参数") or {})
     except Exception as 错误:  # 统一结果铁律：实现不外抛，真实原因原样回带
-        应答 = {"成功": False, "错误码": "执行失败",
+        应答 = {"成功": 假, "错误码": "执行失败",
                 "错误说明": f"{type(错误).__name__}: {错误}"}
     print(json.dumps(应答, ensure_ascii=False))
     return 0
