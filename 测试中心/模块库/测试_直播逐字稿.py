@@ -286,5 +286,154 @@ class Test全自动精校失败路径(直播逐字稿装配):
         self.assertIn("未配置模型", 结果.错误说明)
 
 
+class Test注册参数口径(直播逐字稿装配):
+    """注册参数与 能力契约/参数契约.json 逐条相同，且 `注册能力` 体内可静态解析。
+
+    「丢参」缺陷（2026-09-18）的回归护盾，两拍都钉死：
+      第一拍（3893e0dd）：入口只抽「名称+类型」→ `必填` 被丢弃 → 网关
+        `运行核心/统一网关/类型规格.py` 判据 `项.get("必填") is 真` 判假 → 必填校验
+        静默失效，少传参数落进实现体抛 TypeError，用户拿 HTTP 500 而非 400。
+      第二拍（本次）：入口改成 `_参数声明(能力id, 参数名)` **函数内推导** → 参数表对
+        `开发工具/契约编译/漂移检测.读取注册口径` 的 AST 读取器不可判定，本包 4 条能力
+        全落「参数口径未解析」—— 门禁看不见就等于没有。
+    改法：契约逐条镜像成 `注册能力` **函数体内**的字面量（`_参数契约表`），
+    `参数=_参数契约表[能力id]` 按下标取。
+    """
+
+    def test_注册参数逐条镜像契约JSON不丢必填默认值(self):
+        """真注册表里的参数项必须逐字等于契约原值（含 必填/默认值）。"""
+        import json
+
+        from 公共契约.能力契约.契约 import 能力注册表 as 注册表类
+
+        契约 = json.loads(
+            (Path(__file__).resolve().parents[2]
+             / "模块库" / "直播逐字稿" / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+        契约参数表 = {条["能力id"]: [dict(参数) for 参数 in 条["参数"]]
+                  for 条 in 契约["能力契约"]}
+        注册表 = 注册表类()
+        注册能力(注册表)
+        self.assertEqual(sorted(注册表.能力id列表), sorted(契约参数表))
+        for 能力id, 契约参数 in 契约参数表.items():
+            在线实现 = 注册表.获取(能力id)
+            self.assertIsNotNone(在线实现, f"{能力id} 未注册")
+            assert 在线实现 is not None
+            在线参数 = 在线实现.参数
+            self.assertEqual([参数["名称"] for 参数 in 在线参数],
+                             [参数["名称"] for 参数 in 契约参数],
+                             f"{能力id} 注册参数名序与契约不一致")
+            for 在线, 期望 in zip(在线参数, 契约参数):
+                self.assertIn("必填", 在线, f"{能力id}.{期望['名称']} 注册项丢了 必填")
+                self.assertIn("默认值", 在线, f"{能力id}.{期望['名称']} 注册项丢了 默认值")
+                self.assertEqual(在线["必填"], 期望["必填"],
+                                 f"{能力id}.{期望['名称']} 必填 与契约不一致")
+                self.assertEqual(在线["默认值"], 期望["默认值"],
+                                 f"{能力id}.{期望['名称']} 默认值 与契约不一致")
+                # 契约没声明的键不得补（补出来的默认值就是第二套事实源）
+                self.assertEqual(set(在线) - {"名称", "类型", "必填", "默认值"}, set(),
+                                 f"{能力id}.{期望['名称']} 注册项多出契约未声明的键")
+
+    def test_注册参数表在注册能力函数体内可静态解析(self):
+        """`_参数契约表` 必须是 `注册能力` **函数体内的字面量**，且含 必填。
+
+        改回「函数内推导」（旧形态）或挪到模块顶层，本用例即红：AST 读取器只收
+        `注册能力` 函数体内的 `ast.List/ast.Dict` 字面量赋值（看 `_扫描注册语句`）。
+        """
+        import ast
+        import inspect
+
+        import 模块库.直播逐字稿 as 模块入口
+
+        树 = ast.parse(inspect.getsource(模块入口.注册能力))
+        # 用与漂移检测同一支 AST 静态求值：解不出即判「不可静态判定」，本用例红。
+        from 开发工具.契约编译.漂移检测 import _静态字面量, 未解析哨兵
+
+        函数体 = 树.body[0].body if isinstance(树.body[0], ast.FunctionDef) else 树.body
+        绑定: dict = {}
+        for 节点 in 函数体:
+            if isinstance(节点, ast.Assign) and isinstance(节点.targets[0], ast.Name):
+                绑定[节点.targets[0].id] = 节点.value
+        self.assertIn("_参数契约表", 绑定, "`_参数契约表` 未写在 注册能力 函数体内")
+        self.assertIn("_注册参数名序", 绑定, "`_注册参数名序` 未写在 注册能力 函数体内")
+        契约表 = _静态字面量(绑定["_参数契约表"], 绑定)
+        self.assertIsNot(契约表, 未解析哨兵,
+                         "_参数契约表 静态解析不出（AST 门禁看不见 → 参数口径判未解析）")
+        assert isinstance(契约表, dict)
+        self.assertEqual(sorted(契约表), sorted([
+            "直播逐字稿.转写媒体文件", "直播逐字稿.检查可用性",
+            "直播逐字稿.读取项目状态", "直播逐字稿.全自动精校"]))
+        for 能力id, 参数列表 in 契约表.items():
+            self.assertTrue(参数列表, f"{能力id} 参数表为空")
+            self.assertTrue(all("必填" in 参数 for 参数 in 参数列表),
+                            f"{能力id} 参数表有项不含 必填（AST 门禁读不到必填口径）")
+            self.assertTrue(all("默认值" in 参数 for 参数 in 参数列表),
+                            f"{能力id} 参数表有项不含 默认值")
+
+    def test_漂移检测读到的参数口径与契约一致(self):
+        """端到端：哨门禁 `读取注册口径` 抽出的参数必须含 必填/默认值 且等于契约。"""
+        import json
+
+        from 开发工具.契约编译.漂移检测 import 读取契约口径, 读取注册口径
+
+        包目录 = Path(__file__).resolve().parents[2] / "模块库" / "直播逐字稿"
+        注册 = 读取注册口径(包目录 / "__init__.py")
+        契约 = 读取契约口径(包目录 / "能力契约" / "参数契约.json")
+        self.assertEqual(sorted(注册), sorted(契约))
+        for 能力id, 契约项 in 契约.items():
+            注册参数 = 注册[能力id]["参数"]
+            self.assertIsNotNone(
+                注册参数, f"{能力id} 参数口径未解析（注册处不是函数体内字面量）")
+            assert 注册参数 is not None
+            self.assertEqual([项["名称"] for 项 in 注册参数],
+                             [项["名称"] for 项 in 契约项["参数"]], f"{能力id} 名序不一致")
+            for 注册项, 契约项参数 in zip(注册参数, 契约项["参数"]):
+                self.assertIn("必填", 注册项, f"{能力id}.{注册项['名称']} 必填 读不到")
+                self.assertIn("默认值", 注册项, f"{能力id}.{注册项['名称']} 默认值 读不到")
+                self.assertEqual(注册项["必填"], 契约项参数["必填"])
+                self.assertEqual(注册项["类型"], 契约项参数["类型"])
+                self.assertEqual(注册项["默认值"], 契约项参数.get("默认值"))
+        # 契约 JSON 未被本次改动带上（注册侧只是镜像，原值不动）
+        self.assertEqual(
+            契约["直播逐字稿.转写媒体文件"]["参数"][2]["默认值"], 300)
+        self.assertEqual(
+            契约["直播逐字稿.全自动精校"]["参数"][8]["默认值"], 3600.0)
+        json.loads((包目录 / "能力契约" / "参数契约.json").read_text(encoding="utf-8"))
+
+    def test_网关按注册参数拦下缺必填参数(self):
+        """真注册表 → 网关唯一校验点：缺必填即 400 文案，不落进实现体抛 TypeError。"""
+        from 公共契约.能力契约.契约 import 能力注册表 as 注册表类
+        from 运行核心.统一网关.类型规格 import 校验能力参数
+
+        注册表 = 注册表类()
+        注册能力(注册表)
+        精校实现 = 注册表.获取("直播逐字稿.全自动精校")
+        self.assertIsNotNone(精校实现)
+        assert 精校实现 is not None
+        缺少必填 = 校验能力参数("直播逐字稿.全自动精校", 精校实现.参数, {})
+        self.assertEqual(
+            缺少必填,
+            "参数不合法：能力 直播逐字稿.全自动精校 缺少必填参数 源文件路径")
+        全给 = 校验能力参数(
+            "直播逐字稿.全自动精校", 精校实现.参数,
+            {"源文件路径": "/abs/录制.mp4", "导出路径": "/abs/出稿.md",
+             "缓存目录": "/abs/缓存", "模式": 1, "分片秒数": 300,
+             "附加术语": "", "超时秒": 3600.0, "输出结构": "", "附加要求": ""})
+        self.assertEqual(全给, "", f"参数齐全却被判不合法: {全给}")
+
+    def test_名序闸门对错名序抛错(self):
+        """装配期闸门必须真的拦：注册名序 ≠ 契约名序即 raise（不静默漏参）。"""
+        import 模块库.直播逐字稿 as 模块入口
+
+        契约表 = {"直播逐字稿.检查可用性": [
+            {"名称": "超时秒"}, {"名称": "配置"}]}
+        with self.assertRaises(ValueError):
+            模块入口._校验参数名序(契约表, {"直播逐字稿.检查可用性": ["配置", "超时秒"]})
+        with self.assertRaises(ValueError):
+            模块入口._校验参数名序(契约表, {})   # 有契约但注册处未声明名序
+        # 正确名序不抛（反向对照：闸门不是恒抛）
+        self.assertIsNone(
+            模块入口._校验参数名序(契约表, {"直播逐字稿.检查可用性": ["超时秒", "配置"]}))
+
+
 if __name__ == "__main__":
     unittest.main()
