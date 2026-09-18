@@ -31,17 +31,18 @@ import ast
 import contextlib
 import json
 import os
-import select
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
+from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
-from 公共契约.运行时 import 平台适配
+from 公共契约.运行时 import 平台适配, 有界IO, 进程终止
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 来源标识 = "技能库"
@@ -331,6 +332,89 @@ def 进程组终止(进程: subprocess.Popen) -> None:
     进程终止.强制结束子进程(进程, 宽限秒=5.0, 等待秒=5.0)
 
 
+class _管道收集器:
+    """受控脚本子进程 stdout/stderr 的**唯一后台读者**：阻塞式 `受限读取` + 交接缓冲。
+
+    为什么不用 `select` 轮询：Windows 的 `select` 只接受 socket，对管道 fd 直接抛
+    `OSError`，旧实现把它吞成「本轮无可读」→ 在 Windows 上永远收不到脚本输出，
+    脚本明明成功却按「输出 JSON 非法」报错。范式与本仓
+    `运行核心/加载器/提供者隔离/独立进程.py` 同源（同一 `公共契约.运行时.有界IO.受限读取`
+    唯一实现）：后台线程读内核 → 回调累积到 `_缓冲` → 事件通知等待侧；
+    主循环退化为「等事件 + 切片超时判超时」，**不含任何平台判断**。
+
+    `_缓冲` 在超限后**继续排空但不再累积**（防管道回压导致子进程写阻塞）。
+    """
+
+    __slots__ = ("_缓冲", "_事件", "_条件", "_结束", "_超限", "_流", "_已核超限", "_上限字节")
+
+    def __init__(self, 流: Any, 上限字节: int = 默认输出上限) -> None:
+        self._缓冲 = bytearray()
+        self._事件 = threading.Event()
+        self._条件 = threading.Condition()
+        self._结束 = False
+        self._超限 = False
+        self._已核超限 = False
+        self._流 = 流
+        # 上限必须来自**调用方**（`运行受控脚本` 的 输出上限）：写死成默认值会在调用方
+        # 放宽上限时把多出来的字节静默丢掉（截断），是比「不读」更隐蔽的错。
+        self._上限字节 = max(1, int(上限字节))
+
+    def 启动(self) -> threading.Thread:
+        线程 = threading.Thread(target=self._消费, daemon=True, name="技能库-管道收集")
+        线程.start()
+        return 线程
+
+    def _消费(self) -> None:
+        try:
+            有界IO.受限读取(self._流, 上限字节=self._上限字节, 数据回调=self._收块,
+                          超限回调=self._置超限)
+        except (OSError, ValueError):
+            pass
+        finally:
+            with self._条件:
+                self._结束 = True
+                self._条件.notify_all()
+            self._事件.set()
+
+    def _收块(self, 块: bytes) -> None:
+        with self._条件:
+            self._缓冲.extend(块)
+            self._条件.notify_all()
+        self._事件.set()
+
+    def _置超限(self) -> None:
+        with self._条件:
+            self._超限 = True
+            self._条件.notify_all()
+        self._事件.set()
+
+    def 取(self) -> tuple[bytes, bool, bool]:
+        """非阻塞取走当前已累积字节，返回（片段、是否已结束、是否首次判定超限）。
+
+        取走后清空缓冲：字节只能被搬走一次（与旧 `os.read` 从管道搬走同语义）。
+        超限只在**首次**置位时返回真，避免调用方重复生成「输出超限」结论。
+        """
+        with self._条件:
+            片段 = bytes(self._缓冲)
+            self._缓冲.clear()
+            结束 = self._结束
+            首次超限 = self._超限 and not self._已核超限
+            if 首次超限:
+                self._已核超限 = True
+        if not 片段:
+            self._事件.clear()
+        return 片段, 结束, 首次超限
+
+    def 等(self, 超时秒: float) -> None:
+        """等新数据 / EOF / 超限，最多 `超时秒`（超时正常返回，由调用方判总超时）。"""
+        self._事件.wait(max(0.01, 超时秒))
+
+    def 已结束(self) -> bool:
+        """后台读线程是否已 EOF（管道读完）；配合「进程已退出」判收口。"""
+        with self._条件:
+            return self._结束
+
+
 # ── 脚本源码审计（AST） ────────────────────────────────────────────
 
 def _属性链名(节点: ast.AST) -> str:
@@ -530,6 +614,15 @@ def 运行受控脚本(
     开始 = time.monotonic()
     输出 = bytearray()
     错误输出 = bytearray()
+    # stdout/stderr 的唯一读者：后台线程 + 有界IO.受限读取（不 select 轮询管道 fd）。
+    # 必须在写 stdin 之前起线程，避免子进程先输出把管道写满、父进程同时写 stdin 死锁。
+    收集器 = [(_管道收集器(流, 输出上限), 容器)
+            for 流, 容器 in ((进程.stdout, 输出), (进程.stderr, 错误输出)) if 流 is not None]
+    try:
+        for 收集, _容器 in 收集器:
+            收集.启动()
+    except (OSError, ValueError, RuntimeError):
+        pass
     try:
         进程.stdin.write(json.dumps({"参数": 参数 or {}}, ensure_ascii=False).encode("utf-8"))
         进程.stdin.close()
@@ -537,14 +630,6 @@ def 运行受控脚本(
         pass
     结果: dict | None = None
     while True:
-        if 进程.poll() is not None:
-            for 管道, 容器 in ((进程.stdout, 输出), (进程.stderr, 错误输出)):
-                try:
-                    块 = 管道.read()
-                except Exception:
-                    块 = b""
-                容器.extend(块 or b"")
-            break
         if time.monotonic() - 开始 > 超时秒:
             进程组终止(进程)
             结果 = {
@@ -554,25 +639,28 @@ def 运行受控脚本(
                 "标准错误": 错误输出.decode("utf-8", "replace")[-500:],
             }
             break
-        try:
-            可读, _, _ = select.select([进程.stdout, 进程.stderr], [], [], 0.5)
-        except ValueError:
-            可读 = []
-        for 管道 in 可读:
-            try:
-                块 = os.read(管道.fileno(), 65536)
-            except OSError:
-                块 = b""
-            if 管道 is 进程.stdout:
-                输出.extend(块)
-                if len(输出) > 输出上限:
-                    进程组终止(进程)
-                    结果 = {"成功": 假, "错误码": "输出超限", "错误信息": f"stdout 超过 {输出上限} 字节"}
-                    break
-            else:
-                错误输出.extend(块)
+        # 先排空（把后台线程已交接的字节搬进容器），再判是否结束 ——
+        # 顺序反了会在「子进程刚退出、后台线程还有缓冲」时提前 break 丢掉尾部输出。
+        # ⚠️ 管道字节已被后台线程搬走：这里**绝不能**再直接 `进程.stdout.read()`
+        # （那是第二个读者，只会拿到空串，把正常输出判成「非法 JSON」）。
+        for 收集, 容器 in 收集器:
+            片段, _结束, 首次超限 = 收集.取()
+            容器.extend(片段)
+            if 首次超限:
+                进程组终止(进程)
+                结果 = {"成功": 假, "错误码": "输出超限",
+                        "错误信息": f"{'stdout' if 容器 is 输出 else 'stderr'} 超过 {输出上限} 字节"}
+                break
         if 结果 is not None:
             break
+        if 进程.poll() is not None and all(收集.已结束() for 收集, _容器 in 收集器):
+            # 进程已退出且两条管道都 EOF/排空 → 再取一次尾部字节后收口
+            for 收集, 容器 in 收集器:
+                片段, _结束, _首次超限 = 收集.取()
+                容器.extend(片段)
+            break
+        for 收集, _容器 in 收集器:
+            收集.等(0.5)
     if 结果 is not None:
         结果.setdefault("耗时秒", round(time.monotonic() - 开始, 3))
         return 结果

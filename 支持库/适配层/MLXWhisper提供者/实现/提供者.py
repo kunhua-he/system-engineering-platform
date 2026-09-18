@@ -1,15 +1,22 @@
 """MLX Whisper 转写独立提供者：配置驱动 + 受管子进程执行。
 未配置模型 → 如实返回 未配置模型；模型目录缺失 → 模型缺失；绝不伪装可用、
-绝不模拟转写成功。mlx_whisper 只在隔离子进程加载；转写覆盖 超时/取消/进程组回收/输出上限。"""
+绝不模拟转写成功。mlx_whisper 只在隔离子进程加载；转写覆盖 超时/取消/进程组回收/输出上限。
+
+**管道读取不做平台判断**（华哥 2026-09-16 裁决：底座做完整跨平台）：stdout/stderr 由
+后台读线程用 `公共契约/运行时/有界IO.受限读取` 直读内核并排空+限界，调用方在
+`threading.Event` 上等 EOF/超限 —— **不再用 `select` 轮询管道 fd**（Windows 的 `select`
+只接受 socket，轮询管道 fd 必然报错，旧实现把该异常吞成 `break`，等于在 Windows 上
+永远收不到子进程输出、直接按「无效响应」返回）。范式与本仓
+`运行核心/加载器/提供者隔离/独立进程.py` 同源（同一 `受限读取` 唯一实现）。"""
 
 from __future__ import annotations
 
-import json, os, select, subprocess, sys, time
+import json, os, subprocess, sys, threading, time
 from pathlib import Path
 from typing import Any, Callable
 
 from 公共契约.基础类型.结果类型 import 结果
-from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时 import 平台适配, 进程终止, 有界IO
 
 包目录 = Path(__file__).resolve().parent.parent
 子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
@@ -99,16 +106,102 @@ def _关闭流(进程: subprocess.Popen) -> None:
             pass
 
 
+class _管道收集器:
+    """子进程 stdout/stderr 的**唯一后台读者**：阻塞式 `受限读取` + 交接缓冲。
+
+    为什么不用 `select` 轮询：Windows 的 `select` 只接受 socket，对管道 fd 直接抛
+    `OSError`；旧实现把该异常吞成 `break`，等于在 Windows 上永远收不到输出。这里
+    与 `运行核心/加载器/提供者隔离/独立进程.py` 同一范式（同一 `有界IO.受限读取`
+    唯一实现）：后台线程读内核 → 回调累积到 `_缓冲` → 交接条件/事件通知调用方。
+
+    行协议与超限口径对齐旧实现：`_缓冲` 累积上限内字节（超限后**继续排空但不再累积**，
+    防管道回压），EOF/超限置事件供等待侧判据；轮询退化为「等事件 + 切片超时判取消/超时」，
+    不再有平台判断。
+    """
+
+    __slots__ = ("_缓冲", "_事件", "_条件", "_结束", "_超限", "_流", "_上限字节")
+
+    def __init__(self, 流: Any, 上限字节: int = 默认最大输出字节) -> None:
+        self._缓冲 = bytearray()
+        self._事件 = threading.Event()   # 有新数据 / EOF / 超限时唤醒等待侧
+        self._条件 = threading.Condition()
+        self._结束 = False
+        self._超限 = False
+        self._流 = 流
+        # 上限必须来自**调用方**（`执行任务` 的 最大输出字节）：写死默认值会在调用方
+        # 放宽上限时把多出来的字节静默截断。
+        self._上限字节 = max(1, int(上限字节))
+
+    def 启动(self) -> threading.Thread:
+        线程 = threading.Thread(target=self._消费, daemon=True, name="MLXWhisper-管道收集")
+        线程.start()
+        return 线程
+
+    def _消费(self) -> None:
+        try:
+            有界IO.受限读取(self._流, 上限字节=self._上限字节, 数据回调=self._收块,
+                          超限回调=self._置超限)
+        except (OSError, ValueError):
+            pass
+        finally:
+            with self._条件:
+                self._结束 = True
+                self._条件.notify_all()
+            self._事件.set()
+
+    def _收块(self, 块: bytes) -> None:
+        with self._条件:
+            self._缓冲.extend(块)
+            self._条件.notify_all()
+        self._事件.set()
+
+    def _置超限(self) -> None:
+        with self._条件:
+            self._超限 = True
+            self._条件.notify_all()
+        self._事件.set()
+
+    def 取(self) -> tuple[bytes, bool, bool]:
+        """非阻塞取走当前已累积字节，返回（片段、是否超限、是否已结束）。
+
+        取走后清空缓冲：与旧实现「read 后从管道搬走」同语义 —— 字节只能被搬走一次。
+        """
+        with self._条件:
+            片段 = bytes(self._缓冲)
+            self._缓冲.clear()
+            超限, 结束 = self._超限, self._结束
+        if not 片段:
+            self._事件.clear()
+        return 片段, 超限, 结束
+
+    def 等(self, 超时秒: float) -> None:
+        """等新数据 / EOF / 超限，最多 `超时秒`（超时正常返回，由调用方判取消与总超时）。"""
+        self._事件.wait(max(0.01, 超时秒))
+
+
 def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
             取消判断: Callable[[], bool] | None = None,
             最大输出字节: int = 默认最大输出字节) -> 结果:
-    """受管子进程执行：超时/取消/输出上限/进程组回收/崩溃映射稳定错误码。"""
+    """受管子进程执行：超时/取消/输出上限/进程组回收/崩溃映射稳定错误码。
+
+    stdout/stderr 由后台线程经 `_管道收集器` 唯一读取，主循环只等事件并按
+    切片超时判取消/超时 —— **本函数不含任何平台判断、不含 `select`**。
+    """
     try:
         进程 = _启动子进程()
     except OSError as 错误:
         return _失败("提供者不可用", f"无法启动 MLX Whisper 隔离子进程: {错误}", 可重试=True)
-    流表 = {进程.stdout: b"", 进程.stderr: b""}
-    结束表 = {id(进程.stdout): False, id(进程.stderr): False}
+    输出 = bytearray()
+    错误输出 = bytearray()
+    收集器 = []
+    for 流, 容器 in ((进程.stdout, 输出), (进程.stderr, 错误输出)):
+        if 流 is not None:
+            收集器.append((_管道收集器(流, 最大输出字节), 容器))
+    try:
+        for 收集, _容器 in 收集器:
+            收集.启动()
+    except (OSError, ValueError, RuntimeError):
+        pass
     try:
         try:
             进程.stdin.write((json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8"))
@@ -123,24 +216,18 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
             if time.monotonic() - 开始 >= 超时秒:
                 _终止进程组(进程)
                 return _失败("超时", f"MLX Whisper 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
-            try:
-                可读表, _, _ = select.select([流 for 流 in (进程.stdout, 进程.stderr) if 流 is not None and not 结束表[id(流)]], [], [], 0.2)
-            except (OSError, ValueError):
-                break
-            for 流 in 可读表:
-                try:
-                    片段 = 流.read(65536)
-                except (OSError, ValueError):
-                    片段 = b""
-                if not 片段:
-                    结束表[id(流)] = True
-                    continue
-                流表[流] += 片段
-                if len(流表[流]) > 最大输出字节:
+            全部结束 = True
+            for 收集, 容器 in 收集器:
+                片段, _超限, 结束 = 收集.取()
+                容器.extend(片段)
+                if len(容器) > 最大输出字节:
                     _终止进程组(进程)
                     return _失败("超出限制", f"MLX Whisper 隔离子进程输出超过上限 {最大输出字节} 字节")
-            if 进程.poll() is not None and 结束表[id(进程.stdout)] and 结束表[id(进程.stderr)]:
+                全部结束 = 全部结束 and 结束
+            if 进程.poll() is not None and 全部结束:
                 break
+            for 收集, _容器 in 收集器:
+                收集.等(0.2)
     finally:
         if 进程.poll() is None:
             _终止进程组(进程)
@@ -148,7 +235,7 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
     if 进程.returncode:
         return _失败("进程崩溃", f"MLX Whisper 隔离子进程异常退出（退出码 {进程.returncode}）", 可重试=True)
     try:
-        响应 = json.loads(流表[进程.stdout].decode("utf-8", errors="replace"))
+        响应 = json.loads(输出.decode("utf-8", errors="replace"))
     except json.JSONDecodeError:
         return _失败("进程崩溃", "MLX Whisper 隔离子进程返回了无效响应", 可重试=True)
     if not 响应.get("成功"):
