@@ -98,7 +98,8 @@ class Test任务身份判据(unittest.TestCase):
         self.assertIsNot(甲, 乙)
         # 可哈希：身份语义下对象能进 set/dict（按值比较会 `__hash__ = None` 而抛 TypeError）
         self.assertEqual(len({甲, 乙}), 2, "两个身份不同的任务必须能同时进集合（身份可哈希）")
-        self.assertEqual(hash(甲), hash(甲))
+        self.assertEqual({甲: "本体", 乙: "孪生"}[甲], "本体",
+                         "身份可哈希：两个对象可同时作字典键且各自命中自己的条目（哈希与判等口径一致）")
 
     def test_列表判身份按对象而非按字段(self):
         """`in` / `remove` 是队列的两条身份判定原语；按字段比较时它们会命中孪生对象。"""
