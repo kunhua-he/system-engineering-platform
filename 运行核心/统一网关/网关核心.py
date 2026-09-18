@@ -7,8 +7,10 @@ import uuid
 import copy
 import json
 import base64
+import sqlite3
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from 运行核心.运行诊断.安全审计.安全审计 import 安全审计
@@ -16,11 +18,44 @@ from 运行核心.能力调用.运行上下文.上下文 import 运行上下文
 from 运行核心.统一网关.安全边界 import 脱敏错误信息
 from 运行核心.统一网关.限流器 import 限流器
 from 公共契约.版本规则.契约版本 import 契约版本
+from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
 class 操作不存在错误(Exception):
     """请求的操作不在允许操作表内：未知操作必须明确报错，不混进「参数不合法」。"""
+
+
+# 本文件路径：用于判「抛错帧是不是本网关这一层」（P1-6 结构判据）。
+_本文件路径 = Path(__file__).resolve()
+
+
+def _是调用点缺参错误(错误: TypeError) -> bool:
+    """判「能力实现缺必填位置参数」——按**异常类型 + 抛错帧归属**，不看消息文案。
+
+    为什么能不看文案：CPython 的「缺必填位置参数 / 多传关键字参数」是**解释器在调用点**
+    抛的（实参绑定失败就没进函数体），所以被调函数在栈里**没有自己的帧**，最深帧是发起
+    那次调用的那一层。本网关只在 `_执行` 里发起过 `后端核心.调用(...)`：
+
+    - 最深帧就在本网关这一层 → 是本网关/后端契约的调用写错，**不降级成 400**，原样上抛；
+    - 最深帧在更下层（后端核心 → 注册表 → 实现）→ 是能力实现的参数口径不匹配，
+      属调用方输入问题（哲学第 3 条 2 项：失败必须明确），报 `参数不合法`。
+
+    口径边界（有意放宽，已登记）：改前只认「required positional argument」这一句英文文案，
+    实现体内其它 TypeError 会穿到外层变成 500 内部错误；现在凡**从后端链路里抛上来的
+    TypeError** 都按参数问题明确回报，错误说明里保留异常原文当证据。
+    """
+    最深 = 错误.__traceback__
+    while 最深 is not None and 最深.tb_next is not None:
+        最深 = 最深.tb_next
+    if 最深 is None:
+        return 假
+    try:
+        抛错文件 = Path(最深.tb_frame.f_code.co_filename).resolve()
+    except (OSError, ValueError):
+        return 假
+    return 抛错文件 != _本文件路径
 
 
 # 能力参数别名表（协议只增不删不改名，第 5 条 2 项）：**旧参数名永久可解析**。
@@ -64,6 +99,34 @@ def _应用参数别名(能力id: str, 参数: dict[str, Any]) -> dict[str, Any]
     "调用能力": "调用", "任务提交": "任务", "任务查询": "任务",
     "任务取消": "任务", "热接入": "调用",
 }
+
+# ── 幂等持久化（二次审计 B5）──────────────────────────────────────────────────
+# 改前：幂等判据只活在 `_幂等表`（纯内存）里 —— 网关进程一重启就清空，同一请求id
+# 的重试被当成**新请求再次执行副作用**（重启即失忆，重复扣款/重复建单类风险）。
+#
+# 契约上把两件事拆开，不再混成一张表（改前两者共用 `_幂等表`，语义含糊）：
+#   · **响应去重** —— 同请求id + 同请求摘要：返回**缓存响应**，不重复执行；
+#   · **操作去重** —— 同请求id + 同请求摘要，但那次执行的响应**不可重放**
+#     （响应体不是 JSON 能承载的值，如字节集）：**不重复执行副作用**，
+#     明确回报失败（错误码 `幂等键冲突`），调用方要重做须换请求id。
+#
+# 落库范围：**只有副作用类操作**（`允许操作表` 去掉 `纯查询操作`）。纯查询重复执行
+# 不产生副作用，且查询结果本应取最新值，重启后重放旧响应反而是错的。
+# 落点：`解析运行数据根()` 下的独立库文件，就地 `CREATE TABLE IF NOT EXISTS` 建表
+# （不碰 `平台控制面/平台状态/状态存储.py`，那是权威状态库的落位，职责不同）。
+# 失败口径：幂等库读不出/写不进 → 只记忽略留痕并回落纯内存（fail-soft）。幂等是
+# **防重复**能力，不是可用性前置；库故障不该让整条网关拒服务。
+幂等库文件名 = "网关幂等.sqlite3"
+幂等默认保留秒 = 3600.0
+纯查询操作 = frozenset({
+    "健康检查", "能力目录", "能力搜索", "包详情", "能力详情", "资源状态", "任务查询",
+})
+# 持久记录里存的就是 `网关响应.转字典()` 的公开信封；还原时只认这些键
+# （缺键走 dataclass 默认值），新增信封字段**不必**同步改库（只增不删不改口径）。
+幂等响应字段 = (
+    "请求id", "操作", "成功", "值", "错误码", "错误说明", "句柄",
+    "耗时毫秒", "请求版本", "当前版本", "版本差异",
+)
 
 # 公开错误说明表：**对外错误码口径的唯一来源**，`_设置失败` 用它填错误说明
 # （缺键回落为「请求处理失败」，等于把真实原因对调用方隐藏）。
@@ -552,12 +615,111 @@ class 网关响应:
         }
 
 
+class 幂等存储:
+    """幂等记录的 SQLite 落地（跨进程重启不丢幂等判据）。
+
+    就地建表，独立库文件，不改权威状态库（`平台控制面/平台状态/状态存储.py`）。
+    每次操作开一条短连接：不做跨线程共享连接（SQLite 连接默认不许跨线程用），
+    也就不需要额外锁；幂等库的读写量是「每个新请求id 一次」，短连接的代价可忽略。
+
+    fail-soft：库打不开或读写失败一律当作「无持久记录」，只记忽略留痕。调用方
+    （`网关核心`）据此回落纯内存幂等，不因幂等库故障拒服务。
+    """
+
+    建表语句 = (
+        "CREATE TABLE IF NOT EXISTS 网关幂等记录 ("
+        "请求id TEXT PRIMARY KEY, "
+        "操作 TEXT NOT NULL, "
+        "摘要 TEXT NOT NULL, "
+        "响应 TEXT, "
+        "写入时间 REAL NOT NULL, "
+        "过期时间 REAL NOT NULL)"
+    )
+    # TTL 清理按 过期时间 扫，走索引避免全表扫。
+    索引语句 = "CREATE INDEX IF NOT EXISTS 网关幂等记录_过期 ON 网关幂等记录(过期时间)"
+
+    def __init__(self, 库路径: Path, *, 保留秒: float = 幂等默认保留秒) -> None:
+        self.库路径 = Path(库路径)
+        self.保留秒 = max(1.0, float(保留秒))
+        self.读取失败数 = 0
+        self.写入失败数 = 0
+        self._已建表 = 假
+        self._建表锁 = threading.Lock()
+
+    def _连接(self) -> sqlite3.Connection:
+        return sqlite3.connect(str(self.库路径), timeout=2.0)
+
+    def _确保表(self, 连接: sqlite3.Connection) -> None:
+        if self._已建表:
+            return
+        with self._建表锁:
+            if self._已建表:
+                return
+            连接.execute(self.建表语句)
+            连接.execute(self.索引语句)
+            连接.commit()
+            self._已建表 = 真
+
+    def 读取(self, 请求id: str) -> tuple[str, str | None] | None:
+        """按请求id 取 (摘要, 响应JSON)；无记录 / 已过期 / 库不可用 → None。
+
+        响应JSON 为 None 表示「操作已执行、但响应不可重放」（操作去重记录）。
+        """
+        现在 = time.time()
+        try:
+            self.库路径.parent.mkdir(parents=True, exist_ok=True)
+            连接 = self._连接()
+            try:
+                self._确保表(连接)
+                行 = 连接.execute(
+                    "SELECT 摘要, 响应 FROM 网关幂等记录 WHERE 请求id = ? AND 过期时间 > ?",
+                    (请求id, 现在),
+                ).fetchone()
+            finally:
+                连接.close()
+        except (sqlite3.Error, OSError) as 错误:
+            self.读取失败数 += 1
+            记录忽略("统一网关.幂等存储.读取", 错误)
+            return None
+        if 行 is None:
+            return None
+        return str(行[0]), (None if 行[1] is None else str(行[1]))
+
+    def 写入(self, 请求id: str, 操作: str, 摘要: str, 响应JSON: str | None) -> None:
+        """写一条幂等记录，并顺手清掉已过期行（TTL）。"""
+        现在 = time.time()
+        try:
+            self.库路径.parent.mkdir(parents=True, exist_ok=True)
+            连接 = self._连接()
+            try:
+                self._确保表(连接)
+                连接.execute("DELETE FROM 网关幂等记录 WHERE 过期时间 <= ?", (现在,))
+                连接.execute(
+                    "INSERT INTO 网关幂等记录(请求id, 操作, 摘要, 响应, 写入时间, 过期时间)"
+                    " VALUES(?, ?, ?, ?, ?, ?)"
+                    " ON CONFLICT(请求id) DO UPDATE SET"
+                    " 操作=excluded.操作, 摘要=excluded.摘要, 响应=excluded.响应,"
+                    " 写入时间=excluded.写入时间, 过期时间=excluded.过期时间",
+                    (请求id, 操作, 摘要, 响应JSON, 现在, 现在 + self.保留秒),
+                )
+                连接.commit()
+            finally:
+                连接.close()
+        except (sqlite3.Error, OSError) as 错误:
+            self.写入失败数 += 1
+            记录忽略("统一网关.幂等存储.写入", 错误)
+
+
 class 网关核心:
     """所有调用共享同一限流器与审计器，业务能力仍由后端核心实现。"""
 
     def __init__(self, 后端核心: Any = None, 任务系统: Any = None,
                  限流器实例: 限流器 | None = None,
-                 审计实例: 安全审计 | None = None) -> None:
+                 审计实例: 安全审计 | None = None,
+                 *,
+                 幂等持久化: bool = 真,
+                 幂等库路径: Path | str | None = None,
+                 幂等保留秒: float = 幂等默认保留秒) -> None:
         self.后端核心 = 后端核心
         self.任务系统 = 任务系统
         self.限流器 = 限流器实例 or 限流器()
@@ -567,6 +729,34 @@ class 网关核心:
         self._幂等表: dict[str, tuple[str, 网关响应]] = {}
         self._幂等进行中: dict[str, tuple[str, threading.Event]] = {}
         self._幂等锁 = threading.Lock()
+        # 幂等持久化：**默认开**（进程重启不丢幂等判据，见文件顶部 B5 说明）。
+        # 测试/演示实例显式关（`停用幂等持久化`），避免固定请求id 跨运行串味。
+        self._幂等持久化 = bool(幂等持久化)
+        self._幂等库路径 = Path(幂等库路径) if 幂等库路径 is not None else None
+        self._幂等保留秒 = float(幂等保留秒)
+        self._幂等存储: 幂等存储 | None = None
+
+    def 停用幂等持久化(self) -> None:
+        """幂等判据只留本进程内存：不落库、不跨重启、不读既有记录。
+
+        测试/演示实例用（固定请求id 的用例不得被上一次运行的记录重放掉）。
+        """
+        self._幂等持久化 = 假
+        self._幂等存储 = None
+
+    def _幂等库(self) -> 幂等存储 | None:
+        """惰性取持久库；未启用 / 路径解析失败 → None（回落纯内存）。"""
+        if not self._幂等持久化:
+            return None
+        if self._幂等存储 is None:
+            try:
+                库路径 = self._幂等库路径 or (
+                    解析运行数据根(Path(__file__).resolve().parents[2]) / 幂等库文件名)
+            except (OSError, ValueError) as 错误:
+                记录忽略("统一网关.幂等存储.解析库路径", 错误)
+                return None
+            self._幂等存储 = 幂等存储(库路径, 保留秒=self._幂等保留秒)
+        return self._幂等存储
 
     def 设置后端(self, 后端核心: Any) -> None:
         self.后端核心 = 后端核心
@@ -736,12 +926,77 @@ class 网关核心:
             allow_nan=False, default=_JSON默认值,
         )
 
+    def _读取持久幂等(self, 请求: 网关请求) -> tuple[str, str | None] | None:
+        """副作用类操作才查持久库；纯查询与未启用持久化一律 None。"""
+        if 请求.操作 in 纯查询操作:
+            return None
+        库 = self._幂等库()
+        if 库 is None:
+            return None
+        return 库.读取(请求.请求id)
+
+    def _写入持久幂等(self, 请求: 网关请求, 摘要: str, 响应: 网关响应) -> None:
+        """执行成功后落库；响应不可重放时记「操作已执行」标记（响应JSON 为 NULL）。"""
+        if 请求.操作 in 纯查询操作:
+            return
+        库 = self._幂等库()
+        if 库 is None:
+            return
+        库.写入(请求.请求id, 请求.操作, 摘要, self._响应转JSON(响应))
+
+    def _响应转JSON(self, 响应: 网关响应) -> str | None:
+        """响应可重放 → 公开信封的 JSON 文本；不可承载（字节集等）→ None。"""
+        try:
+            return json.dumps(响应.转字典(), ensure_ascii=False, sort_keys=True,
+                              allow_nan=False)
+        except (TypeError, ValueError):
+            return None
+
+    def _持久幂等结果(self, 请求: 网关请求, 响应: 网关响应, 摘要: str,
+                      记录: tuple[str, str | None]) -> 网关响应:
+        """持久记录命中 → 一律**不执行**，只回报结论（响应去重 / 操作去重）。"""
+        记录摘要, 响应JSON = 记录
+        if 记录摘要 != 摘要:
+            self._设置失败(响应, "幂等键冲突")
+            return 响应
+        if 响应JSON is None:
+            # 操作去重：副作用已执行过，但那次响应不可重放 → 绝不重复执行。
+            self._设置失败(响应, "幂等键冲突")
+            响应.错误说明 = (
+                f"请求id {请求.请求id} 的操作已执行完成，其响应不可重放，"
+                "拒绝重复执行；如需重做请换请求id")
+            return 响应
+        重放 = self._从JSON还原响应(响应JSON)
+        if 重放 is None:
+            self._设置失败(响应, "内部错误")
+            return 响应
+        return 重放
+
+    def _从JSON还原响应(self, 响应JSON: str) -> 网关响应 | None:
+        try:
+            数据 = json.loads(响应JSON)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(数据, dict):
+            return None
+        return 网关响应(**{键: 数据[键] for 键 in 幂等响应字段 if 键 in 数据})
+
     def _执行幂等请求(self, 请求: 网关请求, 响应: 网关响应) -> 网关响应:
-        """同请求id串行执行一次并缓存结果；不同请求id不得被全局锁串行化。"""
+        """同请求id串行执行一次并缓存结果；不同请求id不得被全局锁串行化。
+
+        判据两层（B5）：本进程内存表优先（含「进行中」事件，同键并发只放行一次）；
+        内存未命中且操作属**副作用类**时查持久库 —— 命中即**不执行**：可重放就返回
+        缓存响应（响应去重），不可重放就明确回报冲突（操作去重）。
+        """
         if not 请求.请求id:
             self._执行(请求, 响应)
             return 响应
         摘要 = self._请求摘要(请求)
+        # 持久库预读放在锁外：库慢或不可用都不拖住其它请求；同键并发由内存表的
+        # 「进行中」事件兜住（跨进程并发不在本层承诺内，见文件顶部 B5 说明）。
+        持久记录 = self._读取持久幂等(请求)
+        if 持久记录 is not None:
+            return self._持久幂等结果(请求, 响应, 摘要, 持久记录)
         while True:
             with self._幂等锁:
                 已有 = self._幂等表.get(请求.请求id)
@@ -780,6 +1035,8 @@ class 网关核心:
                 while len(self._幂等表) > 500:
                     self._幂等表.pop(next(iter(self._幂等表)))
                 完成事件.set()
+            # 落库在锁外：SQLite 写不进只留忽略痕迹，不影响本次响应。
+            self._写入持久幂等(请求, 摘要, 响应)
         return 响应
 
     def _执行(self, 请求: 网关请求, 响应: 网关响应) -> None:
@@ -906,7 +1163,9 @@ class 网关核心:
             except TypeError as 错误:
                 # 注册元数据漏标「必填」时，实现会抛缺少位置参数——这属参数问题，
                 # 不是服务故障，必须明确回报（哲学第 3 条 2 项），不许变成 500 内部错误。
-                if "required positional argument" not in str(错误):
+                # 判据＝异常类型 + 抛错帧归属（见 _是调用点缺参错误），**不按消息文案**：
+                # 异常文案改字（含中文化）不影响本结论。
+                if not _是调用点缺参错误(错误):
                     raise
                 self._设置失败(响应, "参数不合法")
                 响应.错误说明 = f"能力 {能力id} 调用参数缺少必填项：{错误}"

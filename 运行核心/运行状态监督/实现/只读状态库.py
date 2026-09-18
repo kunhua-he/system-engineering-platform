@@ -21,6 +21,7 @@ from 运行核心.权威状态 import 权威状态, 版本元组
 
 库文件名 = "权威状态.db"
 结构版本键 = "结构版本"
+元信息表名 = "元信息"
 
 
 def 库文件路径(存储目录: Path) -> Path:
@@ -47,13 +48,27 @@ def 借校验器() -> 权威状态:
 
 
 def 读库中结构版本(连接: sqlite3.Connection) -> str:
-    """读 元信息.结构版本；表不存在视为「无版本记录」（空串），其余 sqlite 错误照原样上抛。"""
-    try:
-        行 = 连接.execute("SELECT 值 FROM 元信息 WHERE 键=?", (结构版本键,)).fetchone()
-    except sqlite3.OperationalError as 错误:
-        if "no such table" in str(错误):
-            return ""
-        raise
+    """读 元信息.结构版本；表不存在视为「无版本记录」（空串），其余 sqlite 错误照原样上抛。
+
+    **判据口径（P1-6 收口）**：「表在不在」是**结构事实**，先查 `sqlite_master` 判，不解析
+    sqlite 报错文案。修前判 ``"no such table" in str(错误)``——解析的是 **sqlite 英文消息**
+    （随版本/语言/措辞漂移，改一句报错文案就翻转结论）。
+
+    为什么不照 `sqlite_errorcode` 判（本机实测，python3.14）：`sqlite3` 对
+    「表不存在」「列不存在」「语法错误」三种情形给的 `sqlite_errorcode` 都是
+    ``sqlite3.SQLITE_ERROR``(1) 这**同一个通用码**（`sqlite_errorname` 也都是 `SQLITE_ERROR`），
+    照码判会把真错误一并吞成「无版本记录」。故：表不在（含视图）→ 空串；
+    表在但读值出错 → 如实上抛，真错误不掩盖。
+    """
+    表在 = 连接.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name=?",
+        (元信息表名,),
+    ).fetchone()
+    if 表在 is None:
+        return ""
+    行 = 连接.execute(
+        f"SELECT 值 FROM {元信息表名} WHERE 键=?", (结构版本键,)
+    ).fetchone()
     return "" if 行 is None or 行[0] is None else str(行[0])
 
 

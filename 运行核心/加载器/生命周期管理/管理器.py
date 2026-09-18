@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -104,13 +105,33 @@ def _跳过告警(包id: str, 阶段: str, 原因: str) -> str:
     return f"已跳过 {包id}｜{阶段}｜{原因}"
 
 
+#: 「唯一注册表拒绝重复注册」的权威实现代码对象（P1-6）：`能力注册表.注册` 本体。
+#: 判跨包真冲突时按**代码对象同一性**比对调用栈，不比对函数名/异常文案。
+_注册实现代码 = 能力注册表.注册.__code__
+
+
 def _是跨包能力冲突(错误: Exception) -> bool:
     """是否跨包真冲突（唯一注册表拒绝重复注册）。
 
     这类冲突不是「单个包自己的半成品问题」：两个包抢同一个能力 id 属
     能力多提供者冲突，必须继续整体阻断（fail-closed），不得降级成跳过。
+
+    **判据口径（P1-6 收口）**：修前判 ``isinstance(错误, ValueError) and "重复注册" in str(错误)``
+    —— 改一句中文报错文案，跨包真冲突就会被降级成「跳过该包」，fail-closed 静默失效
+    （实证见本条反向验证：文案改成「重复登记」后旧判据返回假）。
+
+    现在按**异常类型 + 权威抛出点代码对象**判：异常必须是 ``ValueError``，且调用栈里
+    必须出现 ``公共契约.能力契约.契约.能力注册表.注册`` 的**实现代码对象**（``f_code`` 同一性
+    比对，不是函数名/文案字符串比对，故改文案、改函数名都不影响结论）。
+    注册表是唯一权威：本函数只认「注册表自己拒绝」这一事实，不复制「谁和谁抢同一个
+    能力 id」的判定规则（第二套判据）。
     """
-    return isinstance(错误, ValueError) and "重复注册" in str(错误)
+    if not isinstance(错误, ValueError):
+        return 假
+    for 栈帧, _行号 in traceback.walk_tb(错误.__traceback__):
+        if 栈帧.f_code is _注册实现代码:
+            return 真
+    return 假
 
 
 def _单包级预检(声明) -> 单包预检结果:
