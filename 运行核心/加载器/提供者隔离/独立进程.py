@@ -15,6 +15,24 @@
 **管道读取同样不做平台判断**：stdout 由后台线程阻塞式 `os.read` 直读内核并用
 `公共契约/运行时/有界IO.受限读取` 排空+限界，调用方在条件变量上等一个完整行
 —— 不再用 `select` 轮询管道 fd（Windows 的 `select` 只接受 socket，轮询管道必然报错）。
+
+**stdout 只有一个读者（唯一所有权）**：管道 fd 归本文件的后台读线程独有，
+上层（如 `运行核心/运行环境管理器/提供者生命周期.py`）**永不直接碰管道 fd**：
+要丢掉滞留响应行一律走 `弃置滞留行()` —— 它只在同一把交接锁下从后台线程维护的
+`_读取缓冲` 里非阻塞取/弃完整行。旧实现让上层 `select + readline` 直读同一个
+管道，两个读者分食同一字节流（竞态：要么上层偷走后台上游字节，要么
+`select` 报可读但只有半行时 `readline` 无超时包裹地永久阻塞）。
+
+**跨重启世代账本（常驻提供者进程）**：常驻工作进程用 `子进程组启动标志()`
+（POSIX `setsid`）脱离网关会话/进程组，网关一退出就切断 OS 的「父死子随」兜底
+—— 工作进程及模型子孙会被 launchd 收养、继续占显存与端口，而新网关内存里没有
+上一代 PID/pgid，定位不到也回收不掉。故启动成功后把
+`{网关世代id, 网关进程id, 提供者id, 组长进程id, 进程组号, 端口, 资源键, 启动时间}`
+原子落进底座运行库（`常驻提供者进程` 表，本文件就地 `CREATE TABLE IF NOT EXISTS`，
+WAL + `synchronous=FULL`），整组确认收敛后销行；新网关启动时调一次
+`清扫上一代常驻进程()` 把上一代遗留整组回收。
+判据是**归属 + 世代**（记录里的 `网关进程id` 已消失才算孤儿），**不按端口号盲杀**
+—— embedding/rerank 这类合法长驻服务的父进程同样是 1，按端口杀会误杀。
 """
 
 from __future__ import annotations
@@ -23,6 +41,7 @@ import json
 import hashlib
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -35,6 +54,7 @@ from typing import Any
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.版本规则.契约版本 import 取契约版本
 from 公共契约.运行时 import 平台适配, 进程终止, 有界IO
+from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 进程状态_已创建 = "已创建"
@@ -82,6 +102,245 @@ def _已发出信号(收口结果) -> bool:
     return bool(载荷.get("已发出信号"))
 
 
+# --------------------------------------------------------------------------- #
+# 跨重启世代账本：常驻提供者进程落账 / 销账 / 启动清扫
+# --------------------------------------------------------------------------- #
+
+#: 底座运行库里本模块就地建的表（只读方按表名探测，缺表即视为无账本）
+常驻进程账本表名 = "常驻提供者进程"
+#: 底座运行库路径覆盖环境变量（与 运行核心/任务调度/任务系统.py 同一口径，避免第二套定位）
+账本库环境变量 = "系统库运行库"
+账本连接超时秒 = 10.0
+#: 账本表列（读/写/判活共用一份，禁止两处各写一遍）
+账本列 = ("网关世代id", "网关进程id", "提供者id", "组长进程id",
+        "进程组号", "端口", "资源键", "启动时间", "启动时间戳")
+#: 启动清扫整组回收的复查等待上限（强杀后等整组消失的总时长）
+清扫等待秒 = 2.0
+#: 排空滞留行的窗口与预算（上层「调用前排空」共用一份口径）
+排空窗口秒 = 0.05
+排空预算秒 = 2.0
+排空预算字节 = 64 * 1024
+
+_网关世代id: str | None = None
+
+
+def 当前网关世代id() -> str:
+    """本进程（网关世代）的唯一世代 id：进程号 + 纳秒时间 + 随机数，进程内只算一次。
+
+    为什么按进程算而不是按调用算：世代 = 「一次网关进程生命周期」，同一次网关里
+    所有常驻提供者必须记同一个世代 id，清扫时才能一眼分出「本世代 / 上一代」。
+    """
+    global _网关世代id
+    if _网关世代id is None:
+        _网关世代id = f"{os.getpid()}-{time.time_ns():x}-{uuid.uuid4().hex[:8]}"
+    return _网关世代id
+
+
+def _定位系统根() -> Path:
+    """定位工程根（同时含 `支持库` 与 `模块库` 的最近祖先；找不到时退回本文件路径）。"""
+    候选 = Path(__file__).resolve()
+    for _祖先 in 候选.parents:
+        if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
+            return _祖先
+    return 候选
+
+
+def 账本库路径() -> Path:
+    """世代账本所在的底座运行库路径：环境变量覆盖优先，否则经唯一解析器落运行数据根。"""
+    显式 = str(os.environ.get(账本库环境变量, "") or "").strip()
+    if 显式:
+        return Path(显式).expanduser()
+    return 解析运行数据根(_定位系统根()) / "底座运行.db"
+
+
+def _账本连接(库路径: Path) -> sqlite3.Connection:
+    """打开底座运行库连接（WAL；本模块只在建表与读写账本时用它）。
+
+    ``synchronous=FULL``：WAL 模式下每次提交都对 WAL 做 fsync —— 这就是账本要求的
+    「写后落盘」；账本行必须扛得住网关被 kill -9（正是它要解决的场景）。
+    """
+    连接 = sqlite3.connect(str(库路径), timeout=账本连接超时秒)
+    连接.execute("PRAGMA journal_mode=WAL")
+    连接.execute("PRAGMA synchronous=FULL")
+    return 连接
+
+
+def _建账本表(连接: sqlite3.Connection) -> None:
+    """就地建表（幂等）。
+
+    为什么不写进 `平台控制面/平台状态/状态存储.py` 的建表序列：该文件由并行任务在改，
+    本模块只在**自己的库里**加一张自己的表，不动别人的迁移序列。
+    主键取 (网关世代id, 提供者id)：不同世代的行可以并存，上一代的行在被确认回收前
+    必须留着（否则孤儿失去观测对象）；同世代重复启动同一提供者则覆盖为新进程号。
+    """
+    连接.executescript(
+        f"CREATE TABLE IF NOT EXISTS {常驻进程账本表名}("
+        "网关世代id TEXT NOT NULL, 网关进程id INTEGER NOT NULL, 提供者id TEXT NOT NULL,"
+        "组长进程id INTEGER NOT NULL, 进程组号 INTEGER, 端口 INTEGER,"
+        "资源键 TEXT NOT NULL DEFAULT '', 启动时间 TEXT NOT NULL, 启动时间戳 REAL NOT NULL,"
+        "PRIMARY KEY(网关世代id, 提供者id));"
+    )
+
+
+def 读取常驻进程账本() -> list[dict[str, Any]]:
+    """读全部账本行（最新在后）；库不存在或无本表时返回空表（读路径不建库、不建表）。"""
+    库路径 = 账本库路径()
+    if not 库路径.is_file():
+        return []
+    连接 = _账本连接(库路径)
+    try:
+        表存在 = 连接.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (常驻进程账本表名,)).fetchone()
+        if not 表存在:
+            return []
+        行表 = 连接.execute(
+            f"SELECT {', '.join(账本列)} FROM {常驻进程账本表名} ORDER BY 启动时间戳").fetchall()
+    finally:
+        连接.close()
+    return [dict(zip(账本列, 行)) for 行 in 行表]
+
+
+def _登记常驻进程(记录: dict[str, Any]) -> None:
+    """原子写一行账本（BEGIN IMMEDIATE + 提交即 fsync）；异常向上抛，由调用方留痕。"""
+    库路径 = 账本库路径()
+    库路径.parent.mkdir(parents=True, exist_ok=True)
+    连接 = _账本连接(库路径)
+    try:
+        _建账本表(连接)
+        连接.execute("BEGIN IMMEDIATE")
+        连接.execute(
+            f"INSERT OR REPLACE INTO {常驻进程账本表名}({', '.join(账本列)}) "
+            f"VALUES ({', '.join('?' * len(账本列))})",
+            tuple(记录.get(列) for 列 in 账本列))
+        连接.commit()
+    except sqlite3.Error:
+        连接.rollback()
+        raise
+    finally:
+        连接.close()
+
+
+def _注销常驻进程(网关世代id: str, 提供者id: str) -> None:
+    """删掉一行账本（确认整组收敛后才调用）；库/表不存在即视为无账可销。"""
+    库路径 = 账本库路径()
+    if not 库路径.is_file():
+        return
+    连接 = _账本连接(库路径)
+    try:
+        if not 连接.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (常驻进程账本表名,)).fetchone():
+            return
+        连接.execute("BEGIN IMMEDIATE")
+        连接.execute(
+            f"DELETE FROM {常驻进程账本表名} WHERE 网关世代id=? AND 提供者id=?",
+            (网关世代id, 提供者id))
+        连接.commit()
+    except sqlite3.Error:
+        连接.rollback()
+        raise
+    finally:
+        连接.close()
+
+
+def _账本记录存活(组长进程id: int, 进程组号: int | None) -> bool:
+    """账本记录对应的整组是否仍存活（组长或同组子孙任一活着即为真）。
+
+    先按组长进程号探活（跨平台）；组长已被回收时再按**组号**探活 —— `setsid` 保证
+    组号 == 组长进程号，这是「组长退出、同组子孙仍在」唯一能表达的判据。
+    """
+    if 组长进程id <= 0:
+        return 假
+    if 进程终止.进程存活(组长进程id):
+        return 真
+    if 进程组号 is not None and 进程组号 == 组长进程id:
+        return 进程终止.按组号探活(进程组号)
+    return 假
+
+
+def _回收账本行(行: dict[str, Any], *, 等待秒: float) -> tuple[bool, str]:
+    """回收一条「非本世代」账本记录对应的整组；确认收敛才销行。返回（是否已回收, 说明）。"""
+    提供者id = str(行.get("提供者id") or "")
+    世代 = str(行.get("网关世代id") or "")
+    组长进程id = 行.get("组长进程id")
+    组长进程id = int(组长进程id) if isinstance(组长进程id, int) and not isinstance(组长进程id, bool) else 0
+    组号 = 行.get("进程组号")
+    组号 = int(组号) if isinstance(组号, int) and not isinstance(组号, bool) else None
+    if 组长进程id <= 0:
+        _注销常驻进程(世代, 提供者id)
+        return 真, "记录无合法组长进程号，脏行已销"
+    if not _账本记录存活(组长进程id, 组号):
+        _注销常驻进程(世代, 提供者id)
+        return 真, f"整组已不存在（组长 {组长进程id}），销行"
+    # 仍活：整组回收走收口层既有能力（终止 → 宽限 → 强杀 → 复查；失败由收口层留痕）
+    进程终止.强制结束子进程(组长进程id)
+    if 组号 is not None and 组号 == 组长进程id and 进程终止.按组号探活(组号):
+        # 组长已被回收但同组子孙仍在（组号 == 组长进程号）→ 按组号补一次强杀
+        进程终止.按组号终止(组号, 信号="强杀")
+    截止 = time.monotonic() + max(0.0, 等待秒)
+    while _账本记录存活(组长进程id, 组号) and time.monotonic() < 截止:
+        time.sleep(0.05)
+    if _账本记录存活(组长进程id, 组号):
+        return 假, f"整组仍未收敛（组长 {组长进程id}），保留账本行待下一世代再收"
+    _注销常驻进程(世代, 提供者id)
+    return 真, f"整组已回收（组长 {组长进程id}），销行"
+
+
+def 清扫上一代常驻进程(*, 等待秒: float = 清扫等待秒) -> dict[str, Any]:
+    """启动时扫一遍世代账本：回收「非本世代且归属网关已消失」的常驻进程整组。
+
+    判据是**归属 + 世代**，不是端口号：
+    - 记录世代 == 本世代 → 是本次网关自己的账，交给生命周期管理（不动）；
+    - 记录归属网关进程仍活着（且不是本进程）→ 是**另一个仍在运行的网关**的合法财产，跳过
+      —— 这也是并发测试/多网关并存时不被误杀的关键；
+    - 记录归属网关进程已消失（kill -9 / 异常退出，内存里的 PID 表随之蒸发）→ 孤儿，整组回收。
+
+    只回收「确认整组消失」的行；没收敛的行**保留**，留给下一世代再收（不静默销账）。
+    `等待秒` 是强杀后等整组消失的上限。
+    返回信封：`{成功, 本世代, 账本行数, 已回收, 未回收, 跳过, 错误说明}`。
+    """
+    本世代 = 当前网关世代id()
+    结果: dict[str, Any] = {
+        "成功": 真, "本世代": 本世代, "账本行数": 0,
+        "已回收": [], "未回收": [], "跳过": [], "错误说明": "",
+    }
+    try:
+        行表 = 读取常驻进程账本()
+    except Exception as 错误:  # noqa: BLE001 —— 账本不可用必须可见（进错误说明），不静默
+        结果["成功"] = 假
+        结果["错误说明"] = f"世代账本不可读: {type(错误).__name__}: {错误}"
+        return 结果
+    结果["账本行数"] = len(行表)
+    for 行 in 行表:
+        提供者id = str(行.get("提供者id") or "")
+        if str(行.get("网关世代id") or "") == 本世代:
+            continue
+        归属进程id = 行.get("网关进程id")
+        归属进程id = int(归属进程id) if isinstance(归属进程id, int) and not isinstance(归属进程id, bool) else 0
+        if 归属进程id != os.getpid() and 进程终止.进程存活(归属进程id):
+            结果["跳过"].append({
+                "提供者id": 提供者id, "网关世代id": 行.get("网关世代id"),
+                "组长进程id": 行.get("组长进程id"),
+                "原因": f"归属网关进程 {归属进程id} 仍在运行（不是孤儿）",
+            })
+            continue
+        try:
+            已回收, 说明 = _回收账本行(行, 等待秒=等待秒)
+        except Exception as 错误:  # noqa: BLE001 —— 回收失败必须可见，不静默
+            已回收, 说明 = 假, f"回收异常 {type(错误).__name__}: {错误}"
+        项 = {"提供者id": 提供者id, "网关世代id": 行.get("网关世代id"),
+             "组长进程id": 行.get("组长进程id"), "说明": 说明}
+        if 已回收:
+            结果["已回收"].append(项)
+        else:
+            结果["未回收"].append(项)
+            结果["成功"] = 假
+    if 结果["未回收"]:
+        结果["错误说明"] = f"{len(结果['未回收'])} 条上一代常驻进程未收敛（账本行保留）"
+    return 结果
+
+
 @dataclass
 class 进程调用结果:
     """一次进程调用的统一结果（不泄漏原生对象）。"""
@@ -108,7 +367,8 @@ class 独立进程:
     def __init__(self, 名称: str, *, 工作器路径: Path | None = None,
                  启动超时秒: float = 5.0, 调用超时秒: float = 3.0,
                  最大重启次数: int = 3, 解释器路径: str | None = None,
-                 提供者目录: Path | None = None) -> None:
+                 提供者目录: Path | None = None,
+                 端口: int | None = None, 资源键: str = "") -> None:
         self.名称 = 名称
         self.工作器路径 = 工作器路径 or Path(__file__).resolve().parent / "进程工作器.py"
         self.启动超时秒 = 启动超时秒
@@ -116,6 +376,11 @@ class 独立进程:
         self.最大重启次数 = 最大重启次数
         self.解释器路径 = 解释器路径
         self.提供者目录 = 提供者目录
+        # 世代账本的诊断字段：端口/资源键只如实记录调用方声明的事实，
+        # **不参与判活与回收**（按端口盲杀会误伤 embedding/rerank 等合法长驻服务）。
+        self.端口 = 端口
+        self.资源键 = 资源键 or 名称
+        self.账本错误 = ""  # 落账/销账失败留痕（可见，不静默）
         self.状态 = 进程状态_已创建
         self.进程: subprocess.Popen | None = None
         self.重启次数 = 0
@@ -129,6 +394,7 @@ class 独立进程:
         self._读取条件 = threading.Condition()
         self._读取结束 = 假  # 后台读线程已 EOF/出错
         self._读取超限 = 假  # 单行超过 响应行上限字节
+        self._读取序号 = 0  # 交接序号：每收到一块 +1（供「窗口内无新数据」判定，不靠 sleep 轮询）
         self._stdout线程: threading.Thread | None = None
         # JSON 行协议是一问一答；同一 Provider 进程不能让多个线程交叉
         # 写 stdin/读 stdout，否则迟到响应会被下一请求消费。
@@ -165,6 +431,7 @@ class 独立进程:
             self._读取缓冲 = b""
             self._读取结束 = 假
             self._读取超限 = 假
+            self._读取序号 = 0
         self._stdout线程 = threading.Thread(
             target=self._消费stdout, args=(进程,),
             name=f"Provider-stdout-{self.名称}-{进程.pid}", daemon=True)
@@ -178,6 +445,7 @@ class 独立进程:
                 if len(self._读取缓冲) > 响应行上限字节:
                     self._读取超限 = 真
                     self._读取缓冲 = self._读取缓冲[:响应行上限字节]
+            self._读取序号 += 1
             self._读取条件.notify_all()
 
     def _消费stdout(self, 进程: subprocess.Popen) -> None:
@@ -246,6 +514,53 @@ class 独立进程:
                     raise TimeoutError(f"读取响应超时（> {超时秒} 秒）")
                 self._读取条件.wait(剩余时间)
 
+    def 弃置滞留行(self, *, 窗口秒: float = 排空窗口秒,
+                   预算秒: float = 排空预算秒, 预算字节: int = 排空预算字节) -> bool:
+        """从后台读线程维护的 `_读取缓冲` 里**非阻塞取/弃完整行**；上层唯一排空入口。
+
+        为什么必须是这一条路（旧实现的病根）：上层原先自己 `select([管道]) +
+        readline()` 直读同一个 stdout 管道，与后台读线程**分食同一字节流** ——
+        两个读者抢同一批字节，要么上层偷走后台上游字节（后续响应错位、请求id 不匹配），
+        要么 `select` 报可读而管道里只有半行时 `readline` 无超时包裹地永久阻塞
+        （实测阻塞 > 1 秒，远超 0.05 秒窗口）。管道 fd 现在只有一个读者：
+        本类的后台读线程；上层要丢滞留响应只能来这里取**已经交接过来的**完整行。
+
+        语义与旧「调用前排空」逐项对齐：
+        - 返回 ``True``：窗口内已收敛（缓冲里的完整行已丢完且窗口内无新数据，
+          或后台读线程已 EOF）；
+        - 返回 ``False``：超预算 —— 累计丢弃字节 ≥ `预算字节`，或累计时间 ≥ `预算秒`，
+          或单行超过 `响应行上限字节`（读缓冲已被判超限，协议流不可信）。
+          调用方按「进程不可复用」处理（终止并重启）。
+        半行（无换行）**不丢**：它不是完整响应行，擅自按行边界切会伪造协议。
+
+        为什么还要拿 `_通信锁`：排空必须与「在途请求/响应」互斥 —— 否则并发调用时
+        会把别人正在等的响应行当滞留行丢掉（JSON 行协议是一问一答，同一进程不能让
+        排空插进问答之间）。锁序与 `_发送请求` 一致（通信锁 → 读取条件），不会反向。
+        """
+        开始 = time.monotonic()
+        累计字节 = 0
+        with self._通信锁, self._读取条件:
+            while True:
+                位置 = self._读取缓冲.rfind(b"\n")
+                if 位置 >= 0:
+                    累计字节 += 位置 + 1
+                    self._读取缓冲 = self._读取缓冲[位置 + 1:]
+                    if 累计字节 >= 预算字节:
+                        return 假
+                    continue
+                if self._读取超限:
+                    return 假
+                if self._读取结束:
+                    return 真
+                剩余时间 = 预算秒 - (time.monotonic() - 开始)
+                if 剩余时间 <= 0:
+                    return 假
+                序号 = self._读取序号
+                self._读取条件.wait(min(max(窗口秒, 0.0), 剩余时间))
+                if self._读取序号 == 序号 and b"\n" not in self._读取缓冲:
+                    # 窗口内无新数据即视为已收敛（与旧实现「一次 select 窗口无可读即停」同语义）
+                    return 真
+
     def _关闭管道(self) -> None:
         """关闭已结束进程的标准管道并回收后台消费线程，避免 fd/线程泄漏。"""
         if self.进程 is None:
@@ -261,17 +576,14 @@ class 独立进程:
                 线程.join(timeout=1.0)
 
     def 启动(self) -> tuple[bool, str]:
-        """启动子进程并等待 READY（启动超时失败）。"""
+        """启动子进程并等待 READY（启动超时失败）；成功后把常驻身份落进世代账本。"""
         if self.状态 == 进程状态_运行中:
             return 真, "已在运行"
         self.状态 = 进程状态_启动中
+        self.账本错误 = ""
         try:
             # -S 跳过 site 初始化加速子进程启动（工作器自行注入系统根路径）
-            系统根 = Path(__file__).resolve()
-            for _祖先 in 系统根.parents:
-                if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
-                    系统根 = _祖先
-                    break
+            系统根 = _定位系统根()
             self.进程 = subprocess.Popen(
                 [self._确定解释器(), "-S", str(self.工作器路径), str(系统根)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -310,6 +622,7 @@ class 独立进程:
             if "READY" in 行:
                 self.状态 = 进程状态_运行中
                 self._记录日志(f"启动成功（pid {self.进程.pid}）")
+                self._登记世代账本()
                 return 真, "启动成功"
         self.强制终止()
         self.状态 = 进程状态_故障
@@ -471,6 +784,43 @@ class 独立进程:
             未收敛.append(f"stdout线程仍存活:{self._stdout线程.name}")
         return 未收敛
 
+    def _登记世代账本(self) -> None:
+        """把本常驻进程的身份原子落进世代账本（失败可见，不静默）。
+
+        为什么落账失败不阻断启动：账本是**跨重启兜底**，不是启动前置条件 —— 账本库
+        不可写（只读盘/权限）时若拒绝启动，等于把「诊断账本不可用」升级成「提供者
+        全线不可用」。故失败只如实记进 `账本错误` 与环形日志（调用方/诊断可读），
+        代价是这一代进程失去跨重启回收能力，属已知剩余风险。
+        """
+        进程 = self.进程
+        if 进程 is None:
+            return
+        try:
+            _登记常驻进程({
+                "网关世代id": 当前网关世代id(),
+                "网关进程id": os.getpid(),
+                "提供者id": self.名称,
+                "组长进程id": 进程.pid,
+                "进程组号": 进程终止.进程组号(进程.pid),
+                "端口": self.端口,
+                "资源键": self.资源键,
+                "启动时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "启动时间戳": time.time(),
+            })
+            self.账本错误 = ""
+        except Exception as 错误:  # noqa: BLE001 —— 账本不可用必须可见（哲学第 3 条）
+            self.账本错误 = f"常驻进程世代账本落账失败: {type(错误).__name__}: {错误}"
+            self._记录日志(self.账本错误)
+
+    def _注销世代账本(self) -> None:
+        """确认整组收敛后销账（销不掉不影响关闭结论：留行只会让下一世代再收一次）。"""
+        try:
+            _注销常驻进程(当前网关世代id(), self.名称)
+            self.账本错误 = ""
+        except Exception as 错误:  # noqa: BLE001 —— 销账失败必须可见
+            self.账本错误 = f"常驻进程世代账本销账失败: {type(错误).__name__}: {错误}"
+            self._记录日志(self.账本错误)
+
     def _关闭结果(self, *, 已使用SIGKILL: bool = 假) -> dict[str, Any]:
         self._关闭管道()
         if self._stderr线程 is not None:
@@ -478,6 +828,10 @@ class 独立进程:
         未收敛 = self._核对资源收敛()
         成功 = not 未收敛
         self.状态 = 进程状态_已停止 if 成功 else 进程状态_故障
+        if 成功:
+            # 只有整组 + 三管道 + 消费线程全部收敛才销账：留着「其实已死」的行无害，
+            # 但把「还活着」的行销掉就等于让孤儿失去观测对象（假阴性）。
+            self._注销世代账本()
         结果 = {
             "成功": 成功, "错误码": "" if 成功 else "资源未收敛",
             "错误说明": "资源已收敛" if 成功 else f"Provider资源未收敛: {'；'.join(未收敛)}",
