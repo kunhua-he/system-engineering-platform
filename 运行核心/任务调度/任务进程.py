@@ -3,14 +3,16 @@
 **跨平台收口（华哥 2026-09-16 裁决：底座做完整跨平台）**：独立进程组建立、进程组存活
 判定、组信号发送全部走 `公共契约/运行时/平台适配.py` 与 `公共契约/运行时/进程终止.py`
 —— **本文件调用点不含任何平台判断**（无 `os.name` / `sys.platform` / `os.killpg` /
-`os.getpgrp`）。两条必保语义都在：① **「不向自己进程组发信号」的自保护**（组号与本进程
+`os.getpgrp`；**多进程启动方式也由 `平台适配.多进程启动上下文()` 收口，本文件不含
+fork / spawn 的分支选择**）。两条必保语义都在：① **「不向自己进程组发信号」的自保护**（组号与本进程
 组号相同时拒绝整组发信号）；② **「组长已回收但同组子孙仍在」仍按组回收**（只有收口层
 的按组号原语能表达，`os.getpgid(组长pid)` 在组长被 join 回收后必然失败）。
 
 **启动方式按平台收口**：POSIX 用 `fork`（子进程继承已注册的中文能力表，执行器零序列化）；
 其他平台（Windows 只有 `spawn`）用 `spawn`，执行器在提交点**显式 pickle 成字节**送达子进程
 ——旧实现无条件强制 `fork`，在 Windows 上 `get_context("fork")` 抛 `ValueError`，把
-`启动运行核心网关.py` 在导入期直接打死。
+`启动运行核心网关.py` 在导入期直接打死。**fork / spawn 的选择本身已下沉收口层**
+（`平台适配.多进程启动上下文()`），本文件只接「上下文 + 是否需序列化」两个事实。
 """
 
 from __future__ import annotations
@@ -223,25 +225,7 @@ class 任务进程池:
         self.监视线程: threading.Thread | None = None
         self.监视唤醒事件 = threading.Event()
         self.监视停止事件 = threading.Event()
-        self.进程上下文, self.需序列化执行器 = self._选择进程上下文()
-
-    @staticmethod
-    def _选择进程上下文() -> tuple[Any, bool]:
-        """按平台选多进程启动方式；返回 `(上下文, 执行器是否必须显式序列化)`。
-
-        - POSIX → `fork`：子进程继承父进程里已注册的中文能力表，执行器直接传函数对象。
-        - 其他平台（Windows 上 `multiprocessing` **只有 spawn**）→ `spawn`：子进程是全新
-          解释器，执行器必须经 pickle 显式送达（`_准备执行器`）。
-        - 自称 POSIX 却不提供 `fork` 的受限构建 → 退回 `spawn`，由执行器序列化补齐能力。
-
-        平台判定只经收口层 `平台适配`（本文件调用点仍不直接读 `sys.platform` / `os.name`）。
-        """
-        if 平台适配.是POSIX():
-            try:
-                return multiprocessing.get_context("fork"), 假
-            except ValueError:
-                pass
-        return multiprocessing.get_context("spawn"), 真
+        self.进程上下文, self.需序列化执行器 = 平台适配.多进程启动上下文()
 
     def _准备执行器(self, 能力id: str, 函数: Callable) -> Any:
         """按启动方式准备执行器句柄：`fork` 给函数对象，`spawn` 显式 pickle 成字节。

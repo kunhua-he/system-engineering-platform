@@ -81,7 +81,7 @@ def 采样环境() -> dict[str, str]:
     if str(根) not in sys.path:
         sys.path.insert(0, str(根))
     from 运行核心.环境指纹 import 计算环境指纹
-    from 公共契约.运行时.平台适配 import 当前平台
+    from 公共契约.运行时.平台适配 import 当前平台, 原始平台标志
 
     详细信息 = 计算环境指纹(含外部应用=False).详细信息
     python版本 = str(详细信息.get("python", "")).strip()
@@ -90,7 +90,10 @@ def 采样环境() -> dict[str, str]:
     if not re.fullmatch(r"\d+\.\d+(\.\d+)?", python版本):
         raise RuntimeError(f"采样到的 Python 版本号不可判定：{python版本!r}")
     if 操作系统 == "未知":
-        raise RuntimeError(f"采样到的平台名未知（sys.platform={sys.platform!r}），禁止写锁")
+        # 原始标志走收口层 `原始平台标志()`（本文件第 89 行已是 `当前平台()`，
+        # 同一文件不许两种取法并存 —— 第一轮审计 §二 B3-1）。
+        raise RuntimeError(
+            f"采样到的平台名未知（sys.platform={原始平台标志()!r}），禁止写锁")
     if not cpu:
         raise RuntimeError("采样到的 CPU 架构为空，禁止写锁")
     return {"Python": python版本, "操作系统": 操作系统, "CPU": cpu}

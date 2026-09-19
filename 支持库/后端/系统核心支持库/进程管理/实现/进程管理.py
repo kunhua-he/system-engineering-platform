@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import socket
 import subprocess
 import threading
@@ -66,28 +65,9 @@ def _解析超时秒(超时秒, 默认秒: float | None, 留空语义: str) -> t
     return float(超时秒), ""
 
 
-def _剥成对引号(项: str) -> str:
-    """剥掉 `posix=False` 拆分留下的成对首尾引号（`"a b"` → `a b`）。"""
-    if len(项) >= 2 and 项[0] == 项[-1] and 项[0] in ("'", '"'):
-        return 项[1:-1]
-    return 项
-
-
-def _拆分命令(命令: str) -> list[str]:
-    """把命令文本拆成参数表（平台判定只在收口层，调用点不写平台判断）。
-
-    B-28：POSIX 模式下 `shlex.split` 把反斜杠当转义符，Windows 路径
-    `C:\\tools\\app.exe` 会被拆成 `C:oolsapp.exe`（`\\t`/`\\a` 被吞）。
-    因此：
-
-    - Windows：`posix=False`（反斜杠是普通字符、引号由 shlex 保留）→ 再剥成对引号；
-      真实最终引用由 `subprocess`（`list2cmdline`）在启动时负责；
-    - POSIX：保留 posix 语义（反斜杠就是转义符，与真实 shell 一致）；需要保留
-      反斜杠的场景用引号包裹（`执行命令("echo 'C:\\\\tools\\\\app.exe'")`）。
-    """
-    if 平台适配.是Windows():
-        return [_剥成对引号(项) for 项 in shlex.split(命令, posix=False)]
-    return shlex.split(命令)
+# 命令文本拆分（B-28）与它的 `posix=False` 口径**已整体下沉收口层**
+# `公共契约.运行时.平台适配.拆分命令文本()`：本文件不再自带 `_拆分命令` / `_剥成对引号`
+# 及其平台分支（第一轮审计 §二 B1-2 / §四 D-1 —— 原文与本文件第 88 行的平台分叉冲突）。
 
 系统根 = Path(__file__).resolve().parents[5]
 
@@ -335,10 +315,10 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
         return 危险命中
     # 不用 shell=True（参数列表直启）：进程自成独立组后，超时/异常由收口层
     # 整组回收，避免 shell 子孙进程泄漏。
-    # 命令文本拆分按平台选口径（B-28）：Windows 用 posix=False 保住反斜杠路径，
-    # 平台判定只在收口层 平台适配.是Windows()，这里不写平台判断。
+    # 命令文本拆分的平台差异（B-28）已收口到 平台适配.拆分命令文本()：
+    # Windows 用 posix=False 保住反斜杠路径，**本处不含任何平台分叉**。
     try:
-        命令表 = _拆分命令(命令)
+        命令表 = 平台适配.拆分命令文本(命令)
     except ValueError as 错误:
         return 结果.失败("参数不合法", f"命令解析失败: {错误}", 来源="进程管理")
     if not 命令表 or not 命令表[0].strip():

@@ -1,5 +1,11 @@
 """容量与资源基线：声明基线→实测采样→对比超限→超限处理链→熔断与证据。
-P1-16 仅标准库中文语义；采样全真实，ps 不可用返回错误码；超限处理真实执行并追加 JSON Lines 证据，连续超限达阈值熔断。"""
+P1-16 仅标准库中文语义；采样全真实，ps 不可用返回错误码；超限处理真实执行并追加 JSON Lines 证据，连续超限达阈值熔断。
+
+**跨平台收口**：各项采样的**平台取法差异**（RSS 的 `ps` vs `/proc`、句柄的 `/proc/self/fd`
+vs `/dev/fd`）一律在 `公共契约/运行时/平台适配.py` 判断；**本文件不含任何平台判断**
+（第一轮《审计_平台判断越界_20260919》§二 B1-3 后：`采样内存RSS` 的
+`if 是macOS() … else 假定有 /proc` 分叉已下沉收口层 `进程内存RSS字节()`）。
+"""
 from __future__ import annotations
 from 公共契约.运行时 import 平台适配
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
@@ -11,31 +17,28 @@ from typing import Any
 
 必需基线字段 = ("线程上限", "进程上限", "内存上限MB", "队列长度上限",
              "文件句柄上限", "临时空间上限MB", "单次调用超时秒", "每分钟重启上限")
-ps路径表 = ("/bin/ps", "/usr/bin/ps")
 # 证据追加写锁（多线程安全）
 _证据锁 = threading.Lock()
 
 
 def 采样内存RSS(ps命令: str | None) -> dict:
-    """真实 RSS(MB)：macOS ps -o rss=，Linux /proc 状态；失败返回错误码。"""
-    if 平台适配.是macOS():
-        for 路径 in (ps路径表 if ps命令 is None else (ps命令,)):
-            try:
-                输出 = subprocess.run([路径, "-o", "rss=", "-p", str(os.getpid())], capture_output=True, text=True, timeout=5)
-                if 输出.returncode == 0 and 输出.stdout.strip():
-                    return {"成功": 真, "值MB": round(int(输出.stdout.strip()) / 1024, 2), "错误码": "", "错误说明": ""}
-            except (OSError, ValueError, subprocess.TimeoutExpired):
-                continue
-        return {"成功": 假, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": f"ps 不可用: {ps命令 or ps路径表}"}
-    try:
-        状态路径 = Path("/proc") / str(os.getpid()) / "status"
-        if not 状态路径.is_file():
-            return {"成功": 假, "值": 0, "错误码": "平台不支持",
-                    "错误说明": "当前平台无 /proc，无法读取容量基线"}
-        值 = next(行.split()[1] for 行 in 状态路径.read_text(encoding="utf-8").splitlines() if 行.startswith("VmRSS:"))
-        return {"成功": 真, "值MB": round(int(值) / 1024, 2), "错误码": "", "错误说明": ""}
-    except (OSError, StopIteration, ValueError) as 错误:
-        return {"成功": 假, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": f"/proc 状态不可用: {错误}"}
+    """真实 RSS(MB)：取法（macOS `ps -o rss=` / Linux `/proc/<pid>/status` VmRSS / 其余平台显名不支持）
+    **整体收口在 `公共契约/运行时/平台适配.py` 的 `进程内存RSS字节()`**；本函数只做结果归一。
+
+    为什么本函数必须变薄（第一轮审计 §二 B1-3）：旧实现自带 `if 是macOS(): … else: 假定有 /proc`
+    的平台分支，而 **Windows 两者皆无**，实际靠 `/proc/.../status` 的 `is_file()` 兜底 —— 这个兜底
+    能工作，但它是**副作用而非设计**：同一份 `if/else` 把 Linux 与 Windows 归为一类，靠文件存在性
+    把它们分开。取法分叉会让「同一阈值在不同平台量纲/含义不同」，而阈值是硬熔断判据。
+
+    **三态口径**：收口层回 `(字节, "")` / `(0, 原因)`；本函数把「没采到」一律归为
+    `成功=假` + 错误码 `内存采样失败`，并把收口层的 `原因` 原样放进 `错误说明`
+    （平台不支持的场景由 `原因` 显名，例如「Windows 既无 ps 也无 /proc」）——
+    **绝不把 0 当成真实读数**（fail-closed）。
+    """
+    字节, 原因 = 平台适配.进程内存RSS字节(os.getpid(), ps命令=ps命令)
+    if 原因:
+        return {"成功": 假, "值MB": -1.0, "错误码": "内存采样失败", "错误说明": 原因}
+    return {"成功": 真, "值MB": round(字节 / 1048576, 2), "错误码": "", "错误说明": ""}
 
 
 def 采样进程数() -> dict:
