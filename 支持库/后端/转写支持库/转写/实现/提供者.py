@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 假, 真
 from 公共契约.运行时 import 平台适配, 进程终止, 有界IO
 
 包目录 = Path(__file__).resolve().parent.parent
@@ -81,7 +82,7 @@ def _供应链守卫(模型路径: str) -> 结果 | None:
     if not 判定.get("通过"):
         return 结果.失败(str(判定.get("错误码") or "文件摘要不符"),
                           str(判定.get("错误说明") or "语音权重供应链校验未通过"),
-                          来源="MLXWhisper提供者", 可重试=False,
+                          来源="MLXWhisper提供者", 可重试=假,
                           详情={k: v for k, v in 判定.items() if k != "错误说明"})
     return None
 
@@ -195,7 +196,7 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
     try:
         进程 = _启动子进程()
     except OSError as 错误:
-        return _失败("提供者不可用", f"无法启动 MLX Whisper 隔离子进程: {错误}", 可重试=True)
+        return _失败("提供者不可用", f"无法启动 MLX Whisper 隔离子进程: {错误}", 可重试=真)
     输出 = bytearray()
     错误输出 = bytearray()
     收集器 = []
@@ -220,7 +221,7 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
                 return _失败("取消", "转写已被调用方取消")
             if time.monotonic() - 开始 >= 超时秒:
                 _终止进程组(进程)
-                return _失败("超时", f"MLX Whisper 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
+                return _失败("超时", f"MLX Whisper 隔离子进程执行超过 {超时秒} 秒", 可重试=真)
             全部结束 = True
             for 收集, 容器 in 收集器:
                 片段, _超限, 结束 = 收集.取()
@@ -238,11 +239,11 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
             _终止进程组(进程)
         _关闭流(进程)
     if 进程.returncode:
-        return _失败("进程崩溃", f"MLX Whisper 隔离子进程异常退出（退出码 {进程.returncode}）", 可重试=True)
+        return _失败("进程崩溃", f"MLX Whisper 隔离子进程异常退出（退出码 {进程.returncode}）", 可重试=真)
     try:
         响应 = json.loads(输出.decode("utf-8", errors="replace"))
     except json.JSONDecodeError:
-        return _失败("进程崩溃", "MLX Whisper 隔离子进程返回了无效响应", 可重试=True)
+        return _失败("进程崩溃", "MLX Whisper 隔离子进程返回了无效响应", 可重试=真)
     if not 响应.get("成功"):
         return 结果.失败(str(响应.get("错误码") or "进程崩溃"),
                           str(响应.get("错误说明") or "子进程执行失败"), 来源="MLXWhisper提供者",

@@ -13,9 +13,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -124,20 +121,27 @@ def _读已有裁决(裁决目录) -> dict:
 
     为什么必须复用（2026-09-18 实测）：长场次 29 个窗口单轮要十几分钟且几乎必然有个别窗口
     遇瞬时超时/句柄失效；不复用时每次重跑都从第 1 窗重来，可能不断碰上新的瞬时失败而收不了口。
+
+    ★ 文件读写一律经底座原子能力（`文件系统支持库.文件操作.列出目录` + `读取文件`，
+    解析经 `数据操作支持库.数据交换.反序列化JSON`）：本文件是模块实现，不得直接触碰标准库
+    I/O —— 原 `os.listdir` / 内置 `open` 是原子旁路（能力调用图审计判红，2026-09-19 修）。
     """
     表: dict = {}
-    try:
-        文件们 = sorted(os.listdir(裁决目录))
-    except OSError:
+    列 = _底座("文件系统支持库.文件操作.列出目录", {"目录路径": str(裁决目录)})
+    if 列 is None or not getattr(列, "成功", 假):
         return 表
-    for 名 in 文件们:
+    文件们 = [str(名) for 名 in (getattr(列, "值", None) or [])]
+    for 名 in sorted(文件们):
         if not (名.startswith("窗口_") and 名.endswith(".json")):
             continue
-        try:
-            with open(os.path.join(裁决目录, 名), encoding="utf-8") as f:
-                数据 = json.load(f)
-        except Exception:
+        读 = _底座("文件系统支持库.文件操作.读取文件",
+                   {"文件路径": str(Path(裁决目录) / 名), "编码": "utf-8"})
+        if 读 is None or not getattr(读, "成功", 假) or not isinstance(getattr(读, "值", None), str):
             continue
+        解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": getattr(读, "值")})
+        if 解析 is None or not getattr(解析, "成功", 假):
+            continue
+        数据 = getattr(解析, "值", None)
         if not isinstance(数据, dict) or 数据.get("状态") != "完成":
             continue
         if not str(数据.get("精校文本") or "").strip():

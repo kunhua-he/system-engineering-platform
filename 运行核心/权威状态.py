@@ -1543,14 +1543,14 @@ class 权威状态:
         """两个路径是否指向同一个库文件（同 inode 优先，路径双向包含兜底）。"""
         try:
             if os.path.samefile(目标, 自报):
-                return True
+                return 真
         except OSError:
             pass  # 任一侧不存在（如截断出来又没建成的前缀）→ 降级比路径
         for 规约 in (os.path.abspath, os.path.realpath):
             规约目标, 规约自报 = 规约(目标), 规约(自报)
             if 规约目标 in 规约自报 or 规约自报 in 规约目标:
-                return True
-        return False
+                return 真
+        return 假
 
     def 校验结构(self) -> tuple[bool, str]:
         """结构校验：版本一致 + 必需列齐全 + integrity_check 返回 ok。"""

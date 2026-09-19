@@ -17,6 +17,16 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# 仓库根自举：本文件是被 提供者.py 以 `sys.executable` 起的**独立子进程入口**，
+# 必须能自己在 sys.path 上找到正式根 —— 不能依赖父进程的 PYTHONPATH / cwd
+# （2026-09-19 实测：不注入 PYTHONPATH 时 `from 公共契约…` 直接 ModuleNotFoundError，
+# 子进程退码 1，被上层误报成「提供者崩溃」，真实原因被掩盖）。
+# 同目录族先例：MLXWhisper提供者/转写支持库 的子进程入口都写了同一段自举。
+系统根 = Path(__file__).resolve().parents[4]
+导入根 = 系统根.parent if 系统根.name == "平台客户端" else 系统根
+if str(导入根) not in sys.path:
+    sys.path.insert(0, str(导入根))
+
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.数据库URI import 只读库URI实参
 

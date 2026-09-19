@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 假, 真
+
 # 唯一清单：顶层正式包根（顺序＝发现/统计顺序）
 正式根名表: tuple[str, ...] = ("支持库", "模块库", "技能库", "平台控制面", "运行核心", "启动监督器")
 
@@ -150,7 +152,7 @@ def 是保留目录(包目录: Path, 根目录: Path) -> bool:
         相对 = (根目录 if 包目录 == 根目录 else 包目录.relative_to(根目录))
     except ValueError:
         # 不在根下：口径无法判定，按保留处理（fail-closed，不白送收录）。
-        return True
+        return 真
     return any(段.startswith(保留目录前缀) or 段 in 保留目录段名 for 段 in 相对.parts)
 
 
@@ -166,15 +168,15 @@ def 是非生产声明(声明: object, 包id: str = "") -> bool:
     目录被改名但 包id 仍自称模板的那些包，靠这条兜住。
     """
     if 包id.startswith("模块库._模板"):
-        return True
+        return 真
     if not isinstance(声明, dict):
-        return False
+        return 假
     for 字段 in 非生产声明字段:
         值 = 声明.get(字段)
         if isinstance(值, bool) and 值:
-            return True
+            return 真
         if isinstance(值, str) and 值.strip().lower() in 非生产真值:
-            return True
+            return 真
     状态 = str(声明.get("状态", "")).strip().lower()
     return 状态 in 非生产状态值
 
@@ -209,7 +211,7 @@ def 是聚合视图包(包目录: Path) -> bool:
     本函数是唯一一份。
     """
     if (包目录 / "能力定义.json").is_file():
-        return False
+        return 假
     return bool(子包声明表(包目录))
 
 
@@ -225,15 +227,15 @@ def 是装配包(包目录: Path, 根目录: Path, 声明: object = None) -> boo
     字段 + 聚合父包）。两份对同一目录可以给出相反结论 —— 见本模块头「包目录口径」。
     """
     if 是保留目录(包目录, 根目录):
-        return False
+        return 假
     if 是聚合视图包(包目录):
-        return False
+        return 假
     if 声明 is None:
         import json
         try:
             声明 = json.loads((包目录 / 声明文件名).read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, ValueError):
-            return False
+            return 假
     包id = str(声明.get("包id", "")) if isinstance(声明, dict) else ""
     return not 是非生产声明(声明, 包id)
 

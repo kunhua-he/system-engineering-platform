@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from 公共契约.基础类型.逻辑类型 import 假, 真
+
 
 默认读取块大小 = 65536
 默认JSONL读取上限字节 = 4 * 1024 * 1024
@@ -60,7 +62,7 @@ def 读取JSONL(
     """从 JSONL 尾部有界读取，返回（合法记录、是否截断）。"""
     文件 = Path(路径)
     if not 文件.is_file():
-        return [], False
+        return [], 假
     字节上限 = max(1024, int(最大字节数))
     记录上限 = max(1, int(最大记录数))
     文件大小 = 文件.stat().st_size
@@ -78,7 +80,7 @@ def 读取JSONL(
             if isinstance(记录, dict):
                 记录列表.append(记录)
             if len(记录列表) >= 记录上限:
-                return 记录列表, True
+                return 记录列表, 真
     return 记录列表, 起点 > 0
 
 

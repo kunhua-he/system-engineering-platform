@@ -83,7 +83,7 @@ def _尝试重开(字节: bytes) -> int | None:
         # 作为明确降级结果返回。真实解析失败不走此分支，仍然阻断。
         return 0
     if not 结果.成功:
-        if 结果.错误码 in {"提供者不可用", "能力不存在", "CAPABILITY_NOT_FOUND", "PROVIDER_UNAVAILABLE"}:
+        if 结果.错误码 in {"提供者不可用", "能力不存在"}:
             return 0
         return None
     值 = 结果.值

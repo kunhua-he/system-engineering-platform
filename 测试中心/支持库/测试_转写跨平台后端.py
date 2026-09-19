@@ -106,8 +106,9 @@ class Test按平台选后端(unittest.TestCase):
     def _切平台(self, 平台标志: str, 架构: str):
         """同时切 `sys.platform` 与 `platform.machine()`（后端判定只用这两项）。"""
         return mock.patch.multiple(
-            sys, platform=平台标志,
-        ), mock.patch.object(平台适配.platform, "machine", return_value=架构)
+            sys, spec=str, platform=平台标志,
+        ), mock.patch.object(平台适配.platform, "machine",
+                             wraps=平台适配.platform.machine, side_effect=lambda: 架构)
 
     def test_AppleSilicon选mlx(self):
         p1, p2 = self._切平台("darwin", "arm64")
@@ -151,8 +152,8 @@ class Test按平台选后端(unittest.TestCase):
         for 平台标志, 架构 in (("win32", "AMD64"), ("linux", "x86_64"), ("darwin", "x86_64")):
             for 解析 in 两处解析:
                 with self.subTest(平台=平台标志, 模块=解析.__name__), \
-                        mock.patch.object(sys, "platform", 平台标志), \
-                        mock.patch.object(平台适配.platform, "machine", return_value=架构):
+                        mock.patch.object(sys, "platform", 平台标志, spec=str), \
+                        mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: 架构):
                     真实导入 = []
                     原导入 = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
 
@@ -163,7 +164,7 @@ class Test按平台选后端(unittest.TestCase):
                     # 两个后端的库都打进 sys.modules：本用例只判「去加载了哪一个」，
                     # 不让本机真实安装的 mlx_whisper 参与（真库加载会拖慢/炸进程，
                     # 且与本判据无关 —— 本判据要的就是「根本不该去碰它」）。
-                    with mock.patch("builtins.__import__", side_effect=_记录导入), \
+                    with mock.patch("builtins.__import__", autospec=True, side_effect=_记录导入), \
                             mock.patch.dict(sys.modules, {"faster_whisper": _伪FasterWhisper库,
                                                           "mlx_whisper": _伪MLX库}):
                         解析._加载库(set())
@@ -174,8 +175,8 @@ class Test按平台选后端(unittest.TestCase):
     def test_AppleSilicon分支加载mlx(self):
         for 解析 in 两处解析:
             with self.subTest(模块=解析.__name__), \
-                    mock.patch.object(sys, "platform", "darwin"), \
-                    mock.patch.object(平台适配.platform, "machine", return_value="arm64"), \
+                    mock.patch.object(sys, "platform", "darwin", spec=str), \
+                    mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "arm64"), \
                     mock.patch.dict(sys.modules, {"mlx_whisper": _伪MLX库}):
                 库 = 解析._加载库(set())
             self.assertIs(库, _伪MLX库)
@@ -294,12 +295,12 @@ class Test两个后端调用适配(unittest.TestCase):
         for 解析 in 两处解析:
             for 禁用名 in ("mlx_whisper", "faster_whisper", "转写库"):
                 with self.subTest(模块=解析.__name__, 禁用=禁用名):
-                    with mock.patch.object(sys, "platform", "linux"), \
-                            mock.patch.object(平台适配.platform, "machine", return_value="x86_64"), \
+                    with mock.patch.object(sys, "platform", "linux", spec=str), \
+                            mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"), \
                             mock.patch.dict(sys.modules, {"faster_whisper": _伪FasterWhisper库}):
                         self.assertIsNone(解析._加载库({禁用名}))
-                    with mock.patch.object(sys, "platform", "darwin"), \
-                            mock.patch.object(平台适配.platform, "machine", return_value="arm64"), \
+                    with mock.patch.object(sys, "platform", "darwin", spec=str), \
+                            mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "arm64"), \
                             mock.patch.dict(sys.modules, {"mlx_whisper": _伪MLX库}):
                         self.assertIsNone(解析._加载库({禁用名}))
 
@@ -311,8 +312,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
     全平台 = {"名称": "json包", "版本": "1.0.0", "模块名": "json"}
 
     def test_不写适用平台等于全平台适用(self):
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             # 不写 / 写成空值 → 全平台适用（向后兼容）
             self.assertTrue(环境管理器._适用当前平台({"名称": "x", "版本": "1.0.0"}))
             self.assertTrue(环境管理器._适用当前平台({"适用平台": []}))
@@ -335,8 +336,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
         self.assertEqual(环境管理器._归一平台名("不认识的平台"), "不认识的平台")
         self.assertEqual(环境管理器._归一平台名(""), "")
         # 别名写法在 macOS 上确实命中
-        with mock.patch.object(sys, "platform", "darwin"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="arm64"):
+        with mock.patch.object(sys, "platform", "darwin", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "arm64"):
             self.assertTrue(环境管理器._适用当前平台({"适用平台": ["darwin"]}))
             self.assertTrue(环境管理器._适用当前平台({"适用平台": ["macOS"]}))
             self.assertFalse(环境管理器._适用当前平台({"适用平台": ["win32"]}))
@@ -345,8 +346,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
         """**核心判据**：模块装不上，但只要它不适用当前平台，校验就不该失败。"""
         解释器 = self._伪解释器()
         锁 = {"包": [dict(self.macOS专用, 适用平台=["macOS"])], "直接依赖": [], "依赖闭包": []}
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             self.assertTrue(环境管理器.校验环境(解释器, 锁))
 
     def test_全平台依赖缺模块必判红(self):
@@ -365,8 +366,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
         锁 = {"包": [dict(self.macOS专用, 适用平台=["macOS"]),
                     dict(self.全平台, 适用平台=["Windows", "Linux"])],
               "直接依赖": [], "依赖闭包": []}
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             self.assertTrue(环境管理器.校验环境(解释器, 锁))
         # 反向（真红）：把**适用当前平台**的那条换成装不上的模块 → 同一结构必须判假。
         # 这正是「平台过滤不会顺手放过本平台真实缺模块」的证明。
@@ -374,13 +375,13 @@ class Test依赖锁按平台过滤(unittest.TestCase):
                        {"名称": "X", "版本": "1.0.0", "模块名": "绝不存在模块_xyz",
                         "适用平台": ["Windows", "Linux"]}],
                 "直接依赖": [], "依赖闭包": []}
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             self.assertFalse(环境管理器.校验环境(解释器, 真红锁),
                              "适用当前平台的依赖缺模块必须判红")
         # 平台翻面后结论随之翻面：同一份锁在 macOS 上只校验 macOS 专用条目（模块缺失）→ 假
-        with mock.patch.object(sys, "platform", "darwin"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="arm64"):
+        with mock.patch.object(sys, "platform", "darwin", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "arm64"):
             self.assertFalse(环境管理器.校验环境(解释器, 锁))
 
     def test_强制校验规则4不报假红(self):
@@ -392,8 +393,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
             "依赖闭包": [dict(self.macOS专用, 来源="PyPI", 适用平台=["macOS"])],
             "环境": {},
         })
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             结果 = 校验提供者环境(提供者目录, "临时提供者", 自动清理=假)
         原因表 = [问题.原因 for 问题 in 结果.问题列表]
         self.assertFalse(any("未纳入 依赖闭包" in 原因 for 原因 in 原因表), 原因表)
@@ -408,8 +409,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
             "依赖闭包": [],
             "环境": {},
         })
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             结果 = 校验提供者环境(提供者目录, "临时提供者", 自动清理=假)
         原因表 = [问题.原因 for 问题 in 结果.问题列表]
         self.assertTrue(any("不是精确版本" in 原因 for 原因 in 原因表), 原因表)
@@ -423,8 +424,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
             "依赖闭包": [],
             "环境": {},
         })
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             结果 = 校验提供者环境(提供者目录, "临时提供者", 自动清理=假)
         原因表 = [问题.原因 for 问题 in 结果.问题列表]
         self.assertTrue(any("未纳入 依赖闭包" in 原因 for 原因 in 原因表), 原因表)
@@ -438,8 +439,8 @@ class Test依赖锁按平台过滤(unittest.TestCase):
             "依赖闭包": [],
             "环境": {},
         })
-        with mock.patch.object(sys, "platform", "linux"), \
-                mock.patch.object(平台适配.platform, "machine", return_value="x86_64"):
+        with mock.patch.object(sys, "platform", "linux", spec=str), \
+                mock.patch.object(平台适配.platform, "machine", wraps=平台适配.platform.machine, side_effect=lambda: "x86_64"):
             结果 = 校验提供者环境(提供者目录, "临时提供者", 自动清理=假)
         原因表 = [问题.原因 for 问题 in 结果.问题列表]
         self.assertFalse(any("空锁" in 原因 for 原因 in 原因表), 原因表)

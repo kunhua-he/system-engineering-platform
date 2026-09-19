@@ -45,6 +45,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 假
+
 # 唤醒判定阈值：差值突变超过这个秒数才算「刚唤醒」。
 # 为什么是 30 秒：正常运行下墙钟与单调时钟的差值漂移量级是**毫秒**（NTP 微调、
 # 两次取时钟之间的调度延迟），30 秒留了 4 个数量级余量，不会把正常抖动误判成唤醒；
@@ -155,11 +157,11 @@ def 落在睡眠窗口(墙钟秒: float, 判定: 唤醒判定) -> bool:
     **睡下那一刻它还是未来**——持有者是被冻住而没能续租，不是真的闲置超时。
     """
     if not 判定.刚唤醒:
-        return False
+        return 假
     try:
         值 = float(墙钟秒)
     except (TypeError, ValueError):
-        return False
+        return 假
     return 判定.窗口起点墙钟 < 值 <= 判定.窗口终点墙钟
 
 

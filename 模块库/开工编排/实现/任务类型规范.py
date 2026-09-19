@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 假
+
 #: 字典文件相对项目根的路径（唯一数据源；改规范只改数据，不改代码）。
 字典相对路径 = "开发文档/规范/任务类型规范.json"
 
@@ -104,11 +106,11 @@ def 取任务类型规范(项目根: str, 本次任务: str, *,
     路径 = Path(str(项目根 or "")).expanduser()
     数据, 错误 = _读字典(路径)
     if 错误:
-        return [], 错误, False
+        return [], 错误, 假
 
     词表 = set(切词(本次任务))
     if not 词表:
-        return [], "本次任务 为空，无法判定任务类型（请给一句「我正要做什么」）", False
+        return [], "本次任务 为空，无法判定任务类型（请给一句「我正要做什么」）", 假
     任务文本 = "".join(字 for 字 in str(本次任务 or "") if 字.strip())
 
     命中: list[dict[str, Any]] = []
@@ -127,7 +129,7 @@ def 取任务类型规范(项目根: str, 本次任务: str, *,
             "相关度": 分,
         })
     if not 命中:
-        return [], "", False
+        return [], "", 假
 
     命中.sort(key=lambda 项: (-项["相关度"], 项["任务类型"]))
     截断 = len(命中) > 上限
