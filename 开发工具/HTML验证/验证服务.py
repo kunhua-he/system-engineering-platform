@@ -81,8 +81,21 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
                 with urllib.request.urlopen(请求, timeout=默认超时秒) as 响应:
                     状态码, 返回 = 响应.status, 响应.read(请求上限字节)
             except urllib.error.HTTPError as 错误:
+                # #169（2026-09-20）：原实现只 `finally: 错误.close()` —— 若 `错误.read()`
+                # 抛 OSError（连接中途断开 / 响应体解码失败），该异常**不在本 except 的
+                # 捕获类型内**，也不会落到下面那个 except（一个 try 只进一个 except 分支），
+                # 于是直接逃逸到 HTTPServer 顶层：调用方拿到的是连接被掐断（curl 52），
+                # 而不是本服务约定的结构化 502「网关断开」。
+                # 现把读取失败收成同一口径的结构化错误，保持出口唯一。
                 try:
                     状态码, 返回 = 错误.code, 错误.read(请求上限字节)
+                except OSError as 读取错误:
+                    状态码 = 502
+                    返回 = json.dumps({
+                        "成功": False, "值": None, "错误码": "网关断开",
+                        "错误说明": f"读取错误响应体失败: {读取错误}",
+                        "可重试": True, "请求id": uuid.uuid4().hex, "耗时毫秒": 0,
+                    }, ensure_ascii=False).encode()
                 finally:
                     错误.close()
             except (urllib.error.URLError, TimeoutError, OSError) as 错误:
