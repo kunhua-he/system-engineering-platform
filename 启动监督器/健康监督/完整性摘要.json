@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "4586aed158fbcc51566079b8953c0c0ef76563ac92d9aa1ee14b14cbeebc0076"
+      "sha256": "282ddc52c5345624caf074fbfcc410afc8a6d697d878c75fabe647d2a04ead12"
     },
     {
       "路径": "包声明.json",
@@ -18,10 +18,6 @@
     {
       "路径": "实现/__init__.py",
       "sha256": "6462fc97f6a749414d3ba6a6ddd0eed3bdb79f98bc160707ca7cc5e5222649d0"
-    },
-    {
-      "路径": "实现/兼容平铺模块.py",
-      "sha256": "b80945a7a305fb4c1acadb7a6439e19684e03b272bd8bcba3c480eaa5d7890d6"
     },
     {
       "路径": "实现/提供者.py",
