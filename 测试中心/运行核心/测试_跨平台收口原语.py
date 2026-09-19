@@ -8,9 +8,25 @@ B1-1 / B1-2 / B1-3 / B2-1 是「平台判断决定行为分叉」，B3-1 是「�
 
 本测试锁两件事，缺一不可：
 
-① **原语本身的三平台分支选择正确**（macOS 真跑；Windows / Linux 用 `sys.platform` 打桩，
-   与 `测试中心/运行核心/测试_平台准入.py` 同一合法姿势 —— 反向验证的目的就是模拟另一个
-   平台，必须直接打桩最底层标志，经收口层就打不到）；
+① **原语本身的三平台分支选择正确**（macOS 真跑；Windows / Linux 用 `sys.platform` 值替换，
+   先例 `测试中心/支持库/测试_转写跨平台后端.py` —— 反向验证的目的就是模拟另一个平台，
+   必须直接换掉最底层标志，经收口层就换不到）；
+
+**桩姿势与测试伪装门禁三条硬规则逐条对齐**（都按门禁自己给的改法落，不留违规、不登记豁免）：
+
+1. `sys.platform` 是**字符串值**，不是可调用成员：`autospec=True` 会造出 NonCallableMock
+   代用品（`sys.platform.startswith` 沦为恒真桩，语义被污染），而 `autospec=True` 与显式新值
+   同传直接 `TypeError: autospec creates the mock for you`（本机 3.14.4 实测）。所以用
+   **值类型规格** `spec=str` 声明被替换属性的规格 → 门禁规则2 计「合规·已有签名校验」，
+   值仍是原生 `str`；
+2. 真属可调用成员的替换一律 `autospec=True`（签名校验由 `create_autospec` 真实承担），
+   需要「坏一路」行为时用 `side_effect=` 挂真实实现（真实现转接，不是裸桩）→ 规则2 计「合规」；
+3. **绝不 patch 生产模块本体成员**（门禁规则1）：收口层读数一律走**真实取法覆盖**
+   —— `ps命令` 指到临时目录里真实落盘的假 `ps` 可执行文件，收口层与调用点两份实现都不替换；
+4. 反向验证的坏态一律从**判据参数**注入局部实现（`取上下文=` / `取读数=` / `取根=`），
+   连生产属性都不碰；
+
+因此本文件**不需要**在 `开发工具/测试伪装门禁实现/豁免清单.json` 登记任何条目。
 ② **调用点真的改调了原语、且自己没有留下平台分支**（静态 AST 判据 + 行为级一致性判据）。
 
 **为什么必须有 ②**：只测 ① 的话，「原语写好了但调用点仍在就地分叉」照样全绿 ——
@@ -24,6 +40,7 @@ from __future__ import annotations
 import ast
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -90,7 +107,7 @@ class 测试多进程启动上下文(unittest.TestCase):
 
     def test_模拟Windows给spawn且需序列化(self) -> None:
         """``sys.platform`` 打桩成 win32：必须走 spawn（Windows 上 fork 不存在）。"""
-        with mock.patch.object(sys, "platform", "win32"):
+        with mock.patch.object(sys, "platform", "win32", spec=str):
             上下文, 需序列化 = 平台适配.多进程启动上下文()
             self.assertFalse(平台适配.是POSIX())
             self.assertEqual(上下文.get_start_method(), "spawn")
@@ -106,7 +123,11 @@ class 测试多进程启动上下文(unittest.TestCase):
             return _真取上下文(方法)
 
         _真取上下文 = multiprocessing.get_context
-        with mock.patch.object(multiprocessing, "get_context", _假取上下文):
+        # `autospec=True`：签名校验由 `create_autospec` 真实承担（少参/多参当场 TypeError）；
+        # `side_effect=` 把调用转给**真实现**，只把 fork 这一路换成抛错（真实现转接而非裸桩）
+        # —— 门禁规则2 计「合规」，规则1 不涉生产命名空间。
+        with mock.patch.object(multiprocessing, "get_context",
+                               autospec=True, side_effect=_假取上下文):
             上下文, 需序列化 = 平台适配.多进程启动上下文()
         self.assertEqual(上下文.get_start_method(), "spawn")
         self.assertEqual(需序列化, 真)
@@ -137,13 +158,13 @@ class 测试拆分命令文本(unittest.TestCase):
         拆坏 = shlex.split(命令)
         self.assertEqual(拆坏[0], "C:toolsapp.exe")
         self.assertNotIn("\\", 拆坏[0], "posix 口径把路径分隔符全丢了")
-        with mock.patch.object(sys, "platform", "win32"):
+        with mock.patch.object(sys, "platform", "win32", spec=str):
             结果 = 平台适配.拆分命令文本(命令)
         self.assertEqual(结果, [r"C:\tools\app.exe", "--flag"])
         self.assertIn("\\", 结果[0], "Windows 口径必须保住反斜杠路径")
 
     def test_模拟Windows剥成对引号(self) -> None:
-        with mock.patch.object(sys, "platform", "win32"):
+        with mock.patch.object(sys, "platform", "win32", spec=str):
             self.assertEqual(
                 平台适配.拆分命令文本('"C:\\Program Files\\app.exe" /x'),
                 [r"C:\Program Files\app.exe", "/x"])
@@ -179,7 +200,7 @@ class 测试进程内存RSS字节(unittest.TestCase):
                         f"量纲不一致：收口层 {字节} 对 ps×1024 {期望}（差 1024 倍会让阈值失真）")
 
     def test_模拟Windows显名不支持且不是零读数(self) -> None:
-        with mock.patch.object(sys, "platform", "win32"):
+        with mock.patch.object(sys, "platform", "win32", spec=str):
             字节, 原因 = 平台适配.进程内存RSS字节(os.getpid())
         self.assertEqual(字节, 0)
         self.assertTrue(原因, "平台不支持必须显名原因，不许静默返回 0 冒充读数")
@@ -193,26 +214,41 @@ class 测试进程内存RSS字节(unittest.TestCase):
                 self.assertIn("进程ID", 原因)
 
     def test_ps命令覆盖生效且失败原因分阶段点名(self) -> None:
-        """ps 指到不存在的路径 → 原因必须点明「ps 命令不可用」（与「pid 查不到」区分）。"""
-        字节, 原因 = 平台适配.进程内存RSS字节(os.getpid(), ps命令="/不存在/ps")
-        self.assertEqual(字节, 0)
-        self.assertIn("ps 命令不可用", 原因)
-        # 不存在的 pid → 另一类原因（进程已消失），不是「命令不可用」
-        字节2, 原因2 = 平台适配.进程内存RSS字节(99999999)
+        """`ps命令` 是**真实取法覆盖**：指到假 ps 就用假 ps 的读数，指到不存在的路径就点名原因。
+
+        为什么不用桩顶掉收口层：`平台适配.进程内存RSS字节` 是生产模块**本体成员**，
+        门禁规则1 禁 patch 它。这里换的是 `ps命令` 入参指向的**可执行文件**，收口层与调用点
+        两份实现一个字都不替换 —— 读数仍由真实 `ps -o rss=` 子进程产出（门禁首推「改用真实依赖」）。
+        """
+        # ① 真跑：假 ps（临时目录里真实落盘的可执行脚本）的 KB 必须被收口层 ×1024 换算成字节
+        with tempfile.TemporaryDirectory(prefix="跨平台收口-假ps-") as 临时目录:
+            假ps = Path(临时目录) / "假ps"
+            假ps.write_text("#!/bin/sh\necho 3277823\n", encoding="utf-8")
+            假ps.chmod(0o755)
+            self.assertTrue(假ps.is_file(), "证伪前提：假 ps 必须真实落盘")
+            字节, 原因 = 平台适配.进程内存RSS字节(os.getpid(), ps命令=str(假ps))
+        self.assertEqual(原因, "")
+        self.assertEqual(字节, 3277823 * 1024, "收口层必须把 ps 的 KB 换算成字节")
+        # ② 不存在的 ps 路径 → 原因必须点明「ps 命令不可用」（与「pid 查不到」区分）
+        字节2, 原因2 = 平台适配.进程内存RSS字节(os.getpid(), ps命令="/不存在/ps")
         self.assertEqual(字节2, 0)
-        self.assertNotIn("ps 命令不可用", 原因2)
+        self.assertIn("ps 命令不可用", 原因2)
+        # ③ 不存在的 pid → 另一类原因（进程已消失），不是「命令不可用」
+        字节3, 原因3 = 平台适配.进程内存RSS字节(99999999)
+        self.assertEqual(字节3, 0)
+        self.assertNotIn("ps 命令不可用", 原因3)
 
 
 class 测试平台稳定缓存根(unittest.TestCase):
     """B2-1：平台级稳定缓存根是**唯一**一处平台缓存口径。"""
 
     def test_模拟macOS走LibraryCaches(self) -> None:
-        with mock.patch.object(sys, "platform", "darwin"):
+        with mock.patch.object(sys, "platform", "darwin", spec=str):
             根 = 平台适配.平台稳定缓存根(环境={"HOME": "/用户/测试"})
         self.assertEqual(根, Path("/用户/测试/Library/Caches/系统工程平台/运行缓存"))
 
     def test_模拟Windows走LOCALAPPDATA并逐级回落(self) -> None:
-        with mock.patch.object(sys, "platform", "win32"):
+        with mock.patch.object(sys, "platform", "win32", spec=str):
             self.assertEqual(
                 平台适配.平台稳定缓存根(环境={"LOCALAPPDATA": r"C:\本地"}),
                 Path(r"C:\本地") / "系统工程平台" / "运行缓存")
@@ -224,7 +260,7 @@ class 测试平台稳定缓存根(unittest.TestCase):
             self.assertIn("AppData", str(回落))
 
     def test_模拟Linux优先XDG再回落home(self) -> None:
-        with mock.patch.object(sys, "platform", "linux"):
+        with mock.patch.object(sys, "platform", "linux", spec=str):
             self.assertEqual(
                 平台适配.平台稳定缓存根(环境={"XDG_CACHE_HOME": "/xdg"}),
                 Path("/xdg") / "系统工程平台" / "运行缓存")
@@ -233,7 +269,7 @@ class 测试平台稳定缓存根(unittest.TestCase):
                 Path("/家") / ".cache" / "系统工程平台" / "运行缓存")
 
     def test_应用名可改且空值回落缺省(self) -> None:
-        with mock.patch.object(sys, "platform", "darwin"):
+        with mock.patch.object(sys, "platform", "darwin", spec=str):
             self.assertEqual(平台适配.平台稳定缓存根("别的应用", 环境={"HOME": "/家"}),
                              Path("/家/Library/Caches/别的应用/运行缓存"))
             self.assertEqual(平台适配.平台稳定缓存根("", 环境={"HOME": "/家"}),
@@ -294,18 +330,30 @@ class 测试调用点行为一致(unittest.TestCase):
     """
 
     def test_容量基线采样就是收口层读数(self) -> None:
-        """容量基线的 MB 必须**逐字**来自收口层字节（受控桩：固定 3355443200 字节 = 3200 MB）。"""
+        """容量基线的 MB 必须由收口层字节**逐字**换算（不得自发第二套换算）。
+
+        姿势（门禁规则1 首推「不 patch，改用真实依赖」）：`采样内存RSS(ps命令=…)` 的
+        `ps命令` 本就是**取法覆盖入口**，把它指到临时目录里真实落盘的假 `ps` 可执行文件，
+        读数就由假 `ps` 的真实 stdout 决定 —— 收口层与容量基线两份实现都不替换。
+
+        定值 3277808 KB 的**区分力**（`KB×1024/1048576 ≡ KB/1024`，所以这里真正能抓的是
+        **量纲错**，不是「换算公式写法不同」）：正确链 `3277808×1024/1048576 → round(,2)`
+        得 3200.98；收口层漏乘 1024（把 KB 当字节）得 3.13 —— 差三个数量级，断言必红。
+        """
         import 启动监督器.容量基线 as 容量模块
 
-        固定字节 = 3355443200  # = 3200 MiB，非整 MB 便于抓取整错误
-
-        def _固定读数(进程ID, *, ps命令=None):
-            return 固定字节, ""
-
-        with mock.patch.object(平台适配, "进程内存RSS字节", _固定读数):
-            结果 = 容量模块.采样内存RSS(None)
-        self.assertEqual(结果, {"成功": 真, "值MB": 3200.0, "错误码": "", "错误说明": ""},
-                         "容量基线必须逐字转用收口层读数（除以 1048576），不得自发第二套换算")
+        self.assertEqual(round(3277808 / 1048576, 2), 3.13,
+                         "证伪前提：漏乘 1024 的坏链确实给不同值（量纲错必须被抓）")
+        self.assertEqual(round(3277808 * 1024 / 1048576, 2), 3200.98,
+                         "证伪前提：正确链的值非整 MB，取整错误也会被抓")
+        with tempfile.TemporaryDirectory(prefix="跨平台收口-假ps-") as 临时目录:
+            假ps = Path(临时目录) / "假ps"
+            假ps.write_text("#!/bin/sh\necho 3277808\n", encoding="utf-8")
+            假ps.chmod(0o755)
+            self.assertTrue(假ps.is_file(), "证伪前提：假 ps 必须真实落盘")
+            结果 = 容量模块.采样内存RSS(str(假ps))
+        self.assertEqual(结果, {"成功": 真, "值MB": 3200.98, "错误码": "", "错误说明": ""},
+                         "容量基线必须逐字转用收口层字节（KB×1024/1048576），不得自发第二套换算")
 
     def test_容量基线真跑与收口层同量纲(self) -> None:
         """真跑：容量基线的 MB ≈ 收口层字节 / 1048576（容差 2 MB，吸收采样间隙的波动）。"""
@@ -323,7 +371,7 @@ class 测试调用点行为一致(unittest.TestCase):
         但失败必须来自收口层的显名原因，且**绝不许出现 0 MB 冒充读数**。"""
         import 启动监督器.容量基线 as 容量模块
 
-        with mock.patch.object(sys, "platform", "win32"):
+        with mock.patch.object(sys, "platform", "win32", spec=str):
             结果 = 容量模块.采样内存RSS(None)
         self.assertEqual(结果["成功"], 假)
         self.assertEqual(结果["错误码"], "内存采样失败")
@@ -336,7 +384,7 @@ class 测试调用点行为一致(unittest.TestCase):
         环境 = {"HOME": "/家", "LOCALAPPDATA": "/本地", "XDG_CACHE_HOME": "/xdg"}
         for 标志 in ("darwin", "win32", "linux", "freebsd"):
             with self.subTest(平台标志=标志):
-                with mock.patch.object(sys, "platform", 标志):
+                with mock.patch.object(sys, "platform", 标志, spec=str):
                     self.assertEqual(_平台稳定缓存根(环境),
                                      平台适配.平台稳定缓存根(环境=环境))
 
@@ -358,22 +406,33 @@ class 测试反向验证(unittest.TestCase):
     抽成独立方法，喂一份**故意弄坏**的实现时它必须抛 `AssertionError`（报红）并点名坏态，
     撤掉桩（还原）后同一断言体必须不再抛（归绿）。
 
-    **只打内存桩，不改仓库任何文件** —— 弄坏的是「原语行为」，判据必须立刻察觉；
-    这证明上面那些绿不是恒绿。
+    **只改内存里的判据输入，不改仓库任何文件** —— 弄坏的是「喂给判据的原语实现」，
+    判据必须立刻察觉；这证明上面那些绿不是恒绿。
+
+    **为什么不 patch 生产模块本体成员**（门禁规则1）：坏态一律从**判据参数**注入
+    （`取上下文=` / `取读数=` / `取根=`），生产属性一个都不替换 —— 三拍照样成立，
+    且顺带把「判据确实依赖传入的实现、不是恒绿」证成了。
     """
 
     @staticmethod
-    def _断言上下文与序列化一致(标识: str) -> tuple[str, bool]:
+    def _断言上下文与序列化一致(标识: str, *, 取上下文=None) -> tuple[str, bool]:
         """正向判据①：**启动方式与「是否需序列化」必须自洽**。
+
+        `取上下文` 是**判据参数**（缺省走端到端真实路径：真建 `任务进程池`）；反向验证把
+        「故意弄坏的原语」从这个参数喂进来，从而**不必 patch 生产模块本体成员**（门禁规则1）。
 
         自洽口径（唯一）：`spawn` 的子进程是全新解释器 ⇒ 执行器必须显式序列化（真）；
         `fork` 继承父进程内存 ⇒ 不需要（假）。两者矛盾即为坏态。
         """
-        from 运行核心.任务调度.任务进程 import 任务进程池
+        if 取上下文 is None:
+            from 运行核心.任务调度.任务进程 import 任务进程池
 
-        池 = 任务进程池(存储目录=Path("/tmp") / f"跨平台收口原语-{标识}")
-        方式 = str(池.进程上下文.get_start_method())
-        需序列化 = bool(池.需序列化执行器)
+            池 = 任务进程池(存储目录=Path("/tmp") / f"跨平台收口原语-{标识}")
+            上下文, 序列化声明 = 池.进程上下文, 池.需序列化执行器
+        else:
+            上下文, 序列化声明 = 取上下文()
+        方式 = str(上下文.get_start_method())
+        需序列化 = bool(序列化声明)
         if 方式 == "spawn" and not 需序列化:
             raise AssertionError(
                 f"坏态：启动方式为 spawn 却声明「执行器无需序列化」（{标识}）"
@@ -384,7 +443,7 @@ class 测试反向验证(unittest.TestCase):
         return 方式, 需序列化
 
     @staticmethod
-    def _断言RSS量纲与ps一致() -> int:
+    def _断言RSS量纲与ps一致(取读数=None) -> int:
         """正向判据②：**收口层读数的量纲必须与 `ps -o rss=` 的 KB × 1024 一致**。
 
         容差 1 MiB：ps 与收口层是**两次独立采样**，进程 RSS 逐秒浮动几十 KB 是正常的
@@ -396,7 +455,10 @@ class 测试反向验证(unittest.TestCase):
         原始 = subprocess.run(["/bin/ps", "-o", "rss=", "-p", str(os.getpid())],
                             capture_output=True, text=True, timeout=5)
         期望 = int(原始.stdout.strip()) * 1024
-        字节, 原因 = 平台适配.进程内存RSS字节(os.getpid())
+        # `取读数` 是**判据参数**（缺省 = 收口层真实实现）；反向验证从这里喂坏读数，
+        # 不 patch 生产模块本体成员（门禁规则1）。
+        读数 = 取读数 if 取读数 is not None else 平台适配.进程内存RSS字节
+        字节, 原因 = 读数(os.getpid())
         if 原因:
             raise AssertionError(f"坏态：本机 macOS 采样不该失败，实际原因：{原因}")
         容差 = 1024 * 1024
@@ -408,15 +470,20 @@ class 测试反向验证(unittest.TestCase):
         return 期望
 
     @staticmethod
-    def _断言三平台缓存根互不相同() -> list[str]:
-        """正向判据③：**三个平台必须给出三个不同的稳定缓存根**（且各走各的环境变量）。"""
+    def _断言三平台缓存根互不相同(取根=None) -> list[str]:
+        """正向判据③：**三个平台必须给出三个不同的稳定缓存根**（且各走各的环境变量）。
+
+        `取根` 是**判据参数**（缺省 = 收口层真实实现）；反向验证从这里喂坏实现，
+        不 patch 生产模块本体成员（门禁规则1）。
+        """
+        取根 = 取根 if 取根 is not None else 平台适配.平台稳定缓存根
         结果: list[str] = []
-        with mock.patch.object(sys, "platform", "darwin"):
-            结果.append(str(平台适配.平台稳定缓存根(环境={"HOME": "/家"})))
-        with mock.patch.object(sys, "platform", "win32"):
-            结果.append(str(平台适配.平台稳定缓存根(环境={"LOCALAPPDATA": "/本地"})))
-        with mock.patch.object(sys, "platform", "linux"):
-            结果.append(str(平台适配.平台稳定缓存根(环境={"XDG_CACHE_HOME": "/xdg"})))
+        with mock.patch.object(sys, "platform", "darwin", spec=str):
+            结果.append(str(取根(环境={"HOME": "/家"})))
+        with mock.patch.object(sys, "platform", "win32", spec=str):
+            结果.append(str(取根(环境={"LOCALAPPDATA": "/本地"})))
+        with mock.patch.object(sys, "platform", "linux", spec=str):
+            结果.append(str(取根(环境={"XDG_CACHE_HOME": "/xdg"})))
         if len(set(结果)) != 3:
             raise AssertionError(f"坏态：平台稳定缓存根未按平台分叉，实测 {结果}")
         return 结果
@@ -431,10 +498,8 @@ class 测试反向验证(unittest.TestCase):
         def _坏上下文():
             return multiprocessing.get_context("spawn"), 假  # 故意：谎报无需序列化
 
-        with mock.patch.object(平台适配, "多进程启动上下文", _坏上下文), \
-                mock.patch("运行核心.任务调度.任务进程.平台适配.多进程启动上下文", _坏上下文):
-            with self.assertRaises(AssertionError) as 捕获:
-                self._断言上下文与序列化一致("反向-坏上下文")
+        with self.assertRaises(AssertionError) as 捕获:
+            self._断言上下文与序列化一致("反向-坏上下文", 取上下文=_坏上下文)
         文本 = str(捕获.exception)
         self.assertIn("坏态", 文本)
         self.assertIn("spawn", 文本)
@@ -451,12 +516,11 @@ class 测试反向验证(unittest.TestCase):
         千字节 = int(原始.stdout.strip())
         self.assertNotEqual(千字节, 千字节 * 1024, "证伪前提：坏读数确实不等于正确读数")
 
-        def _坏读数(进程ID, *, ps命令=None):
+        def _坏读数(进程ID):
             return 千字节, ""  # 故意：把 KB 当字节
 
-        with mock.patch.object(平台适配, "进程内存RSS字节", _坏读数):
-            with self.assertRaises(AssertionError) as 捕获:
-                self._断言RSS量纲与ps一致()
+        with self.assertRaises(AssertionError) as 捕获:
+            self._断言RSS量纲与ps一致(取读数=_坏读数)
         文本 = str(捕获.exception)
         self.assertIn("坏态", 文本)
         self.assertIn("量纲", 文本)
@@ -471,9 +535,8 @@ class 测试反向验证(unittest.TestCase):
         def _坏缓存根(应用名="系统工程平台", 环境=None):
             return Path("/一律同一个根/运行缓存")  # 故意：忽略平台与主目录
 
-        with mock.patch.object(平台适配, "平台稳定缓存根", _坏缓存根):
-            with self.assertRaises(AssertionError) as 捕获:
-                self._断言三平台缓存根互不相同()
+        with self.assertRaises(AssertionError) as 捕获:
+            self._断言三平台缓存根互不相同(取根=_坏缓存根)
         文本 = str(捕获.exception)
         self.assertIn("坏态", 文本)
         self.assertIn("未按平台分叉", 文本)
