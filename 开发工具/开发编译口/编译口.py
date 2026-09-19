@@ -43,7 +43,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.正式根 import 遍历源码
-from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 静态门禁清单：名字 / 模块入口 / 参数 / 角色（阻断=红绿判定，只报告=展示不判定）/ 单项超时秒。
 #
@@ -338,12 +338,12 @@ def _防回潮独立入口勘定() -> bool:
             缺失.append(f"{名字}：{模块名}.{符号名} 取不到（不可独立跑）")
     if 缺失:
         print("  " + "；".join(缺失))
-        return False
+        return 假
     print(f"  防回潮八项（六项判据 + 能力调用图 + 反向破坏）均可独立跑："
           f"导入 `开发工具.发布门禁.运行发布门禁` / `…_防回潮判据` 直调即可，"
           f"逐项实测合计约 8 秒；未接入的六项原因（现场三红 + 落点属第二轮结构性改动）"
           f"见 `_防回潮独立入口勘定` docstring。")
-    return True
+    return 真
 
 
 def _跑反向破坏() -> tuple[int, str, float]:
