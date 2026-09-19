@@ -25,6 +25,7 @@ import base64
 import binascii
 import hashlib
 import json
+import re
 from bisect import bisect_right
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,54 @@ def _收敛细节级别(细节级别: Any) -> str | None:
     if not 文本:
         return 默认细节级别
     return 文本 if 文本 in 细节级别表 else None
+
+
+def 切检索词(文本: str) -> list[str]:
+    """把自然语言检索词切成双字滑窗词（与 `查开工上下文`/`查哲学条款` 同口径）。
+
+    中文双字滑窗、英文数字整词（长度 ≥2），纯字符串运算，不调大模型、不分词库。
+    为什么不用整句：整句会成为一个超长关键词，子串匹配必然 0 命中（2026-09-18 实测）。
+    """
+    净 = str(文本 or "")
+    词表: list[str] = []
+    已见: set[str] = set()
+    for 串 in re.findall(r"[\u4e00-\u9fa5]{2,}", 净):
+        for 起点 in range(len(串) - 1):
+            词 = 串[起点:起点 + 2]
+            if 词 not in 已见:
+                已见.add(词)
+                词表.append(词)
+    for 词 in re.findall(r"[A-Za-z0-9_]{2,}", 净):
+        小 = 词.lower()
+        if 小 not in 已见:
+            已见.add(小)
+            词表.append(小)
+    return 词表
+
+
+def _按滑窗打分(记录表: list[dict], 关键词: str) -> list[dict]:
+    """**零命中兜底**：双字滑窗打分重排（命中的词数越多分越高，同分按 能力id 稳定）。
+
+    **只在「整串子串匹配 0 命中」时才走这里** —— 命中时老行为逐字不变（对外只增不改）。
+    为什么需要它（2026-09-20 实测）：整串匹配下 12 个自然语言词 **11 个零命中（91%）**，
+    Agent 描述「我要干什么」基本搜不到，被迫改用 `rg` 枚举源码找能力 id ⇒ 违反
+    「Agent 只记两个动作：搜索能力 → 调用能力」。双字滑窗后同批词 **10/12 有命中**，
+    且排序正确（如「把视频转成音频」最高分命中 `媒体转写.转写视频文件`，命中词 视频/频转/音频）。
+
+    与扩词表的分工：**本条是「无需预登记的兜底」**（任何自然语言都能拿到候选）；
+    `项目文档支持库` 的「未命中词 → 建议词」表是**可沉淀的精确映射**，两者互补不冲突。
+    """
+    词表 = 切检索词(关键词)
+    if not 词表:
+        return []
+    打分表: list[tuple[int, dict]] = []
+    for 记录 in 记录表:
+        全文 = json.dumps(记录, ensure_ascii=False).lower()
+        分 = sum(1 for 词 in 词表 if 词 in 全文)
+        if 分 > 0:
+            打分表.append((分, 记录))
+    打分表.sort(key=lambda 项: (-项[0], 项[1]["能力id"]))
+    return [记录 for _, 记录 in 打分表]
 
 
 def _游标校验(关键词: str, 上一条id: str) -> str:
@@ -225,8 +274,15 @@ def 搜索能力(关键词: str = "", 限制: int = 默认限制, 游标: str = 
     模式 = 关键词文本.strip().lower()
     命中表 = [记录 for 记录 in 记录表
              if not 模式 or 模式 in json.dumps(记录, ensure_ascii=False).lower()]
+    兜底扩词 = False
+    if 模式 and not 命中表:
+        # 零命中兜底：自然语言整串匹配不到时，改用双字滑窗打分（见 _按滑窗打分）。
+        命中表 = _按滑窗打分(记录表, 关键词文本)
+        兜底扩词 = bool(命中表)
     # 排序键唯一且稳定：能力id（索引按 能力id 去重，故不重复）——游标就锚在它上面。
-    命中表.sort(key=lambda 记录: 记录["能力id"])
+    # 兜底路径已按分数排好序（分数优先），此处**不再重排**，否则会把相关度打散。
+    if not 兜底扩词:
+        命中表.sort(key=lambda 记录: 记录["能力id"])
     编号表 = [记录["能力id"] for 记录 in 命中表]
     总数 = len(命中表)
 
@@ -245,6 +301,9 @@ def 搜索能力(关键词: str = "", 限制: int = 默认限制, 游标: str = 
                        f"本次传入 关键词={关键词文本!r}（同一轮翻页必须传相同关键词，"
                        "否则会漏项或重项）")
         起点 = bisect_right(编号表, 锚点id)
+        if 兜底扩词 and 锚点id in 编号表:
+            # 兜底路径按相关度排序（非能力id 序），二分结果不适用；改用锚点定位。
+            起点 = 编号表.index(锚点id) + 1
     当页 = 命中表[起点:起点 + 条数上限]
     还有更多 = (起点 + len(当页)) < 总数
 
@@ -259,6 +318,7 @@ def 搜索能力(关键词: str = "", 限制: int = 默认限制, 游标: str = 
         "游标": 游标文本,
         "下一条游标": (编码游标(关键词文本, 当页[-1]["能力id"]) if 还有更多 and 当页 else ""),
         "细节级别": 生效档,
+        "是否扩词": 兜底扩词,
     })
 
 
