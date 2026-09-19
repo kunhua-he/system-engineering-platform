@@ -112,10 +112,24 @@ def 安装(参数: argparse.Namespace) -> int:
 
 
 def 卸载(参数: argparse.Namespace) -> int:
-    执行(["launchctl", "bootout", f"{用户域}/{参数.标签}"])
+    码, 输出 = 执行(["launchctl", "bootout", f"{用户域}/{参数.标签}"])
     目标 = 目标文件(参数.标签)
+    if 码 != 0 and not 目标.is_file():
+        # 「本来就没装」不是失败：`launchctl bootout` 对未装载的标签必然非零
+        # （`Could not find service … in domain for user`）。用 2 表「未做任何动作 ——
+        # 没有东西可卸」，既不假绿（原实现丢弃返回码后无条件 `return 0`），也不假红。
+        print(f"未安装：{参数.标签}（launchctl：{输出 or '无输出'}）")
+        return 2
+    if 码 != 0:
+        # 定义文件在场却退不出服务 ⇒ 卸载**没成功**，必须让调用方看到（原先被丢弃）。
+        print(f"卸载失败：{输出 or '无输出'}")
+        return 1
     if 目标.is_file():
-        目标.unlink()
+        try:
+            目标.unlink()
+        except OSError as 错:
+            print(f"卸载失败：删除定义文件出错 —— {目标}：{错}")
+            return 1
     print(f"已卸载：{参数.标签}（已出的稿子与缓存都不受影响）")
     return 0
 
