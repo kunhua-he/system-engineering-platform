@@ -19,7 +19,7 @@ class 组件开发Agent视图:
     # ---- 会话辅助（登记需求直接写需求登记，证据账本需要调用者）----
     def _会话信息(self, 令牌: str) -> dict[str, str]:
         try:
-            会话 = self.服务.授权._会话表.get(令牌, {})
+            会话 = self.服务.授权.会话信息(令牌)
         except Exception:
             会话 = {}
         return {"身份id": 会话.get("身份id", ""), "角色": 会话.get("角色", "")}
