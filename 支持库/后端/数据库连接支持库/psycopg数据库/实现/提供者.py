@@ -32,6 +32,7 @@ from 支持库.适配层.psycopg提供者 import 校验连接串 as _校验连�
 from 支持库.适配层.psycopg提供者 import 解析连接串 as _解析URL
 from 支持库.适配层.psycopg提供者 import 释放连接 as _释放
 from 支持库.适配层.psycopg提供者 import 驱动可用 as _驱动可用
+from 支持库.适配层.psycopg提供者 import 驱动版本 as _驱动版本
 
 
 @dataclass
@@ -322,8 +323,15 @@ def 关闭数据库连接(数据库句柄: int) -> 结果:
 
 
 def _提供者版本() -> dict[str, str]:
-    """返回 psycopg 版本字典。"""
+    """返回 psycopg 版本字典 —— 经最底层翻译层取，本层不直接引用第三方。
+
+    为什么这么改（缺陷 #149，2026-09-20）：原实现直接 `getattr(psycopg, …)`，
+    但本文件**从不 import psycopg**（顶部只 import 翻译层），每次调用必抛 NameError
+    并被 `except` 吞成「未知」—— 健康探针永远拿不到真实版本，且违反
+    「第三方只在适配层出现」的分层铁律（本文件头 :5-6 已自述该约束）。
+    翻译层 `psycopg提供者/实现/提供者.py:26` 已 `import psycopg`，是唯一合法取版本处。
+    """
     try:
-        return {"psycopg": str(getattr(psycopg, "__version__", "未知"))}
-    except Exception as 错误:
+        return dict(_驱动版本())
+    except Exception as 错误:  # 驱动缺失时如实回报，不静默
         return {"psycopg": f"未知（{错误}）"}

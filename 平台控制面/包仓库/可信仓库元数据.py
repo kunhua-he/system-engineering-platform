@@ -22,6 +22,22 @@ from pathlib import Path
 from 支持库.适配层 import 生成密钥对, 内容摘要, 签名 as 真实签名, 验证签名 as 真实验签
 from 支持库.适配层 import 创建密钥提供者
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.诊断.忽略记录 import 记录忽略
+
+
+def _取数值(值) -> int | float | None:
+    """把外部不可信字段归一为数值；不可解析返回 None（缺陷 #153，2026-09-20）。
+
+    为什么需要：元数据来自外部，`过期时间`/`元数据版本` 等字段可能被写坏或恶意构造。
+    原先各处裸调 `float()`/`int()`，畸形字段会**抛异常**而不是让校验返回「失败」——
+    既违反「except 不许把异常当成功」，也让调用方拿到崩溃而非明确的阻断原因。
+    """
+    try:
+        if isinstance(值, bool):        # bool 是 int 子类，但语义上不是版本号/时间戳
+            return None
+        return float(值) if isinstance(值, float) else int(值)
+    except (TypeError, ValueError):
+        return None
 
 
 def _签名正文(元数据: dict) -> bytes:
@@ -155,18 +171,39 @@ class 可信仓库元数据:
         _原子写文本(self.元数据目录 / f"{文件名}.json",
                    json.dumps(元数据, ensure_ascii=False, indent=2), 0o644)
 
+    #: 最近一次 `_读取` 遇到的**损坏**文件（缺陷 #154，2026-09-20）。
+    #: 原先「文件不存在」与「文件损坏」都 `return None`，损坏被静默掩盖成「没有该元数据」。
+    #: 现在：不存在 → None（正常，调用方按「无」处理）；损坏 → 记入本表并留痕后仍返回 None，
+    #: 由 `阻断检查` 读取本表把「损坏」升级为阻断原因，不再冒充「无」。
+    _读取损坏表: list[str] = []
+
     def _读取(self, 文件名: str) -> dict | None:
+        """读元数据文件。不存在 → None；损坏 → 记入 `_读取损坏表` 并返回 None（不静默）。"""
+        路径 = self.元数据目录 / f"{文件名}.json"
+        if not 路径.exists():
+            return None
         try:
-            return json.loads((self.元数据目录 / f"{文件名}.json").read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            return json.loads(路径.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as 错误:
+            self._读取损坏表.append(文件名)
+            记录忽略(f"可信仓库元数据._读取 损坏: {文件名}", 错误)
             return None
 
     def _最新版本(self, 类型: str) -> int:
+        """取该类型元数据的最新版本号；**损坏文件按版本 0 跳过**，不让校验崩溃（#153）。"""
         if 类型 == "根信任":
             根 = self._读取("根信任")
-            return int(根["元数据版本"]) if 根 else 0
-        return max((int(json.loads(文件.read_text(encoding="utf-8"))["元数据版本"])
-                    for 文件 in self.元数据目录.glob(f"{类型}_*.json")), default=0)
+            版本 = _取数值(根.get("元数据版本", 0)) if 根 else 0
+            return int(版本) if 版本 is not None else 0
+        版本表 = []
+        for 文件 in self.元数据目录.glob(f"{类型}_*.json"):
+            try:
+                版本 = _取数值(json.loads(文件.read_text(encoding="utf-8")).get("元数据版本", 0))
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                版本 = None
+            if 版本 is not None:
+                版本表.append(int(版本))
+        return max(版本表, default=0)
 
     # ---- 根信任 ----
     def 初始化(self) -> dict:
@@ -289,13 +326,34 @@ class 可信仓库元数据:
             return max(旧代, key=lambda 根: 根["元数据版本"])["公钥"]
         return self.当前根公钥
 
+    #: 合法的元数据类型白名单（缺陷 #152，2026-09-20）。原先靠 `if 元数据类型 in (...)` 分支
+    #: 隐式判定，**未知类型时所有分支都不命中 → 返回空原因表 → 判「成功」**（fail-open）。
+    #: 收口成显式白名单后，未知类型直接阻断。
+    元数据类型白名单 = ("根信任", "快照", "目标")
+
     def 阻断检查(self, 元数据类型: str, 元数据: dict) -> list[str]:
         """返回阻断原因列表；空列表表示全部检查通过。"""
         原因: list[str] = []
-        if time.time() > float(元数据.get("过期时间", 0)):
+        # ① 类型白名单（#152）：未知类型不得空跑放行
+        if 元数据类型 not in self.元数据类型白名单:
+            原因.append(f"未知元数据类型: {元数据类型!r}")
+            return 原因
+        # ②（#154）本次读取中若发现**损坏**元数据文件，必须阻断而不是当「不存在」放行
+        if self._读取损坏表:
+            原因.append("元数据文件损坏: " + "、".join(sorted(set(self._读取损坏表))))
+            self._读取损坏表.clear()
+            return 原因
+        # ③ 外部不可信字段一律先归一为数值，畸形即阻断（#153）：原先 `float()/int()` 裸调，
+        #    畸形字段会抛异常而非返回失败，绕过「except 不许把异常当成功」铁律。
+        过期时间 = _取数值(元数据.get("过期时间", 0))
+        元数据版本 = _取数值(元数据.get("元数据版本", 0))
+        if 过期时间 is None or 元数据版本 is None:
+            原因.append("元数据字段非法(数值不可解析)")
+            return 原因
+        if time.time() > 过期时间:
             原因.append("元数据冻结(过期)")
         if 元数据类型 in ("快照", "根信任") and \
-                int(元数据.get("元数据版本", 0)) < self._最新版本(元数据类型):
+                元数据版本 < self._最新版本(元数据类型):
             原因.append("版本回退" if 元数据类型 == "快照" else "版本倒退")
         if 元数据类型 == "目标":
             制品文件 = self.制品目录 / f"{元数据.get('包id', '')}_{元数据.get('版本', '')}.bin"
@@ -303,13 +361,17 @@ class 可信仓库元数据:
                 原因.append("目标被替换")
         elif 元数据类型 == "快照":
             for 键, 摘要 in 元数据.get("目标表", {}).items():
+                # 畸形键（缺 @ 或多段）不得让校验崩溃（#153）
+                if not isinstance(键, str) or 键.count("@") != 1:
+                    原因.append("快照目标键非法")
+                    break
                 包id, 版本 = 键.split("@")
                 磁盘目标 = self._读取(f"目标_{包id}_{版本}")
                 if not 磁盘目标 or 磁盘目标["制品摘要"] != 摘要:
                     原因.append("快照回退")
                     break
         if 元数据类型 == "根信任" and "新根签名" in 元数据:
-            旧公钥 = self._历史根公钥(int(元数据.get("元数据版本", 0)))
+            旧公钥 = self._历史根公钥(元数据版本)
             if not 真实验签(旧公钥, _签名正文(元数据), 元数据.get("旧根签名", "")):
                 原因.append("签名无效")
             if not 真实验签(元数据.get("公钥", ""), _签名正文(元数据),
