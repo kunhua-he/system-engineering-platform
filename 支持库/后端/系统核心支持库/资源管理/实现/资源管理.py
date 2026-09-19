@@ -36,6 +36,7 @@ from 公共契约.错误结构 import (
     错误码_超时,
 )
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 平台适配
 
 # 本包自有码（不在平台规范集内）：仍各自持有，不与唯一源合并。
 错误码_资源不存在 = "资源不存在"
@@ -380,7 +381,7 @@ class 资源短锁:
             except OSError:
                 pass
             return 假, "残留锁复核不一致（期间换主），已放回不回收"
-        shutil.rmtree(挪走, ignore_errors=True)
+        平台适配.清只读后删除树(挪走, 忽略失败=真)
         return 真, "已回收崩溃残留锁"
 
     def 获取(self, 超时秒: float = 3.0) -> tuple[bool, str]:
@@ -433,7 +434,7 @@ class 资源短锁:
             return 假, (f"锁已被他人接管（持有者 {信息.get('持有者', '')}/进程 {进程号}），"
                            f"拒绝删除他人锁")
         try:
-            shutil.rmtree(self.锁路径)
+            平台适配.清只读后删除树(self.锁路径)
             return 真, "锁已释放"
         except FileNotFoundError:
             return 真, "锁已释放（目录不存在）"
@@ -465,7 +466,7 @@ def 安全释放资源(路径: Path) -> tuple[bool, str]:
         return 真, "资源不存在（释放幂等）"
     try:
         if 路径.is_dir():
-            shutil.rmtree(路径)
+            平台适配.清只读后删除树(路径)
         else:
             路径.unlink()
         return 真, f"已释放: {路径}"

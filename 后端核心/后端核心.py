@@ -28,7 +28,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -38,6 +37,7 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 平台适配
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析运行缓存根
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文, 全局上下文管理器
@@ -298,7 +298,7 @@ class 后端核心(资源与排空面, 包指纹面, 能力目录面):
                     # 相同（如仅版本串变化）时，Python 会误用旧 .pyc，导致重载
                     # 后仍执行旧实现。重载必须强制重新编译。
                     for 缓存目录 in list(包根.rglob("__pycache__")):
-                        shutil.rmtree(缓存目录, ignore_errors=True)
+                        平台适配.清只读后删除树(缓存目录, 忽略失败=真)
 
                     if 声明.类型 == "支持库":
                         安装支持库(声明, 临时注册表)

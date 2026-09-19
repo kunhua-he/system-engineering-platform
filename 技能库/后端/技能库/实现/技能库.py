@@ -197,7 +197,7 @@ class 能力注入:
         self.环境附加 = 环境附加
 
     def 清理(self) -> None:
-        shutil.rmtree(self.目录, ignore_errors=True)
+        平台适配.清只读后删除树(self.目录, 忽略失败=真)
 
 
 # ── 权限等级（哲学第 9 条 5 项：相对安全，用户可选的收紧手段） ────────
@@ -271,7 +271,7 @@ def 创建能力注入(白名单: tuple[str, ...], 凭证: str, 超时秒: int =
             encoding="utf-8",
         )
     except OSError:
-        shutil.rmtree(目录, ignore_errors=True)
+        平台适配.清只读后删除树(目录, 忽略失败=真)
         raise
     return 能力注入(目录, 白名单, {网关凭证环境变量: str(凭证)})
 
