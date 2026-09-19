@@ -17,18 +17,18 @@ from pathlib import Path
 from typing import Any
 from 运行核心.运行诊断.安全审计.安全审计 import 安全审计
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文
-from 运行核心.统一网关.安全边界 import 脱敏错误信息
-from 运行核心.统一网关.限流器 import 限流器
+from 运行核心.统一网关.安全.安全边界 import 脱敏错误信息
+from 运行核心.统一网关.安全.限流器 import 限流器
 from 公共契约.版本规则.契约版本 import 契约版本
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
-from 运行核心.统一网关.类型规格 import (
+from 运行核心.统一网关.协议.类型规格 import (
     类型短名映射, 类型匹配表, 数值类型名, _类型表自检, 校验能力参数,
 )
-from 运行核心.统一网关.网关信封 import 网关请求, 网关响应
-from 运行核心.统一网关.操作协议表 import 允许操作表, 操作权限表
-from 运行核心.统一网关.调用点缺参判定 import 操作不存在错误
+from 运行核心.统一网关.协议.网关信封 import 网关请求, 网关响应
+from 运行核心.统一网关.协议.操作协议表 import 允许操作表, 操作权限表
+from 运行核心.统一网关.协议.调用点缺参判定 import 操作不存在错误
 
 
 class 请求处理面:
@@ -154,4 +154,4 @@ class 请求处理面:
         响应.值 = 值.get("值")
 
 # ── 跨文件依赖（拆分后补齐，2026-09-19；原是同一模块内的兄弟名字）──
-from 运行核心.统一网关.错误说明表 import 公开错误说明表
+from 运行核心.统一网关.协议.错误说明表 import 公开错误说明表

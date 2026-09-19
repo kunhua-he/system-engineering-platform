@@ -109,7 +109,10 @@ def _git变更文件() -> list[str]:
         if len(行) < 4:
             continue
         状态, 路径 = 行[:2], 行[3:].strip().strip('"')
-        if 状态.strip() in {"D", "R"}:
+        # R 状态还要看**状态位里的布尔**，不能只比字符串：porcelain 里「重命名且内容改了」是
+        # ``RM``（R=索引重命名 + M=工作区修改），``状态.strip() in {"D","R"}`` 漏掉它 →
+        # ``旧 -> 新`` 整串被当成一个文件名 → py_compile 报 No such file 的假红（本仓实测）。
+        if "R" in 状态 or "D" in 状态:
             # 重命名取新名（porcelain 的 R 行是 "旧 -> 新"）。
             if "->" in 路径:
                 路径 = 路径.split("->")[-1].strip()

@@ -14,7 +14,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Callable, Iterator
 
-from 运行核心.统一网关.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
+from 运行核心.统一网关.安全.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器  # 网关域唯一有界实现（429 结构化拒绝），勿改用 公共契约.运行时.有界HTTP 那份（满载不回响应）
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 from 公共契约.诊断.忽略记录 import 记录忽略

@@ -255,7 +255,7 @@ class HTTP连接器:
         }
         凭证 = self._解析凭证()
         if 凭证:
-            # 网关「要求凭证」时认两种头（见 运行核心/统一网关/安全边界.py 取凭证口径），
+            # 网关「要求凭证」时认两种头（见 运行核心/统一网关/安全/安全边界.py 取凭证口径），
             # 这里发规范形态 Authorization: Bearer。
             请求头["Authorization"] = f"Bearer {凭证}"
         请求 = urllib.request.Request(

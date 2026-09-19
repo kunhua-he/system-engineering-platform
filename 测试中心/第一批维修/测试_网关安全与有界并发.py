@@ -28,7 +28,7 @@ from 公共契约.基础类型.结果类型 import 结果
 from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 from 运行核心.能力调用.唯一能力调用 import 唯一能力调用服务
 from 运行核心.统一网关.本地网关 import 本地网关服务器
-from 运行核心.统一网关.流式HTTP import 流式HTTP服务器
+from 运行核心.统一网关.传输.流式HTTP import 流式HTTP服务器
 from 运行核心.统一网关.网关核心 import 网关响应, 网关核心
 from 公共契约.诊断.忽略记录 import 记录忽略
 

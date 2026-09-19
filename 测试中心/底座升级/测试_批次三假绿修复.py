@@ -24,7 +24,7 @@ class Test批次三假绿修复(unittest.TestCase):
         self.assertIn("保留端口", 消息)
 
     def test_流式网关拒绝4780(self):
-        from 运行核心.统一网关.流式HTTP import 流式HTTP服务器
+        from 运行核心.统一网关.传输.流式HTTP import 流式HTTP服务器
 
         成功, 消息 = 流式HTTP服务器(端口=4780).启动()
         self.assertFalse(成功)

@@ -15,7 +15,7 @@ from unittest.mock import patch
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 运行核心.统一网关.流式HTTP import HTTP流式通道, 流式HTTP服务器
+from 运行核心.统一网关.传输.流式HTTP import HTTP流式通道, 流式HTTP服务器
 from 公共契约.基础类型.结果类型 import 结果
 
 
