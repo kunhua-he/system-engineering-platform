@@ -11,11 +11,12 @@
 
 from __future__ import annotations
 
-import shutil
 import tempfile
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时 import 平台适配
 from 支持库.后端.媒体处理支持库.FFmpeg媒体.实现 import 探测
 from 支持库.后端.媒体处理支持库.FFmpeg媒体.实现.处理 import (
     视频格式表,
@@ -67,4 +68,4 @@ def 拼接媒体(文件列表: list, 输出格式: str = "mp4", 输出路径: st
                             "-c", "copy", str(输出文件)],
             超时秒, 最大输出字节, 返回字节=返回字节)
     finally:
-        shutil.rmtree(清单目录, ignore_errors=True)
+        平台适配.清只读后删除树(Path(清单目录), 忽略失败=真)

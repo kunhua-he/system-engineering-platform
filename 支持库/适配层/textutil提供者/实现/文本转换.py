@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 
@@ -116,5 +117,4 @@ def 转换文本文件(输入路径: str, 目标格式: str, *, 超时秒: float
         return _失败("转换失败", f"textutil 调用失败: {错误}")
     finally:
         if 自建目录:
-            import shutil as _shutil
-            _shutil.rmtree(输出根, ignore_errors=True)
+            平台适配.清只读后删除树(Path(输出根), 忽略失败=真)

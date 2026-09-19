@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import base64
 import re
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时 import 平台适配
 from 支持库.后端.媒体处理支持库.FFmpeg媒体.实现 import 探测
 from 支持库.后端.媒体处理支持库.FFmpeg媒体.实现.进程管理 import 执行受管命令
 
@@ -118,7 +119,7 @@ def _处理任务(文件路径: str, 输出路径: str | None, 前缀: str, 扩�
                          超时秒, 最大输出字节, 帧探测=帧探测, 返回字节=返回字节)
     finally:
         if 自建:
-            shutil.rmtree(输出文件.parent, ignore_errors=True)
+            平台适配.清只读后删除树(输出文件.parent, 忽略失败=真)
 
 
 def 提取音频(文件路径: str, 输出格式: str = "wav", 输出路径: str | None = None,
