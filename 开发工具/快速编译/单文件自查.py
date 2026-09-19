@@ -27,15 +27,13 @@ import time
 from pathlib import Path
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.正式根 import 遍历源码
 
 系统根 = Path(__file__).resolve().parents[2]
 git = "/Library/Developer/CommandLineTools/usr/bin/git"
 
-#: 扫描/自查都要排除的目录（与发布门禁的源码边界一致，不另列一套）
-排除目录 = frozenset({
-    "工程缓存", ".git", "__pycache__", "归档", "参考资料", "node_modules",
-    "制品仓库", "编译缓存", "提供者运行环境",
-})
+#: 扫描/自查的排除名单已收口到唯一事实源 `公共契约/正式根.py::生成式目录表`
+#: （此前本文件自持一份 frozenset，含 `归档`/`参考资料` 却漏 `.venv` 等，与另外 7 处互不相同）。
 
 
 def 查一个(相对路径: str) -> tuple[bool, str]:
@@ -71,9 +69,10 @@ def _工作树改动的py() -> list[str]:
 def _全仓(只近期分钟: int) -> list[str]:
     表: list[str] = []
     现在 = time.time()
-    for 路径 in sorted(系统根.rglob("*.py")):
-        if any(段 in 排除目录 for 段 in 路径.relative_to(系统根).parts):
-            continue
+    # 进目录即剪枝（`正式根.遍历源码`）：此前 `系统根.rglob("*.py")` 会把 9.3G `工程缓存`
+    # 全枚举一遍再按路径跳过（实测全仓 31 万条 / 167 秒，其中 97.5% 是生成式）。
+    # 跳过名单唯一事实源＝`公共契约/正式根.py::生成式目录表`；本文件不再自持一份。
+    for 路径 in 遍历源码(系统根):
         if 只近期分钟 and (现在 - 路径.stat().st_mtime) / 60 > 只近期分钟:
             continue
         表.append(str(路径.relative_to(系统根)))

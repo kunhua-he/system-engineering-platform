@@ -32,6 +32,11 @@ import time
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
+
+from 公共契约.正式根 import 遍历源码
+from 公共契约.基础类型.逻辑类型 import 真
 
 # 静态门禁清单：名字 / 模块入口 / 参数 / 角色（阻断=红绿判定，只报告=展示不判定）/ 单项超时秒。
 #
@@ -45,6 +50,7 @@ from pathlib import Path
     {"名字": "公开调用完整性", "模块": "开发工具.公开调用完整性门禁", "参数": [], "角色": "阻断", "超时秒": 120},
     {"名字": "能力id冻结基线", "模块": "开发工具.能力id冻结基线门禁", "参数": [], "角色": "阻断", "超时秒": 120},
     {"名字": "验证场景体检", "模块": "开发工具.验证场景体检", "参数": [], "角色": "阻断", "超时秒": 120},
+    {"名字": "重复腿与旁路", "模块": "开发工具.验证门禁.运行验证门禁", "参数": [], "角色": "阻断", "超时秒": 240},
 ]
 
 每门禁输出行数 = 6
@@ -147,10 +153,10 @@ def _影响面(变更文件列表: list[str]) -> dict[str, list[str]]:
             非包文件.append(路径文本)
 
     依赖表: dict[str, list[str]] = {}
-    for 声明路径 in 系统根.rglob("包声明.json"):
+    # 进目录即剪枝（`正式根.遍历源码`）：此前 `系统根.rglob("包声明.json")` 会把 9.3G
+    # `工程缓存`（制品副本里的 `包声明.json` 成千上万）一并枚举再逐条过滤。
+    for 声明路径 in 遍历源码(系统根, 后缀=("包声明.json",), 剪枝=真):
         相对 = 声明路径.relative_to(系统根)
-        if any(段 in {"工程缓存", ".git", "__pycache__"} for 段 in 相对.parts):
-            continue
         try:
             数据 = json.loads(声明路径.read_text(encoding="utf-8"))
             依赖表[str(数据.get("包id") or "")] = [str(项) for 项 in (数据.get("依赖") or [])]
@@ -203,21 +209,15 @@ def _变更py编译(变更文件列表: list[str]) -> tuple[int, str]:
 
 
 def _全仓py编译() -> tuple[int, str]:
-    """全仓 .py 语法编译（剔 工程缓存 / .git / __pycache__）。
+    """全仓 .py 语法编译（剔生成式目录）。
 
     文件清单由本口自己枚举后整批传给 py_compile，**不经过 shell**：
     走 `$(find …)` 类写法会把带空格或特殊字符的中文路径拆词（本仓路径全中文）。
-    实测口径：1005 个文件约 1.5 秒，属「秒级口」可承受范围。
+    枚举走 `正式根.遍历源码`：**进目录即剪枝**，不再 `系统根.rglob("*.py")` 全枚举
+    （后者实测全仓 31 万条 / 167 秒，其中 97.5% 落在 `工程缓存`）。
+    实测口径：约 1000 个文件秒级完成。
     """
-    目标: list[str] = []
-    for 路径 in 系统根.rglob("*.py"):
-        try:
-            相对 = 路径.relative_to(系统根)
-        except ValueError:
-            continue
-        if any(段 in {"工程缓存", ".git", "__pycache__"} for 段 in 相对.parts):
-            continue
-        目标.append(str(路径))
+    目标: list[str] = [str(路径) for 路径 in 遍历源码(系统根)]
     if not 目标:
         return 0, "全仓未发现 .py 文件（请检查项目根是否指对）"
     退出码, 输出, _ = _跑(["python3.14", "-m", "py_compile", *目标], 超时秒=全仓编译超时秒)
