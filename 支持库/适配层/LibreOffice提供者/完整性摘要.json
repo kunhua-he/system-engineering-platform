@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "d6b0ba8d2c11894c40a255f200dbf34e10eb8c6a0ea14a69c729923c80a15f95"
+      "sha256": "9f8e576001b3582e56309aab82351ce60cabd11791bd5a6cc07d4b4dfdd31f1d"
     },
     {
       "路径": "复用决策.json",
@@ -33,23 +33,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "8659895802c485d23b720da8c7782b3bdd571ea0b70276b9de78c340a2bdb253"
+      "sha256": "855c98a471196bcfdce6ea782f79c15a27e9fab06eddebd5dc7f12d524c340d3"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "9d0b5d79b950afa59e0c91292fbbe2080ab6224f94aff0f323d395f28f2bc1fe"
+      "sha256": "0b3a5fb241161df0a938039322a6b811eee1c7fb7995599ba9fa67931c1d1a59"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "bfdda9d664cacb9c50db9d6c9f0cde1bd6a45cf74165077e7c826f560dc5af61"
+      "sha256": "66e393331743ac03892b27261cb8a892ecd49d62094f0b8c4026929780e2cae4"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "cc916f097d853a2a86d4d46daed5a9df6a14ca9ce807ae955a0bcce67c21dff7"
+      "sha256": "ecd852de2df495aa8be485ae71d2762f3e3f64e6874a58eda2a821b3b6de6eda"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "3557da07e88a4c80afa1851eb9c7081225291ca33bbf7d615c2d59e694b1d0ff"
+      "sha256": "e5148956f816343e04736ffa09eae096917f30f14d518119ad3312e7aada3abb"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -81,5 +81,5 @@
     "LibreOffice转换.检查提供者",
     "LibreOffice转换.转换办公文件"
   ],
-  "能力定义摘要": "96372b69a07781c7"
+  "能力定义摘要": "696638dfdc82bf41"
 }
