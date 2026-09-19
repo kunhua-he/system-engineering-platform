@@ -26,6 +26,20 @@ from 支持库.适配层.FFmpeg提供者.实现.进程管理 import 执行受管
     "视频码率": (["-b:v", "{值}"], re.compile(r"^\d+[kKmM]$")),
     "音频码率": (["-b:a", "{值}"], re.compile(r"^\d+[kKmM]$")),
     "帧率": (["-r", "{值}"], re.compile(r"^\d+$")),
+    # 效率与稳定性升级（2026-09-16）：
+    # 1) 硬编码器：Apple Silicon 走 VideoToolbox，实测比 libx264 软编快 20 倍以上；
+    # 2) 码率三件套：VideoToolbox 单独传 -b:v 会被忽略，必须搭配 -maxrate/-bufsize；
+    # 3) 音频直通：音频编码器=copy 时音频不重编码，语音零损失、不卡顿；
+    # 4) 视频标签：hevc 容器需 hvc1 才能在 QuickTime/多数播放器正常播放。
+    "视频编码器": (["-c:v", "{值}"], re.compile(
+        r"^(h264_videotoolbox|hevc_videotoolbox|prores_videotoolbox|libx264|libx265|copy)$")),
+    "音频编码器": (["-c:a", "{值}"], re.compile(
+        r"^(aac|libmp3lame|libopus|pcm_s16le|flac|copy)$")),
+    "码率上限": (["-maxrate", "{值}"], re.compile(r"^\d+[kKmM]$")),
+    "缓冲": (["-bufsize", "{值}"], re.compile(r"^\d+[kKmM]$")),
+    "视频标签": (["-tag:v", "{值}"], re.compile(r"^[A-Za-z0-9]{2,8}$")),
+    "预设": (["-preset", "{值}"], re.compile(
+        r"^(ultrafast|superfast|veryfast|faster|fast|medium|slow|slower|veryslow)$")),
 }
 
 
@@ -49,7 +63,8 @@ def _校验编码选项(编码选项: Any) -> 结果 | None:
 
 
 def _执行处理(文件路径: str, 参数列表: list[str], 输出文件: Path,
-            超时秒: float, 最大输出字节: int, 帧探测: bool = False) -> 结果:
+            超时秒: float, 最大输出字节: int, 帧探测: bool = False,
+            返回字节: bool = True) -> 结果:
     """ffmpeg 受管执行并读取输出文件；进程级失败 → 取消/超时/进程崩溃。
 
     帧探测：对输出文件经 ffprobe 受控探测链做真实尺寸探测，加入 宽度/高度。
@@ -70,10 +85,12 @@ def _执行处理(文件路径: str, 参数列表: list[str], 输出文件: Path
     if 大小 > 最大输出字节:
         return 探测._失败("超出限制", f"输出文件过大: {大小} 字节 > 上限 {最大输出字节} 字节")
     值 = {
-        "字节b64": base64.b64encode(输出文件.read_bytes()).decode("ascii"),
         "格式": 输出文件.suffix.lstrip("."), "字节数": 大小,
         "输出路径": str(输出文件),
     }
+    if 返回字节:
+        # 大文件 base64 会放大 4/3 倍并占用大量内存；已落盘场景可关掉
+        值["字节b64"] = base64.b64encode(输出文件.read_bytes()).decode("ascii")
     if 帧探测:
         尺寸 = 探测.探测帧尺寸(str(输出文件), 超时秒)
         if not 尺寸.成功:
@@ -93,13 +110,13 @@ def _预检媒体(预检: 结果, 最大时长秒: Any, 流检查: Any = None) -
 
 def _处理任务(文件路径: str, 输出路径: str | None, 前缀: str, 扩展名: str,
             构建参数: Any, 超时秒: float, 最大输出字节: int,
-            帧探测: bool = False) -> 结果:
+            帧探测: bool = False, 返回字节: bool = True) -> 结果:
     """受管执行并读取输出文件；临时目录自建时 finally 强制清理（零残留）。"""
     输出文件 = Path(输出路径) if 输出路径 else Path(tempfile.mkdtemp(prefix=前缀)) / f"输出.{扩展名}"
     自建 = 输出路径 is None
     try:
         return _执行处理(文件路径, 构建参数(输出文件), 输出文件,
-                         超时秒, 最大输出字节, 帧探测=帧探测)
+                         超时秒, 最大输出字节, 帧探测=帧探测, 返回字节=返回字节)
     finally:
         if 自建:
             平台适配.清只读后删除树(输出文件.parent, 忽略失败=真)
@@ -129,7 +146,8 @@ def 提取音频(文件路径: str, 输出格式: str = "wav", 输出路径: str
 def 转码(文件路径: str, 输出格式: str = "mp4", 编码选项: dict | None = None,
        输出路径: str | None = None, 超时秒: float = 60.0,
        最大输出字节: int = 默认最大输出字节,
-       最大时长秒: float | None = 默认最大时长秒) -> 结果:
+       最大时长秒: float | None = 默认最大时长秒,
+       返回字节: bool = True) -> 结果:
     """ffmpeg 转码到目标容器（编码选项白名单，默认临时文件自动清理）。"""
     输出格式 = str(输出格式 or "").lower().lstrip(".")
     错误 = 探测.校验基本参数(文件路径, 超时秒, 输出路径) or _校验编码选项(编码选项)
@@ -146,7 +164,7 @@ def 转码(文件路径: str, 输出格式: str = "mp4", 编码选项: dict | No
     return _处理任务(
         文件路径, 输出路径, "FFmpeg转码_", 输出格式,
         lambda 输出文件: ["-i", 文件路径] + 选项参数 + [str(输出文件)],
-        超时秒, 最大输出字节)
+        超时秒, 最大输出字节, 返回字节=返回字节)
 
 
 def 抽取帧(文件路径: str, 时间点秒: float, 输出格式: str = "jpg",
@@ -174,3 +192,35 @@ def 抽取帧(文件路径: str, 时间点秒: float, 输出格式: str = "jpg",
         文件路径, 输出路径, "FFmpeg抽帧_", 输出格式,
         lambda 输出文件: ["-ss", str(时间点秒), "-i", 文件路径, "-frames:v", "1", "-f", "image2"] + 质量参数 + [str(输出文件)],
         超时秒, 最大输出字节, 帧探测=True)
+
+
+def 截取音频(文件路径: str, 开始秒: float, 结束秒: float, 输出格式: str = "wav",
+           输出路径: str | None = None, 超时秒: float = 60.0,
+           最大输出字节: int = 默认最大输出字节,
+           最大时长秒: float | None = 默认最大时长秒) -> 结果:
+    """ffmpeg 按时间区间截取音频（复核区间用：-ss 前置快速定位 + -t 限长）。
+
+    返回 {字节b64, 格式, 字节数, 输出路径}；无音轨 → 无音轨；区间不合法 → 参数不合法。
+    """
+    输出格式 = str(输出格式 or "").lower().lstrip(".")
+    错误 = 探测.校验基本参数(文件路径, 超时秒, 输出路径)
+    if 错误:
+        return 错误
+    for 名称, 值 in (("开始秒", 开始秒), ("结束秒", 结束秒)):
+        if isinstance(值, bool) or not isinstance(值, (int, float)) or 值 < 0:
+            return 探测._失败("参数不合法", f"{名称} 必须是非负数字")
+    if float(结束秒) <= float(开始秒):
+        return 探测._失败("参数不合法", f"结束秒 必须大于 开始秒（当前 {开始秒} → {结束秒}）")
+    if 输出格式 not in 音频编码器表:
+        return 探测._失败("参数不合法", f"不支持的音频格式: {输出格式}（支持 {sorted(音频编码器表)}）")
+    预检 = _预检媒体(
+        探测.探测元数据(文件路径, 超时秒), 最大时长秒,
+        lambda 值: None if "audio" in {流["类型"] for 流 in 值["流"]} else 探测._失败("无音轨", "媒体不包含音频流"))
+    if 预检:
+        return 预检
+    截取时长 = round(float(结束秒) - float(开始秒), 3)
+    return _处理任务(
+        文件路径, 输出路径, "FFmpeg截取_", 输出格式,
+        lambda 输出文件: ["-ss", str(开始秒), "-i", 文件路径, "-t", str(截取时长),
+                        "-vn", "-map", "0:a:0", "-c:a", 音频编码器表[输出格式], str(输出文件)],
+        超时秒, 最大输出字节)

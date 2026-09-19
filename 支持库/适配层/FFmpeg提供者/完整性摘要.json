@@ -1,96 +1,102 @@
 {
-  "包id": "支持库.适配层.FFmpeg提供者",
-  "版本": "1.0.4",
-  "摘要算法": "sha256",
-  "文件清单": [
-    {
-      "路径": "__init__.py",
-      "sha256": "4868451557a953807bcc2ef5dcc9495380a200831253607356caeb50ac4ce0fe"
-    },
-    {
-      "路径": "依赖锁.json",
-      "sha256": "0c582b54822864e7f1237c34e5b1aa479879db0514d3242e42fd12ca62ac60b4"
-    },
-    {
-      "路径": "包声明.json",
-      "sha256": "659ec4081597307b232d00a7e33ec567ef59103e826a0e6f0738a8fdfae36242"
-    },
-    {
-      "路径": "复用决策.json",
-      "sha256": "b98b809b64086977cc8e002516da021d581c4c2fdc2a1348d9e3d692f0f40475"
-    },
-    {
-      "路径": "实现/处理.py",
-      "sha256": "e10d20500a7f92d93dcfece179e7e4e3f0633a22b163fc3ff22c0e04b8f03c87"
-    },
-    {
-      "路径": "实现/探测.py",
-      "sha256": "48803dcc072a8f6865f5ba5f200160ec6e2951acc7d5f8e62a884c1d68701ee0"
-    },
-    {
-      "路径": "实现/进程管理.py",
-      "sha256": "87f9fce08877e5308185586ca4e9b6e2dc34c0792ffe8d5a34779d9a2988fcfc"
-    },
-    {
-      "路径": "权限契约/权限契约.json",
-      "sha256": "7f20570d88e37858c70367122c18503f75bcd12639bf7b26d96f91e9e839f40d"
-    },
-    {
-      "路径": "生命周期契约.json",
-      "sha256": "c964df5c9bb3087ba3e45f40cf6937d0aa23bfe9cfd5c1cc3f82a6450ff3bf6f"
-    },
-    {
-      "路径": "能力契约/参数契约.json",
-      "sha256": "b64aefc33708136e2fbc4a2533fe9aa60cdb5f84b6dca941232d7fd78a82682b"
-    },
-    {
-      "路径": "能力定义.json",
-      "sha256": "86cd59346aaca4ab3d2c4961a0e5f5163766c4ec22187b0f636a8b233266e803"
-    },
-    {
-      "路径": "能力数据/Agent查询数据.json",
-      "sha256": "3ecd4f742123c4f3cb6eaadd8238aa98d75f76cb7aa40679f980ab72e1a8319e"
-    },
-    {
-      "路径": "能力数据/能力搜索数据.json",
-      "sha256": "5985e9eb2caeae009c545a8b7aaf22a1db1450359c0e082fd60463a1be82aac6"
-    },
-    {
-      "路径": "说明/使用说明.md",
-      "sha256": "8103da40f670d493876ad3fcd9e6c573888ba64b43f5b4f770be13dc7e1351f1"
-    },
-    {
-      "路径": "说明/目录树与命令.md",
-      "sha256": "0c5e5732477e44fc7017454b6a7bcb0e0649f448e44f55b9a4f528bb6cc0e4d6"
-    },
-    {
-      "路径": "说明/设计说明.md",
-      "sha256": "668272699aa86718d1ef63ec1043b4006e26c16b745a64f215ce283922b7cfcd"
-    },
-    {
-      "路径": "资源预算.json",
-      "sha256": "c3b4f2508a47af04477db2640c5191ba7293f103d748f7c718bfe7e0eeac5e3c"
-    },
-    {
-      "路径": "配置契约/配置契约.json",
-      "sha256": "0883ab742a5bac6c38f20734ac52f6aa83207a7adc2d2a38a6558ba4bd809324"
-    },
-    {
-      "路径": "验证场景引用.json",
-      "sha256": "bfb94fff5b062eee68c4058f1d60ddc756c63e2f899866320259eca68f5f94dd"
-    },
-    {
-      "路径": "验证夹具/最小带音视频.mp4",
-      "sha256": "b6f8b7d6b04e0c49181aaaea1abdf4b688edf79b1775bdfd5aef2aefeb8d31c2"
-    }
-  ],
-  "能力数": 5,
-  "能力清单": [
-    "FFmpeg媒体.检查提供者",
-    "FFmpeg媒体.探测媒体",
-    "FFmpeg媒体.提取音频",
-    "FFmpeg媒体.转码",
-    "FFmpeg媒体.抽取帧"
-  ],
-  "能力定义摘要": "153cd4a42ae17033"
+ "包id": "支持库.适配层.FFmpeg提供者",
+ "版本": "1.1.0",
+ "摘要算法": "sha256",
+ "文件清单": [
+  {
+   "路径": "__init__.py",
+   "sha256": "9db644c1b29410d838a97c10b859d3ca62669e076bb32d79ae0690e2b100f64e"
+  },
+  {
+   "路径": "依赖锁.json",
+   "sha256": "0c582b54822864e7f1237c34e5b1aa479879db0514d3242e42fd12ca62ac60b4"
+  },
+  {
+   "路径": "包声明.json",
+   "sha256": "9a6991b3e63365014cd321b155f5a9d7fcd4e1a3c57b748eabd955547a70b58c"
+  },
+  {
+   "路径": "复用决策.json",
+   "sha256": "b98b809b64086977cc8e002516da021d581c4c2fdc2a1348d9e3d692f0f40475"
+  },
+  {
+   "路径": "实现/处理.py",
+   "sha256": "a3bcc3cbee6002123ce31466b6cf029c7d4c8bbfa94dcd51ce513f6f999e9b4f"
+  },
+  {
+   "路径": "实现/拼接.py",
+   "sha256": "ac0fb374408c3954e1029af5a711637cb0a4e07d0c7d990f722c957bb012b066"
+  },
+  {
+   "路径": "实现/探测.py",
+   "sha256": "495ddcbdf9e3643ff55b2feecc4ce1d4acad3957be6e659341d704f44009c807"
+  },
+  {
+   "路径": "实现/进程管理.py",
+   "sha256": "87f9fce08877e5308185586ca4e9b6e2dc34c0792ffe8d5a34779d9a2988fcfc"
+  },
+  {
+   "路径": "权限契约/权限契约.json",
+   "sha256": "b0589604318ef1c345ab51e13bd6a0bcef00f26b8ba5f17ad02b53bf5cc456cd"
+  },
+  {
+   "路径": "生命周期契约.json",
+   "sha256": "c964df5c9bb3087ba3e45f40cf6937d0aa23bfe9cfd5c1cc3f82a6450ff3bf6f"
+  },
+  {
+   "路径": "能力契约/参数契约.json",
+   "sha256": "fdeb0492bef0ce642b676e9627b008523cfac786a0ff6ced4cb4f1fc03824a4b"
+  },
+  {
+   "路径": "能力定义.json",
+   "sha256": "554fdcbbc13c645e99a9199fcf4aa04738e852af9afa0ae5cfda16ab032c905a"
+  },
+  {
+   "路径": "能力数据/Agent查询数据.json",
+   "sha256": "aedceea36a60f6ea915aef3737b2a4195b7410e229fdd3a925d3aee0557a71ca"
+  },
+  {
+   "路径": "能力数据/能力搜索数据.json",
+   "sha256": "6a6a997aaadc5b0435dfd7a91f78e26c8db4d2b21cbed717d9cf52ecf3fd7571"
+  },
+  {
+   "路径": "说明/使用说明.md",
+   "sha256": "829a14adfdafe8cb64e845c163f3b86e45ebe7eaf6b553fb7543284e369c7266"
+  },
+  {
+   "路径": "说明/目录树与命令.md",
+   "sha256": "13c3419d7bdc5e8192f414a29b86bb40084dbf831e6825c5973c25a17b7033f9"
+  },
+  {
+   "路径": "说明/设计说明.md",
+   "sha256": "668272699aa86718d1ef63ec1043b4006e26c16b745a64f215ce283922b7cfcd"
+  },
+  {
+   "路径": "资源预算.json",
+   "sha256": "c3b4f2508a47af04477db2640c5191ba7293f103d748f7c718bfe7e0eeac5e3c"
+  },
+  {
+   "路径": "配置契约/配置契约.json",
+   "sha256": "0883ab742a5bac6c38f20734ac52f6aa83207a7adc2d2a38a6558ba4bd809324"
+  },
+  {
+   "路径": "验证场景引用.json",
+   "sha256": "065e205769f500931210cc074874e1f79e05d441bfeaab733f54e623ff74bcbf"
+  },
+  {
+   "路径": "验证夹具/最小带音视频.mp4",
+   "sha256": "b6f8b7d6b04e0c49181aaaea1abdf4b688edf79b1775bdfd5aef2aefeb8d31c2"
+  }
+ ],
+ "能力数": 7,
+ "能力清单": [
+  "FFmpeg媒体.检查提供者",
+  "FFmpeg媒体.探测媒体",
+  "FFmpeg媒体.提取音频",
+  "FFmpeg媒体.转码",
+  "FFmpeg媒体.抽取帧",
+  "FFmpeg媒体.截取音频",
+  "FFmpeg媒体.拼接媒体"
+ ],
+ "能力定义摘要": "4eae1290c5e0ff2f"
 }
