@@ -14,7 +14,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler
 from typing import Any, Callable, Iterator
 
-from 运行核心.统一网关.安全.安全边界 import 安全配置, 凭证管理器, 提取访问凭证
+from 运行核心.统一网关.安全.安全边界 import 安全配置, 凭证管理器, 提取访问凭证, 异常说明
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器  # 网关域唯一有界实现（429 结构化拒绝），勿改用 公共契约.运行时.有界HTTP 那份（满载不回响应）
 from 公共契约.运行时.端口策略 import 校验应用监听端口
 from 公共契约.诊断.忽略记录 import 记录忽略
@@ -283,7 +283,18 @@ class HTTP流式管理器:
                 self._并发信号量.release()
 
         通道.结束回调 = 终态清理
-        通道.首次事件()
+        # 防御性兜底（#158 核验结论，2026-09-20）：
+        # 外部审计称「首次事件抛 ValueError → 通道留表 + 信号量不释放」，但**现场核验不成立**——
+        # `通道.追加事件` 内层（本文件 :125）已 `except ValueError` 把负载超限转成
+        # 「失败事件」终态并触发结束回调，首事件**不会把异常抛到这里**。
+        # 仍保留本兜底，理由：首事件路径若要真正抛异常（如后续给 `_执行结束回调` 加了会抛的
+        # 自定义回调），此处必须与 `终态清理` 同一处置路径，否则会留下「通道留表 + 信号量不还」
+        # 的泄漏点。属**纵深防御**，不是对已复现缺陷的修复 —— 不记入销项。
+        try:
+            通道.首次事件()
+        except BaseException:
+            终态清理("首次事件失败")
+            raise
 
         def 执行() -> None:
             生成器 = None
@@ -313,9 +324,11 @@ class HTTP流式管理器:
                     通道.追加事件("中间事件", 数据)
                 if not 通道.结束 and not 通道.断开:
                     通道.完成()
-            except Exception:
+            except Exception as 错误:  # noqa: BLE001 - 细节不得丢（#157）
+                # 缺陷 #157：原先一律归「提供者崩溃」且文案固定，生成器内部的
+                # 序列化失败、句柄失效等真因全部丢失。现在把异常类型+脱敏消息带出。
                 if not 通道.结束:
-                    通道.失败("提供者崩溃", "流式提供者执行失败")
+                    通道.失败("提供者崩溃", 异常说明(错误, "流式提供者执行失败"))
             finally:
                 if 生成器 is not None and hasattr(生成器, "close"):
                     try:
@@ -555,11 +568,27 @@ class 流式HTTP服务器:
                         能力id, 参数, 调用方="流式HTTP",
                         项目id=str(数据.get("项目id", "")),
                     )
-                except Exception:
+                except Exception as 错误:  # noqa: BLE001 - 需按类型分流（#157）
+                    # 缺陷 #157：原先 `except Exception: 调用结果 = None` 把所有异常
+                    # （含 TypeError/AttributeError 这类编程 bug）一律归为「提供者不可用」(503)，
+                    # 异常类型与消息完全丢失、不入审计 —— 事后无法定位真实故障。
+                    # 现在分流：可达性/超时类 → 提供者不可用；其余（编程 bug）→ 内部错误。
                     调用结果 = None
+                    调用异常说明 = 异常说明(
+                        错误, "调用能力失败"
+                        if isinstance(错误, (ConnectionError, TimeoutError, OSError))
+                        else "调用能力内部错误")
+                    强制内部错误 = not isinstance(错误, (ConnectionError, TimeoutError, OSError))
+                else:
+                    调用异常说明 = ""
+                    强制内部错误 = 假
                 if 调用结果 is None or not getattr(调用结果, "成功", 假):
-                    错误码 = getattr(调用结果, "错误码", "提供者不可用") if 调用结果 is not None else "提供者不可用"
-                    错误说明 = getattr(调用结果, "错误说明", "统一能力调用器未返回结果") if 调用结果 is not None else "统一能力调用器调用失败"
+                    if 强制内部错误:
+                        错误码 = "内部错误"
+                        错误说明 = 调用异常说明
+                    else:
+                        错误码 = getattr(调用结果, "错误码", "提供者不可用") if 调用结果 is not None else "提供者不可用"
+                        错误说明 = getattr(调用结果, "错误说明", "统一能力调用器未返回结果") if 调用结果 is not None else 调用异常说明
                     服务器.记录审计(路径, str(数据.get("请求id", "")), 能力id,
                                   假, 错误码)
                     状态码 = 404 if 错误码 == "能力不存在" else 400

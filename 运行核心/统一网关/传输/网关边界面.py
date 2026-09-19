@@ -34,7 +34,7 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from 运行核心.统一网关.安全.有界服务器 import 有界线程HTTP服务器
-from 运行核心.统一网关.安全.安全边界 import 提取访问凭证
+from 运行核心.统一网关.安全.安全边界 import 提取访问凭证, 异常说明
 from 运行核心.统一网关.网关核心 import 网关请求
 from 公共契约.运行时.JSON解码 import 解码冻结值
 from 公共契约.基础类型.逻辑类型 import 真, 假
@@ -294,8 +294,8 @@ class 网关边界面:
             )
             try:
                 响应 = self.网关服务器.网关核心实例.处理(请求对象)
-            except Exception:
-                self._拒绝(500, "内部错误", "网关处理失败", "健康检查")
+            except Exception as 错误:  # noqa: BLE001 - 细节不得丢（#157）
+                self._拒绝(500, "内部错误", 异常说明(错误, "网关处理失败"), "健康检查")
                 return
             self._写JSON(200 if 响应.成功 else 503, 响应.转字典())
         elif 路径 == "/存活":
@@ -321,8 +321,14 @@ class 网关边界面:
             )
             try:
                 响应 = self.网关服务器.网关核心实例.处理(请求对象)
-            except Exception:
-                self._拒绝(503, "提供者不可用", "网关就绪判定失败", "就绪检查")
+            except Exception as 错误:  # noqa: BLE001 - 需按类型分流（#157）
+                # 缺陷 #157：原先无论什么异常一律 503「提供者不可用」——
+                # 把「就绪判定自身的编程 bug」也说成「提供者不可用」，误导调用方去查环境。
+                # 现在分流：可达性类异常（连接/超时/OS 级）→ 503；其余（编程 bug）→ 500。
+                if isinstance(错误, (ConnectionError, TimeoutError, OSError)):
+                    self._拒绝(503, "提供者不可用", 异常说明(错误, "网关就绪判定失败"), "就绪检查")
+                else:
+                    self._拒绝(500, "内部错误", 异常说明(错误, "网关就绪判定失败"), "就绪检查")
                 return
             数据 = 响应.转字典()
             明细 = 数据.get("值")
@@ -349,8 +355,8 @@ class 网关边界面:
             )
             try:
                 响应 = self.网关服务器.网关核心实例.处理(请求对象)
-            except Exception:
-                self._拒绝(500, "内部错误", "网关处理失败", "能力搜索")
+            except Exception as 错误:  # noqa: BLE001 - 细节不得丢（#157）
+                self._拒绝(500, "内部错误", 异常说明(错误, "网关处理失败"), "能力搜索")
                 return
             self._写JSON(200 if 响应.成功 else 400, 响应.转字典())
         elif 路径 == "/能力/目录":
@@ -374,8 +380,8 @@ class 网关边界面:
             )
             try:
                 响应 = self.网关服务器.网关核心实例.处理(请求对象)
-            except Exception:
-                self._拒绝(500, "内部错误", "网关处理失败", "能力目录")
+            except Exception as 错误:  # noqa: BLE001 - 细节不得丢（#157）
+                self._拒绝(500, "内部错误", 异常说明(错误, "网关处理失败"), "能力目录")
                 return
             self._写JSON(200 if 响应.成功 else 400, 响应.转字典())
         elif 路径.startswith("/能力/契约/"):
@@ -388,8 +394,8 @@ class 网关边界面:
             )
             try:
                 响应 = self.网关服务器.网关核心实例.处理(请求对象)
-            except Exception:
-                self._拒绝(500, "内部错误", "网关处理失败", "能力详情")
+            except Exception as 错误:  # noqa: BLE001 - 细节不得丢（#157）
+                self._拒绝(500, "内部错误", 异常说明(错误, "网关处理失败"), "能力详情")
                 return
             self._写JSON(200 if 响应.成功 else 404, 响应.转字典())
         elif 路径 == "/网关/调用":
