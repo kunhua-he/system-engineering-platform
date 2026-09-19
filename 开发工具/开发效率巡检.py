@@ -152,7 +152,10 @@ def 剖析一篇(路径: Path) -> dict:
     m = re.findall(r"final\s+\| end status=(\w+)", 文)
     if m:
         状态 = m[-1]
-    m = re.search(r"final\s+\| end status=\w+ duration=([\d.]+)s", 文)
+    # ★ 修判据（2026-09-19）：耗时在 `final | status=<状态> duration=<秒>s` 那行，
+    # **不在** `final | end status=…` 那行（end 行只有 status 与 exit_reason）——
+    # 原判据写 `end status=\w+ duration=` 要求同行紧邻，整批读不到 ⇒ 累计耗时恒为 0.0。
+    m = re.search(r"final\s+\| status=\w+ duration=([\d.]+)s", 文)
     耗时 = float(m.group(1)) if m else 0.0
     调用数 = sum(工具.values())
     重复检索 = {k: v for k, v in 搜索模式表.items() if v >= 2}
@@ -233,7 +236,12 @@ def 查交付留痕(日志表: list[Path]) -> dict:
 
 
 def _耗时(文: str) -> float:
-    m = re.search(r"final\s+\| end status=\w+ duration=([\d.]+)s", 文)
+    """子代理真实耗时（秒）：取自 `final | status=<状态> duration=<秒>s` 那行。
+
+    ★ 2026-09-19 修：原判据写成 `end status=\w+ duration=` —— 但 `end` 行**只有**
+    `status` 与 `exit_reason`，耗时在**前一行**，故整批读不到、累计耗时恒为 0.0。
+    """
+    m = re.search(r"final\s+\| status=\w+ duration=([\d.]+)s", 文)
     return round(float(m.group(1)), 1) if m else 0.0
 
 
