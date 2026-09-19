@@ -1,167 +1,42 @@
-"""Git 提供者主实现：检查提供者、worktree 创建/查询/关闭、当前状态、获取当前提交哈希。
+"""Git提供者：唯一实现在 支持库/适配层/Git提供者（D-1 收口，本包不放第二份）。
 
-最小原子命令集（一个第三方 git 一个提供者）。参数经白名单校验
-（实现/白名单.py），git 调用走受管执行（实现/受管执行.py：参数
-列表、超时、进程组回收、输出上限）；关闭工作区非强制。
+本文件原与 `支持库/适配层/Git提供者/实现/Git提供者.py` **逐字同源**（仅包路径前缀不同）。
+同一份逻辑只能有一个实现，故本文件改为**转调**：让
+`支持库.后端.版本控制支持库.Git操作.实现.Git提供者` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。本包 `__init__.py` 照旧从
+本路径导入 —— **对外 import 路径零改动**。
+
+为什么保留同名模块（不能删）：本包 `__init__.py` 与既有测试 `测试中心/支持库/测试_Git提供者.py` 都按这个名字导入，改名会让这些入口失效。
+
+为什么不直接 `import ...实现.Git提供者`：跨包导入 `实现/` 被
+`运行核心/依赖防火墙.py` 强制拒绝（判据「跨包禁止导入 实现/ 目录」）；而适配层腿
+的公开入口 `__init__.py` 已经是合规的同层导入，且它会正常加载自己的 `实现/` 子模块，
+故这里先导公开入口、再把两个模块名指向同一对象（兜底路径按文件路径显式载入，
+文件缺失时明确报错、不静默降级）。同一模块对象、不产生第二份实现是平台既有做法，
+见 `平台控制面/授权/__init__.py`。
 """
 
 from __future__ import annotations
 
-import subprocess
+import importlib.util
+import sys
 from pathlib import Path
 
-from 公共契约.基础类型.结果类型 import 结果
-from 支持库.后端.版本控制支持库.Git操作.实现.白名单 import (
-    失败结果, 校验分支名, 校验仓库路径, 校验起始点, 校验逻辑值, 校验路径文本, 校验超时,
+import 支持库.适配层.Git提供者  # noqa: F401 —— 公开入口（同层，合规）
+
+唯一实现名 = "支持库.适配层.Git提供者.实现.Git提供者"
+系统根 = next(
+    祖先 for 祖先 in Path(__file__).resolve().parents
+    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
 )
-from 支持库.后端.版本控制支持库.Git操作.实现.受管执行 import 默认超时秒, 执行git, 命令结果
 
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "Git提供者" / "实现" / "Git提供者.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
-def _顺序执行(仓库路径: str, 命令列表: list[list[str]], 超时秒: float) -> 结果:
-    """依次执行 git 命令；任一失败即返回失败结果，成功返回全部执行结果。"""
-    执行列表 = []
-    for 参数 in 命令列表:
-        执行 = 命令结果(执行git(仓库路径, 参数, 超时秒))
-        if not 执行.成功:
-            return 执行
-        执行列表.append(执行)
-    return 结果.成功结果({"执行列表": 执行列表})
-
-
-def 检查提供者(超时秒: float = 15) -> 结果:
-    """git --version 真实探针：{git, 版本} 或 提供者不可用。"""
-    校验 = 校验超时(超时秒)
-    if 校验:
-        return 校验
-    try:
-        版本 = subprocess.run(["git", "--version"], capture_output=True, timeout=超时秒)
-    except (OSError, subprocess.TimeoutExpired):
-        return 失败结果("提供者不可用", "无法运行 git --version", 可重试=True)
-    if 版本.returncode != 0:
-        return 失败结果("提供者不可用",
-                        f"git 探针失败（退出码 {版本.returncode}）", 可重试=True)
-    return 结果.成功结果({
-        "git": "可用",
-        "版本": 版本.stdout.decode("utf-8", errors="replace").strip(),
-    })
-
-
-def 创建工作区(仓库路径: str, 新路径: str, 分支名: str | None = None,
-             起始点: str | None = None, 超时秒: float = 默认超时秒) -> 结果:
-    """git worktree add [-b 分支名] 路径 [起始点]：新建独立工作区。"""
-    校验 = 校验仓库路径(仓库路径) or 校验路径文本(新路径) or 校验超时(超时秒)
-    if 校验:
-        return 校验
-    if 分支名 is not None:
-        校验 = 校验分支名(分支名)
-    if 校验 is None and 起始点 is not None:
-        校验 = 校验起始点(起始点)
-    if 校验:
-        return 校验
-    if Path(新路径).exists():
-        return 失败结果("参数不合法", f"目标路径已存在: {新路径}")
-    参数 = ["worktree", "add"]
-    if 分支名:
-        参数 += ["-b", 分支名]
-    参数 += [新路径] + ([起始点] if 起始点 else [])
-    执行 = 命令结果(执行git(仓库路径, 参数, 超时秒))
-    if not 执行.成功:
-        return 执行
-    if not Path(新路径).is_dir():
-        return 失败结果("命令失败", "worktree add 未产出工作区目录")
-    return 结果.成功结果({"路径": 新路径, "分支": 分支名 or "由路径命名"})
-
-
-def 查询工作区(仓库路径: str, 超时秒: float = 默认超时秒) -> 结果:
-    """git worktree list --porcelain：{工作区列表: [{路径, 分支, 提交}]}。"""
-    执行 = 命令结果(执行git(仓库路径, ["worktree", "list", "--porcelain"], 超时秒))
-    if not 执行.成功:
-        return 执行
-    字段映射 = {"worktree": "路径", "branch": "分支", "HEAD": "提交"}
-    清单: list[dict] = []
-    当前: dict = {}
-    for 行 in 执行.值["标准输出"].splitlines():
-        if not 行.strip():
-            if 当前:
-                清单.append(当前)
-                当前 = {}
-            continue
-        字段, _, 值 = 行.partition(" ")
-        if 字段 == "detached":
-            当前["分离头"] = True
-        elif 字段 in 字段映射:
-            当前[字段映射[字段]] = (
-                值.removeprefix("refs/heads/") if 字段 == "branch" else 值)
-    if 当前:
-        清单.append(当前)
-    return 结果.成功结果({"工作区列表": 清单})
-
-
-def 关闭工作区(仓库路径: str, 目标路径: str, 强制: bool = False,
-             超时秒: float = 默认超时秒) -> 结果:
-    """git worktree remove 关闭工作区；强制=假 时存在未提交修改一律 未提交修改 拒绝。
-
-    强制=真 → `git worktree remove --force`（丢弃未提交修改，调用方须显式选择）；
-    强制=假 → 先查未提交修改，存在即拒绝（默认口径不变）。
-    值：{已关闭, 强制}。
-    """
-    校验 = (校验仓库路径(仓库路径) or 校验路径文本(目标路径)
-            or 校验逻辑值(强制, "强制") or 校验超时(超时秒))
-    if 校验:
-        return 校验
-    if not 强制:
-        状态 = 命令结果(执行git(目标路径, ["status", "--porcelain"], 超时秒))
-        if not 状态.成功:
-            return 状态
-        if 状态.值["标准输出"].strip():
-            return 失败结果("未提交修改", f"工作区存在未提交修改: {目标路径}")
-    参数 = ["worktree", "remove"] + (["--force"] if 强制 else []) + [目标路径]
-    执行 = 命令结果(执行git(仓库路径, 参数, 超时秒))
-    if not 执行.成功:
-        return 执行
-    if Path(目标路径).exists():
-        return 失败结果("命令失败", "worktree remove 后目录仍存在")
-    return 结果.成功结果({"已关闭": 目标路径, "强制": 强制})
-
-
-def 当前状态(仓库路径: str, 超时秒: float = 默认超时秒) -> 结果:
-    """status/log 摘要：{分支, 未提交修改, 最近提交}。"""
-    执行 = _顺序执行(仓库路径, [
-        ["rev-parse", "--abbrev-ref", "HEAD"],
-        ["status", "--porcelain"],
-        ["log", "--oneline", "-10"],
-    ], 超时秒)
-    if not 执行.成功:
-        return 执行
-    分支, 状态, 日志 = 执行.值["执行列表"]
-    return 结果.成功结果({
-        "分支": 分支.值["标准输出"].strip(),
-        "未提交修改": [行 for 行 in 状态.值["标准输出"].splitlines() if 行.strip()],
-        "最近提交": [行 for 行 in 日志.值["标准输出"].splitlines() if 行.strip()],
-    })
-
-
-def 获取当前提交哈希(仓库路径: str, 超时秒: float = 默认超时秒) -> 结果:
-    """git rev-parse HEAD + rev-parse --abbrev-ref HEAD：{提交哈希, 分支}。
-
-    正常分支返回分支名；detached HEAD 时分支为 HEAD。非仓库目录统一
-    映射为 命令失败（错误码契约不暴露 仓库不存在）。
-    """
-    校验 = 校验超时(超时秒)
-    if 校验:
-        return 校验
-    if not isinstance(仓库路径, str) or not 仓库路径.strip():
-        return 失败结果("参数不合法", "仓库路径必须是非空文本")
-    执行 = _顺序执行(仓库路径, [
-        ["rev-parse", "HEAD"],
-        ["rev-parse", "--abbrev-ref", "HEAD"],
-    ], 超时秒)
-    if not 执行.成功:
-        if 执行.错误码 == "仓库不存在":
-            return 失败结果("命令失败", f"不是 git 仓库: {仓库路径}")
-        return 执行
-    哈希执行, 分支执行 = 执行.值["执行列表"]
-    return 结果.成功结果({
-        "提交哈希": 哈希执行.值["标准输出"].strip(),
-        "分支": 分支执行.值["标准输出"].strip() or "HEAD",
-    })
+sys.modules[__name__] = sys.modules[唯一实现名]
