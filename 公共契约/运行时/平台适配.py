@@ -196,12 +196,36 @@ def 子进程组启动标志() -> dict[str, object]:
     return {"start_new_session": True}
 
 
-#: 正式支持的平台与架构（**唯一口径**：只写真实实测/验收过的环境，不为未验收环境背书）。
-#: 依据 README「当前支持矩阵」：只有 macOS / arm64（Apple Silicon）有实测与验收记录，
-#: 依赖锁也按该环境锁定。Windows / Linux / x86 均**不在**支持范围内 —— 现有代码里那份
-#: 「尽量跨平台」只是收口层的预留，不等于可用；声明边界比宣称跨平台更诚实。
-正式支持平台 = "macOS"
-正式支持架构表 = ("arm64", "aarch64")
+#: 正式支持矩阵（**准入唯一口径**）：平台名 → 该平台下**有真机证据**的架构元组。
+#:
+#: 只写实测/验收过的组合，不为未验收环境背书；未列入的平台或架构一律拒绝启动
+#: （fail-closed，不静默降级）。
+#:
+#: 真机证据（2026-09-19，均可复跑：`gh workflow run cross-platform-deploy-verify.yml`）：
+#:   - ``macOS / arm64``   —— 开发机 + GitHub Actions 干净 runner **双证**：
+#:     环境自检 21/21、装配冒烟 699 能力 / 跳过 0。
+#:   - ``Linux / x86_64``  —— GitHub Actions `ubuntu-latest` + 阿里云 ECS
+#:     （Alibaba Cloud Linux 4）**双证**：环境自检 21/21、装配 699 / 跳过 0。
+#:   - ``Windows / AMD64`` —— GitHub Actions `windows-latest`：装配 699 / 跳过 0；
+#:     环境自检 10/21，其余 11 项**均为 Windows 本就没有的 POSIX 能力**
+#:     （`os.fork` / 进程组号 / `preexec_fn` / `dir_fd` / `resource` / `/proc` / POSIX 信号），
+#:     按契约如实报「不支持」，**不是缺陷**。
+#:
+#: **不在表内 = 没有证据**（如 macOS/x86_64、Linux/aarch64、Windows/ARM64 未实测），
+#: 想放开必须先在该平台留下上面那套证据，再入表。
+正式支持矩阵: dict[str, tuple[str, ...]] = {
+    "macOS": ("arm64", "aarch64"),
+    "Linux": ("x86_64",),
+    "Windows": ("AMD64",),
+}
+
+#: Apple Silicon 架构表 —— **只用于 MLX/Metal 能力判定，不是准入表**。
+#:
+#: 必须与 ``正式支持矩阵`` 分开：MLX 运行时走 Metal，**仅 Apple Silicon 可用**；
+#: Intel Mac / Linux / Windows 上结构性不可用（实测：Linux x86_64 装完整个闭包后
+#: `import mlx.core` 仍恒报 `libmlx.so: cannot open shared object file`）。
+#: 若直接复用准入矩阵，放开 Linux 后 Intel/Linux 机器会被误判成「可走 MLX」。
+AppleSilicon架构表 = ("arm64", "aarch64")
 
 
 def 当前架构() -> str:
@@ -214,10 +238,12 @@ def 当前架构() -> str:
 
 
 def 校验支持范围(用途: str = "") -> None:
-    """要求当前环境在正式支持范围内；不在则抛 ``平台不支持错误``（fail-closed，不降级）。
+    """要求当前环境在正式支持矩阵内；不在则抛 ``平台不支持错误``（fail-closed，不降级）。
 
-    支持范围 = **macOS / arm64（Apple Silicon）**（见本模块 ``正式支持平台`` /
-    ``正式支持架构表``）。其余环境（Windows、Linux、macOS/x86…）一律**拒绝启动**：
+    支持范围 = ``正式支持矩阵``（**准入唯一口径**）：每个平台名下只列**有真机证据**的架构。
+    当前入表：macOS/arm64、Linux/x86_64、Windows/AMD64（证据见 ``正式支持矩阵`` 注释，
+    均可由 `gh workflow run cross-platform-deploy-verify.yml` 复跑）。
+    未列入的组合（macOS/x86_64、Linux/aarch64、Windows/ARM64…）一律**拒绝启动**：
     它们没有验收记录，静默放行等于把「文档里写了跨平台」当成「跨平台可用」。
 
     平台判断只在本模块做（跨平台收口层），调用点不得自己写 ``sys.platform`` /
@@ -225,17 +251,19 @@ def 校验支持范围(用途: str = "") -> None:
     """
     平台名 = 当前平台()
     架构 = 当前架构()
-    if 平台名 == 正式支持平台 and 架构 in 正式支持架构表:
+    允许架构 = 正式支持矩阵.get(平台名, ())
+    if 架构 in 允许架构:
         return
     场景 = f"（用途：{用途}）" if 用途 else ""
+    入表说明 = "、".join(f"{名}/{'/'.join(架构表)}" for 名, 架构表 in 正式支持矩阵.items())
     raise 平台不支持错误(
-        f"当前环境不在支持范围内{场景}：本平台当前**只支持 macOS / arm64（Apple Silicon）**"
-        f"—— 开发、实测、验收与依赖锁均以该环境为准；"
+        f"当前环境不在支持范围内{场景}：本平台当前支持 {入表说明}"
+        f"（均为真机实测取证，见 README《当前支持矩阵》）；"
         f"当前环境为 {平台名} / {架构 or '架构未知'}（sys.platform={sys.platform!r}），"
-        f"除 macOS arm64 以外的环境一律拒绝启动，不做静默降级。"
-        f"若要在其它平台运行，请先在该平台跑通并留下证据"
+        f"不在表内一律拒绝启动，不做静默降级。"
+        f"若要在其它平台或架构运行，请先在该平台跑通并留下证据"
         f"（环境自检 + 装配冒烟 + 发布门禁，见 README《当前支持矩阵》），"
-        f"不得以「文档里写了跨平台」代替实测。"
+        f"再把该组合入表；不得以「文档里写了跨平台」代替实测。"
     )
 
 
@@ -561,14 +589,15 @@ def 图形加速信息() -> dict[str, object]:
 
 
 def 是否AppleSilicon() -> bool:
-    """是否 Apple Silicon（macOS + `正式支持架构表` 内的架构）。
+    """是否 Apple Silicon（macOS + ``AppleSilicon架构表`` 内的架构）。
 
-    复用本模块既有的 `正式支持平台` / `正式支持架构表` 口径，**不另立第二套
-    arm64 判定**：`运行核心/环境指纹` 与本模块的 `当前架构()` 已是同一份采样。
+    用 ``AppleSilicon架构表``（**不是**准入矩阵 ``正式支持矩阵``）：本函数回答的是
+    「MLX/Metal 能不能用」，而准入矩阵是「这个环境有没有验收证据」——两者口径不同。
+    放开 Linux/Windows 准入后若复用准入矩阵，Intel Mac 与 Linux 会被误判成可走 MLX。
     非 macOS 或架构不在表内一律返回 ``假``（不抛异常：这是画像字段，不是准入判据；
-    环境准入仍由 `校验支持范围()` 负责）。
+    环境准入仍由 ``校验支持范围()`` 负责）。
     """
-    return 是macOS() and 当前架构() in 正式支持架构表
+    return 是macOS() and 当前架构() in AppleSilicon架构表
 
 
 # ── 转写后端选择（**同一份实现 + 模式变量**，哲学第 8 条②）──────────────
@@ -611,11 +640,12 @@ def 转写后端() -> str:
     """返回当前平台的转写后端标识：Apple Silicon → ``mlx``；其余平台 → ``faster-whisper``。
 
     判定依据（**全平台唯一一处**，调用点不得自己写 `sys.platform`）：
-    `是否AppleSilicon()` 为真 → ``mlx``（复用本模块既有 `正式支持平台` /
-    `正式支持架构表` 口径，不另立第二套 arm64 判定）；其余一律 ``faster-whisper``。
+    `是否AppleSilicon()` 为真 → ``mlx``（用 `AppleSilicon架构表`，**不是**准入矩阵
+    `正式支持矩阵`——MLX 只认 Apple Silicon，与「该平台有没有验收证据」是两回事）；
+    其余一律 ``faster-whisper``。
 
     **为什么不是「不认识就抛异常」**：本函数是**后端选择器**，不是环境准入判据 ——
-    准入仍由 `校验支持范围()` 负责（fail-closed，只放行 macOS/arm64）。这里回答的是
+    准入仍由 `校验支持范围()` 负责（fail-closed，按 `正式支持矩阵` 放行）。这里回答的是
     「该加载哪个后端」，在 Windows / Linux 上给出 ``faster-whisper`` 是**正确结论**，
     不是静默降级（第 3.2 条）：真正的可用性由两件事实决定，本函数都不假装知道 ——
     ① 依赖锁按 `适用平台` 过滤后该后端的依赖是否装得上；② 子进程内真实 `import`
@@ -664,8 +694,8 @@ __all__ = [
     "句柄枚举目录表",
     "子进程组启动标志",
     "要求POSIX能力",
-    "正式支持平台",
-    "正式支持架构表",
+    "正式支持矩阵",
+    "AppleSilicon架构表",
     "当前架构",
     "校验支持范围",
     "脚本入口准入",
