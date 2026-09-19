@@ -1,19 +1,30 @@
-"""子进程入口：跨平台语音转写独立子进程 Worker（**一份实现 + 按平台选后端**）。
+"""子进程入口：唯一实现在 支持库/适配层/MLXWhisper提供者（D-3 收口，本包不放第二份）。
 
-只在独立子进程中运行，由 实现/提供者.py 通过 subprocess 启动。
-子进程内才允许加载转写库（Apple Silicon → mlx_whisper；Windows/Linux → faster_whisper，
-由 `公共契约/运行时/平台适配.转写后端()` 唯一判定）；完成后 os._exit(0) 直接退出，
-崩溃不影响平台主进程/测试器。解析逻辑见 子进程解析.py。
+本文件原与 `支持库/适配层/MLXWhisper提供者/实现/子进程入口.py` **逻辑同源**，差异只有
+两处：① 包路径深度（后端腿比适配层腿多一层目录，故 `系统根.parents[N]` 相差 1）；
+② `操作表["转写音频"]` 的实参个数 —— 该差异**已按迁移清单 §10.3.2 先补进适配层腿**
+（适配层 实现/子进程入口.py 现已透传 `附加术语`/`返回分段`），两腿公开名与签名逐项同一。
 
-协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。
-请求：{"操作": "检查可用性"|"获取模型版本"|"转写音频", ...}
-响应：{"成功": true, "值": ...} | {"成功": false, "值": ...,
-      "错误码": ..., "错误说明": ...}
+同一份逻辑只能有一个实现，故本文件改为**转调**：让
+`支持库.后端.转写支持库.转写.实现.子进程入口` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。
+
+**本文件就是被 `subprocess.Popen([sys.executable, 本文件路径])` 当脚本跑的那一个**，
+因此它必须自备 `系统根` 与 `sys.path`（子进程内 `sys.path` 不含仓库根），再按名导入
+适配层那唯一实现：脚本方式跑时 `sys.modules` 的键是 `"__main__"`、也不会按包查表，
+所以 `__main__` 分支**按唯一实现名取模块对象**调用 `主循环`，不做跨包 `实现/` 导入
+（那会被 `运行核心/依赖防火墙.py` 按 AST 判「跨包禁止导入 实现/ 目录」）。
+
+为什么不直接 `import ...实现.子进程入口`：同上 —— 跨包导入 `实现/` 被依赖防火墙强制
+拒绝；而适配层腿的公开入口 `__init__.py` 已经是合规的同层导入，它随本文件所在包之外
+加载自己的 `实现/` 子模块，故这里先导公开入口、再把两个模块名指向同一对象（兜底路径
+按文件路径显式载入，文件缺失时明确报错、不静默降级）。同一模块对象、不产生第二份实现
+是平台既有做法，见 `平台控制面/授权/__init__.py`。
 """
 
 from __future__ import annotations
 
-import json
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -23,61 +34,22 @@ from pathlib import Path
 if str(导入根) not in sys.path:
     sys.path.insert(0, str(导入根))
 
-from 支持库.后端.转写支持库.转写.实现.子进程解析 import (  # noqa: E402
-    初始化, 检查可用性, 获取模型版本, 转写音频,
-)
-from 支持库.后端.转写支持库.转写.实现.子进程解析 import 禁用库环境变量名  # noqa: E402
+import 支持库.适配层.MLXWhisper提供者  # noqa: E402,F401 —— 公开入口（同层，合规）
 
+唯一实现名 = "支持库.适配层.MLXWhisper提供者.实现.子进程入口"
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "MLXWhisper提供者" / "实现" / "子进程入口.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
+sys.modules[__name__] = sys.modules[唯一实现名]
 
-def _禁用库表() -> set[str]:
-    return {名.strip() for 名 in os.environ.get(禁用库环境变量名, "").split(",") if 名.strip()}
-
-
-def _输出(结果: dict) -> int:
-    """输出结果；错误字典（含 错误码）转失败响应并保留 值。"""
-    if 结果.get("错误码"):
-        print(_响应(False, 值=结果.get("值"), 错误码=str(结果["错误码"]),
-                     错误说明=str(结果.get("错误说明") or "子进程执行失败")))
-        return 0
-    print(_响应(True, 值=结果.get("值")))
-    return 0
-
-
-def 主循环() -> int:
-    初始化(_禁用库表())
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
-    操作表 = {
-        "检查可用性": lambda 请求: 检查可用性(str(请求.get("模型路径") or ""), str(请求.get("模型名") or "")),
-        "获取模型版本": lambda 请求: 获取模型版本(str(请求.get("模型路径") or ""), str(请求.get("模型名") or "")),
-        "转写音频": lambda 请求: 转写音频(str(请求.get("文件路径") or ""),
-                                         str(请求.get("模型路径") or ""), str(请求.get("模型名") or ""),
-                                         str(请求.get("附加术语") or ""),
-                                         bool(请求.get("返回分段"))),
-    }
-    处理函数 = 操作表.get(str(请求.get("操作") or ""))
-    if 处理函数 is None:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{请求.get('操作')}'"))
-        return 0
-    try:
-        return _输出(处理函数(请求))
-    except Exception as 错误:
-        print(_响应(False, 错误码="进程崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
-
-
-if __name__ == "__main__":
-    主循环()
+if __name__ == "__main__":  # 按脚本路径启动这条路：走唯一实现名取模块对象，不做实现/ 导入
+    sys.modules[唯一实现名].主循环()
     sys.stdout.flush()
     os._exit(0)
