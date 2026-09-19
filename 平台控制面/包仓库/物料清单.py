@@ -12,17 +12,11 @@ import platform
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+# #165（2026-09-20）：本文件原自带一份 `规范化相对路径` 副本（规则弱于 路径安全.py：
+# 不查 Windows 盘符、`..\\..` 因整段不等于 `..` 而绕过逃逸判定）。收敛到唯一实现。
+from 平台控制面.包仓库.路径安全 import 规范化相对路径
 
 构建器版本 = "可复现构建器-1.0.0"
-
-
-def 规范化相对路径(路径: str) -> str:
-    """校验并规范化清单内相对路径；非法路径抛 ValueError。"""
-    if not 路径 or 路径 in (".", "/", "\\") or 路径.startswith("/") or "\\" in 路径:
-        raise ValueError(f"非法相对路径: {路径!r}")
-    if any(段 in ("..", ".") for 段 in 路径.split("/")):
-        raise ValueError(f"路径逃逸不允许: {路径!r}")
-    return 路径
 
 
 def 内容摘要(内容: bytes) -> str:

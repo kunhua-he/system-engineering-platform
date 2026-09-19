@@ -14,6 +14,9 @@ import tempfile
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树
+# #165（2026-09-20）：本文件原自带一份 `规范化相对路径` 副本，与 路径安全.py / 物料清单.py
+# 三份规则不等价（本份较严、物料清单份可被 `..\..` 绕过）。收敛到唯一实现，此处只导入。
+from 平台控制面.包仓库.路径安全 import 规范化相对路径
 
 默认构建时刻 = "2000-01-01 00:00:00"
 默认主机名 = "可复现构建机"
@@ -21,19 +24,6 @@ from 公共契约.运行时.平台适配 import 清只读后删除树
 
 # 二进制资产 hex 前缀（与 平台客户端制品 的 _二进制前缀 一致）
 _二进制前缀 = "hexfile:"
-
-
-def 规范化相对路径(路径: str) -> str:
-    """校验并规范化制品内相对路径；非法路径抛 ValueError（与包仓库同一规则）。"""
-    if not 路径 or 路径 in (".", "/", "\\"):
-        raise ValueError(f"空或根路径不允许: {路径!r}")
-    if 路径.startswith("/") or 路径.startswith("\\") or 路径[1:2] == ":":
-        raise ValueError(f"绝对路径不允许: {路径!r}")
-    if any(段 in ("..", ".") for 段 in 路径.replace("\\", "/").split("/")):
-        raise ValueError(f"路径逃逸不允许: {路径!r}")
-    if "\\" in 路径:
-        raise ValueError(f"反斜杠分隔符不允许: {路径!r}")
-    return 路径
 
 
 class 可复现构建器:

@@ -207,6 +207,14 @@ def _启动制品(
         raise RuntimeError(
             f"制品启动超时({启动超时秒}s): stdout={标准输出.文本()!r} stderr={标准错误.文本()!r}"
         )
-    except BaseException:
-        _回收进程组(进程)
+    except BaseException as 错误:
+        # #168（2026-09-20）：原实现调了 `_回收进程组(进程)` 但**丢弃返回值** ——
+        # 调用方（单实例验证）拿不到真实回收结论，只能把 `报告.资源回收` 硬编码成
+        # 「已回收: True」，`进程组残留=True` 时照样谎报已回收（掩盖资源泄漏）。
+        # 现把真实回收结果挂在异常对象上回传（不改函数签名/不引入第二返回值通道）。
+        回收结果 = _回收进程组(进程)
+        try:
+            错误.启动回收结果 = 回收结果      # type: ignore[attr-defined]
+        except (AttributeError, TypeError):   # 极少数异常对象禁止挂属性时静默跳过
+            pass
         raise
