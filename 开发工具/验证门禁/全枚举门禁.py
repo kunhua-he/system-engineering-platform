@@ -42,6 +42,7 @@ if str(门禁目录) not in sys.path:
     sys.path.insert(0, str(门禁目录))
 
 from 门禁公共 import 检查结论, 命中, 收集源码, 相对路径  # noqa: E402
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 系统根 = Path(__file__).resolve().parents[2]
 扫描层名表 = ("开发工具", "公共契约", "运行核心", "平台控制面", "启动监督器", "客户端", "模块库", "技能库")
@@ -58,12 +59,12 @@ def _绑定是整棵根(名字: str, 表达式: str) -> bool:
         for 片段 in 表达式.split("parents[")[1:]:
             数字 = 片段.split("]")[0].strip()
             if 数字.isdigit() and int(数字) >= 2:
-                return True
+                return 真
     # ② 名字含根关键词，且表达式不是「子目录切法」（不含 `/`、不含 `.parent`）
     if any(词 in 名字 for 词 in 根名关键词):
         if "/" not in 表达式 and ".parent" not in 表达式 and ".name" not in 表达式:
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _收集绑定(树: ast.AST) -> dict[str, str]:

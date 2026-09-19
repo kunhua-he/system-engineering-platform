@@ -25,7 +25,6 @@ from 运行核心.能力调用.HTTP连接器 import HTTP连接器
             "<body><h1>平台标题</h1><p>第一段正文。</p>"
             "<script>var 隐藏 = 1;</script><p>第二段正文。</p></body></html>")
 
-
 class Test网页分析模块(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -42,13 +41,9 @@ class Test网页分析模块(unittest.TestCase):
         if not 成功:
             cls.后端.优雅关闭()
             raise RuntimeError(f"网关启动失败: {说明}")
-        from 模块库.网页分析 import 设置HTTP连接器
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
-        from 模块库.网页分析 import 设置HTTP连接器
-        设置HTTP连接器(None)
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
 
@@ -96,14 +91,15 @@ class Test网页分析模块(unittest.TestCase):
                 self.assertEqual(结果.错误码, "参数不合法")
 
     def test_平台不可用时返回提供者不可用(self):
-        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
-        from 模块库.网页分析 import 设置HTTP连接器
-        设置HTTP连接器(None)
-        调用结果 = 提取网页信息(最小样本)
-        self.assertFalse(调用结果.成功)
-        self.assertEqual(调用结果.错误码, "提供者不可用")
-        self.assertIsInstance(调用结果, 结果)
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        原惰性装配 = _停用惰性装配()
+        try:
+            调用结果 = 提取网页信息(最小样本)
+            self.assertFalse(调用结果.成功)
+            self.assertEqual(调用结果.错误码, "提供者不可用")
+            self.assertIsInstance(调用结果, 结果)
+        finally:
+            _恢复惰性装配(原惰性装配)
 
     def test_模块注册能力齐全(self):
         class 假注册表:
@@ -120,6 +116,27 @@ class Test网页分析模块(unittest.TestCase):
         self.assertEqual(len(注册表.条目), 1)
         self.assertEqual(注册表.条目[0].能力id, "网页分析.提取网页信息")
         self.assertEqual(注册表.条目[0].包id, "模块库.网页分析")
+
+def _停用惰性装配():
+    """停用惰性装配钩子并返回原值（供「调用器不可用」用例使用）。
+
+    2026-09-19（开工-20260919-193541-2a8e）：模块不再自持 `设置HTTP连接器`，
+    只经 `获取能力调用器()` 取注入调用器。卸载调用器后若不**同时**停用惰性装配
+    钩子，下一次获取会触发惰性装配把调用器装回来 —— 用例就测不到「不可用」分支。
+    """
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册能力调用器(None)
+    return 原惰性装配
+
+
+def _恢复惰性装配(原惰性装配) -> None:
+    """还原惰性装配钩子并重新装配（后续用例不受影响）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+    设置惰性装配函数(原惰性装配)
+    创建并绑定()
 
 
 if __name__ == "__main__":

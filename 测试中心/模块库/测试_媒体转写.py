@@ -32,7 +32,6 @@ from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 环境变量伪库行为 = "媒体转写测试_伪库行为"
 环境变量名表 = [环境变量模型路径, 环境变量模型名, 环境变量伪库行为]
 
-
 def 运行ffmpeg(参数列表: list[str]) -> bool:
     """真实 ffmpeg 生成媒体；不可用或失败返回 False。"""
     try:
@@ -42,7 +41,6 @@ def 运行ffmpeg(参数列表: list[str]) -> bool:
         return 结果.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
-
 
 def 生成测试视频(目录: Path) -> str:
     视频路径 = str(目录 / "测试视频.mp4")
@@ -54,7 +52,6 @@ def 生成测试视频(目录: Path) -> str:
         return 视频路径
     return ""
 
-
 def 生成测试音频(目录: Path) -> str:
     音频路径 = str(目录 / "测试音频.wav")
     if 运行ffmpeg([
@@ -63,7 +60,6 @@ def 生成测试音频(目录: Path) -> str:
     ]) and Path(音频路径).is_file():
         return 音频路径
     return ""
-
 
 class 媒体转写装配(unittest.TestCase):
     """真实装配：启动后端核心与本地网关，模块能力经 HTTP 连接器走统一网关。"""
@@ -87,13 +83,9 @@ class 媒体转写装配(unittest.TestCase):
         if not 成功:
             cls.后端.优雅关闭()
             raise RuntimeError(f"网关启动失败: {说明}")
-        from 模块库.媒体转写 import 设置HTTP连接器
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
-        from 模块库.媒体转写 import 设置HTTP连接器
-        设置HTTP连接器(None)
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
@@ -128,7 +120,6 @@ class 媒体转写装配(unittest.TestCase):
                 os.environ[名] = 值
         shutil.rmtree(self.临时目录, ignore_errors=True)
 
-
 class Test未配置模型如实返回(媒体转写装配):
     def test_检查可用性未配置(self):
         结果 = 检查可用性()
@@ -151,7 +142,6 @@ class Test未配置模型如实返回(媒体转写装配):
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "未配置模型")
         self.assertIsNone(结果.值)
-
 
 class Test模型缺失语义(媒体转写装配):
     def setUp(self):
@@ -177,7 +167,6 @@ class Test模型缺失语义(媒体转写装配):
         结果 = 转写视频文件(self.视频路径, 配置=self.缺失配置)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "模型缺失")
-
 
 class Test参数错误(媒体转写装配):
     def test_空路径参数不合法(self):
@@ -224,12 +213,15 @@ class Test参数错误(媒体转写装配):
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
 
-
 class Test平台不可用(媒体转写装配):
     def test_调用器未装配如实返回(self):
-        """平台不可用（HTTP 连接器未装配）如实返回 提供者不可用，不抛异常。"""
-        from 模块库.媒体转写 import 设置HTTP连接器
-        设置HTTP连接器(None)
+        """平台不可用（调用器未装配）如实返回 提供者不可用，不抛异常。
+
+        2026-09-19（开工-20260919-193541-2a8e）：模块不再自持连接器，只经
+        `获取能力调用器()` 取注入调用器。要测「不可用」必须同时停用惰性装配钩子，
+        否则下一次获取会触发惰性装配把调用器装回来（见 测试_唯一注册表调用器.py）。
+        """
+        原惰性装配 = _停用惰性装配()
         try:
             结果 = 转写音频文件(self.音频路径)
             self.assertFalse(结果.成功)
@@ -238,12 +230,11 @@ class Test平台不可用(媒体转写装配):
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
         finally:
-            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+            _恢复惰性装配(原惰性装配)
 
     def test_平台不可用时返回提供者不可用(self):
-        """卸载 HTTP 连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
-        from 模块库.媒体转写 import 设置HTTP连接器
-        设置HTTP连接器(None)
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        原惰性装配 = _停用惰性装配()
         try:
             结果 = 获取模型版本()
             self.assertFalse(结果.成功)
@@ -252,8 +243,7 @@ class Test平台不可用(媒体转写装配):
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
         finally:
-            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
-
+            _恢复惰性装配(原惰性装配)
 
 class Test伪脚本子进程语义(媒体转写装配):
     """伪 mlx_whisper 库经 PYTHONPATH 注入隔离子进程，驱动崩溃/超时（真实链）。"""
@@ -305,7 +295,6 @@ class Test伪脚本子进程语义(媒体转写装配):
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "超时")
 
-
 class Test注册能力(unittest.TestCase):
     def test_模块注册四个能力且四者对称(self):
         class 假注册表:
@@ -326,14 +315,13 @@ class Test注册能力(unittest.TestCase):
             "媒体转写.检查可用性",
             "媒体转写.获取模型版本",
         ])
-        self.assertEqual(set(__all__), {id.split(".")[-1] for id in 能力id表} | {"设置HTTP连接器"})
+        self.assertEqual(set(__all__), {id.split(".")[-1] for id in 能力id表})
         for 条目 in 注册表.条目:
             self.assertEqual(条目.包id, "模块库.媒体转写")
 
     def test_公开入口导出检查可用性(self):
         from 模块库.媒体转写 import 检查可用性 as 入口函数
         self.assertTrue(callable(入口函数))
-
 
 class Test注册参数口径(unittest.TestCase):
     """注册参数必须**整条**来自 能力契约/参数契约.json（含 必填/默认值）。
@@ -410,6 +398,27 @@ class Test注册参数口径(unittest.TestCase):
         self.assertIsNone(取值[("媒体转写.转写音频文件", "配置")])
         self.assertIsNone(取值[("媒体转写.转写音频文件", "文件路径")])
 
+
+def _停用惰性装配():
+    """停用惰性装配钩子并卸下调用器，返回原钩子（供「调用器不可用」用例使用）。
+
+    2026-09-19（开工-20260919-193541-2a8e）：模块不再自持 `设置HTTP连接器`，
+    只经 `获取能力调用器()` 取注入调用器。卸载调用器后若不**同时**停用惰性装配
+    钩子，下一次获取会触发惰性装配把调用器装回来 —— 用例就测不到「不可用」分支。
+    """
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册能力调用器(None)
+    return 原惰性装配
+
+
+def _恢复惰性装配(原惰性装配) -> None:
+    """还原惰性装配钩子并重新装配（后续用例不受影响）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+    设置惰性装配函数(原惰性装配)
+    创建并绑定()
 
 if __name__ == "__main__":
     unittest.main()

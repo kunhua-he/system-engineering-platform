@@ -171,22 +171,10 @@ def 装配模式(根目录: str, 请求文本: str) -> None:
     网关启动, 网关说明 = 网关.启动()
     if not 网关启动:
         raise RuntimeError(f"冷启动 HTTP 网关启动失败: {网关说明}")
-    try:
-        from 模块库.文件管理 import 设置HTTP连接器
-        HTTP调用器 = HTTP连接器(网关地址="127.0.0.1", 网关端口=网关.端口)
-        设置HTTP连接器(HTTP调用器)
-        # 模块入口由装配器以独立模块对象加载，可能与此处 import 的包入口
-        # 不是同一个 Python 模块；同步把连接器注入已注册函数的全局变量，
-        # 确保冷启动实际调用的模块实现也经过 HTTP。
-        for 已注册能力id in getattr(注册表, "能力id列表", []):
-            if not 已注册能力id.startswith("文件管理."):
-                continue
-            实现对象 = 注册表.获取(已注册能力id)
-            函数 = getattr(实现对象, "实现函数", None)
-            if callable(函数) and isinstance(getattr(函数, "__globals__", None), dict):
-                函数.__globals__["_连接器"] = HTTP调用器
-    except ModuleNotFoundError:
-        设置HTTP连接器 = lambda *_参数, **_关键字: None
+    # 2026-09-19（开工-20260919-193541-2a8e）：12 个模块按「断第二条腿」删掉了
+    # `设置HTTP连接器` 第二入口，改走 `获取能力调用器()`（HTTP / 进程内 / 本地 /
+    # 远程的差异只存在于装配层）。故此处不再注入模块级连接器——冷启动链路本身
+    # 已由 `创建并绑定(注册表)` 注入调用器，模块经它调用即达 HTTP 网关。
     try:
         调用器 = 获取能力调用器()
         输出["调用器可用"] = 真
@@ -209,7 +197,6 @@ def 装配模式(根目录: str, 请求文本: str) -> None:
         输出["调用器可用"] = 假
         输出["调用器错误"] = str(错误)
     finally:
-        设置HTTP连接器(None)
         网关.优雅停止()
     _输出(输出)
 

@@ -169,19 +169,26 @@ class 真实仓库口径(unittest.TestCase):
         # 装配口径既是 679 条这一事实的落盘参照（口径裁定见 能力面与拆分清单 §1.1）
         self.assertGreater(len(基线["条目"]), 600)
 
-    def test_真基线缺失必须fail_closed且复原(self) -> None:
-        备份 = 真基线.with_name(真基线.name + ".单测备份")
-        self.assertFalse(备份.exists(), f"备份路径已存在，拒绝覆盖: {备份}")
-        真基线.rename(备份)
-        try:
-            结果 = subprocess.run([sys.executable, str(门禁)], cwd=str(仓库根),
-                                 capture_output=True, text=True)
-            出 = 结果.stdout + 结果.stderr
-            self.assertEqual(1, 结果.returncode, 出)
-            self.assertIn("基线文件缺失", 出)
-        finally:
-            备份.rename(真基线)
-        self.assertTrue(真基线.is_file(), "真基线必须已复原")
+    def test_真基线缺失必须fail_closed(self) -> None:
+        """真基线缺失 ⇒ fail-closed 判红（用**临时空目录**，不碰真基线）。
+
+        2026-09-19（开工-20260919-193541-2a8e）改法：原实现把**仓库真基线**
+        rename 成 `.单测备份`，靠 `finally` 还原。实测真跑级超时被 kill 时
+        `finally` 不执行 → 真基线永久卡在备份名 → 发布门禁连锁判红
+        （「基线文件缺失」）。测试**不得破坏共享状态**（哲学 12.1）：改为把
+        `--基线` 指向一个**不存在的临时路径**，同样触发 fail-closed 分支，
+        且对仓库零副作用（无需还原、中断也安全）。
+        """
+        不存在的基线 = Path(tempfile.mkdtemp(prefix="冻结基线空目录_")) / "不存在的基线.json"
+        self.assertFalse(不存在的基线.exists())
+        结果 = subprocess.run(
+            [sys.executable, str(门禁), str(仓库根), "--基线", str(不存在的基线)],
+            cwd=str(仓库根), capture_output=True, text=True)
+        出 = 结果.stdout + 结果.stderr
+        self.assertEqual(1, 结果.returncode, 出)
+        self.assertIn("基线文件缺失", 出)
+        # 真基线全程未被触碰
+        self.assertTrue(真基线.is_file(), "真基线不得被测试触碰")
 
     def test_真基线口径与装配注册表一致(self) -> None:
         """口径纪律：基线 id 集必须是**装配口径**（与 正式包索引.能力所有者 相等）。

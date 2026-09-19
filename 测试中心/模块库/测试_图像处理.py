@@ -50,13 +50,9 @@ class 图像处理装配(unittest.TestCase):
         if not 成功:
             cls.后端.优雅关闭()
             raise RuntimeError(f"网关启动失败: {说明}")
-        from 模块库.图像处理 import 设置HTTP连接器
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
-        from 模块库.图像处理 import 设置HTTP连接器
-        设置HTTP连接器(None)
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
 
@@ -77,16 +73,18 @@ class 图像处理装配(unittest.TestCase):
         设置全局唯一服务(None)
 
     def test_平台不可用时返回提供者不可用(self):
-        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
-        from 模块库.图像处理 import 设置HTTP连接器
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。
 
-        设置HTTP连接器(None)
+        2026-09-19（开工-20260919-193541-2a8e）：模块不再自持连接器；要测
+        「不可用」须同时停用惰性装配钩子，否则下次获取会把调用器装回来。
+        """
+        原惰性装配 = _停用惰性装配()
         try:
             结果 = 识别图像格式(最小PNG)
             self.assertFalse(结果.成功)
             self.assertEqual(结果.错误码, "提供者不可用")
         finally:
-            设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+            _恢复惰性装配(原惰性装配)
 
 
 class Test分析图像文件(图像处理装配):
@@ -412,6 +410,23 @@ class Test注册能力(图像处理装配):
         for 条目 in 注册表.条目:
             self.assertEqual(条目.包id, "模块库.图像处理")
 
+
+
+def _停用惰性装配():
+    """停用惰性装配钩子并卸下调用器，返回原钩子（供「调用器不可用」用例使用）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册能力调用器(None)
+    return 原惰性装配
+
+
+def _恢复惰性装配(原惰性装配) -> None:
+    """还原惰性装配钩子并重新装配（后续用例不受影响）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+    设置惰性装配函数(原惰性装配)
+    创建并绑定()
 
 if __name__ == "__main__":
     unittest.main()

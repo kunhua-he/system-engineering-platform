@@ -23,14 +23,12 @@ from 运行核心.统一网关.网关核心 import 网关核心
 from 运行核心.统一网关.本地网关 import 本地网关服务器
 from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 
-
 def _生成docx(路径: Path) -> None:
     from docx import Document
     文档 = Document()
     文档.add_heading("组合测试标题", level=1)
     文档.add_paragraph("模块库文档解析组合测试段落")
     文档.save(str(路径))
-
 
 def _生成xlsx(路径: Path) -> None:
     from openpyxl import Workbook
@@ -41,7 +39,6 @@ def _生成xlsx(路径: Path) -> None:
     工作表.append(["张三", 1])
     工作簿.save(str(路径))
 
-
 def _生成pptx(路径: Path) -> None:
     from pptx import Presentation
     演示 = Presentation()
@@ -50,13 +47,11 @@ def _生成pptx(路径: Path) -> None:
     幻灯片.placeholders[1].text = "要点一"
     演示.save(str(路径))
 
-
 def _生成pdf(路径: Path) -> None:
     from reportlab.pdfgen import canvas
     画布 = canvas.Canvas(str(路径))
     画布.drawString(50, 700, "PDF combined parse")
     画布.save()
-
 
 class Test文档解析模块(unittest.TestCase):
     @classmethod
@@ -74,13 +69,9 @@ class Test文档解析模块(unittest.TestCase):
         if not 成功:
             cls.后端.优雅关闭()
             raise RuntimeError(f"网关启动失败: {说明}")
-        from 模块库.文档解析 import 设置HTTP连接器
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
-        from 模块库.文档解析 import 设置HTTP连接器
-        设置HTTP连接器(None)
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
 
@@ -227,13 +218,35 @@ class Test文档解析模块(unittest.TestCase):
         self.assertEqual(结果.值.格式, "docx")
 
     def test_平台不可用时返回提供者不可用(self):
-        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
-        from 模块库.文档解析 import 设置HTTP连接器
-        设置HTTP连接器(None)
-        结果 = 解析文档("/不存在的路径/测试.docx", "docx")
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "提供者不可用")
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。"""
+        原惰性装配 = _停用惰性装配()
+        try:
+            结果 = 解析文档("/不存在的路径/测试.docx", "docx")
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            _恢复惰性装配(原惰性装配)
+
+def _停用惰性装配():
+    """停用惰性装配钩子并返回原值（供「调用器不可用」用例使用）。
+
+    2026-09-19（开工-20260919-193541-2a8e）：模块不再自持 `设置HTTP连接器`，
+    只经 `获取能力调用器()` 取注入调用器。卸载调用器后若不**同时**停用惰性装配
+    钩子，下一次获取会触发惰性装配把调用器装回来 —— 用例就测不到「不可用」分支。
+    """
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册能力调用器(None)
+    return 原惰性装配
+
+
+def _恢复惰性装配(原惰性装配) -> None:
+    """还原惰性装配钩子并重新装配（后续用例不受影响）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+    设置惰性装配函数(原惰性装配)
+    创建并绑定()
 
 
 if __name__ == "__main__":

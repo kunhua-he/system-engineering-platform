@@ -70,13 +70,9 @@ class 媒体处理装配(unittest.TestCase):
         if not 成功:
             cls.后端.优雅关闭()
             raise RuntimeError(f"网关启动失败: {说明}")
-        from 模块库.媒体处理 import 设置HTTP连接器
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
-        from 模块库.媒体处理 import 设置HTTP连接器
-        设置HTTP连接器(None)
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
         from 公共契约.能力契约.调用器 import 设置惰性装配函数
@@ -109,22 +105,28 @@ class Test检查提供者(媒体处理装配):
             self.assertEqual(结果.错误码, "参数不合法")
 
     def test_平台不可用如实返回(self):
-        """卸载 HTTP 连接器后调用能力：模块返回 提供者不可用，不抛异常。"""
-        from 模块库.媒体处理 import 设置HTTP连接器
-        设置HTTP连接器(None)
-        结果 = 检查提供者()
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "提供者不可用")
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常。
+
+        2026-09-19（开工-20260919-193541-2a8e）：模块不再自持连接器；要测
+        「不可用」须同时停用惰性装配钩子，否则下次获取会把调用器装回来。
+        """
+        原惰性装配 = _停用惰性装配()
+        try:
+            结果 = 检查提供者()
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            _恢复惰性装配(原惰性装配)
 
     def test_平台不可用时返回提供者不可用(self):
-        """卸载连接器后调用能力：模块返回 提供者不可用，不抛异常（样板命名）。"""
-        from 模块库.媒体处理 import 设置HTTP连接器
-        设置HTTP连接器(None)
-        结果 = 检查提供者()
-        self.assertFalse(结果.成功)
-        self.assertEqual(结果.错误码, "提供者不可用")
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=self.网关.端口))
+        """卸载调用器后调用能力：模块返回 提供者不可用，不抛异常（样板命名）。"""
+        原惰性装配 = _停用惰性装配()
+        try:
+            结果 = 检查提供者()
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "提供者不可用")
+        finally:
+            _恢复惰性装配(原惰性装配)
 
 
 class Test探测媒体(媒体处理装配):
@@ -277,13 +279,9 @@ class Test零残留与注册(unittest.TestCase):
         if not 成功:
             cls.后端.优雅关闭()
             raise RuntimeError(f"网关启动失败: {说明}")
-        from 模块库.媒体处理 import 设置HTTP连接器
-        设置HTTP连接器(HTTP连接器(网关地址="127.0.0.1", 网关端口=cls.网关.端口))
 
     @classmethod
     def tearDownClass(cls):
-        from 模块库.媒体处理 import 设置HTTP连接器
-        设置HTTP连接器(None)
         cls.网关.优雅停止()
         cls.后端.优雅关闭()
 
@@ -375,6 +373,23 @@ class Test零残留与注册(unittest.TestCase):
                 核过参数数 += 1
         self.assertEqual(核过参数数, 30, "本包契约参数总数（6 能力 / 30 参数）—— 数目变了请同步契约")
 
+
+
+def _停用惰性装配():
+    """停用惰性装配钩子并卸下调用器，返回原钩子（供「调用器不可用」用例使用）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数, 注册能力调用器
+    原惰性装配 = 设置惰性装配函数.__globals__.get("_惰性装配函数")
+    设置惰性装配函数(None)
+    注册能力调用器(None)
+    return 原惰性装配
+
+
+def _恢复惰性装配(原惰性装配) -> None:
+    """还原惰性装配钩子并重新装配（后续用例不受影响）。"""
+    from 公共契约.能力契约.调用器 import 设置惰性装配函数
+    from 运行核心.能力调用.唯一能力调用 import 创建并绑定
+    设置惰性装配函数(原惰性装配)
+    创建并绑定()
 
 if __name__ == "__main__":
     unittest.main()

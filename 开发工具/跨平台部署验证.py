@@ -31,6 +31,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 系统根 = Path(__file__).resolve().parents[1]
 解释器 = sys.executable
@@ -237,14 +238,14 @@ def 全量验收放行(目标: str) -> tuple[bool, str]:
     try:
         from 支持库.后端.系统核心支持库.权限审批 import 校验动作
     except ImportError as 错误:  # fail-closed
-        return False, (f"全量验收被拒绝：取不到授权判定腿（{错误}）。按哲学 11.2，默认不跑全量。")
+        return 假, (f"全量验收被拒绝：取不到授权判定腿（{错误}）。按哲学 11.2，默认不跑全量。")
     判定 = 校验动作("全量验收", 目标)
     if not 判定.成功:
-        return False, f"全量验收被拒绝：授权判定失败（{判定.错误码}：{判定.错误说明}）。按哲学 11.2，默认不跑全量。"
+        return 假, f"全量验收被拒绝：授权判定失败（{判定.错误码}：{判定.错误说明}）。按哲学 11.2，默认不跑全量。"
     值 = 判定.值 if isinstance(判定.值, dict) else {}
     if 值.get("通过") is True:
-        return True, f"全量验收已授权（策略={值.get('策略')}）：开始 {目标}。"
-    return False, (
+        return 真, f"全量验收已授权（策略={值.get('策略')}）：开始 {目标}。"
+    return 假, (
         f"全量验收被拒绝（策略={值.get('策略')}：{值.get('原因')}）。\n"
         "按哲学 11.2（2026-09-19 华哥裁决）：全量只在大版本发布或走审计流程时跑，\n"
         "默认无授权禁止跑全量 —— 要跑需华哥明确授权。\n"
