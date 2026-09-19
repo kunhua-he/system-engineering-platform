@@ -17,6 +17,7 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.运行时 import 平台适配
 
 try:
     import ctypes
@@ -157,4 +158,4 @@ def 宿主可用性() -> dict[str, Any]:
     """探测当前宿主能否真实提供动态库调用；不可用状态为 宿主不可用。"""
     探测 = 加载库("sqlite3")
     可用 = 探测.成功
-    return {"可用": 可用, "状态": 宿主可用状态 if 可用 else 宿主不可用状态, "平台": sys.platform, "说明": "" if 可用 else 探测.错误说明}
+    return {"可用": 可用, "状态": 宿主可用状态 if 可用 else 宿主不可用状态, "平台": 平台适配.原始平台标志(), "说明": "" if 可用 else 探测.错误说明}

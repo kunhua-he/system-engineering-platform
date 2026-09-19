@@ -116,9 +116,9 @@ def 计算环境摘要(依赖锁: dict, 提供者id: str) -> str:
     """
     指纹 = {
         "python": sys.version.split()[0],
-        "os": platform.system(),
+        "os": 平台适配.本机系统名(),
         "os版本": platform.release(),
-        "架构": platform.machine(),
+        "架构": 平台适配.当前架构(),
         "提供者id": _归一提供者id(提供者id),
         "依赖锁摘要": hashlib.sha256(
             json.dumps(依赖锁, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -216,7 +216,7 @@ def _系统版本详情() -> str:
             return 结果.stdout.decode("utf-8", "ignore").strip()
     except (OSError, subprocess.TimeoutExpired):
         pass
-    return f"{platform.system()} {platform.release()}"
+    return f"{平台适配.本机系统名()} {platform.release()}"
 
 
 def _裁剪缓存证据(证据文件: Path) -> None:
@@ -403,7 +403,7 @@ def _尝试镜像命中(提供者目录: Path, 依赖锁: dict, 目标: Path,
         依赖锁摘要=输入哈希,
         python版本=sys.version.split()[0],
         系统版本=_系统版本详情(),
-        架构=platform.machine(),
+        架构=平台适配.当前架构(),
     )
     清单结果 = 获取镜像清单(配置.镜像地址, 提供者目录.name, 摘要,
                           代理地址=配置.代理地址)

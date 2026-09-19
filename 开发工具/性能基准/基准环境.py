@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时 import 平台适配
 from 公共契约.运行时.平台适配 import 清只读后删除树
 from 公共契约.基础类型.逻辑类型 import 真
 
@@ -225,8 +226,8 @@ def 环境快照() -> dict[str, Any]:
         "Python": platform.python_version(),
         "解释器": sys.executable,
         "主机": platform.node(),
-        "平台": f"{platform.system()} {platform.release()}",
-        "架构": platform.machine(),
+        "平台": f"{平台适配.本机系统名()} {platform.release()}",
+        "架构": 平台适配.当前架构(),
         "CPU核数": os.cpu_count(),
         "负载均值": 负载,
     }

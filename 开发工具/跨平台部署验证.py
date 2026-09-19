@@ -32,6 +32,7 @@ import sys
 import time
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 平台适配
 
 系统根 = Path(__file__).resolve().parents[1]
 解释器 = sys.executable
@@ -106,8 +107,8 @@ def _平台三元组() -> dict[str, str]:
 
     return {
         "Python": sys.version.split()[0],
-        "操作系统": platform.system(),
-        "CPU": platform.machine(),
+        "操作系统": 平台适配.本机系统名(),
+        "CPU": 平台适配.当前架构(),
         "解释器": 解释器,
     }
 

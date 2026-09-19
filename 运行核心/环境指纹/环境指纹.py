@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 平台适配
 
 第三方版本探测 = {
     "cryptography": "cryptography",
@@ -105,9 +106,9 @@ def 计算环境指纹(*, 含外部应用: bool = 真) -> 环境指纹结果:
     """计算当前环境指纹。"""
     详细信息: dict[str, Any] = {
         "python": sys.version.split()[0],
-        "os": platform.system(),
+        "os": 平台适配.本机系统名(),
         "os版本": platform.release(),
-        "架构": platform.machine(),
+        "架构": 平台适配.当前架构(),
         "第三方": {名称: _包版本(模块) for 名称, 模块 in 第三方版本探测.items()},
     }
     if 含外部应用:

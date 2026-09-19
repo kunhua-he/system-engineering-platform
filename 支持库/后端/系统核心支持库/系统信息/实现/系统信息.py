@@ -13,6 +13,7 @@ import socket
 from collections import deque
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时 import 平台适配
 
 
 
@@ -35,10 +36,10 @@ def 降级记录摘要() -> dict:
 def 获取操作系统信息() -> 结果:
     """操作系统信息。返回 {系统, 版本, 架构, 主机名, Python版本}。"""
     return 结果.成功结果({
-        "系统": platform.system(),
+        "系统": 平台适配.本机系统名(),
         "版本": platform.release(),
         "完整版本": platform.version(),
-        "架构": platform.machine(),
+        "架构": 平台适配.当前架构(),
         "处理器": platform.processor(),
         "主机名": socket.gethostname(),
         "Python版本": platform.python_version(),

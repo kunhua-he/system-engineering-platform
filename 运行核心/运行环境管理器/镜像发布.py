@@ -57,6 +57,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
 )
 from 支持库.适配层.密码签名提供者 import 公钥指纹
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 平台适配
 
 发布清单文件名 = "镜像清单.json"
 发布制品文件名 = "制品.tar.gz"
@@ -98,7 +99,7 @@ def _系统版本详情() -> str:
             return 结果.stdout.decode("utf-8", "ignore").strip()
     except (OSError, subprocess.TimeoutExpired):
         pass
-    return f"{platform.system()} {platform.release()}"
+    return f"{平台适配.本机系统名()} {platform.release()}"
 
 
 def _收集正式文件(制品根: Path) -> list[tuple[str, Path]]:
@@ -197,7 +198,7 @@ def 发布环境镜像(环境目录, 输出目录, 私钥PEM, *, 元数据: dict
             "依赖锁摘要": 依赖锁摘要,
             "python版本": sys.version.split()[0],
             "系统版本": _系统版本详情(),
-            "架构": platform.machine(),
+            "架构": 平台适配.当前架构(),
             "信任指纹": str(元数据.get("信任指纹", "") or ""),
             "文件清单": 文件清单,
             "文件清单摘要": 文件清单摘要,
@@ -244,7 +245,7 @@ def 发布环境镜像(环境目录, 输出目录, 私钥PEM, *, 元数据: dict
             "生成环境": {
                 "python版本": sys.version.split()[0],
                 "系统版本": _系统版本详情(),
-                "架构": platform.machine(),
+                "架构": 平台适配.当前架构(),
             },
             "产物": {
                 "镜像清单": 发布清单文件名,

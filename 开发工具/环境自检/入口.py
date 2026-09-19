@@ -16,6 +16,8 @@ from pathlib import Path
 
 import platform as 平台模块
 
+from 公共契约.运行时 import 平台适配
+
 from 开发工具.环境自检.基础 import (
     结论_不支持, 结论_通过, 结论_警告, 进度前缀, 自检项, _准备导入路径)
 from 开发工具.环境自检.编排 import _行宽, 跑全部自检
@@ -91,8 +93,9 @@ def 主(argv: list[str] | None = None) -> int:
         载荷 = {
             "仓库根": str(根),
             "解释器": {"路径": sys.executable, "版本": 平台模块.python_version()},
-            "平台": {"sys.platform": sys.platform, "系统": 平台模块.system(),
-                   "架构": 平台模块.machine()},
+            "平台": {"sys.platform": 平台适配.原始平台标志(),
+                   "系统": 平台适配.本机系统名(),
+                   "架构": 平台适配.当前架构()},
             "结论统计": {"通过": 统计[结论_通过], "警告": 统计[结论_警告],
                      "不支持": 统计[结论_不支持]},
             "有不支持项": 退出码 != 0,
