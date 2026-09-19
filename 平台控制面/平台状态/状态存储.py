@@ -445,7 +445,9 @@ class 平台状态(权威状态):
                 来源快照: str = "", 结果: str = "", 错误码: str = "") -> str:
         证据id = uuid.uuid4().hex[:20]
         正文 = json.dumps(内容, ensure_ascii=False)
-        哈希 = __import__("hashlib").sha256(正文.encode("utf-8")).hexdigest()[:16]
+        # #166（2026-09-20）：本文件 :20 已 `import hashlib`，此处原为弯绕写法，
+        # 绕开静态检查、也让「谁用了 hashlib」的检索失效。直接用模块名。
+        哈希 = hashlib.sha256(正文.encode("utf-8")).hexdigest()[:16]
         连接 = self._连接()
         with 连接:
             连接.execute(

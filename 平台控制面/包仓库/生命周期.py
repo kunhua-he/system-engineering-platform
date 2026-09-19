@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
+
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 状态链 = [
