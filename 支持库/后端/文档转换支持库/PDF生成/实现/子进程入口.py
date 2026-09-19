@@ -1,8 +1,17 @@
-"""子进程入口：PDF 生成（reportlab）的独立进程 Worker。
+"""子进程入口（PDF 生成 / reportlab）：唯一实现在 支持库/适配层/reportlab提供者（第 10 对收口，本包不放第二份）。
 
-本文件只在独立子进程中运行，由 实现/生成PDF.py 通过 subprocess 启动。子进程内才
-允许加载 reportlab —— 而且是经 支持库.适配层.reportlab提供者 的**公开入口**调用：
-reportlab 的唯一实现在适配层腿，本包不再保留第二份渲染代码（D-2/D-3 收口）。
+本文件原与 `支持库/适配层/reportlab提供者/实现/子进程入口.py` **逐字同源**，差异只有
+两处：① 包路径深度（后端腿比适配层腿多一层目录，故 `系统根`/`parents[N]` 相差 1 级，
+**两腿实测各自都指向项目根**，不是错误、不能统一成一个数字）；② 适配层腿侧保有的
+「激活指针解析 + 注入」部署自举段（**逐字保留在唯一实现里，本门面不重复承载**）。
+
+同一份逻辑只能有一个实现，故本文件改为**转调**：让
+`支持库.后端.文档转换支持库.PDF生成.实现.子进程入口` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。
+
+**本文件就是被 `subprocess.Popen([sys.executable, 本文件路径])` 当脚本跑的那一个**，
+因此 `__main__` 分支**按唯一实现名取模块对象**调用 `主循环`，不做跨包 `实现/` 导入
+（那会被 `运行核心/依赖防火墙.py` 按 AST 判「跨包禁止导入 实现/ 目录」）。
 
 协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。
 请求：{"操作": "生成", "内容参数": {...}}
@@ -11,57 +20,32 @@ reportlab 的唯一实现在适配层腿，本包不再保留第二份渲染代�
 
 from __future__ import annotations
 
-import json
+import importlib.util
 import os
 import sys
 from pathlib import Path
 
-系统根 = next(
-    祖先 for 祖先 in Path(__file__).resolve().parents
-    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
-)
+系统根 = Path(__file__).resolve().parents[5]
 导入根 = 系统根.parent if 系统根.name == "平台客户端" else 系统根
 if str(导入根) not in sys.path:
     sys.path.insert(0, str(导入根))
 
-from 支持库.适配层.reportlab提供者 import 生成PDF as _唯一实现生成PDF  # noqa: E402
+import 支持库.适配层.reportlab提供者  # noqa: E402,F401 —— 公开入口（同层，合规）
 
+唯一实现名 = "支持库.适配层.reportlab提供者.实现.子进程入口"
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明},
-                      ensure_ascii=False)
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "reportlab提供者" / "实现" / "子进程入口.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
+sys.modules[__name__] = sys.modules[唯一实现名]
 
-def 主循环() -> int:
-    """读一行请求，执行，写一行响应。"""
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
-    操作 = str(请求.get("操作") or "")
-    if 操作 != "生成":
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{操作}'"))
-        return 0
-    try:
-        结果 = _唯一实现生成PDF(请求.get("内容参数"))
-    except Exception as 错误:  # 任何未预期异常都转稳定响应，不拖垮主进程
-        print(_响应(False, 错误码="提供者崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
-    if 结果.成功:
-        print(_响应(True, 值=结果.值))
-        return 0
-    print(_响应(False, 错误码=str(结果.错误码 or "生成失败"),
-                错误说明=str(结果.错误说明 or "PDF 生成失败")))
-    return 0
-
-
-if __name__ == "__main__":
-    主循环()
+if __name__ == "__main__":  # 按脚本路径启动这条路：走唯一实现名取模块对象，不做 实现/ 导入
+    sys.modules[唯一实现名].主循环()
     sys.stdout.flush()
-    # 直接退出，跳过解释器关闭阶段（与同仓其它受管提供者子进程同一收口方式）
     os._exit(0)

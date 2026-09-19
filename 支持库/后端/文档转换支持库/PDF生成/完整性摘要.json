@@ -21,11 +21,11 @@
     },
     {
       "路径": "实现/子进程入口.py",
-      "sha256": "e9dcce2a7ac0eb4cc6d385f33dddc3c6f86c580a1dd8446a0653f0d1652a3fc3"
+      "sha256": "f6f6ed0079d698a8887b5f8f9943a009c211a9ef87a1c1d87777b0b3dcc0c363"
     },
     {
       "路径": "实现/生成PDF.py",
-      "sha256": "5567234bbbd13ee964de5fff6714e90d9c9b9ab7432c0dfae81e8fde3b2b6c6b"
+      "sha256": "404ec6cf33997c902af725b4c3257473c63932f444f990ca7097a90086ef913b"
     },
     {
       "路径": "权限契约/权限契约.json",

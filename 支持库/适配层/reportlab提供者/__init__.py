@@ -1,8 +1,11 @@
-"""reportlab 提供者包级中文入口（主进程直接加载 reportlab）。
+"""reportlab 提供者包级中文入口（reportlab 隔离在一次性子进程中执行）。
 
 调用者只从此入口导入，禁止深入 实现/ 目录。
 公开能力：PDF生成.生成PDF（标题/段落列表/表格列表 → 生成产物字典）。
-reportlab 为纯 Python 库，主进程 import，不启用子进程隔离；
+主进程**不 import reportlab**：入口走 实现/子进程管理器.py，它拉起一次性隔离子进程，
+由 实现/子进程入口.py 在子进程内调用同包渲染器（实现/生成PDF.py）完成实际渲染。
+本包是「隔离子进程形态」的唯一实现：后端腿 支持库/后端/文档转换支持库/PDF生成 的
+同名件已降为转调门面，两腿该模块名指向同一模块对象。
 中文字体优先系统字体，回退内置 CID 字体。
 """
 
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
-from 支持库.适配层.reportlab提供者.实现.生成PDF import 生成PDF
+from 支持库.适配层.reportlab提供者.实现.子进程管理器 import 生成PDF
 
 __all__ = ["生成PDF", "注册能力"]
 
