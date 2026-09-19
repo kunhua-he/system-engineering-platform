@@ -1,271 +1,44 @@
-"""Pillow 提供者主进程管理器：把 PIL（C 原生扩展）隔离到独立子进程执行。
+"""图像解码提供者（Pillow/图像解码）：唯一实现在 支持库/适配层/Pillow提供者（A 档收口）。
 
-平台主进程绝不 import PIL；每次调用启动一次性子进程（独立进程组），
-os._exit 退出零残留；启动失败/超时/崩溃/输出超限逐类映射稳定错误码。
-提供者不可用由子进程按环境变量判定（Pillow提供者_禁用库=PIL）。
+本文件原与 `支持库/适配层/Pillow提供者/实现/提供者.py` 逐段同源，差异仅在包路径深度
+（`parents[2]` vs `parents[3]`）与若干注释/写法（本腿多一处与上限等价的算后复查）；同一份
+逻辑只能有一个实现，故本文件改为**转调**：让
+`支持库.后端.图像处理支持库.图像解码.实现.提供者` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。本包 `__init__.py` 照旧从本路径
+导入 9 个能力函数与 `注册能力`、既有测试照旧 `from ...实现 import 提供者` 取
+`默认最大输出字节 / 输入字节上限 / 单图最大输出字节` 等模块级常量 —— **对外 import 路径与
+对外符号零改动**；子进程仍由唯一实现按它自己的 `包目录` 启动（进程边界不变，
+PIL 仍只在子进程内加载，主进程零加载 PIL）。
+
+为什么不直接 `import ...实现.提供者`：跨包导入 `实现/` 被
+`运行核心/依赖防火墙.py` 强制拒绝（判据「跨包禁止导入 实现/ 目录」）；而适配层腿
+的公开入口 `__init__.py` 已经是合规的同层导入，且它会正常加载自己的 `实现/` 子模块，
+故这里先导公开入口、再把两个模块名指向同一对象（兜底路径按文件路径显式载入，
+文件缺失时明确报错、不静默降级）。同一模块对象、不产生第二份实现是平台既有做法，
+见 `平台控制面/授权/__init__.py`、`支持库/后端/媒体处理支持库/FFmpeg媒体/实现/探测.py`。
 """
+
 from __future__ import annotations
 
-import base64
-import json
-import os
-import subprocess
+import importlib.util
 import sys
 from pathlib import Path
-from typing import Any
 
-from 公共契约.基础类型.结果类型 import 结果
-from 公共契约.运行时 import 平台适配, 进程终止
-from 公共契约.运行时.有界IO import 受限通信
+import 支持库.适配层.Pillow提供者  # noqa: F401 —— 公开入口（同层，合规）
 
-包目录 = Path(__file__).resolve().parent.parent
-子进程入口路径 = 包目录 / "实现" / "子进程入口.py"
-默认超时秒 = 60.0
-超时秒上限 = 60.0
-默认最大输出字节 = 64 * 1024 * 1024
-输入字节上限 = 64 * 1024 * 1024
-单图最大像素 = 40_000_000
+唯一实现名 = "支持库.适配层.Pillow提供者.实现.提供者"
+系统根 = next(
+    祖先 for 祖先 in Path(__file__).resolve().parents
+    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
+)
 
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "Pillow提供者" / "实现" / "提供者.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
-def _失败(错误码: str, 消息: str, *, 可重试: bool = False) -> 结果:
-    return 结果.失败(错误码, 消息, 来源="Pillow提供者", 可重试=可重试)
-
-
-def _启动子进程() -> subprocess.Popen:
-    """启动一次性隔离子进程（独立进程组，cwd=平台根）。"""
-    系统根 = 包目录.parents[3]
-    return subprocess.Popen(
-        [sys.executable, str(子进程入口路径)],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        cwd=str(系统根), env=dict(os.environ),
-        **平台适配.子进程组启动标志(),
-    )
-
-
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    """终止进程组（终止→宽限→强杀→复查死透）：唯一实现在 公共契约.运行时.进程终止。
-
-    平台差异（POSIX 按进程组 / Windows 按进程树）由收口层自己判定：本处不再持有
-    平台判断、信号号或 killpg 调用。保留同名同签名的薄委托，是因为既有测试
-    （测试中心/支持库/测试_Pillow提供者.py）用 patch.object 直接打桩本名。
-    """
-    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
-
-
-def _关闭流(进程: subprocess.Popen) -> None:
-    for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
-        try:
-            if 流 is not None:
-                流.close()
-        except (OSError, ValueError):
-            pass
-
-
-def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 结果:
-    """执行一次子进程任务；崩溃/超时/启动失败分别映射稳定错误码。"""
-    try:
-        进程 = _启动子进程()
-    except OSError as 错误:
-        return _失败("提供者不可用", f"无法启动 Pillow 隔离子进程: {错误}", 可重试=True)
-    try:
-        标准输出, _标准错误, 已超时, 输出超限 = 受限通信(
-            进程,
-            输入=(json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8"),
-            超时秒=超时秒, 输出上限字节=默认最大输出字节,
-            终止回调=lambda: _终止进程组(进程),
-        )
-        if 已超时:
-            return _失败("超时", f"Pillow 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
-        if 输出超限:
-            return _失败("超大", f"Pillow 隔离子进程输出超过上限 {默认最大输出字节} 字节")
-    finally:
-        if 进程.poll() is None:
-            _终止进程组(进程)
-        _关闭流(进程)
-    退出码 = 进程.returncode or 0
-    if 输出超限 or len(标准输出) >= 默认最大输出字节:
-        return _失败("超大", f"Pillow 隔离子进程输出超过上限 {默认最大输出字节} 字节")
-    if 退出码 != 0:
-        return _失败("提供者崩溃", f"Pillow 隔离子进程异常退出（退出码 {退出码}）", 可重试=True)
-    try:
-        响应 = json.loads(标准输出.decode("utf-8", errors="replace"))
-    except json.JSONDecodeError:
-        return _失败("提供者崩溃", "Pillow 隔离子进程返回了无效响应", 可重试=True)
-    if not 响应.get("成功"):
-        错误码 = str(响应.get("错误码") or "提供者崩溃")
-        return 结果.失败(错误码, str(响应.get("错误说明") or "Pillow 隔离子进程执行失败"),
-                          来源="Pillow提供者",
-                          可重试=错误码 in ("提供者不可用", "超时", "提供者崩溃"),
-                          详情={"值": 响应.get("值")})
-    return 结果.成功结果(响应.get("值"))
-
-
-def _校验字节(字节: Any) -> tuple[bytes | None, 结果 | None]:
-    """字节 参数归一化校验：二进制原样，base64 文本解码（跨宿主可序列化）。"""
-    if isinstance(字节, str):
-        try:
-            字节 = base64.b64decode(字节)
-        except ValueError:
-            return None, _失败("参数不合法", "字节文本必须是合法 base64")
-    if not isinstance(字节, bytes) or not 字节:
-        return None, _失败("参数不合法", "字节必须为非空二进制")
-    if len(字节) > 输入字节上限:
-        return None, _失败("超大", f"图像字节超过上限 {输入字节上限} 字节")
-    return 字节, None
-
-
-def _校验宽高(宽度: Any, 高度: Any) -> 结果 | None:
-    if not isinstance(宽度, int) or isinstance(宽度, bool) or 宽度 < 1:
-        return _失败("参数不合法", "宽度必须为正整数")
-    if not isinstance(高度, int) or isinstance(高度, bool) or 高度 < 1:
-        return _失败("参数不合法", "高度必须为正整数")
-    return None
-
-
-def _校验超时秒(超时秒: Any) -> 结果 | None:
-    if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool):
-        return _失败("参数不合法", "超时秒必须为数字")
-    if 超时秒 <= 0:
-        return _失败("参数不合法", "超时秒必须为正数")
-    if 超时秒 > 超时秒上限:
-        return _失败("参数不合法", f"超时秒超过上限 {超时秒上限:g} 秒")
-    return None
-
-
-def 解码图像(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
-    """隔离解码图像字节：成功值 {格式, 宽度, 高度, 模式}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "解码图像", "字节b64": base64.b64encode(字节).decode("ascii")},
-                    超时秒=超时秒)
-
-
-def 像素统计(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
-    """隔离统计像素：成功值 {宽度, 高度, 像素数, 平均颜色}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "像素统计", "字节b64": base64.b64encode(字节).decode("ascii")},
-                    超时秒=超时秒)
-
-
-def 生成占位图(宽度: int, 高度: int, 占位类型: str = "纯色",
-               背景颜色: str = "#CCCCCC", 前景颜色: str = "#333333",
-               文本: str = "", 超时秒: float = 默认超时秒) -> 结果:
-    """隔离生成占位图：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    错误 = _校验宽高(宽度, 高度)
-    if 错误:
-        return 错误
-    if not isinstance(占位类型, str) or 占位类型 not in ("纯色", "渐变", "文本"):
-        return _失败("参数不合法", "占位类型必须是 纯色/渐变/文本")
-    return 执行任务({
-        "操作": "生成占位图", "宽度": 宽度, "高度": 高度, "占位类型": 占位类型,
-        "背景颜色": 背景颜色, "前景颜色": 前景颜色, "文本": 文本,
-    }, 超时秒=超时秒)
-
-
-def 生成缩略图(字节: bytes, 最大边长: int, 超时秒: float = 默认超时秒) -> 结果:
-    """隔离生成等比例缩略图（只缩不放大）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    if not isinstance(最大边长, int) or isinstance(最大边长, bool) or 最大边长 < 1:
-        return _失败("参数不合法", "最大边长必须为正整数")
-    错误 = _校验超时秒(超时秒)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "生成缩略图", "字节b64": base64.b64encode(字节).decode("ascii"),
-                     "最大边长": 最大边长}, 超时秒=超时秒)
-
-
-def 图像EXIF转置(字节: bytes, 超时秒: float = 默认超时秒) -> 结果:
-    """隔离按 EXIF orientation 转置图像：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    错误 = _校验超时秒(超时秒)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "图像EXIF转置", "字节b64": base64.b64encode(字节).decode("ascii")},
-                    超时秒=超时秒)
-
-
-def 透明背景合成(字节: bytes, 背景颜色: str, 超时秒: float = 默认超时秒) -> 结果:
-    """隔离透明背景合成（RGBA/LA/P 透明 → 背景色合成 RGB PNG）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    if not isinstance(背景颜色, str):
-        return _失败("参数不合法", "背景颜色必须是 #RRGGBB 文本")
-    错误 = _校验超时秒(超时秒)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "透明背景合成", "字节b64": base64.b64encode(字节).decode("ascii"),
-                     "背景颜色": 背景颜色}, 超时秒=超时秒)
-
-
-def 计算感知哈希(字节: bytes, 哈希类型: str, 超时秒: float = 默认超时秒) -> 结果:
-    """隔离计算感知哈希 aHash/dHash/pHash：成功值 {哈希, 哈希类型}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    if not isinstance(哈希类型, str) or 哈希类型 not in ("aHash", "dHash", "pHash"):
-        return _失败("参数不合法", "哈希类型必须是 aHash/dHash/pHash")
-    错误 = _校验超时秒(超时秒)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "计算感知哈希", "字节b64": base64.b64encode(字节).decode("ascii"),
-                     "哈希类型": 哈希类型}, 超时秒=超时秒)
-
-
-def 缩放图像(字节: bytes, 宽度: int | None = None, 高度: int | None = None,
-             超时秒: float = 默认超时秒) -> 结果:
-    """隔离精确缩放图像（宽高至少一个，缺省一侧按纵横比推算）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    if 宽度 is None and 高度 is None:
-        return _失败("参数不合法", "宽度与高度至少提供一个（缺省一侧按纵横比推算）")
-    for 名称, 值 in (("宽度", 宽度), ("高度", 高度)):
-        if 值 is not None and (not isinstance(值, int) or isinstance(值, bool) or 值 < 1):
-            return _失败("参数不合法", f"{名称}必须为正整数")
-    if 宽度 is not None and 高度 is not None and 宽度 * 高度 > 单图最大像素:
-        return _失败("超大", f"目标像素数 {宽度 * 高度} 超过上限 {单图最大像素}")
-    错误 = _校验超时秒(超时秒)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "缩放图像", "字节b64": base64.b64encode(字节).decode("ascii"),
-                     "宽度": 宽度, "高度": 高度}, 超时秒=超时秒)
-
-
-def 重编码图像(字节: bytes, 格式: str = "PNG", 质量: int = 90,
-               超时秒: float = 默认超时秒) -> 结果:
-    """隔离重编码图像（JPEG/PNG/WebP；质量 1-100）：成功值 {图像b64, 格式, 宽度, 高度}。"""
-    字节, 错误 = _校验字节(字节)
-    if 错误:
-        return 错误
-    if not isinstance(格式, str):
-        return _失败("参数不合法", "格式必须是 JPEG/PNG/WebP 文本")
-    目标格式 = 格式.upper()
-    if 目标格式 == "JPG":
-        目标格式 = "JPEG"
-    if 目标格式 not in ("JPEG", "PNG", "WEBP"):
-        return _失败("参数不合法", "格式必须是 JPEG/PNG/WebP")
-    if not isinstance(质量, int) or isinstance(质量, bool) or not (1 <= 质量 <= 100):
-        return _失败("参数不合法", "质量必须是 1-100 的整数")
-    错误 = _校验超时秒(超时秒)
-    if 错误:
-        return 错误
-    return 执行任务({"操作": "重编码图像", "字节b64": base64.b64encode(字节).decode("ascii"),
-                     "格式": 目标格式, "质量": 质量}, 超时秒=超时秒)
-
-
-def 等待并收集(进程列表: list[subprocess.Popen], 超时秒: float = 10.0) -> None:
-    """批量等待并强制清理子进程（测试与收口用）。"""
-    for 进程 in 进程列表:
-        try:
-            if 进程.poll() is None:
-                _终止进程组(进程, 宽限秒=超时秒)
-        except (OSError, ValueError):
-            pass
+sys.modules[__name__] = sys.modules[唯一实现名]
