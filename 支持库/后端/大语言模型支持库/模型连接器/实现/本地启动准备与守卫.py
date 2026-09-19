@@ -312,8 +312,25 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
             _上下文 = 8192
     if _上下文 <= 0:
         _上下文 = 8192
-    命令 = [二进制, "-m", 模型路径, "--port", str(端口), "--sleep-idle-seconds", "300",
-            "-c", str(_上下文), "-ngl", "99"]
+    # 2026-09-19（G 路·本地模型进程空闲回收）：`--sleep-idle-seconds` 不再硬编码 300。
+    # 硬编码 300 就是「第二个定义点」——5 分钟这个数只能有一处：本支持库
+    # `包声明.json` 的「句柄超时秒」。调用方把它经「进程空闲秒」参数带下来；
+    # 调用方没给就不带该参数（不猜、不另写默认值）。
+    #
+    # 更要紧的事实（2026-09-19 实测）：llama-server 的 `--sleep-idle-seconds`
+    # **只卸权重、不退进程** —— 进程仍攥约 6.5GB wired 显存（`ps` 里 RSS 显示 0，
+    # 极易漏看），这正是网关重启后遗留孤儿债的根因。
+    # 让进程真正消失的是「本地模型看守」（见 `实现/模型连接器.py::运行本地模型看守`），
+    # 本参数只作为它之外的第二道软释放，保留原有行为。
+    命令 = [二进制, "-m", 模型路径, "--port", str(端口)]
+    # `--metrics` 是「有人用」的活动判据来源：看守靠它取累计计数（实测 2026-09-19：
+    # 空闲期间计数不动，一次真实请求后 `llamacpp:n_decode_total` 立刻 +1；
+    # 而健康探活 /v1/models 不计数，所以探活不会把空闲进程「养活」）。
+    命令.append("--metrics")
+    _空闲秒 = 参数.get("进程空闲秒")
+    if not isinstance(_空闲秒, bool) and isinstance(_空闲秒, int) and _空闲秒 > 0:
+        命令.extend(["--sleep-idle-seconds", str(_空闲秒)])
+    命令.extend(["-c", str(_上下文), "-ngl", "99"])
     if 模型类型 == "向量":
         命令.extend(["--pooling", "cls", "--embeddings"])
     elif 模型类型 == "重排":
@@ -381,3 +398,319 @@ def _等待本地健康(端口: int, 超时秒: int) -> bool:
             降级记录表.append(str(错误))
         time.sleep(0.5)
     return 假
+
+
+# ── 本地模型看守（G 路：进程级自退的唯一实现）────────────────────
+# 2026-09-19（华哥口径「拉起来之后，如果 5 分钟没人用，那就自动释放」）：
+# 真正拉起本地模型的**不是** llama-server 本体，而是这里的一个独立看守进程；
+# 看守再拉起 llama-server，并独占它的整个生命周期。于是无论调用方（网关）是还活着
+# 还是已经被 SIGTERM / kill -9 干掉，看守都能自己走到点收工 —— 这就是「孤儿自退」的落点。
+#
+# 为什么必须有看守（2026-09-19 现场实测，不是推断）：
+#   llama-server 自带的 `--sleep-idle-seconds` **只卸权重、不退进程**：进程仍攥约
+#   6.5GB wired 显存（`ps` 里 RSS 显示 0，极易漏看）。平台上没有任何一个 native 进程
+#   会因为「没人用」自己消失，所以「5 分钟没人用就释放」只能由一个我们自己拥有的看守执行。
+
+默认本地进程空闲秒 = 300          # 代码侧唯一兜底值；唯一真源见 本地进程空闲秒()
+#: 就绪等待上限秒：启动期口径（加载权重的时间），与「空闲」不是一回事。
+#: 原实现把就绪等待也取「有效超时」（900 秒封顶），本轮把空闲阈值下调到 300 秒后
+#: 会把大模型冷启动容差一起缩掉 —— 故独立成常量，互不牵连。
+就绪等待秒 = 900
+看守检查间隔上限秒 = 15.0
+看守账本文件名 = "本地模型看守账本.json"
+_看守计数键 = ("llamacpp:n_decode_total", "llamacpp:prompt_tokens_total",
+               "llamacpp:tokens_predicted_total", "llamacpp:requests_processing")
+
+#: 看守进程的启动包装：`-c` 一行导入入口，避免 `-m` 触发 runpy 双导入告警。
+#: **必须把系统根写进代码**（2026-09-19 实测教训）：看守是一个全新解释器进程，
+#: 父进程往 `sys.path` 里塞的路径**不会继承**。只靠 cwd 撞运气的话，
+#: 网关换个工作目录启动就会「看守 import 失败 → 模型拉起后立刻没了」。
+看守包装模板 = ("import sys; sys.path.insert(0, {根!r}); "
+              "from 支持库.后端.大语言模型支持库.模型连接器.实现.本地启动准备与守卫 "
+              "import 看守入口; raise SystemExit(看守入口(sys.argv[1:]))")
+
+
+def 看守包装代码(系统根: str | Path) -> str:
+    """生成看守启动代码，把平台根绝对路径写死进去（看守不继承父进程的 sys.path）。"""
+    return 看守包装模板.format(根=str(系统根))
+
+
+def 本地进程空闲秒() -> int:
+    """「本地模型进程空闲秒」的唯一真源：本支持库 `包声明.json` 的 `句柄超时秒`。
+
+    5 分钟这个数只允许有一个定义点，就是本支持库（聚合包）包声明的 `句柄超时秒`；
+    本函数是全仓唯一读取点，代码侧只有一处兜底常量（`默认本地进程空闲秒`）。
+    启动命令、连接器、看守全部从本函数取值 —— 谁也不许再写一份 300
+    （改了包声明一处，三处行为一起变，这就是「阈值来源唯一」的可验证形状）。
+
+    与 `模型连接器.包申报超时()`（读**子包** `模型连接器/包声明.json`）不是同一轴：
+    那个是云端连接/会话存储句柄的默认租约，本函数是本地模型**进程**的空闲口径。
+    """
+    try:
+        import json
+        声明路径 = Path(__file__).resolve().parents[2] / "包声明.json"
+        with open(声明路径, encoding="utf-8") as 文件:
+            申报 = json.load(文件).get("句柄超时秒")
+        if isinstance(申报, int) and not isinstance(申报, bool) and 申报 > 0:
+            return 申报
+    except Exception as 错误:
+        降级记录表.append(str(错误))
+    return 默认本地进程空闲秒
+
+
+def 看守账本路径(模型路径: str) -> str:
+    """看守账本与模型启动日志同目录（`工程缓存/模型日志/`），便于一次取证取全。"""
+    from pathlib import Path as _路径
+    名字 = _路径(模型路径).stem or "本地模型"
+    return str(_路径(_启动日志路径(模型路径)).with_name(f"{名字}.{看守账本文件名}"))
+
+
+def _写看守账本(路径: str, 内容: dict) -> None:
+    import json
+    try:
+        with open(路径, "w", encoding="utf-8") as 文件:
+            json.dump(内容, 文件, ensure_ascii=False, indent=1)
+    except OSError as 错误:
+        降级记录表.append(f"看守账本写入失败: {错误}")
+
+
+def 读取看守账本(模型路径: str) -> dict:
+    import json
+    try:
+        with open(看守账本路径(模型路径), encoding="utf-8") as 文件:
+            账本 = json.load(文件)
+        return 账本 if isinstance(账本, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _进程启动时刻(进程号: int) -> str:
+    """取进程启动时刻（`ps -o lstart=`）；取不到返回空串（不猜测、不伪造）。"""
+    if os.name == "nt":
+        return ""
+    import subprocess
+    try:
+        结果 = subprocess.run(["ps", "-o", "lstart=", "-p", str(进程号)],
+                             capture_output=True, text=True, timeout=5)
+        return 结果.stdout.strip() if 结果.returncode == 0 else ""
+    except Exception as 错误:
+        降级记录表.append(str(错误))
+        return ""
+
+
+def _进程命令行(进程号: int) -> str:
+    """取进程命令行；取不到返回空串（判据宁可判「不符」也不放行）。"""
+    if os.name == "nt":
+        return ""
+    import subprocess
+    try:
+        结果 = subprocess.run(["ps", "-o", "command=", "-p", str(进程号)],
+                             capture_output=True, text=True, timeout=5)
+        return 结果.stdout.strip() if 结果.returncode == 0 else ""
+    except Exception as 错误:
+        降级记录表.append(str(错误))
+        return ""
+
+
+def 回收看守残留(模型路径: str) -> dict:
+    """按「归属 + 世代」回收看守遗留的模型进程；判据不成立一律不发信号。
+
+    归谁所有、是哪一代，全部按证据判，**不按端口枚举、不按进程名盲杀** ——
+    本机上存在合法的长驻 embedding 服务（PPID=1），按端口/名字杀会把它误杀。
+    三项判据全中才动手：
+      ① 账本记着模型进程号与端口；
+      ② 该进程号仍存活，且启动时刻与账本逐字一致（**这就是「世代」**，防 PID 被复用）；
+      ③ 该进程命令行里出现本代端口（**这就是「归属」**，防把别人的进程当成自己的）。
+    """
+    from 公共契约.运行时 import 进程终止
+    账本 = 读取看守账本(模型路径)
+    模型进程号 = 账本.get("模型进程号")
+    if not isinstance(模型进程号, int) or isinstance(模型进程号, bool):
+        return {"已回收": 假, "原因": "账本无模型进程号（不是本平台拉起的进程，不动手）"}
+    if not 进程终止.进程存活(模型进程号):
+        return {"已回收": 假, "原因": f"模型进程 {模型进程号} 已不存在"}
+    启动时刻 = _进程启动时刻(模型进程号)
+    账本时刻 = str(账本.get("启动时刻") or "")
+    if 账本时刻 and 启动时刻 != 账本时刻:
+        return {"已回收": 假,
+                "原因": f"进程 {模型进程号} 启动时刻 {启动时刻!r} 与账本 {账本时刻!r} 不符"
+                        "（世代不符，PID 可能已被复用），按归属纪律不动手"}
+    端口 = str(账本.get("端口") or "")
+    命令行 = _进程命令行(模型进程号)
+    if 端口 and f"--port {端口}" not in 命令行 and f"--port={端口}" not in 命令行:
+        return {"已回收": 假,
+                "原因": f"进程 {模型进程号} 命令行不含本代端口 {端口}（归属不符），不动手"}
+    进程终止.终止进程组(模型进程号, 信号="终止")
+    消失 = 进程终止.等待进程消失(模型进程号, 超时秒=5.0)
+    if not 消失:
+        进程终止.终止进程组(模型进程号, 信号="强杀")
+        消失 = 进程终止.等待进程消失(模型进程号, 超时秒=5.0)
+    if 消失:
+        _写看守账本(看守账本路径(模型路径), {**账本, "状态": "已回收"})
+        return {"已回收": 真,
+                "原因": f"归属与世代校验通过，已回收模型进程 {模型进程号}（端口 {端口}）"}
+    降级记录表.append(f"看守残留回收失败：模型进程 {模型进程号} 强杀后仍在")
+    return {"已回收": 假, "原因": f"模型进程 {模型进程号} 强杀后仍未消失"}
+
+
+def _看守取样(端口: int) -> tuple[tuple[str, ...] | None, bool]:
+    """取一次活动样本：返回（累计计数快照，是否有请求在处理）。
+
+    计数快照取 `--metrics` 的**累计量**（prompt/n_decode/predicted/processing）。
+    2026-09-19 实测：空闲 25 秒期间这些累计量**一个字节都不动**，而一次真实
+    embedding 请求后 `llamacpp:n_decode_total` 立刻 +1 —— 所以「计数变 = 有人用」
+    是可靠判据，且不会被健康探活（不计数）误判成「有人用」。
+    """
+    import json
+    import urllib.request
+    开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    快照: list[str] = []
+    try:
+        with 开放器.open(f"http://127.0.0.1:{端口}/metrics", timeout=3) as 响应:
+            文本 = 响应.read().decode("utf-8", "ignore")
+    except Exception as 错误:
+        降级记录表.append(f"看守活动计数不可观测: {错误}")
+        return None, 假
+    for 行 in 文本.splitlines():
+        if 行.startswith("#") or not 行.strip():
+            continue
+        段 = 行.split()
+        if 段[0] in _看守计数键:
+            快照.append(f"{段[0]}={段[-1]}")
+    忙 = 假
+    try:
+        with 开放器.open(f"http://127.0.0.1:{端口}/slots", timeout=3) as 响应:
+            忙 = any(bool(槽.get("is_processing"))
+                     for 槽 in json.loads(响应.read().decode("utf-8", "ignore")))
+    except Exception:
+        忙 = 假
+    快照.sort()
+    return tuple(快照), 忙
+
+
+def 运行本地模型看守(端口: int, 空闲秒: int, 命令: list[str], 日志路径: str,
+                   世代: str, 模型路径: str = "") -> int:
+    """看守主循环：拉起本地模型进程，空闲到期或模型自退即收工；退出前必收干净。
+
+    退出路径有三条，行为一致（都保证模型进程不残留）：
+      * 空闲到期（华哥口径的 5 分钟）；
+      * 模型进程自己退出/崩溃（看守不该变成新的孤儿）；
+      * 看守收到终止请求（调用方显式释放，或网关停机时随进程组一起收到 SIGTERM）。
+    """
+    import signal
+    import subprocess
+    from 公共契约.运行时 import 平台适配, 进程终止
+    停止请求 = {"收到": 假}
+
+    def 收信(信号号, 栈帧) -> None:  # noqa: ANN001
+        停止请求["收到"] = 真
+
+    for 信号号 in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(信号号, 收信)
+        except (ValueError, OSError):
+            pass
+    账本 = 看守账本路径(模型路径) if 模型路径 else ""
+    try:
+        日志句柄 = open(日志路径, "ab", buffering=0) if 日志路径 else None
+    except OSError:
+        日志句柄 = None
+
+    def 留痕(文本: str) -> None:
+        if 日志句柄 is None:
+            return
+        try:
+            日志句柄.write(f"[看守 {世代}] {文本}\n".encode("utf-8"))
+        except OSError:
+            pass
+
+    进程 = None
+    try:
+        留痕(f"拉起模型进程：{' '.join(命令)}")
+        进程 = subprocess.Popen(命令, **平台适配.子进程组启动标志(),
+                               stdout=日志句柄, stderr=subprocess.STDOUT)
+        if 账本:
+            _写看守账本(账本, {"世代": 世代, "看守进程号": os.getpid(),
+                              "模型进程号": 进程.pid, "模型进程组号": 进程.pid,
+                              "端口": 端口, "空闲秒": 空闲秒, "模型路径": 模型路径,
+                              "启动时刻": _进程启动时刻(进程.pid), "状态": "看守中"})
+        留痕(f"模型进程 {进程.pid} 已拉起，等待就绪（端口 {端口}）")
+        if not _等待本地健康(端口, 空闲秒):
+            留痕("健康检查未通过，收工（启动日志即失败原因）")
+            return 3
+        留痕(f"就绪；空闲阈值 {空闲秒} 秒（真源：本支持库包声明 句柄超时秒）")
+        间隔 = max(1.0, min(看守检查间隔上限秒, 空闲秒 / 5.0))
+        最后活动 = time.monotonic()
+        上次快照: tuple[str, ...] | None = None
+        while not 停止请求["收到"]:
+            if 进程.poll() is not None:
+                留痕(f"模型进程已自行退出，退出码 {进程.returncode}")
+                return 0
+            快照, 忙 = _看守取样(端口)
+            if 快照 is None:
+                if 忙:
+                    最后活动 = time.monotonic()
+                    留痕("活动计数不可观测，回退 /slots 忙闲判定：有请求在处理")
+            else:
+                if 上次快照 is not None and 快照 != 上次快照:
+                    最后活动 = time.monotonic()
+                上次快照 = 快照
+            空闲 = time.monotonic() - 最后活动
+            if 空闲 >= 空闲秒:
+                留痕(f"空闲 {空闲:.0f} 秒达到阈值 {空闲秒} 秒，回收模型进程")
+                return 0
+            time.sleep(间隔)
+        留痕("收到终止请求，回收模型进程")
+        return 0
+    except Exception as 错误:
+        留痕(f"看守异常：{type(错误).__name__}: {错误}")
+        return 4
+    finally:
+        if 进程 is not None and 进程.poll() is None:
+            留痕(f"收尾：终止模型进程 {进程.pid}")
+            进程终止.终止进程组(进程.pid, 信号="终止")
+            if not 进程终止.等待进程消失(进程.pid, 超时秒=5.0):
+                进程终止.终止进程组(进程.pid, 信号="强杀")
+                进程终止.等待进程消失(进程.pid, 超时秒=5.0)
+            try:
+                进程.wait(timeout=5)
+            except Exception:
+                pass
+        留痕(f"看守退出；模型进程仍存活={进程 is not None and 进程.poll() is None}")
+        if 账本:
+            账本内容 = 读取看守账本(模型路径)
+            账本内容.update({"状态": "已回收" if 进程 is not None and 进程.poll() is not None
+                            else "已收工", "世代": 世代})
+            _写看守账本(账本, 账本内容)
+        if 日志句柄 is not None:
+            try:
+                日志句柄.close()
+            except OSError:
+                pass
+
+
+def 看守入口(参数: list[str]) -> int:
+    """看守进程入口：`--端口 N --空闲秒 N --日志路径 P --世代 G --模型路径 M -- <模型启动命令>`。"""
+    选项: dict[str, str] = {}
+    命令: list[str] = []
+    游标 = 0
+    while 游标 < len(参数):
+        项 = 参数[游标]
+        if 项 == "--":
+            命令 = 参数[游标 + 1:]
+            break
+        if 项.startswith("--") and 游标 + 1 < len(参数):
+            选项[项[2:]] = 参数[游标 + 1]
+            游标 += 2
+            continue
+        命令.append(项)
+        游标 += 1
+    try:
+        端口 = int(选项.get("端口", ""))
+        空闲秒 = int(选项.get("空闲秒", ""))
+    except (TypeError, ValueError):
+        return 2
+    if not 命令:
+        return 2
+    return 运行本地模型看守(端口, 空闲秒, 命令, 选项.get("日志路径", ""),
+                          选项.get("世代", ""), 选项.get("模型路径", ""))

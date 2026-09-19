@@ -25,7 +25,7 @@
     },
     {
       "路径": "实现/本地启动准备与守卫.py",
-      "sha256": "67781f29eb733156b1eec1f023401ebd92f3abe1ce0ffef33593288d1c700cef"
+      "sha256": "fe8a62dfaec2926986ec8e0ed79da49852125c47710df8fa66721d3620cfcf88"
     },
     {
       "路径": "实现/模型供应链校验.py",
@@ -49,7 +49,7 @@
     },
     {
       "路径": "实现/模型连接器.py",
-      "sha256": "0ba96fcc732f9103640d3acadbd99bd43db491c4cd1cd3c2735fffbedbf346cd"
+      "sha256": "f0ec9383e8afdfd225ec04c52a0fd8c2b61966ae02776f12998a8f10a0f2ee06"
     },
     {
       "路径": "实现/模型连接基元.py",
