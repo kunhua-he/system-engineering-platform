@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "7e5af759bc5e9c27fe62bc28995e19f8eec55d0961dbc326aa9966f6526cfbb0"
+      "sha256": "0f8a99aff9b9235d0357db3f0cd665e404c8f90cfd10d22fd0369a8f670fe765"
     },
     {
       "路径": "包声明.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "实现/自修复工具.py",
-      "sha256": "2e8bf27fb2d260ed3602824af4998990b4d6ce5cb256c8e9a707650df39b97da"
+      "sha256": "a007b664de0a47e2d0296038ac70a936fd3ab8ae8f8e5b9c92358935a67acaa1"
     },
     {
       "路径": "权限契约/权限契约.json",

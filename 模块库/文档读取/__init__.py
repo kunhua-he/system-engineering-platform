@@ -11,19 +11,17 @@ from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
-from 模块库.文档读取.实现.文档读取 import 读取正文, 设置HTTP连接器
+from 模块库.文档读取.实现.文档读取 import 读取正文
 from 模块库.文档读取.实现.文档读取 import 提取标题
 from 模块库.文档读取.实现.文档读取 import 计算段落数
 from 模块库.文档读取.实现.文档读取 import 结构化读取
 
 __all__ = [
-    "设置HTTP连接器",
-    "读取正文",
-    "提取标题",
-    "计算段落数",
-    "结构化读取",
+    '读取正文',
+    '提取标题',
+    '计算段落数',
+    '结构化读取',
 ]
-
 
 
 def _校验参数名序(参数契约表: dict[str, list[dict]],

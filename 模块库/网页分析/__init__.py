@@ -11,10 +11,8 @@ from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 from 模块库.网页分析.实现.网页分析 import 提取网页信息
-from 模块库.网页分析.实现.网页分析 import 设置HTTP连接器
 
-__all__ = ["设置HTTP连接器", "提取网页信息"]
-
+__all__ = ['提取网页信息']
 
 
 def _校验参数名序(参数契约表: dict[str, list[dict]],

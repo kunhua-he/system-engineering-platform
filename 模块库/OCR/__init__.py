@@ -5,15 +5,13 @@ from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 from 模块库.OCR.实现.OCR import 可用性检查
-from 模块库.OCR.实现.OCR import 设置HTTP连接器
 from 模块库.OCR.实现.OCR import 识别图片文件
 from 模块库.OCR.实现.OCR import 识别图片文字
 
 __all__ = [
-    "设置HTTP连接器",
-    "识别图片文字",
-    "识别图片文件",
-    "可用性检查",
+    '识别图片文字',
+    '识别图片文件',
+    '可用性检查',
 ]
 
 

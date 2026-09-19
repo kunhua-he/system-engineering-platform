@@ -18,9 +18,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from 模块库.文档生成.实现.文档生成 import 生成文档, 设置HTTP连接器
+from 模块库.文档生成.实现.文档生成 import 生成文档
 
-__all__ = ["生成文档", "设置HTTP连接器"]
+__all__ = ['生成文档']
 
 本模块能力id = "文档生成.生成文档"
 契约文件名 = "能力契约/参数契约.json"

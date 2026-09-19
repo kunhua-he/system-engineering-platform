@@ -8,11 +8,10 @@
 from __future__ import annotations
 
 from 公共契约.能力契约.契约 import 能力实现
-from 模块库.文档解析.实现.文档解析 import 解析文档, 设置HTTP连接器
+from 模块库.文档解析.实现.文档解析 import 解析文档
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
-__all__ = ["解析文档", "设置HTTP连接器"]
-
+__all__ = ['解析文档']
 
 
 def _校验参数名序(参数契约表: dict[str, list[dict]],

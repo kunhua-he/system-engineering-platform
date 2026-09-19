@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "5866e6ae2d5e85c9be283ce01c3adaaf1d93a6420a4cbcaf0037ee7c9a487cd1"
+      "sha256": "5a90ca62844a5206b0b79a6bee780216b9a5a26f2d5aec758c1b008ebb2ebce0"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/OCR.py",
-      "sha256": "9eff28a29757583e32478890390de604f36a5a3a7e421d57ec38a5aa5ff85abd"
+      "sha256": "e96fdb751b2064413d2948b242d12a1a96527f3d74b12379363e2ca43d1f4486"
     },
     {
       "路径": "权限契约/权限契约.json",
