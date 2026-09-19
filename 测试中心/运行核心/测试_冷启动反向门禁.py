@@ -28,6 +28,21 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# 仓库根入 sys.path 必须**先于**任何仓库级 import：本文件被规范按路径直接执行时
+# （`python3.14 测试中心/运行核心/测试_冷启动反向门禁.py`）仓库根不在 path，
+# 第一个 `from 公共契约...` 就 ModuleNotFoundError（开工-20260919-192224-1d69 实测）。
+# 判据用「AGENTS.md + 开发文档/项目说明.md」（AGENTS.md 里项目根的定义）：
+# 目录名判据不可靠 —— `测试中心/` 下也有 公共契约/支持库/开发工具 测试夹具，
+# 按目录名会定位到 测试中心 而非仓库根（开工-20260919-192224-1d69 实测踩过）。
+_自举根 = Path(__file__).resolve()
+for _候选 in _自举根.parents:
+    if (_候选 / "AGENTS.md").is_file() and (_候选 / "开发文档" / "项目说明.md").is_file():
+        _自举根 = _候选
+        break
+if str(_自举根) not in sys.path:
+    sys.path.insert(0, str(_自举根))
+
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 系统根 = Path(__file__).resolve().parents[2]

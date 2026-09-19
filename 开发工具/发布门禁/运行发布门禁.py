@@ -55,6 +55,26 @@
 
 from __future__ import annotations
 
+import sys
+import os
+
+# 项目根入 sys.path：本脚本既可 `-m 开发工具.发布门禁.运行发布门禁`，也可直接
+# `python3.14 开发工具/发布门禁/运行发布门禁.py`（直接执行时项目根不在 path）。
+# ★ 自举必须**先于**任何仓库级 import，且**不依赖仓库符号**：直接执行时第一个
+#   `from 公共契约...` 就会 ModuleNotFoundError（开工-20260919-192224-1d69 实测）。
+#   本文件此处的 `_定位根` 只调 Path 查找，导入 底座 后由它覆盖为权威 `系统根`。
+_定位根 = os.path.dirname(os.path.abspath(__file__))
+while True:
+    if os.path.isdir(os.path.join(_定位根, "平台控制面")) and os.path.isdir(os.path.join(_定位根, "开发工具")):
+        break
+    _上一级 = os.path.dirname(_定位根)
+    if _上一级 == _定位根:
+        break
+    _定位根 = _上一级
+if _定位根 not in sys.path:
+    sys.path.insert(0, _定位根)
+
+
 #: 拆分说明（2026-09-19）：本文件原 3336 行，已按检查项簇拆为下列**同包**模块，
 #: **对外符号零变化**（成员名一个不改、判据一处不复制，主文件 re-export 全部原符号）：
 #:   · `运行发布门禁_底座.py`                  项目根、门禁结果模型、临时目录注册表、子进程运行器、唯一能力调用入口
@@ -79,13 +99,11 @@ from __future__ import annotations
 import ast
 import atexit
 import json
-import os
 import re
 import shutil
 import signal
 import subprocess     # 保留：`测试中心/发布门禁/测试_发布门禁收敛.py` 以
                       # patch.object(门禁.subprocess, "run") 注入桩
-import sys
 import tempfile
 import threading
 import time
@@ -157,12 +175,6 @@ from 开发工具.发布门禁.运行发布门禁_执行项分组_制品与流�
 from 开发工具.发布门禁.运行发布门禁_执行项分组_真跑 import (
     _检查平台控制面与提供者, _检查真跑组, _浏览器请求,
 )
-
-# 项目根入 sys.path：本脚本既可 `-m 开发工具.发布门禁.运行发布门禁`，也可直接
-# `python3.14 开发工具/发布门禁/运行发布门禁.py`（直接执行时项目根不在 path）。
-# 根目录口径唯一事实源 = 运行发布门禁_底座.系统根（本文件只原样再导出它）。
-if str(系统根) not in sys.path:
-    sys.path.insert(0, str(系统根))
 
 
 def _扫描英文函数命名() -> str:

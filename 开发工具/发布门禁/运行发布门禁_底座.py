@@ -27,10 +27,6 @@ import subprocess
 import sys
 import threading
 import time
-from 公共契约.运行时.有界IO import 受限读取
-from 公共契约.运行时 import 平台适配
-from 公共契约.运行时 import 进程终止
-
 # 项目根入 sys.path：本脚本既可 `-m 开发工具.发布门禁.运行发布门禁`，也可直接
 # `python3.14 开发工具/发布门禁/运行发布门禁.py`（直接执行时项目根不在 path）。
 系统根 = Path(__file__).resolve()
@@ -40,6 +36,10 @@ for _祖先 in 系统根.parents:
         break
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
+
+from 公共契约.运行时.有界IO import 受限读取
+from 公共契约.运行时 import 平台适配
+from 公共契约.运行时 import 进程终止
 _门禁临时目录表: set[Path] = set()
 发布输出上限字节 = 200 * 1024
 
