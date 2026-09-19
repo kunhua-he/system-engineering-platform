@@ -480,6 +480,17 @@ class TestPillow提供者(unittest.TestCase):
             实现目录 = (客户端目录 / "支持库" / "后端" / "图像处理支持库"
                         / "图像解码" / "实现")
             实现目录.mkdir(parents=True)
+            # 部署制品必须自足：本包（图像解码）的「子进程解析」在 D-2 收口后只是**转调门面**，
+            # 唯一实现在适配层腿；门面靠「公开入口 + 支持库/模块库 并存」定位系统根。
+            # 夹具造的是「真·部署制品」，故这三件必须一同放进制品（与已收口的
+            # PDF文本表格/PDF渲染/PDF隔离提供者 同一前提）。
+            (客户端目录 / "模块库").mkdir(parents=True, exist_ok=True)
+            适配层目录 = 客户端目录 / "支持库" / "适配层" / "Pillow提供者"
+            (适配层目录 / "实现").mkdir(parents=True)
+            (客户端目录 / "支持库" / "适配层" / "__init__.py").write_text("", encoding="utf-8")
+            (适配层目录 / "__init__.py").write_text("", encoding="utf-8")
+            适配层源实现 = (提供者目录.parents[2] / "适配层" / "Pillow提供者" / "实现")
+            shutil.copy2(适配层源实现 / "子进程解析.py", 适配层目录 / "实现" / "子进程解析.py")
             (客户端目录 / "__init__.py").write_text("", encoding="utf-8")
             (环境目录 / "当前.json").write_text(json.dumps(
                 {"摘要sha256": "0" * 16, "制品目录": "平台客户端-0000000000000000",

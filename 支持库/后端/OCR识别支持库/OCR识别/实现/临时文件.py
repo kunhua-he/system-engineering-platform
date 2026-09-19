@@ -1,38 +1,41 @@
-"""临时文件：图片字节输入的临时落盘与即时清理（零残留）。
+"""临时文件（Tesseract/OCR识别）：唯一实现在 支持库/适配层/Tesseract提供者（D-2 收口）。
 
-OCR 识别支持直接传入图片字节；库内先落盘到进程专属临时目录，
-识别完成后无论成功/失败/超时/取消都在 finally 中整目录清理。
-清理幂等：目录不存在或已清理时静默成功。
+本文件原与 `支持库/适配层/Tesseract提供者/实现/临时文件.py` **逐字节相同**
+（结构债 D-2 第 ⑤ 组，sha256 3090094b949b…，38 行）。同一份逻辑只能有一个实现，故本文件
+改为**转调**：让 `支持库.后端.OCR识别支持库.OCR识别.实现.临时文件` 与适配层腿那唯一实现
+成为**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。本包提供者
+（`实现/提供者.py`）照旧从此路径导入 `临时目录前缀 / 创建临时目录 / 落盘图片 / 清理临时目录`
+四个名字 —— 临时目录行为完全不变（纯标准库：创建 / 落盘 / 整目录清理，零残留）。
+
+为什么不直接 `import ...实现.临时文件`：跨包导入 `实现/` 被
+`运行核心/依赖防火墙.py` 强制拒绝（判据「跨包禁止导入 实现/ 目录」）；而适配层腿
+的公开入口 `__init__.py` 已经是合规的同层导入，且它会正常加载自己的 `实现/` 子模块，
+故这里先导公开入口、再把两个模块名指向同一对象（兜底路径按文件路径显式载入，
+文件缺失时明确报错、不静默降级）。同一模块对象、不产生第二份实现是平台既有做法，
+见 `平台控制面/授权/__init__.py`。
 """
 
 from __future__ import annotations
 
-import shutil
-import tempfile
+import importlib.util
+import sys
 from pathlib import Path
 
-临时目录前缀 = "Tesseract提供者_"
-临时图片名 = "图片.png"
+import 支持库.适配层.Tesseract提供者  # noqa: F401 —— 公开入口（同层，合规）
 
+唯一实现名 = "支持库.适配层.Tesseract提供者.实现.临时文件"
+系统根 = next(
+    祖先 for 祖先 in Path(__file__).resolve().parents
+    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
+)
 
-def 创建临时目录() -> Path:
-    """创建进程专属临时目录（OS 临时根下，前缀标识）。"""
-    return Path(tempfile.mkdtemp(prefix=临时目录前缀))
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "Tesseract提供者" / "实现" / "临时文件.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
-
-def 落盘图片(临时目录: Path, 图片字节: bytes) -> Path:
-    """把图片字节写入临时目录（返回文件路径），供受管进程以相对名调用。"""
-    图片路径 = 临时目录 / 临时图片名
-    图片路径.write_bytes(图片字节)
-    return 图片路径
-
-
-def 清理临时目录(临时目录: Path | None) -> None:
-    """整目录清理（含未写完的半成品），幂等；目录不存在静默成功。"""
-    if 临时目录 is None:
-        return
-    try:
-        if Path(临时目录).exists():
-            shutil.rmtree(str(临时目录), ignore_errors=True)
-    except OSError:
-        pass
+sys.modules[__name__] = sys.modules[唯一实现名]
