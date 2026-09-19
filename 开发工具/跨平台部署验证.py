@@ -227,6 +227,31 @@ def 跑验证(*, 只报: bool = False, json输出: bool = False) -> int:
     return 1
 
 
+def 全量验收放行(目标: str) -> tuple[bool, str]:
+    """全量验收授权判定：默认拒绝，须经华哥授权后放行（哲学 11.2，2026-09-19 华哥裁决）。
+
+    唯一授权腿 ＝ `系统核心支持库.权限审批`（规则表「全量验收」默认 `询问`＝不放行）。
+    **本函数是跨平台部署验证的入口闸门**；发布门禁用的是同一腿的自己的那份薄壳，
+    两边都只读「权限审批.校验动作」，不各自造令牌后门（哲学 1.3 结果唯一即收口）。
+    """
+    try:
+        from 支持库.后端.系统核心支持库.权限审批 import 校验动作
+    except ImportError as 错误:  # fail-closed
+        return False, (f"全量验收被拒绝：取不到授权判定腿（{错误}）。按哲学 11.2，默认不跑全量。")
+    判定 = 校验动作("全量验收", 目标)
+    if not 判定.成功:
+        return False, f"全量验收被拒绝：授权判定失败（{判定.错误码}：{判定.错误说明}）。按哲学 11.2，默认不跑全量。"
+    值 = 判定.值 if isinstance(判定.值, dict) else {}
+    if 值.get("通过") is True:
+        return True, f"全量验收已授权（策略={值.get('策略')}）：开始 {目标}。"
+    return False, (
+        f"全量验收被拒绝（策略={值.get('策略')}：{值.get('原因')}）。\n"
+        "按哲学 11.2（2026-09-19 华哥裁决）：全量只在大版本发布或走审计流程时跑，\n"
+        "默认无授权禁止跑全量 —— 要跑需华哥明确授权。\n"
+        "日常开发请走静态编译：python3.14 -m 开发工具.开发编译口.编译口 --变更"
+    )
+
+
 def 主函数() -> int:
     解析 = argparse.ArgumentParser(
         prog="python3.14 -m 开发工具.跨平台部署验证",
@@ -235,6 +260,10 @@ def 主函数() -> int:
     解析.add_argument("--只报", action="store_true", help="只干跑重建（不写盘），用于先看差异")
     解析.add_argument("--json", action="store_true", help="以 JSON 输出（便于机器/CICD 判读）")
     参数 = 解析.parse_args()
+    放行, 闸门说明 = 全量验收放行("跨平台部署验证")
+    if not 放行:
+        print(闸门说明)
+        return 1
     return 跑验证(只报=参数.只报, json输出=参数.json)
 
 
