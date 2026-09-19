@@ -33,8 +33,6 @@ import hashlib
 import http.client
 import json
 import os
-import shutil
-import stat
 import tarfile
 import urllib.parse
 import urllib.request
@@ -471,85 +469,36 @@ def 下载镜像制品(镜像地址: str, 提供者id: str, 环境摘要: str, �
 def 清除只读属性(路径: str | Path) -> None:
     """清掉路径（文件或目录）的只读属性；失败**原样报错**，不降级。
 
-    **为什么需要它（2026-09-19）**：Windows 上 `venv` 建出来的环境里，pip 自带
-    的 license 文件（`Lib/site-packages/pip-*.dist-info/licenses/**`）带**只读属性**，
-    `shutil.rmtree` 内部的 `os.unlink` 会抛 `PermissionError`（POSIX 上同样的文件
-    能直接删，所以这是平台差异）。
-
-    **一份实现跨平台**：`os.chmod(路径, stat.S_IWRITE)` 在 POSIX 上同样合法
-    （清掉只读位不改变可删除性），因此本函数**不含任何平台判断**——
-    符「平台差异只在收口层判断、调用点不许自带分叉」的铁律。
+    **薄委托**（2026-09-19 H 路收口）：唯一实现已迁到 `公共契约/运行时/平台适配.py`
+    （跨平台收口层），本函数只**转发**，不再自带第二份实现。迁移理由：`支持库`
+    按依赖防火墙只准依赖 `公共契约` 与它自身，若实现留在 `运行核心`，支持库侧
+    调用点在源码态就导入不了（唯一实现必须落在所有层都够得着的地方）。
     """
-    try:
-        os.chmod(路径, stat.S_IWRITE)
-    except OSError as 错误:
-        raise OSError(f"清除只读属性失败（{路径}）: {错误}") from 错误
+    from 公共契约.运行时.平台适配 import 清除只读属性 as _唯一实现
+
+    _唯一实现(路径)
 
 
 def 确保可删(路径: str | Path) -> None:
     """让「删除 路径」这件事可做：清掉路径自身的只读位，并确保**父目录可写**。
 
-    两件事都需要，缺一不可：
-
-    - **路径自身只读**（Windows 只读属性 / POSIX 无写位）→ `os.unlink` 拒绝；
-    - **父目录不可写**（POSIX 删除条目要求父目录有写位，`0o555` 的目录就删不掉
-      里面的东西）→ `os.unlink`/`os.rmdir` 同样拒绝。
-
-    平台差异用**能力探测**（`os.access(父, os.W_OK)`）而不是平台名判断，
-    所以一份实现跨平台、调用点无分叉。
+    语义、平台判据（能力探测而非平台名）与失败口径**全部以唯一实现为准**，
+    见 `公共契约/运行时/平台适配.py::确保可删` 的 docstring。
     """
-    目标 = Path(路径)
-    父目录 = 目标.parent
-    if 父目录 != 目标 and not os.access(父目录, os.W_OK):
-        # 目录得同时可读可执行才谈得上遍历删除，不能只加写位
-        os.chmod(父目录, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
-    清除只读属性(目标)
+    from 公共契约.运行时.平台适配 import 确保可删 as _唯一实现
+
+    _唯一实现(路径)
 
 
 def 清只读后删除树(目录: Path, *, 忽略失败: bool = 假) -> None:
     """删除目录树；遇只读属性造成的 `PermissionError` 时先清只读再重试删除。
 
-    判定依据不靠注释靠真实副作用：钩子只在 `rmtree` **真的**抛 `PermissionError`
-    时才动。POSIX 上通常不触发（同样的文件在 POSIX 上能直接删），Windows 上由
-    `os.unlink`/`os.rmdir` 触发，正是要修的那条路径。
-
-    语义：
-
-    - ``忽略失败=假``（默认）：清只读后仍失败就**原样抛出**，错误说明点名路径与原因
-      —— 不许宽 `except` 吞错。
-    - ``忽略失败=真``：逐条经 `记录忽略` 留痕（可查询），并**额外检查目录是否真的删干净**；
-      残留同样留痕。这修掉了原先 `rmtree(..., ignore_errors=True)` 的缺陷：
-      它**连残留都不留痕**，事后无法判断「本来就没东西」还是「删失败了」。
+    语义、`onexc` 钩子行为、`忽略失败=真` 的留痕口径**全部以唯一实现为准**，
+    见 `公共契约/运行时/平台适配.py::清只读后删除树` 的 docstring。
     """
-    目录 = Path(目录)
+    from 公共契约.运行时.平台适配 import 清只读后删除树 as _唯一实现
 
-    def _清只读后重试(函数, 路径, 异常) -> None:
-        """rmtree 的 onexc 钩子：非 PermissionError 不越权处理，其余先清只读再重试。"""
-        if not isinstance(异常, PermissionError):
-            if 忽略失败:
-                记录忽略("远程镜像.清只读后删除树", 异常)
-                return
-            raise 异常
-        try:
-            确保可删(路径)
-            结果 = 函数(路径)
-            if 函数 is os.scandir and 结果 is not None:
-                结果.close()  # 官方配方会漏关的迭代器，这里显式关掉
-        except OSError as 重试错误:
-            if 忽略失败:
-                记录忽略("远程镜像.清只读后删除树.重试", 重试错误)
-                return
-            raise OSError(f"清只读后重试删除仍失败（{路径}）: {重试错误}") from 重试错误
-
-    try:
-        shutil.rmtree(目录, onexc=_清只读后重试)
-    except OSError as 错误:
-        if not 忽略失败:
-            raise
-        记录忽略("远程镜像.清只读后删除树", 错误)
-    if 忽略失败 and 目录.exists():
-        记录忽略("远程镜像.清只读后删除树.残留",
-                 f"删除流程已返回但目录仍在（有内容未删净）: {目录}")
+    _唯一实现(目录, 忽略失败=忽略失败)
 
 
 def _同步目录项(目录: Path) -> None:
