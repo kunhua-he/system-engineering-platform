@@ -1,17 +1,29 @@
-"""子进程入口：PDF 原生第三方提供者的独立进程 Worker。
+"""子进程入口（PDF 隔离提供者）：唯一实现在 支持库/适配层/PDF隔离提供者（D-1 收口，本包不放第二份）。
 
-本文件只在独立子进程中运行，由 隔离提供者.py 通过 subprocess 启动。
-子进程内才允许 import fitz/pdfplumber（PyMuPDF 的 SWIG 绑定在解释器
-关闭时可能段错误，隔离到子进程后崩溃不影响主进程/测试器/后端）。
+本文件原与 `支持库/适配层/PDF隔离提供者/实现/子进程入口.py` **逐字同源**，差异只有
+一处：包路径深度（后端腿比适配层腿多一层目录，故 `系统根.parents[N]` 相差 1，
+**两腿实测各自都指向项目根**，不是错误、不能统一成一个数字；见迁移清单 §10.8）。
 
-协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。
-请求：{"操作": "解析"|"校验"|"版本", ...参数}
-响应：{"成功": true, "值": ...} | {"成功": false, "错误码":..., "错误说明":...}
+同一份逻辑只能有一个实现，故本文件改为**转调**：让
+`支持库.后端.支持库.后端.文档转换支持库.PDF隔离提供者.实现.子进程入口` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。
+
+**本文件就是被 `subprocess.Popen([sys.executable, 本文件路径])` 当脚本跑的那一个**，
+因此它必须自备 `系统根` 与 `sys.path`（子进程内 `sys.path` 不含仓库根），再按名导入
+适配层那唯一实现：脚本方式跑时 `sys.modules` 的键是 `"__main__"`、也不会按包查表，
+所以 `__main__` 分支**按唯一实现名取模块对象**调用 `主循环`，不做跨包 `实现/` 导入
+（那会被 `运行核心/依赖防火墙.py` 按 AST 判「跨包禁止导入 实现/ 目录」）。
+
+为什么不直接 `import ...实现.子进程入口`：同上 —— 跨包导入 `实现/` 被依赖防火墙强制
+拒绝；而适配层腿的公开入口 `__init__.py` 已经是合规的同层导入，它随本文件所在包之外
+加载自己的 `实现/` 子模块，故这里先导公开入口、再把两个模块名指向同一对象（兜底路径
+按文件路径显式载入，文件缺失时明确报错、不静默降级）。同一模块对象、不产生第二份实现
+是平台既有做法，见 `平台控制面/授权/__init__.py`。
 """
 
 from __future__ import annotations
 
-import json
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -21,76 +33,22 @@ from pathlib import Path
 if str(导入根) not in sys.path:
     sys.path.insert(0, str(导入根))
 
-from 支持库.后端.文档转换支持库.PDF隔离提供者.实现.子进程解析 import (  # noqa: E402
-    解析PDF为字典,
-    校验PDF返回页数,
-    获取提供者版本,
-)
+import 支持库.适配层.PDF隔离提供者  # noqa: E402,F401 —— 公开入口（同层，合规）
 
+唯一实现名 = "支持库.适配层.PDF隔离提供者.实现.子进程入口"
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "PDF隔离提供者" / "实现" / "子进程入口.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
+sys.modules[__name__] = sys.modules[唯一实现名]
 
-def 主循环() -> int:
-    """读一行请求，执行，写一行响应，然后 os._exit 跳过 SWIG 清理。"""
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
-    操作 = str(请求.get("操作") or "")
-    禁用库表 = {
-        库名.strip() for 库名 in os.environ.get("PDF隔离提供者_禁用库", "").split(",") if 库名.strip()
-    }
-    try:
-        if 操作 == "解析":
-            路径 = str(请求.get("文件路径") or "")
-            值 = 解析PDF为字典(路径, 请求.get("最大页数", 500), 请求.get("最大字节数", 0), 禁用库表)
-            return _输出(值)
-        if 操作 == "校验":
-            字节 = _解码字节(请求.get("字节b64", ""))
-            值 = 校验PDF返回页数(字节, 禁用库表)
-            return _输出(值)
-        if 操作 == "版本":
-            值 = 获取提供者版本(禁用库表)
-            return _输出(值)
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{操作}'"))
-        return 0
-    except Exception as 错误:  # 任何未预期异常都转稳定响应
-        print(_响应(False, 错误码="提供者崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
-
-
-def _输出(值) -> int:
-    """输出结果；若解析函数返回错误字典（含 错误码），转失败响应。"""
-    if isinstance(值, dict) and 值.get("错误码"):
-        print(_响应(
-            False,
-            错误码=str(值.get("错误码") or "提供者崩溃"),
-            错误说明=str(值.get("错误说明") or "子进程执行失败"),
-        ))
-        return 0
-    print(_响应(True, 值=值))
-    return 0
-
-
-def _解码字节(字节b64: str) -> bytes:
-    import base64
-    if not 字节b64:
-        return b""
-    try:
-        return base64.b64decode(字节b64)
-    except Exception:
-        return b""
-
-
-if __name__ == "__main__":
-    主循环()
+if __name__ == "__main__":  # 按脚本路径启动这条路：走唯一实现名取模块对象，不做实现/ 导入
+    sys.modules[唯一实现名].主循环()
     sys.stdout.flush()
-    # 直接退出，跳过解释器关闭阶段的 SWIG 模块销毁（避免 PyMuPDF 段错误）
     os._exit(0)

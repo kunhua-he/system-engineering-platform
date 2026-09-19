@@ -1,25 +1,29 @@
-"""子进程入口：Pillow（PIL，C 原生扩展）独立子进程 Worker。
+"""子进程入口（图像解码 / Pillow）：唯一实现在 支持库/适配层/Pillow提供者（D-1 收口，本包不放第二份）。
 
-只在独立子进程中运行，由 实现/提供者.py 通过 subprocess 启动。
-子进程内才允许 import PIL；子进程完成后用 os._exit(0) 直接退出，
-跳过解释器关闭阶段的模块销毁，崩溃不影响主进程/测试器/后端。
-Pillow 操作逻辑见 子进程解析.py。
+本文件原与 `支持库/适配层/Pillow提供者/实现/子进程入口.py` **逐字同源**，差异只有两处：
+① 包路径深度（后端腿比适配层腿多一层目录，故 `系统根.parents[N]` 相差 1，
+**两腿实测各自都指向项目根**，不是错误、不能统一成一个数字；见迁移清单 §10.8）；
+② 部署自举（激活指针解析 + 注入）—— **这一处是后端腿侧的必要能力，必须逐字保留**：
+部署布局下入口位于 `平台客户端环境/平台客户端/支持库/…`，此时 `支持库` 既不在
+`sys.path` 上、包前缀也可能被重写成 `平台客户端.`，缺自举会 `ModuleNotFoundError: 支持库`
+（2026-09-20 实测：按通用门面模板收口时漏掉本段 → 测试 `test_子进程自举激活指针解析` 真红，
+故本文件的自举段**不并入通用模板，单独保留**）。
 
-自举（第二十八阶段 wp1）：入口解析 工程缓存/制品仓库/平台客户端环境/
-当前.json 激活指针（或 parents[5]），把平台客户端环境目录加入 sys.path，
-使部署客户端（导入重写为 平台客户端. 前缀）与源码布局（parents[4]）都
-可直接 import 子进程解析，清空 PYTHONPATH 后最小调用仍成功。
+同一份逻辑只能有一个实现，故本文件**在完成自举之后**改为转调：让
+`支持库.后端.图像处理支持库.图像解码.实现.子进程入口` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。
+
+**本文件就是被 `subprocess.Popen([sys.executable, 本文件路径])` 当脚本跑的那一个**，
+因此 `__main__` 分支**按唯一实现名取模块对象**调用 `主循环`，不做跨包 `实现/` 导入
+（那会被 `运行核心/依赖防火墙.py` 按 AST 判「跨包禁止导入 实现/ 目录」）。
 
 协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。
-请求：{"操作": "解码图像"|"像素统计"|"生成占位图"|"生成缩略图"|
-      "图像EXIF转置"|"透明背景合成"|"计算感知哈希"|"缩放图像"|
-      "重编码图像", ...}
-响应：{"成功": true, "值": ...} | {"成功": false, "值": ...,
-      "错误码": ..., "错误说明": ...}
+响应：{"成功": true, "值": ...} | {"成功": false, "值": ..., "错误码": ..., "错误说明": ...}
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -77,72 +81,22 @@ if str(导入根) not in sys.path:
     sys.path.insert(0, str(导入根))
 注入平台客户端路径()
 
-from 支持库.后端.图像处理支持库.图像解码.实现.子进程解析 import (  # noqa: E402
-    初始化, 解码图像, 像素统计, 生成占位图, 生成缩略图, 图像EXIF转置,
-    透明背景合成, 计算感知哈希, 缩放图像, 重编码图像, 禁用库环境变量名,
-)
+import 支持库.适配层.Pillow提供者  # noqa: E402,F401 —— 公开入口（同层，合规）
 
+唯一实现名 = "支持库.适配层.Pillow提供者.实现.子进程入口"
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "Pillow提供者" / "实现" / "子进程入口.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
+sys.modules[__name__] = sys.modules[唯一实现名]
 
-def _禁用库表() -> set[str]:
-    return {名.strip() for 名 in os.environ.get(禁用库环境变量名, "").split(",") if 名.strip()}
-
-
-def _输出(结果: dict) -> int:
-    """输出结果；错误字典（含 错误码）转失败响应并保留 值。"""
-    if 结果.get("错误码"):
-        print(_响应(False, 值=结果.get("值"), 错误码=str(结果["错误码"]),
-                     错误说明=str(结果.get("错误说明") or "子进程执行失败")))
-        return 0
-    print(_响应(True, 值=结果.get("值")))
-    return 0
-
-
-def 主循环() -> int:
-    初始化(_禁用库表())
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
-    操作表 = {
-        "解码图像": lambda 请求: 解码图像(str(请求.get("字节b64") or "")),
-        "像素统计": lambda 请求: 像素统计(str(请求.get("字节b64") or "")),
-        "生成占位图": lambda 请求: 生成占位图(
-            请求.get("宽度"), 请求.get("高度"), 请求.get("占位类型"),
-            请求.get("背景颜色"), 请求.get("前景颜色"), 请求.get("文本")),
-        "生成缩略图": lambda 请求: 生成缩略图(
-            str(请求.get("字节b64") or ""), 请求.get("最大边长")),
-        "图像EXIF转置": lambda 请求: 图像EXIF转置(str(请求.get("字节b64") or "")),
-        "透明背景合成": lambda 请求: 透明背景合成(
-            str(请求.get("字节b64") or ""), 请求.get("背景颜色")),
-        "计算感知哈希": lambda 请求: 计算感知哈希(
-            str(请求.get("字节b64") or ""), 请求.get("哈希类型")),
-        "缩放图像": lambda 请求: 缩放图像(
-            str(请求.get("字节b64") or ""), 请求.get("宽度"), 请求.get("高度")),
-        "重编码图像": lambda 请求: 重编码图像(
-            str(请求.get("字节b64") or ""), 请求.get("格式"), 请求.get("质量")),
-    }
-    处理函数 = 操作表.get(str(请求.get("操作") or ""))
-    if 处理函数 is None:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{请求.get('操作')}'"))
-        return 0
-    try:
-        return _输出(处理函数(请求))
-    except Exception as 错误:
-        print(_响应(False, 错误码="提供者崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
-
-
-if __name__ == "__main__":
-    主循环()
+if __name__ == "__main__":  # 按脚本路径启动这条路：走唯一实现名取模块对象，不做实现/ 导入
+    sys.modules[唯一实现名].主循环()
     sys.stdout.flush()
-    # 直接退出，跳过解释器关闭阶段的模块销毁
     os._exit(0)

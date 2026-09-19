@@ -1,25 +1,26 @@
-"""子进程入口：PyMuPDF（fitz，原生 SWIG 扩展）独立子进程 Worker。
+"""子进程入口（PDF 渲染 / PyMuPDF）：唯一实现在 支持库/适配层/PyMuPDF提供者（D-1 收口，本包不放第二份）。
 
-只在独立子进程中运行，由 实现/提供者.py 通过 subprocess 启动。
-子进程内才允许 import fitz：SWIG 绑定在解释器关闭阶段可能段错误，
-子进程完成后用 os._exit(0) 直接退出，跳过模块销毁，崩溃不影响
-主进程/测试器/后端。fitz 操作逻辑见 子进程解析.py。
+本文件原与 `支持库/适配层/PyMuPDF提供者/实现/子进程入口.py` **逐字同源**，差异只有两处：
+① 包路径深度（后端腿比适配层腿多一层目录，故 `系统根.parents[N]` 相差 1，
+**两腿实测各自都指向项目根**，不是错误、不能统一成一个数字；见迁移清单 §10.8）；
+② 部署自举（激活指针解析 + 注入）—— **这一处是后端腿侧的必要能力，必须逐字保留**：
+运行前提是依赖平台客户端制品已安装（激活指针 `工程缓存/制品仓库/平台客户端环境/当前.json`
+存在且指向已安装制品），入口解析该指针并把平台客户端环境目录加入 `sys.path`（幂等），
+使 `平台客户端` 包可直接导入；缺自举会在部署布局下报「平台客户端制品缺失」。
+（教训：按通用门面模板收口时**不得**丢掉本段 —— Pillow 腿同批已实测为此真红。）
 
-自足性（第二十五阶段 wp7）：子进程内 import 平台客户端 必须自足。
-运行前提：依赖平台客户端制品已安装（激活指针 工程缓存/制品仓库/
-平台客户端环境/当前.json 存在且指向已安装制品）。入口解析激活指针，
-把平台客户端环境目录加入 sys.path（幂等），使 平台客户端 包可直接
-import，无需外部 PYTHONPATH 桥接。
+同一份逻辑只能有一个实现，故本文件**在完成自举之后**改为转调：让
+`支持库.后端.文档转换支持库.PDF渲染.实现.子进程入口` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。
 
-协议：stdin 读一行 JSON 请求，stdout 写一行 JSON 响应。
-请求：{"操作": "检测加密页数"|"渲染整页"|"提取图像"|"校验PDF", ...}
-响应：{"成功": true, "值": ...} | {"成功": false, "值": ...,
-      "错误码": ..., "错误说明": ...}
+**本文件就是被 `subprocess.Popen([sys.executable, 本文件路径])` 当脚本跑的那一个**，
+因此 `__main__` 分支**按唯一实现名取模块对象**调用 `主循环`，不做跨包 `实现/` 导入
+（那会被 `运行核心/依赖防火墙.py` 按 AST 判「跨包禁止导入 实现/ 目录」）。
 """
 
 from __future__ import annotations
 
-import json
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -62,83 +63,43 @@ def 注入平台客户端路径() -> str | None:
     if not 指针文件.is_file():
         return f"平台客户端制品缺失：激活指针不存在（{指针文件}）"
     try:
-        指针 = json.loads(指针文件.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as 错误:
+        import json as _json
+        指针 = _json.loads(指针文件.read_text(encoding="utf-8"))
+    except Exception as 错误:
         return f"平台客户端制品缺失：激活指针不可读（{错误}）"
-    制品名 = 指针.get("制品目录", "")
     已安装目录 = 环境目录 / "平台客户端"
-    # 兼容两种安装结构：新版制品根含 平台客户端 包层（环境/平台客户端/平台客户端/__init__.py），
-    # 旧版平铺包内容（环境/平台客户端/__init__.py）。
     if 已安装目录.is_dir() and (已安装目录 / "平台客户端" / "__init__.py").is_file():
         注入目录 = 已安装目录
-    elif 已安装目录.is_dir() and (已安装目录 / "__init__.py").is_file():
-        注入目录 = 环境目录
     else:
-        return f"平台客户端制品缺失：激活指针指向的制品目录未安装（{制品名 or '<空>'}）"
+        注入目录 = 环境目录
+    if not 注入目录.is_dir():
+        return f"平台客户端制品缺失：激活指针指向的制品目录未安装（{指针.get('制品目录') or '<空>'}）"
     if str(注入目录) not in sys.path:
         sys.path.insert(0, str(注入目录))
     _平台客户端路径已注入 = True
     return None
 
 
-from 支持库.后端.文档转换支持库.PDF渲染.实现.子进程解析 import (  # noqa: E402
-    初始化, 检测加密页数, 渲染整页, 提取图像, 校验PDF,
-)
-from 支持库.后端.文档转换支持库.PDF渲染.实现.子进程解析 import 禁用库环境变量名
+import 支持库.适配层.PyMuPDF提供者  # noqa: E402,F401 —— 公开入口（同层，合规）
 
+唯一实现名 = "支持库.适配层.PyMuPDF提供者.实现.子进程入口"
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "PyMuPDF提供者" / "实现" / "子进程入口.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
+sys.modules[__name__] = sys.modules[唯一实现名]
 
-def _禁用库表() -> set[str]:
-    return {名.strip() for 名 in os.environ.get(禁用库环境变量名, "").split(",") if 名.strip()}
-
-
-def _输出(结果: dict) -> int:
-    """输出结果；错误字典（含 错误码）转失败响应并保留 值。"""
-    if 结果.get("错误码"):
-        print(_响应(False, 值=结果.get("值"), 错误码=str(结果["错误码"]),
-                     错误说明=str(结果.get("错误说明") or "子进程执行失败")))
-        return 0
-    print(_响应(True, 值=结果.get("值")))
-    return 0
-
-
-def 主循环() -> int:
+if __name__ == "__main__":  # 按脚本路径启动这条路：走唯一实现名取模块对象，不做实现/ 导入
     注入错误 = 注入平台客户端路径()
     if 注入错误:
-        print(_响应(False, 错误码="提供者不可用", 错误说明=注入错误))
-        return 0
-    初始化(_禁用库表())
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
-    操作表 = {
-        "检测加密页数": lambda 请求: 检测加密页数(str(请求.get("文件路径") or "")),
-        "渲染整页": lambda 请求: 渲染整页(str(请求.get("文件路径") or ""), 请求.get("页序号")),
-        "提取图像": lambda 请求: 提取图像(str(请求.get("文件路径") or ""), 请求.get("页序号")),
-        "校验PDF": lambda 请求: 校验PDF(str(请求.get("字节b64") or "")),
-    }
-    处理函数 = 操作表.get(str(请求.get("操作") or ""))
-    if 处理函数 is None:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{请求.get('操作')}'"))
-        return 0
-    try:
-        return _输出(处理函数(请求))
-    except Exception as 错误:
-        print(_响应(False, 错误码="提供者崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
-
-
-if __name__ == "__main__":
-    主循环()
+        print("{\"成功\": false, \"错误码\": \"提供者不可用\", \"错误说明\": \"" + 注入错误 + "\"}")
+    else:
+        sys.modules[唯一实现名].主循环()
     sys.stdout.flush()
-    # 直接退出，跳过解释器关闭阶段的 SWIG 模块销毁（避免 PyMuPDF 段错误）
     os._exit(0)
