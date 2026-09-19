@@ -40,13 +40,24 @@ def 确保逻辑类型(值: Any) -> bool:
 
 
 def 转JSON值(值: bool) -> bool:
-    """逻辑型 → JSON 值（真→true、假→false），不合法即抛错。"""
+    """逻辑型 → JSON 值（真→true、假→false），不合法即抛错。
+
+    **为什么保留（2026-09-19 E-8 裁决）**：本函数全仓 0 处业务消费，但它是
+    `逻辑类型.py` 模块 docstring 明文宣告的**三层口径第三层**（「JSON 契约与 HTTP
+    传输：JSON 标准 true／false；进出边界一律经 转JSON值／由JSON值 显式对应，
+    不做隐式转换」）的执行件——删掉它，第三层口径就只剩注释、没有落点。
+    保留的是**口径的落点**，不是一段无人调用的历史代码；新增 JSON 边界时应直接消费它。
+    """
     return 确保逻辑类型(值)
 
 
 def 由JSON值(值: Any) -> bool:
-    """JSON 值 → 逻辑型（只接受 JSON 的 true／false；其他一律 ``TypeError``）。"""
-    if not isinstance(值, bool):
+    """JSON 值 → 逻辑型（只接受 JSON 的 true／false；其他一律 ``TypeError``）。
+
+    保留理由同 `转JSON值`（三层口径第三层的执行件）。判定委托唯一真源
+    `校验逻辑类型`，本模块不复制第二套 bool 判定。
+    """
+    if not 校验逻辑类型(值):
         raise TypeError(f"JSON 值不是逻辑型：{值!r}（合法形态只有 true／false）")
     return 值
 
