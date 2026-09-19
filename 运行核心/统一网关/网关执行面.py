@@ -1,0 +1,279 @@
+"""操作分发与执行：按 `操作` 分派到后端核心（健康检查/目录/详情/资源/热接入/
+调用能力/任务四件套），并装配 `运行上下文`。
+
+2026-09-19 从 `网关核心` 类按职责拆出。宿主提供
+`后端核心/任务系统` 与各校验面方法。"""
+
+from __future__ import annotations
+
+from __future__ import annotations
+import time
+import uuid
+import copy
+import json
+import base64
+import sqlite3
+import threading
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+from 运行核心.运行诊断.安全审计.安全审计 import 安全审计
+from 运行核心.能力调用.运行上下文.上下文 import 运行上下文
+from 运行核心.统一网关.安全边界 import 脱敏错误信息
+from 运行核心.统一网关.限流器 import 限流器
+from 公共契约.版本规则.契约版本 import 契约版本
+from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.基础类型.逻辑类型 import 真, 假
+from 运行核心.统一网关.类型规格 import (
+    类型短名映射, 类型匹配表, 数值类型名, _类型表自检, 校验能力参数,
+)
+from 运行核心.统一网关.网关信封 import 网关请求, 网关响应
+from 运行核心.统一网关.参数别名表 import _应用参数别名
+from 运行核心.统一网关.调用点缺参判定 import _是调用点缺参错误
+
+
+class 执行面:
+    def _执行(self, 请求: 网关请求, 响应: 网关响应) -> None:
+        if self.后端核心 is None:
+            raise ConnectionError("后端核心未接入")
+        操作参数错误 = self._操作参数错误(请求)
+        if 操作参数错误:
+            self._设置失败(响应, "参数不合法")
+            响应.错误说明 = 操作参数错误
+            return
+        if 请求.操作 == "健康检查":
+            结果对象 = self.后端核心.健康检查()
+            if not 结果对象.成功:
+                self._设置失败(响应, 结果对象.错误码 or "外部不可访问")
+            else:
+                响应.值 = 结果对象.值
+        elif 请求.操作 == "能力目录":
+            响应.值 = self.后端核心.能力目录(
+                关键词=请求.参数.get("关键词", ""),
+                偏移=请求.参数.get("偏移", 0),
+                限制=请求.参数.get("限制", 20),
+            )
+        elif 请求.操作 == "能力搜索":
+            响应.值 = self.后端核心.能力搜索(
+                关键词=请求.参数.get("关键词", ""),
+                限制=请求.参数.get("限制", 20),
+            )
+        elif 请求.操作 == "包详情":
+            包id = 请求.参数.get("包id", "")
+            if not 包id:
+                raise ValueError("缺少包id")
+            详情 = self.后端核心.包详情(包id)
+            if 详情 is None:
+                raise KeyError(包id)
+            响应.值 = 详情
+        elif 请求.操作 == "能力详情":
+            能力id = 请求.参数.get("能力id", 请求.能力id)
+            if not 能力id:
+                raise ValueError("缺少能力id")
+            详情 = self.后端核心.能力详情(能力id)
+            if 详情 is None:
+                raise KeyError(能力id)
+            响应.值 = 详情
+        elif 请求.操作 == "资源状态":
+            句柄 = 请求.句柄 or str(请求.参数.get("句柄", ""))
+            if not 句柄:
+                raise ValueError("缺少句柄")
+            状态 = self.后端核心.资源状态(句柄, 项目id=请求.项目id, 所有者=请求.用户id)
+            if 状态 is None:
+                # 句柄缺失属句柄域，不是能力域；与「调用能力」同报「句柄无效」。
+                self._设置失败(响应, "句柄无效")
+                return
+            响应.值 = 状态
+        elif 请求.操作 == "资源续租":
+            句柄 = 请求.句柄 or str(请求.参数.get("句柄", ""))
+            if not 句柄:
+                raise ValueError("缺少句柄")
+            状态 = self.后端核心.资源状态(句柄, 项目id=请求.项目id, 所有者=请求.用户id)
+            if 状态 is None:
+                self._设置失败(响应, "句柄无效")
+                return
+            if 状态.get("状态") != "有效":
+                self._设置失败(响应, "句柄已过期")
+                return
+            响应.值 = self.后端核心.资源续租(
+                句柄, 租约秒=请求.参数.get("租约秒", 300),
+                项目id=请求.项目id, 所有者=请求.用户id,
+            )
+        elif 请求.操作 == "资源关闭":
+            句柄 = 请求.句柄 or str(请求.参数.get("句柄", ""))
+            if not 句柄:
+                raise ValueError("缺少句柄")
+            # 仅拦截「句柄不存在」；已失效句柄的重复关闭在句柄服务里是幂等的，不提前失败。
+            状态 = self.后端核心.资源状态(句柄, 项目id=请求.项目id, 所有者=请求.用户id)
+            if 状态 is None:
+                self._设置失败(响应, "句柄无效")
+                return
+            响应.值 = self.后端核心.资源关闭(
+                句柄, 项目id=请求.项目id, 所有者=请求.用户id,
+            )
+        elif 请求.操作 == "热接入":
+            # 热接入：新增/变更包增量装配，免重启直接投产（调用需凭证）
+            结果对象 = self.后端核心.热接入()
+            if not 结果对象.成功:
+                self._设置失败(响应, 结果对象.错误码 or "热接入失败")
+                响应.错误说明 = 结果对象.错误说明 or "; ".join(结果对象.问题列表) if hasattr(结果对象, "问题列表") else 结果对象.错误说明
+            else:
+                响应.值 = 结果对象.值
+        elif 请求.操作 == "调用能力":
+            能力id = 请求.能力id or 请求.目标
+            if not 能力id:
+                raise ValueError("缺少能力id")
+            已归一参数 = _应用参数别名(能力id, 请求.参数)
+            参数错误 = self._能力参数错误(能力id, 已归一参数)
+            if 参数错误:
+                self._设置失败(响应, "参数不合法")
+                响应.错误说明 = 参数错误
+                return
+            if 请求.句柄 is not None:
+                状态 = self.后端核心.资源状态(
+                    请求.句柄, 项目id=请求.项目id, 所有者=请求.用户id,
+                )
+                if 状态 is None:
+                    self._设置失败(响应, "句柄无效")
+                    return
+                if 状态.get("状态") != "有效":
+                    self._设置失败(响应, "句柄已过期")
+                    return
+                if 状态.get("元数据", {}).get("能力id") not in ("", 能力id):
+                    self._设置失败(响应, "句柄无效")
+                    return
+            try:
+                结果对象 = self.后端核心.调用(
+                    能力id, self._过滤能力参数(能力id, 已归一参数),
+                    上下文=运行上下文(
+                        请求id=响应.请求id, 项目id=请求.项目id, 用户id=请求.用户id,
+                        会话id=请求.会话id, 任务id=请求.任务id, 能力id=能力id,
+                        提供者=请求.提供者, 权限范围=list(请求.权限范围),
+                        来源地址=请求.来源地址,
+                        句柄=请求.句柄,
+                    ),
+                    超时秒=请求.超时秒,
+                )
+            except TypeError as 错误:
+                # 注册元数据漏标「必填」时，实现会抛缺少位置参数——这属参数问题，
+                # 不是服务故障，必须明确回报（哲学第 3 条 2 项），不许变成 500 内部错误。
+                # 判据＝异常类型 + 抛错帧归属（见 _是调用点缺参错误），**不按消息文案**：
+                # 异常文案改字（含中文化）不影响本结论。
+                if not _是调用点缺参错误(错误):
+                    raise
+                self._设置失败(响应, "参数不合法")
+                响应.错误说明 = f"能力 {能力id} 调用参数缺少必填项：{错误}"
+                return
+            if not self._能力结果类型合法(结果对象):
+                self._设置失败(响应, "返回结果不符合契约")
+                响应.错误说明 = "能力返回结构不符合契约（成功、错误码、错误说明类型错误）"
+            elif 结果对象.成功:
+                响应.值 = 结果对象.值
+                if 请求.句柄 is not None:
+                    响应.句柄 = 请求.句柄
+                elif 请求.获取句柄:
+                    新句柄 = self.后端核心.资源句柄服务.创建(
+                        资源id=能力id, 项目id=请求.项目id, 所有者=请求.用户id,
+                        元数据={"能力id": 能力id},
+                    )
+                    响应.句柄 = 新句柄["句柄"]
+            else:
+                self._设置失败(响应, 结果对象.错误码 or "内部错误")
+                if 结果对象.错误说明:
+                    响应.错误说明 = 脱敏错误信息(结果对象.错误说明)
+        elif 请求.操作 == "任务提交":
+            if self.任务系统 is None:
+                raise ConnectionError("任务系统未接入")
+            能力id = 请求.能力id or 请求.目标
+            if not 能力id:
+                raise ValueError("缺少能力id")
+            注册表 = getattr(self.后端核心, "注册表", None)
+            获取 = getattr(注册表, "获取", None)
+            if not callable(获取) or 获取(能力id) is None:
+                self._设置失败(响应, "能力不存在")
+                return
+            已归一参数 = _应用参数别名(能力id, 请求.参数)
+            参数错误 = self._能力参数错误(能力id, 已归一参数)
+            if 参数错误:
+                self._设置失败(响应, "参数不合法")
+                响应.错误说明 = 参数错误
+                return
+            # 追踪上下文随任务参数过管道，执行器取出后立即弹出，能力看不到该键。
+            from 运行核心.任务调度.任务接入 import 任务追踪键
+
+            提交参数 = self._过滤能力参数(能力id, 已归一参数)
+            提交参数[任务追踪键] = {
+                "请求id": 响应.请求id, "来源地址": 请求.来源地址,
+                "权限范围": list(请求.权限范围),
+            }
+            任务对象 = self.任务系统.提交(
+                能力id=能力id, 参数=提交参数,
+                请求id=响应.请求id, 项目id=请求.项目id, 用户id=请求.用户id,
+                超时秒=请求.超时秒,
+            )
+            响应.值 = {"任务id": 任务对象.任务id, "状态": 任务对象.状态}
+        elif 请求.操作 == "任务查询":
+            if self.任务系统 is None:
+                raise ConnectionError("任务系统未接入")
+            任务id = 请求.参数.get("任务id", 请求.任务id)
+            if not 任务id:
+                raise ValueError("缺少任务id")
+            # 「任务不存在」是**业务语义**（公开码 任务不存在 / 404），不是「能力不存在」。
+            # 任务系统按约定用 KeyError 表达「查不到或不属于调用方」；让它冒到 处理() 的
+            # except KeyError 兜底（那是「能力 id 未注册」的口径）就会把任务问题谎报成能力
+            # 问题，调用方按「能力不存在」排查必然走错方向（哲学第 3 条 2 项：失败必须明确）。
+            try:
+                任务对象 = self.任务系统.查询(任务id, 项目id=请求.项目id, 用户id=请求.用户id)
+            except KeyError:
+                任务对象 = None
+            if 任务对象 is None:
+                self._设置失败(响应, "任务不存在")
+                return
+            响应.值 = 任务对象.转字典()
+        elif 请求.操作 == "任务取消":
+            if self.任务系统 is None:
+                raise ConnectionError("任务系统未接入")
+            任务id = 请求.参数.get("任务id", 请求.任务id)
+            if not 任务id:
+                raise ValueError("缺少任务id")
+            # 先判定任务是否存在（含归属匹配），再谈取消动作本身是否成功：
+            # 取消一个不存在的任务报「调用已取消」/409 是错误语义（调用方会以为
+            # 「取消动作被取消」，实际是目标对象不存在），必须是「任务不存在」/404。
+            # 只有任务真实存在、取消动作本身没跑完（进程组未确认退出）才回落
+            # 「调用已取消」——那条语义对得上（与 任务系统.取消 的两类返回值一一对应）。
+            try:
+                self.任务系统.查询(任务id, 项目id=请求.项目id, 用户id=请求.用户id)
+            except KeyError:
+                self._设置失败(响应, "任务不存在")
+                return
+            成功, 消息 = self.任务系统.取消(任务id, 项目id=请求.项目id, 用户id=请求.用户id)
+            self._设置后端字典结果(
+                响应, {
+                    "成功": 成功, "值": str(消息) if 成功 else None,
+                    "错误码": "" if 成功 else "调用已取消",
+                    "错误说明": "" if 成功 else 脱敏错误信息(str(消息)),
+                },
+            )
+
+    @staticmethod
+    def _请求摘要(请求: 网关请求) -> str:
+        """对请求语义做稳定摘要；请求id本身不参与摘要。"""
+        内容 = {
+            "操作": 请求.操作, "能力id": 请求.能力id, "目标": 请求.目标,
+            "参数": 请求.参数, "句柄": 请求.句柄, "获取句柄": 请求.获取句柄,
+            "项目id": 请求.项目id, "用户id": 请求.用户id,
+            "会话id": 请求.会话id, "任务id": 请求.任务id,
+            "提供者": 请求.提供者, "超时秒": 请求.超时秒,
+        }
+        def _JSON默认值(值: Any):
+            if isinstance(值, (bytes, bytearray, memoryview)):
+                return {
+                    "类型": "字节集型",
+                    "base64": base64.b64encode(bytes(值)).decode("ascii"),
+                }
+            raise TypeError(f"请求参数包含不可摘要类型: {type(值).__name__}")
+        return json.dumps(
+            内容, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            allow_nan=False, default=_JSON默认值,
+        )
