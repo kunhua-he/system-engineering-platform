@@ -9,6 +9,21 @@
    若「当前占用 + 新模型预计占用」超过安全阈值（默认 80%）→ 拒绝新连接，
    返回 资源不足（内存压力），防止同时启动多个大模型撑爆 96GB 内存。
 5. 真实模型调用由统一 HTTP Provider 承接；本地模型进程由底座启动并绑定句柄，不模拟成功。
+
+**2026-09-19 拆分（对外零变化，成员名一个不改）**：原 1591 行按职责簇原地搬出四段到同目录
+新模块，本文件只留「句柄与连接管理 / 连接器入口 / 本地模型启动器（进程与句柄接线）/
+持句柄调用 / 句柄生命周期」五段，并把搬出的符号按名再导入（re-export）回来 ——
+`__init__.py`、`支持库/适配层/模型HTTP提供者.py` 与全部测试的导入路径零改动：
+
+- `实现/模型连接基元.py`：失败结果构造、协议归一与别名、降级留痕、HTTP 兼容调用器；
+- `实现/环境配置.py`：统一环境参数（读取 / 合入 / 查询）；
+- `实现/本地启动准备与守卫.py`：模型源识别、供应链校验、内存守卫、启动命令与就绪等待；
+- `实现/模型工具调度.py`：循环软护栏、工具调度、重试调度、工具清单门控（纯计算）。
+
+**两段按 2026-09-18 实测结论仍不拆**（搬出即形成双向依赖，本文件继续承载）：
+①「本地模型启动器」的进程与句柄段（`_启动本地模型` / `启动本地模型` / `_终止本地进程` /
+`注册本地进程`）—— 与 `_内存守卫` / `_包申报超时` / `_句柄键` / `_回收过期句柄` /
+`释放句柄` 互相引用；②「句柄与连接管理」段 —— 是其余各段的公共底座。
 """
 
 from __future__ import annotations
@@ -18,14 +33,81 @@ import os
 import threading
 import time
 import uuid
-from collections import deque
+from collections import deque          # 表面保留：拆分前在本模块可见（导入产物）
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 from 公共契约.运行时 import 平台适配, 进程终止
-from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型供应链校验 as _供应链校验
+
+# 表面保留：拆分前 `_供应链校验` 在本模块可见（`import 模型供应链校验 as _供应链校验` 的产物）。
+# 供应链接线已搬去 `实现/本地启动准备与守卫.py`，此处保留该名以维持对外零变化。
+from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型供应链校验 as _供应链校验  # noqa: F401
+
+# 搬出簇的符号按名接入（与拆分前同一命名空间口径：残留段一律按裸名调用，
+# 不做 `模块.成员` 改写）。新模块若改名，这里当场 ImportError，不会静默漂移。
+from 支持库.后端.大语言模型支持库.模型连接器.实现.模型连接基元 import (
+    降级记录表,
+    _失败,
+    内存安全阈值,
+    默认协议,
+    允许协议,
+    协议取值说明,
+    协议别名,
+    _规范化协议,
+    默认HTTP请求超时秒,
+    环境变量HTTP超时,
+    _HTTP请求超时秒,
+    _HTTP调用模型,
+)
+from 支持库.后端.大语言模型支持库.模型连接器.实现.环境配置 import (
+    环境配置,
+    环境键表,
+    加载环境配置,
+    查询环境配置,
+    _合入环境参数,
+)
+from 支持库.后端.大语言模型支持库.模型连接器.实现.本地启动准备与守卫 import (
+    校验模型完整性,
+    本地模型估算系数,
+    _识别模型源,
+    _供应链系统根,
+    _供应链守卫,
+    _启动器守卫,
+    _启动前供应链阻断,
+    _供应链判定,
+    _解析启动器二进制,
+    _启动器校验,
+    _系统内存快照,
+    _预计占用,
+    _内存守卫,
+    _分配端口,
+    _计算模型大小,
+    _构建本地启动命令,
+    _启动日志路径,
+    _读启动日志尾部,
+    _等待本地健康,
+)
+from 支持库.后端.大语言模型支持库.模型连接器.实现.模型工具调度 import (
+    循环软护栏,
+    调度默认并行上限,
+    调度工具调用,
+    合成取消结果,
+    默认最大重试次数,
+    默认退避基数秒,
+    默认抖动比例,
+    重试最大上限,
+    退避最大秒,
+    重试模式别名,
+    _归一化重试模式,
+    重试调度,
+    门控模式别名,
+    工具名键表,
+    _归一化门控模式,
+    _取工具名,
+    组装可用工具清单,
+)
 
 # ── 句柄与连接管理 ──────────────────────────────
 
@@ -35,35 +117,8 @@ from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模
 锁 = threading.Lock()
 
 默认超时秒 = 1800                            # 华哥口径：不申报默认 30 分钟（1800 秒），模块/支持库应主动申报
-内存安全阈值 = 0.80                              # 系统内存占用安全阈值（80%）
-# 本地模型内存估算系数（2026-09-16 实测修正）：
-#   Qwen3.6-27B-Q5_K_M.gguf 文件 18.5GB，加载完成（-c 8192 -ngl 99）后实测 RSS 19.7GB，
-#   倍率 1.06。原实现按「文件大小 × 2」估算得 36.9GB，会把本机明明能跑的模型判成内存不足，
-#   用户会误读成硬件不够。取 1.15 保留安全余量（覆盖 KV cache 与量化反量化缓冲）。
-本地模型估算系数 = 1.15
 连接类型表 = {"LLM": "对话", "向量": "嵌入", "重排": "排序"}
-默认协议 = "chat_completions"
-允许协议 = frozenset(("chat_completions", "codex_responses", "anthropic_messages"))
-协议取值说明 = "协议必须是 chat_completions、codex_responses 或 anthropic_messages"
-# 与 支持库/适配层/模型HTTP提供者.协议别名表 同表；测试中心.支持库.测试_模型协议别名
-# 断言两份取值一致，防止漂移。
-协议别名 = {
-    "chat": "chat_completions",
-    "chat_completions": "chat_completions",
-    "res": "codex_responses",
-    "codex_responses": "codex_responses",
-    "anthropic": "anthropic_messages",
-    "anthropic_messages": "anthropic_messages",
-}
 
-
-def _规范化协议(协议: Any) -> str | None:
-    """把公开短协议别名统一为内部长协议；非法值返回 None。"""
-    return 协议别名.get(协议) if isinstance(协议, str) else None
-
-
-
-降级记录表: deque[str] = deque(maxlen=1000)  # 尽力清理/降级异常，最多保留1000条
 
 def _句柄键(句柄id: str | int) -> int:
     """连接表与公开网关统一使用整数句柄。"""
@@ -81,74 +136,6 @@ def _包申报超时() -> int:
     except Exception as 错误:
         降级记录表.append(str(错误))
     return 默认超时秒
-
-
-def _失败(错误码: str, 消息: str, *, 可重试: bool = False,
-        详情: dict[str, Any] | None = None) -> 结果:
-    return 结果.失败(错误码, 消息, 来源="模型连接器", 可重试=可重试, 详情=详情)
-
-
-def _系统内存快照() -> dict[str, Any]:
-    """返回系统内存快照：总量/已用/可用/占用率（失败返回 可用=假，不伪造数字）。
-
-    第三方只在适配层出现：本处经「支持库.适配层.系统探针」的汉化原子能力
-    《读取系统内存》取真值，本实现不 import 任何第三方。探针不可用（未安装/
-    适配层不可导入/取用异常）一律返回 可用=假，由 _内存守卫 fail-closed 拒绝新连接。
-    """
-    try:
-        from 支持库.适配层.系统探针 import 读取系统内存
-        快照 = 读取系统内存()
-    except Exception as 错误:  # 适配层不可导入：与「探针不可用」同一语义，绝不静默放行
-        降级记录表.append(f"系统内存探针不可用: {错误}")
-        return {"可用": False, "说明": f"系统内存探针不可用，无法做系统内存检查: {错误}"}
-    if not 快照.可用:
-        return {"可用": False,
-                "说明": 快照.不可用原因 or "系统内存探针不可用，无法做系统内存检查"}
-    return {
-        "可用": True,
-        "总量字节": 快照.总量字节, "可用字节": 快照.可用字节, "已用字节": 快照.已用字节,
-        "占用率": 快照.占用率,
-        "说明": 快照.说明,
-    }
-
-
-def _预计占用(连接类型: str, 配置: dict) -> int:
-    """估算一个新连接的内存占用（字节）。本地大模型按模型大小估算；云端按小头估算。"""
-    部署形态 = 配置.get("部署形态") or "本地"
-    if 部署形态 == "云端":
-        return 512 * 1024 * 1024  # 云端连接占用小（512MB 预算）
-    # 本地：优先按 模型大小 估算，否则按类型默认
-    大小 = 配置.get("模型大小字节")
-    if isinstance(大小, (int, float)) and 大小 > 0:
-        # 估算系数可被调用方覆盖（内存估算系数），缺省用实测标定值
-        系数 = 配置.get("内存估算系数")
-        try:
-            系数 = float(系数) if 系数 is not None else 本地模型估算系数
-        except (TypeError, ValueError):
-            系数 = 本地模型估算系数
-        if 系数 <= 0:
-            系数 = 本地模型估算系数
-        return int(大小 * 系数)
-    默认表 = {"LLM": 8 * 1024**3, "向量": 2 * 1024**3, "重排": 2 * 1024**3}  # LLM 8GB/向量 2GB/重排 2GB
-    return 默认表.get(连接类型, 2 * 1024**3)
-
-
-def _内存守卫(连接类型: str, 配置: dict) -> 结果 | None:
-    """系统内存安全检查：预计占用超安全阈值或探针不可用时拒绝。"""
-    快照 = _系统内存快照()
-    if not 快照.get("可用"):
-        return _失败("资源预算未验证", "系统内存探针不可用，拒绝启动新模型以避免突破内存预算")
-    预计 = _预计占用(连接类型, 配置)
-    总量 = 快照["总量字节"]
-    当前已用 = 快照["已用字节"]
-    新占用率 = (当前已用 + 预计) / 总量
-    阈值 = 配置.get("内存安全阈值") or 内存安全阈值
-    if 新占用率 > 阈值:
-        return _失败("资源不足",
-                     f"系统内存压力：当前占用 {快照['占用率']}%，新连接预计 +{预计/1024**3:.1f}GB "
-                     f"将达 {新占用率*100:.0f}%（安全阈值 {阈值*100:.0f}%），拒绝启动新模型以防撑爆内存。"
-                     f"请释放不用的模型连接（{快照['说明']}）")
-    return None
 
 
 def _回收过期句柄() -> None:
@@ -235,161 +222,6 @@ def _取连接(句柄id: int) -> tuple[dict[str, Any] | None, str]:
         return None, f"句柄 {句柄id} 已超时自动释放（{连接['超时秒']} 秒无人使用）"
     连接["最后活动时间"] = now
     return 连接, ""
-
-
-默认HTTP请求超时秒 = 600
-环境变量HTTP超时 = "模型HTTP_请求超时秒"
-
-
-def _HTTP请求超时秒(配置: dict) -> float:
-    """单次模型 HTTP 请求超时：配置优先，其次环境变量，默认 600 秒。
-
-    原来硬编码 30 秒，长文本生成（逐字稿逐窗精校等）必然超时；
-    30 秒对推理模型的千字级输出远远不够。
-    """
-    try:
-        return float(配置.get("请求超时秒") or os.environ.get(环境变量HTTP超时) or 默认HTTP请求超时秒)
-    except (TypeError, ValueError):
-        return float(默认HTTP请求超时秒)
-
-
-def _HTTP调用模型(连接类型: str, 配置: dict, 参数: dict) -> 结果:
-    """URL连接的默认兼容调用器；与受管 Provider 保持同一协议契约。"""
-    import json
-    import urllib.error
-    import urllib.request
-    # 端点归一、anthropic 载荷、请求头可发送性三件事都由适配层唯一实现，
-    # 此处延迟导入复用（适配层做响应归一化时也反查本模块，延迟导入避免环形依赖）。
-    from 支持库.适配层.模型HTTP提供者 import (
-        归一模型端点,
-        构造anthropic载荷,
-        检查不可发送请求头,
-    )
-    基址 = str(配置.get("url") or "").rstrip("/")
-    if not 基址:
-        return _失败("提供者不可用", f"{连接类型}连接未配置url")
-    模型 = 配置.get("模型名") or 配置.get("模型")
-    if 连接类型 == "LLM":
-        流式输出 = 参数.get("流式输出", False)
-        if 流式输出 is True:
-            return _失败(
-                "流式能力未装配",
-                "流式输出已请求，但40007网关尚未装配模型SSE传输，待补网关流；未伪造完成结果",
-                详情={"流式输出": True, "协议": 配置.get("协议", 默认协议), "网关": "40007"},
-            )
-        消息 = list(参数.get("消息列表") or [])
-        # 协议短值/长值必须与适配层同一裁决：`连接LLM` 存进配置的是归一后的长值，
-        # 但直接调用本函数或配置手写短值（anthropic/chat/res）时也必须认，
-        # 否则短值会静默落到 chat 分支（历史缺陷同类）。
-        协议 = _规范化协议(配置.get("协议", 默认协议))
-        if 协议 is None:
-            return _失败("参数不合法", 协议取值说明)
-        温度 = 参数.get("温度")
-        最大令牌数 = 参数.get("最大令牌数")
-        工具 = 参数.get("工具")
-        响应格式 = 参数.get("响应格式")
-        系统提示词 = 参数.get("系统提示词")
-        if 协议 == "anthropic_messages":
-            # anthropic 的 system 是顶层字段，不能作为 messages 里的 role；
-            # 载荷构造复用适配层唯一实现（与流式侧同一份），不在此处另写一套映射。
-            请求体, 载荷错误 = 构造anthropic载荷(
-                配置, 消息, 系统提示词, 流式=False,
-                温度=温度, 最大令牌数=最大令牌数, 工具=工具, 响应格式=响应格式,
-            )
-            if 载荷错误 or 请求体 is None:
-                return _失败("参数不合法", 载荷错误 or "参数不合法")
-            路径 = "/messages"
-        else:
-            if 系统提示词:
-                消息.insert(0, {"role": "system", "content": 系统提示词})
-            if 协议 == "codex_responses":
-                路径, 请求体 = "/responses", {"model": 模型, "input": 消息, "stream": False}
-                令牌键 = "max_output_tokens"
-                if 响应格式:
-                    请求体["text"] = {"format": 响应格式}
-            else:
-                路径, 请求体 = "/chat/completions", {"model": 模型, "messages": 消息, "stream": False}
-                令牌键 = "max_tokens"
-                if 响应格式:
-                    请求体["response_format"] = 响应格式
-                if 参数.get("chat_template_kwargs"):
-                    请求体["chat_template_kwargs"] = 参数.get("chat_template_kwargs")
-            if 温度 is not None:
-                请求体["temperature"] = 温度
-            if 最大令牌数 is not None:
-                请求体[令牌键] = 最大令牌数
-            if 工具:
-                请求体["tools"] = 工具
-    elif 连接类型 == "向量":
-        路径, 请求体 = "/embeddings", {"model": 模型, "input": 参数.get("文本")}
-    else:
-        路径, 请求体 = "/rerank", {"model": 模型, "query": 参数.get("查询"), "documents": 参数.get("文档列表")}
-    出站请求头 = {"Content-Type": "application/json"}
-    if 配置.get("api_key"):
-        if _规范化协议(配置.get("协议", 默认协议)) == "anthropic_messages":
-            # anthropic 按协议规范走 x-api-key + 版本头，与适配层同一口径。
-            from 支持库.适配层.模型HTTP提供者 import anthropic协议版本
-            出站请求头["x-api-key"] = str(配置["api_key"])
-            出站请求头["anthropic-version"] = anthropic协议版本
-        else:
-            出站请求头["Authorization"] = f"Bearer {配置['api_key']}"
-    if isinstance(配置.get("额外请求头"), dict):
-        出站请求头.update(配置["额外请求头"])
-    if isinstance(参数.get("附加请求头"), dict):
-        出站请求头.update(参数["附加请求头"])
-    # 与适配层同一口径：HTTP 头只能承载 latin-1，非 ASCII 的密钥/头在此给出明确失败，
-    # 不让它退化成笼统的「模型调用失败」。
-    非法头 = 检查不可发送请求头(出站请求头)
-    if 非法头:
-        return _失败("参数不合法", 非法头)
-    # 端点归一两层共用：url 不带 /v1 或已把后缀写全时，都能得到正确地址
-    # （历史实现只做 基址 + 路径，url 不带 /v1 时整条链路必失败）。
-    地址 = 归一模型端点(配置, 路径)
-    if not 地址:
-        return _失败("提供者不可用", f"{连接类型}连接未配置url")
-    请求 = urllib.request.Request(
-        地址, data=json.dumps(请求体, ensure_ascii=False).encode("utf-8"), method="POST",
-        headers=出站请求头,
-    )
-    try:
-        # 绕开系统代理探测：macOS 的 urllib 默认走 _scproxy 读系统代理设置，
-        # 而 _scproxy 在「fork 出来的子进程 + 多线程」下会触发 CFPreferences 非线程安全
-        # 崩溃（实测 SIGSEGV，栈顶 _os_log_preferences_refresh → SCDynamicStoreCopyProxies）。
-        # 底座 HTTP连接器早已按同一口径用 ProxyHandler({}) 绕开，此处补齐。
-        # 语义不变：本机模型端点（127.0.0.1）本就不该走代理。
-        开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with 开放器.open(请求, timeout=_HTTP请求超时秒(配置)) as 响应:
-            原始 = 响应.read(4 * 1024 * 1024 + 1)
-            if len(原始) > 4 * 1024 * 1024:
-                return _失败("超出限制", f"{连接类型} HTTP响应超过4MB上限")
-            数据 = json.loads(原始.decode("utf-8"))
-        if 连接类型 == "LLM":
-            # 归一化：产出 内容/思考/工具调用/结束原因；保留 回复/用量 以兼容既有调用方
-            归一 = _归一化响应体(数据, True)
-            回复 = 归一.get("内容") or 数据.get("output_text")
-            if not isinstance(回复, str):
-                回复 = (((数据.get("choices") or [{}])[0].get("message") or {}).get("content"))
-            if not isinstance(回复, str):
-                回复 = ""
-            if not 回复 and not 归一.get("工具调用"):
-                return _失败("模型调用失败", "模型响应既没有可用文本也没有工具调用")
-            值 = {"回复": 回复, "用量": 数据.get("usage", {}),
-                  "内容": 归一.get("内容", ""), "思考": 归一.get("思考", ""),
-                  "工具调用": 归一.get("工具调用", []), "结束原因": 归一.get("结束原因", "stop")}
-            return 结果.成功结果(值)
-        if 连接类型 == "向量":
-            向量 = 数据["data"][0]["embedding"]
-            return 结果.成功结果({"向量": 向量, "维度": len(向量)})
-        原始 = 数据.get("results") or 数据.get("data") or []
-        重排结果 = [{"索引": 项.get("index"), "分数": 项.get("relevance_score", 项.get("score"))} for 项 in 原始]
-        return 结果.成功结果({"重排结果": 重排结果})
-    except urllib.error.HTTPError as 错误:
-        错误码 = {401: "认证失败", 403: "认证失败", 404: "端点不存在", 408: "超时", 429: "请求限流"}.get(
-            错误.code, "模型调用失败"
-        )
-        return _失败(错误码, f"模型 HTTP 返回 {错误.code}", 可重试=错误.code >= 500)
-    except (OSError, ValueError, KeyError, IndexError, TypeError) as 错误:
-        return _失败("模型调用失败", f"{连接类型} HTTP调用失败: {错误}")
 
 
 def _调用模型(句柄id: int, 连接类型: str, 参数: dict) -> 结果:
@@ -507,377 +339,15 @@ def 连接重排模型(模型: str = None, 提供者: str = None, 部署形态: 
     return _登记连接("重排", 配置, 超时秒=超时秒)
 
 
-# ── 统一环境参数（项目环境定义，支持库不独立传参）────────────
-
-环境配置: dict[str, Any] = {}   # 键 → 值；连接器未显式传参时使用
-环境键表 = {
-    "默认向量模型": "默认向量模型", "DEFAULT_EMBEDDING_MODEL": "默认向量模型",
-    "默认向量部署形态": "默认向量部署形态", "DEFAULT_EMBEDDING_DEPLOY": "默认向量部署形态",
-    "默认LLM模型": "默认LLM模型", "DEFAULT_LLM_MODEL": "默认LLM模型",
-    "默认LLM部署形态": "默认LLM部署形态", "DEFAULT_LLM_DEPLOY": "默认LLM部署形态",
-    "默认重排模型": "默认重排模型", "DEFAULT_RERANK_MODEL": "默认重排模型",
-    "默认重排部署形态": "默认重排部署形态", "DEFAULT_RERANK_DEPLOY": "默认重排部署形态",
-    "云端地址": "云端地址", "MODEL_API_URL": "云端地址",
-    "云端密钥": "云端密钥", "MODEL_API_KEY": "云端密钥",
-    "默认上下文长度": "默认上下文长度", "DEFAULT_CONTEXT_LENGTH": "默认上下文长度",
-    "模型超时秒": "模型超时秒", "MODEL_TIMEOUT_SECONDS": "模型超时秒",
-    "内存安全阈值": "内存安全阈值", "MODEL_MEMORY_SAFE_RATIO": "内存安全阈值",
-}
-
-
-def 加载环境配置(环境文件路径: str = None) -> 结果:
-    """从项目环境文件读取统一模型参数。
-
-    读取后存入 环境配置 全局，连接器缺参时自动使用。
-    未传路径时读取当前进程环境变量（os.environ）同名键。
-    返回 {已读取键数, 配置摘要}。
-    """
-    import os
-    原始: dict[str, str] = {}
-    if 环境文件路径 and os.path.isfile(环境文件路径):
-        with open(环境文件路径, "r", encoding="utf-8") as f:
-            for 行 in f:
-                行 = 行.strip()
-                if not 行 or 行.startswith("#") or "=" not in 行:
-                    continue
-                键, 值 = 行.split("=", 1)
-                原始[键.strip()] = 值.strip().strip('"').strip("'")
-    else:
-        for 键 in 环境键表:
-            if 键 in os.environ:
-                原始[键] = os.environ[键]
-    global 环境配置
-    配置: dict[str, Any] = {}
-    for 键, 值 in 原始.items():
-        规范键 = 环境键表.get(键)
-        if 规范键 is None:
-            continue
-        if 规范键 in ("内存安全阈值",):
-            try:
-                配置[规范键] = float(值)
-            except ValueError:
-                配置[规范键] = 内存安全阈值
-        elif 规范键 in ("默认上下文长度", "模型超时秒"):
-            try:
-                配置[规范键] = int(值)
-            except ValueError:
-                配置[规范键] = None
-        else:
-            配置[规范键] = 值
-    if "默认向量模型" not in 配置:
-        配置["默认向量模型"] = "Qwen3-Embedding-8B"   # 4096 维大向量模型（本地）
-    if "默认向量部署形态" not in 配置:
-        配置["默认向量部署形态"] = "本地"
-    if "默认重排模型" not in 配置:
-        配置["默认重排模型"] = "Qwen3-Reranker-8B"
-    if "默认重排部署形态" not in 配置:
-        配置["默认重排部署形态"] = "本地"
-    环境配置 = 配置
-    return 结果.成功结果({"已读取键数": len(原始), "配置摘要": {
-        "默认向量模型": 配置.get("默认向量模型"), "默认向量部署形态": 配置.get("默认向量部署形态"),
-        "默认LLM模型": 配置.get("默认LLM模型"), "默认LLM部署形态": 配置.get("默认LLM部署形态"),
-        "默认重排模型": 配置.get("默认重排模型"), "默认重排部署形态": 配置.get("默认重排部署形态"),
-        "云端地址": 配置.get("云端地址"), "默认上下文长度": 配置.get("默认上下文长度"),
-        "模型超时秒": 配置.get("模型超时秒"), "内存安全阈值": 配置.get("内存安全阈值"),
-    }})
-
-
-def 查询环境配置() -> 结果:
-    """返回当前统一环境参数（不含密钥明文）。"""
-    return 结果.成功结果({k: v for k, v in 环境配置.items() if k != "云端密钥"})
-
-
-def _合入环境参数(连接类型: str, 显式: dict) -> dict:
-    """把 env 默认值合入显式参数（显式优先）。
-
-    连接类型 → env 键：LLM→默认LLM模型/默认LLM部署形态；向量→默认向量模型/默认向量部署形态；重排→默认重排模型/默认重排部署形态。
-    """
-    合并 = dict(显式)
-    模型键 = f"默认{连接类型}模型"
-    形态键 = f"默认{连接类型}部署形态"
-    if not 合并.get("模型") and 环境配置.get(模型键):
-        合并["模型"] = 环境配置[模型键]
-    if not 合并.get("部署形态"):
-        合并["部署形态"] = 环境配置.get(形态键) or "本地"
-    if not 合并.get("url") and 环境配置.get("云端地址"):
-        合并["url"] = 环境配置["云端地址"]
-    if not 合并.get("api_key") and 环境配置.get("云端密钥"):
-        合并["api_key"] = 环境配置["云端密钥"]
-    if not 合并.get("上下文长度") and 环境配置.get("默认上下文长度"):
-        合并["上下文长度"] = 环境配置["默认上下文长度"]
-    if not 合并.get("超时秒") and 环境配置.get("模型超时秒"):
-        合并["超时秒"] = 环境配置["模型超时秒"]
-    return 合并
-
-
 # ── 本地模型启动器（路径入参，底座负责启动并绑定句柄）────────
+# 本段按 2026-09-18 实测结论**不拆**：与 _内存守卫 / _包申报超时 / _句柄键 /
+# _回收过期句柄 / 释放句柄 互相引用，搬出即形成双向依赖。其中的启动准备层
+# （模型源识别/供应链/内存守卫/启动命令/就绪等待）已搬去 `实现/本地启动准备与守卫.py`，
+# 本段只剩进程与句柄接线。
 
 本地进程表: dict[int, Any] = {}  # 句柄id → 子进程对象
 全局模型索引: dict[tuple[str, str], int] = {}  # (模型类型, 规范化源路径) → 全局句柄
 本地启动锁 = threading.Lock()  # 防止同一路径并发启动出多个模型进程
-
-
-def _分配端口(端口: int | None) -> int:
-    if isinstance(端口, int) and 端口 > 0:
-        return 端口
-    import socket
-    with socket.socket() as 套接字:
-        套接字.bind(("127.0.0.1", 0))
-        return int(套接字.getsockname()[1])
-
-
-def _计算模型大小(模型路径: str) -> int:
-    """计算模型文件总大小，供内存守卫使用；目录读取失败时返回 0。"""
-    from pathlib import Path
-    try:
-        if os.path.isfile(模型路径):
-            return os.path.getsize(模型路径)
-        return sum(文件.stat().st_size for 文件 in Path(模型路径).rglob("*") if 文件.is_file())
-    except OSError:
-        return 0
-
-
-def _识别模型源(模型路径: str) -> tuple[str, str]:
-    """按实体文件判断模型源格式，返回（格式, 规范化绝对路径）。"""
-    from pathlib import Path
-    路径 = Path(模型路径).expanduser().resolve()
-    if 路径.is_file() and 路径.suffix.lower() == ".gguf":
-        return "GGUF", str(路径)
-    if 路径.is_dir() and (路径 / "config.json").is_file():
-        if any(路径.glob("*.safetensors")) or any(路径.glob("*.bin")):
-            return "HuggingFace", str(路径)
-    return "不支持", str(路径)
-
-
-def _供应链系统根() -> Path:
-    """本包所在系统根（源码态 = 仓库根；制品态 = 平台客户端根）。"""
-    return Path(__file__).resolve().parents[5]
-
-
-def _供应链守卫(规范路径: str, 源格式: str) -> 结果 | None:
-    """启动前的模型二进制供应链校验（版本固定 + 哈希校验 + fail-closed）。
-
-    审计报告 §B9：模型权重与启动器原先完全没有校验，被替换/截断/换版本都不会有人发现。
-    本层把校验挂在**启动动作之前**（不是「检查可用性」这种只读探针上），
-    判定顺序 = 存在性 → 字节数 → sha256，任一层不符即拒绝启动并返回中文原因。
-
-    判定语义（与 实现/模型供应链校验.py 同一份实现，不另写第二套）：
-      * 权重文件：受管模型库内未登记 → 拒绝；调用方自备路径未登记 → 放行并如实标注；
-      * 启动器二进制：必须已登记（版本固定），未登记一律拒绝；
-      * 清单自身读不成（丢失/损坏）→ 拒绝启动，绝不「校验不了就放行」。
-    逃生口是显式的：环境变量 `系统工程平台_模型校验=关闭` 只报不拦（留痕，不做默认）。
-    """
-    系统根 = _供应链系统根()
-    try:
-        格式 = _供应链校验.校验模型目录(规范路径, 系统根=系统根) if 源格式 == "HuggingFace" \
-            else _供应链校验.校验模型文件(规范路径, 系统根=系统根)
-    except Exception as 错误:  # 校验层自身异常同样 fail-closed，不让「校验不了」变成「放行」
-        return _失败("模型完整性校验失败", f"模型二进制供应链校验执行失败: {错误}")
-    if not 格式.get("通过"):
-        return _失败(str(格式.get("错误码") or "模型完整性校验失败"),
-                     str(格式.get("错误说明") or "模型二进制供应链校验未通过"),
-                     详情={k: v for k, v in 格式.items() if k != "错误说明"})
-    return None
-
-
-def _启动器守卫(二进制: str) -> 结果 | None:
-    """启动器二进制的版本固定校验（未登记即拒绝）。"""
-    try:
-        判定 = _供应链校验.校验模型启动器(二进制, 系统根=_供应链系统根())
-    except Exception as 错误:
-        return _失败("模型完整性校验失败", f"模型启动器供应链校验执行失败: {错误}")
-    if not 判定.get("通过"):
-        return _失败(str(判定.get("错误码") or "模型完整性校验失败"),
-                     str(判定.get("错误说明") or "模型启动器供应链校验未通过"),
-                     详情={k: v for k, v in 判定.items() if k != "错误说明"})
-    return None
-
-
-def _启动前供应链阻断(规范路径: str, 模型类型: str, 启动器: str) -> 结果 | None:
-    """启动前的唯一阻断判定：**通过返回 None，不通过返回失败结果**。
-
-    ⚠️ 形状铁律：本函数是「谓词」，通过必须返回 None。绝不能让「校验通过」的
-    **成功结果**漏出去 —— 调用点写的是 `if 阻断 is not None: return 阻断`，
-    一个成功结果会被当成阻断返回，把「校验通过」变成「启动被取消」。
-    （实测踩过：反向验证第三拍报「启动本地模型必须失败」而实际它返回了成功结果，
-    句柄却是 None —— 正是这个形状病。）
-
-    对外仍提供结果型入口 `校验模型完整性`（成功/失败都是结果），
-    两者共用 `_供应链判定`，判定逻辑只有一份。
-    """
-    判定 = _供应链判定(规范路径, 模型类型, 启动器)
-    return None if 判定.get("通过") else 判定["失败结果"]
-
-
-def _供应链判定(规范路径: str, 模型类型: str, 启动器: str) -> dict[str, Any]:
-    """三层校验的公共内核：返回 {"通过": bool, "失败结果": 结果, "值": dict}。"""
-    类型 = (模型类型 or "LLM").lower()
-    类型 = "LLM" if 类型 in ("对话", "llm") else "向量" if 类型 in ("嵌入", "向量", "embedding") \
-        else "重排" if 类型 in ("排序", "重排", "rerank") else "LLM"
-    源格式, 规范 = _识别模型源(规范路径)
-    if 源格式 == "不支持":
-        return {"通过": False, "值": {},
-                "失败结果": _失败("参数不合法",
-                                  "底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")}
-    权重 = _供应链守卫(规范, 源格式)
-    if 权重 is not None:
-        return {"通过": False, "失败结果": 权重, "值": {}}
-    启动器错误 = _启动器校验(启动器, 源格式)
-    if 启动器错误 is not None:
-        return {"通过": False, "失败结果": 启动器错误, "值": {}}
-    return {"通过": True, "失败结果": None,
-            "值": {"模型类型": 类型, "模型路径": 规范, "模型源格式": 源格式,
-                   "校验模式": _供应链校验.解析校验模式(),
-                   "说明": "模型源通过供应链校验（存在性 → 字节数 → sha256；受管外未登记为如实标注放行）"}}
-
-
-def 校验模型完整性(模型路径: str, 模型类型: str = None, 启动器: str = None) -> 结果:
-    """校验单个模型源（权重 + 启动器）的供应链完整性，供装载前自检与巡检复用。
-
-    与启动路径**同一份判据**（都走 `_供应链判定`）。返回统一结果：
-    通过 → `结果.成功结果({模型类型, 模型路径, 模型源格式, 校验模式, 说明})`；
-    不通过 → 供应链类失败结果（错误码 `未登记` / `文件摘要不符`，中文原因可直接读）。
-    """
-    if not isinstance(模型路径, str) or not 模型路径.strip():
-        return _失败("参数不合法", "模型路径必须是非空文本")
-    判定 = _供应链判定(模型路径, 模型类型 or "LLM", str(启动器 or ""))
-    return 结果.成功结果(判定["值"]) if 判定.get("通过") else 判定["失败结果"]
-
-
-def _解析启动器二进制(启动器: str = "") -> str:
-    """按唯一候选顺序解析真实启动器二进制（`latest` 优先）；找不到返回空串。
-
-    `_构建本地启动命令` 与 `_启动器校验` 共用本函数 —— 校验的必须是**真正会被执行的那个二进制**，
-    否则「校验通过」与「实际运行」就不是同一个对象（供应链治理最典型的假绿）。
-    """
-    import shutil
-    候选二进制 = [启动器 or "", os.environ.get("LLAMA_CPP_SERVER_BIN", ""), shutil.which("llama-server")]
-    候选二进制.extend(str(Path.home() / 路径) for 路径 in (
-        # 2026-09-16 实测修正：原顺序把 llama.cpp-old 排在 latest 前面。
-        # 旧版二进制不支持新架构（实测 Qwen3.6-27B 的 SSM 张量
-        # blk.64.ssm_conv1d.weight 缺失直接加载失败，报 missing tensor），
-        # 而报错里看不出用了哪个二进制，极难定位——同一文件手动用 latest
-        # 跑得好好的，经底座就失败，会被误判成权限或文件损坏。
-        # 因此 latest 优先；需要走旧版时用 启动器 显式传绝对路径或设
-        # 环境变量 LLAMA_CPP_SERVER_BIN。
-        "llama.cpp-latest/build/bin/llama-server",
-        "llama.cpp-old/build/bin/llama-server"))
-    return next((路径 for 路径 in 候选二进制
-                 if 路径 and os.path.isfile(路径) and os.access(路径, os.X_OK)), "")
-
-
-def _启动器校验(启动器: str = "", 源格式: str = "GGUF") -> 结果 | None:
-    """解析真实启动器二进制并校验；HuggingFace 目录走底座内部加载器，不涉及启动器。"""
-    if 源格式 == "HuggingFace":
-        return None
-    二进制 = _解析启动器二进制(启动器)
-    if not 二进制:
-        return _失败("提供者不可用", "未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
-    return _启动器守卫(二进制)
-
-
-def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: str, 端口: int, 参数: dict) -> list[str]:
-    from pathlib import Path
-    格式, 规范路径 = _识别模型源(模型路径)
-    if 格式 == "HuggingFace":
-        import sys
-        服务脚本 = Path(__file__).resolve().parents[5] / "支持库" / "适配层" / "模型服务.py"
-        if not 服务脚本.is_file():
-            raise FileNotFoundError(f"底座内部模型加载器不存在: {服务脚本}")
-        return [sys.executable, str(服务脚本), "--model-path", 规范路径, "--model-type", 模型类型, "--port", str(端口)]
-    if 格式 != "GGUF":
-        raise ValueError("底座不支持该模型源；本地模型应为 GGUF 文件或含 config.json 的权重目录")
-    # 候选顺序唯一实现在 `_解析启动器二进制`（latest 优先，理由见该函数），
-    # 供应链校验与真实启动共用它 —— 校验的与执行的是同一个二进制。
-    二进制 = _解析启动器二进制(启动器)
-    if not 二进制:
-        raise FileNotFoundError("未找到 llama-server；请配置 LLAMA_CPP_SERVER_BIN")
-    # 2026-09-17 修复（P0·阻塞生产）：「上下文长度」参数原来收了不用 —— 启动命令里
-    # -c 是硬编码 8192。实测后果：直播逐字稿精校的裁决窗口输入（证据包 + 提示词 +
-    # 底稿，实测单个窗口底稿 2400+ 字符）远超 8192 tokens，llama-server 直接回
-    # 500 `Context size has been exceeded.`，而调用方只看到
-    # 「模型调用失败: 模型 HTTP 返回 500」—— 极易误判成提示词或模型能力问题
-    # （实测绕了两轮：先怀疑思考模式、再怀疑参数没透传）。
-    # 现在按调用方给的 上下文长度 启动；未给或非法则保持原默认 8192（行为不变）。
-    _上下文 = 参数.get("上下文长度")
-    if isinstance(_上下文, bool) or not isinstance(_上下文, (int, str)):
-        _上下文 = 8192
-    else:
-        try:
-            _上下文 = int(_上下文)
-        except (TypeError, ValueError):
-            _上下文 = 8192
-    if _上下文 <= 0:
-        _上下文 = 8192
-    命令 = [二进制, "-m", 模型路径, "--port", str(端口), "--sleep-idle-seconds", "300",
-            "-c", str(_上下文), "-ngl", "99"]
-    if 模型类型 == "向量":
-        命令.extend(["--pooling", "cls", "--embeddings"])
-    elif 模型类型 == "重排":
-        命令.append("--rerank")
-    额外参数 = 参数.get("启动参数列表")
-    if isinstance(额外参数, list):
-        命令.extend(str(值) for 值 in 额外参数)
-    return 命令
-
-
-def _启动日志路径(模型路径: str) -> str:
-    """本地模型启动日志路径：工程缓存/模型日志/<模型名>.log。
-
-    2026-09-16 实测背景：原来把 stdout/stderr 丢 DEVNULL，模型启动即退出时
-    任务只能空转健康检查（上限 900 秒）后报一句「健康检查超时」，
-    没有任何可用线索，必须人工用同款命令复现才拿得到日志。
-    """
-    from pathlib import Path
-    from 公共契约.运行时.运行缓存 import 解析运行缓存根
-    名字 = Path(模型路径).stem or "本地模型"
-    # 2026-09-17 实测修复：原来直接拼 `<系统根>/工程缓存/模型日志`，制品态就是往不可变
-    # 制品里写运行态（发布门禁「制品.摘要绑定」实测由绿转红，落点
-    # `<制品>/平台客户端/工程缓存/模型日志/验证模型.log`）。改经唯一解析器：源码态仍是
-    # `<系统根>/工程缓存/模型日志`（行为不变），制品态改道平台受管缓存。
-    目录 = 解析运行缓存根(Path(__file__).resolve().parents[5]) / "模型日志"
-    try:
-        目录.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    return str(目录 / f"{名字}.log")
-
-
-def _读启动日志尾部(模型路径: str, 行数: int = 12) -> str:
-    """读启动日志尾部，供启动失败时随错误说明一并返回。"""
-    try:
-        with open(_启动日志路径(模型路径), "rb") as 文件:
-            文件.seek(0, 2)
-            大小 = 文件.tell()
-            文件.seek(max(0, 大小 - 8192))
-            文本 = 文件.read().decode("utf-8", "ignore")
-        有效行 = [行.strip() for 行 in 文本.splitlines() if 行.strip()]
-        if not 有效行:
-            return ""
-        return " | ".join(有效行[-行数:])[:1200]
-    except OSError:
-        return ""
-
-
-def _等待本地健康(端口: int, 超时秒: int) -> bool:
-    import urllib.request
-    网址 = f"http://127.0.0.1:{端口}/v1/models"
-    # 必须绕开系统代理探测：本函数在任务子进程（fork 出来）里 **循环** 调用，
-    # 而 macOS 的 urllib 默认经 _scproxy 读系统代理（_scproxy → SCDynamicStoreCopyProxies
-    # → CFPreferences），该路径在「fork 子进程 + 多线程」下非线程安全 ——
-    # 实测段错误 SIGSEGV（栈顶 _os_log_preferences_refresh），整场任务崩溃退出 -11。
-    # 本机模型端点本就不该走代理，ProxyHandler({}) 语义等价。
-    开放器 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    截止时间 = time.monotonic() + min(max(10, 超时秒), 900)
-    while time.monotonic() < 截止时间:
-        try:
-            with 开放器.open(网址, timeout=3) as 响应:
-                if 200 <= 响应.status < 300:
-                    return True
-        except Exception as 错误:
-            降级记录表.append(str(错误))
-        time.sleep(0.5)
-    return False
 
 
 def _启动本地模型(模型路径: str | None = None, 启动器: str | None = None, 模型类型: str | None = None,
@@ -1262,323 +732,6 @@ def 注册调用器(连接类型: str, 部署形态: str, 调用函数: Callable
     形态 = "云端" if 部署形态 in ("cloud", "api", "云", "云端") else "本地"
     调用函数表[f"{连接类型}:{形态}"] = 调用函数
 
-
-def 循环软护栏(*, 历史调用: list = None, 工具名: str = None, 阈值档位: list = None) -> 结果:
-    """检测重复工具调用并注入软提醒（DeepSeek repeat-tool-reminder 模式化落地）。
-
-    参数:
-        历史调用: 历史工具调用名列表（按时间顺序）
-        工具名: 当前准备调用的工具名（可空，空则统计全部）
-        阈值档位: 提醒触发阈值列表，默认 [3, 5, 8]
-
-    行为: 不硬杀、不静默——同工具连续调用次数达到阈值档位时，返回提醒文本注入下一轮，
-    把纠错权交给模型。返回 {触发: bool, 连续次数, 提醒文本, 阈值档位}。
-    """
-    try:
-        历史 = list(历史调用 or [])
-        档位 = list(阈值档位 or [3, 5, 8])
-        if not 历史:
-            return 结果.成功结果({"触发": False, "连续次数": 0, "提醒文本": "", "阈值档位": 档位})
-        # 统计指定工具（或全部工具）的连续调用次数
-        if 工具名:
-            目标列表 = [名 for 名 in 历史 if 名 == 工具名]
-        else:
-            # 无指定工具时统计最近一个工具的连续次数
-            目标列表 = 历史
-        if not 目标列表:
-            return 结果.成功结果({"触发": False, "连续次数": 0, "提醒文本": "", "阈值档位": 档位})
-        最近工具 = 目标列表[-1]
-        连续次数 = 0
-        for 名 in reversed(目标列表):
-            if 名 == 最近工具:
-                连续次数 += 1
-            else:
-                break
-        # 找最大命中档位
-        命中档位 = None
-        for 阈值 in sorted(档位):
-            if 连续次数 >= 阈值:
-                命中档位 = 阈值
-        if 命中档位 is None:
-            return 结果.成功结果({"触发": False, "连续次数": 连续次数, "提醒文本": "", "阈值档位": 档位})
-        提醒文本 = (
-            f"【软护栏提醒】工具「{最近工具}」已连续调用 {连续次数} 次（达到阈值 {命中档位}）。"
-            "请确认是否陷入循环：若无新进展请换策略或停止，不要重复调用同一工具。"
-        )
-        return 结果.成功结果({
-            "触发": True, "连续次数": 连续次数, "提醒文本": 提醒文本, "阈值档位": 档位,
-        })
-    except Exception as 异常:
-        return 结果.失败("软护栏检查失败", str(异常), 来源="模型连接器")
-
-
-
-# ═══════════════════════════════════════════════
-# 工具并行调度：DeepSeek tool-calls 调度闭环模式化落地
-# exclusive 调用成屏障（前后串行）；parallel 调用进有界池（默认10）；
-# 分配并发但结果严格按 model 顺序提交（seq 关联）；取消合成 TOOL_ABORTED 错误结果。
-# 0加密0限制：只做调度编排，不执行工具，脱敏由业务端自理。
-# ═══════════════════════════════════════════════
-调度默认并行上限 = 10
-
-
-def 调度工具调用(*, 工具调用列表: list = None, 并行上限: int = None) -> 结果:
-    """生成工具调用调度计划。返回 {批次列表, 顺序, 并行上限}。
-
-    工具调用项: {"调用id", "工具名", "参数", "独占": bool}
-    返回批次: 每批 = {"类型": "串行屏障"|"并行批", "调用列表": [...]}
-    结果顺序 = 输入顺序（DeepSeek 按 model 序提交）。
-    """
-    try:
-        if not isinstance(工具调用列表, list) or not 工具调用列表:
-            return 结果.失败("参数不合法", "工具调用列表必须是非空列表", 来源="模型连接器")
-        上限 = max(1, min(int(并行上限 or 调度默认并行上限), 100))
-        批次列表 = []
-        当前并行批 = []
-        for 项 in 工具调用列表:
-            if not isinstance(项, dict) or "调用id" not in 项 or "工具名" not in 项:
-                return 结果.失败("参数不合法", f"工具调用项必须含 调用id/工具名: {项}", 来源="模型连接器")
-            独占 = bool(项.get("独占", False))
-            if 独占:
-                # 先清空未满并行批
-                if 当前并行批:
-                    批次列表.append({"类型": "并行批", "调用列表": 当前并行批})
-                    当前并行批 = []
-                批次列表.append({"类型": "串行屏障", "调用列表": [项]})
-            else:
-                当前并行批.append(项)
-                if len(当前并行批) >= 上限:
-                    批次列表.append({"类型": "并行批", "调用列表": 当前并行批})
-                    当前并行批 = []
-        if 当前并行批:
-            批次列表.append({"类型": "并行批", "调用列表": 当前并行批})
-        # 结果顺序 = 输入顺序
-        结果顺序 = [项["调用id"] for 项 in 工具调用列表]
-        return 结果.成功结果({
-            "批次列表": 批次列表,
-            "结果顺序": 结果顺序,
-            "并行上限": 上限,
-            "总调用数": len(工具调用列表),
-            "批次数": len(批次列表),
-        })
-    except Exception as 异常:
-        return 结果.失败("调度失败", str(异常), 来源="模型连接器")
-
-
-def 合成取消结果(*, 调用id: str = None, 工具名: str = None, 原因: str = None) -> 结果:
-    """合成取消/未启动调用的错误结果。
-
-    对外错误码一律中文（决策 0003）：`派发前已取消`——语义对齐上游 DeepSeek 的
-    TOOL_ABORTED_BEFORE_DISPATCH；合成结果随工具回执回给模型，不落网关错误码表。
-    """
-    try:
-        if not isinstance(调用id, str) or not 调用id.strip():
-            return 结果.失败("参数不合法", "调用id不能为空", 来源="模型连接器")
-        原因值 = str(原因 or "调度前已取消")
-        return 结果.成功结果({
-            "调用id": 调用id, "工具名": str(工具名 or ""),
-            "合成结果": {"错误码": "派发前已取消", "原因": 原因值},
-            "未执行": True,
-        })
-    except Exception as 异常:
-        return 结果.失败("合成取消结果失败", str(异常), 来源="模型连接器")
-
-
-
-# ═══════════════════════════════════════════════
-# 重试调度：按错误码白名单/兜底模式判定是否重试，并给出带抖动的指数退避秒数。
-# 纯计算、只读；不发起任何模型、网络或工具调用。
-# ═══════════════════════════════════════════════
-默认最大重试次数 = 3
-默认退避基数秒 = 0.5
-默认抖动比例 = 0.1
-重试最大上限 = 100            # 最大重试次数上限（防止退避指数溢出）
-退避最大秒 = 300.0            # 单次退避秒数硬上限
-重试模式别名 = {
-    "1": 1, "normal": 1, "白名单": 1,
-    "2": 2, "always": 2, "兜底": 2,
-}
-
-
-def _归一化重试模式(值: Any) -> int | None:
-    """把重试模式归一化为 1（normal 白名单）或 2（always 兜底）；非法返回 None。"""
-    if isinstance(值, int) and not isinstance(值, bool) and 值 in (1, 2):
-        return 值
-    if isinstance(值, str):
-        return 重试模式别名.get(值.strip())
-    return None
-
-
-def 重试调度(*, 重试模式: Any = None, 错误码白名单: list | None = None,
-             实际错误码: Any = None,
-             最大重试次数: int | None = None, 退避基数秒: Any = None,
-             抖动比例: Any = None) -> 结果:
-    """根据错误码白名单与重试模式判定是否重试，并算出带抖动的指数退避秒数。
-
-    参数:
-        重试模式: 1=normal 白名单（仅白名单命中才重试）/2=always 兜底（无条件重试）
-        错误码白名单: 可重试错误码列表（模式1 生效，空即不命中）
-        实际错误码: 本次真实错误码（**可选**）。传了则模式1 按「实际错误码 ∈ 白名单」判定命中；
-                    不传则沿用旧行为（白名单非空即重试），保证既有调用方与场景零影响
-        最大重试次数: 重试次数上限，默认 3
-        退避基数秒: 指数退避基数秒，默认 0.5
-        抖动比例: 退避上浮比例，默认 0.1（确定性上浮，测试可复现）
-
-    返回 {是否重试: bool, 下次退避秒: float, 原因: str}；退避计划全文写入 原因。
-    第 i 次重试退避 = 退避基数秒 × 2^i × (1 + 抖动比例)，单次上限 300 秒。
-    """
-    try:
-        模式 = _归一化重试模式(重试模式)
-        if 模式 is None:
-            return _失败("参数不合法", "重试模式必须是 1(normal 白名单) 或 2(always 兜底)")
-        if isinstance(最大重试次数, bool) or (
-                最大重试次数 is not None and not isinstance(最大重试次数, int)):
-            return _失败("参数不合法", "最大重试次数必须是整数")
-        上限次数 = 默认最大重试次数 if 最大重试次数 is None else 最大重试次数
-        if 上限次数 < 0 or 上限次数 > 重试最大上限:
-            return _失败("参数不合法", f"最大重试次数必须在 0 到 {重试最大上限} 之间")
-        if isinstance(退避基数秒, bool) or (
-                退避基数秒 is not None and not isinstance(退避基数秒, (int, float))):
-            return _失败("参数不合法", "退避基数秒必须是数值")
-        基数 = 默认退避基数秒 if 退避基数秒 is None else float(退避基数秒)
-        if 基数 <= 0:
-            return _失败("参数不合法", "退避基数秒必须大于 0")
-        if isinstance(抖动比例, bool) or (
-                抖动比例 is not None and not isinstance(抖动比例, (int, float))):
-            return _失败("参数不合法", "抖动比例必须是数值")
-        抖动 = 默认抖动比例 if 抖动比例 is None else float(抖动比例)
-        if 抖动 < 0 or 抖动 > 1:
-            return _失败("参数不合法", "抖动比例必须在 0 到 1 之间")
-        if 错误码白名单 is None:
-            白名单列表: list[str] = []
-        elif isinstance(错误码白名单, list):
-            if any(not isinstance(项, str) or not 项.strip() for 项 in 错误码白名单):
-                return _失败("参数不合法", "错误码白名单的元素必须是非空文本")
-            白名单列表 = [项.strip() for 项 in 错误码白名单]
-        else:
-            return _失败("参数不合法", "错误码白名单必须是列表")
-        if 实际错误码 is not None and (not isinstance(实际错误码, str) or not 实际错误码.strip()):
-            return _失败("参数不合法", "实际错误码必须是文本（可选；不传沿用旧行为）")
-
-        # 条件判定：模式2 兜底无条件重试；模式1 只有白名单命中才重试
-        if 模式 == 2:
-            是否重试 = 上限次数 > 0
-            原因 = (f"always 兜底模式：忽略错误码白名单无条件重试（上限 {上限次数} 次）"
-                    if 是否重试 else "always 兜底模式：最大重试次数为 0，不重试")
-        else:
-            if 实际错误码 is None:
-                # 旧行为（未传 实际错误码）：白名单非空即重试 —— 保持向后兼容
-                是否重试 = bool(白名单列表) and 上限次数 > 0
-                if 上限次数 <= 0:
-                    原因 = "normal 白名单模式：最大重试次数为 0，不重试"
-                elif 是否重试:
-                    原因 = f"白名单命中：可重试错误码 {白名单列表}（上限 {上限次数} 次）"
-                else:
-                    原因 = "白名单未命中：错误码白名单为空，不重试"
-            else:
-                # 新行为（传了 实际错误码）：按「实际错误码 ∈ 白名单」判定真正的命中
-                命中 = 实际错误码.strip() in 白名单列表
-                是否重试 = 命中 and 上限次数 > 0
-                if 上限次数 <= 0:
-                    原因 = f"normal 白名单模式：最大重试次数为 0，不重试（实际错误码 {实际错误码}）"
-                elif 命中:
-                    原因 = (f"白名单命中：实际错误码 {实际错误码} 在可重试集合 {白名单列表} 内"
-                            f"（上限 {上限次数} 次）")
-                else:
-                    原因 = (f"白名单未命中：实际错误码 {实际错误码} 不在可重试集合 "
-                            f"{白名单列表} 内，不重试")
-
-        if not 是否重试:
-            return 结果.成功结果({"是否重试": False, "下次退避秒": 0.0, "原因": 原因})
-
-        # 带抖动的指数退避计划：第 i 次重试 = 基数 × 2^i × (1 + 抖动比例)
-        退避计划 = [round(min(基数 * (2 ** 序号) * (1 + 抖动), 退避最大秒), 6)
-                    for 序号 in range(上限次数)]
-        return 结果.成功结果({
-            "是否重试": True,
-            "下次退避秒": 退避计划[0],
-            "原因": f"{原因}；退避计划={退避计划}",
-        })
-    except Exception as 异常:
-        return 结果.失败("重试调度失败", str(异常), 来源="模型连接器")
-
-
-# ═══════════════════════════════════════════════
-# 组装可用工具清单：按门控模式过滤/排序调用方传入的工具清单。
-# 不内嵌任何业务角色判断——清单全部由调用方传入，本能力只做纯计算去重与排序。
-# ═══════════════════════════════════════════════
-门控模式别名 = {
-    "1": 1, "全量": 1, "all": 1,
-    "2": 2, "显式清单": 2, "显式列表": 2, "显式": 2,
-}
-工具名键表 = ("名称", "工具名", "tool", "name")
-
-
-def _归一化门控模式(值: Any) -> int | None:
-    """把门控模式归一化为 1（全量）或 2（显式清单）；非法返回 None。"""
-    if isinstance(值, int) and not isinstance(值, bool) and 值 in (1, 2):
-        return 值
-    if isinstance(值, str):
-        return 门控模式别名.get(值.strip())
-    return None
-
-
-def _取工具名(项: Any) -> str | None:
-    """从工具项提取工具名：文本直接取；字典取 名称/工具名；其他返回 None。"""
-    if isinstance(项, str):
-        return 项.strip() or None
-    if isinstance(项, dict):
-        for 键 in 工具名键表:
-            值 = 项.get(键)
-            if isinstance(值, str) and 值.strip():
-                return 值.strip()
-    return None
-
-
-def 组装可用工具清单(*, 门控模式: Any = None, 全部工具清单: list | None = None,
-                     可用工具清单: list | None = None) -> 结果:
-    """按门控模式过滤并排序工具清单，不内嵌任何业务角色判断（清单由调用方传入）。
-
-    参数:
-        门控模式: 1=全量（返回全部）/2=显式清单（只返回可用清单命中的工具）
-        全部工具清单: 调用方传入的全量工具清单（文本或含 名称/工具名 的字典）
-        可用工具清单: 显式可用工具清单（门控模式=2 生效）
-
-    返回 {工具清单: list[str], 数量: int}；按工具名去重（保序）后升序排序，稳定可复现。
-    """
-    try:
-        模式 = _归一化门控模式(门控模式)
-        if 模式 is None:
-            return _失败("参数不合法", "门控模式必须是 1(全量) 或 2(显式清单)")
-        if not isinstance(全部工具清单, list):
-            return _失败("参数不合法", "全部工具清单必须是列表")
-        全量名表: list[str] = []
-        for 项 in 全部工具清单:
-            名 = _取工具名(项)
-            if 名 is None:
-                return _失败("参数不合法",
-                             f"全部工具清单的元素必须是文本或含 名称/工具名 的字典: {项!r}")
-            全量名表.append(名)
-        全量去重 = list(dict.fromkeys(全量名表))       # 去重且保序
-        if 模式 == 1:
-            结果名表 = 全量去重
-        else:
-            显式清单 = 可用工具清单 if 可用工具清单 is not None else []
-            if not isinstance(显式清单, list):
-                return _失败("参数不合法", "可用工具清单必须是列表")
-            可用名表: list[str] = []
-            for 项 in 显式清单:
-                名 = _取工具名(项)
-                if 名 is None:
-                    return _失败("参数不合法",
-                                 f"可用工具清单的元素必须是文本或含 名称/工具名 的字典: {项!r}")
-                可用名表.append(名)
-            允许集 = set(可用名表)
-            结果名表 = [名 for 名 in 全量去重 if 名 in 允许集]
-        结果名表 = sorted(结果名表)
-        return 结果.成功结果({"工具清单": 结果名表, "数量": len(结果名表)})
-    except Exception as 异常:
-        return 结果.失败("组装工具清单失败", str(异常), 来源="模型连接器")
 
 # ── 响应归一化的 re-export（2026-09-18 拆分）──────────────────────
 # 该段已独立成 `实现/响应归一化.py`；这里 re-export 两个对外符号，

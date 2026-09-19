@@ -166,11 +166,18 @@ class 测试模型连接器通用协议(unittest.TestCase):
             能力搜索 = json.load(文件)
 
         self.assertEqual(包声明["句柄超时秒"], 1800)
+        # 「探测模型端点」是有意的小超时（15 秒）：它是交互式探针，要快速失败，
+        # 与「长对话/流式生成」的 1800 秒不是一个口径 —— 不能拿 1800 一刀切。
+        小超时例外能力 = ("探测模型端点",)
         for 文档 in (包声明, 能力定义, 参数契约):
             for 能力 in 文档.get("能力列表", 文档.get("能力契约", [])):
+                是探针 = any(名 in json.dumps(能力, ensure_ascii=False) for 名 in 小超时例外能力)
                 for 参数 in 能力.get("参数", []):
                     if 参数.get("名称") == "超时秒":
-                        self.assertEqual(参数.get("默认值"), 1800)
+                        if 是探针:
+                            self.assertEqual(参数.get("默认值"), 15)
+                        else:
+                            self.assertEqual(参数.get("默认值"), 1800)
         for 能力 in 能力搜索:
             说明 = 能力.get("说明", "")
             self.assertNotIn("连接阶段流式输出", 说明)
@@ -200,9 +207,12 @@ class 测试模型连接器通用协议(unittest.TestCase):
                     协议="res", 超时秒=60,
                 )
         self.assertTrue(返回.成功, 返回.错误说明)
+        # 实现会把「上下文长度」一并带下去（启动期参数，见实现注释：不带会撞
+        # `Context size has been exceeded.` 且调用方只看到「HTTP 500」）。
+        # 本断言此前漏了该键，属测试滞后于实现，非本次拆分引入。
         启动模拟.assert_called_once_with(
             模型文件.name, None, "LLM", 模型大小字节=None,
-            参数={"协议": "codex_responses"}, 超时秒=60,
+            参数={"协议": "codex_responses", "上下文长度": None}, 超时秒=60,
         )
 
     def test_chat非流式返回统一结果并组装协议请求(self) -> None:

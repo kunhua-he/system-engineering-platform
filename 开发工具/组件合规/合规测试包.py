@@ -29,6 +29,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# —— 拆分（开工-20260919-160631-4b1a）：下列三簇原在本文件，现搬到同目录独立文件。
+# 名字与签名一个不改，并按原样 re-export：`合规测试包.<名>` 的既有调用方与
+# `mock.patch` 目标全部无感。
+from 开发工具.组件合规.参数探测 import (
+    _合规真实输入根, _空闲端口, _最小PNG, _参数最小值,
+)
+from 开发工具.组件合规.加载与入口 import _加载模块, _加载入口, _值类型
+from 开发工具.组件合规.判定助手 import (
+    _成功标志, _统一结果错误码, _携带失败结构, _提取函数错误码,
+)
+
+
 合规场景表 = [
     "结构", "契约", "依赖", "配置", "权限", "生命周期", "资源释放",
     "版本升级", "失败语义", "说明书", "完整性摘要", "公共入口", "真实返回值",
@@ -71,194 +83,6 @@ def _调用包仓库能力(能力id: str, 参数: dict[str, Any]) -> Any:
         _包仓库后端 = 实例
     return _包仓库后端.调用(能力id, 参数)
 
-
-def _合规真实输入根(根目录: Path) -> Path:
-    """返回当前合规工作单元专属输入根，避免并发包互删文件。"""
-    覆盖 = os.environ.get("系统底座_合规输入根", "").strip()
-    return Path(覆盖) if 覆盖 else 根目录 / "工程缓存" / "合规真实输入"
-
-
-def _空闲端口() -> int:
-    """取得当前进程可用的回环端口；不占用固定代理端口。"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as 套接字:
-        套接字.bind(("127.0.0.1", 0))
-        return int(套接字.getsockname()[1])
-
-
-def _最小PNG() -> bytes:
-    """返回一个真实的 1x1 PNG，供图像能力做最小成功调用。"""
-    return base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
-        "+A8AAQUBAScY42YAAAAASUVORK5CYII="
-    )
-
-
-def _成功标志(返回值: Any) -> bool | None:
-    """提取统一结果的成功标志：dict 取 成功 键、对象取 成功 属性。
-
-    非统一结果（普通业务数据）没有该标志，返回 None，调用方据此退化为
-    “只看是否为空”的判据，与成功/失败两条路径保持同一口径。
-    """
-    if isinstance(返回值, dict):
-        return bool(返回值["成功"]) if "成功" in 返回值 else None
-    if hasattr(返回值, "成功"):
-        return bool(返回值.成功)
-    return None
-
-
-def _统一结果错误码(返回值: Any) -> str:
-    """提取统一结果的错误码（dict 取 错误码 键、对象取 错误码 属性）。"""
-    if isinstance(返回值, dict):
-        return str(返回值.get("错误码") or "")
-    return str(getattr(返回值, "错误码", "") or "")
-
-
-def _携带失败结构(返回值: Any) -> bool:
-    """自称成功的统一结果是否携带失败结构（错误 或 错误码 非空）。"""
-    if isinstance(返回值, dict):
-        return bool(返回值.get("错误")) or bool(返回值.get("错误码"))
-    return bool(getattr(返回值, "错误", None)) or bool(getattr(返回值, "错误码", ""))
-
-
-def _参数最小值(能力id: str, 参数: dict[str, Any], 根目录: Path) -> Any:
-    """按公开参数契约生成最小合法值，不把占位字符串冒充真实输入。"""
-    名称 = str(参数.get("名称", ""))
-    类型 = str(参数.get("类型", ""))
-    能力输入根 = _合规真实输入根(根目录) / hashlib.sha1(
-        能力id.encode("utf-8")).hexdigest()[:10]
-    if 名称 in {"端口", "监听端口"}:
-        return _空闲端口()
-    if 名称 in {"调用函数", "回调函数"} or 类型 in {"句柄型"}:
-        return lambda *参数值, **关键字值: {"成功": True, "值": 参数值[0] if 参数值 else ""}
-    if 类型 in {"逻辑型"}:
-        return bool(参数.get("默认值", False))
-    # 只认正式类型名（见 公共契约/基础类型/类型目录.md）；历史短名与非正式名不得出现在这里，
-    # 否则会给「非法类型名」造出可调用值、掩盖契约漂移（曾把 浮点数型 当数值型放行）。
-    # E-5 同批清理：`逻辑/文本/字符串型/二进制型/映射型/数组型/空/函数/子程序` 这批判据
-    # 已删 —— 它们不是正式类型名，全是「自造名一进契约就有值可用」的假绿来源。
-    # 实测全仓 参数契约.json 对这批名字 **0 命中**，删除不改变任何真实契约的取值路径。
-    if 类型 in {"整数型", "长整数型", "单精度数型", "双精度数型"}:
-        if "默认值" in 参数 and 参数.get("默认值") is not None:
-            return 参数["默认值"]
-        return 1 if 名称 in {"宽度", "高度", "最大边长", "字节数", "最大页数", "最大幻灯片数"} else 0
-    if 类型 in {"字节集型"} or 名称 in {"字节", "图片字节"}:
-        return _最小PNG()
-    if 类型 in {"字典型"}:
-        if 名称 in {"编码选项", "请求参数"}:
-            return {}
-        return {"标题": "合规测试", "内容": "真实输入"} if "文档" in 能力id or "生成" in 能力id else {}
-    if 类型 in {"列表型"}:
-        if 名称 == "验证命令":
-            return [[sys.executable, "-c", "print('ok')"]]
-        if 名称 == "补丁列表":
-            return []
-        return ["合规测试"]
-    if 类型 in {"空值型"}:
-        return None
-    if "提交哈希" in 名称:
-        try:
-            return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=根目录, text=True).strip()
-        except (OSError, subprocess.SubprocessError):
-            return "0" * 40
-    if "仓库路径" in 名称:
-        return str(根目录)
-    if "目录" in 名称:
-        # 凡语义为「目录」的文本参数，一律给**真实的临时目录**。原实现只认白名单里的
-        # 若干目录名，其余（技能根目录/目录路径/目标目录/工作目录…）落到下面的文本兜底
-        # 分支拿到字面量"合规测试"，被调用方当成相对路径解析 → 在项目根**凭空建出
-        # 「合规测试/」目录**（技能库写 索引.json 就是这么来的），污染工作树。
-        目录 = 能力输入根
-        目录.mkdir(parents=True, exist_ok=True)
-        if 名称 == "来源目录":
-            (目录 / "来源.txt").write_text("真实快照输入", encoding="utf-8")
-        return str(目录)
-    if "相对路径" in 名称:
-        目录 = 能力输入根
-        目录.mkdir(parents=True, exist_ok=True)
-        (目录 / "输入.txt").write_text("真实文件输入", encoding="utf-8")
-        return "输入.txt"
-    if "路径" in 名称 or 名称 in {"文件", "源文件"}:
-        扩展名 = {"PDF文档": ".pdf", "表格文档": ".xlsx", "演示文稿": ".pptx",
-                 "文字文档": ".docx"}.get(能力id.split(".", 1)[0], ".txt")
-        路径 = 能力输入根 / f"输入{扩展名}"
-        路径.parent.mkdir(parents=True, exist_ok=True)
-        if not 路径.exists():
-            if 扩展名 == ".pdf":
-                候选 = next((根目录 / "支持库" / "适配层").rglob("示例.pdf"), None)
-                if 候选 and 候选.is_file():
-                    路径.write_bytes(候选.read_bytes())
-                else:
-                    路径.write_bytes(b"%PDF-1.4\n")
-            elif 扩展名 == ".txt":
-                路径.write_text("真实文档输入\n第二段", encoding="utf-8")
-            else:
-                路径.write_bytes("真实格式输入".encode("utf-8"))
-        return str(路径)
-    if 名称 in {"地址", "网址", "URL"}:
-        return "http://127.0.0.1:1"
-    if 名称 in {"提供者名", "提供者"}:
-        return "全部"
-    if 名称 in {"目标格式", "输出格式", "格式"}:
-        return str(参数.get("默认值") or "txt")
-    if 名称 in {"文本", "内容", "标题", "页面说明", "旧文本", "新文本", "目标", "字段名", "键", "值", "条目", "分隔符", "语言"}:
-        return "合规测试"
-    if "时间戳" in 名称:
-        return time.time()
-    if 名称 in {"提交消息", "操作", "分支名", "期望值", "新值", "期望版本", "资源id", "持有者"}:
-        return "合规测试"
-    if "默认值" in 参数 and 参数["默认值"] is not None:
-        return 参数["默认值"]
-    return "合规测试"
-
-
-def _加载模块(文件路径: Path):
-    """加载任意 Python 文件为模块（用于真实实现调用）。"""
-    import importlib.util as _工具
-    标识 = hashlib.sha1(str(文件路径.resolve()).encode("utf-8")).hexdigest()[:12]
-    模块名 = f"合规_{文件路径.stem}_{标识}"
-    规格 = _工具.spec_from_file_location(模块名, 文件路径)
-    if 规格 is None or 规格.loader is None:
-        raise ImportError(f"无法加载: {文件路径}")
-    模块 = _工具.module_from_spec(规格)
-    规格.loader.exec_module(模块)
-    return 模块
-
-
-def _加载入口(组件目录: Path, 入口路径: Path):
-    """按公开入口加载入口模块，隔离临时组件的固定包名缓存。"""
-    import sys as _系统
-    原有模块 = {
-        名称: 模块 for 名称, 模块 in _系统.modules.items()
-        if 名称 == "实现" or 名称.startswith("实现.")
-    }
-    for 名称 in list(原有模块):
-        del _系统.modules[名称]
-    _系统.path.insert(0, str(组件目录))
-    try:
-        return _加载模块(入口路径)
-    finally:
-        _系统.path.remove(str(组件目录))
-        for 名称 in list(_系统.modules):
-            if 名称 == "实现" or 名称.startswith("实现."):
-                del _系统.modules[名称]
-        _系统.modules.update(原有模块)
-
-
-def _值类型(值: Any) -> str:
-    """按配置值推断类型（用于生产配置校验器声明表）。"""
-    if isinstance(值, bool):
-        return "布尔"
-    if isinstance(值, int):
-        return "整数"
-    if isinstance(值, float):
-        return "浮点数"
-    if isinstance(值, str):
-        return "文本"
-    if isinstance(值, list):
-        return "列表"
-    if isinstance(值, dict):
-        return "字典"
-    return "空"
 
 
 @dataclass
@@ -329,37 +153,6 @@ def _读取聚合契约(组件目录: Path) -> tuple[list[dict[str, Any]], bool,
     return 能力表, 假, ["能力契约/ 为空（无契约 JSON）"] if not 能力表 else []
 
 
-def _提取函数错误码(实现目录: Path, 函数名: str) -> list[str]:
-    """按函数名定位实现函数体，提取统一失败结果中的错误码。
-
-    用于失败语义精确判定：实现有失败路径的能力必须声明对应错误码；
-    实现无失败路径（纯查询/纯计算）的能力空错误码合法。
-    """
-    错误码: list[str] = []
-    if not 实现目录.is_dir():
-        return 错误码
-    for 文件 in 实现目录.rglob("*.py"):
-        try:
-            内容 = 文件.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        模式 = re.compile(r"def\s+" + re.escape(函数名) + r"\s*\(.*?\n(.*?)(?=\ndef\s+|\Z)", re.S)
-        匹配 = 模式.search(内容)
-        if not 匹配:
-            continue
-        函数体 = 匹配.group(1)
-        for m in re.findall(r'结果\.失败\(\s*["\']([^"\']+)["\']', 函数体):
-            if m not in 错误码:
-                错误码.append(m)
-        # 兼容统一结果的字典返回写法：
-        # {"成功": False, "错误码": "参数不合法"}。
-        if re.search(r'["\']成功["\']\s*:\s*False', 函数体):
-            for m in re.findall(r'["\']错误码["\']\s*:\s*["\']([^"\']+)["\']', 函数体):
-                if m not in 错误码:
-                    错误码.append(m)
-        if 错误码:
-            break
-    return 错误码
 
 
 def _提供者锁定(系统根: Path, 组件目录: Path, 声明: dict[str, Any]) -> tuple[bool, str]:

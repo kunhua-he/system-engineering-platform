@@ -26,15 +26,14 @@ from 公共契约.运行时.平台适配 import 脚本入口准入
 
 脚本入口准入("构建平台客户端制品")
 
+# 只留入口定义 / 常量 / 复制面 / 构建编排 / 安装面用到的导入；随簇搬走的导入去了对应文件：
+#   `ast` 留在入口（复制面真用；测试按 `构建模块.ast` 打补丁）
+#   stat→客户端/受控文件读写.py；hashlib/time→客户端/制品生成与自校验.py
+#   subprocess/tempfile→原文件内零引用（历史遗留，随搬家一并去掉）
 import ast
 import json
-import hashlib
 import os
 import shutil
-import stat
-import subprocess
-import tempfile
-import time
 from typing import Any
 
 顶层包表 = ["公共契约", "支持库", "模块库", "技能库", "运行核心", "前端核心", "后端核心",
@@ -45,223 +44,48 @@ from typing import Any
 制品目录 = 系统根 / "工程缓存" / "制品仓库" / "平台客户端制品"
 环境目录 = 系统根 / "工程缓存" / "制品仓库" / "平台客户端环境"
 
-
-class 客户端构建错误(RuntimeError):
-    """客户端构建遇到不可安全恢复的问题。"""
-
-
-def _拒绝符号链接(根: Path, 阶段: str) -> None:
-    """拒绝根及其全部后代中的符号链接；目录链接也不得静默跳过。"""
-    根 = Path(根)
-    if 根.is_symlink():
-        raise 客户端构建错误(f"{阶段}发现符号链接: {根}")
-    if not 根.exists():
-        return
-    for 路径 in 根.rglob("*"):
-        if 路径.is_symlink():
-            raise 客户端构建错误(f"{阶段}发现符号链接: {路径}")
-
-
-def _解析源码根(源根: Path) -> Path:
-    """返回真实源码根；源码根必须是存在的普通目录。"""
-    源根 = Path(源根)
-    if 源根.is_symlink():
-        raise 客户端构建错误(f"源码根是符号链接: {源根}")
-    try:
-        真实根 = 源根.resolve(strict=True)
-    except OSError as 错误:
-        raise 客户端构建错误(f"源码根无法解析: {源根}: {错误}") from 错误
-    if not 真实根.is_dir():
-        raise 客户端构建错误(f"源码根不是目录: {源根}")
-    return 真实根
-
-
-def _解析受控源文件(文件: Path, 源根: Path, 真实源根: Path) -> Path:
-    """逐文件解析并确认真实位置仍位于允许源码根。"""
-    if 文件.is_symlink():
-        raise 客户端构建错误(f"源文件是符号链接: {文件}")
-    try:
-        真实文件 = 文件.resolve(strict=True)
-        真实文件.relative_to(真实源根)
-    except (OSError, ValueError) as 错误:
-        raise 客户端构建错误(f"源文件越过允许源码根 {源根}: {文件}") from 错误
-    if not 真实文件.is_file():
-        raise 客户端构建错误(f"源路径不是普通文件: {文件}")
-    return 真实文件
-
-
-def _准备目标根(目标根: Path) -> Path:
-    """创建普通目标根并返回其真实路径。"""
-    目标根 = Path(目标根)
-    if 目标根.is_symlink():
-        raise 客户端构建错误(f"目标根是符号链接: {目标根}")
-    _拒绝符号链接(目标根, "复制前目标检查")
-    目标根.mkdir(parents=True, exist_ok=True)
-    if 目标根.is_symlink():
-        raise 客户端构建错误(f"目标根是符号链接: {目标根}")
-    return 目标根.resolve(strict=True)
-
-
-def _受控目标路径(目标根: Path, 真实目标根: Path, 相对: Path) -> Path:
-    """生成不得越过目标根的目标路径，并拒绝既有链接祖先。"""
-    if 相对.is_absolute() or ".." in 相对.parts:
-        raise 客户端构建错误(f"目标相对路径非法: {相对}")
-    目标 = 目标根 / 相对
-    try:
-        目标.resolve(strict=False).relative_to(真实目标根)
-    except ValueError as 错误:
-        raise 客户端构建错误(f"目标路径越界: {目标}") from 错误
-    当前 = 目标.parent
-    while 当前 != 目标根 and 当前 != 当前.parent:
-        if 当前.is_symlink():
-            raise 客户端构建错误(f"目标路径包含符号链接: {当前}")
-        当前 = 当前.parent
-    return 目标
-
-
-_目录打开标志 = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-_文件无跟随标志 = getattr(os, "O_NOFOLLOW", 0)
-
-
-def _打开根目录(根: Path, 用途: str) -> int:
-    """以不跟随链接方式打开根目录，返回调用者负责关闭的目录描述符。"""
-    try:
-        return os.open(根, _目录打开标志)
-    except OSError as 错误:
-        raise 客户端构建错误(f"{用途}根目录无法安全打开: {根}: {错误}") from 错误
-
-
-def _打开目录链(根描述符: int, 部件表: tuple[str, ...], 创建: bool) -> int:
-    """从已锚定根描述符逐级无跟随打开目录，杜绝祖先目录链接竞态。"""
-    当前 = os.dup(根描述符)
-    try:
-        for 部件 in 部件表:
-            if not 部件 or 部件 in {".", ".."} or "/" in 部件:
-                raise 客户端构建错误(f"目录部件非法: {部件}")
-            if 创建:
-                try:
-                    os.mkdir(部件, mode=0o755, dir_fd=当前)
-                except FileExistsError:
-                    pass
-            下一层 = os.open(部件, _目录打开标志, dir_fd=当前)
-            os.close(当前)
-            当前 = 下一层
-        return 当前
-    except Exception:
-        os.close(当前)
-        raise
-
-
-def _读取受控文件(根描述符: int, 显示根: Path, 相对: Path) -> tuple[bytes, int]:
-    """从锚定源码根无跟随读取普通文件，返回内容与权限位。"""
-    路径 = 显示根 / 相对
-    父描述符 = -1
-    文件描述符 = -1
-    try:
-        父描述符 = _打开目录链(根描述符, tuple(相对.parts[:-1]), 创建=False)
-        文件描述符 = os.open(
-            相对.name, os.O_RDONLY | _文件无跟随标志, dir_fd=父描述符)
-        状态 = os.fstat(文件描述符)
-        if not stat.S_ISREG(状态.st_mode):
-            raise 客户端构建错误(f"源路径不是普通文件: {路径}")
-        数据块表: list[bytes] = []
-        while True:
-            数据块 = os.read(文件描述符, 1024 * 1024)
-            if not 数据块:
-                break
-            数据块表.append(数据块)
-        return b"".join(数据块表), stat.S_IMODE(状态.st_mode)
-    except OSError as 错误:
-        raise 客户端构建错误(f"读取受控源文件失败: {路径}: {错误}") from 错误
-    finally:
-        if 文件描述符 >= 0:
-            os.close(文件描述符)
-        if 父描述符 >= 0:
-            os.close(父描述符)
-
-
-def _写入受控目标(
-    根描述符: int, 显示根: Path, 相对: Path, 数据: bytes, 权限位: int = 0o644
-) -> None:
-    """经锚定目标根写临时普通文件并原子替换，不跟随目标或祖先链接。"""
-    路径 = 显示根 / 相对
-    父描述符 = -1
-    临时描述符 = -1
-    临时名 = f".{相对.name}.构建中-{os.urandom(8).hex()}"
-    try:
-        父描述符 = _打开目录链(根描述符, tuple(相对.parts[:-1]), 创建=True)
-        try:
-            既有状态 = os.stat(相对.name, dir_fd=父描述符, follow_symlinks=False)
-        except FileNotFoundError:
-            既有状态 = None
-        if 既有状态 is not None and stat.S_ISLNK(既有状态.st_mode):
-            raise 客户端构建错误(f"目标文件是符号链接: {路径}")
-        临时描述符 = os.open(
-            临时名,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | _文件无跟随标志,
-            权限位,
-            dir_fd=父描述符,
-        )
-        os.fchmod(临时描述符, 权限位)
-        视图 = memoryview(数据)
-        while 视图:
-            已写 = os.write(临时描述符, 视图)
-            视图 = 视图[已写:]
-        os.fsync(临时描述符)
-        os.close(临时描述符)
-        临时描述符 = -1
-        os.replace(
-            临时名, 相对.name, src_dir_fd=父描述符, dst_dir_fd=父描述符)
-    except OSError as 错误:
-        raise 客户端构建错误(f"写入受控目标失败: {路径}: {错误}") from 错误
-    finally:
-        if 临时描述符 >= 0:
-            os.close(临时描述符)
-        if 父描述符 >= 0:
-            try:
-                os.unlink(临时名, dir_fd=父描述符)
-            except FileNotFoundError:
-                pass
-            os.close(父描述符)
-
-
-def _创建受控目标目录(根描述符: int, 显示根: Path, 相对: Path) -> None:
-    """经锚定目标根创建目录链。"""
-    try:
-        描述符 = _打开目录链(根描述符, tuple(相对.parts), 创建=True)
-    except OSError as 错误:
-        raise 客户端构建错误(
-            f"创建受控目标目录失败: {显示根 / 相对}: {错误}") from 错误
-    else:
-        os.close(描述符)
-
-
-def _安全复制目录树(源根: Path, 目标根: Path) -> None:
-    """不跟随链接地复制完整目录树，逐文件执行源/目标边界校验。"""
-    源根 = Path(源根)
-    目标根 = Path(目标根)
-    _拒绝符号链接(源根, "目录复制前源码检查")
-    真实源根 = _解析源码根(源根)
-    真实目标根 = _准备目标根(目标根)
-    源描述符 = _打开根目录(源根, "目录复制源码")
-    目标描述符 = _打开根目录(目标根, "目录复制目标")
-    try:
-        for 路径 in sorted(源根.rglob("*")):
-            if 路径.is_symlink():
-                raise 客户端构建错误(f"目录复制发现符号链接: {路径}")
-            相对 = 路径.relative_to(源根)
-            _受控目标路径(目标根, 真实目标根, 相对)
-            if 路径.is_dir():
-                _创建受控目标目录(目标描述符, 目标根, 相对)
-                continue
-            _解析受控源文件(路径, 源根, 真实源根)
-            数据, 权限位 = _读取受控文件(源描述符, 源根, 相对)
-            _写入受控目标(目标描述符, 目标根, 相对, 数据, 权限位)
-    finally:
-        os.close(源描述符)
-        os.close(目标描述符)
-    _拒绝符号链接(源根, "目录复制后源码检查")
-    _拒绝符号链接(目标根, "目录复制后目标检查")
+# ---- 拆分接线（2026-09-19：按职责簇搬到同层三个文件，对外符号零变化） ----
+#
+# 搬家后**全部成员名、签名、默认值一个不改**：下面按名回导，`构建模块.<名>` 与拆分前是
+# 同一对象（`mock.patch.object(构建模块, "<私有原语>", …)` 照旧生效，见
+# `测试中心/第一批维修/测试_客户端构建安全.py`）。三个新文件只承载实现，
+# 本模块仍是**唯一入口**（`python3.14 客户端/构建平台客户端.py [--安装]`）。
+#
+# 为什么 `复制并重写` / `复制非Py文件` / `_异常行号` 与 `ast` **留在本文件**：
+# 它们是测试按**模块属性**打补丁的对象（`mock.patch.object(构建模块, "ast"/"_解析受控源文件"/
+# "_受控目标路径", …)`），而模块全局名是逐模块解析的 —— 调用点搬走，补丁就打不到。
+#
+# 判据与常量的唯一事实源仍在别处，本块不复制任何判据：
+#   文件系统安全原语 → 客户端/受控文件读写.py
+#   AST 导入重写器   → 客户端/导入重写器.py
+#   包摘要重算 / 制品摘要 / 写盘后自校验 → 客户端/制品生成与自校验.py
+#   制品目录口径 → 平台控制面/包仓库/制品布局.py（本模块经 计算制品摘要 转调）
+from 客户端.受控文件读写 import (
+    客户端构建错误,
+    _创建受控目标目录,
+    _受控目标路径,
+    _安全复制目录树,
+    _拒绝符号链接,
+    _打开根目录,
+    _打开目录链,
+    _文件无跟随标志,
+    _准备目标根,
+    _目录打开标志,
+    _解析受控源文件,
+    _解析源码根,
+    _读取受控文件,
+    _写入受控目标,
+)
+from 客户端.导入重写器 import 导入重写器
+from 客户端.制品生成与自校验 import (
+    _全树内容指纹,
+    写盘后自校验,
+    计算制品摘要,
+    生成入口,
+    生成可运行制品壳,
+    生成来源元数据,
+    重算包内完整性摘要,
+)
 
 
 def _异常行号(错误: BaseException, 树: ast.AST | None = None) -> int:
@@ -275,34 +99,6 @@ def _异常行号(错误: BaseException, 树: ast.AST | None = None) -> int:
             if isinstance(节点行号, int) and 节点行号 > 0:
                 return 节点行号
     return 1
-
-
-class 导入重写器(ast.NodeTransformer):
-    """把顶层平台导入改写为 平台客户端. 前缀（from/import 两种形态）。"""
-
-    def __init__(self, 顶层包表: list[str], 前缀: str) -> None:
-        self.顶层包表 = tuple(顶层包表)
-        self.前缀 = 前缀
-        self.改写数 = 0
-
-    def _改写模块名(self, 模块名: str) -> str:
-        if 模块名 == "__future__" or not 模块名:
-            return 模块名
-        顶层 = 模块名.split(".")[0]
-        if 顶层 in self.顶层包表:
-            self.改写数 += 1
-            return f"{self.前缀}.{模块名}"
-        return 模块名
-
-    def visit_Import(self, 节点: ast.Import) -> ast.Import:
-        for 别名 in 节点.names:
-            别名.name = self._改写模块名(别名.name)
-        return 节点
-
-    def visit_ImportFrom(self, 节点: ast.ImportFrom) -> ast.ImportFrom:
-        if 节点.module:
-            节点.module = self._改写模块名(节点.module)
-        return 节点
 
 
 def 复制并重写(源根: Path, 目标根: Path) -> int:
@@ -388,210 +184,6 @@ def 复制非Py文件(源根: Path, 目标根: Path) -> None:
     _拒绝符号链接(目标根, "复制后目标检查")
 
 
-def 重算包内完整性摘要(构建副本根: Path) -> int:
-    """AST 重写后按平台**唯一生成器**重算每个包的 `完整性摘要.json`（只写构建副本）。
-
-    为什么必须在重写之后重算：重写器改的是包内 `__init__.py`（以及其它含顶层平台导入的
-    `.py`）的**字节**，而包内 `完整性摘要.json` 是从源码原样复制过来的 —— 它的文件清单
-    记的是**改写前**的源码字节。实测后果（2026-09-17 现场）：制品内 139 个含
-    `包声明.json` 的包，`校验组件规范` **139/139 判 `通过=false`**，其中 132 个首因是
-    `文件摘要不一致: __init__.py`（1 个是 `HTTP提供者.py`）—— 也就是**制品内包自校验
-    永远不可能通过**（源码侧同一批判定 132/139 通过）。缺陷能活很久，正是因为构建器对
-    包摘要「只复制、不重算、也不复验」。
-
-    三条边界都不可越：
-    - **只写构建副本**：调用方只传构建副本根（工程缓存/制品仓库/平台客户端构建/…），
-      源码树里的 `完整性摘要.json` 不被任何构建动作改写（构建前构建目录整体重建）；
-    - **不另写摘要算法**：转调 支持库/后端/组件规范支持库 的唯一生成器写盘配对
-      `生成并写入完整性摘要`（包id/版本取自 `包声明.json`），本模块不持有第二套口径；
-    - **fail-closed**：每包写盘后立即用同一支持库的 `校验完整性摘要` 复验，任一个包不
-      闭合立即 raise —— 绝不让「摘要与字节不符」的制品走到落盘之后（本缺陷就是
-      「只写不验」活下来的）。
-    """
-    from 支持库.后端.组件规范支持库 import (
-        生成并写入完整性摘要,
-        校验完整性摘要,
-    )
-    构建副本根 = Path(构建副本根)
-    重算数 = 0
-    # 驱动源 = 需要重算的那个文件本身（`完整性摘要.json`）：有包声明必有摘要（现场 139=139，
-    # 集合完全一致），据此驱动既不会漏、也不会凭空给无摘要的目录造一份。
-    for 摘要文件 in sorted(构建副本根.rglob("完整性摘要.json")):
-        if "__pycache__" in 摘要文件.parts:
-            continue
-        包目录 = 摘要文件.parent
-        try:
-            生成并写入完整性摘要(包目录)
-        except (ValueError, OSError) as 错误:
-            raise 客户端构建错误(
-                f"重算包完整性摘要失败: {包目录}: {错误}") from 错误
-        通过, 问题列表 = 校验完整性摘要(包目录)
-        if not 通过:
-            raise 客户端构建错误(
-                f"重算包完整性摘要后仍不闭合: {包目录}: {问题列表[:3]}")
-        重算数 += 1
-    return 重算数
-
-
-def 生成入口(客户端根: Path) -> None:
-    """生成 平台客户端/__init__.py：公开模块能力门面。"""
-    内容 = (
-        '"""平台客户端（系统工程平台稳定客户端）：唯一前缀制品包。\n'
-        "外部调用方正式代码只经本客户端调用模块公开能力，禁止拼接平台源码树。\n"
-        "用法：from 平台客户端.模块库.文档解析 import 解析文档\n"
-        "\n"
-        "本包由 客户端/构建平台客户端.py 生成，禁止手工编辑。\n"
-        '"""\n'
-        "\n"
-        "from __future__ import annotations\n"
-        "\n"
-        "# 注册平台唯一能力调用服务的惰性装配钩子（模块首次调用时自动装配）\n"
-        "import 平台客户端.运行核心.能力调用.唯一能力调用 as _唯一调用  # noqa: F401\n"
-        "\n"
-        "__all__: list[str] = []\n"
-    )
-    客户端根 = Path(客户端根)
-    真实根 = _准备目标根(客户端根)
-    相对 = Path("__init__.py")
-    _受控目标路径(客户端根, 真实根, 相对)
-    根描述符 = _打开根目录(客户端根, "客户端入口目标")
-    try:
-        _写入受控目标(根描述符, 客户端根, 相对, 内容.encode("utf-8"))
-    finally:
-        os.close(根描述符)
-
-
-def 生成可运行制品壳(制品根: Path) -> None:
-    """调用统一编译器模板生成平台客户端页面与运行入口。"""
-    from 开发工具.项目编译.项目编译器 import _生成HTML, _生成启动器, _写入并编译Python
-    页面目录 = 制品根 / "前端" / "编译页面"
-    页面目录.mkdir(parents=True, exist_ok=True)
-    页面 = {"页面id": "主页", "标题": "系统工程平台客户端", "路由": "/", "组件列表": []}
-    (页面目录 / "index.html").write_text(_生成HTML(页面), encoding="utf-8")
-    (页面目录 / "路由表.json").write_text(
-        json.dumps({"/": "index.html"}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    入口目录 = 制品根 / "运行入口"
-    入口目录.mkdir(parents=True, exist_ok=True)
-    _写入并编译Python(
-        入口目录 / "启动.py", _生成启动器("系统工程平台客户端", 包前缀=客户端前缀))
-    (入口目录 / "__init__.py").write_text('"""平台客户端运行入口。"""\n', encoding="utf-8")
-
-
-def 计算制品摘要(客户端根: Path) -> str:
-    """制品身份摘要：转调**唯一权威口径**，本模块不再持有第二套口径。
-
-    权威口径 = `平台控制面/包仓库/平台客户端制品.py::计算目录摘要16`
-    （包仓库入库、物料清单、激活指针、已安装副本、稳定路径五处共用同一事实源）。
-    此前本函数自带一套排除规则（按 `.db`/`.log`/`.tmp`/`.pyc` 后缀排除、**不排除**
-    构建期生成的元数据），实测后果是：同一制品目录上「构建器口径」与「目录名/包仓库口径」
-    必然不一致（2026-09-17 现场 6/6 全部不符），因为 `制品摘要.json` 内含自身摘要、
-    被纳入计算即自指（且其写入发生在算摘要之后，前后两次算的是两棵不同的树）。
-
-    本函数只保留构建侧守卫：调用前后各拒一次符号链接（沿用 `客户端构建错误` 语义）。
-    返回值就是权威口径的 16 位摘要，调用方不再截断。
-    """
-    客户端根 = Path(客户端根)
-    _拒绝符号链接(客户端根, "摘要前检查")
-    from 平台控制面.包仓库.平台客户端制品 import 计算目录摘要16
-    摘要 = 计算目录摘要16(客户端根)
-    _拒绝符号链接(客户端根, "摘要后检查")
-    return 摘要
-
-
-def _全树内容指纹(根: Path) -> dict[str, tuple[str, int]]:
-    """回读整棵树的每个文件的字节，返回 相对路径 →（字节 sha256, 字节数）。"""
-    指纹: dict[str, tuple[str, int]] = {}
-    for 文件 in sorted(Path(根).rglob("*")):
-        if 文件.is_symlink():
-            raise 客户端构建错误(f"回读全树字节发现符号链接: {文件}")
-        if not 文件.is_file():
-            continue
-        数据 = 文件.read_bytes()
-        指纹[文件.relative_to(根).as_posix()] = (hashlib.sha256(数据).hexdigest(), len(数据))
-    return 指纹
-
-
-def 写盘后自校验(制品根: Path, 源码副本根: Path, 期望摘要: str) -> dict[str, object]:
-    """写盘后自校验（fail-closed）：对**已落盘**的制品做三道只读复验，任一不过即异常退出。
-
-    为什么必须有这道：构建器的身份摘要在构建链里只写不验 —— 「两套摘要口径」这个缺陷
-    就是这样活了很久（目录名用一套、复验用另一套，谁都发现不了）。三道复验：
-
-    1. **摘要三处对表**：权威口径重算 == 目录名后缀 == `制品摘要.json` 写入值 == 期望摘要。
-       这正是「两套口径」的检出手段；不等即 raise（不许只打警告、不许默默继续）。
-    2. **全部 .py 再 `ast.parse` 一次**：证明重写导入后的制品仍是合法 Python（只解析、不执行）。
-    3. **回读全树字节**：制品内 `平台客户端` 子树逐文件与构建副本逐字节比对，
-       缺失/多出/内容不同一律 raise（防止「摘要算完才写盘」这类时序窗口留下的脏副本）。
-    """
-    from 平台控制面.包仓库.平台客户端制品 import 计算目录摘要16
-    起始 = time.perf_counter()
-    重算摘要 = 计算目录摘要16(制品根)
-    摘要文件 = Path(制品根) / "制品摘要.json"
-    if not 摘要文件.is_file():
-        raise 客户端构建错误(f"写盘后自校验失败：缺 制品摘要.json（制品 {Path(制品根).name}）")
-    try:
-        写入摘要 = str(json.loads(摘要文件.read_text(encoding="utf-8")).get("摘要sha256", ""))
-    except (OSError, json.JSONDecodeError) as 错误:
-        raise 客户端构建错误(f"写盘后自校验失败：制品摘要.json 不可读: {错误}") from 错误
-    命名摘要 = Path(制品根).name.rsplit("-", 1)[-1]
-    for 名称, 实得 in (("权威口径重算", 重算摘要), ("目录名", 命名摘要), ("制品摘要.json", 写入摘要)):
-        if 实得 != 期望摘要:
-            raise 客户端构建错误(
-                f"写盘后自校验失败：{名称}={实得!r} 与期望摘要 {期望摘要!r} 不符"
-                f"（制品 {Path(制品根).name}）")
-    摘要耗时 = time.perf_counter() - 起始
-
-    起始 = time.perf_counter()
-    py文件 = [文件 for 文件 in sorted(Path(制品根).rglob("*.py")) if 文件.is_file()]
-    for 文件 in py文件:
-        try:
-            ast.parse(文件.read_bytes(), filename=str(文件))
-        except (SyntaxError, ValueError) as 错误:
-            raise 客户端构建错误(f"写盘后自校验失败：制品内 PY 不是合法 Python: {文件}: {错误}") from 错误
-    py耗时 = time.perf_counter() - 起始
-
-    起始 = time.perf_counter()
-    制品内包根 = Path(制品根) / 客户端前缀
-    源指纹 = _全树内容指纹(源码副本根)
-    制品指纹 = _全树内容指纹(制品内包根)
-    缺失 = sorted(set(源指纹) - set(制品指纹))
-    多余 = sorted(set(制品指纹) - set(源指纹))
-    内容不同 = sorted(相对 for 相对 in set(源指纹) & set(制品指纹) if 源指纹[相对] != 制品指纹[相对])
-    回读字节 = sum(字节数 for _, 字节数 in 制品指纹.values())
-    if 缺失 or 内容不同 or 多余:
-        raise 客户端构建错误(
-            f"写盘后自校验失败：制品副本与构建副本不一致（缺失 {缺失[:5]}、"
-            f"内容不同 {内容不同[:5]}、多出 {多余[:5]}）")
-    回读耗时 = time.perf_counter() - 起始
-    全树摘要器 = hashlib.sha256()
-    for 相对, (文件摘要, 字节数) in 制品指纹.items():
-        全树摘要器.update(f"{相对}:{文件摘要}:{字节数}\n".encode("utf-8"))
-    return {
-        "摘要耗时": 摘要耗时, "py文件数": len(py文件), "py耗时": py耗时,
-        "回读文件数": len(制品指纹), "回读兆字节": 回读字节 / 1024 / 1024,
-        "回读耗时": 回读耗时, "回读sha256": 全树摘要器.hexdigest(),
-    }
-
-
-def 生成来源元数据(制品根: Path) -> None:
-    """生成发布门禁消费的唯一来源绑定、编译清单与全文件摘要。"""
-    from 开发工具.项目编译.项目编译器 import 读取工作区字节指纹, _制品文件摘要
-    来源 = 读取工作区字节指纹()
-    (制品根 / "制品来源.json").write_text(json.dumps({
-        "格式": "平台客户端制品来源绑定", "编译器版本": "平台客户端构建器/1.0.0",
-        "项目id": "平台客户端", **来源,
-    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (制品根 / "编译清单.json").write_text(json.dumps({
-        "制品类型": "平台客户端", "编译器版本": "平台客户端构建器/1.0.0",
-        "项目id": "平台客户端", "来源提交": 来源["提交"],
-        "来源工作区字节指纹": 来源["工作区字节指纹"],
-        "来源工作区状态": 来源["工作区状态"],
-        "来源绑定文件": "制品来源.json", "制品摘要文件": "制品完整性摘要.json",
-    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (制品根 / "制品完整性摘要.json").write_text(
-        json.dumps(_制品文件摘要(制品根), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
 def 清理过期制品(仓库根: Path, 当前摘要: str, 当前身份: str) -> None:
     """只留当前制品：过期就删（内容寻址目录/身份目录/信任链历史各留一份）。
 
@@ -630,6 +222,7 @@ def 清理过期制品(仓库根: Path, 当前摘要: str, 当前身份: str) ->
             过期.unlink()
             删目录数 += 1
     print(f"过期制品清理：删 {删目录数} 项，释放 {释放 / 1024 / 1024:.1f} MB")
+
 
 
 def 构建(安装: bool = False) -> Path:
