@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from 平台控制面.包仓库 import 规范化相对路径
+from 平台控制面.包仓库.路径安全 import 安全迭代文件
 from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证, 内容摘要
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
@@ -93,8 +94,10 @@ class 核心快照管理:
         快照目录 = self.快照根目录 / 快照id
         核心版本 = json.loads(记录["核心版本"])
         实际文件摘要 = {}
-        for 文件 in 快照目录.rglob("*"):
-            if 文件.is_file() and 文件.name != "摘要.json":
+        # #159：原 `rglob` + `is_file()` 跟随软链 —— 快照目录里的软链会把根外文件
+        # 读进快照摘要（篡改检测失真）。走唯一原语，跳过符号链接。
+        for 文件 in 安全迭代文件(快照目录):
+            if 文件.name != "摘要.json":
                 实际文件摘要[文件.relative_to(快照目录).as_posix()] = \
                     hashlib.sha256(文件.read_bytes()).hexdigest()
         if not 实际文件摘要:

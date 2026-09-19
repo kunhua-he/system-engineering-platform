@@ -34,6 +34,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from 平台控制面.包仓库.路径安全 import 安全迭代文件
 from 支持库.后端.系统核心支持库.路径安全 import 校验文件名
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树
@@ -182,8 +183,10 @@ class 安装能力:
         # 受控根已由调用方保证存在：**不加 parents**，不自动造父目录
         临时目标.mkdir()
         try:
-            for 文件 in 源目录.rglob("*"):
-                if 文件.is_file() and 文件.name != "物料清单.json":
+            # #159：原写法会把源目录里的符号链接**复制进受控根**（等于把根外文件搬进来）。
+            # 走唯一原语，跳过软链。
+            for 文件 in 安全迭代文件(源目录):
+                if 文件.name != "物料清单.json":
                     相对 = 文件.relative_to(源目录)
                     目标文件 = 临时目标 / 相对
                     目标文件.parent.mkdir(parents=True, exist_ok=True)

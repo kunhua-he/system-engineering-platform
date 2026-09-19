@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from 平台控制面.包仓库.路径安全 import 安全迭代文件
 from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
@@ -42,9 +43,10 @@ def 制品正式文件集(制品目录) -> set[str]:
     """
     根 = Path(制品目录)
     路径集: set[str] = set()
-    for 文件 in 根.rglob("*"):
-        if not 文件.is_file():
-            continue
+    # #159（2026-09-20）：原 `根.rglob("*")` + `is_file()` 会**跟随符号链接**判文件，
+    # 制品目录里指向根外文件（如 /etc/passwd）的软链会被算进签名清单 —— 走唯一原语
+    # `安全迭代文件`（跳过软链）。
+    for 文件 in 安全迭代文件(根):
         相对 = 文件.relative_to(根)
         if "__pycache__" in 相对.parts:
             continue

@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from 平台控制面.包仓库.路径安全 import 安全迭代文件
 from 平台控制面.包仓库.签名能力 import 身份排除文件名表, 清单排除文件名表
 
 # 制品身份摘要长度（`平台客户端-<摘要16>` 的后缀位数）。
@@ -57,8 +58,9 @@ def 计算目录摘要16(目录: Path | str) -> str:
     纳入即自指（见 客户端/构建平台客户端.py::计算制品摘要 与 写盘后自校验）。
     """
     哈希器 = hashlib.sha256()
-    for 文件 in sorted(Path(目录).rglob("*")):
-        if 文件.is_dir() or "__pycache__" in 文件.parts:
+    # #159：改走唯一原语（跳过符号链接），避免软链把根外文件内容读进制品摘要
+    for 文件 in 安全迭代文件(目录):
+        if "__pycache__" in 文件.parts:
             continue
         if _是运行时数据(文件.relative_to(目录)):
             continue
@@ -96,8 +98,9 @@ def 读取制品文件表(制品目录: Path | str) -> dict[str, str]:
     文件都不算，不入库、不进物料清单（D-17 ②；与 `计算目录摘要16` 共用同一判定点）。
     """
     文件表: dict[str, str] = {}
-    for 文件 in sorted(Path(制品目录).rglob("*")):
-        if 文件.is_dir() or "__pycache__" in 文件.parts:
+    # #159：同上，唯一原语跳过符号链接
+    for 文件 in 安全迭代文件(制品目录):
+        if "__pycache__" in 文件.parts:
             continue
         if _是运行时数据(文件.relative_to(制品目录)):
             continue
