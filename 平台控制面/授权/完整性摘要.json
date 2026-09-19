@@ -5,7 +5,11 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "d721eee242f466d321a0db990d8782df1e8be426ce037bbe0cc97af73a1c871c"
+      "sha256": "de2935d64348202a6495bcb453b3f6e2b8cbd288ecdfa28a76e5ba9872b7f011"
+    },
+    {
+      "路径": "__main__.py",
+      "sha256": "ae1bf7d334df7d5e7c9ee790d19093c49b92615737ad08fabb9b7c00c2fc26bf"
     },
     {
       "路径": "包声明.json",
@@ -22,6 +26,10 @@
     {
       "路径": "权限契约/权限契约.json",
       "sha256": "6e27654cb3db4fd2f85141a5cc37cc149c54195eb2e34fc0e339a3efe308680a"
+    },
+    {
+      "路径": "核心.py",
+      "sha256": "c3e92decbfb22d0f9b553eda23a51f0f04b32cc4c0a8d08f2fcbb883be7401e8"
     },
     {
       "路径": "生命周期契约.json",
