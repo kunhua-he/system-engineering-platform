@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 
@@ -296,7 +297,7 @@ class LibreOffice受管池:
                             管道.close()
                         except OSError:
                             pass
-            shutil.rmtree(作业临时目录, ignore_errors=True)
+            平台适配.清只读后删除树(作业临时目录, 忽略失败=真)
 
     def 关闭(self) -> None:
         with self._关闭锁:
@@ -328,7 +329,7 @@ class LibreOffice受管池:
                 成员.作业队列.put_nowait(None)
         for 成员 in self._成员列表:
             成员.线程.join(timeout=3.0)
-        shutil.rmtree(self._根目录, ignore_errors=True)
+        平台适配.清只读后删除树(self._根目录, 忽略失败=真)
 
 
 def _读取整数配置(名称: str, 默认值: int, 最大值: int) -> int:

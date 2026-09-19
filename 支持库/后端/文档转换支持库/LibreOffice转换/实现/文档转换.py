@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信, 默认子进程输出上限字节
 
@@ -157,7 +158,7 @@ def _回收档案根() -> None:
         根 = _档案根
         _档案根 = None
     if 根 is not None:
-        shutil.rmtree(根, ignore_errors=True)
+        平台适配.清只读后删除树(根, 忽略失败=真)
 
 
 atexit.register(_回收档案根)
@@ -307,8 +308,8 @@ def 转换办公文件(输入路径: str, 目标格式: str, *, 超时秒: float
                                          "输出路径": str(目标文件)})
                 上次失败 = 单次
             finally:
-                shutil.rmtree(档案目录, ignore_errors=True)
-                shutil.rmtree(暂存目录, ignore_errors=True)
+                平台适配.清只读后删除树(档案目录, 忽略失败=真)
+                平台适配.清只读后删除树(暂存目录, 忽略失败=真)
             if 单次.错误码 != "转换失败" or 第几次 >= 默认尝试次数:
                 return 单次
             time.sleep(退避基数秒 * (2 ** (第几次 - 1)))
@@ -317,4 +318,4 @@ def 转换办公文件(输入路径: str, 目标格式: str, *, 超时秒: float
         return _失败("转换失败", f"LibreOffice 调用失败: {错误}")
     finally:
         if 自建目录:
-            shutil.rmtree(输出根, ignore_errors=True)
+            平台适配.清只读后删除树(输出根, 忽略失败=真)
