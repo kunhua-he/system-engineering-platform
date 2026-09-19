@@ -41,6 +41,32 @@ from 模块库.开工编排.实现.任务类型规范 import 默认返回类数 
 代码地图目录名 = ".codegraph"
 允许验证级别 = ("工作包", "合并波次", "阶段收口", "正式发布")
 
+
+def 生成开工ID(现在: float | None = None) -> str:
+    """生成一个开工 ID：`开工-<YYYYMMDD>-<HHMMSS>-<短随机>`。
+
+    **为什么要有它（2026-09-19 华哥裁决）**：华哥要求开工有固定协议 ——
+    「做任务之前需要先运行 ***，获取开工 ID」→「结束之后需要根据开工 ID 去提交 github」。
+    此前开工 ID 全靠派活方自己取名（各写各的，无法按它追溯「这轮到底拿到了什么上下文」）。
+    做成开工入口当场生成并返回后，**ID 由唯一入口给**，调用方不需要自己发明命名规则。
+
+    短随机取 `secrets.token_hex(2)`（4 位十六进制）：同一秒内的多处开工不会撞号，
+    且不泄露可预测性（不用 `random`）。`现在` 仅供测试注入固定时间，生产不传。
+    """
+    import secrets
+    from datetime import datetime
+
+    时刻 = datetime.fromtimestamp(现在) if 现在 is not None else datetime.now()
+    return f"开工-{时刻:%Y%m%d}-{时刻:%H%M%S}-{secrets.token_hex(2)}"
+
+
+def _解析开工ID(传入: str | None) -> str:
+    """开工 ID 取值：传了就沿用（去空白），没传就当场生成（`生成开工ID()`）。"""
+    if isinstance(传入, str) and 传入.strip():
+        return 传入.strip()
+    return 生成开工ID()
+
+
 # 组合本业务动作时找不到的公开原子能力：只登记，不在模块里自己实现。
 待补能力清单 = (
     {"能力": "发布治理.当前工作区指纹",
@@ -190,11 +216,16 @@ def _读取成功记录(账本路径: Path, 数量: int) -> tuple[list[dict], in
 
 
 def 开工准备(任务: str | None = None, 项目根: str | None = None, 修改路径: list | None = None,
-             历史数量: int | None = None, 验证级别: str | None = None) -> 结果:
+             历史数量: int | None = None, 验证级别: str | None = None,
+             开工ID: str | None = None) -> 结果:
     """开发统一开工入口：一次返回开工上下文、边界校验结论与缺失原子能力清单。
 
     步骤：① 入参校验 → ② 修改路径项目根边界校验（越界即失败）→ ③ Git 提交/分支/工作区状态
     → ④ 证据账本成功记录 → ⑤ 代码地图可用性 → ⑥ 组装开工上下文与待补能力清单。
+
+    **开工 ID（2026-09-19 华哥裁决）**：不传 `开工ID` 时**当场生成并返回**（形如
+    `开工-<YYYYMMDD>-<HHMMSS>-<短随机>`），调用方直接拿它去写任务记忆包、按它提交 GitHub；
+    传了就沿用（同一批多路共用同一 ID 时显式传同一个值）。生成规则见 `生成开工ID()`。
     """
     if not isinstance(任务, str) or not 任务.strip():
         return 结果.失败("参数不合法", "任务必须是非空文本", 来源=来源)
@@ -337,6 +368,7 @@ def 开工准备(任务: str | None = None, 项目根: str | None = None, 修改
             租约问题 = f"{查询.错误码} {查询.错误说明}"
 
     return 结果.成功结果({
+        "开工ID": _解析开工ID(开工ID),
         "项目": {
             "名称": 项目根解析.name,
             "根目录": str(项目根解析),
