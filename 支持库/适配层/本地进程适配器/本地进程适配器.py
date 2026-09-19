@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import threading
 from typing import Any
@@ -153,7 +152,8 @@ class 本地进程适配器(外部适配器):
             try:
                 目标 = 路径类(路径)
                 if 目标.is_dir():
-                    shutil.rmtree(目标)
+                    # 目录树可能含只读条目：删除走唯一实现，失败由本处 except OSError 记入失败表。
+                    平台适配.清只读后删除树(目标)
                 else:
                     目标.unlink(missing_ok=True)
             except OSError as 错误:

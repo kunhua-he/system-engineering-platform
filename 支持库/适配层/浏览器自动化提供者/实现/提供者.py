@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.运行时 import 平台适配, 进程终止
 from 支持库.适配层.浏览器自动化提供者.实现.执行器 import 有界执行
 
@@ -152,7 +153,7 @@ class 浏览器自动化提供者:
         if "browser-use" in self.命令:
             if self._启动浏览器(会话名, 目录, 超时秒, 视口宽, 视口高) is None:
                 self.会话目录表.pop(会话名, None)
-                shutil.rmtree(目录, ignore_errors=True)
+                平台适配.清只读后删除树(目录, 忽略失败=真)
                 return {"成功": False, "错误码": "提供者不可用", "错误说明": "独立Chromium未能启动或暴露CDP端口"}
         结果 = self._执行代码(
             '# 底座受管浏览器创建会话\nensure_real_tab()\nprint(page_info())',
@@ -162,7 +163,7 @@ class 浏览器自动化提供者:
             进程记录 = self.会话进程表.pop(会话名, None)
             if 进程记录:
                 self._回收进程(进程记录[0])
-            shutil.rmtree(目录, ignore_errors=True)
+            平台适配.清只读后删除树(目录, 忽略失败=真)
             self.会话目录表.pop(会话名, None)
             return 结果
         return {"成功": True, "值": {"会话名": 会话名, "页面": self._读取对象(结果["输出"])}}
@@ -293,7 +294,7 @@ class 浏览器自动化提供者:
             self._回收进程(进程记录[0])
         目录 = self.会话目录表.pop(会话名, None)
         if 目录:
-            shutil.rmtree(目录, ignore_errors=True)
+            平台适配.清只读后删除树(目录, 忽略失败=真)
         if not 守护结果["成功"]:
             return 守护结果
         return {"成功": True, "值": {"状态": "已关闭"}} if 结果["成功"] else 结果
