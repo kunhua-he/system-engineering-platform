@@ -23,6 +23,7 @@ from 支持库.后端.文件系统支持库.文件操作.实现.危险路径 imp
     汇总放行标注,
 )
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树, 移动并可删
 
 
 def 读取文件(文件路径: str = None, 编码: str = "utf-8") -> 结果:
@@ -160,7 +161,8 @@ def 移动文件(源路径: str = None, 目标路径: str = None,
     try:
         目标 = Path(目标路径)
         目标.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(源), str(目标))
+        # 唯一实现：只读属性/父目录无写位造成的 PermissionError 由它清只读后重试
+        移动并可删(源, 目标)
         移动标注 = 汇总放行标注([源路径, 目标路径])
         if 移动标注:
             return 结果.成功结果({"成功": 真, "危险路径放行": 移动标注,
@@ -320,7 +322,7 @@ def 清理全部临时资源(路径前缀: str = "", 允许危险路径: bool = 
             try:
                 目标 = Path(路径)
                 if 目标.is_dir():
-                    shutil.rmtree(目标)
+                    清只读后删除树(目标)
                 else:
                     目标.unlink(missing_ok=True)
                 清理数量 += 1

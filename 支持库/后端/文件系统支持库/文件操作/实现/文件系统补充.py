@@ -15,6 +15,8 @@ import tempfile
 import zipfile
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时.平台适配 import 清只读后删除树, 移动并可删
 from 支持库.后端.文件系统支持库.文件操作.实现.危险路径 import (
     拦截危险路径,
     放行标注,
@@ -187,7 +189,7 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
             临时目录 = pathlib.Path(tempfile.mkdtemp(
                 dir=str(目标.parent), prefix=".__压缩备份_"))
             既有目标备份件 = 临时目录 / "旧目标.zip"
-            shutil.move(文本目标, str(既有目标备份件))
+            移动并可删(文本目标, 既有目标备份件)
         os.replace(临时压缩件, 文本目标)
         临时压缩件 = None
         压缩结果: dict = {"目标路径": 目标路径, "条目数": 条目数}
@@ -205,11 +207,11 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
         if 既有目标备份件 is not None:
             try:
                 if 既有目标备份件.exists() and not 目标.exists():
-                    shutil.move(str(既有目标备份件), str(目标))
+                    移动并可删(既有目标备份件, 目标)
             except OSError:
                 pass
         if 临时目录 is not None:
-            shutil.rmtree(临时目录, ignore_errors=True)
+            清只读后删除树(临时目录, 忽略失败=真)
 
 
 # 解压入参上限默认值（口径与 运行核心/运行环境管理器/远程镜像.py 的
@@ -262,7 +264,7 @@ def _清理解压落盘中转件(目标根: pathlib.Path, 新建目标目录: bo
             pass
 
     if 新建目标目录:
-        shutil.rmtree(目标根, ignore_errors=True)
+        清只读后删除树(目标根, 忽略失败=真)
         return True
     还原成功 = True
     for 备份路径, 原路径 in 已有文件备份表.items():
@@ -294,7 +296,7 @@ def _清理解压落盘中转件(目标根: pathlib.Path, 新建目标目录: bo
         保留目录 = 备份路径.parent
         if 保留目录.exists() and any(保留目录.iterdir()):
             continue
-        shutil.rmtree(保留目录, ignore_errors=True)
+        清只读后删除树(保留目录, 忽略失败=真)
     return 还原成功
 
 
@@ -382,7 +384,7 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
             临时备份目录 = pathlib.Path(tempfile.mkdtemp(
                 dir=str(目标根), prefix=".__解压备份_"))
         备份路径 = 临时备份目录 / f"{len(已有文件备份表)}__.bak"
-        shutil.move(str(目标), str(备份路径))
+        移动并可删(目标, 备份路径)
         已有文件备份表[备份路径] = 目标   # 键＝备份件，值＝原路径（回滚按此还原）
 
     try:
@@ -476,7 +478,7 @@ def 解压文件(源路径: str = None, 目标目录: str = None,
         if 解压标注:
             解压结果["危险路径放行"] = 解压标注
         if 临时备份目录 is not None:
-            shutil.rmtree(临时备份目录, ignore_errors=True)  # 成功：备份盘随用随删
+            清只读后删除树(临时备份目录, 忽略失败=真)  # 成功：备份盘随用随删
         return 结果.成功结果(解压结果)
     except _超过上限 as 错误:
         _清理解压落盘中转件(目标根, 新建目标目录, 已有文件备份表,

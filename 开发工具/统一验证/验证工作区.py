@@ -13,6 +13,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 
 class 验证工作区:
@@ -74,7 +75,7 @@ class 验证工作区:
             return ["工作区已回收（幂等）"]
         清理列表 = []
         if self.根目录.is_dir():
-            shutil.rmtree(self.根目录, ignore_errors=True)
+            清只读后删除树(self.根目录, 忽略失败=真)
             清理列表.append(f"工作区: {self.运行id}")
         self.已回收 = True
         return 清理列表

@@ -22,7 +22,6 @@ stdout 管道 fd 的唯一读者是 独立进程 的后台读线程，故「排�
 from __future__ import annotations
 
 import hashlib
-import shutil
 import sys
 import threading
 import time
@@ -41,6 +40,7 @@ from 运行核心.加载器.提供者隔离.独立进程 import (
 )
 from 运行核心.运行环境管理器.环境管理器 import 确保环境, 读取依赖锁
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 默认最大进程数 = 8
@@ -621,7 +621,8 @@ class 提供者生命周期管理器:
         失败表: list[str] = []
         for 目录 in 目录表:
             try:
-                shutil.rmtree(目录)
+                # 唯一实现（只读属性/父目录无写位都先清后再删）；失败仍走下方「保留登记 + 留痕」
+                清只读后删除树(目录)
             except Exception:
                 try:
                     if Path(目录).exists():

@@ -13,6 +13,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 默认构建时刻 = "2000-01-01 00:00:00"
 默认主机名 = "可复现构建机"
@@ -87,7 +88,7 @@ class 可复现构建器:
             规范化表[规范化相对路径(路径)] = self._确定性展开本地(内容, 本次构建时刻, 本次主机名)
         构建目录 = Path(工作区路径) / "构建产物"
         if 构建目录.exists():
-            shutil.rmtree(构建目录)
+            清只读后删除树(构建目录)
         构建目录.mkdir(parents=True)
         for 路径, 内容 in 规范化表.items():
             目标 = 构建目录 / 路径
@@ -115,8 +116,8 @@ class 可复现构建器:
             _, 摘要1 = self.构建(冻结输入, 工作区1)
             _, 摘要2 = self.构建(冻结输入, 工作区2)
         finally:
-            shutil.rmtree(工作区1, ignore_errors=True)
-            shutil.rmtree(工作区2, ignore_errors=True)
+            清只读后删除树(工作区1, 忽略失败=真)
+            清只读后删除树(工作区2, 忽略失败=真)
         if 摘要1 != 摘要2:
             差异 = next((路径 for 路径 in set(摘要1) | set(摘要2)
                          if 摘要1.get(路径) != 摘要2.get(路径)), "未知")

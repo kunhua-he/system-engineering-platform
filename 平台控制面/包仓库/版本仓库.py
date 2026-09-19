@@ -18,6 +18,7 @@ from pathlib import Path
 
 from 平台控制面.包仓库.版本仓库数据 import 安装记录, 计算目录摘要
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 公共契约.版本规则.契约版本 import 契约版本
 
 
@@ -83,7 +84,7 @@ class 包仓库:
             目标路径 = self.版本路径(包id, 版本)
             临时路径.rename(目标路径)  # 原子替换
         except OSError as 错误:
-            shutil.rmtree(临时路径, ignore_errors=True)
+            清只读后删除树(临时路径, 忽略失败=真)
             return 假, f"安装失败已清理临时目录: {错误}"
 
         # 5. 生成安装记录
@@ -134,5 +135,5 @@ class 包仓库:
         目标路径 = self.版本路径(包id, 版本)
         if not 目标路径.is_dir():
             return 假, f"版本未安装: {包id}@{版本}"
-        shutil.rmtree(目标路径)
+        清只读后删除树(目标路径)
         return 真, "已删除"

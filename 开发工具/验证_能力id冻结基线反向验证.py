@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 import json
 import shutil
@@ -228,7 +229,7 @@ def main() -> int:
         断言("⑨ 真基线文件已复原（未被破坏）", 真基线.is_file(), f"存在={真基线.is_file()}")
 
     finally:
-        shutil.rmtree(临时, ignore_errors=True)
+        清只读后删除树(临时, 忽略失败=真)
 
     for 条, 文本 in 结果集:
         print(文本)

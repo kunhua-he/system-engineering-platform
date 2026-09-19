@@ -21,12 +21,14 @@ from __future__ import annotations
 
 import http.client
 import json
-import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
 
 from 开发工具.性能基准.基准口径 import (
     报场景失败, 报落盘失败,
@@ -199,7 +201,7 @@ class 轻量运行态:
             销毁全局唯一服务()
             self.服务 = None
         try:
-            shutil.rmtree(self.临时根, ignore_errors=True)
+            清只读后删除树(self.临时根, 忽略失败=真)
         except OSError:
             print(f"警告：临时目录未清理干净：{self.临时根}", file=sys.stderr)
 

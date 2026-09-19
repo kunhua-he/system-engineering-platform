@@ -58,6 +58,8 @@ from pathlib import Path
 if __name__ == "__main__" or __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.基础类型.逻辑类型 import 真  # noqa: E402
+from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
 from 开发工具.验证门禁.门禁公共 import (  # noqa: E402
     新建夹具根,
     检查结论,
@@ -326,7 +328,6 @@ def 构建结论(根: Path) -> 检查结论:
 
 def _自证() -> int:
     """三拍自证：① 合法技能包（走唯一腿）→ 绿；② 注入 4 份违规样本 → 必红；③ 撤除 → 回绿。"""
-    import shutil
     import subprocess
 
     根 = 新建夹具根("验证门禁三_自证_")
@@ -370,7 +371,8 @@ def _自证() -> int:
     if not 通过:
         print(f"  ⚠ 夹具根保留供人工复核：{根}")
         return 1
-    shutil.rmtree(根, ignore_errors=True)
+    # 夹具根可能含只读条目 → 走唯一实现，不留 shutil.rmtree 裸调用
+    清只读后删除树(根, 忽略失败=真)
     return 0
 
 

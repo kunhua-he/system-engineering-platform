@@ -54,6 +54,7 @@ from 平台控制面.发布管理.服务 import 发布管理
 from 支持库.适配层 import 生成密钥对
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.运行时.平台适配 import 清只读后删除树, 确保可删
 
 默认包id = "平台客户端"
 默认发布者 = "客户端构建发布者"
@@ -431,13 +432,13 @@ class 平台客户端制品接入(环境回收面, 激活指针面):
                 os.close(目录句柄)
             return 备份
         except Exception:
-            shutil.rmtree(临时, ignore_errors=True)
+            清只读后删除树(临时, 忽略失败=真)
             raise
 
     def _清理安装备份(self, 备份: Path) -> None:
         """激活成功后丢弃旧安装备份（从未安装时是无操作）。"""
         if 备份.exists():
-            shutil.rmtree(备份, ignore_errors=True)
+            清只读后删除树(备份, 忽略失败=真)
 
     def _回滚安装目录(self, 目标: Path, 备份: Path) -> None:
         """激活失败时还原旧安装目录（指针未切，旧指针仍指旧制品）。
@@ -446,7 +447,7 @@ class 平台客户端制品接入(环境回收面, 激活指针面):
         从未安装 → 只清理新目录（指针本就为空）。只删新目录不还原会让
         稳定路径彻底消失，与「已回滚」的报称不符。
         """
-        shutil.rmtree(目标, ignore_errors=True)
+        清只读后删除树(目标, 忽略失败=真)
         if 备份.exists() and not 目标.exists():
             os.rename(备份, 目标)
 

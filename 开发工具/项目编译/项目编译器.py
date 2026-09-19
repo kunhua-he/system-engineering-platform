@@ -23,6 +23,7 @@ if str(系统根) not in sys.path:
 from 开发工具.轻代码前端编辑器.页面模型 import 校验页面
 from 开发工具.项目编译.工作区指纹 import 计算工作区字节指纹
 from 开发工具.项目编译.正式包索引 import 构建索引, 包所属根, 校验显式包引用, 校验能力引用, 解析依赖闭包
+from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
 固定运行时目录 = ("公共契约", "后端核心", "运行核心", "前端核心", "平台控制面")
 忽略目录 = {"__pycache__", ".pytest_cache", ".ruff_cache", "工程缓存"}
 运行时适配文件 = ("__init__.py", "脱敏模式.py", "系统探针.py", "适配契约.py")
@@ -95,7 +96,7 @@ def _准备输出目录(项目目录: Path, 输出目录: Path) -> Path:
     """在任何递归删除前重新解析并最终校验，缩短路径替换竞态窗口。"""
     输出 = 校验输出目录(项目目录, 输出目录)
     if 输出.exists():
-        shutil.rmtree(输出)
+        清只读后删除树(输出)
     输出.mkdir(parents=True)
     return 输出
 
@@ -211,10 +212,10 @@ def _部署稳定产物(版本目录: Path, 输出目录: Path, 项目目录: Pa
     输出目录 = 校验输出目录(项目目录, 输出目录)
     暂存 = 输出目录.parent / f".{输出目录.name}.部署中"
     if 暂存.exists():
-        shutil.rmtree(暂存)
+        清只读后删除树(暂存)
     shutil.copytree(版本目录, 暂存)
     if 输出目录.exists():
-        shutil.rmtree(输出目录)
+        清只读后删除树(输出目录)
     暂存.replace(输出目录)
 
 
@@ -751,7 +752,7 @@ def 编译项目(
     清单["来源绑定文件"] = "制品来源.json"
     (输出目录 / "编译清单.json").write_text(json.dumps(清单, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if 版本目录.exists():
-        shutil.rmtree(版本目录)
+        清只读后删除树(版本目录)
     输出目录.replace(版本目录)
     _部署稳定产物(版本目录, 部署目录, 项目目录)
     _写候选指针(部署目录, 项目id, 制品指纹, 版本目录)

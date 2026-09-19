@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 # 内容寻址摘要长度（sha256 前 32 位）= 内容寻址目录名形态
 内容寻址名长度 = 32
@@ -238,7 +239,7 @@ def 清理过期制品(根: Path | str, *, 当前摘要: str = "", 当前身份:
             break
         大小 = _目录字节数(目录)
         try:
-            shutil.rmtree(目录)
+            清只读后删除树(目录)
         except OSError as 错误:
             结果.失败项.append(f"{目录.name}（{错误}）")
             continue

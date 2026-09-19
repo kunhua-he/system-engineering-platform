@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import time
 import uuid
 from pathlib import Path
@@ -29,6 +28,7 @@ from 公共契约.句柄体系 import 生成句柄id
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 运行核心.进程身份 import 进程身份
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 
 class 事务证据:
@@ -151,13 +151,13 @@ class 资源协调器:
             except OSError:
                 if 快照.exists():
                     # 并发下另一进程已发布 → 丢弃临时（只读快照不可覆盖）
-                    shutil.rmtree(临时, ignore_errors=True)
+                    清只读后删除树(临时, 忽略失败=真)
                     return
                 raise
             # 原子改名后同步父目录：确保「资源id@版本」目录项落盘
             self._同步目录(self.快照目录)
         except Exception:
-            shutil.rmtree(临时, ignore_errors=True)
+            清只读后删除树(临时, 忽略失败=真)
             raise
 
     @staticmethod
@@ -354,7 +354,7 @@ class 资源协调器:
                 if 当前 and str(当前["版本"]) == 版本:
                     continue
                 try:
-                    shutil.rmtree(快照目录)
+                    清只读后删除树(快照目录)
                 except OSError as 错误:
                     raise RuntimeError(f"快照清理失败: {名称}: {错误}") from 错误
                 if 快照目录.exists():

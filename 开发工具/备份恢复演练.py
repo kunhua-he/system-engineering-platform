@@ -37,13 +37,23 @@ if str(系统根) not in sys.path:
 
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.运行时.数据库URI import 只读库URI
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
 from 开发工具.备份恢复演练核对 import 反向验证 as 跑反向验证, 建源副本, 核对一致性
 
 #: 生产数据根当前缺 `制品/` 时用的真实文件夹具（`工程缓存/` 不入库，缺则该类如实报缺）。
 制品夹具相对路径 = "工程缓存/制品仓库/平台客户端信任/元数据/根信任.json"
 临时根表: set[Path] = set()
 _后端: Any = None
-atexit.register(lambda: [shutil.rmtree(路径, ignore_errors=True) for 路径 in list(临时根表)])
+
+
+def _退出时清理临时根() -> None:
+    """进程退出兜底清理：逐目录走唯一实现（只读属性/父目录无写位都先清后再删）。"""
+    for 路径 in list(临时根表):
+        清只读后删除树(路径, 忽略失败=真)
+
+
+atexit.register(_退出时清理临时根)
 
 
 def _调用(能力id: str, 参数: dict) -> Any:

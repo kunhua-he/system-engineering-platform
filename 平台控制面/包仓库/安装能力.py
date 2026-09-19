@@ -36,6 +36,7 @@ from pathlib import Path
 
 from 支持库.后端.系统核心支持库.路径安全 import 校验文件名
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 # 缺省受控根名：平台存储目录下的 `已激活`（与发布链 统一入口.签名与发布 的安装落点同一形态）
 默认受控目录名 = "已激活"
@@ -209,11 +210,11 @@ class 安装能力:
                     已备份 = 假
                 raise
         except Exception as 错误:
-            shutil.rmtree(临时目标, ignore_errors=True)
+            清只读后删除树(临时目标, 忽略失败=真)
             # 还原未完成时保留备份目录：旧版仍可人工恢复，不让旧版彻底消失
             return 假, f"安装失败: {错误}" + (f"（旧版已备份于 {备份}）" if 已备份 else "")
         # 新目录已就位：旧版备份不再是回滚依据（回滚走 发布管理.回滚），丢弃
         if 已备份 and 备份.exists():
-            shutil.rmtree(备份, ignore_errors=True)
+            清只读后删除树(备份, 忽略失败=真)
         self.状态.条件更新("制品", {"状态": "已安装"}, "制品摘要=?", (制品摘要,))
         return 真, f"已安装到 {目标目录}"

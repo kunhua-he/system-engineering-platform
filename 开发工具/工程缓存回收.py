@@ -16,9 +16,9 @@ import argparse
 from 公共契约.基础类型.逻辑类型 import 真, 假
 import hashlib
 import json
-import shutil
 import time
 from pathlib import Path
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 仓库根 = Path(__file__).resolve().parent.parent
 工程缓存根 = 仓库根 / "工程缓存"
@@ -104,7 +104,7 @@ def 删除(路径: Path, 试运行: bool, 统计: 清理统计) -> None:
         print(f"删除 {路径}（{格式大小(大小)}）")
         try:
             if 路径.is_dir():
-                shutil.rmtree(路径)
+                清只读后删除树(路径)
             else:
                 路径.unlink()
         except OSError as 错误:

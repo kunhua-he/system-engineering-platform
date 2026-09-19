@@ -5,6 +5,7 @@ import hashlib
 import shutil
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树, 确保可删
 
 
 def 计算摘要(文件: Path) -> str:
@@ -27,10 +28,19 @@ def 收集文件(目录: Path, 排除缓存: bool = 假) -> dict[str, str]:
 
 
 def 清空目录(目录: Path) -> None:
-    """清空并重建目标目录；重复恢复先清后建，不残留中间状态。"""
+    """清空并重建目标目录；重复恢复先清后建，不残留中间状态。
+
+    删除一律走唯一实现（`公共契约.运行时.平台适配`）：目录用 `清只读后删除树`，
+    文件先 `确保可删`（清自身只读位 + 补父目录写位）再 `unlink` —— 备份/恢复
+    的对象常来自只读来源，裸 `rmtree`/`unlink` 会在只读属性上卡住。
+    """
     if 目录.exists():
         for 项 in 目录.iterdir():
-            shutil.rmtree(项) if 项.is_dir() else 项.unlink()
+            if 项.is_dir():
+                清只读后删除树(项)
+            else:
+                确保可删(项)
+                项.unlink()
     else:
         目录.mkdir(parents=True)
 

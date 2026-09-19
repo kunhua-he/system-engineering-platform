@@ -35,6 +35,8 @@ from 开发工具.性能基准.基准场景 import (  # noqa: E402
     能力_反序列化JSON, 固定数据,
 )
 from 开发工具.性能基准.运行基准 import 判定退出码, 跑抖动自检  # noqa: E402
+from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
+from 公共契约.基础类型.逻辑类型 import 真  # noqa: E402
 
 运行基准路径 = 工程根 / "开发工具" / "性能基准" / "运行基准.py"
 检查记录: list[tuple[str, bool, str]] = []
@@ -318,9 +320,7 @@ def 主流程() -> int:
             正向验证_线程包装断言(环境, {"轮数": 300, "预热轮数": 20,
                                      "并发": 2, "超时秒": 5.0})
     finally:
-        import shutil
-
-        shutil.rmtree(临时根, ignore_errors=True)
+        清只读后删除树(临时根, 忽略失败=真)
     未通过 = [名称 for 名称, 通过, _说明 in 检查记录 if not 通过]
     print("-" * 78)
     print(f"反向验证结论：共 {len(检查记录)} 项，通过 {len(检查记录) - len(未通过)} 项，"

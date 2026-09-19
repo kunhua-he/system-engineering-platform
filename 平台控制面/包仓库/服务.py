@@ -23,6 +23,7 @@ from 平台控制面.包仓库.签名能力 import 签名能力
 from 平台控制面.包仓库.安装能力 import 安装能力
 from 支持库.适配层 import 内容摘要
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 # 二进制资产 hex 前缀（与 平台客户端制品/_二进制前缀、可复现构建器 一致）
 _二进制前缀 = "hexfile:"
@@ -125,9 +126,10 @@ class 包仓库(签名能力, 安装能力):
             if not 最终目录.exists():
                 os.rename(临时目录, 最终目录)
             else:
-                shutil.rmtree(临时目录)
+                # 原语义：删临时目录失败即报错（由上层 except 收成「构建失败」），故不忽略
+                清只读后删除树(临时目录)
         except Exception as 错误:
-            shutil.rmtree(临时目录, ignore_errors=True)
+            清只读后删除树(临时目录, 忽略失败=真)
             return 假, f"构建失败: {错误}", ""
         self.状态.写入记录("制品", {
             "制品摘要": 制品摘要, "包id": 包id, "版本": 版本,
@@ -167,7 +169,7 @@ class 包仓库(签名能力, 安装能力):
                 return 假, f"输入变化构建失败: {消息3}"
         finally:
             独立仓库.状态.关闭()
-            shutil.rmtree(独立根, ignore_errors=True)
+            清只读后删除树(独立根, 忽略失败=真)
         if 摘要3 == 摘要1:
             return 假, "输入变化但摘要未变化"
         return 真, "可复现构建验证通过"

@@ -39,6 +39,8 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 运行核心.运行环境管理器.环境管理器 import 计算环境摘要, 读取依赖锁  # noqa: E402
+from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
+from 公共契约.基础类型.逻辑类型 import 真  # noqa: E402
 
 环境根相对 = Path("工程缓存") / "提供者运行环境"
 
@@ -96,7 +98,8 @@ def 回收(执行: bool) -> int:
             删表.append((f"{提供者目录.name}/{版本.name}", 现用, 大小))
             可释放 += 大小
             if 执行:
-                shutil.rmtree(版本, ignore_errors=True)
+                 # 唯一实现：清只读/补父目录写位后再删（旧环境版本目录可为只读）
+                清只读后删除树(版本, 忽略失败=真)
 
     print(f"现用版本（保留）{len(留表)} 个：")
     for 名, 摘要 in 留表:

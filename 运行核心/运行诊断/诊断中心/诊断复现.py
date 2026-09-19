@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 结论_可稳定复现 = "可稳定复现"
 结论_无法复现 = "无法复现"
@@ -106,5 +107,4 @@ def 复现执行(失败记录: Any, *, 临时目录: Path | None = None,
         return 结果
     finally:
         if 自建目录 and 临时目录.exists():
-            import shutil
-            shutil.rmtree(临时目录, ignore_errors=True)
+            清只读后删除树(临时目录, 忽略失败=真)

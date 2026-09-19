@@ -351,6 +351,16 @@ def 清除只读属性(路径: str | Path) -> None:
         raise OSError(f"清除只读属性失败（{路径}）: {错误}") from 错误
 
 
+def _确保目录可写(目录: Path) -> None:
+    """让**目录**可读可写可执行（在其中增/删/改名条目都需要）；已可写则不动。
+
+    目录得同时可读可执行才谈得上遍历条目，不能只加写位 —— 这就是本函数与
+    `清除只读属性`（对单个条目只清只读位）分开的原因。
+    """
+    if not os.access(目录, os.W_OK):
+        os.chmod(目录, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+
+
 def 确保可删(路径: str | Path) -> None:
     """让「删除 路径」这件事可做：清掉路径自身的只读位，并确保**父目录可写**。
 
@@ -365,10 +375,43 @@ def 确保可删(路径: str | Path) -> None:
     """
     目标 = Path(路径)
     父目录 = 目标.parent
-    if 父目录 != 目标 and not os.access(父目录, os.W_OK):
-        # 目录得同时可读可执行才谈得上遍历删除，不能只加写位
-        os.chmod(父目录, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+    if 父目录 != 目标:
+        _确保目录可写(父目录)
     清除只读属性(目标)
+
+
+def 移动并可删(源: str | Path, 目标: str | Path) -> None:
+    """把 源 移动到 目标；只读属性/父目录无写位造成的 `PermissionError` 时先清只读再重试。
+
+    **为什么需要它（`shutil.move` 与删除不是同一件事）**：改名要的是**源与落点的父目录**
+    有写位，而不是「源文件自身可写」；所以这里**不清源文件自身的只读位**（对文件做
+    `os.chmod(路径, stat.S_IWRITE)` 会把它的读/执行位一起抹掉，移动后权限被改，
+    远超「修权限」的本意）。落点若已存在且只读（Windows 上 `MoveFileEx` 拒绝覆盖
+    只读目标），则清它的只读位——它本来就要被替换掉。
+
+    语义与 `清只读后删除树` 同款：默认**失败原样抛 `OSError`**（点名源与落点），
+    不返回布尔、不吞异常；只在第一次真的抛 `PermissionError` 时才做上面两件事并重试一次。
+    """
+    源路径 = Path(源)
+    目标路径 = Path(目标)
+    落点 = (目标路径 / 源路径.name) if 目标路径.is_dir() else 目标路径
+
+    try:
+        shutil.move(str(源路径), str(目标路径))
+        return
+    except PermissionError as 首次错误:
+        try:
+            _确保目录可写(源路径.parent)
+            _确保目录可写(落点.parent)
+            if 落点.exists() and 落点.is_file():
+                清除只读属性(落点)
+            shutil.move(str(源路径), str(目标路径))
+        except OSError as 重试错误:
+            raise OSError(
+                f"清只读后重试移动仍失败（{源路径} → {落点}）: {重试错误}") from 重试错误
+        return
+    except OSError as 错误:
+        raise OSError(f"移动失败（{源路径} → {落点}）: {错误}") from 错误
 
 
 def 清只读并确保可删(路径: str | Path) -> None:
@@ -1068,4 +1111,5 @@ __all__ = [
     "确保可删",
     "清只读并确保可删",
     "清只读后删除树",
+    "移动并可删",
 ]
