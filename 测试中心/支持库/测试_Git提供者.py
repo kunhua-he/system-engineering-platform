@@ -184,12 +184,21 @@ class TestGit提供者(unittest.TestCase):
         结果 = 提交(str(self.仓库), [str(self.临时根 / "仓库外.txt")], "消息")
         self.assertEqual(结果.错误码, "路径越界")
 
-    def test_命令失败与空消息(self):
+    def test_命令失败与空消息与全量暂存语义(self):
         结果 = 回滚(str(self.仓库), "f" * 40)
         self.assertEqual(结果.错误码, "命令失败")
         结果 = 提交(str(self.仓库), [str(self.仓库 / "基线.txt")], "")
         self.assertEqual(结果.错误码, "参数不合法")
-        结果 = 提交(str(self.仓库), [], "空路径列表")
+        # 空路径列表 = 全量 `git add -A`（2026-09-20 语义变更：原为「参数不合法」）
+        (self.仓库 / "全量暂存探针.txt").write_text("新文件\n", encoding="utf-8")
+        结果 = 提交(str(self.仓库), [], "全量暂存语义")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["全量暂存"], True)
+        self.assertEqual(结果.值["路径列表"], [])
+        self.assertEqual(结果.值["消息"], "全量暂存语义")
+        self.assertEqual(_运行git(str(self.仓库), "status", "--porcelain").stdout.strip(), "")
+        # 路径列表非列表（非法类型）仍必须是「参数不合法」
+        结果 = 提交(str(self.仓库), "不是列表", "类型非法")
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_提供者不可用注入(self):

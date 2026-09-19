@@ -1,7 +1,7 @@
 """Git 提供者受管执行层：参数列表执行、超时、进程组回收、输出上限。
 
 全部 git 调用走 subprocess 参数列表（禁 shell=True / 禁字符串拼接）；
-独立进程组（平台适配.子进程组启动标志）+ 超时走 进程终止.强制结束子进程 回收；
+独立进程组（start_new_session）+ 超时 SIGTERM→SIGKILL 回收；
 标准输出超限返回 超出限制；非零退出由调用方按语义映射错误码。
 """
 
@@ -11,12 +11,21 @@ import subprocess
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
-from 公共契约.运行时.有界IO import 受限通信
 from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时.有界IO import 受限通信
 from 支持库.适配层.Git提供者.实现.白名单 import 失败结果, 校验仓库路径, 校验超时
 
 默认超时秒 = 60.0
 最大输出字节 = 4 * 1024 * 1024
+
+
+def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
+    """进程组终止（终止→宽限→强杀→复查死透）：唯一实现在 公共契约.运行时.进程终止。
+
+    平台差异（POSIX 按进程组 / Windows 按进程树）由收口层自己判定：本处不再持有
+    平台判断、信号号或 killpg 调用，也不再自己 wait 收尾。
+    """
+    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
 
 
 def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默认超时秒) -> 结果:
@@ -42,13 +51,7 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
     try:
         标准输出, 标准错误, 已超时, 输出超限 = 受限通信(
             进程, 超时秒=超时秒, 输出上限字节=最大输出字节,
-            # 传进程号而非句柄：终止回调只在超时/超限路径触发，两条路径都在
-            # 读取 进程.returncode 之前就返回失败，句柄的退出码不影响结论；
-            # 而收口层 强制结束子进程 目前用 isinstance(..., subprocess.Popen)
-            # 判定句柄，测试对 subprocess.Popen 打桩（autospec）时该判定会抛
-            # TypeError（见回执「收口层缺口」）。收口层改成鸭子类型判定后，
-            # 此处可改回传句柄以保留真实退出码。
-            终止回调=lambda: 进程终止.强制结束子进程(进程.pid, 宽限秒=1.0, 等待秒=1.0),
+            终止回调=lambda: _终止进程组(进程),
         )
     finally:
         for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
