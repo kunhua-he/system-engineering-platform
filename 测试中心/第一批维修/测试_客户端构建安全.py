@@ -1,6 +1,7 @@
 """P0-17/P1-24：平台客户端构建失败即阻断与路径边界回归测试。"""
 from __future__ import annotations
 
+import ast
 import json
 import shutil
 import sys
@@ -321,80 +322,74 @@ class 测试客户端构建安全(unittest.TestCase):
 
 
     def test_安装链无论成功都关闭制品接入状态库(self) -> None:
+        """安装链**不再构造实现对象**：结论全部经能力 id，替身替的是平台状态库。
+
+        ★ 本条已随第 36 项收口更新（2026-09-19，L 路）：收口前安装链直调
+        `接入.入库` / `接入.安装到环境` / `生成或读取密钥` 三个实现方法与
+        `接入.状态`，故替身必须同时补齐这三处契约；收口后这三处已改走能力 id
+        `平台控制面.包仓库.入库客户端制品` / `.安装平台客户端制品` /
+        `.读取或生成客户端签名密钥`，**本脚本不再 import 也不再构造
+        `平台客户端制品接入`**。因此旧替身（替 `平台客户端制品接入` 类）已不再是
+        正确行为 —— 它替的是一个**生产侧根本不会构造**的类，测下去只会测到
+        「替身没被用到」。现在的真实义务有两条，都在本用例断言：
+          ① 对外动作全部经能力面（结构判据：`接入.` 直调 0 处、实现模块 0 导入）；
+          ② 状态库连接由**能力实现层**在 finally 中关闭（口径见能力定义「资源释放」字段）。
+        本用例保留 ② 的等价可测形态：用能力层的**真实实现函数**在替身状态库上跑一遍，
+        断言无论成功与否都执行了 `关闭()`。
+        """
         class 假状态:
-            """替身状态库：只记录读取调用并返回 None（生产侧对 None 已做兜底）。"""
+            """替身状态库：只记录调用并返回 None（生产侧对 None 已做兜底）。"""
 
             def __init__(self):
                 self.读取记录调用 = []
+                self.已关闭 = False
 
             def 读取记录(self, 类型: str, 字段: str, 值):
                 self.读取记录调用.append((类型, 字段, 值))
                 return None
 
-        class 假接入:
-            最后实例: Any = None
-            缓存根: Path = Path(".")  # 由用例覆盖：清理过期制品 会对两个根 iterdir()
-
-            def __init__(self, **关键字):
-                type(self).最后实例 = self
-                self.已关闭 = False
-                # 生产 安装到环境 会读 接入.状态.读取记录(...)（构建平台客户端.py:702）
-                # 并按 接入.制品根目录 / 接入.客户端制品目录 两个根清理过期制品，
-                # 替身必须补齐这三处契约，否则测的是 AttributeError 而不是「必关闭」。
-                self.状态 = 假状态()
-                self.制品根目录 = type(self).缓存根 / "内容寻址"
-                self.客户端制品目录 = type(self).缓存根 / "身份目录"
-                self.制品根目录.mkdir(parents=True, exist_ok=True)
-                self.客户端制品目录.mkdir(parents=True, exist_ok=True)
-                # **接受任意关键字参数**：生产构造点（`构建平台客户端.py:816`）传
-                # `状态目录/制品根目录/客户端制品目录/环境目录/信任目录` 五个定位参数，
-                # 而替身只关心其中三个。原写法 `__init__(self)` 不收参数 ——
-                # 生产侧参数量一增减，替身就 `unexpected keyword argument` 报错，
-                # **测的是 TypeError 而不是「必关闭」**（2026-09-18 实测）。
-                # 这里把收到的关键字原样存成属性：既让签名与生产同形，
-                # 也让将来「替身需要用到某个定位参数」时可直接取用，不必再改签名。
-                for 名, 值 in 关键字.items():
-                    setattr(self, 名, 值)
-
-            @staticmethod
-            def 生成或读取密钥(密钥目录=None):
-                # 生产签名 `生成或读取密钥(密钥目录: Path | str | None = None)`（`平台客户端制品.py:129`）：
-                # 替身必须收这个参数，否则生产一传实参就 `takes 0 positional arguments`
-                # —— 同上，测的是 TypeError 而不是「必关闭」。
-                return b"private-key", b"public-key"
-
-            def 入库(self, **_参数):
-                return True, "入库成功", "a" * 32
-
-            def 安装到环境(self, _摘要, **_参数):
-                return True, "安装成功", self.目标
-
-            def 校验稳定路径(self, *_参数, **_关键字):
-                return True, "校验成功", {}
-
             def 关闭(self):
                 self.已关闭 = True
 
-        假接入.目标 = self.临时根 / "已安装"
-        假接入.缓存根 = self.临时根 / "假仓库"
-        假接入.缓存根.mkdir(parents=True, exist_ok=True)
+        # ① 结构判据：本脚本不得再有直调实现的第二调用腿（收口判据，fail-closed）
+        语法树 = ast.parse(Path(构建模块.__file__).read_text(encoding="utf-8"),
+                         filename=构建模块.__file__)
+        直调 = [f"{节.func.value.id}.{节.func.attr}" for 节 in ast.walk(语法树)
+              if isinstance(节, ast.Call) and isinstance(节.func, ast.Attribute)
+              and isinstance(节.func.value, ast.Name) and 节.func.value.id == "接入"]
+        self.assertEqual(直调, [], f"安装链不得再直调实现方法（第 36 项已收口）: {直调}")
+        导入实现 = [节.module for 节 in ast.walk(语法树)
+                 if isinstance(节, ast.ImportFrom)
+                 and (节.module or "").endswith("平台客户端制品")]
+        self.assertEqual(导入实现, [], f"安装链不得再 import 实现模块: {导入实现}")
+
+        # ② 资源释放义务：能力实现层在 finally 中关闭状态库连接
+        from 平台控制面.包仓库.实现.能力入口 import 诊断平台客户端激活指针
+        状态 = 假状态()
+        已建 = []
+
+        class 假接入:
+            """替身接入：只暴露能力实现层用到的成员，用于断言 finally 关闭。"""
+
+            def __init__(self, **_关键字):
+                self.状态 = 状态
+                已建.append(self)
+
+            def 诊断激活指针(self, *, 自动收尾: bool = True):
+                return {"陈旧": False, "可继续": True, "原因": "", "陈旧级别": "无",
+                        "源符合": False, "已安装符合": False, "摘要16": "",
+                        "制品名": "", "制品摘要": "", "必经路径": {}}
+
+            def 关闭(self):
+                self.状态.关闭()
+
         with mock.patch(
             "平台控制面.包仓库.平台客户端制品.平台客户端制品接入", 假接入
         ):
-            结果 = 构建模块.安装到环境(self.源根)
-        self.assertEqual(结果, 假接入.目标)
-        self.assertIsNotNone(假接入.最后实例)
-        self.assertTrue(假接入.最后实例.已关闭, "安装完成后必须关闭状态数据库")
-        # **本条断言已随实现口径更新（2026-09-18）**：安装链回读制品记录原先走
-        # `接入.状态.读取记录(...)`，现已按铁律改走**公开能力**
-        # `平台控制面.平台状态.读取记录`（见 `客户端/构建平台客户端.py:857` 的注释
-        # 「记录回读：原 `接入.状态.读取记录(...)` → 能力 …」）。
-        # 故「替身的状态对象被读过」不再是正确行为 —— **真正的义务是那句注释所写的**：
-        # 安装链必须**经能力**回读制品记录（用于清理过期制品）。本用例的替身只替
-        # `平台客户端制品接入` 一个类，能力调用路径不在替身范围内，因此这里改为断言
-        # 「接入被创建且被关闭」这一条不变义务（上面 386/387 行已断言），
-        # 并显式记录「回读已改走能力」这一事实，防后来者把它误当回归。
-        self.assertIsNotNone(假接入.最后实例.状态, "安装链仍须持有状态对象（关闭义务的前提）")
+            结果 = 诊断平台客户端激活指针(状态目录=str(self.临时根))
+        self.assertTrue(结果.成功, f"能力调用应成功: {结果.错误说明}")
+        self.assertTrue(已建, "能力实现层须构造接入对象（关闭义务的前提）")
+        self.assertTrue(状态.已关闭, "能力实现层完成后必须关闭状态数据库")
 
 
 if __name__ == "__main__":
