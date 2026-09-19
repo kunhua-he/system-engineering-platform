@@ -8,7 +8,6 @@
 """
 
 from __future__ import annotations
-from 公共契约.基础类型.逻辑类型 import 真, 假
 
 # 环境准入（必须在任何装配与第三方导入之前）：平台判定的唯一来源是
 # `公共契约/运行时/平台适配`，本文件不自己写 sys.platform 判断。
@@ -24,7 +23,10 @@ _项目根 = _薄壳目录.parents[1]
 if str(_项目根) not in sys.path:
     sys.path.insert(0, str(_项目根))
 
-from 公共契约.运行时.平台适配 import 脚本入口准入
+# 平台内导入一律排在 项目根 入 sys.path 之后：MCP 客户端按脚本绝对路径拉起时，
+# sys.path[0] 是薄壳目录而不是项目根，提前导入必然 ModuleNotFoundError。
+from 公共契约.基础类型.逻辑类型 import 真, 假  # noqa: E402
+from 公共契约.运行时.平台适配 import 脚本入口准入  # noqa: E402
 
 脚本入口准入("启动平台 MCP 薄壳")
 

@@ -30,3 +30,6 @@ venv/
 *.sqlite3-shm
 *.db-wal
 *.db-shm
+
+# 编辑器/工具生成的本地配置（含本机网关凭证取法，不得进仓）
+zcode.json
