@@ -943,6 +943,32 @@ python3.14 开发工具/薄壳/薄壳服务.py   # 由 MCP 客户端以 stdio �
 
 客户端配置：根目录 `opencode.json`（opencode，路径用 `{env:HOME}` 插值）与 `.mcp.json`（Claude Code，路径用 `${HOME}` 插值）；网关凭证经环境变量 `MCP_GATEWAY_TOKEN` 注入，**不写进配置文件**。
 
+> **ZCode 接入注意（实测，2026-09-20）**：ZCode 的图形界面进程不读 `~/.zshrc`，`${MCP_GATEWAY_TOKEN}` 在它那里为空，照抄 `.mcp.json` 只能拿到「网关凭证缺失」。ZCode 侧改用 `/bin/zsh -c` 在启动时从 40007 的 plist 现取凭证（凭证不写进配置文件、不落盘），并把 `cwd` 设为项目根：
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "system_engineering_toolkit": {
+        "type": "stdio",
+        "command": "/bin/zsh",
+        "args": [
+          "-c",
+          "exec env \"系统库网关凭证=$(plutil -extract EnvironmentVariables.系统库网关凭证 raw -o - $HOME/Library/LaunchAgents/com.huashi.gateway-40007.plist 2>/dev/null)\" PYTHONDONTWRITEBYTECODE=1 python3.14 -B -u $HOME/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
+        ],
+        "cwd": "/Users/hekunhua/Documents/Agent/PHP/系统工程平台",
+        "timeoutMs": 130000,
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+> 该片段写入用户级 `~/.zcode/cli/config.json` 的 `mcp.servers`，或工作区级 `<仓库>/zcode.json`（字段写法相同；`command` 必须是字符串、`args` 是数组，写成数组会被静默丢弃）。本仓库**不收录**这份配置（路径与凭证取法都是本机专属，`.gitignore` 已挡 `zcode.json`），按上文按需自行落一份。
+
+> **薄壳按绝对路径启动的前提**：MCP 客户端以脚本绝对路径拉起薄壳时，`sys.path[0]` 是薄壳目录而不是项目根，故薄壳内**所有平台包导入必须排在「项目根入 `sys.path`」之后**（`开发工具/薄壳/薄壳服务.py` 已照此排布，顺序颠倒会立刻 `ModuleNotFoundError`）。仓内其余脚本走 `python3.14 -m 包.模块` 启动，`sys.path[0]` 就是项目根，不受此限。
+
 > 历史口径（已失效，勿再沿用）：8766 HTTP MCP（Streamable HTTP）已于 2026-09-15 随 D 清场下线，仓库不再提供 remote HTTP 接入。
 
 ## 审计者事实基线
