@@ -12,6 +12,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 from 开发工具.发布门禁.运行发布门禁_底座 import (
     _调用包仓库能力,
@@ -150,11 +151,11 @@ def _校验依赖锁与反向篡改() -> tuple[bool, str, bool, str]:
     )
     锁定路径 = 项目目录 / "依赖锁定.json"
     if not 锁定路径.is_file():
-        return False, 正向证据, False, "缺少可供篡改验证的依赖锁定.json"
+        return 假, 正向证据, 假, "缺少可供篡改验证的依赖锁定.json"
     try:
         锁定数据 = json.loads(锁定路径.read_text(encoding="utf-8"))
         if not 锁定数据.get("包列表"):
-            return 正向结果.成功, 正向证据, False, "依赖锁没有可篡改的包条目"
+            return 正向结果.成功, 正向证据, 假, "依赖锁没有可篡改的包条目"
         with tempfile.TemporaryDirectory(prefix="门禁_锁篡改_") as 临时目录:
             临时项目 = Path(临时目录)
             锁定数据["包列表"][0]["完整性摘要"] = "0" * 16
@@ -163,7 +164,7 @@ def _校验依赖锁与反向篡改() -> tuple[bool, str, bool, str]:
             )
             反向结果 = 校验锁定文件(临时项目, _当前系统根())
     except (json.JSONDecodeError, OSError, KeyError, TypeError) as 错误:
-        return 正向结果.成功, 正向证据, False, f"反向篡改检查异常: {错误}"
+        return 正向结果.成功, 正向证据, 假, f"反向篡改检查异常: {错误}"
     反向通过 = not 反向结果.成功 and any("完整性摘要漂移" in 项 for 项 in 反向结果.漂移列表)
     反向证据 = f"篡改摘要后被阻断: {'；'.join(反向结果.漂移列表[:2])}"
     return 正向结果.成功, 正向证据, 反向通过, 反向证据
@@ -176,7 +177,7 @@ def _校验包反向篡改(包目录: Path) -> tuple[bool, str]:
         安装结果 = _调用包仓库能力("平台控制面.包仓库.安装候选包", {
             "仓库根目录": 仓库目录, "包目录": str(包目录)})
         if not 安装结果.成功:
-            return False, f"候选包无法安装，不能执行反向检查: {安装结果.错误说明}"
+            return 假, f"候选包无法安装，不能执行反向检查: {安装结果.错误说明}"
         安装值 = 安装结果.值
         目标路径 = Path(安装值["安装路径"])
         可篡改文件 = next(
@@ -184,14 +185,14 @@ def _校验包反向篡改(包目录: Path) -> tuple[bool, str]:
             None,
         )
         if 可篡改文件 is None:
-            return False, "安装包没有可供篡改验证的文件"
+            return 假, "安装包没有可供篡改验证的文件"
         with 可篡改文件.open("ab") as 文件流:
             文件流.write("\n门禁反向篡改".encode("utf-8"))
         校验结果 = _调用包仓库能力("平台控制面.包仓库.校验已安装包完整性", {
             "仓库根目录": 仓库目录, "包id": 安装值["包id"],
             "版本": 安装值["版本"], "期望摘要": 安装值["完整性摘要"]})
         if not 校验结果.成功:
-            return False, f"篡改后完整性校验不可用: {校验结果.错误说明}"
+            return 假, f"篡改后完整性校验不可用: {校验结果.错误说明}"
         return (not bool(校验结果.值["校验成功"]),
                 f"篡改{可篡改文件.relative_to(目标路径)}后校验结果: {校验结果.值['证据']}")
 
@@ -225,7 +226,7 @@ def 注册口径新增判据(口径统计: dict[str, Any]) -> tuple[bool, str]:
         f"；基线生效={口径统计['基线']['生效']}"
     )
     if 新增数 == 0:
-        return True, f"无新增类不一致（{台账}）"
+        return 真, f"无新增类不一致（{台账}）"
     样例 = (口径统计["默认值硬不一致列表"] + 口径统计["必填硬不一致列表"]
           + 口径统计["新增漏声明列表"])
-    return False, f"新增类不一致 {新增数} 条（{台账}）：{'；'.join(样例[:5])}"
+    return 假, f"新增类不一致 {新增数} 条（{台账}）：{'；'.join(样例[:5])}"

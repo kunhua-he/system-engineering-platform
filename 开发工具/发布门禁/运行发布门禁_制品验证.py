@@ -11,6 +11,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 from 开发工具.发布门禁.运行发布门禁_底座 import (
     _创建门禁临时目录,
@@ -151,9 +152,9 @@ def 校验制品来源绑定(
             f"制品路径={身份['制品路径']}；全文件摘要={身份['全文件摘要']}；"
             f"来源提交={来源提交}；能力数={len(能力表)}"
         )
-        return True, 详情, 身份
+        return 真, 详情, 身份
     except (OSError, json.JSONDecodeError, ValueError, RuntimeError, TypeError, AttributeError) as 错误:
-        return False, str(错误), 身份
+        return 假, str(错误), 身份
 
 
 
@@ -177,12 +178,12 @@ def 核验制品字节未变(
 ) -> tuple[bool, str]:
     """核验验证器没有新增、删除或修改制品内任何字节。"""
     if 验证前 == 验证后:
-        return True, f"验证前后 {len(验证前)} 个文件逐字节一致"
+        return 真, f"验证前后 {len(验证前)} 个文件逐字节一致"
     新增 = sorted(set(验证后) - set(验证前))
     删除 = sorted(set(验证前) - set(验证后))
     漂移 = sorted(路径 for 路径 in set(验证前) & set(验证后)
                 if 验证前[路径] != 验证后[路径])
-    return False, f"制品被验证过程修改：新增{新增[:3]} 删除{删除[:3]} 字节漂移{漂移[:3]}"
+    return 假, f"制品被验证过程修改：新增{新增[:3]} 删除{删除[:3]} 字节漂移{漂移[:3]}"
 
 
 def 构建验证缓存环境(制品目录: Path) -> tuple[Path, dict[str, str]]:
@@ -207,13 +208,13 @@ def 构建验证缓存环境(制品目录: Path) -> tuple[Path, dict[str, str]]:
 
 def _资源释放证据通过(证据: Any) -> bool:
     if not isinstance(证据, dict) or not 证据:
-        return False
+        return 假
     for 键, 值 in 证据.items():
         if "已退出" in str(键):
             if 值 is not True:
-                return False
+                return 假
         elif "残留" in str(键) and 值 != 0:
-            return False
+            return 假
     return any("已退出" in str(键) or "残留" in str(键) for 键 in 证据)
 
 

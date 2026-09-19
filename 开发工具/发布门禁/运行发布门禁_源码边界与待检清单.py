@@ -10,6 +10,7 @@
 """
 
 from __future__ import annotations
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 from 开发工具.发布门禁.运行发布门禁_底座 import (
     系统根,
@@ -92,12 +93,12 @@ def _是否已废弃包(包目录: Path) -> bool:
         声明 = _json.loads((包目录 / "包声明.json").read_text(encoding="utf-8"))
         return bool(声明.get("已废弃"))
     except Exception:
-        return False
+        return 假
 def _校验文件清单摘要(包目录: Path) -> tuple[bool, str]:
     """委托唯一校验器：完整性摘要.json 必须为文件清单格式且与真实文件闭合。"""
     from 支持库.后端.组件规范支持库 import 校验完整性摘要
 
     通过, 问题列表 = 校验完整性摘要(包目录)
     if 通过:
-        return True, "逐文件校验通过，清单与实际文件闭合"
-    return False, "；".join(问题列表[:3])
+        return 真, "逐文件校验通过，清单与实际文件闭合"
+    return 假, "；".join(问题列表[:3])
