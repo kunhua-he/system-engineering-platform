@@ -149,6 +149,7 @@ from 开发工具.公开调用完整性门禁_检查与判定 import (
 实现侧入口文件名 = "__init__.py"
 错误码字面量键 = "错误码"
 失败方法名 = "失败"
+包装函数名关键字 = "失败"
 
 def _错误码声明文件(根: Path):
     """错误码声明面：根下每个非保留、非缓存的顶层目录里的全部 能力定义.json。
@@ -209,14 +210,17 @@ def _实现侧源码清单(根: Path):
                 yield 源码路径
 
 
-def _实现侧字面量错误码(树: ast.AST) -> set[str]:
-    """AST 取实现侧产码的两条**信封渠道**：
+def _实现侧字面量错误码(树: ast.AST, 包装名集: set[str] | None = None) -> set[str]:
+    """AST 取实现侧产码的三条**信封渠道**：
 
     ① ``错误码=<字面量>`` 关键字实参（``_响应(False, 错误码="提供者不可用", …)``）；
-    ② ``<结果>.失败(<字面量>, …)`` 的**首个位置实参** —— 全仓 475 处 ``结果.失败`` 走的就是这条。
+    ② ``<结果>.失败(<字面量>, …)`` 的**首个位置实参** —— 全仓 475 处 ``结果.失败`` 走的就是这条；
+    ③ **失败包装函数的调用**：``<包装名>(<字面量>, …)``，包装名由 ``收集失败包装函数名``
+       在**全扫描面上两遍**求得（见该函数说明：补前全仓漏 3 种未登记码）。
 
-    为什么必须两条一起扫：实测真仓库里走 ① 的只有 4 种码、走 ② 的 240 种码；
-    只扫 ① 本判据在真仓库上等于恒绿（真盲区一个都看不见，属 A-3 那类自证）。
+    为什么必须几条一起扫：实测真仓库里走 ① 的只有 4 种码、走 ② 的 240 种码、
+    走 ③ 的另有 80 种码（含 3 种未登记）；只扫 ① 本判据在真仓库上等于恒绿，
+    只扫 ①② 则对 ``_失败(...)`` 那一大片实现全盲（真盲区一个都看不见，属 A-3 那类自证）。
 
     **不扫** ``{"错误码": <字面量>}`` 字典项：那一形式同时出现在**行为声明**
     （``默认行为 = {"错误码": "统一", …}``）、**模板生成内容**与**值内字段**里，
@@ -225,6 +229,7 @@ def _实现侧字面量错误码(树: ast.AST) -> set[str]:
     属已知口径边界，写在这里而不是假装扫到了。
     """
     码集: set[str] = set()
+    包装名集 = 包装名集 or set()
     for 节点 in ast.walk(树):
         if isinstance(节点, ast.keyword) and 节点.arg == 错误码字面量键:
             值 = 节点.value
@@ -235,7 +240,53 @@ def _实现侧字面量错误码(树: ast.AST) -> set[str]:
             首参 = 节点.args[0]
             if isinstance(首参, ast.Constant) and isinstance(首参.value, str) and 首参.value:
                 码集.add(首参.value)
+        elif (包装名集 and isinstance(节点, ast.Call)
+                and isinstance(节点.func, ast.Name) and 节点.func.id in 包装名集 and 节点.args):
+            首参 = 节点.args[0]
+            if isinstance(首参, ast.Constant) and isinstance(首参.value, str) and 首参.value:
+                码集.add(首参.value)
     return 码集
+
+
+def _本文件失败包装名(树: ast.AST) -> set[str]:
+    """AST 取**本文件内定义**的「失败包装函数」名（``收集失败包装函数名`` 的第一遍）。"""
+    名字集: set[str] = set()
+    for 节点 in ast.walk(树):
+        if not isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if 包装函数名关键字 not in 节点.name:
+            continue
+        形参名 = {参数.arg for 参数 in 节点.args.args + 节点.args.kwonlyargs}
+        if 节点.args.vararg is not None:
+            形参名.add(节点.args.vararg.arg)
+        for 调用 in ast.walk(节点):
+            if (isinstance(调用, ast.Call) and isinstance(调用.func, ast.Attribute)
+                    and 调用.func.attr == 失败方法名 and 调用.args):
+                首参 = 调用.args[0]
+                if isinstance(首参, ast.Name) and 首参.id in 形参名:
+                    名字集.add(节点.name)
+                    break
+    return 名字集
+
+
+def 收集失败包装函数名(树表: dict) -> set[str]:
+    """在**全扫描面**上求「失败包装函数名」并集（两遍扫描的第二遍要用的共享名集）。
+
+    为什么必须**跨文件**求并集、不能只看本文件：真仓库里的包装函数常常**定义在一处、
+    调用在另一处**（``_失败`` 定义在 ``模型连接器/实现/模型连接基元.py``，被同包 7 个
+    实现文件 ``from …模型连接基元 import _失败`` 后调用）。只认「本文件内定义」时，
+    调用点所在的文件根本识别不出这个包装名，判据依旧全盲 —— 这正是第一版补丁
+    实测返 0 的原因（包装名 = set()）。
+
+    识别口径**只认函数名含「失败」且真把形参转发给 ``.失败`` 首参**：这一限制不是
+    为了少报，而是因为按「任意 ``_`` 开头函数 + 字面量首参」宽扫会把**能力 id**
+    当成错误码（``_调用支持库("文件系统支持库.文件操作.读取文件", …)`` —— 首参是能力 id，
+    不是码），把那类计进来会把判据变成噪声源（A-1 那条病根的镜像）。
+    """
+    并集: set[str] = set()
+    for 树 in 树表.values():
+        并集 |= _本文件失败包装名(树)
+    return 并集
 
 
 def 收集实现侧错误码(根: Path) -> tuple[dict[str, list[str]], list[dict], int]:
@@ -244,19 +295,24 @@ def 收集实现侧错误码(根: Path) -> tuple[dict[str, list[str]], list[dict
     不可解析（语法坏/读不成/解码错）**不静默跳过**：跳过等于把「这份实现的错误码
     情况未知」压成「它没有错误码」，正是 A-1/A-2 那条病根。三条信息分开返回，
     由 ``检查错误码登记`` 分别出条目。
+
+    **两遍扫描**：第一遍解析全部实现、求出「失败包装函数名」并集；第二遍再用该并集
+    逐文件取产码。单遍做不到 —— 包装定义与调用常常不同文件（见 ``收集失败包装函数名``）。
     """
     码表: dict[str, list[str]] = {}
     不可解析: list[dict] = []
     扫描数 = 0
+    树表: dict[str, ast.AST] = {}
     for 源码路径 in _实现侧源码清单(根):
         扫描数 += 1
         路径文本 = str(源码路径.relative_to(根))
         try:
-            树 = ast.parse(源码路径.read_text(encoding="utf-8"))
+            树表[路径文本] = ast.parse(源码路径.read_text(encoding="utf-8"))
         except (OSError, SyntaxError, UnicodeDecodeError) as 错误:
             不可解析.append({"路径": 路径文本, "异常": type(错误).__name__})
-            continue
-        for 码 in _实现侧字面量错误码(树):
+    包装名集 = 收集失败包装函数名(树表)
+    for 路径文本, 树 in 树表.items():
+        for 码 in _实现侧字面量错误码(树, 包装名集):
             文件们 = 码表.setdefault(码, [])
             if 路径文本 not in 文件们:
                 文件们.append(路径文本)

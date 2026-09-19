@@ -37,7 +37,7 @@
     },
     {
       "路径": "能力定义.json",
-      "sha256": "ff975b40ac701463ca4151a5cecaf599bde976e322e0104afab1fd07c24215c1"
+      "sha256": "28606576b9be0ce1b128221d85d290dccd7b6aaf7e95fadb930ecded6441f027"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -49,7 +49,7 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "f9f3a667a316d3e60bac2ede904d9babaca2cf603d8a199528eb336aac439be0"
+      "sha256": "9fe1d047473abfbbec37b800a3217c3210d17b27753537a6a7fa1518f5931f95"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -81,5 +81,5 @@
     "文档转换支持库.LibreOffice转换.检查提供者",
     "文档转换支持库.LibreOffice转换.转换办公文件"
   ],
-  "能力定义摘要": "a1d62ca65e4b2bd9"
+  "能力定义摘要": "a23d75b3e79ae617"
 }
