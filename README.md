@@ -582,7 +582,7 @@ python3.14 -m 开发工具.跨平台部署验证                  # 在本机/�
 
 1. **`mlx` 转写后端**：Apple Silicon 专有；已按「一份实现 + 按平台选后端」改造中（见下条）。
 2. **环境落盘删只读**：venv 的只读文件在 Windows 上需先清只读属性再删（POSIX 上同一份实现也成立）。
-3. **流式断连监视**：`运行核心/统一网关/流式HTTP.py::消费上行字节` 用 `socket.MSG_DONTWAIT`，Windows 无此常量且**无兜底**。
+3. **流式断连监视**：`运行核心/统一网关/传输/流式HTTP.py::消费上行字节` 用 `socket.MSG_DONTWAIT`，Windows 无此常量且**无兜底**。
 4. **端口归属枚举**：`公共契约/句柄体系.py` 依赖 `lsof`（缺失时给明确失败说明，但**没有 `netstat -ano` 回退**）。
 5. **热接入脚本**：`运维脚本/热接入.py` 依赖 `bash` / `pgrep` / LaunchAgents `plist`；可改走 HTTP `POST /网关/热接入`。
 
