@@ -12,6 +12,7 @@ S0 缺项阻断清单（正式包形态一律阻断）：配置契约/权限契�
 
 from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 import json
 import base64
@@ -21,7 +22,6 @@ import re
 import socket
 import sys
 import subprocess
-import shutil
 import tempfile
 import time
 import unittest
@@ -788,5 +788,5 @@ class 组件合规:
                     except Exception as 错误:
                         问题.append(f"{能力id} 缺必填参数调用异常（失败语义缺失）: {错误}")
         finally:
-            shutil.rmtree(真实输入根, ignore_errors=True)
+            清只读后删除树(真实输入根, 忽略失败=真)
         return 问题

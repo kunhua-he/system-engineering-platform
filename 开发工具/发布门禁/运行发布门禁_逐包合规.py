@@ -14,6 +14,7 @@
 from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 开发工具.发布门禁.运行发布门禁_底座 import (
     _调用包仓库能力,
 )
@@ -22,7 +23,6 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import json
 import os
-import shutil
 import tempfile
 
 
@@ -87,7 +87,7 @@ def _执行单包权威合规(包目录: Path) -> tuple[str, str, bool, int]:
             os.environ.pop("系统底座_合规输入根", None)
         else:
             os.environ["系统底座_合规输入根"] = 原输入根
-        shutil.rmtree(专属输入根, ignore_errors=True)
+        清只读后删除树(专属输入根, 忽略失败=真)
     失败场景 = "；".join(
         f"{名称}({详情[:160]})"
         for 名称, 通过, 详情 in 报告.场景结果表 if not 通过

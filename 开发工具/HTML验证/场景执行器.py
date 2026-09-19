@@ -1,6 +1,6 @@
 """多步骤场景顺序执行、资源键并发和 finally 清理。"""
 from __future__ import annotations
-import copy, json, shutil, tempfile, threading
+import copy, json, tempfile, threading
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -15,6 +15,8 @@ from 开发工具.HTML验证.返回判定 import _判定
 from 开发工具.HTML验证.动态值 import _展开动态值
 from 开发工具.HTML验证.端口池 import _场景资源键
 from 开发工具.HTML验证.验证证据 import _校验制品前后绑定
+from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 class _受管临时根:
     """场景临时根句柄（与 tempfile.TemporaryDirectory 同形：.name / .清理）。"""
@@ -24,7 +26,8 @@ class _受管临时根:
         self.name = str(路径)
 
     def 清理(self) -> None:
-        shutil.rmtree(self.路径, ignore_errors=True)
+        # 受管临时根下可能落只读文件；清理走唯一实现（失败留痕，不掩盖场景结论）。
+        清只读后删除树(self.路径, 忽略失败=真)
 
 
 def _安全场景名(场景id: str) -> str:

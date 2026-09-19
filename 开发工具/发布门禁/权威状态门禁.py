@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
 系统根 = Path(__file__).resolve()
 for _祖先 in 系统根.parents:
     if (_祖先 / "平台控制面").is_dir() and (_祖先 / "开发工具").is_dir():
@@ -178,8 +180,7 @@ def _快照恢复一致() -> str:
         成功, 说明, 新版本 = 协调.提交(
             事务id=事务id, 句柄id=句柄id, 资源id="资源")
         快照 = 协调.快照目录 / f"资源@{新版本}"
-        import shutil
-        shutil.rmtree(快照)
+        清只读后删除树(快照)
         恢复 = 协调.恢复缺失快照()
         值 = 协调.读取快照值("资源", 新版本)
         协调.状态.关闭()

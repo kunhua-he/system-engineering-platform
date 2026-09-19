@@ -11,9 +11,9 @@
 from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 import json
-import shutil
 import sys
 import threading
 import urllib.error
@@ -140,10 +140,11 @@ def 声明能力表(带心跳: bool = True) -> list[dict]:
 
 def 删除演练包():
     if 演练包目录.is_dir():
-        shutil.rmtree(演练包目录)
+        # 演练包目录必须真删净（残留会污染正式能力目录）：删除走唯一实现，失败原样抛出。
+        清只读后删除树(演练包目录)
     for 缓存 in 演练包目录.parent.rglob("__pycache__"):
         if 演练包id.replace(".", "/") in str(缓存) or "热接入演练" in str(缓存):
-            shutil.rmtree(缓存, ignore_errors=True)
+            清只读后删除树(缓存, 忽略失败=真)
 
 
 def 主流程() -> int:

@@ -22,7 +22,6 @@ from pathlib import Path
 import atexit
 from dataclasses import dataclass, field
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +37,7 @@ for _祖先 in 系统根.parents:
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.运行时.有界IO import 受限读取
 from 公共契约.运行时 import 平台适配
 from 公共契约.运行时 import 进程终止
@@ -49,7 +49,7 @@ def _清理门禁临时目录() -> None:
     """进程退出时清理门禁创建的临时目录，避免测试数据长期残留。"""
     for 路径 in list(_门禁临时目录表):
         try:
-            shutil.rmtree(路径, ignore_errors=True)
+            平台适配.清只读后删除树(路径, 忽略失败=真)
         finally:
             _门禁临时目录表.discard(路径)
 
