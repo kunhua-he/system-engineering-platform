@@ -92,7 +92,9 @@ class Test能力调用图接线反向验证(unittest.TestCase):
     def test_真仓库存量判绿且报出审计面(self) -> None:
         通过, 详情 = self._判定(系统根)
         self.assertIs(通过, 真, f"真仓库当前存量应为 0（判绿），实际详情：{详情}")
-        self.assertIn("审计面=模块库 包内全量源码 61 份", 详情)
+        # 不写死份数：分包会让模块库包内源码自然增多，写死即「假红」。
+        份数 = int(详情.split("审计面=模块库 包内全量源码 ")[1].split(" 份")[0])
+        self.assertGreater(份数, 30, f"审计面异常过小，判据可能塌缩：{详情}")
         self.assertIn("本次计数 0 条", 详情)
         self.assertIn("按文件分桶判定", 详情)
 
