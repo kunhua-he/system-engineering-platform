@@ -11,6 +11,7 @@ from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.运行时.数据库URI import 只读库URI
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 平台控制面.备份恢复.校验函数 import 内容摘要
 from 支持库.后端.数据库连接支持库.SQLite数据库 import 查询
 
@@ -139,7 +140,8 @@ class 备份执行能力:
             return self._写快照(快照目录)
         except BaseException:
             # 清单是最后一步：任何异常都意味着本快照未被认证，整目录回收（不留半份状态）。
-            shutil.rmtree(快照目录, ignore_errors=True)
+            # 删除走唯一实现（含只读属性/父目录无写位的兜底）；清理失败不盖过原始异常。
+            清只读后删除树(快照目录, 忽略失败=真)
             raise
 
     def _写快照(self, 快照目录: Path) -> dict:

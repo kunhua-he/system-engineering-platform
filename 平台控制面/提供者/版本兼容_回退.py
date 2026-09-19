@@ -1,10 +1,10 @@
 """核心双版本状态兼容·回退与清理。由 版本兼容 组合使用。"""
 from __future__ import annotations
 
-import shutil
 import time
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 
 
 class 版本兼容回退:
@@ -71,7 +71,8 @@ class 版本兼容回退:
                     "错误": f"引用未归零禁止删除: {迁移['旧快照id']} 仍有 {len(活跃引用)} 条活跃引用"}
         旧目录 = self.快照.快照根目录 / 迁移["旧快照id"]
         if 旧目录.is_dir():
-            shutil.rmtree(旧目录)
+            # 快照目录来自制品/运行态，可能含只读条目：删除走唯一实现，失败原样抛 OSError。
+            清只读后删除树(旧目录)
         已删除 = not 旧目录.exists()
         迁移["阶段"] = "清理"
         迁移["完成时间"] = time.strftime("%Y-%m-%d %H:%M:%S")

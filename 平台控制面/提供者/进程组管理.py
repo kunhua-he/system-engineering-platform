@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -156,7 +155,8 @@ def 强杀进程组(进程组信息: dict) -> dict:
         except (ChildProcessError, subprocess.TimeoutExpired):
             pass
     未退出 = _等待退出(进程组信息["节点pid表"])
-    shutil.rmtree(目录, ignore_errors=True)
+    # 临时工作目录可能含只读文件/中间目录无写位，删除走唯一实现。
+    平台适配.清只读后删除树(目录, 忽略失败=真)
     目录已清理 = not 目录.exists()
     端口可重绑 = _端口可重绑(端口)
     成功 = (not 未退出) and 目录已清理 and 端口可重绑
