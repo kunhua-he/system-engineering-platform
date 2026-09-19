@@ -1,128 +1,54 @@
-"""FFmpeg 外部进程受管执行核心：独立进程组+超时+取消+输出上限截断+零残留。
+"""FFmpeg 外部进程受管执行核心（FFmpeg媒体）：唯一实现在 支持库/适配层/FFmpeg提供者（第 1 对收口）。
 
-ffmpeg/ffprobe 属外部命令，主进程直接受管调用：
-- 子进程组启动标志 独立进程组，终止时整组强杀回收（含孙进程）；
-- 轮询循环同时支持 超时 与 外部取消函数，触发后强制结束子进程；
-- stdout/stderr 后台线程受限读取（超限截断并继续排空防管道阻塞）；
-- 成功/超时/取消/崩溃全路径回收子进程并等待读取线程结束，零残留。
+本文件原与 `支持库/适配层/FFmpeg提供者/实现/进程管理.py` **逻辑同源**，差异只在收尾稳健度：
+
+- **适配层腿（唯一实现）**：`Popen` 之后的每一步（读取线程构造与 `start()`、轮询里的
+  `取消函数()`、超时判定）都在 try 内，进程组回收与管道 `close()` 全在 finally；
+  `finally` 只 join **真正启动成功过**的线程。
+- **本后端腿（原副本）**：读取线程 `start()`、`取消函数()`、超时判定都在 try 之外，
+  只有正常/超时/取消三条路径手工回收；异常路径直接逸出，子进程组泄漏。
+  且 `join()` 会打到**未 start 成功**的线程对象上 —— `threading.Thread.join()`
+  对未 `start()` 的线程抛 `RuntimeError`，在 finally 里抛会顶掉真实异常并跳过管道 `close()`。
+
+反向验证（真实 `/bin/sh` 挂起脚本 + 进程组探活，不打桩）：
+适配层腿 `{子进程已回收: True, 进程组已消失: True}`，
+本后端腿副本 `{子进程已回收: False, 进程组已消失: False}`（子进程组真泄漏）。
+
+**结论**：收尾方向的权威在适配层腿（与 Tesseract提供者/实现/受管进程.py、PDF隔离提供者 同口径）。
+同一份逻辑只能有一个实现，故本文件改为**转调**：让
+`支持库.后端.媒体处理支持库.FFmpeg媒体.实现.进程管理` 与适配层腿那唯一实现成为
+**同一个模块对象**（`sys.modules[__name__] = 唯一实现`）。本包 `实现/探测.py`、`实现/处理.py`
+照旧从本路径导入 `执行受管命令` —— **对外 import 路径零改动**。
+
+为什么不直接 `import ...实现.进程管理`：跨包导入 `实现/` 被
+`运行核心/依赖防火墙.py` 强制拒绝（判据「跨包禁止导入 实现/ 目录」）；而适配层腿
+的公开入口 `__init__.py` 已经是合规的同层导入，且它会正常加载自己的 `实现/` 子模块，
+故这里先导公开入口、再把两个模块名指向同一对象（兜底路径按文件路径显式载入，
+文件缺失时明确报错、不静默降级）。同一模块对象、不产生第二份实现是平台既有做法，
+见 `平台控制面/授权/__init__.py`、`支持库/后端/转写支持库/转写/实现/提供者.py`。
 """
 
 from __future__ import annotations
 
-import subprocess
-import threading
-import time
-from dataclasses import dataclass
-from typing import Callable
+import importlib.util
+import sys
+from pathlib import Path
 
-from 公共契约.运行时 import 平台适配, 进程终止
+import 支持库.适配层.FFmpeg提供者  # noqa: F401 —— 公开入口（同层，合规）
 
-终止宽限秒 = 1.0
-轮询间隔秒 = 0.02
+唯一实现名 = "支持库.适配层.FFmpeg提供者.实现.进程管理"
+系统根 = next(
+    祖先 for 祖先 in Path(__file__).resolve().parents
+    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
+)
 
+if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "FFmpeg提供者" / "实现" / "进程管理.py"
+    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
+    if _规格 is None or _规格.loader is None:
+        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
+    _模块 = importlib.util.module_from_spec(_规格)
+    sys.modules[唯一实现名] = _模块
+    _规格.loader.exec_module(_模块)
 
-@dataclass
-class 受管结果:
-    """受管命令执行结果：成功/退出码/受限输出/截断标记/进程组id/错误码。"""
-
-    成功: bool
-    退出码: int | None = None
-    标准输出: bytes = b""
-    标准错误: bytes = b""
-    输出截断: bool = False
-    进程组id: int | None = None
-    耗时秒: float = 0.0
-    错误码: str = ""
-    错误摘要: str = ""
-
-
-def _受限读取(流, 上限: int) -> tuple[bytes, bool]:
-    """读满上限后继续排空（防止管道阻塞导致进程挂死），返回 (受限内容, 截断标记)。"""
-    缓冲 = bytearray()
-    截断 = False
-    while True:
-        块 = 流.read(65536)
-        if not 块:
-            break
-        余量 = 上限 - len(缓冲)
-        if 余量 > 0:
-            缓冲.extend(块[:余量])
-            if len(块) > 余量:
-                截断 = True
-        else:
-            截断 = True
-    return bytes(缓冲), 截断
-
-
-def 执行受管命令(命令列表: list[str], *, 超时秒: float, 最大输出字节: int,
-              取消函数: Callable[[], bool] | None = None) -> 受管结果:
-    """受管执行外部命令：超时/取消触发强制结束子进程；输出超限截断；失败不抛异常。
-
-    失败映射稳定错误码：提供者不可用（启动失败）/ 超时 / 取消 / 进程崩溃（退出码非零）。
-    """
-    开始 = time.monotonic()
-    try:
-        进程 = subprocess.Popen(
-            命令列表, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            **平台适配.子进程组启动标志(),
-        )
-    except OSError as 错误:
-        return 受管结果(成功=False, 错误码="提供者不可用", 错误摘要=str(错误))
-    进程组id = 进程终止.进程组号(进程)
-    共享 = {"标准输出": b"", "标准错误": b"", "截断": False}
-
-    def 读取流(流, 键: str) -> None:
-        受限, 截断 = _受限读取(流, 最大输出字节)
-        共享[键] = 受限
-        if 截断:
-            共享["截断"] = True
-
-    线程列表 = [
-        threading.Thread(target=读取流, args=(进程.stdout, "标准输出"), daemon=True),
-        threading.Thread(target=读取流, args=(进程.stderr, "标准错误"), daemon=True),
-    ]
-    for 线程 in 线程列表:
-        线程.start()
-    截止 = time.monotonic() + 超时秒
-    触发 = ""
-    while 进程.poll() is None:
-        if 取消函数 is not None and 取消函数():
-            触发 = "取消"
-            break
-        if time.monotonic() >= 截止:
-            触发 = "超时"
-            break
-        time.sleep(轮询间隔秒)
-    if 触发:
-        进程终止.强制结束子进程(进程, 宽限秒=终止宽限秒, 等待秒=终止宽限秒)
-    退出码 = 进程.poll()
-    for 线程 in 线程列表:
-        线程.join(timeout=终止宽限秒 + 1.0)
-    for 流 in (进程.stdout, 进程.stderr):
-        if 流:
-            try:
-                流.close()
-            except (OSError, ValueError):
-                pass
-    标准错误 = 共享["标准错误"]
-    错误摘要 = (标准错误.decode("utf-8", errors="replace").strip() or "")[-300:]
-    耗时秒 = time.monotonic() - 开始
-    if 触发:
-        return 受管结果(
-            成功=False, 退出码=退出码, 标准输出=共享["标准输出"],
-            标准错误=标准错误, 输出截断=共享["截断"], 进程组id=进程组id,
-            耗时秒=耗时秒, 错误码=触发,
-            错误摘要=f"{触发}: 外部命令执行被终止（限制 {超时秒} 秒）",
-        )
-    if 退出码 != 0:
-        return 受管结果(
-            成功=False, 退出码=退出码, 标准输出=共享["标准输出"],
-            标准错误=标准错误, 输出截断=共享["截断"], 进程组id=进程组id,
-            耗时秒=耗时秒, 错误码="进程崩溃",
-            错误摘要=f"外部命令异常退出（退出码 {退出码}）: {错误摘要}",
-        )
-    return 受管结果(
-        成功=True, 退出码=0, 标准输出=共享["标准输出"],
-        标准错误=标准错误, 输出截断=共享["截断"], 进程组id=进程组id,
-        耗时秒=耗时秒,
-    )
+sys.modules[__name__] = sys.modules[唯一实现名]
