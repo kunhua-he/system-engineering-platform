@@ -162,6 +162,70 @@ def 剖析一篇(路径: Path) -> dict:
     }
 
 
+def 查交付留痕(日志表: list[Path]) -> dict:
+    """**硬判据：写任务必须有真交付**（2026-09-19 立，同类已连出三路）。
+
+    为什么必须是硬判据（哲学 14.3）：同一根因实测连出三路 ——
+    K2/P/Q子 各跑 19 分钟、`git commit` **0 次**、实现一行未改，
+    最终回答却是「Let me plan…」「Now write the facades…」这种**将来时计划**。
+    只写进任务信的「早提交锚点」「不许交计划当交付」是**软规则**，实测拦不住。
+
+    判据（只看真实日志，不看自述）：
+    - **有写类动作**（`patch` / `write_file` 落仓库内）或**有提交** ⇒ 有交付；
+    - **有写类动作但 0 提交** ⇒ 黄灯「未落提交」；
+    - **既无写类动作也无提交** ⇒ 红灯「零交付」（改都没改过）。
+    - 只读任务（kickoff 带 `本任务只读`）不计入。
+    """
+    红灯, 黄灯 = [], []
+    哈希 = re.compile(r"\b[0-9a-f]{40}\b")
+    for 日志 in 日志表:
+        try:
+            文 = 日志.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "本任务只读" in 文:
+            continue
+        # 仍在跑的路不算（还没结束，不能判它零交付）：判据只看**已结束**的路。
+        if not re.search(r"final\s+\| end status=\w+", 文):
+            continue
+        # **任务性质分流**（2026-09-19）：核验/盘点/审计类任务**本就不改文件**，
+        # 判它「零交付」是假红。判据只看 kickoff 首段的写意图标志。
+        首 = 文[:4000]
+        写任务 = ("允许修改" in 首) or ("修改路径" in 首) or ("开工ID" in 首)
+        if not 写任务 and any(k in 首 for k in ("只读", "核验", "核实", "盘点", "审计", "评估", "分析")):
+            continue
+        # 判据口径（2026-09-19 修假红）：子代理多半在 `execute_code` 里提交与写盘，
+        # 日志里**不出现** `-> write_file(` 与 `git commit` 字面量。真证据是
+        # **40 位提交哈希**（`git show --stat` 回显）与仓库内写盘路径。
+        提交数 = len(哈希.findall(文))
+        写仓内 = len(re.findall(r"-> (?:patch|write_file)\(/Users", 文))
+        写盘 = 写仓内 + len(re.findall(r"resolved_path[\"']?:\s*[\"']/Users", 文))
+        # 红灯＝**三条同时成立**（最严口径，宁可不报也不假红）：
+        # ① 仓库零写盘证据 ② 零 40 位提交哈希 ③ **尾答是将来时**
+        # （「Let me plan / Now write / I'll / 接下来」= 交了计划没交活）。
+        # 实测指纹：K2「Let me plan the split」/ P「Now write the facades」/
+        # Q子「Now running the full gate battery」。仅凭前两条会误伤
+        # 在 `execute_code` 里写盘的已交付路（M/A/N 实测被误判）。
+        尾 = 文[-1500:]
+        将来时 = re.search(r"(Let me plan|Now write|Now running|I'll |I will |下一步我|我要先|接下来我)", 尾)
+        if 写盘 == 0 and 提交数 == 0 and 将来时:
+            红灯.append({"路": 日志.name, "批次": 日志.parent.name,
+                        "耗时秒": _耗时(文), "提交数": 0, "写仓内": 0})
+        elif 写盘 == 0 and 提交数 == 0:
+            黄灯.append({"路": 日志.name, "批次": 日志.parent.name,
+                        "耗时秒": _耗时(文), "提交数": 0, "写仓内": 0})
+        elif 提交数 == 0:
+            黄灯.append({"路": 日志.name, "批次": 日志.parent.name,
+                        "耗时秒": _耗时(文), "提交数": 0, "写仓内": 写盘})
+    return {"零交付": 红灯, "未落提交": 黄灯,
+            "判定": "红" if 红灯 else ("黄" if 黄灯 else "绿")}
+
+
+def _耗时(文: str) -> float:
+    m = re.search(r"final\s+\| end status=\w+ duration=([\d.]+)s", 文)
+    return round(float(m.group(1)), 1) if m else 0.0
+
+
 def 查纪律送达(日志表: list[Path]) -> dict:
     """逐路检查 kickoff 里有没有任务信的固定条款（**唯一判据在产出点**）。
 
@@ -206,7 +270,8 @@ def 查纪律送达(日志表: list[Path]) -> dict:
             "首行截断退回": 截断退回}
 
 
-def 汇总(剖析表: list[dict], 纪律结论: dict | None = None) -> dict:
+def 汇总(剖析表: list[dict], 纪律结论: dict | None = None,
+        交付结论: dict | None = None) -> dict:
     纪律结论 = 纪律结论 or {"已送达": 0, "未送达": 0, "缺项表": []}
     合计工具: dict[str, int] = {}
     合计分类 = {"探索": 0, "修改": 0, "验证": 0, "其他": 0}
@@ -240,6 +305,8 @@ def 汇总(剖析表: list[dict], 纪律结论: dict | None = None) -> dict:
         "重复检索": dict(sorted(重复检索.items(), key=lambda x: -x[1])[:10]),
         "累计耗时秒": round(sum(a["耗时秒"] for a in 剖析表), 1),
         "纪律": 纪律结论,
+        "交付留痕": (留痕结论 := (交付结论 or {"零交付": [], "未落提交": [], "判定": "绿"})),
+        "交付判定": 留痕结论["判定"],
     }
 
 
@@ -347,6 +414,16 @@ def 打印报告(果: dict, 剖析表: list[dict], 归因表: list[str], 趋势:
         print("\n被反复读（≥3 次）：")
         for k, v in 果["反复读"].items():
             print(f"  {k:<40}{v} 次")
+    print("\n--- 交付留痕（硬判据：写任务必须有真交付）---")
+    留 = 果.get("交付留痕") or {}
+    红, 黄 = 留.get("零交付") or [], 留.get("未落提交") or []
+    if not 红 and not 黄:
+        print("  全绿：每路都有真实改动且已落提交")
+    for x in 红:
+        print(f"  ❌ 零交付 {x['批次']}/{x['路']} 耗时 {x['耗时秒']}s（改动 0 处、提交 0 次）")
+    for x in 黄:
+        print(f"  ⚠ 未落提交 {x['批次']}/{x['路']} 耗时 {x['耗时秒']}s（写了 {x['写仓内']} 处但 0 提交）")
+    print(f"  交付判定：{留.get('判定', '绿')}")
     print("\n--- 归因 ---")
     for s in 归因表:
         print("  " + s)
@@ -417,7 +494,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     剖析表 = [剖析一篇(p) for p in 日志]
     剖析表 = [a for a in 剖析表 if a["调用数"]]
-    果 = 汇总(剖析表, 查纪律送达(日志))
+    留痕 = 查交付留痕(日志)
+    果 = 汇总(剖析表, 查纪律送达(日志), 留痕)
     归因表 = 归因(果)
     趋势 = 比趋势(果)
     打印报告(果, 剖析表, 归因表, 趋势)
@@ -425,6 +503,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n快照：{快照}")
     if 参.html:
         print(f"HTML：{写HTML(果, 归因表, 趋势)}")
+    # **硬门禁（2026-09-19）**：零交付必须让调用方看到非零退出码，
+    # 否则判据等于没有 —— 原实现无论多红都 `return 0`。
+    if 留痕["零交付"]:
+        print(f"\n❌ 交付留痕红灯：{len(留痕['零交付'])} 路零交付"
+              f"（改了 0 处、提交 0 次）—— 这轮作废，按半成品口径重派：")
+        for x in 留痕["零交付"]:
+            print(f"   - {x['批次']}/{x['路']} 耗时 {x['耗时秒']}s")
+        return 1
     return 0
 
 
