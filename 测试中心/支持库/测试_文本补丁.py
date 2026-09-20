@@ -18,8 +18,13 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.文件系统支持库.文本补丁 import (  # noqa: E402
     应用精确替换,
+    批量应用精确替换,
     计算文本摘要,
     解析代码补丁,
+)
+from 支持库.后端.文件系统支持库.文本补丁.实现.文本补丁 import (  # noqa: E402
+    批量差异上限字符,
+    批量编辑上限条数,
 )
 
 原文 = "第一行\n旧值在这里\n第三行\n"
@@ -200,6 +205,253 @@ class 文本补丁路径边界测试(unittest.TestCase):
         结果 = 解析代码补丁(str(self.补丁根), 补丁文本)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "路径越界")
+
+
+class 文本补丁批量替换测试(unittest.TestCase):
+    """批量应用精确替换：一次改多个文件，先全量内存试算、再逐文件一次原子写。
+
+    全部用例在临时目录里造真实文件、走真实实现（不 mock）：
+    「全或无」必须靠**磁盘内容一字未动**证明，不能只看错误码 —— 只看错误码的话，
+    一个「先写后报错」的实现同样会绿（那是本能力唯一存在的理由，必须真的验到）。
+    """
+
+    def setUp(self) -> None:
+        self._临时 = tempfile.TemporaryDirectory(prefix="测试_批量替换_")
+        self.临时根 = Path(self._临时.name)
+        self.批量根 = self.临时根 / "批量根"
+        self.批量根.mkdir(parents=True)
+        self.甲 = self.批量根 / "甲.txt"
+        self.乙 = self.批量根 / "乙.txt"
+        self.甲.write_text(原文, encoding="utf-8")
+        self.乙.write_text(原文, encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self._临时.cleanup()
+
+    def _条目(self, 路径: Path, 旧文本: str = "旧值在这里",
+             新文本: str = "新值已就位", **额外) -> dict:
+        条目 = {"文件路径": str(路径), "旧文本": 旧文本, "新文本": 新文本}
+        条目.update(额外)
+        return 条目
+
+    def _批量(self, 编辑列表, 根目录: str | None = None,
+             写入: bool = 真, 原子: bool = 真):
+        return 批量应用精确替换(
+            编辑列表=编辑列表,
+            根目录=str(self.批量根) if 根目录 is None else 根目录,
+            写入=写入,
+            原子=原子,
+        )
+
+    # ---------- 正向：一次调用改多个文件 ----------
+
+    def test_两文件一次调用都真实落盘(self) -> None:
+        结果 = self._批量([self._条目(self.甲), self._条目(self.乙)])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        值 = 取值(结果)
+        self.assertEqual(值["总数"], 2)
+        self.assertEqual(值["成功数"], 2)
+        self.assertEqual(值["失败数"], 0)
+        self.assertIs(值["全部成功"], 真)
+        self.assertEqual(值["文件数"], 2)
+        self.assertEqual(值["已写入文件数"], 2)
+        self.assertIs(值["已写入"], 真)
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), 替换后)
+        self.assertEqual(self.乙.read_text(encoding="utf-8"), 替换后)
+
+    def test_同文件两条编辑只写一次且两条都生效(self) -> None:
+        结果 = self._批量([
+            self._条目(self.甲, "旧值在这里", "二次改完"),
+            self._条目(self.甲, "第三行", "第四行"),
+        ])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        值 = 取值(结果)
+        self.assertEqual(值["成功数"], 2)
+        self.assertEqual(值["文件数"], 1, "同一文件两条编辑必须并成一个文件组")
+        self.assertEqual(值["已写入文件数"], 1, "同一文件只该写一次")
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), "第一行\n二次改完\n第四行\n")
+        self.assertEqual(self.乙.read_text(encoding="utf-8"), 原文, "没点到的文件不许动")
+
+    def test_写入假只试算不落盘(self) -> None:
+        结果 = self._批量([self._条目(self.甲)], 写入=假)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        值 = 取值(结果)
+        self.assertIs(值["已写入"], 假)
+        self.assertEqual(值["已写入文件数"], 0)
+        self.assertEqual(值["成功数"], 1, "写入=假 仍要给出试算结果与差异")
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), 原文)
+
+    def test_预期文件摘要只对同文件第一条生效(self) -> None:
+        # 第一条带**正确**的整文件摘要（乐观锁），第二条不带：同一文件两条都应通过。
+        # 若实现拿原始摘要去比每一条，第二条必然「文件摘要不符」（锁原文≠锁每一步）。
+        结果 = self._批量([
+            self._条目(self.甲, "旧值在这里", "新值已就位",
+                    预期文件摘要=计算文本摘要(原文)),
+            self._条目(self.甲, "第三行", "第四行"),
+        ])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(取值(结果)["成功数"], 2)
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), "第一行\n新值已就位\n第四行\n")
+
+    def test_差异超长被截断并标注(self) -> None:
+        长文件 = self.批量根 / "长.txt"
+        长文件.write_text("甲" * 3000 + "\n", encoding="utf-8")
+        结果 = self._批量([self._条目(长文件, "甲" * 3000, "乙" * 3000)])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        条目 = 取值(结果)["结果表"][0]
+        self.assertIs(条目["差异已截断"], 真)
+        self.assertLessEqual(len(条目["差异"]), 批量差异上限字符)
+
+    # ---------- 全或无：本能力唯一存在的理由 ----------
+
+    def test_一条定位失败则一条都不写(self) -> None:
+        结果 = self._批量([
+            self._条目(self.甲, "旧值在这里", "不该出现"),
+            self._条目(self.乙, "压根不存在的串", "x"),
+        ])
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "批量未应用")
+        失败清单 = 结果.详细信息["失败清单"]
+        self.assertEqual(len(失败清单), 1)
+        self.assertEqual(失败清单[0]["序号"], 2)
+        self.assertEqual(失败清单[0]["错误码"], "未找到匹配")
+        # 关键断言：合法的那条**一个字节都没动**（只看错误码会放过「先写后报错」的实现）
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), 原文)
+        self.assertEqual(self.乙.read_text(encoding="utf-8"), 原文)
+
+    def test_一条越界则整体失败且一条不写(self) -> None:
+        根外 = self.临时根 / "根外.txt"
+        根外.write_text(原文, encoding="utf-8")
+        结果 = self._批量([self._条目(self.甲, "旧值在这里", "不该出现"),
+                        self._条目(根外)])
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "批量未应用")
+        self.assertEqual(结果.详细信息["失败清单"][0]["错误码"], "路径越界")
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), 原文)
+        self.assertEqual(根外.read_text(encoding="utf-8"), 原文)
+
+    def test_非原子时能写的写掉失败如实列出(self) -> None:
+        结果 = self._批量([
+            self._条目(self.乙, "旧值在这里", "非原子改完"),
+            self._条目(self.乙, "压根不存在的串", "x"),
+        ], 原子=假)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        值 = 取值(结果)
+        self.assertEqual(值["成功数"], 1)
+        self.assertEqual(值["失败数"], 1)
+        self.assertIs(值["全部成功"], 假)
+        self.assertEqual(值["已写入文件数"], 1)
+        self.assertEqual(self.乙.read_text(encoding="utf-8"), "第一行\n非原子改完\n第三行\n")
+
+    def test_原子为假时全部成功字段仍是唯一整体判据(self) -> None:
+        # 信封 `成功` 是「批次跑完了」，不是「全部应用了」；只看信封会把部分失败读成全部成功。
+        结果 = self._批量([
+            self._条目(self.甲),
+            self._条目(self.乙, "压根不存在的串", "x"),
+        ], 原子=假)
+        self.assertTrue(结果.成功, "原子=假 允许带失败清单返回成功（与 执行命令集 同口径）")
+        self.assertIs(取值(结果)["全部成功"], 假, "整体判据必须是 全部成功，不是信封 成功")
+        self.assertEqual(self.甲.read_text(encoding="utf-8"), 替换后)
+        self.assertEqual(self.乙.read_text(encoding="utf-8"), 原文)
+
+    # ---------- 参数校验 ----------
+
+    def test_编辑列表为空被拒(self) -> None:
+        for 入参 in ([], None, "不是列表"):
+            结果 = 批量应用精确替换(编辑列表=入参)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_超过条数上限被拒(self) -> None:
+        结果 = self._批量([self._条目(self.甲) for _ in range(批量编辑上限条数 + 1)])
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_条目缺字段被拒(self) -> None:
+        用例 = [
+            ("不是字典", ["不是字典"]),
+            ("文件路径空", [{"文件路径": "", "旧文本": "a", "新文本": "b"}]),
+            ("旧文本空", [{"文件路径": str(self.甲), "旧文本": "", "新文本": "b"}]),
+            ("新文本非文本", [{"文件路径": str(self.甲), "旧文本": "a", "新文本": 1}]),
+        ]
+        for 名称, 编辑列表 in 用例:
+            结果 = 批量应用精确替换(编辑列表=编辑列表)
+            self.assertFalse(结果.成功, f"{名称} 应当被拒")
+            self.assertEqual(结果.错误码, "参数不合法", 名称)
+
+    def test_逻辑型参数非布尔被拒(self) -> None:
+        for 关键字 in ({"写入": 1}, {"原子": "真"}):
+            结果 = 批量应用精确替换(编辑列表=[self._条目(self.甲)], **关键字)
+            self.assertFalse(结果.成功)
+            self.assertEqual(结果.错误码, "参数不合法")
+
+
+_实现路径 = (Path(__file__).resolve().parents[2] / "支持库" / "后端"
+         / "文件系统支持库" / "文本补丁" / "实现" / "文本补丁.py")
+
+_全或无闸门 = "    if 原子 and 失败清单:\n"
+
+
+class 批量替换反向验证(unittest.TestCase):
+    """反向验证：把「全或无」闸门拆掉后，本能力的核心用例必须变红。
+
+    没有这层，`test_一条定位失败则一条都不写` 可能在「先写后报错」的实现下照样绿 ——
+    那就等于没证明这道闸门真的在起作用。
+    """
+
+    def _缺陷态模块(self):
+        源 = _实现路径.read_text(encoding="utf-8")
+        坏 = 源.replace(_全或无闸门, "    if False:\n")
+        if 坏 == 源:
+            raise AssertionError("全或无闸门片段未命中，反向样本失效（判据需更新）")
+        命名空间: dict = {"__name__": "反向样本", "__file__": str(_实现路径)}
+        exec(compile(坏, str(_实现路径), "exec"), 命名空间)  # noqa: S102
+        return 命名空间
+
+    def test_拆掉全或无闸门后必须变红(self) -> None:
+        模块 = self._缺陷态模块()
+        with tempfile.TemporaryDirectory(prefix="测试_批量反向_") as 目录:
+            根 = Path(目录)
+            甲 = 根 / "甲.txt"
+            乙 = 根 / "乙.txt"
+            甲.write_text(原文, encoding="utf-8")
+            乙.write_text(原文, encoding="utf-8")
+            结果 = 模块["批量应用精确替换"](
+                编辑列表=[
+                    {"文件路径": str(甲), "旧文本": "旧值在这里", "新文本": "不该出现"},
+                    {"文件路径": str(乙), "旧文本": "压根不存在的串", "新文本": "x"},
+                ],
+                根目录=str(根), 写入=真,
+            )
+            # 缺陷态：闸门没了 ⇒ 合法那条被写下去，工作区停在「改了一半」。
+            self.assertEqual(甲.read_text(encoding="utf-8"), "第一行\n不该出现\n第三行\n",
+                           "缺陷态下 甲 应当被写下去（这正是反向样本要复现的坏行为）")
+            self.assertNotEqual(甲.read_text(encoding="utf-8"), 原文)
+
+    def test_修好后的现行实现不会出现缺陷态行为(self) -> None:
+        模块 = self._缺陷态模块()
+        with tempfile.TemporaryDirectory(prefix="测试_批量反向_") as 目录:
+            根 = Path(目录)
+            甲 = 根 / "甲.txt"
+            乙 = 根 / "乙.txt"
+            参数 = dict(
+                编辑列表=[
+                    {"文件路径": str(甲), "旧文本": "旧值在这里", "新文本": "不该出现"},
+                    {"文件路径": str(乙), "旧文本": "压根不存在的串", "新文本": "x"},
+                ],
+                根目录=str(根), 写入=真,
+            )
+            甲.write_text(原文, encoding="utf-8")
+            乙.write_text(原文, encoding="utf-8")
+            缺陷态 = 模块["批量应用精确替换"](**参数)
+            # 缺陷态已经动过盘，跑现行实现前必须把夹具复位（否则验的是残留而不是现行实现）。
+            甲.write_text(原文, encoding="utf-8")
+            乙.write_text(原文, encoding="utf-8")
+            现行态 = 批量应用精确替换(**参数)
+            self.assertNotEqual(缺陷态.成功, 现行态.成功,
+                              "反向样本与现行实现的结论必须不同，否则样本失效")
+            self.assertFalse(现行态.成功)
+            self.assertEqual(甲.read_text(encoding="utf-8"), 原文)
 
 
 if __name__ == "__main__":
