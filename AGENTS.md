@@ -200,7 +200,11 @@ python3.14 -m 开发工具.开发编译口.编译口 --自证     # 改过检查
 python3.14 -m unittest 测试中心.<受影响测试模块>  # 开发期定向回归
 python3.14 -m 开发工具.HTML验证.验证器 --制品 <编译产物目录> --并发 32  # 正式真实HTTP
 python3.14 开发工具/发布门禁/运行发布门禁.py   # 正式发布唯一判定
-python3.14 -m 开发工具.环境自检                # 步骤 0：本机能不能跑
+# 步骤 0：本机能不能跑 —— 以常驻网关的真实 HTTP 返回为准（不看任何 py 自检脚本的快照）
+TOKEN="$(plutil -extract EnvironmentVariables.系统库网关凭证 raw -o - ~/Library/LaunchAgents/com.huashi.gateway-40007.plist)"
+curl -sS http://127.0.0.1:40007/健康 -H "Authorization: Bearer $TOKEN"
+#   ⇒ {"状态":"健康","能力数":720}：能力数 > 0 ⇒ 本机可跑；连不上或能力数 0 ⇒ 不可跑
+# 批量能力调用（真实验收；浏览器页面见 开发文档/规范/开发支持库.md 的「验证腿」）
 python3.14 -m 开发工具.全量重算摘要 [--只报]   # 改过包后必跑
 python3.14 -m 开发工具.能力搜索.能力搜索器 --能力 读取文件
 # 示例运行需注入网关凭证（否则报「网关凭证缺失」；bash 不能 export 中文变量名，故用 env 前缀）
