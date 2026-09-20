@@ -48,7 +48,8 @@ class Test说明书生成器(unittest.TestCase):
             "**调用示例**",
             "```python",
             "**验证状态**",
-            "已纳入验证场景：Pillow提供者.真实最小图像处理链（资产（测试中心/支持库/测试_Pillow提供者.py））",
+            "已纳入验证场景：Pillow提供者.真实最小图像处理链（验证场景/正向HTTP场景.json，"
+            "资产（测试中心/支持库/测试_Pillow提供者.py））",
         ]:
             self.assertIn(片段, 文本)
 
