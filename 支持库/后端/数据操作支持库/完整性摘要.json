@@ -225,11 +225,11 @@
     },
     {
       "路径": "数据集合/能力契约/参数契约.json",
-      "sha256": "463653fb378dd1514d59e9fef974b9b8fea24095752aea73a513a9055dcf346d"
+      "sha256": "e846cb86c038d3d3fade17a6c773cbbd8fcd9c74166ca011a0bd9ab7c94f0380"
     },
     {
       "路径": "数据集合/能力定义.json",
-      "sha256": "e82d15b528796a834015052310a9d57fa635f01d7e07920a67f2315bad304f9b"
+      "sha256": "d8dcb1897da4dd16aa68f8c28e397e665f90e34dac3ef22e504ce6599e3cbb32"
     },
     {
       "路径": "数据集合/能力数据/Agent查询数据.json",
@@ -293,11 +293,11 @@
     },
     {
       "路径": "文本处理/能力契约/参数契约.json",
-      "sha256": "c252107d1bae95058a68bd7054dd8cd3cc55bdb158ef598e6115de44135d0108"
+      "sha256": "238cd2e37ee9a2914b601dbcccbc4ed0c710971a98495ea41a3c934079f97abf"
     },
     {
       "路径": "文本处理/能力定义.json",
-      "sha256": "30981cbfd3238c9d5f8a0acaadd133620992d9ac7c51c5de3ec8b4fd9ca00fb0"
+      "sha256": "70d70312c111e6653e75ab795b5c2102f01472fe21a7c92677c73eb03e2cd6b8"
     },
     {
       "路径": "文本处理/能力数据/Agent查询数据.json",
