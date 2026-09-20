@@ -19,7 +19,7 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 支持库.后端.系统核心支持库.进程管理 import 执行命令, 沙箱执行命令
+from 支持库.后端.系统核心支持库.进程管理 import 执行命令, 执行命令集, 沙箱执行命令
 
 有无内核沙箱 = sys.platform == "darwin" and bool(shutil.which("sandbox-exec"))
 
@@ -118,6 +118,92 @@ class 测试执行命令回归(unittest.TestCase):
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["退出码"], 0)
         self.assertIn("进程管理回归", 结果.值["标准输出"])
+
+
+class 测试执行命令集(unittest.TestCase):
+    """`执行命令集`：一次跑多条命令（串联/并行），逐条回带退出码与输出。
+
+    ★ 核心不变式（2026-09-21 现场踩到的真缺陷）：本能力的 `成功` **必须**等于
+    「退出码为 0」，不能照抄 `执行命令` 的「跑起来就算成功」—— 照抄时 `false`
+    （退出码 1）会被判成功，`失败即停` 永不触发、`成功数` 全是假的。
+    """
+
+    def test_串联全部成功(self) -> None:
+        结果 = 执行命令集(命令表=["echo 甲", "echo 乙", "echo 丙"], 模式="串联")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        值 = 结果.值
+        self.assertEqual(值["总数"], 3)
+        self.assertEqual(值["成功数"], 3)
+        self.assertEqual(值["失败数"], 0)
+        self.assertEqual(值["已跳过数"], 0)
+        self.assertTrue(值["全部成功"])
+        self.assertEqual([项["序号"] for 项 in 值["结果表"]], [1, 2, 3])
+        self.assertIn("甲", 值["结果表"][0]["标准输出"])
+        self.assertIn("丙", 值["结果表"][2]["标准输出"])
+
+    def test_非零退出码必须判失败(self) -> None:
+        """反向验证点：`false` 退出码 1，`执行命令` 判成功，本能力必须判失败。"""
+        单条 = 执行命令("false")
+        self.assertTrue(单条.成功, "前提：执行命令 的 成功 只表示「跑起来了」")
+        self.assertEqual(单条.值["退出码"], 1)
+
+        结果 = 执行命令集(命令表=["false"])
+        self.assertTrue(结果.成功, "调用本身成功（批量跑完了）")
+        self.assertFalse(结果.值["结果表"][0]["成功"], "退出码 1 必须记 成功=假")
+        self.assertEqual(结果.值["结果表"][0]["退出码"], 1)
+        self.assertEqual(结果.值["失败数"], 1)
+        self.assertFalse(结果.值["全部成功"])
+
+    def test_失败即停跳过后续(self) -> None:
+        结果 = 执行命令集(命令表=["echo 一", "false", "echo 三", "echo 四"], 模式="串联")
+        值 = 结果.值
+        self.assertEqual(值["已执行数"], 2, "第二条失败后不应再跑第三、四条")
+        self.assertEqual(值["已跳过数"], 2)
+        self.assertEqual(值["成功数"], 1)
+        self.assertFalse(值["全部成功"])
+        self.assertTrue(值["结果表"][2]["已跳过"])
+        self.assertTrue(值["结果表"][3]["已跳过"])
+        self.assertNotIn("退出码", 值["结果表"][2], "跳过项不该有退出码")
+
+    def test_失败即停为假则跑完(self) -> None:
+        结果 = 执行命令集(命令表=["echo 一", "false", "echo 三"], 模式="串联", 失败即停=False)
+        值 = 结果.值
+        self.assertEqual(值["已执行数"], 3)
+        self.assertEqual(值["已跳过数"], 0)
+        self.assertEqual(值["成功数"], 2)
+        self.assertEqual(值["失败数"], 1)
+
+    def test_并行全部跑完且按下标对齐(self) -> None:
+        结果 = 执行命令集(命令表=["echo 一", "echo 二", "echo 三"], 模式="并行")
+        值 = 结果.值
+        self.assertEqual(值["模式"], "并行")
+        self.assertEqual(值["已执行数"], 3)
+        self.assertEqual([项["序号"] for 项 in 值["结果表"]], [1, 2, 3],
+                         "并行结果必须按下标对齐，不能按完成先后乱序")
+        self.assertEqual(值["结果表"][1]["标准输出"].strip(), "二")
+
+    def test_空命令表返回参数不合法(self) -> None:
+        self.assertFalse(执行命令集(命令表=[]).成功)
+        self.assertEqual(执行命令集(命令表=[]).错误码, "参数不合法")
+        self.assertFalse(执行命令集(命令表=None).成功)
+        self.assertFalse(执行命令集(命令表="echo 1").成功, "非列表必须拒")
+
+    def test_命令项为空文本点名第几项(self) -> None:
+        结果 = 执行命令集(命令表=["echo 一", "   "])
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        self.assertIn("2", 结果.错误说明, "应点名是第几项")
+
+    def test_非法模式被拒(self) -> None:
+        结果 = 执行命令集(命令表=["echo 1"], 模式="乱写")
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+
+    def test_超过上限条数被拒(self) -> None:
+        结果 = 执行命令集(命令表=["echo 1"] * 65)
+        self.assertFalse(结果.成功)
+        self.assertEqual(结果.错误码, "参数不合法")
+        self.assertIn("64", 结果.错误说明)
 
 
 if __name__ == "__main__":

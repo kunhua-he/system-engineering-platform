@@ -43,7 +43,14 @@ def 校验数值类型(值: Any, 类型名: str) -> bool:
             and not isinstance(值, bool)
             and 定义.最小值 <= 值 <= 定义.最大值
         )
-    if not isinstance(值, float) or not math.isfinite(值):
+    # 浮点类型**接受 int**：JSON 只有一种数值类型，`120` 与 `120.0` 都是合法 JSON 数字，
+    # 落到 Python 侧是 int 还是 float 由传输层决定。把「必须带小数点」当契约要求，等于让
+    # 传输细节泄漏成调用方的错 —— 实测踩过：`执行命令` 的 `超时秒` 传 120 被拒、传 120.0 才过，
+    # Agent 因此连错 3 次、白付三轮往返（2026-09-21）。int→double 无损，故放行；
+    # bool 必须显式排除（Python 里 bool 是 int 子类，`True` 不该被当成 1）。
+    if isinstance(值, bool) or not isinstance(值, (int, float)):
+        return 假
+    if not math.isfinite(值):
         return 假
     if 类型名 == "单精度数型":
         try:

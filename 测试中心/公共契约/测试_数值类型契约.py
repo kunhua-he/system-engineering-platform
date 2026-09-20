@@ -51,7 +51,13 @@ class 数值类型契约测试(unittest.TestCase):
         self.assertFalse(校验数值类型(2**128, "单精度数型"))
         self.assertTrue(校验数值类型(1.25, "双精度数型"))
         self.assertFalse(校验数值类型(math.inf, "双精度数型"))
-        self.assertFalse(校验数值类型(1, "双精度数型"))
+        # 整数放行（2026-09-21）：JSON 只有一种数值类型，`120` 与 `120.0` 都是合法 JSON 数字，
+        # 落到 Python 侧是 int 还是 float 由传输层决定，不该让调用方背这个锅（实测 Agent 传
+        # `超时秒: 120` 连错 3 次）。int→double 无损故放行；布尔必须排除（bool 是 int 子类）。
+        self.assertTrue(校验数值类型(1, "双精度数型"), "int 必须放行")
+        self.assertTrue(校验数值类型(1, "单精度数型"), "int 必须放行")
+        self.assertFalse(校验数值类型(真, "双精度数型"), "布尔不得冒充数值")
+        self.assertFalse(校验数值类型(真, "单精度数型"), "布尔不得冒充数值")
 
     def test_非法类型名与值抛出稳定异常(self):
         with self.assertRaises(ValueError):
