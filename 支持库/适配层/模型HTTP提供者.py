@@ -740,10 +740,25 @@ def 调用重排(*, 配置: dict[str, Any], 查询: str, 文档列表: list) -> 
     return 结果.成功结果({"重排结果": 结果列表})
 
 
+def 调用决策(*, 配置: dict[str, Any], 文本: str, 问题: dict) -> 结果:
+    if not isinstance(文本, str) or not 文本.strip():
+        return _失败("参数不合法", "文本必须是非空字符串")
+    if not isinstance(问题, dict) or not 问题:
+        return _失败("参数不合法", "问题必须是定义决策问题的非空字典")
+    载荷 = {"model": 配置.get("模型名", ""), "text": 文本, "questions": 问题}
+    状态码, 数据, 说明 = _请求(配置, "/decision", 载荷)
+    if 状态码 >= 400 or not 数据:
+        return _错误响应(状态码, 说明)
+    答案 = 数据.get("answers")
+    if not isinstance(答案, dict) or not 答案:
+        return _失败("模型调用失败", "决策响应没有有效答案")
+    return 结果.成功结果({"答案": 答案})
+
+
 def 注册模型HTTP提供者() -> None:
-    """把同一 HTTP Provider 注册到三类模型的本地/云端路径。"""
+    """把同一 HTTP Provider 注册到四类模型的本地/云端路径。"""
     from 支持库.后端.大语言模型支持库.模型连接器 import 注册调用器
 
-    for 连接类型, 调用函数 in (("LLM", 调用对话), ("向量", 调用嵌入), ("重排", 调用重排)):
+    for 连接类型, 调用函数 in (("LLM", 调用对话), ("向量", 调用嵌入), ("重排", 调用重排), ("决策", 调用决策)):
         注册调用器(连接类型, "本地", 调用函数)
         注册调用器(连接类型, "云端", 调用函数)

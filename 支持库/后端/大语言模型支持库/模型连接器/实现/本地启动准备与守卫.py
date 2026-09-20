@@ -58,6 +58,11 @@ def _识别模型源(模型路径: str) -> tuple[str, str]:
     if 路径.is_dir() and (路径 / "config.json").is_file():
         if any(路径.glob("*.safetensors")) or any(路径.glob("*.bin")):
             return "HuggingFace", str(路径)
+    # 决策权重包：RL 权重目录的原生结构是 `encoder/config.json` + 顶层 `*.safetensors`
+    # （子聚合器 + 句柄头不在顶层 config.json 里），与平铺 HF 目录判据不同。
+    # 按**实体文件**识别，不看目录名 —— 目录叫什么都不影响判定。
+    if 路径.is_dir() and (路径 / "encoder" / "config.json").is_file() and any(路径.glob("*.safetensors")):
+        return "RLCheckpoint", str(路径)
     return "不支持", str(路径)
 
 
@@ -81,7 +86,7 @@ def _供应链守卫(规范路径: str, 源格式: str) -> 结果 | None:
     """
     系统根 = _供应链系统根()
     try:
-        格式 = _供应链校验.校验模型目录(规范路径, 系统根=系统根) if 源格式 == "HuggingFace" \
+        格式 = _供应链校验.校验模型目录(规范路径, 系统根=系统根) if 源格式 in ("HuggingFace", "RLCheckpoint") \
             else _供应链校验.校验模型文件(规范路径, 系统根=系统根)
     except Exception as 错误:  # 校验层自身异常同样 fail-closed，不让「校验不了」变成「放行」
         return _失败("模型完整性校验失败", f"模型二进制供应链校验执行失败: {错误}")
@@ -125,7 +130,8 @@ def _供应链判定(规范路径: str, 模型类型: str, 启动器: str) -> di
     """三层校验的公共内核：返回 {"通过": bool, "失败结果": 结果, "值": dict}。"""
     类型 = (模型类型 or "LLM").lower()
     类型 = "LLM" if 类型 in ("对话", "llm") else "向量" if 类型 in ("嵌入", "向量", "embedding") \
-        else "重排" if 类型 in ("排序", "重排", "rerank") else "LLM"
+        else "重排" if 类型 in ("排序", "重排", "rerank") \
+        else "决策" if 类型 in ("判断", "决策", "decision") else "LLM"
     源格式, 规范 = _识别模型源(规范路径)
     if 源格式 == "不支持":
         return {"通过": False, "值": {},
@@ -179,8 +185,8 @@ def _解析启动器二进制(启动器: str = "") -> str:
 
 
 def _启动器校验(启动器: str = "", 源格式: str = "GGUF") -> 结果 | None:
-    """解析真实启动器二进制并校验；HuggingFace 目录走底座内部加载器，不涉及启动器。"""
-    if 源格式 == "HuggingFace":
+    """解析真实启动器二进制并校验；HuggingFace/RLCheckpoint 目录走底座内部加载器，不涉及启动器。"""
+    if 源格式 in ("HuggingFace", "RLCheckpoint"):
         return None
     二进制 = _解析启动器二进制(启动器)
     if not 二进制:
@@ -282,7 +288,7 @@ def _计算模型大小(模型路径: str) -> int:
 def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: str, 端口: int, 参数: dict) -> list[str]:
     from pathlib import Path
     格式, 规范路径 = _识别模型源(模型路径)
-    if 格式 == "HuggingFace":
+    if 格式 in ("HuggingFace", "RLCheckpoint"):
         import sys
         服务脚本 = Path(__file__).resolve().parents[5] / "支持库" / "适配层" / "模型服务.py"
         if not 服务脚本.is_file():

@@ -55,9 +55,43 @@ class 模型服务:
     def 加载(self) -> None:
         if self.模型 is not None:
             return
+        if self.模型类型 == "决策":
+            self._加载决策()
+            return
         self.分词器 = AutoTokenizer.from_pretrained(self.模型路径, trust_remote_code=True, padding_side="left")
         类 = AutoModelForCausalLM if self.模型类型 == "重排" else AutoModel
         self.模型 = 类.from_pretrained(self.模型路径, trust_remote_code=True, torch_dtype=self.数据类型).to(self.设备).eval()
+
+    def _加载决策(self) -> None:
+        """决策模型：推理代码（rl_agent_api.py）随权重包提供，不在本仓。
+
+        权重目录（如 `…/Laya-决策模型-421M/multilingual`）本身不含推理代码，
+        代码在其上一级包根 —— 先找包根，找不到再退回权重目录自身，两处都不在即报错
+        （不猜、不留空转分支）。加载后 `self.模型` 存的是决策代理对象（非 torch 模块），
+        与 `生成决策` 配对使用，判据仍是 `self.模型 is not None`。
+        """
+        from pathlib import Path
+        import sys
+        权重目录 = Path(self.模型路径).resolve()
+        候选 = [权重目录.parent, 权重目录]
+        代码根 = next((p for p in 候选 if (p / "rl_agent_api.py").is_file()), None)
+        if 代码根 is None:
+            raise FileNotFoundError(
+                f"决策模型缺少推理代码 rl_agent_api.py（已在 {权重目录} 与上一级查找）: {self.模型路径}")
+        if str(代码根) not in sys.path:
+            sys.path.insert(0, str(代码根))
+        from rl_agent_api import RLAgent
+        self.模型 = RLAgent(str(权重目录), device=self.设备)
+
+    def 生成决策(self, 文本: str, 问题: dict) -> dict:
+        """按问题定义对一段文本做多选决策，返回带标定置信度的答案。
+
+        问题形状沿用模型原生三型（choice / score / noul），由调用方传入。
+        """
+        self.加载()
+        代理 = self.模型
+        assert 代理 is not None
+        return 代理.system_one(文本, 问题)
 
     def 生成嵌入(self, 文本列表: list[str]) -> list[list[float]]:
         self.加载()
@@ -117,13 +151,21 @@ def 创建应用(服务: 模型服务) -> FastAPI:
         结果列表.sort(key=lambda 项: 项["relevance_score"], reverse=True)
         return {"results": 结果列表, "model": 载荷.get("model") or 服务.模型路径, "diagnostics": {"duration_ms": round((time.perf_counter() - 开始) * 1000, 2), "device": 服务.设备}}
 
+    @应用.post("/v1/decision")
+    async def 决策(载荷: dict) -> dict:
+        文本 = str(载荷.get("text") or 载荷.get("input") or "")
+        问题 = 载荷.get("questions") or {}
+        开始 = time.perf_counter()
+        结果体 = 服务.生成决策(文本, 问题)
+        return {"answers": 结果体.get("answers") or {}, "model": 载荷.get("model") or 服务.模型路径, "diagnostics": {"duration_ms": round((time.perf_counter() - 开始) * 1000, 2), "device": 服务.设备}}
+
     return 应用
 
 
 def 主程序() -> None:
     解析器 = argparse.ArgumentParser()
     解析器.add_argument("--model-path", required=True)
-    解析器.add_argument("--model-type", choices=["LLM", "向量", "重排"], required=True)
+    解析器.add_argument("--model-type", choices=["LLM", "向量", "重排", "决策"], required=True)
     解析器.add_argument("--port", type=int, required=True)
     解析器.add_argument("--host", default="127.0.0.1")
     参数 = 解析器.parse_args()

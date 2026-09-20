@@ -1,469 +1,509 @@
 {
-  "清单版本": "模型制品清单/v1",
-  "说明": "平台受管模型二进制供应链清单：每条 = 一个权重/二进制文件的定位 + 字节数 + sha256。校验顺序 = 存在性 → 大小 → 哈希；不符即 fail-closed。改一条只改本文件。",
-  "受管模型根": [
-    {
-      "名称": "本机模型库",
-      "定位方式": "用户目录",
-      "相对路径": "Documents/AI模型"
-    },
-    {
-      "名称": "工程根(含制品内夹具)",
-      "定位方式": "系统根",
-      "相对路径": ""
-    }
-  ],
-  "哈希门槛字节": 52428800,
-  "实测时间": "2026-09-18 18:25:43",
-  "条目数": 56,
-  "条目": [
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00001-of-00004.safetensors",
-      "模型目录": "Embedding模型/Qwen3-Embedding-8B",
-      "用途": "向量",
-      "字节数": 4900037024,
-      "sha256": "99b343597fe840706146144699a8b9188dd3387e43eb61faf0231b70b249d451"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00002-of-00004.safetensors",
-      "模型目录": "Embedding模型/Qwen3-Embedding-8B",
-      "用途": "向量",
-      "字节数": 4915959512,
-      "sha256": "dff635b0f6dbbaad2a2d633ef037ec0a39bc165cc1806c712fbd6fcbcb4526c0"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00003-of-00004.safetensors",
-      "模型目录": "Embedding模型/Qwen3-Embedding-8B",
-      "用途": "向量",
-      "字节数": 4983067656,
-      "sha256": "30b1d4c53d84eb018f642cad7b373f0aabf79699872d8702c1f38577c0a59a2f"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00004-of-00004.safetensors",
-      "模型目录": "Embedding模型/Qwen3-Embedding-8B",
-      "用途": "向量",
-      "字节数": 335570376,
-      "sha256": "36cbc9c60375693629f25743c1e77ebb1724af58e671b2376463193c7fd21ef6"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/Qwen3-Embedding-8B-GGUF/Qwen3-Embedding-8B-Q8_0.gguf",
-      "模型目录": "Embedding模型/Qwen3-Embedding-8B-GGUF",
-      "用途": "向量",
-      "字节数": 8047105824,
-      "sha256": "d20ddc71e8a5c4344f2343481e242233a997dc5eaff442427a945836c97b4deb"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/bge-m3-q4_k_m.gguf",
-      "模型目录": "Embedding模型",
-      "用途": "向量",
-      "字节数": 437778496,
-      "sha256": "d164fe641fe8aecc9da3592b5f1ca46e9c97923959661a5f815bbc8e72704fb2"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "Embedding模型/bge-reranker-v2-m3-Q4_K_M.gguf",
-      "模型目录": "Embedding模型",
-      "用途": "向量",
-      "字节数": 438376864,
-      "sha256": "e186a244ed455b4ab66ec64339ce7427a6ae13f5c0b5e544de96e50f0f8b3673"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "代码模型/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
-      "模型目录": "代码模型",
-      "用途": "LLM(代码)",
-      "字节数": 10364416768,
-      "sha256": "603bd3f8a0281d16571da7c08bd661ee17ff0d1be6fcbd1b42242da257ef0bb8"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "图片分析模型/Qwen3-VL-32B-Instruct-Q4_K_M.gguf",
-      "模型目录": "图片分析模型",
-      "用途": "视觉理解",
-      "字节数": 19762151200,
-      "sha256": "92d605566f8661b296251c535ed028ecf81c32e14e06948a3d8bef829e96a804"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "图片分析模型/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
-      "模型目录": "图片分析模型",
-      "用途": "视觉理解",
-      "字节数": 5027784800,
-      "sha256": "67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "图片分析模型/mmproj-F16.gguf",
-      "模型目录": "图片分析模型",
-      "用途": "视觉理解",
-      "字节数": 1196795552,
-      "sha256": "dde7e407cf72e601455976c2d0daa960d16ee34ba3f0c78718c881d8cd8c1052"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "图片分析模型/mmproj-Qwen3VL-8B-Instruct-F16.gguf",
-      "模型目录": "图片分析模型",
-      "用途": "视觉理解",
-      "字节数": 1159029824,
-      "sha256": "ca524100ebf825c9a870db1c580d03879e0da0ab2541697e2458e64891cf9d38"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/BGE-Reranker-v2-m3/model.safetensors",
-      "模型目录": "排序模型/BGE-Reranker-v2-m3",
-      "用途": "重排",
-      "字节数": 2271071852,
-      "sha256": "d9e3e081faff1eefb84019509b2f5558fd74c1a05a2c7db22f74174fcedb5286"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-0.6B/model.safetensors",
-      "模型目录": "排序模型/Qwen3-Reranker-0.6B",
-      "用途": "重排",
-      "字节数": 1191588280,
-      "sha256": "27cd75a405b9c1b46b59abfd88aaa209e6fed2a1972cde9b70e7659537c5e65b"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-8B/model-00001-of-00005.safetensors",
-      "模型目录": "排序模型/Qwen3-Reranker-8B",
-      "用途": "重排",
-      "字节数": 4027618768,
-      "sha256": "22cdfea4a13b7b3e866573800eeeb638fc38962940adf631d06dc03befed047a"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-8B/model-00002-of-00005.safetensors",
-      "模型目录": "排序模型/Qwen3-Reranker-8B",
-      "用途": "重排",
-      "字节数": 4060268160,
-      "sha256": "d2163b74137e35b4614bd2aa5bf27bcb07de4ca61c6962495feb968385eb0df8"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-8B/model-00003-of-00005.safetensors",
-      "模型目录": "排序模型/Qwen3-Reranker-8B",
-      "用途": "重排",
-      "字节数": 4043508680,
-      "sha256": "a5038caa78c817e8acce6806104869675938a33fd4e60ed038e9931d390d6989"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-8B/model-00004-of-00005.safetensors",
-      "模型目录": "排序模型/Qwen3-Reranker-8B",
-      "用途": "重排",
-      "字节数": 3003274088,
-      "sha256": "247f85538c5996d4c296291b0e4004f618c9b17ca8cdc25d1fc726567eb15803"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-8B/model-00005-of-00005.safetensors",
-      "模型目录": "排序模型/Qwen3-Reranker-8B",
-      "用途": "重排",
-      "字节数": 1242472576,
-      "sha256": "8ba41b93c2e4ec8339ad16b000bc977fde196aeac054956cbfc8c0186ee6d4cf"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/Qwen3-Reranker-8B-GGUF/Qwen3-Reranker-8B.Q8_0.gguf",
-      "模型目录": "排序模型/Qwen3-Reranker-8B-GGUF",
-      "用途": "重排",
-      "字节数": 8707188736,
-      "sha256": "ba16c501a74929b6c9f71033420172c028b85e216f8d03bef1c9a758fbf3f71a"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/model.safetensors",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual",
-      "用途": "重排",
-      "字节数": 556892306,
-      "sha256": "ab2595ab9f34bdeffe645431d64c6e4aabe2ff5a57cfcacfef0727a97434238f"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 1114040223,
-      "sha256": "0ef3f7978f7bc52360864d74edc1a0e03d159af770a7767c4d5943496e616012"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_bnb4.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 822084838,
-      "sha256": "df70759eb3ebb4e96b7d82e9af1e99c4979f76b96205ea18dddb101d32b07f80"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_fp16.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 557164815,
-      "sha256": "4ad94bcc1d7313ec5f76e18de8ffa7469e3f34b76810b8fd7206619b9cde1bc4"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_int8.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 279577152,
-      "sha256": "c5220cf8fe023f8aa0ed2a3eb787d4451a7f17cf53f6b787e35718dd4b8815c3"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_q4.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 827392882,
-      "sha256": "a3744ee702adeb08230fba13258cc4ad441b73310a1060df2066bebbda080de7"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_quantized.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 279577152,
-      "sha256": "c5220cf8fe023f8aa0ed2a3eb787d4451a7f17cf53f6b787e35718dd4b8815c3"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_uint8.onnx",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
-      "用途": "重排",
-      "字节数": 279577151,
-      "sha256": "9498f606988b84e23b98d04101f3623c084baf3f1e16fd43a46ea6259b4f5924"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "排序模型/jina-reranker-v2-base-multilingual/pytorch_model.bin",
-      "模型目录": "排序模型/jina-reranker-v2-base-multilingual",
-      "用途": "重排",
-      "字节数": 561622266,
-      "sha256": "318b11c3ce6d8d34e5034d001166a857934c0811c4fc5fb4a40328477ccaaaf9"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文本模型/Qwen3.6-27B-Q5_K_M.gguf",
-      "模型目录": "文本模型",
-      "用途": "LLM",
-      "字节数": 19834053760,
-      "sha256": "ffb9a0f8b459086f8befd964f6c0ed9f9caafba410b76f9688b91c4678cc0fe4"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文本模型/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
-      "模型目录": "文本模型",
-      "用途": "LLM",
-      "字节数": 22360456160,
-      "sha256": "707a55a8a4397ecde44de0c499d3e68c1ad1d240d1da65826b4949d1043f4450"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文本模型/Qwen3.8-27B-UD-Q4_K_M.gguf",
-      "模型目录": "文本模型",
-      "用途": "LLM",
-      "字节数": 16464440224,
-      "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文本模型/gemma-4-31B-it-UD-Q4_K_XL.gguf",
-      "模型目录": "文本模型",
-      "用途": "LLM",
-      "字节数": 18822970304,
-      "sha256": "9e92cb6236044c6a9870af406029c74a76e0571c157a6f95df724dcc8c7a1575"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文本模型/mmproj-BF16.gguf",
-      "模型目录": "文本模型",
-      "用途": "LLM",
-      "字节数": 931146304,
-      "sha256": "05353347512982ee62317b9d8c89372bc815f4b4043580e7ef3ad411ec1a1cd3"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/sd_xl_turbo_1.0.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo",
-      "用途": "图像生成",
-      "字节数": 13875761366,
-      "sha256": "2e58e3704b4c0831bf848e0507c9b5ff2cd8d007b8d0719dba3874156f631050"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo",
-      "用途": "图像生成",
-      "字节数": 6938081905,
-      "sha256": "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/text_encoder/model.fp16.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/text_encoder",
-      "用途": "图像生成",
-      "字节数": 246144152,
-      "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/text_encoder/model.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/text_encoder",
-      "用途": "图像生成",
-      "字节数": 492265168,
-      "sha256": "778d02eb9e707c3fbaae0b67b79ea0d1399b52e624fb634f2f19375ae7c047c3"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/text_encoder_2/model.fp16.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/text_encoder_2",
-      "用途": "图像生成",
-      "字节数": 1389382176,
-      "sha256": "ec310df2af79c318e24d20511b601a591ca8cd4f1fce1d8dff822a356bcdb1f4"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/text_encoder_2/model.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/text_encoder_2",
-      "用途": "图像生成",
-      "字节数": 2778702264,
-      "sha256": "fa5b2e6f4c2efc2d82e4b8312faec1a5540eabfc6415126c9a05c8436a530ef4"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/unet/diffusion_pytorch_model.fp16.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/unet",
-      "用途": "图像生成",
-      "字节数": 5135149760,
-      "sha256": "48fa46161a745f48d4054df3fe13804ee255486bca893403b60373c188fd1bdb"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/unet/diffusion_pytorch_model.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/unet",
-      "用途": "图像生成",
-      "字节数": 10270077736,
-      "sha256": "1968fc61aa8449ab3d3f9b9a05bce88c611760c01e0c4a7a3785911b546fe582"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/vae/diffusion_pytorch_model.fp16.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/vae",
-      "用途": "图像生成",
-      "字节数": 167335342,
-      "sha256": "02ee4bd18e5d16e7fe5fc5b85b4aefa2cba6db28897f674226c9d6ddd2f34f06"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文生图模型/sdxl-turbo/vae/diffusion_pytorch_model.safetensors",
-      "模型目录": "文生图模型/sdxl-turbo/vae",
-      "用途": "图像生成",
-      "字节数": 334643268,
-      "sha256": "716971093e3428c9156906fcbcc5500abf005317c5f4d3a5bb3fa28c45e1e071"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/distil-large-v3/model.bin",
-      "模型目录": "文转音频模型/Whisper/distil-large-v3",
-      "用途": "语音转写",
-      "字节数": 1512927867,
-      "sha256": "b79368e19b6623813609431a6e5ee309a71506701ebc49fd7820e692dec7c5f5"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/distil-large-v3/pytorch_model.bin",
-      "模型目录": "文转音频模型/Whisper/distil-large-v3",
-      "用途": "语音转写",
-      "字节数": 1512927867,
-      "sha256": "b79368e19b6623813609431a6e5ee309a71506701ebc49fd7820e692dec7c5f5"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/large-v3/model.bin",
-      "模型目录": "文转音频模型/Whisper/large-v3",
-      "用途": "语音转写",
-      "字节数": 3087284237,
-      "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/large-v3/pytorch_model.bin",
-      "模型目录": "文转音频模型/Whisper/large-v3",
-      "用途": "语音转写",
-      "字节数": 3087284237,
-      "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/medium/model.bin",
-      "模型目录": "文转音频模型/Whisper/medium",
-      "用途": "语音转写",
-      "字节数": 1527906378,
-      "sha256": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/medium/pytorch_model.bin",
-      "模型目录": "文转音频模型/Whisper/medium",
-      "用途": "语音转写",
-      "字节数": 1527906378,
-      "sha256": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "文转音频模型/Whisper/mlx-community-whisper-large-v3/weights.npz",
-      "模型目录": "文转音频模型/Whisper/mlx-community-whisper-large-v3",
-      "用途": "语音转写",
-      "字节数": 3083520416,
-      "sha256": "05ff791ce3630fae47e7c51004e9666204d786246ec07cac6110af768099b40d"
-    },
-    {
-      "定位方式": "模型根",
-      "相对路径": "路由分类模型/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
-      "模型目录": "路由分类模型",
-      "用途": "路由分类",
-      "字节数": 2497281664,
-      "sha256": "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a"
-    },
-    {
-      "定位方式": "系统根",
-      "相对路径": "支持库/后端/大语言模型支持库/模型连接器/验证夹具/验证模型.gguf",
-      "模型目录": "支持库/后端/大语言模型支持库/模型连接器/验证夹具",
-      "用途": "验证夹具(伪 GGUF)",
-      "字节数": 24,
-      "sha256": "7df2ecad67187bfee033eb36dad4eb7684346252691f297811bc0dc67e0db995"
-    },
-    {
-      "定位方式": "系统根",
-      "相对路径": "支持库/后端/大语言模型支持库/模型连接器/验证夹具/llama-server",
-      "模型目录": "支持库/后端/大语言模型支持库/模型连接器/验证夹具",
-      "用途": "验证夹具(伪启动器)",
-      "字节数": 755,
-      "sha256": "f8f746f722ac37fe654b38fc34070aab825dad77c6bc6d913b46950a8a55325f"
-    },
-    {
-      "定位方式": "用户目录",
-      "相对路径": "llama.cpp-latest/build/bin/llama-server",
-      "模型目录": "llama.cpp-latest/build/bin",
-      "用途": "启动器二进制(llama.cpp latest)",
-      "字节数": 49984,
-      "sha256": "e44e961dd29c96dad1470594552a3c36155aa07830a28ed0b0edeec2e70a77a9"
-    },
-    {
-      "定位方式": "用户目录",
-      "相对路径": "llama.cpp-old/build/bin/llama-server",
-      "模型目录": "llama.cpp-old/build/bin",
-      "用途": "启动器二进制(llama.cpp old)",
-      "字节数": 8977584,
-      "sha256": "106d3a65062c5a718dfc9bc57eb96126342bb4ebfd715db593f16ddc96ab03c6"
-    }
-  ]
+ "清单版本": "模型制品清单/v1",
+ "说明": "平台受管模型二进制供应链清单：每条 = 一个权重/二进制文件的定位 + 字节数 + sha256。校验顺序 = 存在性 → 大小 → 哈希；不符即 fail-closed。改一条只改本文件。",
+ "受管模型根": [
+  {
+   "名称": "本机模型库",
+   "定位方式": "用户目录",
+   "相对路径": "Documents/AI模型"
+  },
+  {
+   "名称": "工程根(含制品内夹具)",
+   "定位方式": "系统根",
+   "相对路径": ""
+  }
+ ],
+ "哈希门槛字节": 52428800,
+ "实测时间": "2026-09-18 18:25:43",
+ "条目数": 61,
+ "条目": [
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00001-of-00004.safetensors",
+   "模型目录": "Embedding模型/Qwen3-Embedding-8B",
+   "用途": "向量",
+   "字节数": 4900037024,
+   "sha256": "99b343597fe840706146144699a8b9188dd3387e43eb61faf0231b70b249d451"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00002-of-00004.safetensors",
+   "模型目录": "Embedding模型/Qwen3-Embedding-8B",
+   "用途": "向量",
+   "字节数": 4915959512,
+   "sha256": "dff635b0f6dbbaad2a2d633ef037ec0a39bc165cc1806c712fbd6fcbcb4526c0"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00003-of-00004.safetensors",
+   "模型目录": "Embedding模型/Qwen3-Embedding-8B",
+   "用途": "向量",
+   "字节数": 4983067656,
+   "sha256": "30b1d4c53d84eb018f642cad7b373f0aabf79699872d8702c1f38577c0a59a2f"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/Qwen3-Embedding-8B/model-00004-of-00004.safetensors",
+   "模型目录": "Embedding模型/Qwen3-Embedding-8B",
+   "用途": "向量",
+   "字节数": 335570376,
+   "sha256": "36cbc9c60375693629f25743c1e77ebb1724af58e671b2376463193c7fd21ef6"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/Qwen3-Embedding-8B-GGUF/Qwen3-Embedding-8B-Q8_0.gguf",
+   "模型目录": "Embedding模型/Qwen3-Embedding-8B-GGUF",
+   "用途": "向量",
+   "字节数": 8047105824,
+   "sha256": "d20ddc71e8a5c4344f2343481e242233a997dc5eaff442427a945836c97b4deb"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/bge-m3-q4_k_m.gguf",
+   "模型目录": "Embedding模型",
+   "用途": "向量",
+   "字节数": 437778496,
+   "sha256": "d164fe641fe8aecc9da3592b5f1ca46e9c97923959661a5f815bbc8e72704fb2"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "Embedding模型/bge-reranker-v2-m3-Q4_K_M.gguf",
+   "模型目录": "Embedding模型",
+   "用途": "向量",
+   "字节数": 438376864,
+   "sha256": "e186a244ed455b4ab66ec64339ce7427a6ae13f5c0b5e544de96e50f0f8b3673"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "代码模型/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+   "模型目录": "代码模型",
+   "用途": "LLM(代码)",
+   "字节数": 10364416768,
+   "sha256": "603bd3f8a0281d16571da7c08bd661ee17ff0d1be6fcbd1b42242da257ef0bb8"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "图片分析模型/Qwen3-VL-32B-Instruct-Q4_K_M.gguf",
+   "模型目录": "图片分析模型",
+   "用途": "视觉理解",
+   "字节数": 19762151200,
+   "sha256": "92d605566f8661b296251c535ed028ecf81c32e14e06948a3d8bef829e96a804"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "图片分析模型/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+   "模型目录": "图片分析模型",
+   "用途": "视觉理解",
+   "字节数": 5027784800,
+   "sha256": "67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "图片分析模型/mmproj-F16.gguf",
+   "模型目录": "图片分析模型",
+   "用途": "视觉理解",
+   "字节数": 1196795552,
+   "sha256": "dde7e407cf72e601455976c2d0daa960d16ee34ba3f0c78718c881d8cd8c1052"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "图片分析模型/mmproj-Qwen3VL-8B-Instruct-F16.gguf",
+   "模型目录": "图片分析模型",
+   "用途": "视觉理解",
+   "字节数": 1159029824,
+   "sha256": "ca524100ebf825c9a870db1c580d03879e0da0ab2541697e2458e64891cf9d38"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/BGE-Reranker-v2-m3/model.safetensors",
+   "模型目录": "排序模型/BGE-Reranker-v2-m3",
+   "用途": "重排",
+   "字节数": 2271071852,
+   "sha256": "d9e3e081faff1eefb84019509b2f5558fd74c1a05a2c7db22f74174fcedb5286"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-0.6B/model.safetensors",
+   "模型目录": "排序模型/Qwen3-Reranker-0.6B",
+   "用途": "重排",
+   "字节数": 1191588280,
+   "sha256": "27cd75a405b9c1b46b59abfd88aaa209e6fed2a1972cde9b70e7659537c5e65b"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-8B/model-00001-of-00005.safetensors",
+   "模型目录": "排序模型/Qwen3-Reranker-8B",
+   "用途": "重排",
+   "字节数": 4027618768,
+   "sha256": "22cdfea4a13b7b3e866573800eeeb638fc38962940adf631d06dc03befed047a"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-8B/model-00002-of-00005.safetensors",
+   "模型目录": "排序模型/Qwen3-Reranker-8B",
+   "用途": "重排",
+   "字节数": 4060268160,
+   "sha256": "d2163b74137e35b4614bd2aa5bf27bcb07de4ca61c6962495feb968385eb0df8"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-8B/model-00003-of-00005.safetensors",
+   "模型目录": "排序模型/Qwen3-Reranker-8B",
+   "用途": "重排",
+   "字节数": 4043508680,
+   "sha256": "a5038caa78c817e8acce6806104869675938a33fd4e60ed038e9931d390d6989"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-8B/model-00004-of-00005.safetensors",
+   "模型目录": "排序模型/Qwen3-Reranker-8B",
+   "用途": "重排",
+   "字节数": 3003274088,
+   "sha256": "247f85538c5996d4c296291b0e4004f618c9b17ca8cdc25d1fc726567eb15803"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-8B/model-00005-of-00005.safetensors",
+   "模型目录": "排序模型/Qwen3-Reranker-8B",
+   "用途": "重排",
+   "字节数": 1242472576,
+   "sha256": "8ba41b93c2e4ec8339ad16b000bc977fde196aeac054956cbfc8c0186ee6d4cf"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/Qwen3-Reranker-8B-GGUF/Qwen3-Reranker-8B.Q8_0.gguf",
+   "模型目录": "排序模型/Qwen3-Reranker-8B-GGUF",
+   "用途": "重排",
+   "字节数": 8707188736,
+   "sha256": "ba16c501a74929b6c9f71033420172c028b85e216f8d03bef1c9a758fbf3f71a"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/model.safetensors",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual",
+   "用途": "重排",
+   "字节数": 556892306,
+   "sha256": "ab2595ab9f34bdeffe645431d64c6e4aabe2ff5a57cfcacfef0727a97434238f"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 1114040223,
+   "sha256": "0ef3f7978f7bc52360864d74edc1a0e03d159af770a7767c4d5943496e616012"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_bnb4.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 822084838,
+   "sha256": "df70759eb3ebb4e96b7d82e9af1e99c4979f76b96205ea18dddb101d32b07f80"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_fp16.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 557164815,
+   "sha256": "4ad94bcc1d7313ec5f76e18de8ffa7469e3f34b76810b8fd7206619b9cde1bc4"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_int8.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 279577152,
+   "sha256": "c5220cf8fe023f8aa0ed2a3eb787d4451a7f17cf53f6b787e35718dd4b8815c3"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_q4.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 827392882,
+   "sha256": "a3744ee702adeb08230fba13258cc4ad441b73310a1060df2066bebbda080de7"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_quantized.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 279577152,
+   "sha256": "c5220cf8fe023f8aa0ed2a3eb787d4451a7f17cf53f6b787e35718dd4b8815c3"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/onnx/model_uint8.onnx",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual/onnx",
+   "用途": "重排",
+   "字节数": 279577151,
+   "sha256": "9498f606988b84e23b98d04101f3623c084baf3f1e16fd43a46ea6259b4f5924"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "排序模型/jina-reranker-v2-base-multilingual/pytorch_model.bin",
+   "模型目录": "排序模型/jina-reranker-v2-base-multilingual",
+   "用途": "重排",
+   "字节数": 561622266,
+   "sha256": "318b11c3ce6d8d34e5034d001166a857934c0811c4fc5fb4a40328477ccaaaf9"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文本模型/Qwen3.6-27B-Q5_K_M.gguf",
+   "模型目录": "文本模型",
+   "用途": "LLM",
+   "字节数": 19834053760,
+   "sha256": "ffb9a0f8b459086f8befd964f6c0ed9f9caafba410b76f9688b91c4678cc0fe4"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文本模型/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+   "模型目录": "文本模型",
+   "用途": "LLM",
+   "字节数": 22360456160,
+   "sha256": "707a55a8a4397ecde44de0c499d3e68c1ad1d240d1da65826b4949d1043f4450"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文本模型/Qwen3.8-27B-UD-Q4_K_M.gguf",
+   "模型目录": "文本模型",
+   "用途": "LLM",
+   "字节数": 16464440224,
+   "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文本模型/gemma-4-31B-it-UD-Q4_K_XL.gguf",
+   "模型目录": "文本模型",
+   "用途": "LLM",
+   "字节数": 18822970304,
+   "sha256": "9e92cb6236044c6a9870af406029c74a76e0571c157a6f95df724dcc8c7a1575"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文本模型/mmproj-BF16.gguf",
+   "模型目录": "文本模型",
+   "用途": "LLM",
+   "字节数": 931146304,
+   "sha256": "05353347512982ee62317b9d8c89372bc815f4b4043580e7ef3ad411ec1a1cd3"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/sd_xl_turbo_1.0.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo",
+   "用途": "图像生成",
+   "字节数": 13875761366,
+   "sha256": "2e58e3704b4c0831bf848e0507c9b5ff2cd8d007b8d0719dba3874156f631050"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/sd_xl_turbo_1.0_fp16.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo",
+   "用途": "图像生成",
+   "字节数": 6938081905,
+   "sha256": "e869ac7d6942cb327d68d5ed83a40447aadf20e0c3358d98b2cc9e270db0da26"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/text_encoder/model.fp16.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/text_encoder",
+   "用途": "图像生成",
+   "字节数": 246144152,
+   "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/text_encoder/model.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/text_encoder",
+   "用途": "图像生成",
+   "字节数": 492265168,
+   "sha256": "778d02eb9e707c3fbaae0b67b79ea0d1399b52e624fb634f2f19375ae7c047c3"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/text_encoder_2/model.fp16.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/text_encoder_2",
+   "用途": "图像生成",
+   "字节数": 1389382176,
+   "sha256": "ec310df2af79c318e24d20511b601a591ca8cd4f1fce1d8dff822a356bcdb1f4"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/text_encoder_2/model.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/text_encoder_2",
+   "用途": "图像生成",
+   "字节数": 2778702264,
+   "sha256": "fa5b2e6f4c2efc2d82e4b8312faec1a5540eabfc6415126c9a05c8436a530ef4"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/unet/diffusion_pytorch_model.fp16.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/unet",
+   "用途": "图像生成",
+   "字节数": 5135149760,
+   "sha256": "48fa46161a745f48d4054df3fe13804ee255486bca893403b60373c188fd1bdb"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/unet/diffusion_pytorch_model.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/unet",
+   "用途": "图像生成",
+   "字节数": 10270077736,
+   "sha256": "1968fc61aa8449ab3d3f9b9a05bce88c611760c01e0c4a7a3785911b546fe582"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/vae/diffusion_pytorch_model.fp16.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/vae",
+   "用途": "图像生成",
+   "字节数": 167335342,
+   "sha256": "02ee4bd18e5d16e7fe5fc5b85b4aefa2cba6db28897f674226c9d6ddd2f34f06"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文生图模型/sdxl-turbo/vae/diffusion_pytorch_model.safetensors",
+   "模型目录": "文生图模型/sdxl-turbo/vae",
+   "用途": "图像生成",
+   "字节数": 334643268,
+   "sha256": "716971093e3428c9156906fcbcc5500abf005317c5f4d3a5bb3fa28c45e1e071"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/distil-large-v3/model.bin",
+   "模型目录": "文转音频模型/Whisper/distil-large-v3",
+   "用途": "语音转写",
+   "字节数": 1512927867,
+   "sha256": "b79368e19b6623813609431a6e5ee309a71506701ebc49fd7820e692dec7c5f5"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/distil-large-v3/pytorch_model.bin",
+   "模型目录": "文转音频模型/Whisper/distil-large-v3",
+   "用途": "语音转写",
+   "字节数": 1512927867,
+   "sha256": "b79368e19b6623813609431a6e5ee309a71506701ebc49fd7820e692dec7c5f5"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/large-v3/model.bin",
+   "模型目录": "文转音频模型/Whisper/large-v3",
+   "用途": "语音转写",
+   "字节数": 3087284237,
+   "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/large-v3/pytorch_model.bin",
+   "模型目录": "文转音频模型/Whisper/large-v3",
+   "用途": "语音转写",
+   "字节数": 3087284237,
+   "sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/medium/model.bin",
+   "模型目录": "文转音频模型/Whisper/medium",
+   "用途": "语音转写",
+   "字节数": 1527906378,
+   "sha256": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/medium/pytorch_model.bin",
+   "模型目录": "文转音频模型/Whisper/medium",
+   "用途": "语音转写",
+   "字节数": 1527906378,
+   "sha256": "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "文转音频模型/Whisper/mlx-community-whisper-large-v3/weights.npz",
+   "模型目录": "文转音频模型/Whisper/mlx-community-whisper-large-v3",
+   "用途": "语音转写",
+   "字节数": 3083520416,
+   "sha256": "05ff791ce3630fae47e7c51004e9666204d786246ec07cac6110af768099b40d"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "路由分类模型/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+   "模型目录": "路由分类模型",
+   "用途": "路由分类",
+   "字节数": 2497281664,
+   "sha256": "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a"
+  },
+  {
+   "定位方式": "系统根",
+   "相对路径": "支持库/后端/大语言模型支持库/模型连接器/验证夹具/验证模型.gguf",
+   "模型目录": "支持库/后端/大语言模型支持库/模型连接器/验证夹具",
+   "用途": "验证夹具(伪 GGUF)",
+   "字节数": 24,
+   "sha256": "7df2ecad67187bfee033eb36dad4eb7684346252691f297811bc0dc67e0db995"
+  },
+  {
+   "定位方式": "系统根",
+   "相对路径": "支持库/后端/大语言模型支持库/模型连接器/验证夹具/llama-server",
+   "模型目录": "支持库/后端/大语言模型支持库/模型连接器/验证夹具",
+   "用途": "验证夹具(伪启动器)",
+   "字节数": 755,
+   "sha256": "f8f746f722ac37fe654b38fc34070aab825dad77c6bc6d913b46950a8a55325f"
+  },
+  {
+   "定位方式": "用户目录",
+   "相对路径": "llama.cpp-latest/build/bin/llama-server",
+   "模型目录": "llama.cpp-latest/build/bin",
+   "用途": "启动器二进制(llama.cpp latest)",
+   "字节数": 49984,
+   "sha256": "e44e961dd29c96dad1470594552a3c36155aa07830a28ed0b0edeec2e70a77a9"
+  },
+  {
+   "定位方式": "用户目录",
+   "相对路径": "llama.cpp-old/build/bin/llama-server",
+   "模型目录": "llama.cpp-old/build/bin",
+   "用途": "启动器二进制(llama.cpp old)",
+   "字节数": 8977584,
+   "sha256": "106d3a65062c5a718dfc9bc57eb96126342bb4ebfd715db593f16ddc96ab03c6"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "决策模型/Laya-决策模型-421M/multilingual/encoder/config.json",
+   "模型目录": "决策模型/Laya-决策模型-421M/multilingual",
+   "用途": "决策",
+   "字节数": 1938,
+   "sha256": "83f6916d13ef0f556ac461f28308dc2bffa7ebeadee8ec9e2db5812020ea5bb4"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "决策模型/Laya-决策模型-421M/multilingual/model.safetensors",
+   "模型目录": "决策模型/Laya-决策模型-421M/multilingual",
+   "用途": "决策",
+   "字节数": 643835514,
+   "sha256": "9d628fd971b700382ac6f65920a86f149777b2e748e0c955fb3b19695aa8f204"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "决策模型/Laya-决策模型-421M/multilingual/rl_agent_config.json",
+   "模型目录": "决策模型/Laya-决策模型-421M/multilingual",
+   "用途": "决策",
+   "字节数": 472,
+   "sha256": "25061739243b617ad88d1219ba6f8a9c86c5881ca28df024fa2d9b3b2fcc30c6"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "决策模型/Laya-决策模型-421M/multilingual/tokenizer/tokenizer.json",
+   "模型目录": "决策模型/Laya-决策模型-421M/multilingual",
+   "用途": "决策",
+   "字节数": 34363188,
+   "sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f"
+  },
+  {
+   "定位方式": "模型根",
+   "相对路径": "决策模型/Laya-决策模型-421M/multilingual/tokenizer/tokenizer_config.json",
+   "模型目录": "决策模型/Laya-决策模型-421M/multilingual",
+   "用途": "决策",
+   "字节数": 524,
+   "sha256": "6c6b2d8e3c84ce0e671c129cd6b374b235d6f9863042a5836358d00a89bbb5a1"
+  }
+ ]
 }
