@@ -35,8 +35,14 @@ import difflib
 import re
 from pathlib import Path
 
-#: 豁免目录（与生成器其它部分同一口径）
-豁免前缀 = (".git/", "工程缓存/", "开发文档/参考资料/", "开发文档/归档/", "__pycache__/")
+#: 豁免目录**不再在此另抄一份**：一律经 `机器印记.是豁免()` 读判据文件的 `豁免` 字段
+#: （唯一真源）。此处保留的名字只作「名字来源」说明，实际判断走函数。
+_豁免口径来源 = "开发文档/规范/文档类型判据.json 的 豁免 字段（经 机器印记.是豁免）"
+
+
+def _豁免(项目根: Path, 相对: str) -> bool:
+    from 开发工具.MD文档生成 import 机器印记
+    return 机器印记.是豁免(项目根, 相对)
 
 #: 默认阈值：报告这些以上的候选
 默认报告阈值 = 0.40
@@ -82,9 +88,10 @@ class 库:
     def __init__(self, 项目根: Path, 排除: str | None = None):
         self.项目根 = 项目根
         self.条目: list[tuple[str, str, set[str]]] = []      # (相对路径, 归一文本, 3-gram 集合)
+        本轮根 = 项目根
         for 路径 in sorted(项目根.rglob("*.md")):
             相对 = 路径.relative_to(项目根).as_posix()
-            if any(相对.startswith(x) for x in 豁免前缀):
+            if _豁免(本轮根, 相对):
                 continue
             if 排除 and 相对 == 排除:
                 continue

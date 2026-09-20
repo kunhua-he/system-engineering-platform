@@ -89,11 +89,41 @@ def 有印记(项目根: Path, 相对: str) -> bool:
     return 取印记((项目根 / 相对).read_text(encoding="utf-8").splitlines()) is not None
 
 
+def 豁免前缀(项目根: Path) -> tuple[str, ...]:
+    """从**判据文件**读「豁免目录」（唯一真源），失败退回内置最小值。
+
+    原先各调用点各抄一份硬编码（`机器印记` 没有、`查重._n前缀` 又抄了一份），
+    而判据文件 `文档类型判据.json` 的 `豁免` 字段**从没被读过** ⇒ 声明与实现不符：
+    实测 `--待归一清单` 把豁免的 `开发文档/参考资料/`（168 份）、`开发文档/归档/`（6 份）
+    一并列成「待归一」，而 `--列出` 的类型枚举又正确跳过它们 —— **同一份判据两套行为**
+    （哲学 1.2：不留第二套）。改为一处读取、全仓共用。
+    """
+    import json
+    try:
+        数据 = json.loads(
+            (项目根 / "开发文档/规范/文档类型判据.json").read_text(encoding="utf-8"))
+        表 = tuple(str(x) for x in (数据.get("豁免") or []) if str(x).strip())
+        if 表:
+            return 表
+    except (OSError, ValueError):
+        pass
+    return ("工程缓存/", "开发文档/参考资料/", "开发文档/归档/")
+
+
+def 是豁免(项目根: Path, 相对: str) -> bool:
+    return any(相对.startswith(x) for x in 豁免前缀(项目根))
+
+
 def 全仓待归一(项目根: Path) -> list[str]:
-    """全仓 tracked .md 里**没有机器印记**的相对路径（升序）——即「手写、尚未归一」的清单。"""
+    """全仓 tracked .md 里**没有机器印记**的相对路径（升序）——即「手写、尚未归一」的清单。
+
+    **豁免目录不进清单**（判据文件 `豁免` 字段是唯一真源；`.git/`/`__pycache__/` 不可能是
+    tracked 文件，无需另判）。豁免件本来就「不要求机器管理」，列进来只会虚报待办量。
+    """
     输出 = _git(项目根, "ls-files", "*.md")
-    相对表 = [x for x in 输出.splitlines() if x.strip()]
-    return sorted(相对 for 相对 in 相对表 if not 有印记(项目根, 相对))
+    相对表 = [x.strip() for x in 输出.splitlines() if x.strip()]
+    return sorted(相对 for 相对 in 相对表
+                  if not 是豁免(项目根, 相对) and not 有印记(项目根, 相对))
 
 
 def _git(项目根: Path, *参数: str) -> str:
