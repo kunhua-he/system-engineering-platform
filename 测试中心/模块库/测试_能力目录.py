@@ -354,6 +354,94 @@ class 搜索能力测试(能力目录测试基类):
                          json.dumps(第二次.值, ensure_ascii=False, sort_keys=True))
 
 
+class 检索并发回归测试(能力目录测试基类):
+    """锁住 2026-09-21 修的并发缺陷（华哥「一点并发都扛不住」）。
+
+    修前现场：`搜索能力` 每次调用都真走一遍目录树（`扫描包目录` 用 `rglob` 先全量
+    遍历再排除 = 剪枝不生效），且 `构建能力索引` 是「锁外读缓存 → 未命中就重建」
+    ⇒ **并发下缓存等于没写**，N 个线程各自全量重建。24 线程实测墙钟 48840ms、
+    64 线程 6087ms（单发仅 55ms），线程栈全停在 `glob.select_recursive_step`。
+
+    本测试不做绝对耗时断言（机器不同会假红），只锁**不会退化的形状**：
+    并发调用的墙钟不得远大于串行总和，即缓存必须真的在并发下生效。
+    """
+
+    def test_并发检索不塌成串行(self):
+        """锁的是**重建次数**这条不变式，不是墙钟（墙钟随机器波动会假红）。
+
+        「持锁单飞」的定义就是：N 个线程同时面对空缓存时，只允许**一次**全量重建。
+        修前写法（锁外读缓存）下每个线程都重建一次 —— 实测 64 线程退化 1915×。
+        """
+        import threading
+        import time
+
+        from 模块库.能力目录.实现 import 能力索引
+
+        参数 = {"关键词": "执行命令", "限制": 1}
+        self.后端.调用(搜索能力id, dict(参数))
+
+        # 计数钩子：包住唯一的重建入口，数「真重建了几次」。
+        重建次数 = {"n": 0}
+        原重建 = 能力索引._构建能力索引原始
+
+        def 计数重建(项目根):
+            重建次数["n"] += 1
+            return 原重建(项目根)
+
+        轮数 = 16
+        错误表: list[BaseException] = []
+
+        def 一发(_序号: int) -> None:
+            try:
+                self.后端.调用(搜索能力id, dict(参数))
+            except BaseException as 错误:  # noqa: BLE001 - 线程异常必须带回主线程，不许静默吞
+                错误表.append(错误)
+
+        能力索引._构建能力索引原始 = 计数重建
+        try:
+            # ★冷缓存起跑：清空索引缓存，让 16 个线程**同时**面对「缓存为空」。
+            # 这正是修前现场的条件。不清缓存的话线程们全命中热缓存，测试恒绿（实测踩过）。
+            能力索引._索引缓存.clear()
+            线程表 = [threading.Thread(target=一发, args=(i,)) for i in range(轮数)]
+            for 线程 in 线程表:
+                线程.start()
+            for 线程 in 线程表:
+                线程.join()
+        finally:
+            能力索引._构建能力索引原始 = 原重建
+
+        self.assertFalse(错误表, f"并发调用抛异常: {错误表[:1]}")
+        self.assertEqual(1, 重建次数["n"],
+                         f"冷缓存下 {轮数} 线程触发了 {重建次数['n']} 次全量重建"
+                         "（持锁单飞失效：并发下缓存等于没写）")
+
+    def test_并发结果与串行逐条一致(self):
+        """并发只许改变速度，不许改变内容。"""
+        参数 = {"关键词": "文件", "限制": 5}
+        串行值 = self.后端.调用(搜索能力id, dict(参数))
+        self.assertTrue(串行值.成功, 串行值.错误说明)
+
+        import threading
+
+        结果表: dict[int, str] = {}
+
+        def 一发(序号: int) -> None:
+            调用 = self.后端.调用(搜索能力id, dict(参数))
+            结果表[序号] = json.dumps(调用.值, ensure_ascii=False, sort_keys=True)
+
+        # 用不同关键词并发，确认不同过滤条件下的结果互不串扰（缓存键正确）。
+        线程表 = [
+            threading.Thread(target=一发, args=(i,)) for i in range(12)
+        ]
+        for 线程 in 线程表:
+            线程.start()
+        for 线程 in 线程表:
+            线程.join()
+        基准 = json.dumps(串行值.值, ensure_ascii=False, sort_keys=True)
+        for 序号, 文本 in 结果表.items():
+            self.assertEqual(基准, 文本, f"并发第 {序号} 发结果与串行不一致")
+
+
 class 读取能力测试(能力目录测试基类):
     def 读取(self, 能力id: str) -> 结果:
         return self.后端.调用(读取能力id, {"能力id": 能力id})
