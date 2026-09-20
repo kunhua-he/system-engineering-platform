@@ -25,6 +25,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+
+def _正式类型名集合() -> set[str]:
+    """正式类型名集合：真源是 公共契约/基础类型/类型表.py:正式类型表（16 项）。
+
+    不在本文件复写一份类型清单 —— 那是第二套事实源，两边迟早分叉。
+    """
+    from 公共契约.基础类型.类型表 import 正式类型表
+    return set(正式类型表)
+
 def _定位项目根() -> Path:
     """向上定位项目根：同时含 支持库 与 模块库 双目录的最近祖先（下沉后不再用 parents[2]）。"""
     for 祖先 in Path(__file__).resolve().parents:
@@ -138,10 +147,14 @@ def _规范能力(能力: dict) -> dict:
 
 def 校验输入(输出目录: Path, 测试文件路径: Path, 包id: str, 名称: str,
             能力清单: list[dict]) -> tuple[str | None, list[str]]:
-    """路径逃逸/非法名称/同名能力检查；返回 (错误码, 明细)，None 表示通过。
+    """路径逃逸/非法名称/同名能力/类型名检查；返回 (错误码, 明细)，None 表示通过。
 
     输出目录/测试文件路径 为文件系统路径（绝对路径合法），不参与逃逸检查；
     逃逸检查针对 包id/包名称/能力id/参数名 等标识符类输入。
+
+    类型名必须命中 `公共契约/基础类型/类型表.py:正式类型表`（16 项）。此前不校验，
+    传 `数值型` 这类不存在的类型名会被静默接受，产出与公共契约不符的契约文件，
+    调用方到运行期才炸 —— 属于「参数必须用契约已定义的类型」这条铁律的缺口。
     """
     文本表 = [包id, 名称]
     文本表 += [c["能力id"] for c in 能力清单]
@@ -151,12 +164,26 @@ def 校验输入(输出目录: Path, 测试文件路径: Path, 包id: str, 名�
         return "路径逃逸", 逃逸表
     if not 名称.isidentifier():
         return "参数不合法", [f"包名称不是合法标识符: {名称}"]
+    正式类型 = _正式类型名集合()
+    非法类型表 = sorted({
+        f"{c['能力id']}.{p.get('名称', '')}: {p.get('类型')!r}"
+        for c in 能力清单 for p in c["参数"]
+        if str(p.get("类型") or "") not in 正式类型
+    })
+    if 非法类型表:
+        return "参数不合法", [f"参数类型不是正式类型名（真源 公共契约/基础类型/类型表.py）: "
+                              f"{'; '.join(非法类型表[:8])}；合法类型: {'、'.join(sorted(正式类型))}"]
     能力id表 = [c["能力id"] for c in 能力清单]
     重复表 = sorted({i for i in 能力id表 if 能力id表.count(i) > 1})
     if 重复表:
         return "同名能力", [f"能力id 重复: {', '.join(重复表)}"]
     if not any(p.get("必填") for c in 能力清单 for p in c["参数"]):
         return "参数不合法", ["至少一个能力必须含必填参数（测试骨架依赖）"]
+    返回表 = sorted({f"{c['能力id']}: {c.get('返回')!r}" for c in 能力清单
+                    if str(c.get("返回") or "") not in 正式类型})
+    if 返回表:
+        return "参数不合法", [f"返回值不是正式类型名（真源 公共契约/基础类型/类型表.py）: "
+                              f"{'; '.join(返回表[:8])}"]
     return None, []
 
 
@@ -213,7 +240,12 @@ def _参数默认(参数: dict) -> str:
     值 = 参数.get("默认值")
     if 值 is None:
         return "None"
-    if isinstance(值, (int, float)) and not isinstance(值, bool):
+    if isinstance(值, bool):
+        # 逻辑型只有 真/假 两个正式值（真源：公共契约/基础类型/逻辑类型.py）。
+        # 曾把 bool 落到下面的 str(值) 分支，给逻辑型参数生成 `'False'` 字符串默认值：
+        # 非空字符串恒为真，调用方不传该参时判定整个反过来，且与契约声明的「逻辑型」不符。
+        return "真" if 值 else "假"
+    if isinstance(值, (int, float)):
         return repr(值)
     return repr(str(值))
 
@@ -289,6 +321,7 @@ from pathlib import Path
 if 系统根 not in sys.path:
     sys.path.insert(0, 系统根)
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.有界IO import 受限通信
 from 公共契约.运行时 import 平台适配, 进程终止
 
