@@ -17,7 +17,7 @@
   },
   {
    "路径": "实现/全仓索引.py",
-   "sha256": "8f99d520dade8929933a68fedeaf760abc123617cb73d520fdfa205c0f0d18c6"
+   "sha256": "29324c73fcd2f7e5ffdfcf2b3a670e0d09fd48fe23ff4b4baf7b3c584b665f9c"
   },
   {
    "路径": "实现/切块.py",
@@ -65,7 +65,7 @@
   },
   {
    "路径": "实现/索引库.py",
-   "sha256": "cb5e952040bc06bec2c2a254b39766c8408990f9cda2d2ff68660e12910b7731"
+   "sha256": "d134650a4b8e437b9bb25f47b9eed7efd745d7d9a8c963c9b13c67f2d06a8a29"
   },
   {
    "路径": "实现/规范校验.py",
