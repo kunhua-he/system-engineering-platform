@@ -14,7 +14,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 运行核心.加载器.包发现.发现器 import 发现全部
-from 开发工具.说明书生成.说明书生成器 import 写出说明书
+from 开发工具.MD文档生成.说明书.说明书生成器 import 写出说明书
 
 
 def 主函数() -> int:

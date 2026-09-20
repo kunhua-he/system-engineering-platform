@@ -32,13 +32,15 @@ import datetime
 import sys
 from pathlib import Path
 
-from 开发工具.MD文档生成 import (文档类型_债务清单, 文档类型_目录树与命令, 文档类型_通用,
-                              元信息头, 机器印记, 查重, 生成区, 类型登记)
+from 开发工具.MD文档生成 import (人工编辑, 文档类型_债务清单, 文档类型_目录树与命令,
+                              文档类型_通用, 元信息头, 机器印记, 查重, 生成区, 类型登记)
+from 开发工具.MD文档生成.说明书 import 类型入口 as _说明书入口
 
 #: 有「可刷新生成区」的类型 → 处理函数（按类型名分派）
 按类型分派 = {
     "债务清单": 文档类型_债务清单.主流程,
     "包级说明-目录树与命令": 文档类型_目录树与命令.主流程,
+    "包级说明-使用说明": _说明书入口.主流程,
 }
 
 #: 走「元信息头」通用动作的类型（权威文档 / 规范）
@@ -317,6 +319,10 @@ def 主流程(argv: list[str] | None = None) -> int:
                           "（存量未归一的不算红，逐批消掉）")
     解析.add_argument("--待归一清单", action="store_true",
                      help="列出全仓仍未归一的 md（无机器印记），供逐批推进")
+    解析.add_argument("--人工改", action="store_true",
+                     help="人工改正文的唯一通道：--文件 <目标> + --正文文件 <草稿>"
+                          "（校验类型判据与生成区，落盘并加印记；加 --写盘 才写入）")
+    解析.add_argument("--正文文件", help="--人工改 用的草稿文件路径（人先写草稿，不直接写目标）")
     解析.add_argument("--查重", action="store_true",
                      help="查重：落盘前判断「这条内容是不是已经在别处写过了」（防几条腿）")
     解析.add_argument("--阈值", type=float, default=None,
@@ -339,6 +345,14 @@ def 主流程(argv: list[str] | None = None) -> int:
 
     if args.拒绝手写校验:
         return _拒绝手写校验(项目根)
+
+    # 「人工参与，但经生成器写」的唯一通道（华哥：禁止直接写，可以通过生成器写）
+    if args.人工改:
+        if not args.文件 or not args.正文文件:
+            print("用法：--人工改 --文件 <目标路径> --正文文件 <草稿路径> [--写盘]")
+            return 2
+        return 人工编辑.入口(["--人工改", "--文件", args.文件, "--正文文件", args.正文文件]
+                          + (["--写盘"] if args.写盘 else []))
 
     if args.查重:
         if not args.类型 and args.序号 is None and not args.文件:
