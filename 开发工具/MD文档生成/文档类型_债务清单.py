@@ -10,7 +10,7 @@ import datetime
 import re
 from pathlib import Path
 
-from 开发工具.MD文档生成 import 元信息头, 生成区
+from 开发工具.MD文档生成 import 元信息头, 机器印记, 生成区
 
 账目文件相对 = "开发文档/未完成事项.md"
 
@@ -137,7 +137,8 @@ def 主流程(项目根: Path, 写盘: bool, 今天: str | None = None) -> tuple
     现行 = 现行生成区(文本)
     if 写盘:
         路径.write_text(出文档(项目根, 文本), encoding="utf-8")
-        return 0, ["生成区已按正文实数重写（人工区零丢失自检通过）"] + \
+        机器印记.加印记(项目根, 账目文件相对, "债务清单")
+        return 0, ["生成区已按正文实数重写（人工区零丢失自检通过）；机器印记已加"] + \
                   [(行[2:] if 行.startswith("> ") else 行)
                    for 行 in 应然 if 行.startswith("> |") or 行.startswith("> 最后更新")]
     if 现行 == 应然:

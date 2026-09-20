@@ -55,13 +55,25 @@ def 最后提交日(项目根: Path, 相对: str) -> str:
     return 输出.strip().splitlines()[0].strip() if 输出.strip() else ""
 
 
+def 有实质改动(项目根: Path, 相对: str) -> bool:
+    """除「最后更新」行以外还有未提交改动吗（工作区+暂存 vs HEAD）。
+
+    只按 `git status` 判脏会**自相矛盾**：生成器自己把日期写进文件后文件必然变脏，
+    于是「应然」跳到当天、刚写的日期立刻不符 ⇒ 判红 → 写盘 → 再判红（死循环）。
+    故这里只看**除掉日期行的实质内容**是否变过。
+    """
+    d = _git(项目根, "diff", "HEAD", "-U0", "--", 相对)
+    行 = [x for x in d.splitlines()
+          if x[:1] in "+-" and not x.startswith(("+++", "---"))]
+    return any("最后更新" not in x for x in 行)
+
+
 def 应然日期(项目根: Path, 相对: str) -> str:
-    """内容没变 ⇒ 用最后提交日；有未提交改动 ⇒ 用当天（内容确实是新的）。"""
-    if not 文件是否脏(项目根, 相对):
-        提交日 = 最后提交日(项目根, 相对)
-        if 提交日:
-            return 提交日
-    return datetime.date.today().isoformat()
+    """有实质改动 ⇒ 当天（内容确实是新的）；否则 ⇒ 最后一次提交日（事实）。"""
+    if 有实质改动(项目根, 相对):
+        return datetime.date.today().isoformat()
+    提交日 = 最后提交日(项目根, 相对)
+    return 提交日 or datetime.date.today().isoformat()
 
 
 def 应然最后更新行(项目根: Path, 相对: str) -> str:
