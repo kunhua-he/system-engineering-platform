@@ -69,11 +69,25 @@ def 命中类型(项目根: Path, 相对路径: str) -> dict | None:
 
 
 def 枚举文件(项目根: Path, 类型: dict) -> list[Path]:
-    """按类型定义枚举该类型下的现存文件（相对路径升序）。"""
+    """按类型定义枚举该类型下的现存文件（相对路径升序）。
+
+    **扫描面用 `git ls-files`，不用 `rglob`**（2026-09-20 实测的根因修复）：
+    原实现 `项目根.rglob("*.md")` **在过滤之前**遍历了全仓 **18683** 份 md
+    （`工程缓存/` 里就有 1.8 万份生成物），过滤发生在遍历之后 ⇒ 每次都白扫，
+    单次实测 **7.74 秒**；`--列出` 要逐类型枚举 ⇒ 10 类 = 77 秒起，
+    单份 `--文件 ... --加印记` 也要 15 秒（华哥按「单步超 2 分钟＝bug」口径当场点名）。
+    改用 `git ls-files '*.md'`（本仓正式 md 一律 tracked，实测 527 份、0.01 秒量级），
+    剪枝与过滤都不用再做 —— 未跟踪件与 `工程缓存/` 天然不在其中。
+    """
     import fnmatch
+    from 开发工具.MD文档生成 import 机器印记
+    输出 = 机器印记._git(项目根, "ls-files", "*.md")
+    候选 = [x.strip() for x in 输出.splitlines() if x.strip()]
+    if not 候选:                      # 非 git 环境下退回目录遍历，但**带剪枝**
+        候选 = [p.relative_to(项目根).as_posix()
+               for p in _带剪枝遍历(项目根)]
     命中: list[Path] = []
-    for 路径 in 项目根.rglob("*.md"):
-        相对 = 路径.relative_to(项目根).as_posix()
+    for 相对 in 候选:
         if any(相对.startswith(str(x)) for x in
                (".git/", "工程缓存/", "开发文档/参考资料/", "开发文档/归档/", "__pycache__/")):
             continue
@@ -82,6 +96,23 @@ def 枚举文件(项目根: Path, 类型: dict) -> list[Path]:
             if fnmatch.fnmatch(相对, 模式文) or (
                     模式文.endswith("/*.md") and 相对.startswith(模式文[:-len("*.md")])
                     and 相对.endswith(".md")):
-                命中.append(路径)
+                命中.append(项目根 / 相对)
                 break
     return sorted(命中, key=lambda p: p.as_posix())
+
+
+#: 目录遍历时要剪掉的目录名（`rglob` 不支持剪枝，故手写 `os.walk`）
+剪枝目录 = (".git", "工程缓存", "参考资料", "归档", "__pycache__", "node_modules")
+
+
+def _带剪枝遍历(项目根: Path) -> list[Path]:
+    """带剪枝的 `*.md` 遍历（仅非 git 环境兜底用）：进入被剪目录即不再下钻。"""
+    import os
+    from pathlib import Path as _P
+    结果: list[Path] = []
+    for 当前, 子目录表, 文件表 in os.walk(项目根):
+        子目录表[:] = [d for d in 子目录表 if d not in 剪枝目录]
+        for 名 in 文件表:
+            if 名.endswith(".md"):
+                结果.append(_P(当前) / 名)
+    return 结果
