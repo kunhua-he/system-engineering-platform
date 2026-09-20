@@ -35,6 +35,14 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
 
     成功值：{退出码, 标准输出, 标准错误}；退出码非零不在此层判定语义，
     由能力层映射 命令失败/冲突/未提交修改 等稳定错误码。
+
+    **统一关掉路径转义**（2026-09-21）：git 缺省 `core.quotePath=true`，凡是回带路径的
+    输出（`status --porcelain`、`worktree list --porcelain`、`show --name-only`）都把
+    非 ASCII 路径转义成 `"\\344\\270\\255\\346\\226\\207…"` 引号形式。本仓文件名全中文，
+    不关这一项则 `当前状态.未提交修改`、`查询工作区.工作区列表`、`提交.提交文件` 三处
+    回带的都不是可用路径。放在这里而不是各调用点，是因为这是**所有** git 输出的共同口径
+    （哲学 1.2：同一事实只留一处实现）；`-c` 只影响显示、不影响 add/commit/push 行为，
+    且路径含换行/引号时的转义不受该开关影响，故对解析无害。
     """
     校验 = 校验仓库路径(仓库路径) or 校验超时(超时秒)
     if 校验:
@@ -44,7 +52,7 @@ def 执行git(仓库路径: str, 参数列表: list[str], 超时秒: float = 默
         return 失败结果("仓库不存在", f"不是 git 仓库: {仓库路径}")
     try:
         进程 = subprocess.Popen(
-            ["git", "-C", str(仓库)] + 参数列表,
+            ["git", "-C", str(仓库), "-c", "core.quotePath=false"] + 参数列表,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             **平台适配.子进程组启动标志(),
         )

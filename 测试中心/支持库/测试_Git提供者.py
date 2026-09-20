@@ -385,5 +385,101 @@ class Test推送(unittest.TestCase):
         self.assertEqual(结果.错误码, "提供者不可用")
 
 
+class Test提交多行与文件清单(unittest.TestCase):
+    """`Git操作.提交` 的多行消息与回带文件清单（2026-09-21）。
+
+    为什么单开一类：提交纪律要求「提交后核对文件数，防把别人的半成品带进来」，
+    此前只能回终端 `git show --stat HEAD` 核对。这条腿收进返回值后必须证明两件事——
+    ① 多行消息真的落进 commit（换行从「禁止」放开为「允许」，`\\r`/NUL 仍拒）；
+    ② 提交文件/文件数 与真实 git 输出逐条一致，且**中文路径不许被转义**：本仓文件名
+    全中文，而 `git show --name-only` 缺省把非 ASCII 路径转义成 `"\\346\\226\\207…"`，
+    不关 quotePath 回带的就是一堆转义串，比对根本无从谈起。
+    """
+
+    def setUp(self):
+        self.临时根 = Path(tempfile.mkdtemp(prefix="测试_Git提交清单_"))
+        self.仓库 = _初始化仓库(self.临时根 / "仓库")
+        # **必须显式把转义开关打开**：本机全局 gitconfig 恰好是 quotePath=false（实测），
+        # 不显式打开则「不转义」的断言在没修的环境里也照样绿 —— 那就是假绿（实测踩过：
+        # 摘掉生产代码里的开关，三条中文路径断言全部照绿）。仓库级 true 复现 git 的
+        # 出厂缺省，而命令行 `-c` 优先级高于任何配置文件，所以生产代码里的开关仍能压住它。
+        _运行git(str(self.仓库), "config", "core.quotePath", "true")
+
+    def tearDown(self):
+        shutil.rmtree(self.临时根, ignore_errors=True)
+        self.assertFalse(self.临时根.exists())
+
+    def test_提交_多行消息真的落进commit(self):
+        (self.仓库 / "多行消息探针.txt").write_text("内容\n", encoding="utf-8")
+        消息 = "开工ID 标题行\n\n为什么：说明\n逐条改动：一、二"
+        结果 = 提交(str(self.仓库), [], 消息)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["消息"], 消息)
+        真实 = _运行git(str(self.仓库), "log", "-1", "--pretty=%B").stdout
+        self.assertEqual(真实.rstrip("\n"), 消息)
+
+    def test_提交_回车与NUL仍拒绝(self):
+        for 坏消息 in ["标题\r正文", "标题\x00正文"]:
+            结果 = 提交(str(self.仓库), [], 坏消息)
+            self.assertEqual(结果.错误码, "参数不合法", repr(坏消息))
+
+    def test_提交_文件清单与真实git一致_中文路径不转义(self):
+        (self.仓库 / "中文新增文件.txt").write_text("内容\n", encoding="utf-8")
+        (self.仓库 / "另一个中文文件.txt").write_text("内容\n", encoding="utf-8")
+        结果 = 提交(str(self.仓库), [
+            str(self.仓库 / "中文新增文件.txt"),
+            str(self.仓库 / "另一个中文文件.txt")], "只提交这两个")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["文件数"], 2)
+        self.assertEqual(sorted(结果.值["提交文件"]),
+                         ["中文新增文件.txt", "另一个中文文件.txt"])
+        真实 = _运行git(str(self.仓库), "-c", "core.quotePath=false",
+                        "show", "--name-only", "--pretty=format:", "HEAD").stdout
+        self.assertEqual(结果.值["提交文件"],
+                         [行.strip() for 行 in 真实.splitlines() if 行.strip()])
+        # 未显式暂存的改动不在清单里（清单是「本次 commit 真正带走的」，不是「工作区改动」）
+        (self.仓库 / "未暂存.txt").write_text("内容\n", encoding="utf-8")
+        (self.仓库 / "中文新增文件.txt").write_text("改过了\n", encoding="utf-8")
+        再提交 = 提交(str(self.仓库), [str(self.仓库 / "中文新增文件.txt")], "只改一个")
+        self.assertTrue(再提交.成功, 再提交.错误说明)
+        self.assertEqual(再提交.值["提交文件"], ["中文新增文件.txt"])
+
+    def test_当前状态与查询工作区_中文路径不转义(self):
+        """同一口径的第二、三处：`当前状态.未提交修改` 与 `查询工作区.工作区列表.路径`。
+
+        转义开关放在 执行git（所有 git 输出的共同口径）而不是 提交 一个调用点，所以
+        这两处必须一并验证 —— 只验提交，等于只验了三分之一。
+        """
+        (self.仓库 / "中文改动.txt").write_text("内容\n", encoding="utf-8")
+        状态 = 当前状态(str(self.仓库))
+        self.assertTrue(状态.成功, 状态.错误说明)
+        未提交 = " ".join(状态.值["未提交修改"])
+        self.assertIn("中文改动.txt", 未提交, 状态.值["未提交修改"])
+        self.assertNotIn("\\", 未提交, 状态.值["未提交修改"])
+
+        工作区 = _新建工作区(self.仓库, self.临时根 / "中文工作区")
+        查询 = 查询工作区(str(self.仓库))
+        self.assertTrue(查询.成功, 查询.错误说明)
+        路径表 = [项["路径"] for 项 in 查询.值["工作区列表"]]
+        self.assertTrue(any("中文工作区" in 路径 for 路径 in 路径表), 路径表)
+        self.assertFalse([路径 for 路径 in 路径表 if "\\" in 路径], 路径表)
+
+    def test_反向验证_摘掉转义开关时中文路径确实被转义(self):
+        """反向样本：**裸 git 调用**（继承仓库级 quotePath=true）必须回带转义串。
+
+        这一条是「生产代码里那个开关真在起作用」的证明：setUp 已把仓库级开关置 true，
+        裸调用就是「没有修复时的世界」，它转义、而能力返回值不转义，差异只可能来自
+        `-c core.quotePath=false`。本机全局 gitconfig 恰好关了转义，若不在夹具里显式
+        打开，这个反向样本同样会假绿。
+        """
+        (self.仓库 / "中文新增文件.txt").write_text("内容\n", encoding="utf-8")
+        结果 = 提交(str(self.仓库), [str(self.仓库 / "中文新增文件.txt")], "反向样本")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        转义 = _运行git(str(self.仓库), "show", "--name-only",
+                        "--pretty=format:", "HEAD").stdout
+        self.assertIn("\\", 转义, f"预期裸调用回带转义串，实际：{转义!r}")
+        self.assertEqual(结果.值["提交文件"], ["中文新增文件.txt"])
+
+
 if __name__ == "__main__":
     unittest.main()
