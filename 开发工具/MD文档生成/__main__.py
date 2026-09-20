@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 from 开发工具.MD文档生成 import (文档类型_债务清单, 文档类型_通用, 元信息头,
-                              机器印记, 生成区, 类型登记)
+                              机器印记, 查重, 生成区, 类型登记)
 
 #: 有「可刷新生成区」的类型 → 处理函数（按类型名分派）
 按类型分派 = {
@@ -81,6 +81,120 @@ def _跑元信息头(项目根: Path, 类型: dict, 写盘: bool,
         行表.append(f"  [{'写盘' if 写盘 else '核验'}] {相对}")
         行表.extend("      " + x for x in 行)
     return 总码, 行表
+
+
+def _查重(项目根: Path, 类型: dict | None, 单文件: str | None,
+         阈值: float | None, 取前: int) -> int:
+    """查重：把「准备落盘的内容」与全仓比一遍，报相似候选（防同一件事写好几处）。
+
+    两种用法：
+    - `--查重 --类型 <类型>`：把该类现存文件逐个与**其它**文件比（找已有重复）；
+    - `--查重 --文件 <路径>`：只查这一份。
+    """
+    报阈 = 阈值 if 阈值 is not None else 查重.默认报告阈值
+    if 单文件:
+        相对表 = [单文件]
+    elif 类型 is not None:
+        相对表 = [p.relative_to(项目根).as_posix()
+                 for p in 类型登记.枚举文件(项目根, 类型)]
+    else:
+        print("请给 `--类型 <类型>` 或 `--文件 <路径>`（或加 --全部 扫全仓）")
+        return 2
+    if not 相对表:
+        print("该类型下没找到现存文件")
+        return 2
+    库 = 查重.库(项目根)
+    print(f"MD 文档生成 · 查重（{len(相对表)} 份待查；报阈 {报阈:.2f}，"
+          f"≥{查重.默认高度阈值:.2f} 为高度疑似重复）")
+    命中数 = 0
+    for 相对 in 相对表:
+        路径 = 项目根 / 相对
+        if not 路径.is_file():
+            print(f"  ! 不存在：{相对}")
+            continue
+        文本 = 路径.read_text(encoding="utf-8")
+        待归一 = 查重.归一文本(文本)
+        if len(待归一) < 50:
+            continue
+        待集 = 查重.切片集合(待归一)
+        粗 = sorted(((查重.粗相似(待集, 集), 他) for 他, _, 集 in 库.条目
+                    if 他 != 相对), reverse=True)[:max(12, 取前)]
+        候选 = [(他, 查重.精相似(待归一, 库._归一(他))) for _, 他 in 粗]
+        候选 = [x for x in sorted(候选, key=lambda t: -t[1]) if x[1] >= 报阈][:取前]
+        if not 候选:
+            continue
+        命中数 += 1
+        print(f"\n  {相对}")
+        for 他, 分 in 候选:
+            标 = "★高度疑似重复" if 分 >= 查重.默认高度阈值 else "疑似"
+            print(f"    {标} {分:.2f}  {他}")
+    print()
+    if 命中数 == 0:
+        print(f"无相似度 ≥{报阈:.2f} 的候选（{len(相对表)} 份）")
+        return 0
+    print(f"**{命中数} 份有相似候选** —— 落盘前先看：该不该合并到已有那份，"
+          f"而不是另起一处（防「同一件事写好几条腿」）")
+    return 1
+
+
+def _查重全仓(项目根: Path, 阈值: float | None, 取前: int) -> int:
+    """全仓查重：找「同一件事写了好几处」的候选对（只读，供人裁决合并）。"""
+    报阈 = 阈值 if 阈值 is not None else 查重.默认报告阈值
+    库 = 查重.库(项目根)
+    print(f"MD 文档生成 · 全仓查重（{len(库.条目)} 份参与；报阈 {报阈:.2f}，"
+          f"≥{查重.默认高度阈值:.2f} 为高度疑似重复）")
+    对表: list[tuple[float, str, str]] = []
+    条目 = 库.条目
+    for i in range(len(条目)):
+        for j in range(i + 1, len(条目)):
+            甲路, 甲归一, 甲集 = 条目[i]
+            乙路, 乙归一, 乙集 = 条目[j]
+            if 查重.粗相似(甲集, 乙集) < 报阈:
+                continue                       # 粗筛：先便宜地滤掉
+            分 = 查重.精相似(甲归一, 乙归一)
+            if 分 >= 报阈:
+                对表.append((分, 甲路, 乙路))
+    对表.sort(reverse=True)
+    if not 对表:
+        print(f"无相似度 ≥{报阈:.2f} 的文档对（{len(库.条目)} 份两两比过）")
+        return 0
+    print(f"\n发现 {len(对表)} 对相似文档（降序，只列前 {取前 * 10} 条）：")
+    for 分, 甲, 乙 in 对表[:取前 * 10]:
+        标 = "★高度疑似重复" if 分 >= 查重.默认高度阈值 else "疑似"
+        print(f"  {标} {分:.2f}")
+        print(f"      {甲}")
+        print(f"      {乙}")
+    print()
+    print("**这是降噪器不是裁决器**：报的是**字面相似**候选，同义改写查不出来、"
+          "同模板出的不同内容的件会报高相似。该不该合并由人看一眼决定。")
+    return 1
+
+
+def _加印记(项目根: Path, 类型: dict, 单文件: str | None) -> int:
+    """把该类现存文件纳入机器管理（只加印记，不动正文、不刷生成区）。"""
+    类型名 = str(类型["类型"])
+    if 单文件:
+        相对表 = [单文件]
+    else:
+        相对表 = [p.relative_to(项目根).as_posix()
+                 for p in 类型登记.枚举文件(项目根, 类型)]
+    if not 相对表:
+        print(f"该类型下没找到现存文件（路径判据：{类型.get('路径判据')}）")
+        return 2
+    新加 = 已有 = 0
+    for 相对 in 相对表:
+        码, 行 = 机器印记.加印记(项目根, 相对, 类型名)
+        if 码 != 0:
+            for x in 行:
+                print(f"  ! {相对}: {x}")
+            continue
+        if any("已加机器印记" in x for x in 行):
+            新加 += 1
+            print(f"  [新加] {相对}")
+        else:
+            已有 += 1
+    print(f"共 {len(相对表)} 份：新加印记 {新加}、已在机器管理 {已有}")
+    return 0
 
 
 def _待归一清单(项目根: Path) -> int:
@@ -187,6 +301,8 @@ def 主流程(argv: list[str] | None = None) -> int:
     组.add_argument("--写盘", action="store_true", help="出文档（生成器形态）")
     组.add_argument("--校验", action="store_true", help="核验生成区（门禁形态，默认）")
     组.add_argument("--新建", action="store_true", help="按格式出骨架（如决策记录）")
+    组.add_argument("--加印记", action="store_true",
+                     help="只加机器印记（把该类型的现存文件纳入机器管理；无生成区的类型用它）")
     解析.add_argument("--文件", help="只处理这一个文件（须属该类型路径判据）")
     解析.add_argument("--补头", action="store_true",
                      help="允许给缺元信息头的文件补头（默认只刷已有的，不强加）")
@@ -200,6 +316,11 @@ def 主流程(argv: list[str] | None = None) -> int:
                           "（存量未归一的不算红，逐批消掉）")
     解析.add_argument("--待归一清单", action="store_true",
                      help="列出全仓仍未归一的 md（无机器印记），供逐批推进")
+    解析.add_argument("--查重", action="store_true",
+                     help="查重：落盘前判断「这条内容是不是已经在别处写过了」（防几条腿）")
+    解析.add_argument("--阈值", type=float, default=None,
+                     help="查重报告阈值（默认 0.40；≥0.70 标为高度疑似重复）")
+    解析.add_argument("--取前", type=int, default=5, help="查重返回前 N 名（默认 5）")
     args = 解析.parse_args(argv)
 
     项目根 = 找项目根()
@@ -217,6 +338,21 @@ def 主流程(argv: list[str] | None = None) -> int:
 
     if args.拒绝手写校验:
         return _拒绝手写校验(项目根)
+
+    if args.查重:
+        if not args.类型 and args.序号 is None and not args.文件:
+            # 全仓模式：所有类型合起来查
+            return _查重全仓(项目根, args.阈值, args.取前)
+        类型 = None
+        if args.类型 or args.序号 is not None:
+            try:
+                类型 = (类型登记.按名取(项目根, args.类型) if args.类型
+                       else 类型登记.按序号取(项目根, args.序号))
+            except 类型登记.类型定义缺失 as 错:
+                print(f"{错}")
+                return 2
+        return _查重(项目根, 类型, args.文件 if args.文件 else None,
+                    args.阈值, args.取前)
 
     if args.列出 or (not args.类型 and args.序号 is None):
         print("MD 文档生成 · 已登记的文档类型（格式定义：开发文档/规范/文档类型判据.json）")
@@ -248,6 +384,10 @@ def 主流程(argv: list[str] | None = None) -> int:
         for 行 in 行表:
             print(行)
         return 码
+
+    # ①之2 --加印记：只把现存文件纳入机器管理（无生成区的类型用它）
+    if args.加印记:
+        return _加印记(项目根, 类型, args.文件 if args.文件 else None)
 
     # ② 按类型分派（有可刷新生成区）
     if 类型名 in 按类型分派:
