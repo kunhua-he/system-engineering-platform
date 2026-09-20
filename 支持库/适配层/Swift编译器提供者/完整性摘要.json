@@ -21,7 +21,7 @@
   },
   {
    "路径": "实现/Swift工具.py",
-   "sha256": "b95c00c742cd3c624c3c56cd55ba3a8740555aab57a95cfd95ed94517dd4aafa"
+   "sha256": "fa02cfaf1fdc944103cac61f70006042ab44a1d0845eb3c66338e46532d22b8e"
   },
   {
    "路径": "实现/__init__.py",
@@ -65,7 +65,7 @@
   },
   {
    "路径": "验证场景引用.json",
-   "sha256": "40648fb508f7b83066e6e22814369c0d96457cefada5fbe3471ae5e76d2b4343"
+   "sha256": "d51ce88c33edc2e0d9c0aebe846be9b91b884ff0be863099b748680154b40ca8"
   },
   {
    "路径": "验证夹具/你好.swift",

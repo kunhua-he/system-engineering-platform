@@ -108,8 +108,14 @@ def 检查提供者(超时秒: float = 30.0) -> 结果:
     for 名, 路径 in (("swiftc", swiftc), ("codesign", codesign)):
         try:
             码, 出, 错 = _跑([路径, *探针参数[名]], 超时秒=float(超时秒 or 30))
-        except (OSError, TimeoutError, ValueError) as 错误:
+        except TimeoutError as 错误:
+            # 顺序有意：`TimeoutError` 是 `OSError` 的子类，放在后面会被 OSError 抢先吞掉，
+            # 超时就会被误报成「提供者不可用」（实测踩过）——异常从具体到宽泛。
+            return _失败("超时", f"{名} 探针超时: {错误}", 可重试=真)
+        except OSError as 错误:
             return _失败("提供者不可用", f"{名} 探针失败: {错误}")
+        except ValueError as 错误:
+            return _失败("参数不合法", f"{名} 探针参数不合法: {错误}")
         原文 = ((出 or "") + (错 or "")).strip()
         if 码 != 0 and not 原文:
             return _失败("提供者不可用",
@@ -128,7 +134,14 @@ def 编译源代码(*, 源文件清单: list = None, 输出路径: str = None,
         return _失败("参数不合法", "源文件清单 必须是非空列表型")
     if not isinstance(输出路径, str) or not 输出路径.strip():
         return _失败("参数不合法", "输出路径 必须是非空文本")
+    if not Path(str(输出路径).strip()).is_absolute():
+        # 相对输出路径会随调用方工作目录漂移（产物落到不可预期的地方），
+        # 与「源文件清单必须是绝对路径」同口径：一律要求绝对路径。
+        return _失败("参数不合法", f"输出路径 必须是绝对路径: {输出路径}")
     源表 = [str(p) for p in 源文件清单]
+    非绝对 = [p for p in 源表 if not Path(p).is_absolute()]
+    if 非绝对:
+        return _失败("参数不合法", f"源文件清单必须是绝对路径: {'、'.join(非绝对[:5])}")
     不存在 = [p for p in 源表 if not Path(p).is_file()]
     if 不存在:
         return _失败("参数不合法", f"源文件不存在: {'、'.join(不存在[:5])}")
