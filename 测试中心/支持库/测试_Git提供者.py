@@ -22,7 +22,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 支持库.适配层.Git提供者 import (
     检查提供者, 创建工作区, 查询工作区, 关闭工作区,
-    提交, 回滚, 挑拣合入, 当前状态, 获取当前提交哈希,
+    提交, 回滚, 挑拣合入, 当前状态, 获取当前提交哈希, 推送,
 )
 
 
@@ -30,6 +30,13 @@ def _运行git(目录: str, *参数: str) -> subprocess.CompletedProcess:
     """测试辅助：真实 git 调用（测试侧允许直接使用 git 做场景搭建）。"""
     return subprocess.run(
         ["git", "-C", 目录, *参数], capture_output=True, text=True, timeout=60)
+
+
+def _建裸远端(路径: Path) -> Path:
+    """真实 git init --bare 建裸远端（推送的落点）。"""
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(路径)],
+                   capture_output=True, text=True, timeout=60, check=True)
+    return 路径
 
 
 def _初始化仓库(根: Path, 分支: str = "main") -> Path:
@@ -275,12 +282,107 @@ class TestGit提供者(unittest.TestCase):
         注册表 = 能力注册表()
         注册能力(注册表)
         for 能力id in ["Git操作.检查提供者", "Git操作.创建工作区", "Git操作.查询工作区",
-                       "Git操作.关闭工作区", "Git操作.提交", "Git操作.回滚",
+                       "Git操作.关闭工作区", "Git操作.提交", "Git操作.推送",
+                       "Git操作.回滚",
                        "Git操作.挑拣合入", "Git操作.当前状态",
                        "Git操作.获取当前提交哈希"]:
             实现 = 注册表.获取(能力id)
             self.assertIsNotNone(实现, 能力id)
             self.assertEqual(实现.包id, "支持库.适配层.Git提供者")
+
+
+class Test推送(unittest.TestCase):
+    """`Git操作.推送` 真实推送测试（本地裸仓当远端，全部真实 git 执行）。
+
+    为什么单开一类：推送是**唯一会改变仓库之外状态的**能力（本地提交只动自己，
+    推送动远端），因此除正向链外必须逐条证否安全边界 —— 远端名参数注入、
+    仓库根白名单、detached HEAD 推不出分支、超时参数。
+    """
+
+    def setUp(self):
+        self.临时根 = Path(tempfile.mkdtemp(prefix="测试_Git推送_"))
+        self.仓库 = _初始化仓库(self.临时根 / "仓库")
+        self.远端 = _建裸远端(self.临时根 / "远端.git")
+
+    def tearDown(self):
+        shutil.rmtree(self.临时根, ignore_errors=True)
+        self.assertFalse(self.临时根.exists())
+
+    def test_推送_显式远端路径与分支_远端真的收到提交(self):
+        """正向链：断言**远端真的有了这条提交**，而不是只看「成功」两个字。"""
+        本地头 = _运行git(str(self.仓库), "rev-parse", "HEAD").stdout.strip()
+        结果 = 推送(str(self.仓库), 远端=str(self.远端), 分支="main")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["分支"], "main")
+        self.assertEqual(结果.值["提交哈希"], 本地头)
+        远端头 = subprocess.run(
+            ["git", "-C", str(self.远端), "rev-parse", "main"],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(远端头.returncode, 0, 远端头.stderr)
+        self.assertEqual(远端头.stdout.strip(), 本地头)
+
+    def test_推送_远端名走配置_缺省origin且分支缺省当前分支(self):
+        _运行git(str(self.仓库), "remote", "add", "origin", str(self.远端))
+        结果 = 推送(str(self.仓库))
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["远端"], "origin")
+        self.assertEqual(结果.值["分支"], "main")
+
+    def test_推送_重复推送幂等(self):
+        """同一提交推两次：第二次是 Everything up-to-date，仍判成功（网络重试安全）。"""
+        第一次 = 推送(str(self.仓库), 远端=str(self.远端), 分支="main")
+        self.assertTrue(第一次.成功, 第一次.错误说明)
+        第二次 = 推送(str(self.仓库), 远端=str(self.远端), 分支="main")
+        self.assertTrue(第二次.成功, 第二次.错误说明)
+        self.assertEqual(第二次.值["提交哈希"], 第一次.值["提交哈希"])
+
+    def test_推送_远端名参数注入拒绝(self):
+        """反向验证：`-` 开头的远端名会被 git 当**选项**解析（`--upload-pack=…`
+        可挂任意命令），必须在**碰 git 之前**就拒。"""
+        for 远端 in ["--upload-pack=touch /tmp/被注入",
+                     "-u", "--exec=谁", "含 空格", "含;分号", "含\n换行", "含`反引号"]:
+            结果 = 推送(str(self.仓库), 远端=远端, 分支="main")
+            self.assertEqual(结果.错误码, "参数不合法", repr(远端))
+            self.assertIn("远端名", 结果.错误说明, repr(远端))
+        self.assertFalse(Path("/tmp/被注入").exists(), "注入面必须完全没被执行")
+
+    def test_推送_分支名参数注入拒绝(self):
+        for 分支 in ["-f", "--force", "含 空格", "含;分号", "含`反引号"]:
+            结果 = 推送(str(self.仓库), 远端=str(self.远端), 分支=分支)
+            self.assertEqual(结果.错误码, "参数不合法", repr(分支))
+
+    def test_推送_仓库根白名单外拒绝(self):
+        """`/tmp` 解析为 `/private/tmp`，不在白名单（底座仓根 / 系统临时目录）内。"""
+        结果 = 推送("/tmp", 远端=str(self.远端), 分支="main")
+        self.assertEqual(结果.错误码, "路径越界")
+        self.assertIn("白名单", 结果.错误说明)
+
+    def test_推送_仓库不存在(self):
+        结果 = 推送(str(self.临时根 / "没有这个目录"), 远端=str(self.远端), 分支="main")
+        self.assertEqual(结果.错误码, "仓库不存在")
+
+    def test_推送_detached头未给分支拒绝(self):
+        """detached HEAD 下推不出「当前分支」，不许猜。"""
+        _运行git(str(self.仓库), "checkout", "--detach", "HEAD")
+        结果 = 推送(str(self.仓库), 远端=str(self.远端))
+        self.assertEqual(结果.错误码, "参数不合法")
+        self.assertIn("detached", 结果.错误说明)
+
+    def test_推送_远端不存在时命令失败(self):
+        结果 = 推送(str(self.仓库), 远端=str(self.临时根 / "没有这个远端.git"), 分支="main")
+        self.assertEqual(结果.错误码, "命令失败")
+        self.assertTrue(结果.错误说明)
+
+    def test_推送_超时参数校验(self):
+        for 超时 in [0, -1, "60", True]:
+            结果 = 推送(str(self.仓库), 远端=str(self.远端), 分支="main", 超时秒=超时)
+            self.assertEqual(结果.错误码, "参数不合法", repr(超时))
+
+    def test_推送_提供者不可用注入(self):
+        with mock.patch("subprocess.Popen", autospec=True,
+                        side_effect=OSError("模拟 git 缺失")):
+            结果 = 推送(str(self.仓库), 远端=str(self.远端), 分支="main")
+        self.assertEqual(结果.错误码, "提供者不可用")
 
 
 if __name__ == "__main__":

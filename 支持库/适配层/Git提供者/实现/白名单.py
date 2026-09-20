@@ -44,6 +44,24 @@ def 校验分支名(分支名: object) -> 结果 | None:
     return None
 
 
+def 校验远端名(远端: object) -> 结果 | None:
+    """远端名白名单：非空、不以 `-` 开头、无 空白 与 shell 元字符。
+
+    缺省（None 或空文本）放行 —— 由能力层填默认远端 `origin`。
+    为什么单独一条而不复用 `校验分支名`：远端名会**直接出现在 git 参数位**，
+    `-` 开头的名字会被 git 当**选项**解析（如 `--upload-pack=…` 可挂任意命令），
+    这是参数注入面，必须显式拒绝（`校验分支名` 也拒 `-` 开头，但报错文案是
+    「分支名…」，用在远端上会误导排查）。
+    """
+    if 远端 is None or (isinstance(远端, str) and not 远端.strip()):
+        return None
+    if not isinstance(远端, str):
+        return 失败结果("参数不合法", "远端名必须是文本")
+    if 远端.startswith("-") or not 分支名模式.fullmatch(远端):
+        return 失败结果("参数不合法", f"远端名含禁止字符或以 - 开头: {远端!r}")
+    return None
+
+
 def 校验起始点(起始点: object) -> 结果 | None:
     """起始点：提交哈希 或 白名单分支名（worktree add 的 <commit-ish>）。"""
     if not isinstance(起始点, str) or not 起始点.strip():
