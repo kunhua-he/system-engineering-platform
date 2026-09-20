@@ -30,7 +30,7 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 累计payload上限字节 = 4 * 1024 * 1024
 最大持续秒上限 = 3600.0
 最小持续秒下限 = 0.01
-最大并发通道上限 = 256
+最大并发通道上限 = 512
 
 
 class 上行数据超限(Exception):
@@ -397,8 +397,8 @@ class 流式HTTP服务器:
         self.服务器: 有界线程HTTP服务器 | None = None
         self.线程: threading.Thread | None = None
         if (isinstance(并发上限, bool) or not isinstance(并发上限, int)
-                or not 1 <= 并发上限 <= 256):
-            raise ValueError("并发上限必须是 1 到 256 之间的整数")
+                or not 1 <= 并发上限 <= 512):
+            raise ValueError("并发上限必须是 1 到 512 之间的整数")
         self.并发上限 = 并发上限
         self.安全配置 = 安全配置(凭证环境变量=凭证环境变量,
                               要求凭证=bool(要求凭证),

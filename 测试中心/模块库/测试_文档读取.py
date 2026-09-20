@@ -62,8 +62,13 @@ class Test文档读取模块(unittest.TestCase):
         self.assertEqual(结构["标题"], "第一行标题")
         self.assertEqual(结构["段落数"], 3)
         self.assertIsNone(结构["错误"])
-        self.assertIn("第一行标题", 结构["序列化文本"])
-        self.assertIn("第二行正文", 结构["序列化文本"])
+        # 2026-09-21：`序列化文本` 字段已按「返回体量分档统一」删除
+        # （它是整个结构体的 JSON 转义副本，与 正文 同一份内容两遍）。
+        # 断言改为直接校验 正文，并显式断言该字段不再回流（反向判据）。
+        self.assertIn("第一行标题", 结构["正文"])
+        self.assertIn("第二行正文", 结构["正文"])
+        self.assertNotIn("序列化文本", 结构,
+                         "序列化文本 已删除，不得再回流到大返回里")
 
     def test_读取正文真实调用(self):
         结果 = 读取正文(str(self.样本路径))
