@@ -57,12 +57,39 @@ def _库路径(库文件: str) -> Path:
     return Path(文本)
 
 
+class _自动关闭连接(sqlite3.Connection):
+    """`with` 退出时**真关闭**的连接（标准库 `with sqlite3.connect()` 只提交事务、不关连接）。
+
+    ## 为什么必须有它（2026-09-20 实测的真 bug，不是设计取舍）
+    全仓 15 处都写成 `with _连接(库文件) as 连接:`，但 `with` 原生 sqlite3.Connection
+    **只做事务提交/回滚，不释放文件句柄**（实测：`with c:` 之后 `c.execute('SELECT 1')`
+    仍可用）。⇒ 每调用一次泄漏一个 FD，WAL 模式下每个连接还额外占 -wal / -shm。
+
+    现场证据：40007 常驻网关对 `工程缓存/运行数据/项目文档库.db` 持有 **123 个句柄**，
+    进程总 FD 342 撞上 `launchctl maxfiles=256` 后，所有库操作稳定失败
+    `索引库不可用：unable to open database file`，同时 `审计/安全审计.jsonl`
+    也报 `Too many open files` —— 而磁盘、权限、直连写入全部正常。
+
+    修在**唯一连接入口**而非逐个调用点：调用点不改一个字，也不会出现
+    「有的地方关了、有的没关」的第二条腿。
+    """
+
+    def __exit__(self, 异常类型, 异常, 回溯) -> bool:  # type: ignore[override]
+        结果 = super().__exit__(异常类型, 异常, 回溯)
+        self.close()          # 关键：标准库不做这一步
+        return 结果
+
+
 def _连接(库文件: str) -> sqlite3.Connection:
-    """打开库并确保表齐（幂等）；父目录不存在则创建（运行数据根可能尚未建）。"""
+    """打开库并确保表齐（幂等）；父目录不存在则创建（运行数据根可能尚未建）。
+
+    返回 `_自动关闭连接`：调用方照旧 `with _连接(...) as 连接:` 即自动回收句柄。
+    """
     路径 = _库路径(库文件)
     路径.parent.mkdir(parents=True, exist_ok=True)
-    连接 = sqlite3.connect(路径, timeout=10)
+    连接 = sqlite3.connect(路径, timeout=10, factory=_自动关闭连接)
     连接.execute("PRAGMA journal_mode=WAL")
+    连接.execute("PRAGMA busy_timeout=10000")
     for 语句 in 建表语句:
         连接.execute(语句)
     连接.commit()
