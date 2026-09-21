@@ -61,15 +61,15 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "d90972204901c50df7b2f97499656adb2e4091b5ad6b478fb7e1330c881ab61f"
+      "sha256": "af554f1d1f57de17ff53444fd7171f73720781a1f8f333924d6682ac98fadf0d"
     },
     {
       "路径": "说明/目录树与命令.md",
-      "sha256": "854ff3c954b3f7af395a723ad875ed58f3a6c0affef0af4fa96443c7fdbc1ae5"
+      "sha256": "0ab5c53e3adaacf360adca177305dc49a978d684a255bdad2a1c41d89f0afa9c"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "09141d13c5e0b2f86653b4cd99158133bfc64d29ddd4b2dd473fdb45b562b93e"
+      "sha256": "bdc22bc03d8bc22c9d3846c214017a6a058572930b31d94674564864e39916c3"
     },
     {
       "路径": "资源预算.json",

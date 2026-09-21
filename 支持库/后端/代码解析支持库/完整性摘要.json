@@ -89,11 +89,11 @@
     },
     {
       "路径": "仓库地图/说明/使用说明.md",
-      "sha256": "ec30e7445b0301a0f6d450b2b24939fc1b96ac8bd530e674d6bf1acd91b765b4"
+      "sha256": "d7d23667bdaf0a0f630b35201cb726bc88f379a8e768b8e30535742dc33f0385"
     },
     {
       "路径": "仓库地图/说明/设计说明.md",
-      "sha256": "7b9d11509dad0ab6067d8a459bd5dc75cb986316500f86146901897f04f813e4"
+      "sha256": "3c39486bc68602a51f7ff2ce77e92df31595afba0733c7c2cfc97ee582d81862"
     },
     {
       "路径": "仓库地图/资源预算.json",
@@ -165,11 +165,11 @@
     },
     {
       "路径": "代码地图/说明/使用说明.md",
-      "sha256": "14b5fbc9da53ac2bc1f30fa3fad678a0ef5d7526d9def29b51a9cc39c9201878"
+      "sha256": "92996f1753c674b8b4f63ffcd1d31cbcc079e5cc4ef59c93d2d1a028c2389c23"
     },
     {
       "路径": "代码地图/说明/设计说明.md",
-      "sha256": "284a9cc18d99c9bd4d553caab8e8e9e0c2c3dc3f7c6ff96313f9cdcac93e5a5c"
+      "sha256": "828bc47fe9a45a7428eded160fac96b449e2a3237d637b1ed3acd769ba2bf5d1"
     },
     {
       "路径": "代码地图/资源预算.json",
@@ -253,7 +253,7 @@
     },
     {
       "路径": "语义索引/待作者补.md",
-      "sha256": "738cc4b3e0e3a354d78b161391e21f18951d1557f4369c8a9a99ec1f2a11a8ba"
+      "sha256": "58b08da2530d3c4635526c2bd80bebeb7d1b34fbda6ef4373f92a6872e6c20fe"
     },
     {
       "路径": "语义索引/权限契约/权限契约.json",
@@ -277,11 +277,11 @@
     },
     {
       "路径": "语义索引/说明/使用说明.md",
-      "sha256": "4cc52cd9d300b2b96bb20ce48200f6235680d2e052651cd7c05965ce667c66e8"
+      "sha256": "eca173ea3806fb0af27d301c21acc147a9dc6ab440451f62cfdefeace20cc15c"
     },
     {
       "路径": "语义索引/说明/设计说明.md",
-      "sha256": "1be1fb9e1a4731cac04b0fc93dd4ef513234bff80f95f13bbc4f196c6f8d045f"
+      "sha256": "b8ff7cb2089034ab5a873cfee311cf1d15ae12f4242b1c351d2704000d93660a"
     },
     {
       "路径": "语义索引/资源预算.json",
@@ -337,11 +337,11 @@
     },
     {
       "路径": "语法索引/说明/使用说明.md",
-      "sha256": "f36acf4c97de19cf7df9af5eeff50e136af49e2862fc1966a5a58fa9011df2fe"
+      "sha256": "61061228a0fea0b9e5ec8066d2d3dedd55c46f11325571dad64f53443dbce5a5"
     },
     {
       "路径": "语法索引/说明/设计说明.md",
-      "sha256": "fbaf44d7dac5607fd07846dfd39c30a8d47ae48f3d868b54ce33a303493f2a54"
+      "sha256": "099182cfb1b7ca0eb731d482fe5feaa3ea79730f9059ecb1fd50dca224f2bf97"
     },
     {
       "路径": "语法索引/资源预算.json",
@@ -361,15 +361,15 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "47dfcfdfa3090941225e6bed4285aeb013f1c6ee5d3b1152063c16f900f375eb"
+      "sha256": "0695411385b2ede3d389e2b15bb228f7445408ee38753924e87a4b8b87d5e4c2"
     },
     {
       "路径": "说明/目录树与命令.md",
-      "sha256": "2e5d6ccf114814ff903a748d7c363752991de519734e734f5e9f3328f63fddd0"
+      "sha256": "c203318de982cb090d7b6694e7d2f99635bb2b56982406dcb9c550299d176de0"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "fb8448d68253879356823589232847630b35ad72eedf6361515060bbef8efc56"
+      "sha256": "13d8603aaac314ed0ed3db5d75e108044fb7ec2ceac522ede444004030cc174d"
     },
     {
       "路径": "资源预算.json",

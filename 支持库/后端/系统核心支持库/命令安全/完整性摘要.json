@@ -41,11 +41,11 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "7c83fbab30dff82c2658534d10c4edbda49ae1242f8dfe9a1fc65879af737055"
+      "sha256": "59a584cfb12f2c0b39bf5d3abe07b3f5e1c47db53565b0a0d8335112d0c961d2"
     },
     {
       "路径": "说明/设计说明.md",
-      "sha256": "2687f08daa0523f7912842be5b7ef23b20954650e15f4c77562bc65cbdcbde1d"
+      "sha256": "ee313310c981fbd8fb61b238c73a185b853d1b873dd393c3a260e488838679f0"
     },
     {
       "路径": "资源预算.json",
