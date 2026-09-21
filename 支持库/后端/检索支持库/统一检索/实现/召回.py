@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from 公共契约.运行时.导入前缀 import 取系统根
 
 默认网关地址 = "http://127.0.0.1:40007/" + urllib.parse.quote("网关/调用")
 凭证键 = "系统库网关凭证"
@@ -89,7 +90,7 @@ def 多路召回(关键词: str, 候选深度: int = 50, 目标: str = 默认目
         raise ValueError(f"目标必须是 {'/'.join(目标路表)} 之一，收到 {目标!r}")
     地址 = 网关地址 or 默认网关地址
     真凭证 = _取凭证(凭证)
-    根 = 项目根 or str(Path(__file__).resolve().parents[5])
+    根 = 项目根 or str(取系统根(__file__))
 
     全部路定义 = [
         ("能力层", "能力目录.搜索能力",

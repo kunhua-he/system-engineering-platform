@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.版本规则.契约版本 import 契约版本
+from 公共契约.运行时.导入前缀 import 取系统根
 来源 = "模块模板生成器"
 模块名正则 = re.compile(r"^[\u4e00-\u9fa5A-Za-z0-9_]{1,40}$")
 允许类型 = {"基础模块", "功能模块"}
@@ -388,13 +389,10 @@ def 生成测试骨架(模块名: str, 能力清单: list[dict], 测试中心根
 def _默认系统根() -> Path:
     """向上定位项目根：同时含 支持库 与 模块库 双目录的最近祖先。
 
-    本包由 `开发工具/组件规范/` 下沉到支持库层，目录深度改变，不能再按
-    `parents[2]` 硬编码定位（会落到 支持库/后端），故按双目录判据定位。
+    判据本体在 `公共契约/运行时/导入前缀.取系统根`（唯一实现，不在此复制）：
+    `parents[N]` 那种按层数取根在本包下沉后会落到 支持库/后端，锚目录判据与深度无关。
     """
-    for 祖先 in Path(__file__).resolve().parents:
-        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
-            return 祖先
-    raise RuntimeError("无法定位项目根（找不到同时含 支持库 与 模块库 的祖先目录）")
+    return 取系统根(__file__)
 
 
 def 生成模块模板(*, 模块名: str, 类型: str = "基础模块", 能力清单: list[dict],

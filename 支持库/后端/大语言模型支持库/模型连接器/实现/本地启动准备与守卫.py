@@ -41,6 +41,7 @@ from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 假, 真
 from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型供应链校验 as _供应链校验
+from 公共契约.运行时.导入前缀 import 取系统根
 
 from 支持库.后端.大语言模型支持库.模型连接器.实现.模型连接基元 import (
     降级记录表,
@@ -68,7 +69,7 @@ def _识别模型源(模型路径: str) -> tuple[str, str]:
 
 def _供应链系统根() -> Path:
     """本包所在系统根（源码态 = 仓库根；制品态 = 平台客户端根）。"""
-    return Path(__file__).resolve().parents[5]
+    return 取系统根(__file__)
 
 
 def _供应链守卫(规范路径: str, 源格式: str) -> 结果 | None:
@@ -290,7 +291,7 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
     格式, 规范路径 = _识别模型源(模型路径)
     if 格式 in ("HuggingFace", "RLCheckpoint"):
         import sys
-        服务脚本 = Path(__file__).resolve().parents[5] / "支持库" / "适配层" / "模型服务.py"
+        服务脚本 = 取系统根(__file__) / "支持库" / "适配层" / "模型服务.py"
         if not 服务脚本.is_file():
             raise FileNotFoundError(f"底座内部模型加载器不存在: {服务脚本}")
         return [sys.executable, str(服务脚本), "--model-path", 规范路径, "--model-type", 模型类型, "--port", str(端口)]
@@ -385,7 +386,7 @@ def _启动日志路径(模型路径: str) -> str:
     # 制品里写运行态（发布门禁「制品.摘要绑定」实测由绿转红，落点
     # `<制品>/平台客户端/工程缓存/模型日志/验证模型.log`）。改经唯一解析器：源码态仍是
     # `<系统根>/工程缓存/模型日志`（行为不变），制品态改道平台受管缓存。
-    目录 = 解析运行缓存根(Path(__file__).resolve().parents[5]) / "模型日志"
+    目录 = 解析运行缓存根(取系统根(__file__)) / "模型日志"
     try:
         目录.mkdir(parents=True, exist_ok=True)
     except OSError:

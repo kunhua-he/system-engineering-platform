@@ -25,6 +25,7 @@ from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 
 默认库文件名 = "大语言模型支持库.模型用量.db"
 默认最少样本数 = 3
@@ -41,7 +42,7 @@ _连接锁 = threading.RLock()
 
 def 默认数据库路径() -> Path:
     """本包专用库路径（与其他支持库库文件同放运行数据根）。"""
-    return 解析运行数据根(Path(__file__).resolve().parents[5]) / 默认库文件名
+    return 解析运行数据根(取系统根(__file__)) / 默认库文件名
 
 
 def _关闭连接() -> None:

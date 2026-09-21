@@ -19,10 +19,11 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行缓存根, 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 
 # ---- 默认配置（可由 配置契约 覆盖）----
-默认缓存目录 = 解析运行缓存根(Path(__file__).resolve().parents[5])
-默认数据库路径 = 解析运行数据根(Path(__file__).resolve().parents[5]) / "大语言模型支持库.嵌入缓存.db"
+默认缓存目录 = 解析运行缓存根(取系统根(__file__))
+默认数据库路径 = 解析运行数据根(取系统根(__file__)) / "大语言模型支持库.嵌入缓存.db"
 
 _连接: sqlite3.Connection | None = None
 _连接路径: Path | None = None

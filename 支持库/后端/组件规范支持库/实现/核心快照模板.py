@@ -22,11 +22,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-系统根 = Path(__file__).resolve()
-for _祖先 in 系统根.parents:
-    if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
-        系统根 = _祖先
-        break
+# 自举前只能用标准库：本文件可能被当脚本跑（`sys.path[0]` 是 `实现/`），平台模块此刻
+# **不可导入** ⇒ 不能调 `公共契约/运行时/导入前缀`（循环依赖）。判据仍是**同一套锚目录**
+# （不是 `parents[N]` 那种一改目录结构就静默指错树的层数写法），与共享模块逐字同判；
+# 形状由 `测试中心/开发工具/测试_导入前缀.py` 的 `自举段形状` 钉住，改这里必须同批改它。
+系统根 = next(
+    祖先 for 祖先 in Path(__file__).resolve().parents
+    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
+)
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 

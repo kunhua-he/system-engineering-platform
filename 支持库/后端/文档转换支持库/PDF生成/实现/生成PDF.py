@@ -23,18 +23,13 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-from pathlib import Path
 
 import 支持库.适配层.reportlab提供者  # noqa: F401 —— 公开入口（同层，合规）
 
-# 前缀感知：制品把本模块注册成 `平台客户端.支持库.…`，而字面量不随导入前缀改写，
-# 故按 `__name__` 派生本树前缀（源码树为空串、制品为 `平台客户端.`），
-# 使下面的兜底判据在两种形态下都成立（债务 #216②）。
-唯一实现名 = f"{__name__.split('支持库.', 1)[0]}支持库.适配层.reportlab提供者.实现.子进程管理器"
-系统根 = next(
-    祖先 for 祖先 in Path(__file__).resolve().parents
-    if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir()
-)
+from 公共契约.运行时.导入前缀 import 取根前缀, 取系统根
+
+唯一实现名 = 取根前缀(__name__) + "支持库.适配层.reportlab提供者.实现.子进程管理器"
+系统根 = 取系统根(__file__)
 
 if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
     唯一实现文件 = 系统根 / "支持库" / "适配层" / "reportlab提供者" / "实现" / "子进程管理器.py"

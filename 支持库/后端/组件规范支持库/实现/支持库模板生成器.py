@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.导入前缀 import 取系统根
 
 import json
 import sys
@@ -35,11 +36,11 @@ def _正式类型名集合() -> set[str]:
     return set(正式类型表)
 
 def _定位项目根() -> Path:
-    """向上定位项目根：同时含 支持库 与 模块库 双目录的最近祖先（下沉后不再用 parents[2]）。"""
-    for 祖先 in Path(__file__).resolve().parents:
-        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
-            return 祖先
-    raise RuntimeError("无法定位项目根（找不到同时含 支持库 与 模块库 的祖先目录）")
+    """向上定位项目根：判据本体在 `公共契约/运行时/导入前缀.取系统根`（唯一实现）。
+
+    本文件在顶部（第 21 行）已 import 过 `公共契约`，推导点不在自举段，故直接调共享判据。
+    """
+    return 取系统根(__file__)
 
 
 # 项目根入 sys.path 必须在任何项目内导入之前（直接执行时项目根不在 path）。

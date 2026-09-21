@@ -20,8 +20,9 @@ import sqlite3
 from pathlib import Path
 
 from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 
-系统根 = Path(__file__).resolve().parents[4]
+系统根 = 取系统根(__file__)
 默认库文件 = 解析运行数据根(系统根) / "项目文档库.db"
 
 建表语句 = (

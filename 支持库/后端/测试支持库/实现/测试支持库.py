@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.导入前缀 import 取系统根
 
 # ── 冻结契约常量（与 MCP工具箱/验证门禁.py 同源，不另立一套口径） ──────────
 允许可执行 = ("python3.14",)
@@ -54,13 +55,12 @@ shell元字符表 = frozenset(";|&`$(){}<>")
 
 
 def _定位仓库根() -> Path:
-    """按包自身位置向上定位仓库根：含 支持库 与 模块库 的那一层。"""
-    当前目录 = Path(__file__).resolve().parent
-    for 祖先 in (当前目录, *当前目录.parents):
-        if (祖先 / "支持库").is_dir() and (祖先 / "模块库").is_dir():
-            return 祖先
-    祖先表 = Path(__file__).resolve().parents
-    return 祖先表[4] if len(祖先表) > 4 else 当前目录
+    """按包自身位置向上定位仓库根：含 支持库 与 模块库 的那一层。
+
+    判据本体在 `公共契约/运行时/导入前缀.取系统根`（唯一实现，不在此复制）：
+    改前本函数按 `parents[4]` 兜底 —— 那正是「一改目录结构就静默指错树」的写法。
+    """
+    return 取系统根(__file__)
 
 
 仓库根 = _定位仓库根()

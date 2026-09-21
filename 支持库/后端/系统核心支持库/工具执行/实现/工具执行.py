@@ -83,8 +83,9 @@ import atexit as _atexit
 import os as _os
 from pathlib import Path as _Path
 from 公共契约.运行时.运行缓存 import 解析运行数据根 as _解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 
-投递默认库路径 = str(_解析运行数据根(_Path(__file__).resolve().parents[5]) / "认领投递.db")
+投递默认库路径 = str(_解析运行数据根(取系统根(__file__)) / "认领投递.db")
 
 # ---- 建连工厂缓存槽（照抄 嵌入缓存.py:27-29 / :36-49 / :55-74 的正确写法）----
 # 为什么必须缓存：调用点写的是 `with 锁, _投递连接(路径) as 连接:`，而

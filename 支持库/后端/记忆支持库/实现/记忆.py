@@ -26,9 +26,10 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行缓存根, 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 
 锁 = threading.Lock()
-默认库路径 = 解析运行数据根(Path(__file__).resolve().parents[4]) / "记忆库.db"
+默认库路径 = 解析运行数据根(取系统根(__file__)) / "记忆库.db"
 
 项目记忆建表 = """
     CREATE TABLE IF NOT EXISTS 项目记忆(

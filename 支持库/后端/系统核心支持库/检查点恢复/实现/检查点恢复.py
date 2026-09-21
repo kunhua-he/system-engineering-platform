@@ -18,8 +18,9 @@ import uuid
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 
-默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "检查点.db")
+默认库路径 = str(解析运行数据根(取系统根(__file__)) / "检查点.db")
 锁 = __import__("threading").Lock()
 # 补列等容错路径的问题留痕（哲学第 3 条 2 项：失败必须可见，不许 except: pass 吞掉）
 补列问题: list[str] = []
@@ -252,7 +253,7 @@ def 查询中断(会话id: str = None, 库路径: str = None) -> 结果:
 import sqlite3 as _sqlite3
 import os as _os
 
-任务默认库路径 = str(解析运行数据根(Path(__file__).resolve().parents[5]) / "任务状态机.db")
+任务默认库路径 = str(解析运行数据根(取系统根(__file__)) / "任务状态机.db")
 
 # 任务库建连层缓存（与检查点库各自独立一槽，两库互不干扰；护栏同 _连接）
 _任务缓存连接: sqlite3.Connection | None = None

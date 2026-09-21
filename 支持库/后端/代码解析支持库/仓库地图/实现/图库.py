@@ -16,10 +16,11 @@ import sqlite3
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.导入前缀 import 取系统根
 
 来源 = "仓库地图"
-#: 支持库/后端/代码解析支持库/仓库地图/实现/图库.py → parents[5] = 系统工程平台
-平台根 = Path(__file__).resolve().parents[5]
+#: 取根判据的唯一实现在 `公共契约/运行时/导入前缀`（锚目录判据，不按层数）
+平台根 = 取系统根(__file__)
 
 建表语句表 = (
     "CREATE TABLE nodes ("
