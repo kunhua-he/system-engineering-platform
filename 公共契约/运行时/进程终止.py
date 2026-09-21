@@ -46,6 +46,7 @@ from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.诊断.忽略记录 import 记录忽略
 
 来源 = "进程终止"
 
@@ -280,6 +281,35 @@ def _POSIX进程存活(进程ID: int) -> bool:
         return 假
 
 
+def _声明Windows进程接口(内核: Any) -> None:
+    """显式声明三个 WinAPI 的 ``argtypes`` / ``restype``（#177，2026-09-21）。
+
+    **为什么必须声明**：``ctypes`` 对未声明的函数按**默认 C 约定**处理 —— 返回值当
+    ``c_int``（32 位有符号）。Win64 的 ``HANDLE`` 是 **64 位指针**，高位非零时会被截断，
+    后续 ``WaitForSingleObject`` / ``CloseHandle`` 拿到的是**错误句柄**
+    （错判存活、漏关句柄）。显式 ``restype = ctypes.c_void_p`` 让句柄按指针宽度取回。
+
+    ``argtypes`` 一并声明的理由：不声明时 ctypes 对 ``HANDLE`` 形参同样按 C ``int`` 传，
+    截断方向相反但后果一样 —— 两处必须成对声明，只声明 ``restype`` 只修一半。
+    （``进程ID`` 是 32 位 PID，按 ``c_uint32`` 声明只为与 WinAPI 原型逐字对应。）
+
+    **对非真 WinAPI 对象（测试替身）按 ``记录忽略`` 留痕后继续**：本函数只做「声明」，
+    不是能力探测；替身对象（普通 Python 函数/方法）不支持挂 ``argtypes``，
+    此时不得把「声明失败」变成调用点崩掉（真 Windows 上 ``kernel32`` 恒支持声明）。
+    """
+    import ctypes
+
+    try:
+        内核.OpenProcess.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
+        内核.OpenProcess.restype = ctypes.c_void_p
+        内核.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+        内核.WaitForSingleObject.restype = ctypes.c_uint32
+        内核.CloseHandle.argtypes = (ctypes.c_void_p,)
+        内核.CloseHandle.restype = ctypes.c_int
+    except AttributeError as 错误:
+        记录忽略("进程终止.声明Windows进程接口", 错误)
+
+
 def _Windows进程存活(进程ID: int) -> bool:
     """Windows 存活探测：句柄可开且未进入已结束态即为存活。
 
@@ -287,6 +317,7 @@ def _Windows进程存活(进程ID: int) -> bool:
     拒绝访问说明进程确实在（只是我们没权限），必须报存活，不能当成已退出。
     """
     内核 = _Windows内核()
+    _声明Windows进程接口(内核)
     句柄 = 内核.OpenProcess(_Windows同步访问, False, 进程ID)
     if not 句柄:
         错误码 = _取Windows最后错误(内核)

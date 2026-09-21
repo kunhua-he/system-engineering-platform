@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import platform
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 当前平台标识
 # #165（2026-09-20）：本文件原自带一份 `规范化相对路径` 副本（规则弱于 路径安全.py：
 # 不查 Windows 盘符、`..\\..` 因整段不等于 `..` 而绕过逃逸判定）。收敛到唯一实现。
 from 平台控制面.包仓库.路径安全 import 规范化相对路径
@@ -57,7 +57,9 @@ class 物料清单与来源证明:
 
     def 生成物料清单(self, 构建结果: dict[str, Any]) -> dict[str, Any]:
         """生成软件物料清单（SBOM），JSON 可序列化。"""
-        目标平台 = 构建结果.get("目标平台") or platform.platform()
+        # #175（2026-09-21）：平台标识取值收口到 平台适配.当前平台标识()，
+        # 本文件不再 import platform、不再自己读平台标识。
+        目标平台 = 构建结果.get("目标平台") or 当前平台标识()
         return {
             "包id": 构建结果["包id"],
             "版本": 构建结果["版本"],

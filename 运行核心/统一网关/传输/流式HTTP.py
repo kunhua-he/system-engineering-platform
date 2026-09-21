@@ -7,7 +7,6 @@ import ipaddress
 import json
 import logging
 import select
-import socket
 import threading
 import time
 import uuid
@@ -17,6 +16,7 @@ from typing import Any, Callable, Iterator
 from 运行核心.统一网关.安全.安全边界 import 安全配置, 凭证管理器, 提取访问凭证, 异常说明
 from 运行核心.统一网关.本地网关 import 有界线程HTTP服务器  # 网关域唯一有界实现（429 结构化拒绝），勿改用 公共契约.运行时.有界HTTP 那份（满载不回响应）
 from 公共契约.运行时.端口策略 import 校验应用监听端口
+from 公共契约.运行时.平台适配 import 非阻塞真读一次
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
@@ -54,8 +54,13 @@ def 消费上行字节(连接: Any, 缓冲: bytearray, *, 上限字节: int = �
     不从内核缓冲区移除 —— 同一个字节会被反复读到（`select` 恒判可读 → 监视线程
     100% 占核空转），而且正式读取会多读/错位。这里真读，数据一字节不丢地留在
     调用方的缓冲里供后续消费；只有累计超过 上限字节 才按协议异常拒绝。
+
+    **平台差异收口在 `平台适配.非阻塞真读一次()`**（#173，2026-09-21）：修前本行直接
+    ``连接.recv(4096, socket.MSG_DONTWAIT)`` —— ``MSG_DONTWAIT`` 是 POSIX 专有常量，
+    Windows 上访问即抛 ``AttributeError`` 逸出 daemon 线程。现取值来自收口层原语，
+    本处不写平台判断、不裸访问 POSIX 专有常量。
     """
-    本次 = 连接.recv(4096, socket.MSG_DONTWAIT)
+    本次 = 非阻塞真读一次(连接)
     if 本次:
         缓冲.extend(本次)
         if len(缓冲) > 上限字节:
@@ -657,7 +662,13 @@ class 流式HTTP服务器:
                             return
                         except (BlockingIOError, InterruptedError):
                             continue
-                        except (OSError, ValueError):
+                        except (OSError, ValueError, AttributeError):
+                            # #173（2026-09-21）：`AttributeError` 必须并入本支 ——
+                            # Windows 上 `socket.MSG_DONTWAIT` 不存在，裸访问会抛
+                            # AttributeError 逸出 daemon 线程（只留 stderr traceback）：
+                            # 断开清理不触发、有界信号量拖到 30 秒超时才释放。
+                            # 收口原语已避开该形态，此支是**兜底**：任何属性形态异常
+                            # 一律走断开清理，绝不静默死线程。
                             管理器.断开(通道.请求id)
                             return
 

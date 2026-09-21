@@ -582,7 +582,7 @@ def 写HTML(果: dict, 归因表: list[str], 趋势: list[str],
     页 = f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8">
 <title>开发效率巡检</title>
 <style>
-body{{font-family:ui-sans-serif,-apple-system,"PingFang SC",sans-serif;max-width:920px;margin:32px auto;padding:0 16px;color:#111}}
+body{{font-family:ui-sans-serif,-apple-system,"PingFang SC",sans-serif;max-width:920px;margin:0 auto;padding:24px 16px;color:#111;background:#fff}}
 h1{{font-size:22px;margin:0 0 4px}} .sub{{color:#666;font-size:13px;margin-bottom:20px}}
 h2{{font-size:15px;margin:22px 0 8px;padding-bottom:4px;border-bottom:2px solid #eee}}
 table{{border-collapse:collapse;width:100%;font-size:13px}}

@@ -19,22 +19,39 @@
 =====================================================================
 危险路径判据全文（命中任意一条即视为危险路径）
 =====================================================================
-一、系统目录（目录本身及其全部子路径）
+一、系统目录（目录本身及其全部子路径）—— **表本身不在本模块**（#174 收口，2026-09-21）
+    平台差异的唯一落点是 `公共契约/运行时/平台适配`：本模块只调 `平台适配.系统位置表()`
+    拿当前平台的表并逐条比对，**不写 `是Windows()` 分支**（写了即「取值后自行分叉」，
+    会被 `开发工具/验证门禁/平台判断越界检测.py` 规则二判红）。
+
+    POSIX（macOS / Linux，见 `平台适配.POSIX系统位置表`）：
     /etc、/System、/usr、/bin、/sbin、/var/db、
     /Library/LaunchDaemons、/Library/LaunchAgents、
     /dev、/boot，
     以及 macOS 上解析软链接后的真实位置别名：/private/etc、/private/var/db、/private/System。
 
-二、用户凭据与启动配置（家目录内）
-    1. 凭据目录整棵：`~/.ssh/**`（含 `~/.ssh` 本目录）；
-    2. 钥匙串目录整棵：`~/Library/Keychains/**`（含目录本身）；
-    3. shell 启动配置单文件（精确文件名，大小写不敏感）：
+    Windows（见 `平台适配.Windows系统位置表`，#174 补）：
+    C:\\Windows、C:\\Windows\\System32（含 drivers\\etc、config、WindowsPowerShell）、
+    C:\\Program Files、C:\\Program Files (x86)、
+    C:\\ProgramData\\Microsoft\\Windows\\Start Menu（含其下 Programs\\StartUp 启动文件夹）。
+
+    **为什么修前 Windows 上等于没拦**：`Path("/etc")` 在 Windows 上解析成**当前盘根下的
+    `\\etc`**，与真正该拦的 `C:\\Windows\\System32\\drivers\\etc\\hosts` 毫无关系。
+
+二、用户凭据与启动配置（家目录内）—— 表同样收口在 `平台适配.家目录敏感位置表()`
+    1. 凭据目录整棵：`~/.ssh/**`（含 `~/.ssh` 本目录，两平台同名）；
+    2. 钥匙串目录整棵：`~/Library/Keychains/**`（含目录本身，POSIX）；
+    3. PowerShell 配置目录整棵（Windows）：`~/Documents/PowerShell/**`、
+       `~/Documents/WindowsPowerShell/**`；
+    4. 用户启动文件夹整棵（Windows）：
+       `~/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/**`；
+    5. shell 启动配置单文件（精确文件名，大小写不敏感）：
        `~/.zshrc`、`~/.zprofile`、`~/.zshenv`、`~/.zlogin`、`~/.zlogout`、
        `~/.bashrc`、`~/.bash_profile`、`~/.bash_login`、`~/.bash_logout`、
        `~/.profile`、`~/.cshrc`、`~/.tcshrc`、`~/.inputrc`；
-    4. `~/.config/` 下的 shell 配置：
+    6. `~/.config/` 下的 shell 配置：
        整棵目录 `~/.config/fish/**`、`~/.config/zsh/**`、`~/.config/bash/**`（含目录本身）；
-       以及 `~/.config/` 直接子文件中的 shell 配置单文件（同名集合同第 3 条）。
+       以及 `~/.config/` 直接子文件中的 shell 配置单文件（同名集合同第 5 条）。
 
 三、任何指向上述位置的软链接父路径
     判定同时用「未解析的绝对路径」与「resolve() 后的真实路径」两份候选：
@@ -63,31 +80,29 @@ from __future__ import annotations
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.平台适配 import 家目录敏感位置表, 系统位置表
 
 # ---------------------------------------------------------------------------
 # 判据数据（单一事实源：判据全文由本模块导出，文档与代码注释均引用此处口径）
 # ---------------------------------------------------------------------------
 
-系统目录: tuple[str, ...] = (
-    "/etc",
-    "/private/etc",
-    "/System",
-    "/private/System",
-    "/usr",
-    "/bin",
-    "/sbin",
-    "/var/db",
-    "/private/var/db",
-    "/Library/LaunchDaemons",
-    "/Library/LaunchAgents",
-    "/dev",
-    "/boot",
-)
+#: 系统位置表与家目录敏感位置表**都不在本模块**（#174 收口，2026-09-21）：
+#: 平台差异（POSIX 位置 vs Windows 位置）的唯一落点是 `公共契约/运行时/平台适配`，
+#: 本模块只调它的**取值型原语**拿当前平台的表，绝不写 `是Windows()` 分支
+#: （「取值后自行分叉」会被 开发工具/验证门禁/平台判断越界检测.py 规则二判红）。
+#: 表内容见 `平台适配.POSIX系统位置表` / `Windows系统位置表` / `家目录敏感位置表`。
 
-家目录凭据目录: tuple[str, ...] = (
-    ".ssh",
-    "Library/Keychains",
-)
+#: 家目录敏感位置的命中说明（**只影响返回文案**，不影响判据；键是相对家目录的路径，
+#: 与 `平台适配.Windows家目录敏感位置表` 的写法逐字一致）
+家目录敏感位置说明: dict[str, str] = {
+    ".ssh": "用户凭据目录 ~/.ssh（含其子路径）",
+    "Library/Keychains": "用户钥匙串目录 ~/Library/Keychains（含其子路径）",
+    "Documents\\PowerShell": "用户 PowerShell 配置目录 ~/Documents/PowerShell（含其子路径）",
+    "Documents\\WindowsPowerShell":
+        "用户 PowerShell 配置目录 ~/Documents/WindowsPowerShell（含其子路径）",
+    "AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup":
+        "用户启动文件夹（含其子路径）",
+}
 
 shell启动配置文件名: tuple[str, ...] = (
     ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".zlogout",
@@ -112,7 +127,7 @@ def _文件名命中(路径: Path, 名称集合: tuple[str, ...]) -> bool:
 
 
 def _命中系统目录(路径: Path) -> str:
-    for 目录 in 系统目录:
+    for 目录 in 系统位置表():
         if _是同一路径或子路径(路径, Path(目录)):
             return f"系统目录 {目录}（含其子路径）"
     return ""
@@ -120,12 +135,10 @@ def _命中系统目录(路径: Path) -> str:
 
 def _命中家目录凭据(路径: Path) -> str:
     家目录 = Path.home()
-    for 相对 in 家目录凭据目录:
+    for 相对 in 家目录敏感位置表():
         根 = 家目录 / 相对
         if _是同一路径或子路径(路径, 根):
-            名称 = "用户凭据目录 ~/.ssh（含其子路径）" if 相对 == ".ssh" \
-                else "用户钥匙串目录 ~/Library/Keychains（含其子路径）"
-            return 名称
+            return 家目录敏感位置说明.get(相对, f"用户敏感目录 ~/{相对}（含其子路径）")
     if _是同一路径或子路径(路径, 家目录) and 路径.parent == 家目录 \
             and _文件名命中(路径, shell启动配置文件名):
         return f"用户 shell 启动配置 ~/{路径.name}"

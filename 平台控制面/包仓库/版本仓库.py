@@ -16,6 +16,7 @@ import time
 import uuid
 from pathlib import Path
 
+from 平台控制面.包仓库.服务 import 落盘同步目录
 from 平台控制面.包仓库.版本仓库数据 import 安装记录, 计算目录摘要
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树
@@ -82,6 +83,9 @@ class 包仓库:
             shutil.copytree(源目录, 临时路径)
             摘要 = 计算目录摘要(临时路径)
             目标路径 = self.版本路径(包id, 版本)
+            # 落盘屏障（未完成事项 7.9.1 #163）：rename 前先 fsync 临时目录树，
+            # 否则「版本目录已存在」可能内容不全，而 `已安装()` 只判 `.is_dir()`。
+            落盘同步目录(临时路径)
             临时路径.rename(目标路径)  # 原子替换
         except OSError as 错误:
             清只读后删除树(临时路径, 忽略失败=真)

@@ -101,7 +101,29 @@ def _声明豁免正向场景的能力(场景原始表: list[tuple[dict[str, Any
                 continue
             声明 = 能力.get("外部依赖")
             if isinstance(声明, dict) and 声明.get("豁免正向场景") is True and 声明.get("地址"):
-                豁免.add(str(能力.get("能力id", "")))
+                # 判据两档（#99，2026-09-21）：① 必须有 地址；② 地址**不得指向本地**。
+                # 为什么单列 ②：「豁免正向场景」的语义是「该能力的正向场景依赖**外部**服务，
+                # 受管环境里跑不了」；本地地址（回环/本机/文件）恰恰是**能**在受管环境里跑的
+                # 形态，认它等于把豁免开成逃逸口 —— 判据只认「有地址」就守不住这条边界。
+                # 现场复算：`能力定义.json` 含 `外部依赖` 的实例为 **0**，故本档不改任何现有
+                # 结论，属 fail-closed 的边界收口（防的是将来第一个用它的能力）。
+                _地址 = str(声明.get("地址")).strip().lower()
+                # 取主机名判本地：按 URL 结构解析，**不靠前缀字符串比对** —— 前缀比对
+                # 挡不住 `http://gateway.local/api` 这种「本地主机 + 路径」形态，
+                # 2026-09-21 定向验证实测漏判（豁免集合误含 点本地域）。
+                from urllib.parse import urlsplit
+                _解析 = urlsplit(_地址)
+                _主机 = (_解析.hostname or "").lower()
+                _是本地主机 = (
+                    _主机 in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+                    or _主机.endswith(".local")
+                    or _主机.startswith("127.")
+                    or _主机.startswith("192.168.")
+                    or _主机.startswith("169.254.")
+                    or _主机.startswith("10.")
+                )
+                if _解析.scheme != "file" and _主机 and not _是本地主机:
+                    豁免.add(str(能力.get("能力id", "")))
     return 豁免
 
 

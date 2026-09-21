@@ -94,8 +94,11 @@ def 释放受管状态(句柄: int, 项目id: str = "", 用户id: str = "") -> �
         句柄, 项目id=项目id, 所有者=用户id))
 
 
-def 创建内容摘要(文件路径: Path, 算法: str = "sha256") -> str:
-    """创建内容摘要（分块读取，不加载全文件入内存）。"""
+def _计算内容摘要文本(文件路径: Path, 算法: str = "sha256") -> str:
+    """内容摘要内部原语：分块读取，不加载全文件入内存；文件不存在抛 FileNotFoundError。
+
+    包内调用者（快照/校验）用本原语拿裸摘要文本；对外能力 创建内容摘要 只把它包成 结果型 信封。
+    """
     文件路径 = Path(文件路径)
     if not 文件路径.is_file():
         raise FileNotFoundError(f"文件不存在: {文件路径}")
@@ -104,6 +107,23 @@ def 创建内容摘要(文件路径: Path, 算法: str = "sha256") -> str:
         while 块 := 输入.read(1024 * 1024):
             摘要器.update(块)
     return 摘要器.hexdigest()
+
+
+def 创建内容摘要(文件路径: Path, 算法: str = "sha256") -> 结果:
+    """创建内容摘要（分块读取，不加载全文件入内存）。
+
+    返回结构修 2026-09-21（#92）：本能力契约声明 结果型，实现曾返回裸字符串且抛
+    FileNotFoundError（逼调用方 try/except 兜），与自己的契约不符。现按契约返回 结果 信封：
+    成功 值=摘要文本；文件不存在 错误码=文件不存在；算法不支持 错误码=参数不合法。
+    包内调用者改用 _计算内容摘要文本（裸文本），行为与修前逐字一致。
+    """
+    try:
+        摘要文本 = _计算内容摘要文本(文件路径, 算法)
+    except FileNotFoundError as 错误:
+        return 结果.失败("文件不存在", str(错误), 来源="资源管理")
+    except (ValueError, TypeError) as 错误:
+        return 结果.失败("参数不合法", f"摘要算法不可用: {错误}", 来源="资源管理")
+    return 结果.成功结果(摘要文本)
 
 
 def 创建不可变快照(来源目录: Path, 快照目录: Path) -> str:
@@ -124,7 +144,7 @@ def 创建不可变快照(来源目录: Path, 快照目录: Path) -> str:
     摘要表 = {}
     for 文件 in sorted(快照目录.rglob("*")):
         if 文件.is_file() and 文件.name != "快照摘要.json":
-            摘要表[str(文件.relative_to(快照目录))] = 创建内容摘要(文件)
+            摘要表[str(文件.relative_to(快照目录))] = _计算内容摘要文本(文件)
     (快照目录 / "快照摘要.json").write_text(
         json.dumps({"快照id": uuid.uuid4().hex[:16], "文件摘要": 摘要表},
                    ensure_ascii=False, indent=2), encoding="utf-8")
@@ -145,7 +165,7 @@ def 校验快照(快照目录: Path) -> tuple[bool, str]:
         文件 = 快照目录 / 相对
         if not 文件.is_file():
             return 假, f"快照缺少文件: {相对}"
-        if 创建内容摘要(文件) != 期望摘要:
+        if _计算内容摘要文本(文件) != 期望摘要:
             return 假, f"快照文件被修改: {相对}"
     return 真, "快照完整"
 

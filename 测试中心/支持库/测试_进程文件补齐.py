@@ -55,8 +55,11 @@ class Test文件系统补齐(unittest.TestCase):
         大文件 = self.临时目录 / "分块摘要.bin"
         内容 = os.urandom(3 * 1024 * 1024 + 12345)  # 3MB+，多块读取
         大文件.write_bytes(内容)
-        摘要 = 创建内容摘要(大文件)
-        self.assertEqual(摘要, hashlib.sha256(内容).hexdigest())
+        摘要结果 = 创建内容摘要(大文件)
+        # #92（2026-09-21）改了底座返回结构：本能力从「返回裸字符串」改成「返回 结果 信封」，
+        # 断言必须跟着取 `.值`，否则拿 结果 对象比 hex 串恒不相等（这就是改生产侧漏改断言侧）。
+        self.assertTrue(摘要结果.成功, 摘要结果.错误说明)
+        self.assertEqual(摘要结果.值, hashlib.sha256(内容).hexdigest())
 
     def test_临时资源登记与清理(self):
         """登记→创建→统一清理→路径消失；重复清理幂等。"""

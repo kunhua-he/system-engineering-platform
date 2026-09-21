@@ -54,7 +54,7 @@ from 平台控制面.发布管理.服务 import 发布管理
 from 支持库.适配层 import 生成密钥对
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
-from 公共契约.运行时.平台适配 import 清只读后删除树, 确保可删
+from 公共契约.运行时.平台适配 import 支持chmod, 清只读后删除树, 确保可删
 
 默认包id = "平台客户端"
 默认发布者 = "客户端构建发布者"
@@ -118,13 +118,19 @@ class 平台客户端制品接入(环境回收面, 激活指针面):
     # ---- 密钥（客户端构建专用；测试可注入现成密钥对） ----
     @staticmethod
     def _加固密钥权限(密钥目录: Path, 私钥文件: Path, 公钥文件: Path) -> None:
-        """签名密钥受控：目录 700、私钥 600、公钥 644。"""
-        try:
-            密钥目录.chmod(0o700)
-            私钥文件.chmod(0o600)
-            公钥文件.chmod(0o644)
-        except OSError:
-            pass  # 平台不支持 chmod 时忽略（Windows 类）
+        """签名密钥受控：目录 700、私钥 600、公钥 644。
+
+        **平台差异收口在 `平台适配.支持chmod()`**（#172，2026-09-21）：修前调用点自带
+        ``except OSError: pass  # 平台不支持 chmod 时忽略（Windows 类）`` ——
+        那是「调用点自己写平台判断 + 静默吞错」，违反「平台判断只许出现在收口层」铁律。
+        现在判据来自收口层原语，本处不写平台判断；支持 POSIX 权限位的平台上
+        ``chmod`` 失败是**真错误**（非属主 / 文件系统不支持），按「不静默降级」原样逸出。
+        """
+        if not 支持chmod():
+            return  # Windows 无 POSIX 权限位语义：如实跳过（判据来自收口层）
+        密钥目录.chmod(0o700)
+        私钥文件.chmod(0o600)
+        公钥文件.chmod(0o644)
 
     @staticmethod
     def 生成或读取密钥(密钥目录: Path | str | None = None) -> tuple[str, str]:

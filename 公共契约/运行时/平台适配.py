@@ -46,6 +46,7 @@ import platform
 import re
 import shlex
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -130,6 +131,32 @@ def 本机系统名() -> str:
     return 名
 
 
+def 当前平台标识() -> str:
+    """返回**平台标识全文**（``platform.platform()`` 的原文，如 ``macOS-26.6.2-arm64-arm-64bit``）。
+
+    这是 ``platform.platform()`` 的**唯一取值点**（#175，2026-09-21）：调用点不得自己
+    ``import platform`` 读平台标识。此前 `平台控制面/包仓库/物料清单.py` 裸调
+    ``platform.platform()``，属「平台判断散落在调用点」，与 #103 是同一类病。
+
+    **为什么单独有这个原语、而不是复用 `本机系统名()`**（三者职责不同，不是三套口径）：
+
+    · `当前平台()`   —— **分支判定用**：只读 ``sys.platform``，零系统调用，
+      取值 ``macOS`` / ``Windows`` / ``Linux`` / ``未知``；
+    · `本机系统名()` —— **上报用稳定名**：读 ``platform.system()`` 并归一化，
+      取值 ``Darwin`` / ``Windows`` / ``Linux`` / ``未知``；
+    · 本函数         —— **平台标识全文**：读 ``platform.platform()``，**含版本号与架构**。
+
+    为什么 SBOM 不能只用 `本机系统名()`：``物料清单.json`` 的 ``目标平台`` 是**构建证据字段**，
+    要能区分「同是 Darwin 的 26.5.2 与 26.6.2」「同是 macOS 的 arm64 与 x86_64」——
+    只留 ``Darwin`` 会让跨机器复现核对丢掉版本与架构两维。
+
+    **不做归一化、不做二次拼装**：既有落盘值就是 ``platform.platform()`` 的原文，
+    归一化会让全部既有 ``物料清单.json`` 失配（与 `本机系统名()` 同一「零语义变化」收口口径）。
+    采样为空 → 空串（fail-closed，不编造平台标识）。
+    """
+    return str(platform.platform() or "").strip()
+
+
 def 当前平台() -> str:
     """返回人类可读的当前平台名：``macOS`` / ``Windows`` / ``Linux`` / ``未知``。
 
@@ -170,6 +197,76 @@ def 是POSIX() -> bool:
     与 ``是Windows()`` 严格互补，保证两个分支「必有其一命中」，不留无主区间。
     """
     return not 是Windows()
+
+
+def 支持chmod() -> bool:
+    """当前平台是否支持 **POSIX 权限位语义** 的 ``os.chmod``（POSIX 系 真 / Windows 假）。
+
+    **为什么需要它**（#172，2026-09-21）：`平台控制面/包仓库/平台客户端制品.py` 的
+    ``_加固密钥权限`` 此前自己写 ``except OSError: pass  # 平台不支持 chmod 时忽略（Windows 类）``
+    —— 那是「调用点自带平台判断 + 静默吞错」两件事同时发生，违反
+    「平台判断只许出现在收口层」铁律（调用点没有判据来源，只能靠异常兜）。
+
+    **为什么不用能力探测**：``os.chmod`` 在 Windows 上**存在**（只处理 ``stat.S_IWRITE`` /
+    ``stat.S_IREAD`` 两个位），``hasattr(os, "chmod")`` 恒为真，探不出差异；而
+    ``0o700`` / ``0o600`` / ``0o644`` 这类**权限位组合**在 Windows 上无对应语义
+    （ACL 不能经 ``os.chmod`` 设置）—— 故「支持不支持」只能按平台族判定。
+    该判定**只在本模块做**（收口层），调用点只拿结论、不写平台判断。
+
+    诚实标注：Windows 分支未经真机实测（开发机为 macOS），口径来自 ``os.chmod``
+    官方文档（Windows 上仅支持只读位）。
+    """
+    return 是POSIX()
+
+
+#: 非阻塞真读一次的缺省单次读上限字节（与既有 `消费上行字节` 的取值一致）
+非阻塞读上限字节 = 4096
+
+
+def 非阻塞真读一次(连接: Any, 上限字节: int = 非阻塞读上限字节) -> bytes:
+    """对 socket 连接做**非阻塞真读一次**；返回本次读到的字节（``b""`` 表示对端已关闭）。
+
+    无数据可读时抛 ``BlockingIOError``（与 ``socket`` 非阻塞读的既有语义一致，
+    调用方按「暂无数据」处置，不当作断开）。**绝不用 ``MSG_PEEK`` 偷看**：
+    偷看不从内核缓冲区移除数据，会让 ``select`` 恒判可读、监视线程 100% 占核空转。
+
+    **为什么必须收口在这里**（#173，2026-09-21）：``socket.MSG_DONTWAIT`` 是 **POSIX 专有常量**，
+    Windows 上 ``socket`` 模块根本没有该属性 —— 直接访问即抛 ``AttributeError``。
+    此前 `运行核心/统一网关/传输/流式HTTP.py` 裸用它，在 Windows 上会让 SSE 断开
+    监视线程**抛异常逸出 daemon 线程**（只留 stderr traceback）：断开清理完全不触发、
+    有界信号量拖到 30 秒超时才释放。
+
+    取法按**能力探测**（``getattr(socket, "MSG_DONTWAIT", None)``）而不是平台名判断，
+    与本模块「只读属性目录树删除」一节同一纪律：
+
+    - 有 ``MSG_DONTWAIT``（POSIX）→ ``recv(上限字节, MSG_DONTWAIT)``，零额外状态变更；
+    - 无 ``MSG_DONTWAIT``（Windows）→ 临时 ``setblocking(False)`` 读一次，
+      **读完恢复原超时设置**（不改变调用方持有的连接状态）；无数据时同样抛
+      ``BlockingIOError``，与 POSIX 分支语义逐字一致。
+
+    连接对象既不支持 ``MSG_DONTWAIT`` 也不支持 ``setblocking`` 时显式抛
+    ``平台不支持错误``（不静默降级成阻塞读 —— 那会把监视线程永久挂死）。
+    """
+    标记 = getattr(socket, "MSG_DONTWAIT", None)
+    if 标记 is not None:
+        return 连接.recv(上限字节, 标记)
+    设非阻塞 = getattr(连接, "setblocking", None)
+    if 设非阻塞 is None:
+        raise 平台不支持错误(
+            "本平台无 socket.MSG_DONTWAIT，且连接对象不支持 setblocking，"
+            "无法做非阻塞真读一次；请改用 select 轮询路径"
+        )
+    取超时 = getattr(连接, "gettimeout", None)
+    原超时 = 取超时() if 取超时 is not None else None
+    设超时 = getattr(连接, "settimeout", None)
+    try:
+        设非阻塞(False)
+        return 连接.recv(上限字节)
+    finally:
+        if 原超时 is None:
+            设非阻塞(True)
+        elif 设超时 is not None:
+            设超时(原超时)
 
 
 def 虚拟环境解释器相对路径() -> str:
@@ -1199,6 +1296,98 @@ def 平台稳定缓存根(应用名: str = 缺省缓存应用名,
     return Path(用户目录) / ".cache" / 名称 / "运行缓存"
 
 
+# ── 系统位置表 / 家目录敏感位置表（危险路径护栏的**平台差异**收口，2026-09-21 #174）──
+#
+# 起因：`支持库/后端/文件系统支持库/文件操作/实现/危险路径.py` 的判据表原本**全是 Unix 路径**
+# （`/etc`、`/private/etc`、`/System`、`/usr`…）。Windows 上 `Path("/etc")` 会解析成
+# **当前盘根下的 `\etc`**，而真正该拦的 `C:\Windows\System32\drivers\etc\hosts`、
+# 启动文件夹、`C:\Program Files`、PowerShell profile **一条判据都没有**
+# （只有 `~/.ssh` 因同名侥幸命中）。
+#
+# 平台差异（POSIX 系统位置 vs Windows 系统位置）是**同一件事的两种语义**，按
+# 「平台判断只许出现在收口层」铁律收口到本模块：调用点（危险路径.py）只调
+# `系统位置表()` / `家目录敏感位置表()` 拿表，**不写 `是Windows()` 分支**
+# （写了就是「取值后自行分叉」，会被 `开发工具/验证门禁/平台判断越界检测.py` 规则二判红）。
+
+#: POSIX（macOS / Linux）系统位置：目录本身及其全部子路径都在护栏范围内
+POSIX系统位置表: tuple[str, ...] = (
+    "/etc",
+    "/private/etc",
+    "/System",
+    "/private/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/var/db",
+    "/private/var/db",
+    "/Library/LaunchDaemons",
+    "/Library/LaunchAgents",
+    "/dev",
+    "/boot",
+)
+
+#: Windows 系统位置（#174 补，2026-09-21）：全部为**绝对路径**（盘符 + 反斜杠），
+#: 按微软文档的固定位置取，不做模糊匹配、不做环境变量展开（本表只列**固定字面位置**）。
+#:
+#: 覆盖 #174 点名的四类：① `drivers\etc`（含 hosts）；② 启动文件夹
+#: （`ProgramData\…\Start Menu`，含其下 `Programs\StartUp`）；③ `C:\Program Files`（含 x86）；
+#: ④ PowerShell profile（`WindowsPowerShell` 整棵，含机器级 `v1.0\profile.ps1`）。
+#: 用户级 PowerShell profile（`~/Documents/PowerShell`）与用户启动文件夹属**家目录内**，
+#: 列在 `Windows家目录敏感位置表`。
+Windows系统位置表: tuple[str, ...] = (
+    r"C:\Windows\System32\drivers\etc",
+    r"C:\Windows\System32\config",
+    r"C:\Windows\System32\WindowsPowerShell",
+    r"C:\Windows\System32",
+    r"C:\Windows",
+    r"C:\Program Files",
+    r"C:\Program Files (x86)",
+    r"C:\ProgramData\Microsoft\Windows\Start Menu",
+)
+
+#: 家目录内的敏感位置（**相对家目录的路径**；目录本身及其子路径都在护栏范围内）
+#: —— POSIX 分支与 #174 修前逐字一致（`.ssh` + `Library/Keychains`）
+POSIX家目录敏感位置表: tuple[str, ...] = (
+    ".ssh",
+    "Library/Keychains",
+)
+
+#: Windows 家目录内的敏感位置（#174 补）：`.ssh` 两平台同名故两表都有；
+#: 另补用户级 PowerShell 配置目录与用户启动文件夹。
+Windows家目录敏感位置表: tuple[str, ...] = (
+    ".ssh",
+    r"Documents\PowerShell",
+    r"Documents\WindowsPowerShell",
+    r"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup",
+)
+
+
+def 系统位置表() -> tuple[str, ...]:
+    """返回**当前平台**的「系统位置」表（危险路径护栏的判据数据源；绝对路径，含子路径）。
+
+    平台差异的唯一落点：POSIX 系 → ``POSIX系统位置表``；Windows → ``Windows系统位置表``。
+    调用点（`危险路径.py`）只调本函数拿表并逐条比对，**不写平台分支**。
+
+    不认识的平台（``当前平台() == "未知"``）→ 返回 ``POSIX系统位置表``：
+    与 #174 修前的既有行为逐字一致（修前只有 POSIX 表），是**保持现状**而不是新决策。
+    """
+    if 是Windows():
+        return Windows系统位置表
+    return POSIX系统位置表
+
+
+def 家目录敏感位置表() -> tuple[str, ...]:
+    """返回**当前平台**的「家目录内敏感位置」表（相对家目录的路径，含子路径）。
+
+    平台差异的唯一落点：POSIX 系 → ``POSIX家目录敏感位置表``；Windows → ``Windows家目录敏感位置表``。
+    调用点（`危险路径.py`）只调本函数拿表，**不写平台分支**。
+    不认识的平台 → 返回 ``POSIX家目录敏感位置表``（与 #174 修前行为逐字一致）。
+    """
+    if 是Windows():
+        return Windows家目录敏感位置表
+    return POSIX家目录敏感位置表
+
+
 __all__ = [
     "平台表",
     "POSIX解释器相对路径",
@@ -1208,7 +1397,17 @@ __all__ = [
     "平台不支持错误",
     "原始平台标志",
     "本机系统名",
+    "当前平台标识",
     "当前平台",
+    "支持chmod",
+    "非阻塞真读一次",
+    "非阻塞读上限字节",
+    "系统位置表",
+    "POSIX系统位置表",
+    "Windows系统位置表",
+    "家目录敏感位置表",
+    "POSIX家目录敏感位置表",
+    "Windows家目录敏感位置表",
     "是Windows",
     "是macOS",
     "是Linux",
