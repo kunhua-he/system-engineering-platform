@@ -59,7 +59,7 @@ class 测试浏览器自动化Provider(unittest.TestCase):
             第二次 = 模块.关闭会话(句柄)
             self.assertTrue(第一次.成功)
             self.assertTrue(第二次.成功)
-            self.assertIn(第二次.值["状态"], {"未找到且已幂等", "已结束并已释放"})
+            self.assertIn(第二次.值["状态"], {"未找到且已幂等", "已释放"})
         finally:
             模块._提供者 = 原Provider
 

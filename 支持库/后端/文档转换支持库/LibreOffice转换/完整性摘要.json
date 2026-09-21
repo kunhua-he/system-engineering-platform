@@ -1,85 +1,85 @@
 {
-  "包id": "支持库.后端.文档转换支持库.LibreOffice转换",
-  "版本": "1.0.3",
-  "摘要算法": "sha256",
-  "文件清单": [
-    {
-      "路径": "__init__.py",
-      "sha256": "92692d0ad4d24efdba98f3f959374879f828c387200ded9b727dfd54fdc06aa3"
-    },
-    {
-      "路径": "依赖锁.json",
-      "sha256": "c156cfe715f94f0d64f9ee41ac2bfc704140d54bc7bbd1d1b302b53e1a44726a"
-    },
-    {
-      "路径": "包声明.json",
-      "sha256": "56a120220b65908ea8f6b1a630ce8950b00df2f3c6f86aa3eeb9b072949bdc10"
-    },
-    {
-      "路径": "复用决策.json",
-      "sha256": "08a223b56ad5dcc6e9e8af884cfabe62781b8bd0dba0b7c8dab9527764681397"
-    },
-    {
-      "路径": "实现/文档转换.py",
-      "sha256": "382eed4542216df12a7b51aacb3b66ee7dcf001dbe08e858e01ed87aa1704ad7"
-    },
-    {
-      "路径": "权限契约/权限契约.json",
-      "sha256": "bcf3b237f06b0b16848fcb001f57927f55eea6d853b655d32feb7460ec8df3b2"
-    },
-    {
-      "路径": "生命周期契约.json",
-      "sha256": "5b46ae47eb0c105dfbab24d35a62964ad0c2b45274cf7df81af169b6d3b5c3f9"
-    },
-    {
-      "路径": "能力契约/参数契约.json",
-      "sha256": "f95a10fc2f87ca5523b6b7d1f8b9259182574d388bbe41d71b6dbd47a077b92e"
-    },
-    {
-      "路径": "能力定义.json",
-      "sha256": "28606576b9be0ce1b128221d85d290dccd7b6aaf7e95fadb930ecded6441f027"
-    },
-    {
-      "路径": "能力数据/Agent查询数据.json",
-      "sha256": "eb254028c898c2a2c992810fba38c31d23fd1544fe21650c772ab7879302079d"
-    },
-    {
-      "路径": "能力数据/能力搜索数据.json",
-      "sha256": "b610be4753ac8fe9756335cce53ba0c70540fcb6fe83defd193c864a9debaa5c"
-    },
-    {
-      "路径": "说明/使用说明.md",
-      "sha256": "9fe1d047473abfbbec37b800a3217c3210d17b27753537a6a7fa1518f5931f95"
-    },
-    {
-      "路径": "说明/目录树与命令.md",
-      "sha256": "45b38a5d03533e361e636c3adae051d37d75ad40ce7b33cd052c3886e6000c6f"
-    },
-    {
-      "路径": "说明/设计说明.md",
-      "sha256": "ea06514e06b975884ef276284403fcbf294a8ccdeacd29b91bf18b1217716b7f"
-    },
-    {
-      "路径": "资源预算.json",
-      "sha256": "a2a6572a5627430dabbc8fa70272ce8d7192df12ce60332b4ace71d2ebfa9490"
-    },
-    {
-      "路径": "配置契约/配置契约.json",
-      "sha256": "a203befc12d1c689b347a89a6b56affafe5fed01be2660cdfa0553205db06308"
-    },
-    {
-      "路径": "验证场景引用.json",
-      "sha256": "c766b2ca379d0345ea400632f68b9aafd8e8bc8696b2bb48cd3223d2e87cd9a7"
-    },
-    {
-      "路径": "验证夹具/来源.docx",
-      "sha256": "6f3dce866b0f872cfeab8ab1c84618403f3a30527db2a3c1f919aa4ee08d269f"
-    }
-  ],
-  "能力数": 2,
-  "能力清单": [
-    "文档转换支持库.LibreOffice转换.检查提供者",
-    "文档转换支持库.LibreOffice转换.转换办公文件"
-  ],
-  "能力定义摘要": "a23d75b3e79ae617"
+ "包id": "支持库.后端.文档转换支持库.LibreOffice转换",
+ "版本": "1.0.3",
+ "摘要算法": "sha256",
+ "文件清单": [
+  {
+   "路径": "__init__.py",
+   "sha256": "92692d0ad4d24efdba98f3f959374879f828c387200ded9b727dfd54fdc06aa3"
+  },
+  {
+   "路径": "依赖锁.json",
+   "sha256": "c156cfe715f94f0d64f9ee41ac2bfc704140d54bc7bbd1d1b302b53e1a44726a"
+  },
+  {
+   "路径": "包声明.json",
+   "sha256": "56a120220b65908ea8f6b1a630ce8950b00df2f3c6f86aa3eeb9b072949bdc10"
+  },
+  {
+   "路径": "复用决策.json",
+   "sha256": "08a223b56ad5dcc6e9e8af884cfabe62781b8bd0dba0b7c8dab9527764681397"
+  },
+  {
+   "路径": "实现/文档转换.py",
+   "sha256": "382eed4542216df12a7b51aacb3b66ee7dcf001dbe08e858e01ed87aa1704ad7"
+  },
+  {
+   "路径": "权限契约/权限契约.json",
+   "sha256": "bcf3b237f06b0b16848fcb001f57927f55eea6d853b655d32feb7460ec8df3b2"
+  },
+  {
+   "路径": "生命周期契约.json",
+   "sha256": "5b46ae47eb0c105dfbab24d35a62964ad0c2b45274cf7df81af169b6d3b5c3f9"
+  },
+  {
+   "路径": "能力契约/参数契约.json",
+   "sha256": "170411416762677a27c69f8dbe7cd45d339c2576e72c435e102c9a324e71837a"
+  },
+  {
+   "路径": "能力定义.json",
+   "sha256": "28606576b9be0ce1b128221d85d290dccd7b6aaf7e95fadb930ecded6441f027"
+  },
+  {
+   "路径": "能力数据/Agent查询数据.json",
+   "sha256": "3f91fca2010fd5834155bb3fa047b6e8b8aedaeaf7537c5d00ee556e3d46e744"
+  },
+  {
+   "路径": "能力数据/能力搜索数据.json",
+   "sha256": "812f3705ab1d65045ce4b874d349edbe742b269619782ef741fb3b2d66d99584"
+  },
+  {
+   "路径": "说明/使用说明.md",
+   "sha256": "f9aeffe715a081c4292cd683e9a6db536413dc32e02f65dccdd7d0ab581289e5"
+  },
+  {
+   "路径": "说明/目录树与命令.md",
+   "sha256": "d00d92e9483a376fd37cb681508235126fb23bc7861b3ecd3ac084cd54225c11"
+  },
+  {
+   "路径": "说明/设计说明.md",
+   "sha256": "d82064c61c0745f7f174b08bfa8871e2875a1a75a1ea0ba1ed53a0a1fac5b5ae"
+  },
+  {
+   "路径": "资源预算.json",
+   "sha256": "a2a6572a5627430dabbc8fa70272ce8d7192df12ce60332b4ace71d2ebfa9490"
+  },
+  {
+   "路径": "配置契约/配置契约.json",
+   "sha256": "a203befc12d1c689b347a89a6b56affafe5fed01be2660cdfa0553205db06308"
+  },
+  {
+   "路径": "验证场景引用.json",
+   "sha256": "c766b2ca379d0345ea400632f68b9aafd8e8bc8696b2bb48cd3223d2e87cd9a7"
+  },
+  {
+   "路径": "验证夹具/来源.docx",
+   "sha256": "6f3dce866b0f872cfeab8ab1c84618403f3a30527db2a3c1f919aa4ee08d269f"
+  }
+ ],
+ "能力数": 2,
+ "能力清单": [
+  "文档转换支持库.LibreOffice转换.检查提供者",
+  "文档转换支持库.LibreOffice转换.转换办公文件"
+ ],
+ "能力定义摘要": "a23d75b3e79ae617"
 }

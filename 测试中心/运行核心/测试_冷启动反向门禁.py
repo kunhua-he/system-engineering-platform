@@ -197,6 +197,18 @@ class 冷启动反向门禁基础(unittest.TestCase):
             (适配层影子 / "密码签名提供者" / "依赖锁.json").unlink(missing_ok=True)
             shutil.rmtree(适配层影子 / "密码签名提供者" / "__pycache__",
                            ignore_errors=True)
+        # #96 包化后：`系统探针.py` 是**自举 + 等价再导出**腿，真实实现在
+        # `系统探针提供者/实现/系统探针.py`。影子必须一起复制（去掉 包声明.json/
+        # 依赖锁.json 使其不被发现装配，口径与 `开发工具/项目编译/项目编译器.py`
+        # 的制品复制一致），否则影子里的 `支持库.适配层.系统探针` 导入即
+        # ModuleNotFoundError —— 那会把「影子搭得不全」误报成「冷启动失败」。
+        系统探针 = 支持库根 / "适配层" / "系统探针提供者"
+        if 系统探针.is_dir():
+            shutil.copytree(系统探针, 适配层影子 / "系统探针提供者")
+            (适配层影子 / "系统探针提供者" / "包声明.json").unlink(missing_ok=True)
+            (适配层影子 / "系统探针提供者" / "依赖锁.json").unlink(missing_ok=True)
+            shutil.rmtree(适配层影子 / "系统探针提供者" / "__pycache__",
+                           ignore_errors=True)
         模块库根 = 系统根 / "模块库"
         for 源, 目标 in (
             (支持库根 / "后端" / "文件系统支持库", self.根 / "支持库" / "后端" / "文件系统支持库"),

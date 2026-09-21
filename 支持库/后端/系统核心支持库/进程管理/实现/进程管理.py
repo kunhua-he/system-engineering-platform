@@ -503,7 +503,7 @@ def 释放句柄(句柄: int | None = None) -> 结果:
             for 管道 in (进程对象.stdout, 进程对象.stderr, 进程对象.stdin):
                 if 管道 is not None:
                     管道.close()
-    return 结果.成功结果({"句柄": 句柄, "已释放": True})
+    return 结果.成功结果({"句柄": 句柄, "状态": "已释放", "已释放": True})
 
 # ── macOS sandbox-exec 内核沙箱执行（迁移自 V3 终端工具 沙箱处理器） ────────
 

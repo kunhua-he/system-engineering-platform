@@ -43,10 +43,12 @@ import sys
 import threading
 import time
 import urllib.parse
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# 唯一一条 HTTP 腿（#85 收口）：本文件不再自建 urllib 客户端，收发一律走它。
+from 开发工具.薄壳.网关转发 import 发送
 
 # 平台本机网关：平台自身入口（不是业务端口），可被配置包 网关 覆盖
 默认网关 = "http://127.0.0.1:40007/" + urllib.parse.quote("网关/调用")
@@ -154,19 +156,14 @@ def 日志(配置: 运行配置, 文本: str) -> None:
 
 def 连接模型句柄(配置: 运行配置) -> int | None:
     """消费者先打通自己的模型，拿一个句柄复用整批（借用不释放）。"""
-    体 = json.dumps({"操作": "调用能力",
-                   "能力id": "大语言模型支持库.模型连接器.连接LLM",
-                   "参数": 配置.模型参数()},
-                  ensure_ascii=False).encode("utf-8")
-    请求 = urllib.request.Request(配置.网关, data=体, headers={
-        "Content-Type": "application/json", "Authorization": f"Bearer {配置.网关凭证}"})
-    try:
-        with urllib.request.urlopen(请求, timeout=120) as 响应:
-            数据 = json.loads(响应.read().decode("utf-8"))
-        return (数据.get("值") or {}).get("句柄")
-    except Exception as 错误:
-        日志(配置, f"连接模型失败（将退回传配置）：{type(错误).__name__} {错误}")
+    结果 = 发送(配置.网关, {"操作": "调用能力",
+                        "能力id": "大语言模型支持库.模型连接器.连接LLM",
+                        "参数": 配置.模型参数()},
+                凭证=配置.网关凭证, 超时秒=120)
+    if 结果["错误码"]:
+        日志(配置, f"连接模型失败（将退回传配置）：{结果['错误码']} {结果['错误说明']}")
         return None
+    return ((结果["信封"] or {}).get("值") or {}).get("句柄")
 
 
 def 跑一场(配置: 运行配置, 源文件: Path, 场次目录名: str, 主播目录: str, 模式: int,
@@ -188,16 +185,13 @@ def 跑一场(配置: 运行配置, 源文件: Path, 场次目录名: str, 主�
         参数["裁决模型句柄"] = 句柄
     else:
         参数["裁决模型配置"] = 配置.模型参数()
-    体 = json.dumps({"操作": "调用能力", "能力id": "直播逐字稿.全自动精校", "参数": 参数},
-                  ensure_ascii=False).encode("utf-8")
-    请求 = urllib.request.Request(配置.网关, data=体, headers={
-        "Content-Type": "application/json", "Authorization": f"Bearer {配置.网关凭证}"})
     开始 = time.time()
-    try:
-        with urllib.request.urlopen(请求, timeout=超时秒 + 600) as 响应:
-            数据 = json.loads(响应.read().decode("utf-8"))
-    except Exception as 错误:
-        return 假, f"{type(错误).__name__} {错误}"
+    结果 = 发送(配置.网关, {"操作": "调用能力", "能力id": "直播逐字稿.全自动精校",
+                        "参数": 参数},
+                凭证=配置.网关凭证, 超时秒=超时秒 + 600)
+    if 结果["错误码"]:
+        return 假, f"{结果['错误码']} {结果['错误说明']}"
+    数据 = 结果["信封"] or {}
     值 = 数据.get("值") or {}
     报告 = 值.get("质检") or {}
     用时 = time.time() - 开始
@@ -311,12 +305,14 @@ def 主() -> int:
         finally:
             if 局部句柄:
                 try:
-                    体 = json.dumps({"操作": "调用能力",
+                    释放结果 = 发送(配置.网关,
+                                {"操作": "调用能力",
                                  "能力id": "大语言模型支持库.模型连接器.释放句柄",
-                                 "参数": {"句柄": 局部句柄}}, ensure_ascii=False).encode("utf-8")
-                    urllib.request.urlopen(urllib.request.Request(配置.网关, data=体, headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {配置.网关凭证}"}), timeout=60).read()
+                                 "参数": {"句柄": 局部句柄}},
+                                凭证=配置.网关凭证, 超时秒=60)
+                    if 释放结果["错误码"]:
+                        raise RuntimeError(
+                            f"{释放结果['错误码']} {释放结果['错误说明']}")
                 except Exception as 释放错误:
                     # 句柄释放失败必须留痕（哲学第 3 条 2 项：失败要明确，不许 except: pass）
                     释放问题.append(f"句柄 {局部句柄} 释放失败: {释放错误}")

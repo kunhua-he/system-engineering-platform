@@ -12,18 +12,20 @@ from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树
+# 唯一一条 HTTP 腿（#85 收口）：本文件不再自建 urllib 客户端，收发一律走它。
+from 开发工具.薄壳.网关转发 import 发送
 
 import json
 import sys
 import threading
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 系统根 = Path(__file__).resolve().parents[2]
 网关地址 = "http://127.0.0.1:40007"
-凭证头 = {"Authorization": "Bearer html-blackbox-verifier"}
+# 本机 40007 的凭证（与 LaunchAgent com.huashi.gateway-40007.plist 的
+# EnvironmentVariables.系统库网关凭证 同值）。黑盒回归**显式传**它、不读环境变量：
+# 这样按本文档的一行命令（不注入任何环境变量）就能跑起来。
+网关凭证 = "html-blackbox-verifier"
 演练包id = "支持库.后端.热接入演练支持库"
 演练包目录 = 系统根 / "支持库" / "后端" / "热接入演练支持库"
 能力id_加法 = "热接入演练支持库.演练加法"
@@ -31,17 +33,16 @@ from pathlib import Path
 
 
 def 请求(路径: str, 方法: str = "GET", 数据: dict | None = None, 超时: float = 20):
-    正文 = None if 数据 is None else json.dumps(数据, ensure_ascii=False).encode("utf-8")
-    地址 = 网关地址 + urllib.parse.quote(路径, safe="/")
-    请求对象 = urllib.request.Request(
-        地址, data=正文, headers=凭证头 | {"Content-Type": "application/json"},
-        method=方法,
-    )
-    try:
-        with urllib.request.urlopen(请求对象, timeout=超时) as 响应:
-            return 响应.status, json.loads(响应.read().decode("utf-8"))
-    except urllib.error.HTTPError as 错误:
-        return 错误.code, json.loads(错误.read().decode("utf-8"))
+    """经**全平台唯一一条 HTTP 腿**（`开发工具.薄壳.网关转发.发送`）打网关。
+
+    返回 `(HTTP状态码, 信封字典)`，与自建 urllib 版本逐字一致：网关的 4xx/5xx 同样
+    带响应体，照样解析出状态码与信封；网关不可达 / 超时 / 响应非 JSON 则**明确抛错**，
+    绝不静默当成功（本回归要的就是真实黑盒结论）。
+    """
+    结果 = 发送(路径, 数据, 方法=方法, 基地址=网关地址, 凭证=网关凭证, 超时秒=超时)
+    if 结果["错误码"]:
+        raise RuntimeError(f"网关请求失败：{结果['错误码']} {结果['错误说明']}")
+    return 结果["HTTP状态码"], 结果["信封"]
 
 
 def 健康():

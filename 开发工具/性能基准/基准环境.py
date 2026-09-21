@@ -19,8 +19,6 @@
 
 from __future__ import annotations
 
-import http.client
-import json
 import sys
 import tempfile
 import time
@@ -59,33 +57,25 @@ def 网关HTTP请求(地址: str, 方法: str, 路径: str, *,
                  请求id: str = "", 超时秒: float = 10.0) -> tuple[int, dict[str, Any]]:
     """对网关发一次最小 HTTP 请求，返回 (状态码, 响应字典)。
 
-    每次调用**新建连接**（网关响应带 `Connection: close`，是平台现状，
-    不是基准额外加的开销）。非 JSON 响应即明确失败，不静默当成功。
-    """
-    from urllib.parse import urlsplit
+    收发一律走**全平台唯一一条 HTTP 腿**（`开发工具.薄壳.网关转发.发送`）—— 本文件
+    不再自建 `http.client` 客户端（#85 收口）。每次调用**新建连接**（网关响应带
+    `Connection: close`，是平台现状，不是基准额外加的开销）。非 JSON 响应即明确失败，
+    不静默当成功。
 
-    片段 = urlsplit(地址)
-    主机 = 片段.hostname or "127.0.0.1"
-    端口 = 片段.port or 80
-    连接 = http.client.HTTPConnection(主机, 端口, timeout=超时秒)
-    try:
-        头 = {"Content-Type": "application/json; charset=utf-8"}
-        if 请求id:
-            头["X-请求-id"] = 请求id
-        载荷 = None if 体 is None else json.dumps(体, ensure_ascii=False).encode("utf-8")
-        连接.request(方法, 路径, body=载荷, headers=头)
-        响应 = 连接.getresponse()
-        原始 = 响应.read()
-        状态码 = 响应.status
-    except (OSError, http.client.HTTPException) as 异常:
-        报场景失败(f"网关请求失败 {方法} {路径}：{type(异常).__name__}: {异常}")
-    finally:
-        连接.close()
-    try:
-        数据 = json.loads(原始.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError) as 异常:
-        报场景失败(f"网关响应不是合法 JSON（状态码 {状态码}）："
-                 f"{type(异常).__name__}: {异常}；原文前 200 字：{原始[:200]!r}")
+    `凭证` 传空串：被测网关是 `本地网关服务器.创建测试服务器`（回环 + 免凭证），
+    带凭证头会与「免凭证」配置分叉。`路径` 允许是已百分号编码的 ASCII 路径
+    （本基准的调用点传的就是 `"/" + quote(...)`），统一件对已编码路径原样使用。
+    """
+    from 开发工具.薄壳.网关转发 import 发送
+
+    结果 = 发送(路径, 体, 方法=方法, 基地址=地址, 凭证="", 超时秒=超时秒,
+                附加头=({"X-请求-id": 请求id} if 请求id else None))
+    if 结果["HTTP状态码"] is None:
+        报场景失败(f"网关请求失败 {方法} {路径}：{结果['错误码']} {结果['错误说明']}")
+    状态码 = int(结果["HTTP状态码"])
+    数据 = 结果["信封"]
+    if 数据 is None:
+        报场景失败(f"网关响应不是合法 JSON（状态码 {状态码}）：{结果['错误说明']}")
     if not isinstance(数据, dict):
         报场景失败(f"网关响应不是对象（状态码 {状态码}）：{type(数据).__name__}")
     return 状态码, 数据
