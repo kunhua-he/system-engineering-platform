@@ -131,7 +131,8 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any],
             return 响应.status, json.loads(正文.decode("utf-8")), ""
     except urllib.error.HTTPError as 错误:
         try:
-            return 错误.code, None, f"HTTP {错误.code}"
+            # 正文即服务端真因（如「输入超物理批大小」），必须带回调用方（见 取错误正文）。
+            return 错误.code, None, 取错误正文(错误)
         finally:
             错误.close()
     except (urllib.error.URLError, TimeoutError, OSError) as 错误:
@@ -141,6 +142,27 @@ def _请求(配置: dict[str, Any], 后缀: str, 载荷: dict[str, Any],
         return 400, None, f"出站请求含无法编码的字符：{错误}"
     except (json.JSONDecodeError, UnicodeDecodeError) as 错误:
         return 200, None, f"响应不是有效 JSON：{错误}"
+
+
+def 取错误正文(异常) -> str:
+    """取 HTTP 错误响应的**正文摘要**（有界）；取不到才退回状态行，不造假说明。
+
+    ★ 为什么必须带出来（2026-09-21 实测缺陷修复，两处调用点共用本函数）：
+    服务端把可自解释的原因放在正文里（例 llama-server：
+    `input (882 tokens) is too large to process. increase the physical batch size
+     (current batch size: 512)`），而本模块此前只回 `HTTP {code}`，正文整段被丢 ——
+    调用方只看到「模型 HTTP 返回 500：HTTP 500」，只能去翻模型日志才能定位
+    （实测为此多绕两轮，且误判成提示词或模型能力问题）。
+    有界读取（与成功路径同一上限），防错误正文把内存打爆。
+    """
+    try:
+        正文, 超限 = 受限读取(异常, 响应上限字节)
+        摘要 = 正文.decode("utf-8", "replace").strip()
+        if 超限:
+            摘要 = f"{摘要[:500]}…（正文超上限 {响应上限字节} 字节，已截断）"
+        return 摘要 or f"HTTP {异常.code}"
+    except Exception:
+        return f"HTTP {异常.code}"
 
 
 def _错误响应(状态码: int, 说明: str) -> 结果:
@@ -611,11 +633,13 @@ def 流式调用对话(*, 配置: dict[str, Any], 消息列表: list,
                     事件数量上限=数量上限, 超时时间=超时时间,
                 )
         except urllib.error.HTTPError as 异常:
+            码 = 异常.code
+            说明 = 取错误正文(异常)
             异常.close()
             yield _流式错误(
-                "认证失败" if 异常.code in (401, 403) else "上游错误",
-                f"模型 HTTP 返回 {异常.code}", 状态码=异常.code,
-                可重试=异常.code >= 500, 异常类型=type(异常).__name__,
+                "认证失败" if 码 in (401, 403) else "上游错误",
+                f"模型 HTTP 返回 {码}：{说明}", 状态码=码,
+                可重试=码 >= 500, 异常类型=type(异常).__name__,
             )
         except TimeoutError as 异常:
             yield _流式错误("超时", f"模型 HTTP 请求超时：{异常 or '请求超时'}",

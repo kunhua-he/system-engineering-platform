@@ -336,15 +336,19 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
     _空闲秒 = 参数.get("进程空闲秒")
     if not isinstance(_空闲秒, bool) and isinstance(_空闲秒, int) and _空闲秒 > 0:
         命令.extend(["--sleep-idle-seconds", str(_空闲秒)])
-    # ★ 物理批大小（2026-09-21 实测缺陷修复，与上一条同源）：`-c` 只管上下文总量，
-    # 单次前向还受**物理批大小**限制，而它一直是 llama.cpp 默认值 512。
-    # 实测后果：语义索引的代码块（770~927 tokens）被服务端直接拒收，原文
-    # `E srv send_error: input (882 tokens) is too large to process.
-    #  increase the physical batch size (current batch size: 512)`，
-    # 而调用方只看到「模型调用失败: 模型 HTTP 返回 500」—— 与 2026-09-17
-    # 那条 `Context size has been exceeded` 是同一类：参数没收全。
-    # 口径：物理批默认取上下文长度（单次输入不可能超过上下文，这类 500 整类消除）；
-    # 调用方可经 启动参数列表 的 --batch-size 自行覆盖。
+    # ★ 物理批大小（2026-09-21 两轮实测才修准，记下第二层以免重踩）：
+    # llama.cpp 的批有两个，**报错说的是物理批**：
+    #   `-b/--batch-size`    = 逻辑批（默认 2048）
+    #   `-ub/--ubatch-size`  = **物理批**（默认 512）
+    # 第一轮只加了 `--batch-size` ⇒ 物理批仍是 512 ⇒ >512 tokens 的输入照样被拒，
+    # 服务端原文 `E srv send_error: input (882 tokens) is too large to process.
+    #  increase the physical batch size (current batch size: 512)` ——
+    # 而 `--batch-size 8192` 明明在命令行里（实测踩过：看到命令行有参数就以为修好了，
+    # 实际报错计数没降，靠 `grep -c 'E srv'` 前后对比才看穿）。
+    # 与 2026-09-17 那条 `-c` 硬编码 8192 同类：启动参数没收全，症状都只是「模型 HTTP 返回 500」。
+    # 口径：两个批都取上下文长度（单次输入不可能超过上下文，此类 500 整类消除；
+    # llama.cpp 要求 batch ≥ ubatch 且成倍数关系，同值最稳）；
+    # 调用方可经 启动参数列表 自行覆盖。
     物理批 = 参数.get("物理批大小")
     if isinstance(物理批, bool) or not isinstance(物理批, (int, str)):
         物理批 = _上下文
@@ -355,7 +359,8 @@ def _构建本地启动命令(模型路径: str, 模型类型: str, 启动器: s
             物理批 = _上下文
     if 物理批 <= 0:
         物理批 = _上下文
-    命令.extend(["-c", str(_上下文), "--batch-size", str(物理批), "-ngl", "99"])
+    命令.extend(["-c", str(_上下文), "--batch-size", str(物理批),
+                 "--ubatch-size", str(物理批), "-ngl", "99"])
     if 模型类型 == "向量":
         命令.extend(["--pooling", "cls", "--embeddings"])
     elif 模型类型 == "重排":
