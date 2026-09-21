@@ -434,14 +434,19 @@ def _防回潮独立入口勘定() -> bool:
 
     返回「本次勘定是否与上方结论一致」（入口表里每个符号都能取到）。
     """
+    try:
+        from 开发工具.发布门禁 import 运行发布门禁, 运行发布门禁_防回潮判据
+    except Exception as 错误:  # noqa: BLE001 —— 取不到即「不能独立跑」，如实登记
+        print(f"  导入 开发工具.发布门禁 失败（{type(错误).__name__}）")
+        return 假
+
+    模块表 = {
+        "开发工具.发布门禁.运行发布门禁_防回潮判据": 运行发布门禁_防回潮判据,
+        "开发工具.发布门禁.运行发布门禁": 运行发布门禁,
+    }
     缺失: list[str] = []
-    import importlib
     for 名字, 模块名, 符号名 in (*防回潮判据入口表, 反向破坏入口):
-        try:
-            模块 = importlib.import_module(模块名)
-        except Exception as 错误:  # noqa: BLE001 —— 取不到即「不能独立跑」，如实登记
-            缺失.append(f"{名字}：导入 {模块名} 失败（{type(错误).__name__}）")
-            continue
+        模块 = 模块表[模块名]
         if not callable(getattr(模块, 符号名, None)):
             缺失.append(f"{名字}：{模块名}.{符号名} 取不到（不可独立跑）")
     if 缺失:

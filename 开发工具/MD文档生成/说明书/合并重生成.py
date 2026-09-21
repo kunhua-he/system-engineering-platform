@@ -74,7 +74,6 @@ from __future__ import annotations
 
 import argparse
 import difflib
-import importlib
 import json
 import re
 import sys
@@ -134,9 +133,9 @@ def _生成G2(包目录: Path) -> list[str]:
     读的是**同一个包目录的声明侧**（能力定义/参数契约/搜索数据/验证引用）——
     与 G1 的输入源不同，所以两者产出形态不能用同一份账去比。
     """
-    模块 = importlib.import_module(
-        "支持库.后端.组件规范支持库.实现.说明书生成器")
-    return 模块.生成说明书文本(包目录).strip().splitlines()
+    from 支持库.后端.组件规范支持库 import 生成说明书文本
+
+    return 生成说明书文本(包目录).strip().splitlines()
 
 
 def 判定血统(现行文本: str) -> tuple[str, Callable[[Path], list[str]]]:

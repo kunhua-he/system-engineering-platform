@@ -71,7 +71,7 @@ class 有界IO测试(unittest.TestCase):
         )
         self.assertTrue(超限)
         self.assertLessEqual(len(输出), 1024)
-        self.assertIsNotNone(进程.poll())
+        self.assertIn(进程.poll(), (-9, -15), "超限后必须已回收进程组（强杀/终止信号）")
 
     def test_受限通信超时时回收进程组(self) -> None:
         进程 = subprocess.Popen(
@@ -84,7 +84,7 @@ class 有界IO测试(unittest.TestCase):
             终止回调=lambda: self._终止(进程),
         )
         self.assertTrue(超时)
-        self.assertIsNotNone(进程.poll())
+        self.assertIn(进程.poll(), (-9, -15), "超时后必须已回收进程组（强杀/终止信号）")
 
 
 if __name__ == "__main__":
