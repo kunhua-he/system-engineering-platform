@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 import uuid
 import copy
+import difflib
 import json
 import base64
 import sqlite3
@@ -28,6 +29,11 @@ from 运行核心.统一网关.协议.类型规格 import (
 )
 from 运行核心.统一网关.协议.网关信封 import 网关请求
 from 运行核心.统一网关.协议.参数别名表 import _应用参数别名
+
+# 「最接近的契约参数」建议的相似度下限（difflib 口径，0~1）：低于它就不猜。
+# 取 0.34 —— 实测 `路径` → `修改路径` 相似度 0.67，能点出真名；而 `路径` → `项目根`
+# 这类无关名不会瞎点。**瞎点的建议比不给建议更坏**，故宁可留空。
+近似名阈值 = 0.34
 
 
 class 参数校验面:
@@ -114,6 +120,42 @@ class 参数校验面:
         参数名 = {项.get("名称") if isinstance(项, dict) else 项 for 项 in 声明参数}
         已归一 = _应用参数别名(能力id, 参数)
         return {键: 值 for 键, 值 in 已归一.items() if 键 in 参数名}
+
+    def _被忽略参数(self, 能力id: str, 参数: dict[str, Any]) -> list[dict[str, Any]]:
+        """列出会被契约剔除的入参（只增回带，不改剔除行为，2026-09-21）。
+
+        为什么要有它：未知字段一律忽略是刻意的协议兼容口径（哲学第 5 条 2 项），
+        但「静默」让调用方分不清两种完全不同的情况 —— 「这个能力没这功能」与
+        「我把参数名写错了」。实测踩过：给 `查询文件租约` 传 `路径`（真名 `修改路径`），
+        条件被剔除后过滤器变成「取全部」⇒ 一次拿回 470KB 全表，还据此差点把平台
+        判成缺陷。⇒ 剔除照旧，但**把「丢了哪些键、最接近的契约参数叫什么」说出来**。
+
+        返回每条 `{参数名, 原因, 最接近的契约参数}`；没有忽略项时返回空列表。
+        近似名用标准库 difflib 的字符相似度取（中文参数名按字符比，`路径` 对
+        `修改路径` 相似度 0.67 ⇒ 能被点出来），低于阈值不猜、返回空列表。
+        """
+        注册表 = getattr(self.后端核心, "注册表", None)
+        获取 = getattr(注册表, "获取", None)
+        实现 = 获取(能力id) if callable(获取) else None
+        声明参数 = getattr(实现, "参数", None)
+        if not isinstance(声明参数, list):
+            return []
+        参数名 = [项.get("名称") if isinstance(项, dict) else 项 for 项 in 声明参数]
+        参数名 = [名 for 名 in 参数名 if isinstance(名, str) and 名]
+        if not 参数名:
+            return []
+        允许 = set(参数名)
+        被忽略 = [键 for 键 in _应用参数别名(能力id, 参数) if 键 not in 允许]
+        if not 被忽略:
+            return []
+        return [
+            {
+                "参数名": 键,
+                "原因": "该能力契约里没有这个参数，已被网关剔除",
+                "最接近的契约参数": difflib.get_close_matches(键, 参数名, n=3, cutoff=近似名阈值),
+            }
+            for 键 in 被忽略
+        ]
 
     @staticmethod
     def _能力结果类型合法(结果对象: Any) -> bool:
