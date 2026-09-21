@@ -82,6 +82,38 @@ def 扫日志(日志根: Path, 小时: float) -> list[Path]:
     return sorted(命中, key=lambda p: p.stat().st_mtime)
 
 
+#: 能力 id 判类词表（#211，2026-09-21）：全 MCP 化后 82% 的调用是 `capability_call`，
+#: 其请求文本形如 `{'能力id': '文件系统支持库.文件操作.读取文件', '参数': {...}}`，**不含任何 CLI 关键词**
+#: ⇒ 按文本匹配会把「读文件/搜代码/跑验证/改文件」统统归「其他」（实测 71.7%），四类占比失去分辨力。
+#: 故能力调用改按**能力 id** 判类；顺序与 CLI 分支一致（修改 → 验证 → 探索 → 其他）。
+能力_修改词 = ("写入文件", "应用精确替换", "批量应用精确替换", "改清单条目", "记踩坑",
+              "登记", "写入索引", "建坑索引", "建索引", "提交", "生成文档", "写盘",
+              "创建", "删除", "重命名", "人工改")
+能力_验证词 = ("编译", "体检", "测试", "门禁", "摘要", "验证", "巡检", "自检", "漂移",
+              "反向", "对账", "审计", "检查", "还原", "回滚")
+能力_探索词 = ("读取", "搜索", "查询", "列出", "目录树", "查文档", "查记忆", "查哲学",
+              "查开工", "索引", "地图", "扫描", "统计", "发现", "解析", "枚举")
+
+
+def _按能力id判类(参: str) -> str:
+    """从 capability_call 的入参文本里取能力 id，按 id 判四类（#211）。
+
+    取不到 id（非能力调用 / 文本里没有）就如实回「其他」，不猜。
+    """
+    m = (re.search(r"'能力id':\s*'([^']+)'", 参)
+         or re.search(r'"能力id":\s*"([^"]+)"', 参))
+    if not m:
+        return "其他"
+    能力id = m.group(1)
+    if any(w in 能力id for w in 能力_修改词):
+        return "修改"
+    if any(w in 能力id for w in 能力_验证词):
+        return "验证"
+    if any(w in 能力id for w in 能力_探索词):
+        return "探索"
+    return "其他"
+
+
 def 剖析一篇(路径: Path) -> dict:
     """剖析单个子代理日志。"""
     文 = 路径.read_text(encoding="utf-8", errors="ignore")
@@ -102,6 +134,9 @@ def 剖析一篇(路径: Path) -> dict:
             合并 = 名 + " " + 参
             if 名 in ("patch", "write_file"):
                 分类["修改"] += 1
+            elif 名.endswith("capability_call"):
+                # 能力调用按**能力 id** 判类（#211）：按 CLI 关键词匹配会整批落「其他」。
+                分类[_按能力id判类(参)] += 1
             elif any(w in 合并 for w in 验证词):
                 分类["验证"] += 1
             elif any(w in 合并 for w in 探索词) or 名 == "read_file":
@@ -505,7 +540,16 @@ def 写快照(果: dict, 判级: dict | None = None) -> Path:
     return 目标
 
 
-def 写HTML(果: dict, 归因表: list[str], 趋势: list[str]) -> Path:
+def 写HTML(果: dict, 归因表: list[str], 趋势: list[str],
+           剖析表: list[dict] | None = None) -> Path:
+    """产自包含 HTML 报告（华哥 2026-09-21：「下次一个 html 就能告诉我答案」）。
+
+    修前只有四类占比 + 黑洞计数 —— 要答「效率正常吗 / 多出来的时间去哪 / 怎么优化」
+    仍得回去读快照、翻日志、读实现。现补齐三块：**慢命令明细**（久在哪一条）、
+    **逐路明细**（哪条路最贵）、**优化方案**（按判据给动作）。
+    """
+    剖析表 = 剖析表 or []
+
     def 行(标题: str, 表: dict[str, object]) -> str:
         if not 表:
             return ""
@@ -513,6 +557,26 @@ def 写HTML(果: dict, 归因表: list[str], 趋势: list[str]) -> Path:
                     for k, v in 表.items())
         return f"<h2>{标题}</h2><table>{格}</table>"
 
+    慢命令表: list[tuple] = []
+    for a in 剖析表:
+        for x in a.get("慢命令明细", []):
+            慢命令表.append((float(x.get("秒", 0)), str(x.get("工具", "")),
+                          str(a.get("路") or a.get("日志") or "")))
+    慢命令表.sort(reverse=True)
+    慢行 = "".join(f"<tr><td class='n'>{秒:.1f}s</td><td>{html.escape(工具)}</td>"
+                  f"<td>{html.escape(路)}</td></tr>" for 秒, 工具, 路 in 慢命令表[:20])
+
+    逐路表: list[tuple] = []
+    for a in 剖析表:
+        黑 = a.get("黑洞", {})
+        逐路表.append((int(sum(黑.values())), str(a.get("路") or a.get("日志") or "?"),
+                     int(a.get("调用数", 0)), int(黑.get("单命令超15秒", 0))))
+    逐路表.sort(reverse=True)
+    逐路行 = "".join(f"<tr><td>{html.escape(名)}</td><td class='n'>{调用}</td>"
+                    f"<td class='n'>{黑数}</td><td class='n'>{超15}</td></tr>"
+                    for 黑数, 名, 调用, 超15 in 逐路表)
+
+    纪律 = 果.get("纪律", {})
     结语 = "".join(f"<li>{html.escape(s)}</li>" for s in 归因表)
     趋势表 = "".join(f"<li>{html.escape(s)}</li>" for s in 趋势)
     页 = f"""<!doctype html><html lang="zh-CN"><meta charset="utf-8">
@@ -529,14 +593,29 @@ ul{{font-size:13.5px;line-height:1.75;padding-left:20px}} li{{margin:2px 0}}
 </style>
 <h1>开发效率巡检</h1><div class="sub">{time.strftime('%Y-%m-%d %H:%M:%S')} · 数据来自真实子代理日志</div>
 <div>
-<div class="卡"><b>{果['子代理数']}</b><span>子代理路数</span></div>
-<div class="卡"><b>{果['总调用']}</b><span>工具调用</span></div>
-<div class="卡"><b>{果['占比']['探索']}%</b><span>探索占比</span></div>
-<div class="卡"><b>{果['黑洞']['命令超时']}</b><span>命令超时</span></div>
+<div class='卡'><b>{果['子代理数']}</b><span>子代理路数</span></div>
+<div class='卡'><b>{果['总调用']}</b><span>工具调用</span></div>
+<div class='卡'><b>{果['累计耗时秒']/60:.0f}</b><span>累计分钟</span></div>
+<div class='卡'><b>{果['完成']}/{果['超时']}</b><span>完成/超时路</span></div>
+<div class='卡'><b>{果['占比']['探索']}%</b><span>探索占比</span></div>
+<div class='卡'><b>{果['占比']['修改']}%</b><span>修改占比</span></div>
+<div class='卡'><b>{果['黑洞']['慢命令(>10秒)']}</b><span>慢命令&gt;10秒</span></div>
+<div class='卡'><b>{果['黑洞']['单命令超15秒']}</b><span>单命令超15秒</span></div>
+<div class='卡'><b>{果['黑洞']['sleep等后台']}</b><span>sleep等后台</span></div>
+<div class='卡'><b>{纪律.get('未送达', 0)}</b><span>纪律未送达</span></div>
 </div>
 {行("工具调用分布", 果["工具"])}
 {行("四类占比", {k: str(v) + "%" for k, v in 果["占比"].items()})}
 {行("黑洞计数", 果["黑洞"])}
+<h2>慢命令明细（Top 20：久在哪一条）</h2><table><tr class='头'><th>耗时</th><th>工具</th><th>路</th></tr>{慢行}</table>
+<h2>逐路明细（按黑洞数降序）</h2><table><tr class='头'><th>路</th><th>调用数</th><th>黑洞合计</th><th>其中超15秒</th></tr>{逐路行}</table>
+<h2>优化方案（按判据）</h2><ol>
+<li><b>sleep 清零</b>：实测最贵形态 `sleep 420` 单条烧光整路子代理预算 → 后台任务用 background 起、用 process_manage wait/poll 拿结果。<i>判据：本页「sleep 等后台」= 0。</i></li>
+<li><b>&gt;15 秒一律后台化</b>：三类必改 —— 该后台的挂了前台 / 该限定范围的做了全仓扫描（全仓 grep 15.62s vs rg 0.07s）/ 该用现成件的手写了第二实现。<i>判据：本页「单命令超15秒」显著下降。</i></li>
+<li><b>派活经 开发工具/任务记忆/派活任务信.py 生成</b>：手写 context 会整批丢固定条款（工具姿势/提交纪律/pathspec/命令环境）。<i>判据：本页「纪律未送达」= 0。</i></li>
+<li><b>「改一个能力」的派生物收敛</b>：说明书两份/验证场景/权限契约目前靠手改，漏一份即被判红。<i>判据：新增能力后 包体检 直接 0 缺项。</i></li>
+<li><b>编译口瘦身</b>：单轮 39.3 秒（md查重 14.09 秒是大头）。<i>判据：单轮 &lt; 15 秒。</i></li>
+</ol>
 {行("被反复读（≥3 次）", 果["反复读"])}
 <h2>归因</h2><ul>{结语}</ul>
 <h2>趋势（对比上一次快照）</h2><ul>{趋势表}</ul>
@@ -550,7 +629,9 @@ def main(argv: list[str] | None = None) -> int:
     解析 = argparse.ArgumentParser(description="开发效率巡检：子代理时间花在哪、为什么慢")
     解析.add_argument("--小时", type=float, default=6.0, help="只看最近 N 小时有更新的日志（默认 6）")
     解析.add_argument("--目录", default="", help="delegation live 目录（默认 ~/.hermes/cache/delegation/live）")
-    解析.add_argument("--html", action="store_true", help="额外产 HTML 报告")
+    解析.add_argument("--html", action=argparse.BooleanOptionalAction, default=True,
+                      help="产 HTML 报告（默认产；--no-html 关掉）—— 华哥 2026-09-21 口径"
+                           "「下次一个 html 就能告诉我答案」")
     参 = 解析.parse_args(argv)
     根 = Path(参.目录) if 参.目录 else 默认日志根
     日志 = 扫日志(根, 参.小时)
@@ -572,7 +653,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"归因判级：⛔ {判级['阻断']} 条 / ⚠ {判级['告警']} 条 / ✓ {判级['通过']} 条"
           f" → 退出码 {码}")
     if 参.html:
-        print(f"HTML：{写HTML(果, 归因表, 趋势)}")
+        print(f"HTML：{写HTML(果, 归因表, 趋势, 剖析表)}")
     # **硬门禁（2026-09-19）**：零交付必须让调用方看到非零退出码，
     # 否则判据等于没有 —— 原实现无论多红都 `return 0`。
     if 留痕["零交付"]:
