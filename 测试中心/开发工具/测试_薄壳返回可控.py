@@ -127,6 +127,18 @@ class 裁剪测试(unittest.TestCase):
         self.assertTrue(说明["已裁剪"])
         self.assertIn("未能压到限内", 说明)
 
+    def test_唯一大键装着大块时也要压到限内(self):
+        # 实测缺口（2026-09-21 现场）：`{"记录表": [8 条记录]}` 这种「一个键装着一大块」，
+        # 首键被无条件保留后旧实现就再也压不下去 —— 上限 300 实测回了 2340 字符。
+        # `未能压到限内` 虽然如实，但「上限」的本意就是别灌上下文，能压就该压下去。
+        原 = {"记录表": [{"任务": f"任务{i}", "说明": "x" * 60} for i in range(8)]}
+        for 上限 in (300, 600):
+            值, 说明 = 壳._裁剪值(原, 上限, None)
+            总 = (len(json.dumps(值, ensure_ascii=False))
+                + len(json.dumps(说明, ensure_ascii=False)))
+            self.assertLessEqual(总, 上限, f"上限 {上限}：值+说明 = {总}，超限了")
+            self.assertNotIn("未能压到限内", 说明, "这个形状必须能压到限内")
+
     def test_值字段非数组时不生效但如实说明(self):
         值, 说明 = 壳._裁剪值({"a": 1}, 6000, "不是数组")
         self.assertEqual({"a": 1}, 值)
@@ -485,6 +497,41 @@ class 深裁反向验证(unittest.TestCase):
         现行总 = (len(json.dumps(现值, ensure_ascii=False))
                 + len(json.dumps(现说明, ensure_ascii=False)))
         self.assertLessEqual(现行总, 上限, "现行实现必须达标")
+        self.assertNotEqual(缺陷总 > 上限, 现行总 > 上限,
+                          "反向样本与现行实现的结论必须不同，否则样本失效")
+
+
+class 兜底深缩反向验证(unittest.TestCase):
+    """反向验证：退回「首键无条件保留后不再深缩」的旧口径，新判据必须变红。
+
+    这条缺口是现场实测出来的（`{"记录表": [8 条记录]}` + 上限 300 回了 2340 字符），
+    没有反向样本，新判据可能只是恰好绿。
+    """
+
+    def _缺陷态模块(self):
+        源 = _薄壳源路径.read_text(encoding="utf-8")
+        坏 = 源.replace(
+            "        if 保留项 and _字符数(保留项) > 上限:",
+            "        if False:  # 反向样本：退回旧口径（首键保留后不再深缩）",
+        )
+        if 坏 == 源:
+            raise AssertionError("兜底深缩片段未命中，反向样本失效（判据需更新）")
+        命名空间: dict = {"__name__": "反向样本_兜底深缩", "__file__": str(_薄壳源路径)}
+        exec(compile(坏, str(_薄壳源路径), "exec"), 命名空间)  # noqa: S102
+        return 命名空间
+
+    def test_退回旧口径后唯一大键压不下去(self):
+        入参 = {"记录表": [{"任务": f"任务{i}", "说明": "x" * 60} for i in range(8)]}
+        上限 = 300
+        模块 = self._缺陷态模块()
+        缺陷值, 缺陷说明 = 模块["_裁剪值"](入参, 上限, None)
+        缺陷总 = (len(json.dumps(缺陷值, ensure_ascii=False))
+                + len(json.dumps(缺陷说明, ensure_ascii=False)))
+        self.assertGreater(缺陷总, 上限, "缺陷态下必须真的超限（这正是坏行为）")
+        现值, 现说明 = 壳._裁剪值(入参, 上限, None)
+        现行总 = (len(json.dumps(现值, ensure_ascii=False))
+                + len(json.dumps(现说明, ensure_ascii=False)))
+        self.assertLessEqual(现行总, 上限, "现行实现必须压到限内")
         self.assertNotEqual(缺陷总 > 上限, 现行总 > 上限,
                           "反向样本与现行实现的结论必须不同，否则样本失效")
 
