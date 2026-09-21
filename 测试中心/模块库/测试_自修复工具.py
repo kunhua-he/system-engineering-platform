@@ -27,6 +27,9 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 模块库.自修复工具 import 创建修复工作区, 获取当前提交哈希, 回滚修复, 验证修复
+from 模块库.自修复工具 import 构建平台客户端制品
+from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.文件系统支持库.文件操作 import 清理全部临时资源
 from 支持库.后端.系统核心支持库.资源管理 import 创建内容摘要
 from 后端核心.后端核心 import 后端核心
@@ -311,6 +314,117 @@ class Test自修复工具(unittest.TestCase):
         清理 = 清理全部临时资源()
         self.assertTrue(清理.成功, 清理.错误说明)
         self.assertFalse(_临时资源登记表, "清理后登记表应为空")
+
+
+class 测试构建平台客户端制品(unittest.TestCase):
+    """#213：构建链 HTTP 腿的结论归并与 fail-closed 反向验证（不真跑构建）。
+
+    为什么用假调用器而不是真跑：真跑一次构建要复制全树 + AST 重写 + 全树摘要（分钟级，
+    且会写制品仓库与制品根 当前.json）。本类只验「本能力自己那部分」——命令拼装、结论解析、
+    fail-closed 与错误透传；构建判据（写盘后自校验/可重复构建校验/稳定路径校验）仍由
+    `客户端/构建平台客户端.py` 自身给出，这里不重复实现也不重复判红。
+    """
+
+    #: 构建脚本真实输出的形状（逐行取自 客户端/构建平台客户端.py 的 print 语句）。
+    真输出 = (
+        "写盘后自校验通过：摘要对表一致（权威口径=目录名=制品摘要.json=abc123）\n"
+        "可重复构建校验通过：正式文件 900 项（跳过非文本 12 项），其中 888 项与能力重建"
+        "摘要逐字节一致、12 项差异已逐项归因于占位符确定性展开；扰动 公共契约/__init__.py "
+        "后摘要确实变化；同输入双工作区一致\n"
+        "构建完成：/x/平台客户端-abc123\n"
+        "改写导入数：812，重算包摘要：143，制品摘要：abc123\n"
+        "已经包仓库安装并激活：/x/环境/平台客户端\n"
+        "入库：制品 abc123 已入库\n"
+        "稳定路径校验：稳定路径有效\n"
+    )
+    期望项目根 = str(Path(__file__).resolve().parents[2])
+
+    def _装假调用器(self, 值=None, *, 成功=True, 错误码="", 错误说明=""):
+        """把唯一调用器换成假件，记录每次调用；退出用例自动还原。"""
+        import 公共契约.能力契约.调用器 as 调用器模块
+
+        class _假调用器:
+            def __init__(self):
+                self.记录: list = []
+
+            def 调用能力(self, 能力id, 参数, 调用方=""):
+                self.记录.append({"能力id": 能力id, "参数": 参数})
+                if 成功:
+                    return 结果.成功结果(值 or {})
+                return 结果.失败(错误码, 错误说明)
+
+        假件 = _假调用器()
+        原获取 = 调用器模块.获取能力调用器
+        调用器模块.获取能力调用器 = lambda: 假件
+        self.addCleanup(lambda: setattr(调用器模块, "获取能力调用器", 原获取))
+        return 假件
+
+    def test_构建成功结论结构化(self):
+        """正样本：构建脚本标准输出 → 结构化字段逐项对上，且走 执行命令 这条腿。"""
+        假件 = self._装假调用器({"退出码": 0, "标准输出": self.真输出, "标准错误": ""})
+        调用结果 = 构建平台客户端制品()
+        self.assertTrue(调用结果.成功, 调用结果.错误说明)
+        值 = 调用结果.值
+        self.assertEqual(值["构建结论"], "成功")
+        self.assertTrue(值["构建完成"])
+        self.assertEqual(值["制品根"], "/x/平台客户端-abc123")
+        self.assertEqual(值["制品摘要"], "abc123")
+        self.assertEqual(值["改写导入数"], 812)
+        self.assertEqual(值["重算包摘要数"], 143)
+        self.assertTrue(值["写盘后自校验通过"])
+        self.assertTrue(值["可重复构建校验通过"])
+        self.assertEqual(值["安装目标"], "/x/环境/平台客户端")
+        self.assertEqual(值["入库消息"], "制品 abc123 已入库")
+        self.assertEqual(值["稳定路径校验"], "稳定路径有效")
+        self.assertEqual(值["退出码"], 0)
+        self.assertEqual(值["项目根"], self.期望项目根)
+        self.assertEqual(假件.记录[0]["能力id"], "系统核心支持库.进程管理.执行命令")
+        self.assertEqual(假件.记录[0]["参数"]["工作目录"], self.期望项目根)
+        self.assertEqual(假件.记录[0]["参数"]["超时秒"], 1800.0)
+
+    def test_安装开关进命令(self):
+        """安装=真 时命令含 --安装；缺省不含（默认只构建，不动激活指针）。"""
+        for 安装, 期望含 in ((假, False), (真, True)):
+            with self.subTest(安装=安装):
+                假件 = self._装假调用器({"退出码": 0, "标准输出": self.真输出})
+                构建平台客户端制品(安装=安装)
+                命令 = 假件.记录[0]["参数"]["命令"]
+                self.assertIn("客户端/构建平台客户端.py", 命令)
+                self.assertEqual("--安装" in 命令, 期望含, 命令)
+
+    def test_反向验证_无构建完成行即失败(self):
+        """反向样本（故意弄坏）：删掉「构建完成：」行 → 构建结论必须翻成 失败。
+
+        这是本能力的假绿防线：解析不出完成行时绝不当成功（fail-closed）。
+        """
+        缺行 = self.真输出.replace("构建完成：/x/平台客户端-abc123\n", "")
+        self.assertNotIn("构建完成：", 缺行)
+        self._装假调用器({"退出码": 1, "标准输出": 缺行,
+                     "标准错误": "Traceback: 客户端构建错误: 正式源码根非法"})
+        调用结果 = 构建平台客户端制品()
+        self.assertTrue(调用结果.成功, "结论归并本身成功；失败事实在字段里，不伪装成错误码")
+        self.assertEqual(调用结果.值["构建结论"], "失败")
+        self.assertFalse(调用结果.值["构建完成"])
+        self.assertEqual(调用结果.值["制品摘要"], "")
+        self.assertEqual(调用结果.值["改写导入数"], -1)
+        self.assertEqual(调用结果.值["退出码"], 1)
+        self.assertIn("客户端构建错误", 调用结果.值["标准错误"])
+
+    def test_反向验证_空输出即失败(self):
+        """反向样本（故意弄坏）：标准输出为空 → 构建结论 失败，且不抛异常。"""
+        self._装假调用器({"退出码": 1, "标准输出": "", "标准错误": "执行命令超时"})
+        调用结果 = 构建平台客户端制品()
+        self.assertEqual(调用结果.值["构建结论"], "失败")
+        self.assertFalse(调用结果.值["构建完成"])
+        self.assertEqual(调用结果.值["改写导入数"], -1)
+
+    def test_执行命令不可用如实失败(self):
+        """执行腿失败 → 返回 提供者不可用（不抛异常）。"""
+        self._装假调用器(成功=False, 错误码="提供者不可用", 错误说明="执行命令未装配")
+        调用结果 = 构建平台客户端制品()
+        self.assertFalse(调用结果.成功)
+        self.assertEqual(调用结果.错误码, "提供者不可用")
+        self.assertIn("构建未起", 调用结果.错误说明)
 
 
 def _停用惰性装配():
