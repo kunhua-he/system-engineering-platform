@@ -18,7 +18,6 @@ from pathlib import Path
 from 公共契约.基础类型.结果类型 import 结果
 
 来源 = "仓库地图"
-必需表表 = ("nodes", "edges")
 #: 支持库/后端/代码解析支持库/仓库地图/实现/图库.py → parents[5] = 系统工程平台
 平台根 = Path(__file__).resolve().parents[5]
 
@@ -36,6 +35,12 @@ from 公共契约.基础类型.结果类型 import 结果
     "CREATE INDEX idx_仓库地图_nodes_名称 ON nodes (name)",
     "CREATE INDEX idx_仓库地图_edges_起点 ON edges (source, kind)",
     "CREATE INDEX idx_仓库地图_edges_终点 ON edges (target, kind)",
+)
+
+#: 必需表＝**本包自建的表**，从 DDL 推导（不再手写第二份）：本包自建库，
+#: 它要求的表就是它建的表；两处各写一份会在改表结构时漂移（同一事实两套表示）。
+必需表表 = tuple(
+    语句.split(" ", 3)[2] for 语句 in 建表语句表 if 语句.startswith("CREATE TABLE ")
 )
 
 节点列 = ("id, kind, name, qualified_name, file_path, language, start_line, "

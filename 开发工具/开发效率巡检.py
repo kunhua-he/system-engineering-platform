@@ -236,7 +236,7 @@ def 查交付留痕(日志表: list[Path]) -> dict:
 
 
 def _耗时(文: str) -> float:
-    """子代理真实耗时（秒）：取自 `final | status=<状态> duration=<秒>s` 那行。
+    r"""子代理真实耗时（秒）：取自 `final | status=<状态> duration=<秒>s` 那行。
 
     ★ 2026-09-19 修：原判据写成 `end status=\w+ duration=` —— 但 `end` 行**只有**
     `status` 与 `exit_reason`，耗时在**前一行**，故整批读不到、累计耗时恒为 0.0。
