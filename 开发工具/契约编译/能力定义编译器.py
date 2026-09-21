@@ -27,6 +27,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# 项目根自举（纯缺陷修复 2026-09-21）：本脚本 `from 开发工具... import`，但直接
+# `python3.14 开发工具/契约编译/能力定义编译器.py` 时 sys.path[0] 是**脚本所在目录**，
+# 项目根不在其中 → `ModuleNotFoundError: No module named '开发工具'`。
+# 与 开发工具/开发入口.py 同口径：向上找同时含 平台控制面 与 测试中心 的祖先。
+import sys as _sys
+
+_系统根 = Path(__file__).resolve()
+for _祖先 in _系统根.parents:
+    if (_祖先 / "平台控制面").is_dir() and (_祖先 / "测试中心").is_dir():
+        _系统根 = _祖先
+        break
+if str(_系统根) not in _sys.path:
+    _sys.path.insert(0, str(_系统根))
+
 from 开发工具.契约编译.聚合契约解析 import 解析聚合契约
 from 公共契约.版本规则.契约版本 import 契约版本
 

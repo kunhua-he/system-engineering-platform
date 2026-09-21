@@ -29,7 +29,8 @@ from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 
 #: 本机声明的环境依赖变量（提供者侧环境依赖；新增变量只在这里加一份）。
-环境依赖变量表 = ("MLXWhisper提供者_模型路径", "MLXWhisper提供者_模型名")
+环境依赖变量表 = ("MLXWhisper提供者_模型路径", "MLXWhisper提供者_模型名",
+                "系统工程平台_决策模型权重目录")
 
 #: 本机声明这些环境依赖的载体：40007 常驻网关的 launchd 配置。
 网关配置路径 = Path.home() / "Library" / "LaunchAgents" / "com.huashi.gateway-40007.plist"
