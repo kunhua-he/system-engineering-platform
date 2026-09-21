@@ -85,7 +85,7 @@ def 枚举文件(项目根: Path, 类型: dict) -> list[Path]:
     候选 = [x.strip() for x in 输出.splitlines() if x.strip()]
     if not 候选:                      # 非 git 环境下退回目录遍历，但**带剪枝**
         候选 = [p.relative_to(项目根).as_posix()
-               for p in _带剪枝遍历(项目根)]
+               for p in 带剪枝遍历md(项目根)]
     命中: list[Path] = []
     for 相对 in 候选:
         if any(相对.startswith(str(x)) for x in
@@ -105,8 +105,16 @@ def 枚举文件(项目根: Path, 类型: dict) -> list[Path]:
 剪枝目录 = (".git", "工程缓存", "参考资料", "归档", "__pycache__", "node_modules")
 
 
-def _带剪枝遍历(项目根: Path) -> list[Path]:
-    """带剪枝的 `*.md` 遍历（仅非 git 环境兜底用）：进入被剪目录即不再下钻。"""
+def 带剪枝遍历md(项目根: Path) -> list[Path]:
+    """带剪枝的全仓 `*.md` 遍历（相对路径升序）：**进入被剪目录即不再下钻**。
+
+    两处调用，都是「过滤发生在遍历之后」这一根因的受害者（2026-09-20 在
+    `枚举文件` 修过一次，2026-09-21 发现 `查重.库` 漏改、仍用 `rglob`）：
+    `rglob` 会先走完整仓再过滤，而本仓 md 里有约 1.8 万份在 `工程缓存/`（生成物，
+    判据文件里本就 `豁免`）⇒ 每次白走。**剪掉的正是 `豁免` 那三项**，
+    故参与者集合不变，只是不再白走。`git` 可用时 `枚举文件` 走 `git ls-files`
+    （更快，且天然不含未跟踪件），本函数是它的非 git 兜底。
+    """
     import os
     from pathlib import Path as _P
     结果: list[Path] = []
@@ -115,4 +123,4 @@ def _带剪枝遍历(项目根: Path) -> list[Path]:
         for 名 in 文件表:
             if 名.endswith(".md"):
                 结果.append(_P(当前) / 名)
-    return 结果
+    return sorted(结果)
