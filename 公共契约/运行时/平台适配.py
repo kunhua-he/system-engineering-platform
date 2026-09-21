@@ -40,6 +40,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import platform
 import re
@@ -584,6 +585,107 @@ def _读伪文件(路径: str) -> str | None:
     return 数据.decode("utf-8", errors="replace")
 
 
+#: macOS Mach VM 统计 flavor（XNU ABI 常量：HOST_VM_INFO64）。
+_MACH_HOST_VM_INFO64 = 4
+
+#: macOS 系统调用入口库（ctypes 直接加载，不起子进程）。
+_libSystem路径 = "/usr/lib/libSystem.B.dylib"
+
+
+class _虚拟机统计64(ctypes.Structure):
+    """macOS ``vm_statistics64`` 的逐字段镜像（XNU ABI）。
+
+    **字段顺序与类型不得改动**：ABI 只认布局，改名不影响，改序即读错。
+    字段名用中文只为本仓可读性，与 XNU 头文件字段的对应见行尾注释。
+    """
+
+    _fields_ = (
+        ("空闲页", ctypes.c_uint),              # free_count
+        ("活跃页", ctypes.c_uint),              # active_count
+        ("非活跃页", ctypes.c_uint),            # inactive_count
+        ("常驻页", ctypes.c_uint),              # wire_count
+        ("零填充计数", ctypes.c_uint64),        # zero_fill_count
+        ("再激活计数", ctypes.c_uint64),        # reactivations
+        ("换入计数", ctypes.c_uint64),          # pageins
+        ("换出计数", ctypes.c_uint64),          # pageouts
+        ("缺页计数", ctypes.c_uint64),          # faults
+        ("写时复制缺页", ctypes.c_uint64),      # cow_faults
+        ("查找计数", ctypes.c_uint64),          # lookups
+        ("命中计数", ctypes.c_uint64),          # hits
+        ("清除计数", ctypes.c_uint64),          # purges
+        ("可回收页", ctypes.c_uint),            # purgeable_count
+        ("推测页", ctypes.c_uint),              # speculative_count
+        ("解压计数", ctypes.c_uint64),          # decompressions
+        ("压缩计数", ctypes.c_uint64),          # compressions
+        ("交换入计数", ctypes.c_uint64),        # swapins
+        ("交换出计数", ctypes.c_uint64),        # swapouts
+        ("压缩器占用页", ctypes.c_uint),        # compressor_page_count
+        ("限流页", ctypes.c_uint),              # throttled_count
+        ("外部页", ctypes.c_uint),              # external_page_count
+        ("内部页", ctypes.c_uint),              # internal_page_count
+        ("压缩器未压页", ctypes.c_uint64),      # total_uncompressed_pages_in_compressor
+    )
+
+
+def _macOS内存容量_系统调用() -> dict[str, object] | None:
+    """macOS 内存容量（微秒级，纯系统调用）；任一步失败返回 None 交给子进程回退。
+
+    **为什么有这条快速路（2026-09-21 实测）**：原实现走 `sysctl` / `vm_stat`
+    **子进程**，单次约 2.5 毫秒；资源闸门要在**每次请求**上采样，2.5 毫秒会被
+    放大成可观测延迟。`sysctlbyname` + `host_statistics64` 两次系统调用实测
+    **约 1.2 微秒**（实测：vm_stat 2.562ms / sysctl 2.625ms 对系统调用 0.0012ms）。
+
+    **口径与 `_macOS可用内存字节()` 完全一致，不产生第二套口径**：
+    ``可用 = free + inactive + speculative + purgeable``（与 macOS 官方
+    `memory_pressure` 的 available 一致）。
+
+    **speculative 不得重复计（2026-09-21 实测）**：Mach 的 ``free_count`` **已含**
+    ``speculative_count`` —— 实测 free 3257144 对 vm_stat ``Pages free`` 2685800，
+    差额 571344 ≈ speculative 571290（vm_stat 把 speculative 从 free 里单列）。
+    故本函数只加「非活跃页」与「可回收页」，**不再加「推测页」**；再加一次会
+    系统性高估可用内存约 8.7 GB，把水位判据压低。
+    """
+    依据 = ("sysctlbyname hw.memsize + host_statistics64"
+            "（free+inactive+purgeable；speculative 已含于 free）")
+    try:
+        libc = ctypes.CDLL(_libSystem路径)
+    except OSError:
+        return None
+    总量 = ctypes.c_uint64(0)
+    总量尺寸 = ctypes.c_size_t(ctypes.sizeof(ctypes.c_uint64))
+    try:
+        总量码 = libc.sysctlbyname(b"hw.memsize", ctypes.byref(总量),
+                                  ctypes.byref(总量尺寸), None, 0)
+    except AttributeError:
+        return None
+    if 总量码 != 0 or int(总量.value) <= 0:
+        return None
+    物理字节 = int(总量.value)
+    try:
+        libc.host_statistics64.argtypes = (
+            ctypes.c_uint, ctypes.c_int,
+            ctypes.POINTER(_虚拟机统计64), ctypes.POINTER(ctypes.c_uint))
+        libc.host_statistics64.restype = ctypes.c_int
+        libc.mach_host_self.restype = ctypes.c_uint
+        统计 = _虚拟机统计64()
+        计数 = ctypes.c_uint(ctypes.sizeof(_虚拟机统计64) // ctypes.sizeof(ctypes.c_uint))
+        统计码 = libc.host_statistics64(libc.mach_host_self(), _MACH_HOST_VM_INFO64,
+                                       ctypes.byref(统计), ctypes.byref(计数))
+    except AttributeError:
+        return None
+    if 统计码 != 0:
+        return None
+    页大小 = int(os.sysconf("SC_PAGE_SIZE") or 0)
+    if 页大小 <= 0:
+        return None
+    可用页 = 统计.空闲页 + 统计.非活跃页 + 统计.可回收页
+    可用字节 = 可用页 * 页大小
+    if 可用页 <= 0 or 可用字节 > 物理字节:
+        return None      # 口径异常：交给回退，不回报错值（哲学第 3 条 2 项）
+    return {"支持": 真, "物理字节": 物理字节, "可用字节": 可用字节,
+            "依据": 依据, "原因": ""}
+
+
 def _macOS可用内存字节() -> tuple[int, str]:
     """macOS 可用内存（字节）与失败原因：`vm_stat` 的 free+inactive+speculative+purgeable。
 
@@ -653,6 +755,9 @@ def 内存容量信息() -> dict[str, object]:
     （此时 `原因` 非空），调用方按保守比例降级，不得当成「可用内存为零」。
     """
     if 是macOS():
+        快速 = _macOS内存容量_系统调用()
+        if 快速 is not None:
+            return 快速
         总量 = _执行只读采样命令(sysctl候选路径, ("-n", "hw.memsize"), 内存采样超时秒)
         依据 = "sysctl -n hw.memsize + vm_stat（free+inactive+speculative+purgeable）"
         if 总量 is None or 总量[0] != 0:

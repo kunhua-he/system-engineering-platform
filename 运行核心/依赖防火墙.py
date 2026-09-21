@@ -214,6 +214,19 @@ def 剥制品根前缀(模块名: str) -> str:
     "psutil", "mlx_whisper", "tree_sitter", "tree_sitter_typescript",
 }
 
+# 外部不可回收后台执行器（2026-09-21 华哥裁决：引用外部时须杜绝这类实现）。
+#
+# 为什么单列一张表：底座是**可控的**——它自己的线程池走「有界 + 可回收 + 登记归属」；
+# 而外部实现用 daemon worker 且不参与回收，卡在 I/O 的 worker **永不退出**，它栈上
+# 持有的资源（子进程句柄、请求缓冲、子代理历史）也就永不释放。典型形态是 Hermes 的
+# `tools/daemon_pool.py` 的 `DaemonThreadPoolExecutor`，其 docstring 自述
+# 「wedged worker blocks interpreter exit forever」。引入这类实现等于把底座的
+# 资源主权交出去，正是 2026-09-21 内存被打爆那一类形态。
+#
+# 判据为什么用**模块名段**而不是包名前缀：这类实现散在各宿主里包名不同
+# （`tools.daemon_pool`、各 SDK 自带变体），但语义段名一致（`daemon_pool`）。
+外部不可回收执行器段名表 = frozenset({"daemon_pool"})
+
 # 第三方导入的**显式豁免白名单**：层 -> 该层允许直接导入的第三方包前缀集合。
 # 与 `允许依赖表` 是两张不同语义的表，必须分开看：
 #   * `允许依赖表` 管**层与层**之间的方向（谁能 import 哪个底座层）；
@@ -603,6 +616,15 @@ def 审计依赖(目标目录: Path | None = None, *, 返回违规: bool = 真) 
                 if _动态导入行级豁免(源码, 行号):
                     continue
                 结果.违规列表.append(依赖违规(来源层, 模块名, "动态导入绕过依赖审计", 文件相对串, 行号))
+                continue
+            # 强制拒绝 7：外部不可回收后台执行器（2026-09-21 华哥裁决）
+            # 判据与理由见 `外部不可回收执行器段名表` 上方注释。用**任意段**匹配，
+            # 同时覆盖 `from tools.daemon_pool import X` 与 `import tools.daemon_pool` 两种写法。
+            if any(段 in 外部不可回收执行器段名表 for 段 in 模块名.split(".")):
+                结果.违规列表.append(依赖违规(
+                    来源层, 模块名,
+                    "外部不可回收后台执行器（底座须自建有界可回收执行器，不得引入外部不可回收实现）",
+                    文件相对串, 行号))
                 continue
             # P6 规则 1：模块/项目适配层/核心 不得导入第三方发行包（docx/fitz/openpyxl 等）
             if 顶层 in 第三方前缀表:
