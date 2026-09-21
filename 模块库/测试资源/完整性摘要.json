@@ -16,6 +16,10 @@
       "sha256": "6583644214bede3c60b935819acbdad63c2787e1b9dc8f1eaa8ffc2c3be1ed57"
     },
     {
+      "路径": "复用决策.json",
+      "sha256": "f6cbc22e41757a3bc8693358842e92052b0abf71ca5c8e3a67ad51e5d0518e2a"
+    },
+    {
       "路径": "实现/测试资源.py",
       "sha256": "7cd925a0bc1c049b4c2d1e148886cad943a075e0b576446aa2b0220504772ace"
     },
@@ -50,6 +54,10 @@
     {
       "路径": "说明/设计说明.md",
       "sha256": "ad6064b17e03234a120b7f7f2c70e7b2860fb28a0917fdb88f549ae23a187106"
+    },
+    {
+      "路径": "资源预算.json",
+      "sha256": "662f7dbd2d29c22b470a3576d6a5829347caceba97c2ae1bfac3eec7fabf39b1"
     },
     {
       "路径": "配置契约/配置契约.json",

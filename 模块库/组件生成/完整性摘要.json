@@ -52,6 +52,10 @@
       "sha256": "3d443c952d6c5d1f86703a38274f39a5dcbe493ba7f91d38989a2b8e1474f065"
     },
     {
+      "路径": "资源预算.json",
+      "sha256": "4dfc0a63e2252cec3cf584dfef706b9e4b9953899c279ff401b6169deb87a39f"
+    },
+    {
       "路径": "配置契约/配置契约.json",
       "sha256": "7ebc855932ba2718094f65bfd0da463acc8c2e4359ce1bc089e3d4a9dd161e7d"
     },
