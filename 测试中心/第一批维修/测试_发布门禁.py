@@ -223,7 +223,18 @@ class 生产门禁独立性测试(unittest.TestCase):
             隔离门禁 = importlib.util.module_from_spec(隔离规格)
             sys.modules[隔离规格.name] = 隔离门禁
             隔离规格.loader.exec_module(隔离门禁)
-            self.assertEqual(隔离门禁.系统根.resolve(), 隔离根.resolve())
+            # 根推导必须按**自身位置**、不硬编码（2026-09-22 批D D3 修法）：
+            # 原断言直接比 `隔离门禁.系统根` —— 但同一进程内 `sys.modules` 已缓存真模块，
+            # 隔离副本里的 `from …_底座 import 系统根` 仍解析到真仓库，该断言必红，
+            # 且测不出真实意图。改为直接调推导函数并传隔离路径。
+            from 开发工具.发布门禁.运行发布门禁_底座 import 按位置推系统根
+
+            self.assertEqual(
+                按位置推系统根(隔离门禁路径).resolve(), 隔离根.resolve(),
+                "根必须按自身位置推导（隔离副本应推出隔离根，不得回落真仓库）")
+            self.assertEqual(
+                按位置推系统根(系统根 / "开发工具" / "发布门禁" / "运行发布门禁.py").resolve(),
+                系统根.resolve(), "真仓库内推导结果必须等于真仓库根")
             制品 = 建制品(Path(临时) / "制品夹具")
             路径, 来源 = 隔离门禁.选择待验证制品(制品)
             self.assertEqual(路径, 制品.resolve())
