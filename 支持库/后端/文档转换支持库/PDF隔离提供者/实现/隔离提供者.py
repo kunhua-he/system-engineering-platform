@@ -34,7 +34,7 @@ import 支持库.适配层.PDF隔离提供者  # noqa: F401 —— 公开入口�
 )
 
 if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
-    唯一实现文件 = 系统根 / "支持库" / "适配层" / "PDF隔离提供者" / "实现" / "隔离提供者"
+    唯一实现文件 = 系统根 / "支持库" / "适配层" / "PDF隔离提供者" / "实现" / "隔离提供者.py"
     _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
     if _规格 is None or _规格.loader is None:
         raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")

@@ -268,7 +268,19 @@ python3.14 -m 开发工具.HTML验证.验证器 --制品 <编译产物目录> --
 ### 4. 落地要求
 
 - 40007 常驻网关必须跑**激活制品**（`工程缓存/制品仓库/平台客户端环境/平台客户端/` 固定路径），
-  plist 三处同改：`WorkingDirectory` → 制品环境目录、`ProgramArguments[1]` → 制品内 `运行核心/启动运行核心网关.py`、`PYTHONPATH` 保持 `.`。
+  plist 三处同改：`WorkingDirectory` → 制品环境目录、`ProgramArguments[1]` → 制品内**双层**路径
+  `平台客户端/运行核心/启动运行核心网关.py`、`PYTHONPATH` 保持 `.`。
+  **★ 改完 plist 文件 ≠ 切换生效（2026-09-21 实测，假绿级陷阱）**：`launchctl kickstart` 用的是
+  launchd **已加载的作业定义**、**不重读 plist** —— 实测改完 plist 再重启，报「就绪/健康/能力数/
+  装配告警」全绿，而 `ps` 的 argv 与 `lsof` 的 cwd **仍是源码树**（差一步就误报切换成功）。
+  必须 `launchctl bootout gui/<uid>/com.huashi.gateway-40007` + `launchctl bootstrap gui/<uid>
+  ~/Library/LaunchAgents/com.huashi.gateway-40007.plist` 重载；**验收判据必须是
+  `ps -o command=`（argv 见制品内双层路径）与 `lsof -a -p <pid> -d cwd -Fn`（cwd = 制品环境目录）**，
+  只看健康检查不算验过。另：`plutil -replace ProgramArguments.1` 是**插入**不是替换（数组会变三项、
+  旧值被挤到 index 2），须再 `plutil -remove ProgramArguments.2` 清理。
+  **切换后构建能力须显式给 `源码根`**：`自修复工具.构建平台客户端制品` 的 `系统根` 由实现模块位置
+  推出，网关跑制品时那就是制品根，而 `客户端/` 不在制品的 `顶层包表` 里 ⇒ 不传 `源码根` 会找不到
+  构建脚本本体（该参数即为此而加，见债务 #215）。
 - **构建/入库/安装一律走 HTTP 能力**：`自修复工具.构建平台客户端制品` → `入库客户端制品` →
   `签名制品` → `安装平台客户端制品` → `校验平台客户端制品`（五步各有对外能力，经 40007 调用）。
   **不得**再跑 `python3.14 客户端/构建平台客户端.py`（py 腿，见 §3 无豁免口径）。
