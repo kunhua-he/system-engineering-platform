@@ -31,6 +31,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 # 路径含中文，必须 URL 编码；不编码会静默落到 404（实踩）。
 网关地址 = "http://127.0.0.1:40007/" + urllib.parse.quote("网关/调用")
 系统根 = Path(__file__).resolve().parents[1]
@@ -65,7 +67,7 @@ def 调能力(能力id: str, 参数: dict, 凭证: str) -> dict:
     except urllib.error.HTTPError as 错误:
         return json.loads(错误.read().decode("utf-8", "replace"))
     except Exception as 错误:  # noqa: BLE001 - 单题异常计入失败，不中断整轮
-        return {"成功": False, "错误码": type(错误).__name__, "错误说明": str(错误)}
+        return {"成功": 假, "错误码": type(错误).__name__, "错误说明": str(错误)}
 
 
 def 报错并停(标签: str, 信封: dict) -> None:

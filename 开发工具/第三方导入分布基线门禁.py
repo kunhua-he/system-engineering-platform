@@ -72,6 +72,7 @@ if str(仓库根) not in sys.path:
     sys.path.insert(0, str(仓库根))
 
 from 公共契约.正式根 import 遍历源码, 正式根名表
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 #: 基线落点（与 `能力id冻结基线.json` 同目录：`开发文档/项目证据/`）。
 基线相对路径 = ("开发文档", "项目证据", "第三方导入分布基线.json")
@@ -110,9 +111,9 @@ def _扫面内(路径: Path, 根: Path) -> bool:
     """
     相对段 = 路径.relative_to(根).parts
     if "__pycache__" in 相对段:
-        return False
+        return 假
     if any(片段 in 相对段 for 片段 in 排除路径片段):
-        return False
+        return 假
     # `scripts/` 只在**技能目录**下排除：平台自己的 scripts 目录若将来出现，
     # 按同一理由（跑在注入环境里）也排除；当前全仓 `scripts/` 只出现在技能下。
     return not any(段 in 排除目录段 for 段 in 相对段[:-1])

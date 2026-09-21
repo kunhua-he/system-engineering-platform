@@ -143,7 +143,7 @@ class 估算token测试(unittest.TestCase):
     def setUp(self) -> None:
         self._临时 = tempfile.TemporaryDirectory(prefix="测试_估算token_")
         self.根 = Path(self._临时.name)
-        (self.根 / "甲.py").write_text("a", encoding="utf-8")
+        (self.根 / "文件1.py").write_text("a", encoding="utf-8")
 
     def tearDown(self) -> None:
         self._临时.cleanup()

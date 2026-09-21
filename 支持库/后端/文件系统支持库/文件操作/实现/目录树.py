@@ -64,8 +64,8 @@ def _被忽略(相对路径: str, 名称: str, 忽略模式表: tuple) -> bool:
     """
     for 模式 in 忽略模式表:
         if fnmatch.fnmatch(名称, 模式) or fnmatch.fnmatch(相对路径, 模式):
-            return True
-    return False
+            return 真
+    return 假
 
 
 def _估算token(文本: str) -> int:

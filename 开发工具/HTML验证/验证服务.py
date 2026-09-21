@@ -7,6 +7,7 @@ from 开发工具.HTML验证.HTTP请求 import _校验直连地址
 from 开发工具.HTML验证.场景加载 import _加载场景
 from 开发工具.HTML验证.场景执行器 import _执行场景束
 from 开发工具.HTML验证.验证证据 import 生成场景文件
+from 公共契约.基础类型.逻辑类型 import 真, 假
 def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Path | None = None) -> int:
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -92,9 +93,9 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
                 except OSError as 读取错误:
                     状态码 = 502
                     返回 = json.dumps({
-                        "成功": False, "值": None, "错误码": "网关断开",
+                        "成功": 假, "值": None, "错误码": "网关断开",
                         "错误说明": f"读取错误响应体失败: {读取错误}",
-                        "可重试": True, "请求id": uuid.uuid4().hex, "耗时毫秒": 0,
+                        "可重试": 真, "请求id": uuid.uuid4().hex, "耗时毫秒": 0,
                     }, ensure_ascii=False).encode()
                 finally:
                     错误.close()

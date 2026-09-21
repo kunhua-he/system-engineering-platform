@@ -298,10 +298,23 @@ def 模块替换标记(文件: Path) -> dict[str, Any] | None:
             候选.append(绑定[取值.id])
     if not 命中替换赋值:
         return None
-    # 兜底候选：文件里出现的所有「点分模块名」字符串（含 `唯一实现名 = "…"` 这类绑定）
+    # 兜底候选：文件里出现的所有「点分模块名」字符串（含 `唯一实现名 = "…"` 这类绑定）。
+    #
+    # ★ 2026-09-22 加宽（实测 47 条能力被误报为「转调目标未解析」）：本仓现行转调写法是
+    #   `唯一实现名 = 取根前缀(__name__) + "支持库.适配层.X.实现.Y"` —— 根前缀在制品里才不同、
+    #   必须运行时求值，所以那一段是 BinOp 而不是字符串常量。只收「绑定到 Name 的常量」时，
+    #   拼接写法整批落到「未解析出静态模块名」；但**字面量那一段**本身就能定位到文件。
+    #   故同时收「加法表达式两侧的模块名形字符串常量」。多收的候选由「能定位到文件且
+    #   目标里定义了该函数」的下游判据自然筛掉，不会拿无关字符串冒充已解析。
     for 值 in list(绑定.values()):
         if _疑似模块名字符串(值):
             候选.append(值)
+    for 节点 in ast.walk(树):
+        if not (isinstance(节点, ast.BinOp) and isinstance(节点.op, ast.Add)):
+            continue
+        for 侧 in (节点.left, 节点.right):
+            if isinstance(侧, ast.Constant) and _疑似模块名字符串(侧.value):
+                候选.append(侧.value)
     去重候选 = [名 for 名 in dict.fromkeys(候选) if _疑似模块名字符串(名)]
     return {"自替换": 自替换, "候选模块": 去重候选}
 def _跟随转调(文件: Path, 函数名: str, 系统根: Path | None) -> tuple[Path | None, str]:

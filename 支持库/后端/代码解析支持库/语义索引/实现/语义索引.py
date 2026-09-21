@@ -16,6 +16,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 from 支持库.后端.代码解析支持库.语义索引.实现.嵌入 import (
@@ -66,7 +67,7 @@ def 建代码索引(索引根=None, 库文件="", 嵌入模型名=默认嵌入�
 
     句柄, 说明 = 取句柄(嵌入模型名)
     if 句柄 is None:
-        return 结果.失败("嵌入不可用", 说明, 来源=来源, 可重试=True)
+        return 结果.失败("嵌入不可用", 说明, 来源=来源, 可重试=真)
     记录列表: list[dict] = []
     命中缓存数 = 新算数 = 0
     嵌入错误 = ""
@@ -85,7 +86,7 @@ def 建代码索引(索引根=None, 库文件="", 嵌入模型名=默认嵌入�
         释放模型句柄(句柄)
     if not 记录列表:
         return 结果.失败("嵌入不可用", f"全部块嵌入失败：{嵌入错误 or '未产生任何向量'}",
-                        来源=来源, 可重试=True)
+                        来源=来源, 可重试=真)
 
     库文件路径 = _解析库文件(str(根), 库文件)
     try:
@@ -109,7 +110,7 @@ def 建代码索引(索引根=None, 库文件="", 嵌入模型名=默认嵌入�
 
 def _命中模式(文件路径: str, 文件模式: str) -> bool:
     if not 文件模式.strip():
-        return True
+        return 真
     return fnmatch(文件路径, 文件模式) or fnmatch(Path(文件路径).name, 文件模式)
 
 

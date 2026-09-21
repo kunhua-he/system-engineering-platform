@@ -71,15 +71,15 @@ def 切片集合(归一: str, 宽: int = 3) -> set[str]:
     return {归一[i:i + 宽] for i in range(0, max(0, len(归一) - 宽 + 1))}
 
 
-def 粗相似(甲: set[str], 乙: set[str]) -> float:
-    if not 甲 or not 乙:
+def 粗相似(集合一: set[str], 集合二: set[str]) -> float:
+    if not 集合一 or not 集合二:
         return 0.0
-    交 = len(甲 & 乙)
-    return 交 / (len(甲) + len(乙) - 交)
+    交 = len(集合一 & 集合二)
+    return 交 / (len(集合一) + len(集合二) - 交)
 
 
-def 精相似(甲: str, 乙: str) -> float:
-    return difflib.SequenceMatcher(None, 甲, 乙).ratio()
+def 精相似(文本一: str, 文本二: str) -> float:
+    return difflib.SequenceMatcher(None, 文本一, 文本二).ratio()
 
 
 class 库:

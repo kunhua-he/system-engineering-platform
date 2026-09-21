@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from 平台控制面.能力目录.单文件互斥存储 import 单文件互斥存储
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 存储文件名 = "文件租约.json"
 锁文件名 = ".文件租约.lock"
@@ -95,11 +96,11 @@ def 是活跃(记录: object, *, 现在: float | None = None) -> bool:
     """
     如果 = 现在 if 现在 is not None else time.time()
     if not isinstance(记录, dict) or 记录.get("状态") != 活跃状态:
-        return False
+        return 假
     try:
         截止 = float(记录.get("过期时间"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return True   # 缺键/坏值：无从判过期，按活跃处理（不因数据缺失误放行）
+        return 真   # 缺键/坏值：无从判过期，按活跃处理（不因数据缺失误放行）
     return 如果 < 截止
 
 

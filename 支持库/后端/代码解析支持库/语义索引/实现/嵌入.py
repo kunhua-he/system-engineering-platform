@@ -23,6 +23,8 @@ import re
 import threading
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 #: 查询/建索引共用的句柄缓存：`模型名 → 句柄`。长驻复用，理由见文件头。
 _句柄表: dict[str, int] = {}
 _句柄锁 = threading.Lock()
@@ -110,7 +112,7 @@ def 释放模型句柄(句柄: int) -> bool:
         结果 = _调用能力("大语言模型支持库.模型连接器.释放句柄", {"句柄": 句柄})
         return bool(结果.成功)
     except Exception:
-        return False
+        return 假
 
 
 def 嵌入一条(句柄: int, 模型名: str, 文本: str) -> dict:

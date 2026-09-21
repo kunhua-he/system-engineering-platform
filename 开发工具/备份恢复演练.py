@@ -45,7 +45,7 @@ if str(系统根) not in sys.path:
 
 from 公共契约.运行时.数据库URI import 只读库URI
 from 公共契约.运行时.平台适配 import 清只读后删除树
-from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.备份恢复演练核对 import 反向验证 as 跑反向验证, 建源副本, 核对一致性
 
 #: 某类确实取不到时用的真实文件夹具（`工程缓存/` 不入库，缺则该类如实报缺）。
@@ -126,13 +126,13 @@ def _合并生产根(合并目录: Path) -> Path:
             return 目标.is_symlink()
         try:
             目标.symlink_to(源, target_is_directory=源.is_dir())
-            return True
+            return 真
         except OSError:
             if 源.is_file():
                 shutil.copy2(源, 目标)
             elif 源.is_dir():
                 shutil.copytree(源, 目标, dirs_exist_ok=True, symlinks=True)
-            return False
+            return 假
 
     _链或复制(来源根["权威状态"] / "权威状态.db", 合并目录 / "权威状态.db")
     _链或复制(来源根["包仓库"], 合并目录 / "制品")

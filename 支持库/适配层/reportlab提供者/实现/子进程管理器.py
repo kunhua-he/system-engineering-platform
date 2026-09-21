@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
 from 公共契约.运行时.有界IO import 受限通信
 
@@ -90,7 +91,7 @@ def _执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) ->
     try:
         进程 = _启动子进程()
     except (OSError, ValueError) as 错误:
-        return 结果.失败("提供者不可用", f"无法启动 PDF 生成子进程: {错误}", 来源=能力名, 可重试=True)
+        return 结果.失败("提供者不可用", f"无法启动 PDF 生成子进程: {错误}", 来源=能力名, 可重试=真)
     请求行 = (json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8")
     try:
         标准输出, _标准错误, 已超时, 输出超限 = 受限通信(

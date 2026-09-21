@@ -50,6 +50,8 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
+
 网关地址 = "http://127.0.0.1:40007"
 服务标签 = "com.huashi.gateway-40007"
 plist路径 = Path.home() / "Library" / "LaunchAgents" / f"{服务标签}.plist"
@@ -124,9 +126,9 @@ def 就绪等待(凭证: str, 上限秒: float) -> tuple[bool, int, float]:
         轮次 += 1
         码, _ = _发("/健康", None, 凭证, 超时秒=3.0)
         if 码 in (200, 401, 403):
-            return True, 轮次, time.time() - 起点
+            return 真, 轮次, time.time() - 起点
         time.sleep(0.5)
-    return False, 轮次, time.time() - 起点
+    return 假, 轮次, time.time() - 起点
 
 
 def _取值(argv: list[str], 开关: str) -> str:
@@ -368,7 +370,7 @@ def 触发后台重启(argv: list[str]) -> int:
                          start_new_session=True, cwd=str(结果文件.parents[1]))
     print(json.dumps({
         "模式": "触发后台重启", "服务标签": 服务标签, "重启前进程号": 进程号(),
-        "成功": True, "已触发": True, "结果文件": str(结果文件),
+        "成功": 真, "已触发": 真, "结果文件": str(结果文件),
         "提示": "重启会掐断本次调用所在进程组，故结论写文件；"
                 "等 1~3 秒再跑 `--看结果` 或 `--探活` 取结论",
     }, ensure_ascii=False))
@@ -377,7 +379,7 @@ def 触发后台重启(argv: list[str]) -> int:
 
 def 看结果() -> int:
     if not 结果文件.is_file():
-        print(json.dumps({"成功": False, "错误说明": f"还没有结果文件：{结果文件}"}, ensure_ascii=False))
+        print(json.dumps({"成功": 假, "错误说明": f"还没有结果文件：{结果文件}"}, ensure_ascii=False))
         return 1
     print(结果文件.read_text(encoding="utf-8"))
     return 0
@@ -389,7 +391,7 @@ if __name__ == "__main__":
         raise SystemExit(看结果())
     凭 = 读取凭证()
     if not 凭:
-        print(json.dumps({"成功": False, "错误说明": f"plist 里取不到 {凭证变量名}"}, ensure_ascii=False))
+        print(json.dumps({"成功": 假, "错误说明": f"plist 里取不到 {凭证变量名}"}, ensure_ascii=False))
         raise SystemExit(2)
     if "--运行态同根" in 参:
         # 只读探针：不落盘（区别于 --探活 会写 网关重启结果.json），退出码 0/1 即结论。

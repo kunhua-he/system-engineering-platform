@@ -264,17 +264,17 @@ def 建假环境根(根: Path, 回收源: Path, 名字: str) -> tuple[Path, dict
         (假根 / 层名).symlink_to(系统根 / 层名)
     from 运行核心.运行环境管理器.环境管理器 import 计算环境摘要
     摘要表 = {}
-    for 名, 锁 in {"真实甲提供者": {"依赖": ["甲==1.0"]},
-                   "未生成丙提供者": {"依赖": ["丙==2.0"]}}.items():
+    for 名, 锁 in {"真实A提供者": {"依赖": ["A==1.0"]},
+                   "未生成C提供者": {"依赖": ["C==2.0"]}}.items():
         真身 = 假根 / "假提供者库" / 名
         真身.mkdir(parents=True)
         (真身 / "依赖锁.json").write_text(
             __import__("json").dumps(锁, ensure_ascii=False), encoding="utf-8")
         摘要表[名] = 计算环境摘要(锁, 名)
     环境根 = 假根 / "工程缓存/提供者运行环境"
-    for 名, 子表 in {"真实甲提供者": [摘要表["真实甲提供者"], "旧摘要_aaaaaaaa"],
-                    "未生成丙提供者": ["别的摘要_bbbbbbbb"],
-                    "来源不明乙提供者": ["任意摘要_cccccccc"]}.items():
+    for 名, 子表 in {"真实A提供者": [摘要表["真实A提供者"], "旧摘要_aaaaaaaa"],
+                    "未生成C提供者": ["别的摘要_bbbbbbbb"],
+                    "来源不明B提供者": ["任意摘要_cccccccc"]}.items():
         for 子 in 子表:
             目录 = 环境根 / 名 / 子
             目录.mkdir(parents=True)
@@ -302,9 +302,9 @@ class 提供者环境回收退出码测试(unittest.TestCase):
 
     def test_扫干净且已清退0(self) -> None:
         环境根 = self.脚本.parents[1] / "工程缓存/提供者运行环境"
-        shutil.rmtree(环境根 / "未生成丙提供者")
-        shutil.rmtree(环境根 / "来源不明乙提供者")
-        shutil.rmtree(环境根 / "真实甲提供者" / "旧摘要_aaaaaaaa")
+        shutil.rmtree(环境根 / "未生成C提供者")
+        shutil.rmtree(环境根 / "来源不明B提供者")
+        shutil.rmtree(环境根 / "真实A提供者" / "旧摘要_aaaaaaaa")
         码, 输出 = 跑脚本(self.脚本, ["--执行"])
         self.assertNotIn("保守跳过", 输出, 输出)
         self.assertEqual(码, 0, f"干净现场必须退 0（不许假红）：\n{输出}")

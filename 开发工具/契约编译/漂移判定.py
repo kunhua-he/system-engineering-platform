@@ -292,6 +292,13 @@ def 检测错误码漂移(契约: dict[str, Any], 实现文件: Path) -> list[st
     就报出 110 条这种**错归属**的假红（真问题 0 条）。定位不到该能力的函数时返回空表
     （无法归属），由 `全面漂移检测` 按「实现文件未定位」如实登记「未执行」，本函数
     不臆造归属、也不静默通过。
+
+    **位置口径（2026-09-22 修正）**：只认**失败上报位置**的码 —— `失败("…", …)` /
+    `_失败("…", …)` / `结果.失败("…", …)` 的首个位置实参，以及 `错误码="…"` 关键字实参
+    与 `结果.错误码 = "…"` 赋值。此前按「函数段内正则扫 8 个标准码字面量」实现，会把
+    **同名的结果字典键**也算成实现引用：实测 `模块库/自修复工具/实现/效率巡检.py` 的
+    `"超时": 汇总.get("超时", 0)`（那是「超时路数」计数、不是错误码）被判成 2 条假红。
+    判据错误不得说成被测缺陷，故收窄到上报位置。
     """
     问题列表 = []
     if not 实现文件.is_file():
@@ -299,25 +306,55 @@ def 检测错误码漂移(契约: dict[str, Any], 实现文件: Path) -> list[st
     内容 = 实现文件.read_text(encoding="utf-8")
     声明错误码 = set(契约.get("错误码", []))
     能力名 = 契约.get("能力id", "").split(".")[-1]
-    函数段 = None
-    if 能力名:
-        try:
-            树 = ast.parse(内容)
-        except SyntaxError:
-            return 问题列表
-        节点 = next((节点 for 节点 in ast.walk(树)
-                    if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and 节点.name == 能力名), None)
-        if 节点 is None:
-            return 问题列表
-        行表 = 内容.splitlines()
-        函数段 = "\n".join(行表[节点.lineno - 1: 节点.end_lineno])
-    if 函数段 is None:
+    if not 能力名:
         return 问题列表
-    for 错误码 in re.findall(r'"(参数不合法|能力不存在|权限不足|外部不可访问|超时|内部错误|契约不兼容|资源泄漏)"', 函数段):
-        if 错误码 not in 声明错误码:
+    try:
+        树 = ast.parse(内容)
+    except SyntaxError:
+        return 问题列表
+    节点 = next((节点 for 节点 in ast.walk(树)
+                if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and 节点.name == 能力名), None)
+    if 节点 is None:
+        return 问题列表
+    for 错误码 in _失败上报错误码(节点):
+        if 错误码 in _标准错误码集 and 错误码 not in 声明错误码:
             问题列表.append(f"错误码漂移: 实现引用 {错误码} 但契约未声明（{实现文件.name}）")
     return 问题列表
+
+
+_标准错误码集 = ("参数不合法", "能力不存在", "权限不足", "外部不可访问",
+               "超时", "内部错误", "契约不兼容", "资源泄漏")
+
+
+def _失败上报错误码(函数节点: ast.AST) -> list[str]:
+    """收集**失败上报位置**的字符串字面量。
+
+    认四种上报写法（实测本仓只用这四种）：`失败("…", …)` / `_失败("…", …)` /
+    `结果.失败("…", …)` 的首个位置实参；`错误码="…"` 关键字实参；`结果.错误码 = "…"` 赋值；
+    `{"错误码": "…"}` 字典字面量的值（统一结果信封的显式字段）。
+    **只认「错误码」这个字段名下的值** —— 结果字典里其它同名字段不算引用（如 `效率巡检` 的
+    `"超时": 汇总.get("超时", 0)` 是「超时路数」计数、不是错误码），故不扫任意字面量。
+    """
+    取值列表: list[ast.AST] = []
+    for 节点 in ast.walk(函数节点):
+        if isinstance(节点, ast.Call):
+            函数名 = (节点.func.id if isinstance(节点.func, ast.Name)
+                      else (节点.func.attr if isinstance(节点.func, ast.Attribute) else ""))
+            if 函数名 in ("失败", "_失败") and 节点.args:
+                取值列表.append(节点.args[0])
+            取值列表.extend(关键字.value for 关键字 in 节点.keywords
+                            if 关键字.arg == "错误码")
+        elif isinstance(节点, ast.Assign) and any(
+                isinstance(目标, ast.Attribute) and 目标.attr == "错误码"
+                for 目标 in 节点.targets):
+            取值列表.append(节点.value)
+        elif isinstance(节点, ast.Dict):
+            for 键, 值 in zip(节点.keys, 节点.values):
+                if isinstance(键, ast.Constant) and 键.value == "错误码":
+                    取值列表.append(值)
+    return [取值.value for 取值 in 取值列表
+            if isinstance(取值, ast.Constant) and isinstance(取值.value, str)]
 def 检测说明书一致(契约: dict[str, Any], 说明书文件: Path) -> str | None:
     """说明书与入口不一致：说明书缺参数/错误码/版本。"""
     if not 说明书文件.is_file():

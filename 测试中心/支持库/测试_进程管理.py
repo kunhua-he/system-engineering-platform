@@ -129,7 +129,7 @@ class 测试执行命令集(unittest.TestCase):
     """
 
     def test_串联全部成功(self) -> None:
-        结果 = 执行命令集(命令表=["echo 甲", "echo 乙", "echo 丙"], 模式="串联")
+        结果 = 执行命令集(命令表=["echo 输出1", "echo 输出2", "echo 输出3"], 模式="串联")
         self.assertTrue(结果.成功, 结果.错误说明)
         值 = 结果.值
         self.assertEqual(值["总数"], 3)
@@ -138,8 +138,8 @@ class 测试执行命令集(unittest.TestCase):
         self.assertEqual(值["已跳过数"], 0)
         self.assertTrue(值["全部成功"])
         self.assertEqual([项["序号"] for 项 in 值["结果表"]], [1, 2, 3])
-        self.assertIn("甲", 值["结果表"][0]["标准输出"])
-        self.assertIn("丙", 值["结果表"][2]["标准输出"])
+        self.assertIn("输出1", 值["结果表"][0]["标准输出"])
+        self.assertIn("输出3", 值["结果表"][2]["标准输出"])
 
     def test_非零退出码必须判失败(self) -> None:
         """反向验证点：`false` 退出码 1，`执行命令` 判成功，本能力必须判失败。"""

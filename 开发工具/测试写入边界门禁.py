@@ -133,6 +133,7 @@ if str(仓库根) not in sys.path:
     sys.path.insert(0, str(仓库根))
 
 from 公共契约.正式根 import 遍历源码
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 #: 扫描根（相对仓库根）。
 扫描根名 = "测试中心"
@@ -198,7 +199,7 @@ mock空转 = "测试mock-环境变量零读点"
 def _是os_path(被调: ast.AST) -> bool:
     """``os.path.join`` / ``path.join`` 形态（**排除** `"sep".join(...)` 这类字符串方法）。"""
     if not isinstance(被调, ast.Attribute) or 被调.attr != "join":
-        return False
+        return 假
     接收 = 被调.value
     if isinstance(接收, ast.Name):
         return 接收.id in ("path", "os")
@@ -222,7 +223,7 @@ def 像仓库内相对路径(文本: str) -> bool:
     """该字面量是否形如「仓库内相对路径」（首段是仓库顶层目录名，且不是绝对路径）。"""
     净 = 文本.strip().lstrip("./")
     if not 净 or 净.startswith(("/", "~")):
-        return False
+        return 假
     return 净.split("/")[0] in _仓库内顶层目录名()
 
 
@@ -434,12 +435,12 @@ def 只看成功字段(参数们: list[ast.expr]) -> bool:
         for 子 in ast.walk(参数):
             if isinstance(子, ast.Attribute):
                 if 子.attr != 成功字段名:
-                    return False
+                    return 假
                 有成功 = True
             elif isinstance(子, (ast.Subscript, ast.Compare, ast.Call, ast.BinOp)):
-                return False
+                return 假
             elif isinstance(子, ast.UnaryOp) and not isinstance(子.op, ast.Not):
-                return False
+                return 假
     return 有成功
 
 

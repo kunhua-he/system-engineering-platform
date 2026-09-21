@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.基础类型.逻辑类型 import 真, 假
 
 默认网关地址 = "http://127.0.0.1:40007/" + urllib.parse.quote("网关/调用")
 凭证键 = "系统库网关凭证"
@@ -66,7 +67,7 @@ def _调一路(地址: str, 凭证: str, 项目根: str, 能力id: str, 参数: 
     except urllib.error.HTTPError as 错误:
         return json.loads(错误.read().decode("utf-8", "replace"))
     except Exception as 错误:  # noqa: BLE001 - 单路异常记状态，不中断整轮
-        return {"成功": False, "错误码": type(错误).__name__, "错误说明": str(错误)}
+        return {"成功": 假, "错误码": type(错误).__name__, "错误说明": str(错误)}
 
 
 def _抽条(信封: dict, 列表键: str, 身份键: str, 摘要键: str) -> list[dict]:

@@ -11,38 +11,38 @@
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "写模块甲",
+          "步骤id": "写模块A",
           "能力id": "文件系统支持库.文件操作.写入文件",
           "参数": {
-            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块甲.py"},
-            "内容": "def 函数甲一():\n    return 1\n\n\ndef 函数甲二():\n    return 函数甲一()\n\n\ndef 函数甲三():\n    return 函数甲二()\n\n\nclass 类甲:\n    def 方法甲一(self):\n        return 函数甲三()\n\n    def 方法甲二(self):\n        return self.方法甲一()\n"
+            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块A.py"},
+            "内容": "def 函数A一():\n    return 1\n\n\ndef 函数A二():\n    return 函数A一()\n\n\ndef 函数A三():\n    return 函数A二()\n\n\nclass 类A:\n    def 方法A一(self):\n        return 函数A三()\n\n    def 方法A二(self):\n        return self.方法A一()\n"
           },
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "写模块乙",
+          "步骤id": "写模块B",
           "能力id": "文件系统支持库.文件操作.写入文件",
           "参数": {
-            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块乙.py"},
-            "内容": "from 模块甲 import 函数甲一, 类甲\n\n\ndef 函数乙一():\n    return 函数甲一()\n\n\ndef 函数乙二():\n    return 类甲()\n\n\ndef 函数乙三():\n    return 函数乙一(), 函数乙二()\n"
+            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块B.py"},
+            "内容": "from 模块A import 函数A一, 类A\n\n\ndef 函数B一():\n    return 函数A一()\n\n\ndef 函数B二():\n    return 类A()\n\n\ndef 函数B三():\n    return 函数B一(), 函数B二()\n"
           },
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "写模块丙",
+          "步骤id": "写模块C",
           "能力id": "文件系统支持库.文件操作.写入文件",
           "参数": {
-            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块丙.py"},
-            "内容": "def 甲一():\n    return 1\n\n\ndef 甲二():\n    return 甲一()\n\n\ndef 甲三():\n    return 甲二()\n\n\ndef 甲四():\n    return 甲三()\n\n\ndef 甲五():\n    return 甲四()\n\n\ndef 甲六():\n    return 甲五()\n\n\ndef 甲七():\n    return 甲六()\n\n\ndef 甲八():\n    return 甲七()\n\n\ndef 甲九():\n    return 甲八()\n\n\ndef 甲十():\n    return 甲九()\n\n\ndef 甲十一():\n    return 甲十()\n\n\ndef 甲十二():\n    return 甲十一()\n"
+            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块C.py"},
+            "内容": "def A一():\n    return 1\n\n\ndef A二():\n    return A一()\n\n\ndef A三():\n    return A二()\n\n\ndef A四():\n    return A三()\n\n\ndef A五():\n    return A四()\n\n\ndef A六():\n    return A五()\n\n\ndef A七():\n    return A六()\n\n\ndef A八():\n    return A七()\n\n\ndef A九():\n    return A八()\n\n\ndef A十():\n    return A九()\n\n\ndef A十一():\n    return A十()\n\n\ndef A十二():\n    return A十一()\n"
           },
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "写模块丁",
+          "步骤id": "写模块D",
           "能力id": "文件系统支持库.文件操作.写入文件",
           "参数": {
-            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块丁.py"},
-            "内容": "def 乙一():\n    return 1\n\n\ndef 乙二():\n    return 乙一()\n\n\ndef 乙三():\n    return 乙二()\n\n\ndef 乙四():\n    return 乙三()\n\n\ndef 乙五():\n    return 乙四()\n\n\ndef 乙六():\n    return 乙五()\n\n\ndef 乙七():\n    return 乙六()\n\n\ndef 乙八():\n    return 乙七()\n\n\ndef 乙九():\n    return 乙八()\n\n\ndef 乙十():\n    return 乙九()\n\n\ndef 乙十一():\n    return 乙十()\n\n\ndef 乙十二():\n    return 乙十一()\n"
+            "文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块D.py"},
+            "内容": "def B一():\n    return 1\n\n\ndef B二():\n    return B一()\n\n\ndef B三():\n    return B二()\n\n\ndef B四():\n    return B三()\n\n\ndef B五():\n    return B四()\n\n\ndef B六():\n    return B五()\n\n\ndef B七():\n    return B六()\n\n\ndef B八():\n    return B七()\n\n\ndef B九():\n    return B八()\n\n\ndef B十():\n    return B九()\n\n\ndef B十一():\n    return B十()\n\n\ndef B十二():\n    return B十一()\n"
           },
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         }
@@ -114,27 +114,27 @@
       ],
       "清理步骤": [
         {
-          "步骤id": "删模块甲",
+          "步骤id": "删模块A",
           "能力id": "文件系统支持库.文件操作.删除文件",
-          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块甲.py"}},
+          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块A.py"}},
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "删模块乙",
+          "步骤id": "删模块B",
           "能力id": "文件系统支持库.文件操作.删除文件",
-          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块乙.py"}},
+          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块B.py"}},
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "删模块丙",
+          "步骤id": "删模块C",
           "能力id": "文件系统支持库.文件操作.删除文件",
-          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块丙.py"}},
+          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块C.py"}},
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
-          "步骤id": "删模块丁",
+          "步骤id": "删模块D",
           "能力id": "文件系统支持库.文件操作.删除文件",
-          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块丁.py"}},
+          "参数": {"文件路径": {"$动态": "受管临时路径", "相对路径": "地图夹具/模块D.py"}},
           "预期": {"成功": true, "状态码": 200, "返回断言": {"值": true}}
         },
         {
