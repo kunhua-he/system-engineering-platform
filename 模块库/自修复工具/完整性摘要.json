@@ -5,15 +5,19 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "3251a2e0125c4f0ea73c9d4973a7239f673a898822b3d2fe2521a415e375b5e8"
+      "sha256": "2d6750796511e93b50832d26eba346c56d865793c50302f79bdd83cf453d731c"
     },
     {
       "路径": "包声明.json",
-      "sha256": "656d5740055025ae76da02cd2155255de6a30c6a6ac081c56939f8a896c947d4"
+      "sha256": "a2f7ff314f91be8a0d4f0e9bada38eea761227311d142e62f896b4446bf2a8a9"
     },
     {
       "路径": "复用决策.json",
       "sha256": "8207a99315d2dcf865db8b573fd7f59db3e97af3254efc646d944c62f6cb50cd"
+    },
+    {
+      "路径": "实现/开发编译口自检.py",
+      "sha256": "262ed763f1dbe228727b2c9155d3bb0d0a086b10d640aee22f44d866dade57ac"
     },
     {
       "路径": "实现/自修复工具.py",
@@ -21,15 +25,15 @@
     },
     {
       "路径": "权限契约/权限契约.json",
-      "sha256": "5db0c73cc614da1489b6bc93a94747d1bcfe42f4bce2b95fa76b6d3db96ef00f"
+      "sha256": "4a1c1833754bc82a71c7039cf944cdca3fed4fbe23eb73c8a889689bee3fe731"
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "448573be68ce4107db843174a583dd0300e23f1f1eddc6dbaa15a2f50d46c8c8"
+      "sha256": "58e93d586a1e4dffc1d7bd1078a84fb2d05daca42c0fe98bdf3c195b029fa5bc"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "3ac14e1f86e438e962860357a4a903c60f8065d1ee3eda22a2bcd6c9c0a9d5e5"
+      "sha256": "5b522336e705b97e9913708c63fe751deadb523a7a6cd662d05728c0cce5ad1d"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -60,24 +64,29 @@
       "sha256": "d3e85ec91277ac4948258e922e236c0d7bb040f7f7dfa2f8c71615b94d21c2a3"
     },
     {
+      "路径": "验证场景/开发编译口自检.json",
+      "sha256": "e7696c3ada972c3dc22f0154d88113ab26eb4ce4e0acb9d694fb6f7e7258977b"
+    },
+    {
       "路径": "验证场景/正向HTTP场景.json",
       "sha256": "ba3e2de2f45049cdc2027d21bb8adc58bb80ec5ec6de9eea5ee473742fae49d0"
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "8343c9103982fba4bad471b3100d57e856ed7132c1b1191a3afe0c9618a7a24d"
+      "sha256": "024a1af6d69080f864802c52414bc2f5cc9c223324f5c17606f86d709850ff85"
     },
     {
       "路径": "验证夹具/最小Git仓库.zip",
       "sha256": "9b930e236e428d2803571397eb601b765a6acbe3db36456e67c418cddcff7244"
     }
   ],
-  "能力数": 4,
+  "能力数": 5,
   "能力清单": [
     "自修复工具.创建修复工作区",
     "自修复工具.验证修复",
     "自修复工具.回滚修复",
+    "自修复工具.运行开发编译口",
     "自修复工具.获取当前提交哈希"
   ],
-  "能力定义摘要": "f3f30e03de89ef4f"
+  "能力定义摘要": "ced378fc8690dbd2"
 }
