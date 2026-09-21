@@ -95,6 +95,12 @@ class 有界线程HTTP服务器(ThreadingHTTPServer):
             self.活动工作线程数 = max(0, self.活动工作线程数 - 1)
         self._工作线程信号量.release()
 
+    #: 429 响应带 HTTP 标准头 `Retry-After` 的秒数（RFC 9110 §10.2.3）。
+    #: 真源＝`安全/限流器.py::建议重试秒`；本文件受分层约束（见文件头：不导入同目录
+    #: 任何模块）不能 import，故就地复制 —— **值必须与真源一致**。**不要**改成 0
+    #: （等于让客户端立刻重试 ⇒ 没限流），也不要删掉该头（调用方只能盲目重试）。
+    限流建议重试秒 = 1
+
     def _写限流响应(self, request) -> None:
         正文 = json.dumps({
             "请求id": "", "操作": "HTTP边界", "成功": 假, "值": None,
@@ -105,6 +111,9 @@ class 有界线程HTTP服务器(ThreadingHTTPServer):
             "HTTP/1.1 429 Too Many Requests\r\n"
             "Content-Type: application/json; charset=utf-8\r\n"
             f"Content-Length: {len(正文)}\r\n"
+            # HTTP 标准头（RFC 9110 §10.2.3）：429 必须告诉客户端「多久后可重试」，
+            # 否则调用方只能盲目立刻重试 ⇒ 限流形同虚设。
+            f"Retry-After: {self.限流建议重试秒}\r\n"
             "Cache-Control: no-store\r\n"
             "Connection: close\r\n\r\n"
         ).encode("ascii")

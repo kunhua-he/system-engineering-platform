@@ -107,6 +107,14 @@ class 网关边界面:
             self.send_header("Content-Length", str(len(正文)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            # HTTP 标准头（RFC 9110 §10.2.3）：429 必须告诉客户端「多久后可重试」，
+            # 否则调用方只能盲目立刻重试 ⇒ 限流形同虚设。**收口在此处**：所有 429 都
+            # 经 `_拒绝` → `_写JSON` 出去，调用点不要各写各的。
+            # 常量真源＝`安全/限流器.py::建议重试秒`（该模块是最底层，延迟导入无环）。
+            if 状态码 == 429:
+                from 运行核心.统一网关.安全.限流器 import 建议重试秒
+
+                self.send_header("Retry-After", str(建议重试秒))
             来源 = self.headers.get("Origin", "")
             if 来源 and 来源 in self.网关服务器.安全配置.允许来源表:
                 self.send_header("Access-Control-Allow-Origin", 来源)
