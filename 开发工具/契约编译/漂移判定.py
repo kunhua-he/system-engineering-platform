@@ -444,7 +444,9 @@ def 检测能力定义漂移(包目录: Path) -> list[str]:
     try:
         定义 = 读取能力定义(定义文件)
     except json.JSONDecodeError as 错误:
-        问题列表.append(f"能力定义 JSON 解析失败: {定义文件}：{错误}")
+        问题列表.append(f"能力定义 JSON 解析失败: {定义文件}：{错误}"
+                      "（提示：能力定义.json 是 JSON，布尔必须写 true/false，"
+                      "中文 真/假 只允许出现在 .py 里；中文布尔就是本类报错的最常见原因）")
         return 问题列表
     结构问题 = 校验能力定义(定义)
     问题列表.extend(f"能力定义结构: {问题}" for 问题 in 结构问题)
