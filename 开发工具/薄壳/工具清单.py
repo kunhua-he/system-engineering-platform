@@ -74,6 +74,13 @@ from 支持库.适配层.MCP协议提供者 import 构造工具定义
                 "项目根": {"type": "string", "description": "【本工具自己的参数 · 平台身份校验用】系统工程平台仓库绝对路径；非本仓库不要调用。注意：它与能力自身的同名参数是两回事，见 能力自身参数 的说明"},
             },
             "required": ["关键词", "项目根"],
+            # `additionalProperties: false`（2026-09-21 批 2 · L9）：Claude 作为 MCP 客户端
+            # **强制要求**，缺了报 `Invalid schema`。实测它还**真的生效** —— mcp SDK 在
+            # `server/lowlevel/server.py` 用 `jsonschema.validate(=arguments, schema=tool.inputSchema)`
+            # 执行本 schema ⇒ 传错参数名会**当场报错**而不是被静默忽略（这正是治「猜参数名」）。
+            # ⚠️ 只能加在**工具顶层 schema**：绝不能加进 `参数`（能力自己参数是任意对象，
+            # 加进去会把所有能力参数拒掉）。
+            "additionalProperties": False,
         },
     ),
     构造工具定义(
@@ -151,11 +158,13 @@ from 支持库.适配层.MCP协议提供者 import 构造工具定义
                        "description": "转发哪个网关操作，默认「调用能力」。能力详情=按 能力id 读**权威落盘契约**（包内 参数契约/配置契约/资源预算 + 契约版本 + 调用方式）——要真实参数名/类型就调它，不要猜；热接入=新增/变更包增量装配免重启（不需要 能力id、不接受 参数）；健康检查=探活。白名单 fail-closed，表外操作不转发"},
                 "能力id": {"type": "string", "description": "真实能力 id，例如 开工编排.开工准备（不是工具名 capability_call）。操作=热接入/健康检查 时不需要"},
                 "参数": {"type": "object", "description": "【能力自身的入参】原样转发给网关；能力契约里声明的必填参数（含它自己的 项目根）都在这里给。★ 先经 capability_search / 能力目录.读取能力 确认参数名与类型，不要猜。操作=热接入/健康检查 时必须留空"},
-                "返回上限字符": {"type": "integer", "description": "返回 `值` 的字符上限，默认 6000；超了结构化裁剪并回带 `值裁剪` 说明。0 = 不限（慎用，大返回会灌满上下文）"},
+                "返回上限字符": {"type": "integer", "description": "返回 `值` 的字符上限，默认 6000；超了就**深裁**：先缩长文本叶子（头尾各半，中间标 `...[truncated N chars]...`），字典/列表的结构与键序一字不动；缩不动才退到丢尾键/截尾。0 = 不限（慎用，大返回会灌满上下文）"},
                 "值字段": {"type": "array", "items": {"type": "string"}, "description": "只保留 `值` 的这些顶层键（精确取字段，最省上下文）。空/不传 = 保留全部"},
                 "项目根": {"type": "string", "description": "【本工具自己的参数 · 平台身份校验用】系统工程平台仓库绝对路径；非本仓库不要调用"},
             },
             "required": ["项目根"],
+            # 同 L9：顶层拒未知键。注意 `参数` 内部**不设**该约束（能力参数形状由能力契约定）。
+            "additionalProperties": False,
         },
     ),
     构造工具定义(
@@ -171,7 +180,7 @@ from 支持库.适配层.MCP协议提供者 import 构造工具定义
             "`是否一致=假` 即说明你手上的工具描述/入参是旧的，**不要照它调**。"
             "薄壳不自重启、也不尝试重启，只如实报「不一致 + 怎么处理」。"
         ),
-        {"type": "object", "properties": {}},
+        {"type": "object", "properties": {}, "additionalProperties": False},
     ),
 )
 

@@ -43,7 +43,7 @@ from typing import Any
 from 支持库.适配层.MCP协议提供者 import (
     构造服务,
     构造初始化选项,
-    构造文本内容,
+    构造工具结果,
     标准输入输出上下文,
 )
 
@@ -463,7 +463,7 @@ async def 工具列表() -> list:
 
 
 @服务.call_tool()
-async def 调用工具(名称: str, 参数: dict[str, Any]) -> list:
+async def 调用工具(名称: str, 参数: dict[str, Any]):
     协议名 = 中文名到协议名.get(str(名称), str(名称))
     处理 = 分发表.get(协议名)
     if 处理 is None:
@@ -475,7 +475,12 @@ async def 调用工具(名称: str, 参数: dict[str, Any]) -> list:
         except Exception as 异常:  # 薄壳不吞异常细节以外的信息，凭证不入错误文本
             数据 = {"成功": 假, "错误码": "薄壳内部错误",
                     "错误说明": f"{type(异常).__name__}: {str(异常)[:200]}"}
-    return [构造文本内容(json.dumps(数据, ensure_ascii=False, indent=2))]
+    # `isError` 如实置（2026-09-21 批 2 · L10）：业务失败必须让客户端与模型**看得见**。
+    # 此前只回 list[TextContent]，而 SDK 对「返回 list」的正常路径固定 isError=False
+    # ⇒ `参数不合法` 这类失败在 MCP 链路上完全不可见，模型于是反复重试同一错误
+    # （SEP-1303：输入校验失败必须走 Tool Execution Error，不许走 Protocol Error）。
+    return 构造工具结果(json.dumps(数据, ensure_ascii=False, indent=2),
+                    失败=not bool(数据.get("成功")))
 
 
 async def 主程序() -> None:

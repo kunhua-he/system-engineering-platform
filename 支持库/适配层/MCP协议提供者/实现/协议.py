@@ -5,7 +5,7 @@
 
 分工：
 - 探针（检查可用性）注册为能力，供健康检查与依赖审计；
-- 服务端侧：构造服务/构造初始化选项/构造工具定义/构造文本内容/标准输入输出上下文；
+- 服务端侧：构造服务/构造初始化选项/构造工具定义/构造文本内容/构造工具结果/标准输入输出上下文；
 - 客户端侧：构造标准输入输出参数/标准输入输出客户端/构造客户端会话（自测客户端用）；
   以上返回的都是第三方对象（不可契约化），只作为包级入口导出的翻译函数。
 """
@@ -27,6 +27,7 @@ try:
     from mcp import StdioServerParameters as _标准输入输出参数类
     from mcp.client.stdio import stdio_client as _标准输入输出客户端函数
     from mcp.types import Tool as _工具类
+    from mcp.types import CallToolResult as _工具结果类
 except Exception as _导入异常:  # 依赖缺失与版本不兼容都在此收口，原因留痕
     _导入失败原因 = f"{type(_导入异常).__name__}: {_导入异常}"
 
@@ -83,6 +84,22 @@ def 构造文本内容(文本: str):
     """构造 mcp 文本内容（工具回执统一走 text 类型）。"""
     _确保可用()
     return _文本内容类(type="text", text=文本)
+
+
+def 构造工具结果(文本: str, *, 失败: bool = False):
+    """构造 mcp 工具结果，并**如实置 `isError`**（SEP-1303：输入校验失败必须走 Tool Execution Error）。
+
+    为什么必须补这个函数（2026-09-21 批 2 · L10 实测）：薄壳此前只回 `list[TextContent]`，
+    而 mcp SDK 对「返回 list」的正常路径**固定 `isError=False`**
+    （`server/lowlevel/server.py`：`CallToolResult(..., isError=False)`），
+    只有 inputSchema 校验失败与 handler 抛异常才置 True ⇒ **业务失败（含 `参数不合法`）
+    一律回成 `isError=False`**，客户端与模型都**看不见失败**，于是反复重试同一错误。
+
+    返回 `CallToolResult` 对象而非 list：SDK 对 `isinstance(results, CallToolResult)` 的路径
+    **原样返回、不再包装**，故 `isError` 能透到客户端。
+    """
+    _确保可用()
+    return _工具结果类(content=[_文本内容类(type="text", text=文本)], isError=bool(失败))
 
 
 def 标准输入输出上下文():

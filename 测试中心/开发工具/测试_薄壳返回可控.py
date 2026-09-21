@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import unittest
@@ -396,6 +397,63 @@ class 白名单反向验证(unittest.TestCase):
 
 
 _值预算行 = "    值预算 = max(1, 上限字符 - 预算)\n"
+
+
+def _跑(等待对象):
+    """把薄壳的 async 入口跑完（`asyncio.run` 禁止在已有事件循环里调用，测试是同步环境）。"""
+    return asyncio.run(等待对象)
+
+
+class isError语义测试(unittest.TestCase):
+    """L10（2026-09-21 批 2）：业务失败必须真的置 `isError=True`。
+
+    为什么必须有这条（方案 §8.2 #6 点名的假绿风险）：2026-09-21 前，`自测_stdio客户端.py`
+    只读 `结果.content[0].text`、**完全不读 `结果.isError`** —— 改了也没人知道。
+    实测根因：薄壳当时只回 `list[TextContent]`，而 mcp SDK 对「返回 list」的正常路径
+    固定 `isError=False`（`server/lowlevel/server.py`），只有 inputSchema 校验失败与
+    handler 抛异常才置 True ⇒ `参数不合法` 这类业务失败在 MCP 链路上**完全不可见**，
+    模型会反复重试同一错误（SEP-1303：输入校验失败必须走 Tool Execution Error）。
+    """
+
+    def test_业务失败置isError真(self):
+        结果 = _跑(壳.调用工具("capability_call", {
+            "操作": "重启网关",  # 表外操作，白名单 fail-closed 必拒
+            "能力id": "某能力", "参数": {}, "项目根": str(系统根)}))
+        self.assertTrue(getattr(结果, "isError", False), "业务失败必须置 isError=True")
+        正文 = json.loads(结果.content[0].text)
+        self.assertFalse(正文["成功"])
+        self.assertEqual("参数不合法", 正文["错误码"])
+
+    def test_业务成功置isError假(self):
+        # 成功路径不得误报失败（否则客户端会把正常返回当错误处理）
+        结果 = _跑(壳.调用工具("tool_catalog", {}))
+        self.assertFalse(getattr(结果, "isError", True), "成功不得置 isError=True")
+
+    def test_未知工具也置isError真(self):
+        结果 = _跑(壳.调用工具("不存在的工具", {}))
+        self.assertTrue(getattr(结果, "isError", False))
+
+
+class 顶层schema拒未知参数测试(unittest.TestCase):
+    """L9（2026-09-21 批 2）：工具顶层 schema 必须声明 `additionalProperties: false`。
+
+    为什么真的有效（不是装饰）：mcp SDK 在 `server/lowlevel/server.py` 用
+    `jsonschema.validate(instance=arguments, schema=tool.inputSchema)` 执行本 schema，
+    故传错参数名会**当场报错**而不是被静默忽略 —— 这正是治「猜参数名」的机制。
+    ⚠️ 只能加在顶层：`参数` 内部不得加（能力参数形状由能力契约定，加进去会把所有能力参数拒掉）。
+    """
+
+    def test_三个工具顶层都声明拒未知键(self):
+        for 协议名 in ("capability_search", "capability_call", "tool_catalog"):
+            模式 = _取工具(协议名).inputSchema
+            self.assertIs(模式.get("additionalProperties"), False,
+                          f"{协议名} 未声明 additionalProperties: false（Claude 会报 Invalid schema）")
+
+    def test_参数内部不得加拒未知键(self):
+        # 若给 `参数` 加了 additionalProperties，所有能力自己的参数都会被拒 —— 反向锁死。
+        参数模式 = _取工具("capability_call").inputSchema["properties"]["参数"]
+        self.assertNotIn("additionalProperties", 参数模式,
+                          "`参数` 是能力自己参数的容器，不得限制其键集")
 
 
 class 深裁反向验证(unittest.TestCase):
