@@ -216,6 +216,70 @@ def _统一差异(原文本: str, 新文本: str, 相对路径: str) -> tuple[st
     return "".join(差异行列表), 新增行数, 删除行数
 
 
+def _目标权限位(目标: Path) -> int | None:
+    """取目标文件当前的权限位；取不到返回 None（不假设、不改权限）。
+
+    为什么要这一步（2026-09-21 批 3 · L8 实测缺口）：`tempfile.NamedTemporaryFile`
+    建的临时文件默认 **0o600**，`os.replace` 后**目标文件的权限位就变成 0600** ——
+    实测 `0644→0600`、`0640→0600`。原实现只保证了「原子 + 内容正确」，
+    没保证「权限不变」，而 `.py` 掉权限在多人/多会话共享仓库里会变成怪问题。
+    """
+    try:
+        return 目标.stat().st_mode & 0o777
+    except OSError:
+        return None
+
+
+def _同步目录(目录: Path) -> None:
+    """目录项 fsync（best-effort）：保证 `os.replace` 后的目录项也落到磁盘。
+
+    与 `平台控制面/能力目录/单文件互斥存储.同步目录` **同一做法**（那是底座唯一带权限的
+    原子写）；此处不 import 它（跨层依赖：支持库不得依赖平台控制面），故按同口径就地实现。
+    """
+    句柄 = -1
+    try:
+        句柄 = os.open(str(目录), os.O_RDONLY)
+        os.fsync(句柄)
+    except OSError:
+        pass
+    finally:
+        if 句柄 >= 0:
+            try:
+                os.close(句柄)
+            except OSError:
+                pass
+
+
+def _原子写保留权限(目标: Path, 正文: str) -> None:
+    """原子写：唯一临时名 + fsync + `os.replace`，**并把目标原有权限位带回去**。
+
+    步骤顺序有意为之：① 先读目标权限位（replace 之后就没了）；② 写临时文件时直接建
+    成该权限（避免「先 0600 再 chmod」的中间窗口）；③ `os.replace` 原子换名；④ 同步目录。
+    新文件（目标不存在）不加额外处理 —— 用系统默认创建权限，与「新建文件」同义。
+    """
+    权限 = _目标权限位(目标)
+    句柄 = tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=str(目标.parent), delete=False,
+        prefix=".__补丁_", suffix=".tmp")
+    try:
+        句柄.write(正文)
+        句柄.flush()
+        os.fsync(句柄.fileno())
+    finally:
+        句柄.close()
+    try:
+        if 权限 is not None:
+            os.chmod(句柄.name, 权限)
+        os.replace(句柄.name, 目标)
+    except OSError:
+        try:
+            os.unlink(句柄.name)
+        except OSError:
+            pass
+        raise
+    _同步目录(目标.parent)
+
+
 def 应用精确替换(
     文件路径: str,
     旧文本: str,
@@ -293,24 +357,10 @@ def 应用精确替换(
 
     已写入 = False
     if 写入:
-        目录 = 目标.parent
         try:
-            句柄 = tempfile.NamedTemporaryFile(
-                "w", encoding="utf-8", dir=str(目录), delete=False,
-                prefix=".__补丁_", suffix=".tmp")
-            try:
-                句柄.write(新文本内容)
-                句柄.flush()
-                os.fsync(句柄.fileno())
-            finally:
-                句柄.close()
-            os.replace(句柄.name, 目标)
+            _原子写保留权限(目标, 新文本内容)
             已写入 = True
         except OSError as 错误:
-            try:
-                os.unlink(句柄.name)  # type: ignore[possibly-undefined]
-            except (OSError, UnboundLocalError):
-                pass
             return 结果.失败("写入失败", f"原子写入失败: {错误}", 来源=来源标记)
 
     return 结果.成功结果({
@@ -515,23 +565,10 @@ def 批量应用精确替换(
             if 最终 is None or 最终 == 原文本表.get(键):
                 continue
             目标 = 目标表[键]
-            句柄 = None
             try:
-                句柄 = tempfile.NamedTemporaryFile(
-                    "w", encoding="utf-8", dir=str(目标.parent), delete=False,
-                    prefix=".__补丁_", suffix=".tmp")
-                句柄.write(最终)
-                句柄.flush()
-                os.fsync(句柄.fileno())
-                句柄.close()
-                os.replace(句柄.name, 目标)
+                _原子写保留权限(目标, 最终)
                 已写入文件数 += 1
             except OSError as 错误:
-                if 句柄 is not None:
-                    try:
-                        os.unlink(句柄.name)
-                    except (OSError, AttributeError):
-                        pass
                 return 结果.失败(
                     "写入失败", f"原子写入失败（{目标}）: {错误}", 来源=来源标记,
                     详情={"已写入文件数": 已写入文件数,
@@ -599,7 +636,9 @@ def 解析代码补丁(根目录: str, 补丁文本: str) -> 结果:
     支持 *** Update File ***（@@ 上下文块：前缀 - 为旧行、+ 为新行、空格为共同行）、
     *** Add File ***、*** Delete File ***、*** Rename File: 旧 -> 新。
     返回 {操作列表, 变更数, 操作数}；每项含 文件路径/相对路径/已变更/旧文件摘要/新文件摘要/新内容。
-    写盘与权限治理由调用方负责。
+    写盘与权限治理由调用方负责（**权限位例外**：见 `_原子写保留权限`，本模块保证
+    原子写后目标文件的权限位不变 —— 2026-09-21 批 3 · L8 之前 `os.replace` 会把权限
+    掉成临时文件的默认 0o600）。
     """
     if not isinstance(根目录, str) or not 根目录.strip():
         return 结果.失败("参数不合法", "根目录必须是非空字符串", 来源=来源标记)

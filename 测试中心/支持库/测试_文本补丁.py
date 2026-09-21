@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -390,6 +391,114 @@ _实现路径 = (Path(__file__).resolve().parents[2] / "支持库" / "后端"
          / "文件系统支持库" / "文本补丁" / "实现" / "文本补丁.py")
 
 _全或无闸门 = "    if 原子 and 失败清单:\n"
+
+
+class 原子写权限保留测试(unittest.TestCase):
+    """L8（2026-09-21 批 3）：原子写必须**保留目标文件原有权限位**。
+
+    为什么必须有这条：`tempfile.NamedTemporaryFile` 建的临时文件默认 **0o600**，
+    `os.replace` 后**目标权限位就变成 0600** —— 实测 `0644→0600`、`0640→0600`。
+    原实现只保证了「原子 + 内容正确」，没保证「权限不变」，而 `.py` 掉权限在共享仓库里会
+    变成怪问题（别的会话下一轮改它会写不进去）。
+    """
+
+    def setUp(self) -> None:
+        self._临时 = tempfile.TemporaryDirectory(prefix="测试_权限保留_")
+        self.根 = Path(self._临时.name)
+        self.目标 = self.根 / "目标.py"
+        self.目标.write_text(原文, encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self._临时.cleanup()
+
+    def _改一次(self):
+        return 应用精确替换(
+            文件路径=str(self.目标), 旧文本="旧值在这里", 新文本="新值已就位",
+            根目录=str(self.根), 写入=真)
+
+    def test_单文件原子写保留权限位(self) -> None:
+        for 权限 in (0o644, 0o640, 0o600, 0o755):
+            with self.subTest(权限=oct(权限)):
+                self.目标.write_text(原文, encoding="utf-8")
+                os.chmod(self.目标, 权限)
+                结果 = self._改一次()
+                self.assertTrue(结果.成功, 结果.错误说明)
+                self.assertEqual(self.目标.read_text(encoding="utf-8"), 替换后)
+                实际 = self.目标.stat().st_mode & 0o777
+                self.assertEqual(实际, 权限,
+                                 f"权限位必须保留：期望 {oct(权限)}，实际 {oct(实际)}")
+
+    def test_批量原子写也保留权限位(self) -> None:
+        甲 = self.根 / "甲.py"
+        乙 = self.根 / "乙.py"
+        甲.write_text(原文, encoding="utf-8")
+        乙.write_text(原文, encoding="utf-8")
+        os.chmod(甲, 0o644)
+        os.chmod(乙, 0o640)
+        结果 = 批量应用精确替换(
+            编辑列表=[{"文件路径": str(甲), "旧文本": "旧值在这里", "新文本": "新值已就位"},
+                   {"文件路径": str(乙), "旧文本": "旧值在这里", "新文本": "新值已就位"}],
+            根目录=str(self.根), 写入=真, 原子=真)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(甲.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(乙.stat().st_mode & 0o777, 0o640)
+
+    def test_新建文件不报错也不报假权限(self) -> None:
+        # 新文件（目标不存在）用系统默认创建权限，不得因为「取不到权限」而失败。
+        新文件 = self.根 / "新建.py"
+        新文件.write_text("占位\n旧值在这里\n", encoding="utf-8")
+        结果 = 应用精确替换(
+            文件路径=str(新文件), 旧文本="旧值在这里", 新文本="新值已就位",
+            根目录=str(self.根), 写入=真)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertIn("新值已就位", 新文件.read_text(encoding="utf-8"))
+
+
+class 权限保留反向验证(unittest.TestCase):
+    """反向验证：退回「不 chmod、不建对权限」的旧写法，权限判据必须变红。
+
+    没有这层，权限断言可能在**任何**实现下都绿（比如环境 umask 恰好让它碰对）——
+    等于没证明 `_目标权限位` + `os.chmod` 真的在起作用（旧实现正是 0644→0600）。
+    """
+
+    _补丁源 = Path(__file__).resolve().parents[2] / "支持库" / "后端" / "文件系统支持库" / "文本补丁" / "实现" / "文本补丁.py"
+    _chmod行 = "        os.chmod(句柄.name, 权限)\n"
+
+    def _缺陷态模块(self):
+        源 = self._补丁源.read_text(encoding="utf-8")
+        坏 = 源.replace(self._chmod行, "        pass  # 反向样本：退回旧写法（不把权限带回去）\n")
+        if 坏 == 源:
+            raise AssertionError("chmod 行未命中，反向样本失效（判据需更新）")
+        命名空间: dict = {"__name__": "反向样本_文本补丁", "__file__": str(self._补丁源)}
+        exec(compile(坏, str(self._补丁源), "exec"), 命名空间)  # noqa: S102
+        return 命名空间
+
+    def test_不退权限后判据变红(self) -> None:
+        模块 = self._缺陷态模块()
+        with tempfile.TemporaryDirectory(prefix="测试_反验权限_") as 临时:
+            根 = Path(临时)
+            目标 = 根 / "目标.txt"
+            目标.write_text(原文, encoding="utf-8")
+            os.chmod(目标, 0o644)
+            结果 = 模块["应用精确替换"](
+                文件路径=str(目标), 旧文本="旧值在这里", 新文本="新值已就位",
+                根目录=str(根), 写入=真)
+            self.assertTrue(结果.成功, 结果.错误说明)
+            缺陷权限 = 目标.stat().st_mode & 0o777
+            # 缺陷态下必须真的掉权限（这正是坏行为）
+            self.assertNotEqual(缺陷权限, 0o644,
+                                "缺陷态下权限未变，反向样本失效（请检查临时文件默认权限）")
+        # 现行实现同一输入必须保住权限 —— 两者结论不同，样本才有效
+        with tempfile.TemporaryDirectory(prefix="测试_现行权限_") as 临时:
+            根 = Path(临时)
+            目标 = 根 / "目标.txt"
+            目标.write_text(原文, encoding="utf-8")
+            os.chmod(目标, 0o644)
+            结果 = 应用精确替换(
+                文件路径=str(目标), 旧文本="旧值在这里", 新文本="新值已就位",
+                根目录=str(根), 写入=真)
+            self.assertTrue(结果.成功, 结果.错误说明)
+            self.assertEqual(目标.stat().st_mode & 0o777, 0o644, "现行实现必须保住权限")
 
 
 class 批量替换反向验证(unittest.TestCase):
