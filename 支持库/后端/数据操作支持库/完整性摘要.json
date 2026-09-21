@@ -73,7 +73,7 @@
     },
     {
       "路径": "度量/__init__.py",
-      "sha256": "c7dbd14c16163d9c1f40e9f3a1fceaf58c98609ca6c58ce91ee561e33c52b3c4"
+      "sha256": "52668de1ae4d6b48696f1f1fb79b6cb8e1589d07d4ef799f4cd02083ff53929e"
     },
     {
       "路径": "度量/包声明.json",
