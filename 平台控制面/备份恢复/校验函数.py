@@ -1,18 +1,14 @@
-"""权威数据备份契约的四类真实校验函数（第十四阶段工作包 P1-09）。
+"""权威数据备份契约的三类真实校验函数（第十四阶段工作包 P1-09）。
 
 校验权威状态：真实打开 sqlite 运行 PRAGMA integrity_check 必须返回 ok。
 校验证据账本：重放每条证据的哈希字段 == sha256(内容) 前 16 位。
 校验包仓库：制品目录逐文件重算 sha256 与备份清单比对。
-校验项目锁：JSON 可解析且必填字段齐全。
 """
 from __future__ import annotations
 import hashlib, json, sqlite3
 from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.数据库URI import 只读库URI
-
-锁必填字段表 = ("项目id", "所有者", "锁定时间")
-
 
 def 内容摘要(内容: bytes) -> str:
     return hashlib.sha256(内容).hexdigest()
@@ -66,12 +62,3 @@ def 校验包仓库(目录: Path, 备份项: dict) -> tuple[bool, str]:
         if not 文件.is_file() or 内容摘要(文件.read_bytes()) != 期望摘要:
             return 假, f"制品缺失或摘要不符: {相对路径}"
     return 真, "全部制品摘要一致"
-
-
-def 校验项目锁(目录: Path, 备份项: dict) -> tuple[bool, str]:
-    """JSON 可解析且必填字段齐全。"""
-    try: 锁 = json.loads((目录 / 备份项["文件"]).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as 错误: return 假, f"项目锁不可解析: {错误}"
-    if not isinstance(锁, dict) or any(字段 not in 锁 for 字段 in 锁必填字段表):
-        return 假, "项目锁必须为 JSON 对象且必填字段齐全"
-    return 真, "必填字段齐全"

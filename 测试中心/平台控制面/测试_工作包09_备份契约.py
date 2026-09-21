@@ -36,10 +36,6 @@ class Test权威数据备份契约(unittest.TestCase):
         制品目录.mkdir(parents=True)
         (制品目录 / "包1_1.0.0.bin").write_bytes("制品内容1".encode("utf-8"))
         (制品目录 / "包2_2.0.0.bin").write_bytes("制品内容2".encode("utf-8"))
-        (self.存储目录 / "项目锁.json").write_text(
-            json.dumps({"项目id": "项目1", "所有者": "维护者",
-                        "锁定时间": "2026-08-01 00:00:00"}, ensure_ascii=False),
-            encoding="utf-8")
         self.契约 = 权威数据备份契约(self.存储目录)
         self.清单 = self.契约.执行备份(self.备份目录)
         self.快照目录 = Path(self.清单["快照目录"])
@@ -47,33 +43,33 @@ class Test权威数据备份契约(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.存储目录, ignore_errors=True)
 
-    def test_声明契约返回四类数据且字段齐全(self):
+    def test_声明契约返回三类数据且字段齐全(self):
         契约表 = 权威数据备份契约(self.存储目录).声明契约()
-        self.assertEqual(set(契约表), {"权威状态", "包仓库", "证据账本", "项目锁"})
+        self.assertEqual(set(契约表), {"权威状态", "包仓库", "证据账本"})
         for 类名, 配置 in 契约表.items():
             for 字段 in ("恢复点", "恢复时限秒", "保留周期", "恢复顺序", "校验方法"):
                 self.assertIn(字段, 配置, f"{类名} 缺少 {字段}")
             self.assertTrue(callable(配置["校验方法"]), f"{类名} 校验方法必须真实可调用")
             self.assertNotEqual(配置["恢复点"], "")
-        self.assertEqual([契约表[类]["恢复顺序"] for 类 in ("权威状态", "证据账本", "包仓库", "项目锁")],
-                         [1, 2, 3, 4], "恢复顺序必须是 状态→证据→仓库→锁")
+        self.assertEqual([契约表[类]["恢复顺序"] for 类 in ("权威状态", "证据账本", "包仓库")],
+                         [1, 2, 3], "恢复顺序必须是 状态→证据→仓库")
         self.assertEqual(契约表["权威状态"]["恢复时限秒"], 60)
         self.assertEqual(契约表["权威状态"]["保留周期"], 7)
         # 可配置：公共值 + 单类覆盖
         契约2 = 权威数据备份契约(self.存储目录).声明契约(
             {"恢复时限秒": 120, "保留周期": 30, "包仓库": {"恢复顺序": 9}})
-        self.assertEqual(契约2["项目锁"]["恢复时限秒"], 120)
-        self.assertEqual(契约2["项目锁"]["保留周期"], 30)
+        self.assertEqual(契约2["证据账本"]["恢复时限秒"], 120)
+        self.assertEqual(契约2["证据账本"]["保留周期"], 30)
         self.assertEqual(契约2["包仓库"]["恢复顺序"], 9)
 
     def test_执行备份生成真实文件与完整清单(self):
         self.assertTrue(self.快照目录.is_dir(), "必须生成时间戳快照子目录")
         self.assertTrue(self.快照目录.name.startswith("快照_"))
-        for 文件名 in ("权威状态.db", "证据账本.json", "项目锁.json", "备份清单.json"):
+        for 文件名 in ("权威状态.db", "证据账本.json", "备份清单.json"):
             self.assertTrue((self.快照目录 / 文件名).is_file(), f"缺少 {文件名}")
         self.assertTrue((self.快照目录 / "制品" / "包1_1.0.0.bin").is_file())
         文件清单 = self.清单["文件"]
-        self.assertEqual(set(文件清单), {"权威状态", "包仓库", "证据账本", "项目锁"})
+        self.assertEqual(set(文件清单), {"权威状态", "包仓库", "证据账本"})
         for 类名, 备份项 in 文件清单.items():
             self.assertIn("文件", 备份项, f"{类名} 缺文件字段")
             self.assertGreater(备份项["大小"], 0, f"{类名} 大小必须大于 0")
@@ -110,7 +106,7 @@ class Test权威数据备份契约(unittest.TestCase):
         目标目录 = self.存储目录 / "恢复目标"
         结果 = self.契约.恢复(self.备份目录, 目标目录)
         self.assertTrue(结果["成功"], str(结果["结果"]))
-        self.assertEqual(结果["恢复顺序"], ["权威状态", "证据账本", "包仓库", "项目锁"])
+        self.assertEqual(结果["恢复顺序"], ["权威状态", "证据账本", "包仓库"])
         # 权威状态可重新打开并读取原记录
         新状态 = 平台状态(目标目录)
         try:
@@ -123,9 +119,6 @@ class Test权威数据备份契约(unittest.TestCase):
         # 制品文件内容摘要一致
         self.assertEqual((目标目录 / "制品" / "包1_1.0.0.bin").read_bytes(), "制品内容1".encode("utf-8"))
         self.assertEqual((目标目录 / "制品" / "包2_2.0.0.bin").read_bytes(), "制品内容2".encode("utf-8"))
-        # 项目锁恢复且必填字段齐全
-        锁 = json.loads((目标目录 / "项目锁.json").read_text(encoding="utf-8"))
-        self.assertEqual(锁["项目id"], "项目1")
 
     def test_篡改证据内容后哈希重放失败(self):
         账本文件 = self.快照目录 / "证据账本.json"
