@@ -60,12 +60,34 @@ def 取条目表(文档, *候选键: str) -> list:
     return []
 
 
-def 取验证场景能力(文档) -> set:
+def 取场景对象列表(文档, 根目录: Path = None) -> list:
+    """把「内嵌式」与「引用式」两种验证场景写法归一成场景对象列表。
+
+    内嵌式：条目里直接有 目标步骤（夹具用）。
+    引用式：条目只有 场景文件（平台既有写法，见 验证场景引用.json）——
+    跟随引用读同目录的场景文件，再取它的 验证场景 列表。
+    只读不写；读不到就跳过（按「该处未登记」如实处置，不猜）。
+    """
+    场景列表 = []
+    for 条目 in 取条目表(文档, "验证场景引用", "验证场景"):
+        if not isinstance(条目, dict):
+            continue
+        场景 = 条目.get("场景")
+        if isinstance(场景, dict):
+            场景列表.append(场景)
+            continue
+        场景文件 = 条目.get("场景文件")
+        if isinstance(场景文件, str) and 场景文件.strip() and 根目录 is not None:
+            场景列表.extend(取条目表(读JSON(根目录 / 场景文件), "验证场景"))
+            continue
+        场景列表.append(条目)
+    return 场景列表
+
+
+def 取验证场景能力(文档, 根目录: Path = None) -> set:
     """验证场景只认「目标步骤 + 预期.成功=真」的覆盖：失败用例不算覆盖（与包体检同口径）。"""
     命中 = set()
-    for 条目 in 取条目表(文档, "验证场景引用"):
-        场景 = 条目.get("场景") if isinstance(条目, dict) else None
-        场景 = 场景 if isinstance(场景, dict) else 条目
+    for 场景 in 取场景对象列表(文档, 根目录):
         if not isinstance(场景, dict):
             continue
         for 步骤 in 场景.get("目标步骤") or []:
@@ -78,15 +100,15 @@ def 取验证场景能力(文档) -> set:
     return 命中
 
 
-def 取已登记(处名: str, 文档) -> set:
-    """该处已登记的能力id集合。"""
+def 取已登记(处名: str, 文档, 根目录: Path = None) -> set:
+    """该处已登记的能力id集合。根目录 只给 验证场景 的引用式写法用。"""
     if 处名 == "权限契约":
         if not isinstance(文档, dict):
             return set()
         return {键 for 键 in 文档 if 键 not in 权限契约保留键}
     if 处名 == "验证场景":
-        return 取验证场景能力(文档)
-    return {条目.get("能力id") for 条目 in 取条目表(文档, "能力列表", "能力")
+        return 取验证场景能力(文档, 根目录)
+    return {条目.get("能力id") for 条目 in 取条目表(文档, "能力列表", "能力契约", "能力")
             if isinstance(条目, dict) and isinstance(条目.get("能力id"), str) and 条目.get("能力id")}
 
 
@@ -100,7 +122,7 @@ def 修法文案(处名: str, 能力id: str) -> str:
         return f'在 包声明.json 的能力列表里补 "{能力id}" 条目'
     if 处名 == "权限契约":
         return f'在 权限契约/权限契约.json 里补 "{能力id}": {{"允许用户": ["*"]}}'
-    return f'在 验证场景引用.json 里补一个 预期 成功=true 的目标步骤：能力id={能力id}'
+    return f'在 验证场景.json（由 验证场景引用.json 引用）里补一个 预期 成功=true 的目标步骤：能力id={能力id}'
 
 
 def 取处路径(根: Path, 处名: str, 文件名映射: dict) -> Path:
@@ -124,7 +146,7 @@ def 主流程(参数: dict) -> dict:
         if not isinstance(条目, str) or not 条目.strip():
             raise 值错误("参数不合法", "能力id列表 里每一项都必须是非空文本")
     根 = Path(包目录).expanduser()
-    已登记表 = {处名: 取已登记(处名, 读JSON(取处路径(根, 处名, 文件名映射))) for 处名 in 处顺序}
+    已登记表 = {处名: 取已登记(处名, 读JSON(取处路径(根, 处名, 文件名映射)), 根) for 处名 in 处顺序}
     逐能力 = []
     缺口 = []
     for 能力id in 能力id列表:
