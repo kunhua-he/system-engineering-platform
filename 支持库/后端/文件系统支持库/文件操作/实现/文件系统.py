@@ -26,21 +26,41 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树, 移动并可删
 
 
-def 读取文件(文件路径: str = None, 编码: str = "utf-8") -> 结果:
-    """按文本方式读取文件内容。"""
+def 读取文件(文件路径: str = None, 编码: str = "utf-8",
+             起始行: int = 0, 结束行: int = 0) -> 结果:
+    """按文本方式读取文件内容；可只取一段行区间。
+
+    ``起始行`` / ``结束行`` 是 1 起的行号、闭区间；两者都为 0（默认）时返回全文，
+    与改前逐字一致。只传 起始行 取到文件末；只传 结束行 从首行起。区间超出文件
+    实际范围时按存在的行返回（不报错），空区间返回空串。
+
+    为什么要它（#197）：全文读取在大文件上会打爆调用方上下文，而「读取文件头部字节」
+    只给字节、拿不到指定行；中间段（例如某能力的契约定义）此前只能整份读进来。
+    """
     if 文件路径 is None or not isinstance(文件路径, str) or not 文件路径.strip():
         return 结果.失败("参数不合法", "文件路径必须为非空文本", 来源="文件系统")
     if not isinstance(编码, str):
         return 结果.失败("参数不合法", "编码必须是文本", 来源="文件系统")
+    for 名称, 值 in (("起始行", 起始行), ("结束行", 结束行)):
+        if not isinstance(值, int) or isinstance(值, bool) or 值 < 0:
+            return 结果.失败("参数不合法", f"{名称} 必须是非负整数（0 = 不限）", 来源="文件系统")
+    if 起始行 and 结束行 and 起始行 > 结束行:
+        return 结果.失败("参数不合法", f"起始行({起始行}) 不能大于 结束行({结束行})", 来源="文件系统")
     路径 = Path(文件路径)
     if not 路径.is_file():
         return 结果.失败("文件不存在", f"文件不存在: {文件路径}", 来源="文件系统")
     try:
-        return 结果.成功结果(路径.read_text(encoding=编码))
+        文本 = 路径.read_text(encoding=编码)
     except LookupError as 错误:
         return 结果.失败("参数不合法", f"未知编码: {错误}", 来源="文件系统")
     except OSError as 错误:
         return 结果.失败("文件读取失败", str(错误), 来源="文件系统")
+    if not 起始行 and not 结束行:
+        return 结果.成功结果(文本)
+    行表 = 文本.splitlines(keepends=True)
+    起 = (起始行 - 1) if 起始行 else 0
+    止 = 结束行 if 结束行 else len(行表)
+    return 结果.成功结果("".join(行表[起:止]))
 
 
 def 写入文件(文件路径: str = None, 内容: str = None, 编码: str = "utf-8",
