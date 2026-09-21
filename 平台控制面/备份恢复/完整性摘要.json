@@ -9,7 +9,7 @@
   },
   {
    "路径": "包声明.json",
-   "sha256": "27f979704d505b482d324806a4eb7ee252926849390e0386e58a9cd70ed663b2"
+   "sha256": "d7d3d8c84ca3d66521867d0243ffeff0721517654d0cafd443ef991de8185c6e"
   },
   {
    "路径": "备份契约.py",
@@ -25,7 +25,7 @@
   },
   {
    "路径": "实现/能力入口.py",
-   "sha256": "64befe1101f0e335edf94488475b956db86075c99d6619600cfc1a28d1b36fa2"
+   "sha256": "d213ba407eba23e6e7184059d94aa58970310cd028e3e877132a68a16de31eb4"
   },
   {
    "路径": "恢复工具.py",
@@ -33,7 +33,7 @@
   },
   {
    "路径": "恢复执行.py",
-   "sha256": "d2d693e394a9cde3cac62bc4aeab336bbdaf365ad72c612cf73d806e07cdeabb"
+   "sha256": "784d6618c83020b44f75aad60650bb8854e1c0b316dba53833f02dd1c85f2007"
   },
   {
    "路径": "恢复编排器.py",
@@ -57,27 +57,27 @@
   },
   {
    "路径": "能力契约/参数契约.json",
-   "sha256": "392d923fd0700318f842afcaedd056778143f12eb35b90f2e270c371bfd50a40"
+   "sha256": "c0418433dde87ac8be529bc976d5b55d970f1c8f420ddb1733c6ca71c69abecd"
   },
   {
    "路径": "能力定义.json",
-   "sha256": "2e3310ab1ff467757666da0f09b77cee14a8535da4d2b0fa9e7e57b3567236ea"
+   "sha256": "34bfb5d960b56aed62473bb90bf23620073365f811a9aeeae875cdfea6dbb6ee"
   },
   {
    "路径": "能力数据/Agent查询数据.json",
-   "sha256": "bfffe86bb8f28e1489e5341c0bff087855b5981f8a988441456137f4a381763e"
+   "sha256": "bf16afc5857cbb70fb5dbb655886e357080ded8fcf26f2c4befd0aafd05e2bc7"
   },
   {
    "路径": "能力数据/能力搜索数据.json",
-   "sha256": "ce83d2aca72845b5059dfa78eb8f67f66a2fc8418865f0eda89f418af8c34352"
+   "sha256": "bb9b6ebe25a786da1c5b81705d7b6f59ddf01d9bad1281b5b8cebec31d7dfad5"
   },
   {
    "路径": "说明/使用说明.md",
-   "sha256": "01ded54bed45b759f7e5700b17504a460a04d9ef94fa1d0116c719229a5a2eb8"
+   "sha256": "4e9c4bdb0b7f8275423a4c37b289aa1b90b4f04defdd3f596401d50bb1a3061a"
   },
   {
    "路径": "说明/设计说明.md",
-   "sha256": "f1321541a4e25d3a0fc1f68108edcb2e06e685a7e05fe34158ee364223b3fd59"
+   "sha256": "a7ae1bcfd056c9303f5e7d34cd2eebc03e3e56e099bafcfbc507618c629c1dc7"
   },
   {
    "路径": "资源预算.json",
@@ -100,5 +100,5 @@
   "平台控制面.备份恢复.恢复备份",
   "平台控制面.备份恢复.查询备份源根"
  ],
- "能力定义摘要": "6dd0da3e245c1023"
+ "能力定义摘要": "255de9b9f1ebd1f9"
 }
