@@ -67,6 +67,9 @@ class 网关边界面:
     server: Any
     wfile: Any
     client_address: Any
+    # 客户端套接字（`BaseHTTPRequestHandler.setup` 里 `self.connection = self.request`）。
+    # 断连监视要 select/偷看它，故与 headers/wfile 同处登记（2026-09-21）。
+    connection: Any
     close_connection: bool
 
     def _写JSON(self, 状态码: int, 数据: dict[str, Any]) -> None:

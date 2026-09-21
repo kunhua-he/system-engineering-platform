@@ -161,11 +161,25 @@ def 受限通信(
     进程: Any, *, 输入: bytes | None = None, 超时秒: float,
     输出上限字节: int = 默认子进程输出上限字节,
     终止回调: Callable[[], None] | None = None,
+    取消判定: Callable[[], bool] | None = None,
+    取消记录: dict[str, Any] | None = None,
 ) -> tuple[bytes, bytes, bool, bool]:
     """有界读写子进程管道，返回（stdout、stderr、是否超时、是否超限）。
 
     先启动 stdout/stderr 读取线程，再写 stdin：避免子进程输出超过
     管道缓冲（约 64KB）时写 stdout 阻塞、父进程同时写 stdin 阻塞的死锁。
+
+    **取消判定（可选，默认 `None` ＝ 行为与新增前逐字相同）**：等待循环每轮调用一次，
+    返回真即判「调用方已离开」——立即走 `终止回调`（调用方传入的整组回收）并跳出等待。
+    这是「断连即回收」在子进程这一层的落点：网关侧连接断开时置取消令牌，正在跑的
+    `执行命令` 在**下一轮轮询**（≤50 毫秒）内就整组回收，而不是把剩余超时跑满。
+
+    **为什么新增状态走出参（`取消记录`）而不改返回元组**：本函数有 10 处调用方，
+    改返回元数等于同时改 10 份契约；而「已取消」与「已超时」语义不同（前者是调用方
+    离开，后者是执行超时），不能挤进同一个布尔位（哲学第 3 条 2 项：失败必须明确）。
+    故新增状态经可选字典出参回传，返回元组**保持四元不变**（契约只增不改）。
+    判定回调自身抛异常时**不当成取消**，但把异常类型与内容写进 `取消记录` 留痕，
+    同时照常按超时/结束收口 —— 不许因为判据自身故障就让子进程泄漏。
     """
     结果: dict[str, bytearray] = {"输出": bytearray(), "错误": bytearray()}
     超限事件 = threading.Event()
@@ -193,15 +207,30 @@ def 受限通信(
 
     截止 = time.monotonic() + max(0.0, float(超时秒))
     已超时 = False
+    已取消 = False
     while 进程.poll() is None:
         if 超限事件.is_set():
             break
+        if 取消判定 is not None:
+            try:
+                命中取消 = bool(取消判定())
+            except Exception as 判定错误:  # noqa: BLE001 - 判据自身故障不得让子进程泄漏
+                if 取消记录 is not None:
+                    取消记录["判定异常"] = f"{type(判定错误).__name__}: {判定错误}"[:200]
+                命中取消 = False
+            if 命中取消:
+                已取消 = True
+                break
         if time.monotonic() >= 截止:
             已超时 = True
             break
         time.sleep(0.05)
 
-    if (已超时 or 超限事件.is_set()) and 终止回调 is not None:
+    if 取消记录 is not None:
+        取消记录["已取消"] = 已取消
+        取消记录["已超时"] = 已超时
+        取消记录["已超限"] = 超限事件.is_set()
+    if (已超时 or 已取消 or 超限事件.is_set()) and 终止回调 is not None:
         终止回调()
     for 线程 in 读取线程:
         线程.join(timeout=5)
