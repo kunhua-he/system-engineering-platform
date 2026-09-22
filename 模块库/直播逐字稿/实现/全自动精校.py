@@ -135,7 +135,7 @@ def _读已有裁决(裁决目录) -> dict:
         if not (名.startswith("窗口_") and 名.endswith(".json")):
             continue
         读 = _底座("文件系统支持库.文件操作.读取文件",
-                   {"文件路径": str(Path(裁决目录) / 名), "编码": "utf-8"})
+                   {"文件路径": str(Path(裁决目录) / 名), "最大字符": 0, "编码": "utf-8"})
         if 读 is None or not getattr(读, "成功", 假) or not isinstance(getattr(读, "值", None), str):
             continue
         解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": getattr(读, "值")})

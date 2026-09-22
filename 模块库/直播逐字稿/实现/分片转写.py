@@ -35,7 +35,7 @@ def _成功(结果对象) -> bool:
 def _读JSON(路径: Path) -> dict | None:
     """经底座读并解析 JSON；不存在或损坏返回 None。"""
     读 = _底座("文件系统支持库.文件操作.读取文件",
-              {"文件路径": str(路径), "编码": "utf-8"})
+              {"文件路径": str(路径), "最大字符": 0, "编码": "utf-8"})
     if not _成功(读) or not isinstance(getattr(读, "值", None), str):
         return None
     解析 = _底座("数据操作支持库.数据交换.反序列化JSON", {"文本": getattr(读, "值")})

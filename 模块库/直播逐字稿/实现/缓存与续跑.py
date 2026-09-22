@@ -79,7 +79,7 @@ def 计算文件摘要(文件路径: str) -> str:
 def 读JSON(路径: Path) -> dict | None:
     """读 JSON；不存在或损坏返回 None（不抛异常）。"""
     读 = _底座("文件系统支持库.文件操作.读取文件",
-              {"文件路径": str(路径), "编码": "utf-8"})
+              {"文件路径": str(路径), "最大字符": 0, "编码": "utf-8"})
     if not _成功(读):
         return None
     文本 = getattr(读, "值", None)

@@ -192,8 +192,9 @@ class TestOCR模块(unittest.TestCase):
         self.assertIsNotNone(图片文件实现)
         assert 图片文件实现 is not None
         缺少必填 = 校验能力参数("OCR.识别图片文件", 图片文件实现.参数, {})
-        self.assertEqual(缺少必填,
-                         "参数不合法：能力 OCR.识别图片文件 缺少必填参数 图片路径")
+        self.assertTrue(缺少必填.startswith(
+            "参数不合法：能力 OCR.识别图片文件 缺少必填参数 图片路径"),
+            f"缺必填文案前缀变了：{缺少必填}（实现会追加「（本能力参数…）」清单，故只钉前缀，不钉全串）")
         全给 = 校验能力参数(
             "OCR.识别图片文件", 图片文件实现.参数,
             {"图片路径": self.图片路径, "语言": "eng", "词级数据": False, "超时秒": 60.0})
