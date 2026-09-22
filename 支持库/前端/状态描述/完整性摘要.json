@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "dd63eaf7e6e4aee4b054ce008deed725f876047360d0a5934fdcd4c88b41633b"
+      "sha256": "1c6a4ebd87a4b194bc966dbff504a75b8ca28231521fbf9ad701a823b36262e1"
     },
     {
       "路径": "复用决策.json",
@@ -25,19 +25,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "a4a7d03a4acf5f55a7380f54c831e20a23ccbe719580c3756a3161f87facd9c2"
+      "sha256": "40b5772747bb1030ceef27551444434e653d2f7a8646591fce819521f0df52e6"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "e6808e7bd98cbf5fed7216c04e6d8001606f368959ddec55d7a5c9bdfdaa2e23"
+      "sha256": "4528d1cf95db1e04e6fd07396157ccbeca091933506eb5e95360802d184c0235"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "b66f786036134f5959fc113b4154ac4052ce2bad18774396c948e564684b7fd4"
+      "sha256": "7c9151996baa5336e4b191c5fce34abb2dc0af6e3a0c1d7e72f7e43f7f7ebf39"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "ff66881fbc753fcdc3678df2ec6bec8a1dddc1e9e9352ea32c90ffeaecb7f6f1"
+      "sha256": "838e7612b61e98085c9196692f13c3c4df941b45cfff06d43de4466f42725d75"
     },
     {
       "路径": "说明/使用说明.md",
@@ -73,5 +73,5 @@
     "状态描述.创建窗口状态",
     "状态描述.状态流转校验"
   ],
-  "能力定义摘要": "7285b71ab37fe852"
+  "能力定义摘要": "575ab86ef5f81e7e"
 }

@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "bd43853d9c67b44f7fb29a092c2ec6e1c081c9b21d0e1d42ac31de59b4018964"
+      "sha256": "9602f4c9a4f56381503e683d45216636325402cfb1ebeff0d114c7af39a2d0b2"
     },
     {
       "路径": "复用决策.json",
@@ -25,19 +25,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "940fb669b17eadc539d7abeac238746a21934ef503ee35fc887ae4b9d8323c1e"
+      "sha256": "7b87f4fb3a8fc6c7a0ff31798d5b414f1cd74bd100ba7191566259ff06c78ec5"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "ff64d0a82b96c5711d6bb4e02c1eeeee0dcff773bf5667d45fa9020e013c095a"
+      "sha256": "24f92875b5b879bf4867dfa6939787713dfc8ceead81111cc950fa218619c09f"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "aff2dcf2635307f818ea9463cf3be1ecdcbc64038c9aa5452472cfdf3fa71a22"
+      "sha256": "d009db4ed99441823dfdd86e193fb6621c8065549bc6dff976fa404d0bcdd21d"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "2909148f7d54b6411c410a6184e5c29ceeed9b75ef34c81408178152d5df45b4"
+      "sha256": "2b1a56d6b6a160ddcf3a2419171a0047cac05c55258e336cdb49dbb800079c3b"
     },
     {
       "路径": "说明/使用说明.md",
@@ -69,5 +69,5 @@
     "系统核心支持库.幂等消息.生成id",
     "系统核心支持库.幂等消息.校验id"
   ],
-  "能力定义摘要": "46706983bbc8efaf"
+  "能力定义摘要": "e875eb160eedc30f"
 }

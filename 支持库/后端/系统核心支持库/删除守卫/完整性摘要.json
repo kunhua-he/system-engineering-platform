@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "ec6c0f8131706338707c689d663f9ba9c16adba480e9eeeef4c607786e18eaa6"
+      "sha256": "9c1a7dfca65efb1d1633ca7100e42514cd528585f647587ef45db8b018e60e50"
     },
     {
       "路径": "复用决策.json",
@@ -25,19 +25,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "e86ee59bd5cfadc7584a325066b2a4663082494a7295fcddc5dd2512aa7a90ba"
+      "sha256": "6136f34cd38e89068d7ab4259ef0297c3616f07ecb4e6d8bd6f56cfed3386aad"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "3efa46d1c3f936dd87843f9efe9fb47525cbd91aeb4354a8faa0185dd927b24a"
+      "sha256": "45d54bd5a3725143de8d0e4c6cf74d8d59efe975d702ce44f7ead77d435c3cf8"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "022630102db831c1a463109d0c282b99f730fb34e760af63d5d77035c80cdb61"
+      "sha256": "3ccfa909f0ee74c3aabbb91241912f0ef5c71cb6490ea58179625987145fefc0"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "980ffe06d5edcb5fc1033d0640cab74d51a98496049e83b39265f457827d76dc"
+      "sha256": "05cee2bfcf6fa8f50d990e002bf6352f5e5e6536778c5e8baa2d016612756aae"
     },
     {
       "路径": "说明/使用说明.md",
@@ -65,5 +65,5 @@
     "系统核心支持库.删除守卫.检查删除",
     "系统核心支持库.删除守卫.检查清空"
   ],
-  "能力定义摘要": "760ab1bad87cb593"
+  "能力定义摘要": "57134caccfff6854"
 }
