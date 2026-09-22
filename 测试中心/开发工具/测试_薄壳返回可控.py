@@ -45,8 +45,69 @@ class 工具形状测试(unittest.TestCase):
             self.assertIn(名, 属性, f"调用工具未暴露 {名}")
         self.assertEqual("array", 属性["值字段"]["type"])
 
+    def test_项目根已由必填改为可省略(self):
+        """2026-09-22 华哥：「理论上 mcp 是默认绑定根目录的」——顶层 `项目根` 不再必填。
+
+        保住的判据：参数**仍然暴露**（要显式指向别的仓库时用得上），只是不进 required。
+        """
+        for 协议名 in ("capability_search", "capability_call"):
+            架构 = _取工具(协议名).inputSchema
+            self.assertIn("项目根", 架构["properties"], f"{协议名} 仍应暴露 项目根 供显式指定")
+            self.assertNotIn("项目根", 架构.get("required") or [],
+                             f"{协议名} 的 项目根 已由薄壳默认绑定，不得再声明为必填")
+
     def test_工具数仍是三个(self):
         self.assertEqual(3, len(清单.三个工具定义), "薄壳工具数不得增加（仍是薄壳）")
+
+
+class 描述动态化测试(unittest.TestCase):
+    """工具描述必须**随账本动态生成**（华哥 2026-09-22：「3 个工具的提示词，尽量是动态的」）。
+
+    锁三件事：① 三个描述都带动态占位符；② 组装后面面都含真实账本数据；
+    ③ 静态模板不被污染（工具面指纹只反映代码版本，不因账本变化而漂移）。
+    """
+
+    def test_三个描述都留了动态占位符(self):
+        for 工具 in 清单.三个工具定义:
+            self.assertIn(清单.动态段占位, 工具.description or "",
+                          f"{工具.name} 的描述未留动态占位符（华哥要求三个都动态）")
+
+    def test_组装后三个描述都注入了动态段(self):
+        面 = 清单.组装工具面(能力id="系统核心支持库.进程管理.执行命令")
+        self.assertEqual(3, len(面))
+        for 工具 in 面:
+            描述 = 工具.description or ""
+            self.assertNotIn(清单.动态段占位, 描述, f"{工具.name} 的占位符未被替换")
+            self.assertTrue("常用传参" in 描述, f"{工具.name} 未注入常用传参段")
+
+    def test_动态段含账本真实数据(self):
+        """已有 8687 次真实调用（实测），故 `执行命令` 必有记录 —— 空库时本测试会失败，
+        那是如实信号（不是环境问题），不当成 flaky 重试。"""
+        段 = 清单.常用传参段(能力id="系统核心支持库.进程管理.执行命令")
+        self.assertIn("历史常用传参", 段)
+        self.assertIn("历史", 段)
+
+    def test_无记录的能力如实说明不编造(self):
+        段 = 清单.常用传参段(能力id="绝对不存在的能力.xxx.yyy")
+        self.assertIn("尚无历史调用", 段)
+        self.assertNotIn("样例", 段, "没记录就不得编造样例")
+
+    def test_静态模板不被污染(self):
+        """动态注入若就地改写模块级常量，第二次调用会叠加 —— 必须每次从模板重算。"""
+        前 = [工具.description for 工具 in 清单.三个工具定义]
+        清单.组装工具面(能力id="系统核心支持库.进程管理.执行命令")
+        后 = [工具.description for 工具 in 清单.三个工具定义]
+        self.assertEqual(前, 后, "组装不得就地改写静态模板（否则指纹漂移、真假不分）")
+
+    def test_回执带常用传参且失败不反噬(self):
+        """华哥：「调用的时候，默认给他返回调用的传参」。
+        接口必在；无记录/读不到时也得回一个**带说明**的对象，而不是抛异常。"""
+        有 = 壳.常用传参条("系统核心支持库.进程管理.执行命令")
+        self.assertIsInstance(有, dict)
+        self.assertIn("说明", 有)
+        无 = 壳.常用传参条("绝对不存在的能力.xxx.yyy")
+        self.assertIsInstance(无, dict)
+        self.assertFalse(无.get("有记录"))
 
 
 class 裁剪测试(unittest.TestCase):
@@ -253,7 +314,10 @@ class 项目根自动补位测试(unittest.TestCase):
         self.assertNotIn("项目根", 入参, "不得原地改调用方的 参数 对象")
 
     def test_顶层项目根不合法时仍被拒且不转发(self):
-        结果, 记录 = self._调({"能力id": "某能力", "参数": {}})
+        # 2026-09-22 口径变更：`项目根` 由「必填」改为「可省略」（薄壳启动时默认绑定自身位置）。
+        # 所以「不传」不再是不合法 —— 改为验证「**显式传一个无效根**仍被拒且不转发」，
+        # 这比原断言更贴近新判据的本意（默认不等于免检；显式传错照样拒）。
+        结果, 记录 = self._调({"能力id": "某能力", "参数": {}, "项目根": "/tmp"})
         self.assertFalse(结果["成功"])
         self.assertEqual([], 记录, "顶层项目根不合法不得发起转发")
 
@@ -338,8 +402,9 @@ class 网关操作转发测试(unittest.TestCase):
         模式 = _取工具("capability_call").inputSchema
         self.assertEqual(list(壳.薄壳允许操作), 模式["properties"]["操作"]["enum"],
                          "工具清单的操作枚举必须与薄壳白名单同源，不得各写一份")
-        self.assertEqual(["项目根"], 模式["required"],
-                         "能力id 只在 操作=调用能力 时必填，故不得留在 schema 必填里")
+        self.assertEqual([], 模式["required"],
+                         "能力id 与 项目根 都不再是 schema 必填：能力id 仅 操作=调用能力 时必填，"
+                         "项目根 已由薄壳默认绑定（2026-09-22 华哥：「mcp 是默认绑定根目录的」）")
         self.assertEqual(["调用能力", "热接入", "健康检查", "能力详情"], list(壳.薄壳允许操作))
 
     def test_能力详情按能力id转发且不塞项目根(self):
