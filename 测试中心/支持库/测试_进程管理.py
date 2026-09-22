@@ -19,7 +19,10 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 支持库.后端.系统核心支持库.进程管理 import 执行命令, 执行命令集, 沙箱执行命令
+from 支持库.后端.系统核心支持库.进程管理 import (
+    执行命令, 执行命令集, 沙箱执行命令,
+    启动进程, 等待进程结束, 释放句柄,
+)
 
 有无内核沙箱 = sys.platform == "darwin" and bool(shutil.which("sandbox-exec"))
 
@@ -204,6 +207,102 @@ class 测试执行命令集(unittest.TestCase):
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "参数不合法")
         self.assertIn("64", 结果.错误说明)
+
+    def test_批内命令走默认直启档不解释shell(self) -> None:
+        """`经shell` 的**边界**锁定：本能力是 `执行命令` 的转调（`实现/进程管理.py:471`
+        逐条转调、本能力零复制），`经shell` 的裁定权唯一归被转调的 `执行命令`，
+        故批内条目按默认档（argv 直启）跑，`|` 是字面量。
+        要 shell 语义用 `执行命令` / `启动进程` 传 `经shell=真`（见 `测试经shell开关`
+        与 `测试经shell启动进程异步腿`）。
+
+        本条只锁**默认档**（不传 `经shell`），故无论将来是否给本能力加 `经shell`
+        参数，它都必须继续绿 —— 锁的是「不传开关时行为不变」，不是「不许加参数」。
+        """
+        结果 = 执行命令集(命令表=["echo abc | tr a-z A-Z"])
+        self.assertTrue(结果.成功, 结果.错误说明)
+        条目 = 结果.值["结果表"][0]
+        self.assertEqual(条目["退出码"], 0)
+        self.assertEqual(条目["标准输出"].strip(), "abc | tr a-z A-Z",
+                         "不传 经shell 时 `|` 只是 echo 的普通参数，不许被解释成管道")
+
+
+class 测试经shell开关(unittest.TestCase):
+    """`经shell`（2026-09-23 新增，默认 假）窄分支：真=命令整串交本平台 shell 解释器
+    （POSIX `sh -c` / Windows `cmd /c`，平台差异收口在 `平台适配.经shell命令表`）；
+    假/留空=argv 直启、逐字不解释；非布尔（如 `1`）拒收为 `参数不合法`。
+
+    ★ 为什么锁这几条：`经shell` 管的是「同一串命令文本交给谁解释」，两种取值的差异
+    必须落在**可观察输出**上（管道真的分了两段、变量真的展开了）；只查内部 argv
+    等于没验。非布尔拒收锁的是「显式参数只许显式裁定」——`bool(1)` 会静默当真，
+    等于替调用方猜意图（`_解析经shell` 的明文口径）。
+    """
+
+    管道命令 = "echo abc | tr a-z A-Z"
+    管道字面量 = "abc | tr a-z A-Z"
+
+    def test_真时管道交shell解释(self) -> None:
+        结果 = 执行命令(self.管道命令, 经shell=True)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["退出码"], 0)
+        self.assertEqual(结果.值["标准输出"].strip(), "ABC",
+                         "管道必须真被 shell 解释（tr 把 abc 换成 ABC）")
+
+    def test_真时变量与分号交shell解释(self) -> None:
+        结果 = 执行命令("x=7; echo 变量=$x", 经shell=True)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["退出码"], 0)
+        self.assertEqual(结果.值["标准输出"].strip(), "变量=7",
+                         "分号与 $x 展开必须真被 shell 解释")
+
+    def test_假时逐字不解释(self) -> None:
+        结果 = 执行命令(self.管道命令, 经shell=False)
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["退出码"], 0)
+        self.assertEqual(结果.值["标准输出"].strip(), self.管道字面量,
+                         "假 时 `|` 只是 echo 的普通参数，不许被解释成管道")
+        self.assertNotIn("ABC", 结果.值["标准输出"])
+
+    def test_留空与显式假同档(self) -> None:
+        留空 = 执行命令(self.管道命令)
+        显式假 = 执行命令(self.管道命令, 经shell=False)
+        self.assertTrue(留空.成功, 留空.错误说明)
+        self.assertEqual(留空.值["标准输出"], 显式假.值["标准输出"],
+                         "默认档必须与显式 假 逐字相同（历史行为不变）")
+        self.assertEqual(留空.值["标准输出"].strip(), self.管道字面量)
+
+    def test_非布尔经shell被拒(self) -> None:
+        for 非法 in (1, 0, "true", [True]):
+            结果 = 执行命令(self.管道命令, 经shell=非法)
+            self.assertFalse(结果.成功, f"经shell={非法!r} 必须拒收，不许 bool() 猜测")
+            self.assertEqual(结果.错误码, "参数不合法")
+            self.assertEqual(结果.来源, "进程管理")
+            self.assertIn("必须是 真/假（逻辑型）", 结果.错误说明)
+
+
+class 测试经shell启动进程异步腿(unittest.TestCase):
+    """`经shell` 在异步腿（`启动进程`）上同样生效：先拿句柄，`等待进程结束` 取 shell 输出。
+
+    ★ 为什么单独锁：异步腿是长命令（>15 秒）的唯一正路；若 `启动进程` 漏了 `经shell`，
+    长命令要 shell 语义就只能回头手拼 `bash -c`，正是本次新增该开关要消灭的姿势。
+    """
+
+    def test_真时拿到句柄且等待进程结束取到shell输出(self) -> None:
+        启动 = 启动进程("echo abc | tr a-z A-Z", 经shell=True, 工作目录=str(系统根))
+        self.assertTrue(启动.成功, 启动.错误说明)
+        self.assertIn("句柄", 启动.值)
+        句柄 = 启动.值["句柄"]
+        self.addCleanup(释放句柄, 句柄=句柄)
+        等待 = 等待进程结束(句柄=句柄, 超时秒=10.0)
+        self.assertTrue(等待.成功, 等待.错误说明)
+        self.assertEqual(等待.值["退出码"], 0)
+        self.assertEqual(等待.值["标准输出"].strip(), "ABC",
+                         "异步腿取回的 stdout 必须是 shell 解释后的结果")
+
+    def test_非布尔经shell被拒(self) -> None:
+        结果 = 启动进程("echo 1", 经shell=1, 工作目录=str(系统根))
+        self.assertFalse(结果.成功, "非布尔必须拒收，不许 bool() 猜测")
+        self.assertEqual(结果.错误码, "参数不合法")
+        self.assertIn("必须是 真/假（逻辑型）", 结果.错误说明)
 
 
 if __name__ == "__main__":
