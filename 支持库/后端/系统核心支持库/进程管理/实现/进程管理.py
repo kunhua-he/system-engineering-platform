@@ -67,6 +67,24 @@ def _解析超时秒(超时秒, 默认秒: float | None, 留空语义: str) -> t
     return float(超时秒), ""
 
 
+def _解析经shell(经shell) -> tuple[bool, str]:
+    """把 `经shell` 收口成「真/假」，非法输入返回原因文本（空串=合法）。
+
+    - 留空（None）→ **假**：argv 直启，历史行为逐字不变（默认档不动）；
+    - 真/假（bool）→ 原样；
+    - 其它（数字 / 文本 / 列表…）→ 拒绝并点名。
+
+    为什么不写 `bool(经shell)`：逻辑型契约是**真 bool**（`公共契约/基础类型/逻辑类型`），
+    把 `1`/`"true"`/非空列表静默当真，等于替调用方猜意图（「参数只收不用」的反面）；
+    显式参数只许显式裁定 —— 与 `_解析超时秒` 同一口径。
+    """
+    if 经shell is None:
+        return False, ""
+    if isinstance(经shell, bool):
+        return 经shell, ""
+    return False, f"经shell 必须是 真/假（逻辑型）；收到 {经shell!r}"
+
+
 # 命令文本拆分（B-28）与它的 `posix=False` 口径**已整体下沉收口层**
 # `公共契约.运行时.平台适配.拆分命令文本()`：本文件不再自带 `_拆分命令` / `_剥成对引号`
 # 及其平台分支（第一轮审计 §二 B1-2 / §四 D-1 —— 原文与本文件第 88 行的平台分叉冲突）。
@@ -156,7 +174,8 @@ def _取进程(句柄: int | None) -> tuple[subprocess.Popen | None, str]:
 
 def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = None,
              环境变量: dict = None, 超时秒: int = None,
-             就绪地址: str = None, 就绪超时秒: float = None) -> 结果:
+             就绪地址: str = None, 就绪超时秒: float = None,
+             经shell: bool = None) -> 结果:
     """启动外部进程。返回 {句柄, PID, 命令}。
 
     ``命令`` 收**一条完整命令行**（「可执行文件 + 参数」，按空白切分），与
@@ -168,14 +187,26 @@ def 启动进程(命令: str = None, 参数: list = None, 工作目录: str = No
     供参数本身含空白/特殊字符时用（``命令`` 按空白切分，写不出含空格的单个参数）。
     不需要精确控制就别传它。
 
-    直启（不经 shell），因此**不内建**危险命令检测：策略拦截落在
+    ``经shell``（2026-09-23 新增，默认 **假**）—— ``假`` 时 argv 直启（历史行为逐字
+    不变）；``真`` 时把 ``命令`` 整串交给本平台 shell 解释器（POSIX ``/bin/sh -c`` /
+    Windows ``cmd /c``，由 `平台适配.经shell命令表()` 统一裁定平台差异），于是
+    管道 / 重定向 / ``&&`` / 变量展开 / shell 内建全部可用。**长任务异步腿要 shell 语义
+    就传它**，不必再自己写 `bash -c "…"` 或用 `参数=['-c', …]` 手拼。
+
+    直启（不经 shell，即 ``经shell`` 留空/假）时**不内建**危险命令检测：策略拦截落在
     执行命令 / 沙箱执行命令 两条 shell 文本入口（S-06 接线），
     需要策略前置的调用方请走那两条能力，或在调用本能力前自行做策略判定。
     """
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
+    经shell开关, 经shell原因 = _解析经shell(经shell)
+    if 经shell原因:
+        return 结果.失败("参数不合法", 经shell原因, 来源="进程管理")
     try:
-        cmd = 命令.split() + list(参数 or [])
+        # 经shell=真 的解释器 argv（含 POSIX/Windows 差异）由收口层唯一实现，
+        # 本处不含任何平台判断。
+        cmd = (平台适配.经shell命令表(命令, 参数) if 经shell开关
+               else 命令.split() + list(参数 or []))
         # 独立进程组：平台差异（POSIX setsid / Windows 新建进程组标志）只在
         # 平台适配.子进程组启动标志() 内判定，调用点不写平台判断。
         进程 = subprocess.Popen(cmd, cwd=工作目录, env=环境变量,
@@ -310,14 +341,25 @@ def 等待进程结束(句柄: int | None = None, 超时秒: float = None) -> �
         return 结果.失败("等待失败", str(错误), 来源="进程管理")
 
 
-def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str = None) -> 结果:
+def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str = None,
+             经shell: bool = None) -> 结果:
     """执行命令并等待完成。返回 {退出码, 标准输出, 错误输出}。
+
+    ``经shell``（2026-09-23 新增，默认 **假**）—— ``假`` 时按「可执行文件 + 参数」
+    直启（历史行为逐字不变）；``真`` 时把 ``命令`` 整串交给本平台 shell 解释器
+    （POSIX ``/bin/sh -c`` / Windows ``cmd /c``，平台差异由 `平台适配.经shell命令表()`
+    统一裁定），于是管道 / 重定向 / ``&&`` / 变量展开 / shell 内建全部可用。
+    要 shell 语义就传它，不必自己写 `sh -c "…"` 或落脚本文件。
 
     执行前经能力调用服务取 `命令安全.检测危险命令`（S-06 接线）：命中危险命令
     返回失败（错误码 `危险命令`），不发起进程；检测器不可用时留痕降级放行。
+    **``经shell`` 两种取值下都在直启/解释器启动之前拦截**（shell 形态尤其需要前置策略）。
     """
     if not isinstance(命令, str) or not 命令.strip():
         return 结果.失败("参数不合法", "命令必须是非空字符串", 来源="进程管理")
+    经shell开关, 经shell原因 = _解析经shell(经shell)
+    if 经shell原因:
+        return 结果.失败("参数不合法", 经shell原因, 来源="进程管理")
     执行上限秒, 超时原因 = _解析超时秒(超时秒, 60.0, "按参数契约默认 60 秒")
     if 超时原因 or 执行上限秒 is None:
         return 结果.失败("参数不合法", 超时原因 or "超时秒不合法", 来源="进程管理")
@@ -328,10 +370,15 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
     # 整组回收，避免 shell 子孙进程泄漏。
     # 命令文本拆分的平台差异（B-28）已收口到 平台适配.拆分命令文本()：
     # Windows 用 posix=False 保住反斜杠路径，**本处不含任何平台分叉**。
-    try:
-        命令表 = 平台适配.拆分命令文本(命令)
-    except ValueError as 错误:
-        return 结果.失败("参数不合法", f"命令解析失败: {错误}", 来源="进程管理")
+    # 经shell=真 时命令整串交给解释器（`sh -c` 形态），不做 argv 拆分 —— 引号/管道
+    # 的解析权归 shell，这正是「要 shell 语义」的用意；解释器 argv 由收口层给出。
+    if 经shell开关:
+        命令表 = 平台适配.经shell命令表(命令)
+    else:
+        try:
+            命令表 = 平台适配.拆分命令文本(命令)
+        except ValueError as 错误:
+            return 结果.失败("参数不合法", f"命令解析失败: {错误}", 来源="进程管理")
     if not 命令表 or not 命令表[0].strip():
         return 结果.失败("参数不合法", "命令为空", 来源="进程管理")
     进程 = None

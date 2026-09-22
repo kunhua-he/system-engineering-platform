@@ -1175,6 +1175,27 @@ def 拆分命令文本(命令: str) -> list[str]:
     return shlex.split(命令)
 
 
+def 经shell命令表(命令: str, 追加参数: list | None = None) -> list[str]:
+    """把「一条 shell 命令串」包成**本平台 shell 解释器**的 argv（`经shell` 形态的唯一实现）。
+
+    为什么必须收口在这里：`sh -c` 是 **POSIX 语法**，Windows 的等价物是 `cmd /c`；
+    「同一份命令串该交给哪个解释器、用什么开关」是**平台语义差异**，不是调用方的业务判断。
+    留在调用点（如 `进程管理.执行命令` 的 `经shell=真` 分支）会让「经 shell 执行」的含义
+    随平台漂移，而对外契约里看不出来 —— 与 `拆分命令文本()` / `子进程组启动标志()`
+    同一处置（2026-09-23 补 shell 形态时新增）。
+
+    - POSIX：``["/bin/sh", "-c", 命令]``（``/bin/sh`` 是 POSIX 保证存在的路径，不依赖 PATH）
+    - Windows：``[解释器, "/c", 命令]``，解释器取 ``COMSPEC``，缺失回退 ``cmd.exe``
+
+    `追加参数` 原样拼在「解释器 + 开关 + 命令串」之后：POSIX 下成为 ``sh -c`` 脚本的
+    ``$0``/``$1``…（只在调用方明确要传位置参数时才用；普通调用别传）。
+    """
+    if 是Windows():
+        解释器 = os.environ.get("COMSPEC") or "cmd.exe"
+        return [解释器, "/c", 命令] + list(追加参数 or [])
+    return ["/bin/sh", "-c", 命令] + list(追加参数 or [])
+
+
 def _macOS进程RSS字节(进程ID: int, ps命令: str | None) -> tuple[int, str]:
     """macOS 取法：``ps -o rss= -p <pid>``（**单位 KB**，本函数换算成字节）。
 
@@ -1515,6 +1536,10 @@ __all__ = [
     # `运行缓存.py` 四处调用点改调这四个新原语（跨层调用），同一处置 —— 必须进公开面。
     "多进程启动上下文",
     "拆分命令文本",
+    # 2026-09-23 补 shell 形态：`经shell命令表` 是「一条命令串包成解释器 argv」的
+    # **全平台唯一实现**（`进程管理.启动进程/执行命令` 的 `经shell=真` 分支跨层调用它），
+    # 未列入 `__all__` 时型检会报 `reportAttributeAccessIssue` —— 与既有补列同一处置。
+    "经shell命令表",
     "进程内存RSS字节",
     "平台稳定缓存根",
     "ps候选路径",
