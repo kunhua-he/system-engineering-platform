@@ -7,6 +7,7 @@
 from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
+import fnmatch
 import hashlib
 import os
 import subprocess
@@ -28,7 +29,32 @@ from typing import Any, Iterable
     "venv",
     "node_modules",
 )
-固定排除文件 = (".DS_Store",)
+# 固定排除文件：按**基名**判定，支持 `fnmatch` 通配（无通配字符时即全等，语义不变）。
+# 带通配的这批是 `.gitignore` 的**文件级**规则镜像 —— 此前只列目录，不认文件级规则，
+# 于是 `.gitignore` 挡住、git status 看不见的本地残留（`*.db` / `*-wal` / `*.bak_*` /
+# `zcode.json` 等）仍被 `git ls-files --others` 报出并被算成正式文件，导致工作区恒判
+# 「含未提交变更」、字节指纹随本机残留而变。此处逐条镜像 `.gitignore`，仍是显式可审计表。
+固定排除文件 = (
+    ".DS_Store",
+    "*.db",
+    "*.db-wal",
+    "*.db-shm",
+    "*.sqlite3",
+    "*.sqlite3-wal",
+    "*.sqlite3-shm",
+    "*-wal",
+    "*-shm",
+    "*.bak",
+    "*.bak_*",
+    "*.bak-*",
+    "*.orig",
+    "*~",
+    ".env",
+    "*.log",
+    "*.tmp",
+    ".测试值.*.tmp",
+    "zcode.json",
+)
 
 
 def _执行(仓库根: Path, 参数: list[str]) -> bytes:
@@ -51,7 +77,11 @@ def _路径表(原始: bytes) -> list[str]:
 
 def _是正式路径(相对路径: str) -> bool:
     规范 = 相对路径.replace("\\", "/").strip("/")
-    if not 规范 or Path(规范).name in 固定排除文件:
+    if not 规范:
+        return 假
+    基名 = Path(规范).name
+    # `fnmatchcase`（区分大小写，与 git 的忽略口径一致）：无通配字符的模式即全等判定。
+    if any(fnmatch.fnmatchcase(基名, 模式) for 模式 in 固定排除文件):
         return 假
     for 排除 in 固定排除目录:
         if "/" in 排除:
