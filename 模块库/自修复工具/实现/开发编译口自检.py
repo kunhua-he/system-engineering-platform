@@ -92,8 +92,54 @@ def _是源码树(根: Path) -> bool:
     return (根 / "AGENTS.md").is_file() and (根 / "开发文档").is_dir()
 
 
+网关服务标签 = "com.huashi.gateway-40007"
+网关plist = Path.home() / "Library" / "LaunchAgents" / f"{网关服务标签}.plist"
+#: plist 里指向**源码树** `工程缓存` 的键（`系统底座_工程缓存根` 的父目录即源码树根）。
+工程缓存根键 = "系统底座_工程缓存根"
+
+
+def _自动定位源码树() -> Path | None:
+    """平台自己定位源码树（债务 #115 收口）：调用方不必手给 `源码根`。
+
+    网关跑激活制品时本模块住在制品里，`系统根` 是制品内镜像根 —— 此时按下面两条
+    **已有事实**定位真源码树（不猜、不代建、拿不到即回 None 让调用方 fail-closed）：
+
+      ① LaunchAgent plist 的 `系统底座_工程缓存根` 指向源码树 `工程缓存`，取父目录；
+      ② 制品 `制品来源.json` 的源码根字段（若制品写入了它）。
+
+    候选必须同时满足 `_是源码树` 且含编译口本体，才认；否则继续试下一条。
+    """
+    import json as _json
+    import plistlib
+    候选表: list[Path] = []
+    if 网关plist.is_file():
+        try:
+            配置 = plistlib.loads(网关plist.read_bytes())
+            缓存根 = (配置.get("EnvironmentVariables") or {}).get(工程缓存根键)
+            if isinstance(缓存根, str) and 缓存根.strip():
+                候选表.append(Path(缓存根).expanduser().resolve().parent)
+        except Exception:
+            pass
+    for 目录 in (系统根, *系统根.parents):
+        try:
+            来源文件 = 目录 / "制品来源.json"
+            if not 来源文件.is_file():
+                continue
+            来源 = _json.loads(来源文件.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for 键 in ("源码根", "源码树根", "来源源码根"):
+            值 = 来源.get(键) if isinstance(来源, dict) else None
+            if isinstance(值, str) and 值.strip():
+                候选表.append(Path(值).expanduser().resolve())
+    for 候选 in 候选表:
+        if _是源码树(候选) and (候选 / 编译口文件).is_file():
+            return 候选
+    return None
+
+
 def _源码根(源码根: object) -> tuple[Path | None, str]:
-    """解析 `源码根` 参数：留空取本模块所在树；给定则 fail-closed 校验。
+    """解析 `源码根` 参数：留空自动定位源码树；给定则 fail-closed 校验。
 
     为什么把源码树做成**显式参数**（2026-09-21，债务 #217）：本模块原先用
     `系统根 = Path(__file__).resolve().parents[3]` 隐式认定「要检查的树就是我所在的
@@ -115,9 +161,15 @@ def _源码根(源码根: object) -> tuple[Path | None, str]:
         # 实测 2026-09-22：这种裸 traceback 被上层当成「本轮无受影响包」报出去，
         # 看的人以为编译口跑过了、只是没变化。fail-closed：不是源码树就明确要 源码根。
         if not _是源码树(系统根):
+            # 债务 #115 收口：不再要调用方手给 —— 平台自己按 plist 的
+            # `系统底座_工程缓存根`（取父目录）/ 制品来源.json 定位真源码树。
+            定位 = _自动定位源码树()
+            if 定位 is not None:
+                return 定位, ""
             return None, (
-                f"本模块不在源码树里（当前推出 {系统根}，缺 AGENTS.md 或 开发文档/）"
-                " —— 网关跑激活制品时必须显式给 源码根=<源码树绝对路径>"
+                f"本模块不在源码树里（当前推出 {系统根}，缺 AGENTS.md 或 开发文档/），"
+                f"且平台自动定位失败（plist {工程缓存根键} / 制品来源.json 都没给出源码树）"
+                " —— 请显式给 源码根=<源码树绝对路径>"
             )
         return 系统根, ""
     根 = Path(文本).expanduser().resolve()
@@ -337,9 +389,12 @@ def _上线(根: Path, 超时秒: float) -> dict:
     }
     if not 出["构建成功"]:
         return 出
-    重启脚本 = 根 / "开发工具/能力网关/重启网关.py"
     重启 = _调用支持库("系统核心支持库.进程管理.执行命令", {
-        "命令": f"python3.14 {重启脚本}",
+        # 债务 #154：重启腿**必须** `-m` 模块形态 + cwd=源码树 —— 脚本路径直启时
+        # `sys.path[0]` 是脚本目录、`公共契约` 不在其中，实测报 `ModuleNotFoundError: 公共契约`；
+        # `-m` 形态把 cwd（=源码树）放进 `sys.path`，不必依赖调用方记得设 PYTHONPATH。
+        # `执行命令` 无 `环境变量` 入参（仅 启动进程/沙箱执行命令 有），故只能靠 `-m` 自足。
+        "命令": f"python3.14 -m 开发工具.能力网关.重启网关",
         "工作目录": str(根),
         "超时秒": 60.0,
     })

@@ -466,3 +466,68 @@ def 校验第三方访问声明(制品目录: Path) -> tuple[bool | None, str]:
                       f"（标准提供者 0、依赖锁 0），本项未取得核验证据（不得计入通过）；"
                       f"适配层外另有 {外置锁数} 份依赖锁不在本项声明核验范围")
     return not 问题表, "；".join(问题表[:12]) or f"{提供者数} 个第三方提供者权限/网络/文件/进程声明与真实依赖一致"
+
+
+#: 制品落后提交数阈值（债务 #133③）：`git rev-list --count <制品提交>..HEAD` **超过**它即判红。
+#: 0 = 「制品来源提交必须 = HEAD」，与 `校验制品来源绑定` 的提交比对同口径；但本条**只比
+#: 提交数、不碰工作区字节指纹**，故工作区脏/本地残留不会误伤它（那类假红见 #133②）。
+制品落后提交阈值 = 0
+
+
+def _仓库根() -> Path:
+    """本模块所在仓库根：`开发工具/发布门禁/<本文件>` 往上三层。"""
+    return Path(__file__).resolve().parents[2]
+
+
+def 计算制品落后提交数(
+    制品目录: Path, 仓库根: Path | None = None,
+) -> tuple[int | None, str]:
+    """制品来源提交 → HEAD 之间的提交数（`git rev-list --count <制品提交>..HEAD`）。
+
+    判据事实源（债务 #133③ / F4）：`制品来源.json` 的 `提交` 字段 + 真 `git` 计数。
+    取不到（缺文件 / 缺字段 / 非 git 仓库 / 提交不存在）回 `(None, 说明)` —— fail-closed
+    由调用方判红，绝不把「没量到」当「没落后」。
+    """
+    import subprocess
+
+    制品目录 = Path(制品目录)
+    根 = Path(仓库根) if 仓库根 is not None else _仓库根()
+    try:
+        来源 = json.loads((制品目录 / "制品来源.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as 错误:
+        return None, f"制品来源.json 不可读: {错误}"
+    制品提交 = str(来源.get("提交") or "").strip() if isinstance(来源, dict) else ""
+    if not 制品提交:
+        return None, "制品来源.json 缺 提交 字段"
+    try:
+        计数 = subprocess.run(
+            ["git", "rev-list", "--count", f"{制品提交}..HEAD"],
+            cwd=str(根), capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as 错误:
+        return None, f"git rev-list 起不来: {错误}"
+    if 计数.returncode != 0:
+        return None, (f"git rev-list 退出码 {计数.returncode}: "
+                      f"{(计数.stderr or '').strip()[:200]}")
+    try:
+        return int(计数.stdout.strip()), 制品提交
+    except ValueError:
+        return None, f"git rev-list 输出不是整数: {计数.stdout!r}"
+
+
+def 校验制品落后提交数(
+    制品目录: Path, 仓库根: Path | None = None, 阈值: int | None = None,
+) -> tuple[bool, str]:
+    """判据：制品落后提交数 **超过阈值即判红**（债务 #133③，别靠人记得）。
+
+    返回 `(通过, 详情)`。**取不到计数即判红**（fail-closed，与发布门禁其它项同口径）。
+    """
+    上限 = 制品落后提交阈值 if 阈值 is None else int(阈值)
+    落后数, 说明 = 计算制品落后提交数(制品目录, 仓库根)
+    if 落后数 is None:
+        return 假, f"制品落后提交数取不到（{说明}）—— 判据取不到即判红"
+    if 落后数 > 上限:
+        return 假, (f"制品落后 HEAD {落后数} 个提交（阈值 {上限}，制品来源提交 {说明}）"
+                    " —— 网关跑的是旧装配，须重建制品 + 重启网关")
+    return 真, (f"制品落后 HEAD {落后数} 个提交（阈值 {上限}，"
+                f"制品来源提交 {说明}）")
