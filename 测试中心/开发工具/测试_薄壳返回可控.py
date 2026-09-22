@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -476,7 +477,10 @@ class 网关操作转发测试(unittest.TestCase):
         结果, 记录 = self._调({"操作": "热接入", "项目根": str(系统根)})
         self.assertTrue(结果["成功"], 结果)
         self.assertEqual({"操作": "热接入"}, 记录[0], "热接入 的请求体只能是 操作 一个键")
-        self.assertIn("操作=热接入", 结果["转发"], "回执必须写明实际操作，便于核对")
+        # 回包瘦身（2026-09-23）：`转发` 是纯复述请求的字段，已不再出现 ——
+        # 「实际操作是哪个」由上面的 `记录[0]` 断言承重，不再靠回包自述。
+        for 复述键 in ("转发", "HTTP状态码", "能力id", "耗时毫秒"):
+            self.assertNotIn(复述键, 结果, f"{复述键} 是复述/后台记录字段，回包不该再带")
 
     def test_健康检查同样转发(self):
         结果, 记录 = self._调({"操作": "健康检查", "项目根": str(系统根)})
@@ -866,6 +870,32 @@ async def _跑多次工具目录(次数: int, 环境追加: dict) -> list[dict]:
     return 出
 
 
+async def _不握手调工具目录(脚本: Path, 环境追加: dict | None = None) -> tuple[bool, str]:
+    """**故意不 `initialize`** 直接 tools/call —— `os.execve` 换壳之后，客户端就是这个姿势。
+
+    返回 `(是否拿到工具目录, 说明)`。拿到＝新壳能在无握手的情况下服务；拿不到＝说明里带出
+    客户端收到的错误原文（现行 SDK 把服务端的一切异常都兜成 `Invalid request parameters`）。
+    """
+    from 支持库.适配层.MCP协议提供者 import (
+        构造客户端会话, 构造标准输入输出参数, 标准输入输出客户端,
+    )
+
+    参数 = 构造标准输入输出参数(
+        命令=sys.executable,
+        参数表=[str(脚本)],
+        环境={**os.environ, **(环境追加 or {})},
+        工作目录=str(系统根),
+    )
+    async with 标准输入输出客户端(参数) as (读取流, 写入流):
+        async with 构造客户端会话(读取流, 写入流) as 会话:
+            try:
+                结果 = await 会话.call_tool("tool_catalog", {})
+            except Exception as 错误:  # noqa: BLE001 —— 缺陷态就是这个异常，要如实带回
+                return False, f"{type(错误).__name__}: {错误}"
+            正文 = 结果.content[0].text if 结果.content else ""
+            return (True, 正文) if 正文.strip().startswith("{") else (False, 正文[:200])
+
+
 class 自换新壳测试(unittest.TestCase):
     """改了薄壳源码，旧壳要自己换新壳（2026-09-22 华哥口径「工具内部的事，不该是使用者的事」）。
 
@@ -963,6 +993,115 @@ class 自换新壳测试(unittest.TestCase):
         self.assertTrue(已换, f"强制换壳下必须真的换过（否则判据全绿也没意义）：{三条}")
         self.assertEqual(1, len({条["进程号"] for 条 in 已换}),
                          "换壳后进程号必须稳定（重复换壳=每次调用换一个进程）")
+
+    def test_换壳后不重新握手也能服务(self):
+        """换壳把 SDK 的握手状态一起换掉了，而握手只能由客户端发起 ⇒ 新壳必须**无握手也能服务**。
+
+        实测 2026-09-23（本判据就是那次的账）：`os.execve` 换掉进程镜像的同时也换掉了会话里
+        那份「已握手」，新壳停在 NotInitialized，此后**每一次**调用都被 SDK 判成
+        `RuntimeError: Received request before initialization was complete`，再被会话循环兜成
+        一句 `Invalid request parameters` —— 连无参的 `tool_catalog` 都调不动，整条 MCP 面被打死，
+        而且**不可自愈**（防套娃守卫让换过壳的进程不再换）。
+
+        上面那条端到端判据抓不到它：它的换壳恰好落在客户端 `initialize` **之前**，新壳顺手把握手
+        也接了；只有「已握手 → 换壳 → 客户端不再握手」这条路才暴露得出来。
+        """
+        拿到, 说明 = asyncio.run(_不握手调工具目录(薄壳目录 / "薄壳服务.py"))
+        self.assertTrue(拿到, f"未握手时也必须能服务（换壳后客户端不会重发 initialize）：{说明[:300]}")
+        self.assertIn("薄壳工具数", 说明, "回执必须是**真**的工具目录，不能只判「没报错」")
+
+
+class 换壳后不握手反向验证(unittest.TestCase):
+    """反向验证：把 `stateless=True` 拆回 `False`，「不握手也能服务」必须变红。
+
+    没有这层，上面那条用例可能在**任何**实现下都绿 —— 等于没证明 `stateless` 在起作用。
+    缺陷态用**整份薄壳源码的副本**（真 stdio 子进程），只改这一个开关：工作区不受污染，
+    且走的仍是生产那条启动路径（不是把薄壳重新实现一遍来冒充）。
+    """
+
+    _开关片段 = "构造初始化选项(服务名, 服务版本), stateless=True)"
+
+    def _缺陷态脚本(self, 目录: Path) -> Path:
+        源 = (薄壳目录 / "薄壳服务.py").read_text(encoding="utf-8")
+        坏 = 源.replace(self._开关片段, "构造初始化选项(服务名, 服务版本), stateless=False)")
+        if 坏 == 源:
+            raise AssertionError("stateless 开关片段未命中，反向样本失效（判据需更新）")
+        副本 = 目录 / "薄壳服务.py"
+        副本.write_text(坏, encoding="utf-8")
+        return 副本
+
+    def test_拆掉stateless后不握手调用必失败(self):
+        with tempfile.TemporaryDirectory() as 临时:
+            目录 = Path(临时) / "薄壳"
+            shutil.copytree(薄壳目录, 目录,
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            缺陷态脚本 = self._缺陷态脚本(目录)
+            # 副本不在仓库里，平台包要显式经 PYTHONPATH 才导得到（生产里由 __file__ 推导）。
+            环境 = {"PYTHONPATH": str(系统根)}
+            现行拿到, 现行说明 = asyncio.run(
+                _不握手调工具目录(薄壳目录 / "薄壳服务.py", 环境))
+            缺陷拿到, 缺陷说明 = asyncio.run(_不握手调工具目录(缺陷态脚本, 环境))
+        self.assertTrue(现行拿到, f"现行态必须能无握手服务：{现行说明[:200]}")
+        self.assertIn("薄壳工具数", 现行说明, "现行态要拿到真工具目录")
+        self.assertFalse(缺陷拿到,
+                         f"缺陷态必须失败（否则样本失效，这道闸门等于没接线）：{缺陷说明[:200]}")
+        self.assertIn("Invalid request parameters", 缺陷说明,
+                      f"缺陷态必须复现那条把整条 MCP 面打死的错误：{缺陷说明[:200]}")
+
+
+class 回包瘦身测试(unittest.TestCase):
+    """回包只回必要字段（2026-09-23 华哥三次点名）。
+
+    口径：`成功` 恒在；`值`/`错误码`/`错误说明`/`详情`/`句柄`/`慢调用提示`/`被忽略参数`
+    非空才出现；`HTTP状态码`/`转发`/`能力id`/`耗时毫秒` 一律不再出现。
+
+    判据出处是易语言口径（`项目说明.md` 12.4① 裁决来源链最后一环）：精准返回，不堆无用字段。
+    本件给两态样本：应被删的（复述/空值）必须不在；应保留的（内容/句柄/失败原因）必须在。
+    """
+
+    def _包(self, 信封: dict, 转发级错误码: str = "") -> dict:
+        from 薄壳服务 import _包装
+        结果 = {"HTTP状态码": 200, "信封": 信封, "错误码": 转发级错误码, "错误说明": ""}
+        return _包装("探针.示例.动作", 结果, {})
+
+    def test_成功且无载荷只回成功一位(self):
+        包 = self._包({"成功": True, "值": None})
+        self.assertEqual({"成功": True}, 包, f"空值不该出现：{包}")
+
+    def test_成功带载荷只回成功与值(self):
+        包 = self._包({"成功": True, "值": {"a": 1}, "详情": {}, "句柄": None,
+                       "慢调用提示": "", "被忽略参数": [], "耗时毫秒": 12})
+        self.assertEqual({"成功": True, "值": {"a": 1}}, 包, f"应只剩 成功+值：{包}")
+
+    def test_复述与后台记录字段永不出现(self):
+        for 信封 in ({"成功": True, "值": 1}, {"成功": False, "错误码": "参数不合法", "错误说明": "x"}):
+            with self.subTest(信封=信封):
+                包 = self._包(信封)
+                for 键 in ("HTTP状态码", "转发", "能力id", "耗时毫秒"):
+                    self.assertNotIn(键, 包, f"{键} 不该出现在回包：{包}")
+
+    def test_句柄有才出现(self):
+        有 = self._包({"成功": True, "值": {"x": 1}, "句柄": 990038})
+        self.assertEqual(990038, 有.get("句柄"), f"句柄必须回带：{有}")
+        无 = self._包({"成功": True, "值": {"x": 1}})
+        self.assertNotIn("句柄", 无)
+
+    def test_失败回错误码与说明(self):
+        包 = self._包({"成功": False, "错误码": "参数不合法", "错误说明": "缺必填"})
+        self.assertEqual({"成功": False, "错误码": "参数不合法", "错误说明": "缺必填"}, 包)
+
+    def test_网关级失败也回错误码(self):
+        """信封为空（网关不可达）时，错误码来自转发级 —— 这是敢删 HTTP状态码的前提。"""
+        包 = self._包({}, 转发级错误码="网关不可达")
+        self.assertFalse(包["成功"])
+        self.assertEqual("网关不可达", 包["错误码"])
+        self.assertNotIn("HTTP状态码", 包)
+
+    def test_被忽略参数有才出现(self):
+        包 = self._包({"成功": True, "值": 1, "被忽略参数": [{"参数名": "路径"}]})
+        self.assertIn("被忽略参数", 包, "参数名写错时必须可见，否则调用方永远查不出")
+        无 = self._包({"成功": True, "值": 1, "被忽略参数": []})
+        self.assertNotIn("被忽略参数", 无)
 
 
 if __name__ == "__main__":

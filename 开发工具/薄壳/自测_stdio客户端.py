@@ -1,7 +1,7 @@
 """薄壳 stdio 自测客户端（只调薄壳自己）：initialize → tools/list → tools/call。
 
 不经端口、不启 HTTP：用 MCP SDK 的 stdio 客户端把薄壳作为子进程拉起。
-凭证从父进程环境变量继承（「系统库网关凭证」），本脚本只打印网关 HTTP 状态码与返回片段，
+凭证从父进程环境变量继承（「系统库网关凭证」），本脚本只打印薄壳回执与返回片段，
 不打印任何凭证内容。
 
 跑法：unset PYTHONPATH; PYTHONDONTWRITEBYTECODE=1 python3.14 -u 开发工具/薄壳/自测_stdio客户端.py
@@ -79,8 +79,7 @@ async def 主程序() -> int:
                 正文 = 结果.content[0].text if 结果.content else ""
                 数据 = json.loads(正文) if 正文.strip().startswith("{") else {}
                 print(f"[{序号}] {中文名}({协议名}) → 成功={数据.get('成功')} "
-                      f"HTTP状态码={数据.get('HTTP状态码')} 错误码={数据.get('错误码')} "
-                      f"isError={结果.isError}")
+                      f"错误码={数据.get('错误码')} isError={结果.isError}")
                 print(f"    正文片段: {_截断(json.dumps(数据, ensure_ascii=False))}")
                 # 自测**必须给判据**：此前这四条只打印不断言，`项目根` 也没传，
                 # 四条能力调用实际全被 fail-closed 拒掉却仍打印「自测完成」——
