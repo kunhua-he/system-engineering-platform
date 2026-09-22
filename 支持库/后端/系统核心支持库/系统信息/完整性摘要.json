@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "2143eaae6c3dbdebe6bfb95a8e76b39e23a0553b230129587b6ffe058601fa22"
+      "sha256": "501576ddc4c50ab7f69cc66bdb30a3d6295747c939eb901d8e6f374c1367778c"
     },
     {
       "路径": "复用决策.json",
@@ -25,19 +25,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "e567c6ea9ddd52bd338832d6f502930c8d2f9a0d36086c7e4fd4a20f8f767197"
+      "sha256": "77ad191511fb2310ca049ac317ef1fbf30f605391ca1b77ef2ea9705629ee409"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "133030af558cb875b4f83cbb7b0bc8fcf4a8458e12c26dec5e854c7fcd71678b"
+      "sha256": "c0bb4e053c6790e5989a0700a81a3067ce27e75c8d18e10ba93d6663ff6662fa"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "cb2205b1b5adbfffa864b576d01bf1f65911c0d8c89cbb21c622096d225bbff1"
+      "sha256": "ad13ecb7bfa62823d41e5fcbd32c90343aa93af72e7cb1411c2cc6b20e5636a7"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "f2837b26fd5fb79a8a9b6a5412a90e485cef75a31dfb2ea3d73360ac20d74a25"
+      "sha256": "9c859748b5edacb2bbaac36d950ae4288d0e46a1f72a152315bc13ac42961922"
     },
     {
       "路径": "说明/使用说明.md",
@@ -72,5 +72,5 @@
     "系统核心支持库.系统信息.获取磁盘信息",
     "系统核心支持库.系统信息.获取进程列表"
   ],
-  "能力定义摘要": "b4d8385afade9987"
+  "能力定义摘要": "b2709a320b3a1824"
 }

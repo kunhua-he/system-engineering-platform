@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "11886eb7a6facdd1fd302605d46f53d3d58a726d8f6f49b67fcece4d8eb4471b"
+      "sha256": "4c42d552cbe4c90d2edd7b6352d753ca4a872f119d31c2e2b05e57cd49a102a8"
     },
     {
       "路径": "复用决策.json",
@@ -29,19 +29,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "2fe4d4865e890b193af50ba058193e6f8b73ef0e9743d60a16f1af920629e3dc"
+      "sha256": "32613a4395cef826e62235cc4026a81efe58a3e0f5666dc3fd4fbcd9ed3e36c6"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "95ba7984b96958d06220a6c2b8e54f72483eef8ef1dd07c23a9a39f5eb22ded2"
+      "sha256": "e16e237a4e2200f1c92599f523a863acf39043c910fa2dba8b8e4a87dd6394eb"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "4bbaf31784fac3c3129058702c42048013a49a488b7ddb21ff4407238b223153"
+      "sha256": "112a421b546b119eaa2edc344ff1f96a83a0dfed81e65ff0a0ee17d7f3836bad"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "9134c025e21f66b1b1985eafa6511c7c88ce938907bfcb5da267c07bea9f4b64"
+      "sha256": "238281f067965c6ada9030d175131c068a9a354ba541afb5169250c49fb705c3"
     },
     {
       "路径": "说明/使用说明.md",
@@ -76,5 +76,5 @@
     "记忆支持库.生成标识",
     "记忆支持库.解析配置回退链"
   ],
-  "能力定义摘要": "d0e8f20c8e61a79b"
+  "能力定义摘要": "aad52be8c3122b0b"
 }

@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "907042de8ef6571f1572caf3a2d407a84f016d0e44e71c338fe6cec37e7f748a"
+      "sha256": "89fd5cbebdc715b497e51c3f372b2b26d7116b757c80e4e0d3147b0fe8da4a5a"
     },
     {
       "路径": "复用决策.json",
@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/响应归一化.py",
-      "sha256": "b20502a88bfdd5a2decfd3fe6025f3a753b7917532f30c5ca94cbda980746d97"
+      "sha256": "f8c8012230201c3c01ce4bc6d22ece5fc7755a138ba2fcb4909c81a6df5651ed"
     },
     {
       "路径": "实现/本地启动准备与守卫.py",
@@ -49,7 +49,7 @@
     },
     {
       "路径": "实现/模型连接器.py",
-      "sha256": "ed1a43d18c5f9adb79b35d25bf5f24522ce203b9daebba075d1f3f743270951b"
+      "sha256": "26a68541c5f2605e98c1a55d44da8a0e9951fde2acab8a5ca51375c5bbcfeeae"
     },
     {
       "路径": "实现/模型连接基元.py",
@@ -57,7 +57,7 @@
     },
     {
       "路径": "实现/环境配置.py",
-      "sha256": "5c6d63e15bec6b17e9b9144a1e71372767b346ed7fb10a2c249a90057ba6bfcf"
+      "sha256": "cb7b33952895e2422ccb6399f1ec5afa3aad8d4a6ddb388dd38386f91ca91e5d"
     },
     {
       "路径": "数据/模型制品清单.json",
@@ -69,23 +69,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "7a7f3b4dc4dcdd582ccb23587dc3c77313ae9af2df6a5824b872304bc35699ea"
+      "sha256": "8e08155e20dd26fedbff9d295629f03c946c90ccba86bf8de249537710a4ef72"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "0e25af584d549267c73277587eab9e0b63c4beab5b3af4ec7f3d4d1b7cd8fea4"
+      "sha256": "cd1e272fe6671ad5e7acff713d529acf6cf959a9f918fe3dadd8e2e6436959a4"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "c9caefaf611ef78d6efc688f8004b7d078fa3b2f84b4ec28b9ad68cbfea08cdf"
+      "sha256": "745169cae8317147331fc39b8a3a1eb50553eebdc7102cae4065bfc28ddd92cb"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "56d9737d4a69b2b1b7e3c573f7431785dc2b806d2495dd7c5da627c2d3142a9b"
+      "sha256": "346d9c029b7379c9115099333e1e775f7f3056d73d44139b309c6b4ef8d3998f"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "000603863c96f4a937db6b5cbb694a9d7a0b32d1cb521bdebc4d99b6895092b8"
+      "sha256": "2ab6c81ef70f040532bf53d051b45d9cce74255f045cdad2bd70dba2f85cf309"
     },
     {
       "路径": "说明/设计说明.md",
@@ -158,5 +158,5 @@
     "大语言模型支持库.模型连接器.汇总模型表现",
     "大语言模型支持库.模型连接器.选择模型"
   ],
-  "能力定义摘要": "fbd2fdbf1ba29507"
+  "能力定义摘要": "b03155b2ab9641a0"
 }
