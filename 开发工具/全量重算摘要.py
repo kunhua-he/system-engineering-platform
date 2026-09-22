@@ -42,8 +42,27 @@ def 把工程根放进导入路径(仓库根: Path) -> None:
         sys.path.insert(0, 根)
 
 
+def 完整性摘要文本(目录: Path, *, 包id: str, 版本: str) -> str:
+    """`完整性摘要.json` 的**唯一序列化口径**（内容形状归 `支持库.后端.组件规范支持库`，
+    序列化归本函数）。
+
+    ★ 为什么必须收成一处（2026-09-22 实测的真缺陷）：`开发工具.契约编译.能力定义编译器`
+    也在写同一个文件，但它用 `indent=1` 且不加尾换行，而本入口用 `indent=2` + 尾换行
+    ⇒ **同一产物两条腿、两种字节**。危害不是「难看」，而是：
+      ① 跑一次 `能力定义编译` 就把该包的 `完整性摘要.json` 刷成 indent=1 的字节，
+         与已提交内容不符 ⇒ 产生**与本次改动无关的 diff**（真跑一次会脏一片）；
+      ② 摘要门禁（`校验完整性摘要`）只**解析后逐键比**，字节差异对它完全不可见
+         ⇒ 「判据在」但「判据不覆盖」，漂移静默（哲学 7.9 的机器判据漏了这一维）。
+    故序列化只留这一处：谁要写这个文件，就调本函数拿文本，不自己 `json.dumps`。
+    """
+    from 支持库.后端.组件规范支持库 import 生成完整性摘要
+
+    return json.dumps(生成完整性摘要(目录, 包id=包id, 版本=版本),
+                      ensure_ascii=False, indent=2) + "\n"
+
+
 def 全量重算(仓库根: Path, *, 只报: bool = False) -> list[str]:
-    from 支持库.后端.组件规范支持库 import 生成完整性摘要, 校验完整性摘要
+    from 支持库.后端.组件规范支持库 import 校验完整性摘要
 
     结果: list[str] = []
     for 名 in 正式根表:
@@ -64,8 +83,8 @@ def 全量重算(仓库根: Path, *, 只报: bool = False) -> list[str]:
             声明 = json.loads(声明路径.read_text(encoding="utf-8")) if 声明路径.is_file() else {}
             包id = 声明.get("包id") or 声明.get("提供者id") or 目录.name
             版本 = 声明.get("版本", "1.0.0")
-            新 = 生成完整性摘要(目录, 包id=包id, 版本=版本)
-            摘要文件.write_text(json.dumps(新, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            摘要文件.write_text(
+                完整性摘要文本(目录, 包id=包id, 版本=版本), encoding="utf-8")
             后, 问题2 = 校验完整性摘要(目录)
             结果.append(f"[已重算] {目录.relative_to(仓库根)}: 闭合={后} {问题2[:1]}")
     return 结果
