@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import subprocess
 import sys
@@ -39,7 +40,38 @@ def _生成PDF(路径: Path) -> Path:
     return 路径
 
 
+def _制品已安装() -> bool:
+    """平台客户端制品是否已安装（激活指针存在且指向已安装 平台客户端）。
+
+    这是 PyMuPDF 提供者契约声明的运行前提（`说明/设计说明.md`「运行前提」）。
+    本判据直接探前提本身，**不拿「一次调用失败」当跳过依据** —— 前提在则真调用
+    必跑（缺陷判红），前提不在则如实跳过（环境性）；缺件语义由本文件的
+    `test_激活指针缺失返回提供者不可用` 钉住。
+    """
+    环境目录 = 子进程入口.平台客户端环境目录()
+    指针文件 = 环境目录 / "当前.json"
+    if not 指针文件.is_file():
+        return False
+    try:
+        指针 = json.loads(指针文件.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not 指针.get("制品目录"):
+        return False
+    已安装目录 = 环境目录 / "平台客户端"
+    return ((已安装目录 / "平台客户端" / "__init__.py").is_file()
+            or (已安装目录 / "__init__.py").is_file())
+
+
 class TestPyMuPDF自足性(unittest.TestCase):
+    def _要求制品(self) -> None:
+        """真调用用例的运行前提门：前提不在 ⇒ 如实跳过（环境性，非缺陷）。"""
+        if not _制品已安装():
+            self.skipTest(
+                "平台客户端制品未安装（激活指针缺失或指向未安装制品）——"
+                "PyMuPDF 提供者运行前提未满足，环境性如实跳过（非缺陷；缺件语义由"
+                " 本文件 test_激活指针缺失返回提供者不可用 钉住）")
+
     def setUp(self):
         self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_PyMuPDF自足性_"))
         self.样本PDF = _生成PDF(self.临时目录 / "样本.pdf")
@@ -50,6 +82,7 @@ class TestPyMuPDF自足性(unittest.TestCase):
 
     def test_子进程入口独立启动可导入平台客户端(self):
         """新 python 进程：入口注入 → import 平台客户端 → 真实渲染成功。"""
+        self._要求制品()
         代码 = "\n".join([
             "import sys",
             f"sys.path.insert(0, {str(系统根)!r})",
@@ -67,6 +100,7 @@ class TestPyMuPDF自足性(unittest.TestCase):
 
     def test_真实渲染回归(self):
         """四个能力真实调用（走子进程入口全链路）。"""
+        self._要求制品()
         结果 = 渲染整页(str(self.样本PDF), 1)
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertTrue(base64.b64decode(结果.值).startswith(b"\x89PNG"))
@@ -91,6 +125,7 @@ class TestPyMuPDF自足性(unittest.TestCase):
 
     def test_注入幂等(self):
         """进程内重复调用注入，sys.path 只注入一次。"""
+        self._要求制品()
         # 兼容双结构：新版制品根含 平台客户端 包层时注入 环境目录/平台客户端，
         # 旧版平铺结构时注入 环境目录（两者均视为一次注入）
         注入前 = sum(1 for 路径 in sys.path
@@ -105,6 +140,7 @@ class TestPyMuPDF自足性(unittest.TestCase):
 
     def test_零残留(self):
         """调用后无残留子进程；临时目录内无新增残留文件。"""
+        self._要求制品()
         结果 = 检测加密页数(str(self.样本PDF))
         self.assertTrue(结果.成功, 结果.错误说明)
         残留 = subprocess.run(
