@@ -26,7 +26,8 @@
 | `__file__` 派生且表达式里出现仓库内相对字面量（`Path(__file__).parents[2] / "支持库"`） | **判红**（`测试写入-写仓库内相对路径`） |
 | `工程缓存` 开头的相对字面量（`"工程缓存/xxx"`） | **放行**（受管目录） |
 | 绝对路径 / 环境变量 / 裸文件名等**解析得出、且不落在仓库内相对路径** | **放行**（本判据管的是「仓库相对路径」） |
-| **解析不出左端基**（外部名字 / 未知函数返回值 / `tempfile.mkdtemp()` 派生 / 运行期拼装） | **单列「未解析」档 ⇒ 计入违规**（fail-closed，见下节） |
+| `tempfile.mkdtemp()` / `TemporaryDirectory()` 一族派生（2026-09-23 扩解析器） | **放行**（返回值是系统临时目录下的绝对路径 = 临时落点；系统临时目录若被指进仓库则退回未解析，fail-closed） |
+| **解析不出左端基**（外部名字 / 未知函数返回值 / 运行期拼装） | **单列「未解析」档 ⇒ 计入违规**（fail-closed，见下节） |
 
 ### 判据一的「未解析」档：不再「解析不出就放行」（2026-09-23 修，债务 #106）
 
@@ -161,6 +162,7 @@ import argparse
 import ast
 import json
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -210,6 +212,11 @@ mock空转 = "测试mock-环境变量零读点"
     "rmtree", "rename", "chmod", "symlink_to", "link_to", "truncate",
 })
 #: 位置实参位写动作（路径在 `节点.args`）。
+#: ★ 已知覆盖缺口（只报不改）：本平台自己的删树原语 `清只读后删除树`
+#: （`公共契约.运行时.平台适配`）**不在**本面内 ⇒ 判据对它全盲。不纳入的原因：纳入后
+#: `测试中心/运行核心/测试_清只读删除与落盘跨平台.py` 里几处「目标来自方法返回值/元组解包」
+#: 的调用会新判出未解析（新增即红），而那属该文件的存量写法，不在本包范围内。
+#: 处置建议：单独一包把该原语纳入写动作面，并同步修那几处夹具根写法。
 实参写动作 = frozenset({
     "mkdir", "makedirs", "remove", "unlink", "rmdir", "rmtree", "rename",
     "open", "copy", "copy2", "copyfile", "copytree", "move",
@@ -228,6 +235,44 @@ mock空转 = "测试mock-环境变量零读点"
 #: 路径方法（接收者是路径、返回值仍是路径）：基随**接收者**。
 路径方法名 = frozenset({"resolve", "absolute", "expanduser", "joinpath",
                     "with_name", "with_suffix"})
+
+#: **临时落点构造器**（2026-09-23 扩解析器）：`tempfile` 一族**证明**返回系统临时目录下的
+#: 绝对路径（`tempfile.gettempdir()`），静态即可判 —— 按判据表首条「绝对路径 ⇒ 放行」同一档，
+#: 不再掉进「未解析」。落点是否真在仓库外由 `_临时落点在仓库外()` **运行期核**
+#: （仓库根若落在系统临时目录下，本档失效、仍走 fail-closed 未解析）。
+临时落点构造器 = frozenset({
+    "mkdtemp", "mkstemp", "gettempdir", "TemporaryDirectory",
+    "NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile",
+})
+
+#: `_临时落点在仓库外()` 的结果缓存（每次门禁跑一次解析，不必每处重算）。
+_临时落点缓存: bool | None = None
+
+
+def _临时落点在仓库外() -> bool:
+    """`tempfile.gettempdir()` 是否**不在**仓库根内（在仓库内 ⇒ 本档失效，fail-closed）。
+
+    为什么必须核这一下：`mkdtemp()` 的落点由 `tempfile.gettempdir()`（环境变量
+    `TMPDIR`/`TEMP`/`TMP` 或系统默认）决定 —— 若有人把 TMPDIR 指进仓库，
+    「tempfile 派生」就不再等于「仓库外」，放行就会变成假绿。解析不出也一律不认。
+    """
+    global _临时落点缓存
+    if _临时落点缓存 is None:
+        try:
+            临时 = Path(tempfile.gettempdir()).resolve()
+            根 = 仓库根.resolve()
+            _临时落点缓存 = 根 != 临时 and 根 not in 临时.parents
+        except Exception:  # noqa: BLE001 —— 解析不出即不认（fail-closed，不静默放行）
+            _临时落点缓存 = 假
+    return _临时落点缓存
+
+
+def _是临时落点构造器(被调: ast.AST) -> bool:
+    """`tempfile.mkdtemp(...)`（模块限定）或 `mkdtemp(...)`（from-import）形态。"""
+    if isinstance(被调, ast.Attribute):
+        return (被调.attr in 临时落点构造器
+                and isinstance(被调.value, ast.Name) and 被调.value.id == "tempfile")
+    return isinstance(被调, ast.Name) and 被调.id in 临时落点构造器
 
 #: 判据二：业务字段的反面 —— 这个字段名单独成立时说明不了「测到了东西」。
 成功字段名 = "成功"
@@ -298,7 +343,9 @@ def 左端基(节点: ast.AST, 变量表: dict[str, ast.AST], 深度: int = 0
     整条表达式与变量值里，只看调用实参本身（可能只是一个名字 `根`）会漏判
     —— 反向验证实测过这一条漏判。
 
-    `None` = 解析不出（外部名字、`tempfile.mkdtemp()`、绝对路径等）⇒ 放行。
+    `None` = 解析不出（外部名字、未知函数返回值、运行期拼装等）⇒ 判「未解析」（fail-closed）。
+    `tempfile.mkdtemp()` 一族**不在此列**：它们返回系统临时目录下的绝对路径，判「临时落点 ⇒ 放行」
+    （见 `临时落点构造器` 与 `_临时落点在仓库外()`）。
     """
     if 深度 > 24:
         return None
@@ -321,6 +368,15 @@ def 左端基(节点: ast.AST, 变量表: dict[str, ast.AST], 深度: int = 0
         右 = 左端基(节点.right, 变量表, 深度 + 1)
         return (左[0], 左[1], [*左[2], *(右[2] if 右 else [])])
     if isinstance(节点, ast.Attribute):
+        # `self.X`（夹具根常在 `setUp` 里造）——按**类级**收集到的绑定回溯，
+        # 否则 `self.临时 / "支持库"` 的左端基是 `self`（外部名字）⇒ 未解析。
+        if isinstance(节点.value, ast.Name) and 节点.value.id == "self":
+            属性值 = 变量表.get("self." + 节点.attr)
+            if 属性值 is not None:
+                内 = 左端基(属性值, 变量表, 深度 + 1)
+                if 内 is None:
+                    return None
+                return (内[0], 内[1], [属性值, *内[2]])
         return 左端基(节点.value, 变量表, 深度 + 1)
     if isinstance(节点, ast.Call):
         # **只认路径构造器与路径方法**，别的调用一律解析不出 ⇒ 放行。
@@ -336,7 +392,13 @@ def 左端基(节点: ast.AST, 变量表: dict[str, ast.AST], 深度: int = 0
         #   · 路径方法（`Path(__file__).resolve()` / `.joinpath(x)`）—— 基是**接收者**。
         #     漏掉第二类会连 `Path(__file__).resolve().parents[2] / "支持库"`
         #     这一整条最典型的形态都解析不出（反向验证实测过这条漏判）。
+        #
+        # 第三类（2026-09-23 扩解析器）：**临时落点构造器**（`tempfile.mkdtemp()` 一族）
+        # ——返回值是系统临时目录下的绝对路径，静态可判 ⇒ 单列 `临时落点` 档放行
+        # （落点是否真在仓库外由 `_临时落点在仓库外()` 运行期核）。
         被调 = 节点.func
+        if _是临时落点构造器(被调):
+            return ("临时落点", "", [节点])
         if isinstance(被调, ast.Attribute):
             名 = 被调.attr
         elif isinstance(被调, ast.Name):
@@ -369,6 +431,11 @@ def 判目标(目标: ast.AST, 变量表: dict[str, ast.AST]) -> tuple[str, str]
     if 基 is None:
         return "未解析", ""
     类, 值, 沿途 = 基
+    if 类 == "临时落点":
+        # `tempfile.mkdtemp()` 一族：返回值是系统临时目录下的绝对路径 —— 判据表首条
+        # 「绝对路径 ⇒ 放行」同一档。落点不在仓库外时（TMPDIR 被指进仓库）**不认**，
+        # 退回未解析（fail-closed，不静默放行）。
+        return ("放行", "") if _临时落点在仓库外() else ("未解析", "")
     if 类 == "字面量":
         if 是受管路径(值):
             return "受管写", 值
@@ -418,7 +485,54 @@ def _赋值收集(节点: ast.AST, 表: dict[str, ast.AST]) -> None:
         elif isinstance(子, ast.AnnAssign) and isinstance(子.target, ast.Name) \
                 and 子.value is not None:
             表.setdefault(子.target.id, 子.value)
+        elif isinstance(子, ast.With):
+            # `with tempfile.TemporaryDirectory(…) as 临时:` —— 绑定名拿到的就是上下文
+            # 表达式的值（临时目录）。不认这一支，`根 = Path(临时)` 整片解析不出
+            # （2026-09-23 实测：测试_退出码诚实口径.py 的 `with tempfile.TemporaryDirectory()`
+            # 夹具根就是这么来的）。
+            for 项 in 子.items:
+                if isinstance(项.optional_vars, ast.Name):
+                    表.setdefault(项.optional_vars.id, 项.context_expr)
         _赋值收集(子, 表)
+
+
+def _全文件实例属性(树: ast.AST, 变量表: dict[str, ast.AST]) -> dict[str, ast.AST]:
+    """**文件级** `self.X = 表达式` 绑定表（键 `self.X`），供 `左端基` 解析夹具根。
+
+    为什么要文件级而不是按类收：夹具根常定义在**基类/mixin** 的 `setUp` 里、
+    在**子类**的用例里用（`清只读夹具.setUp` 造 `self.根`，`Test清只读后删除树` 用它；
+    `假环境根夹具.建假环境根` 用子类 `setUp` 造的 `self.临时`）——只按类体收就整片漏。
+
+    为什么要「同类」守卫（**不跨类硬合并**）：不同类可以有同名 `self.X` 指完全不同的东西
+    （一个指临时根、一个指仓库内相对路径）。只在**全部绑定解析出同一个左端基类**、
+    且属于下面两类可安全合并的情形之一时才认这个名字：
+
+    - 全部是 `临时落点`（各绑定是**不同**的临时目录也安全：落点类别决定判定，与具体值无关）；
+    - 全部**同形**（`ast.dump` 逐字相同）—— 值不同的字面量类绑定不合并，
+      否则会把 A 类的仓库内写按 B 类的受管路径判放行（假绿）。
+
+    其余一律不认、落回「未解析」档（fail-closed：宁可多报，不可误放行）。
+    """
+    分组: dict[str, list[ast.AST]] = {}
+    for 子 in ast.walk(树):
+        if isinstance(子, ast.Assign) and len(子.targets) == 1:
+            目标 = 子.targets[0]
+        elif isinstance(子, ast.AnnAssign) and 子.value is not None:
+            目标 = 子.target
+        else:
+            continue
+        if isinstance(目标, ast.Attribute) and isinstance(目标.value, ast.Name) \
+                and 目标.value.id == "self":
+            分组.setdefault("self." + 目标.attr, []).append(子.value)
+    out: dict[str, ast.AST] = {}
+    for 名, 表达式们 in 分组.items():
+        基类集 = {左端基(表达式, 变量表)[0] if 左端基(表达式, 变量表) else None
+                for 表达式 in 表达式们}
+        if len(基类集) != 1:
+            continue
+        if 基类集 == {"临时落点"} or len({ast.dump(表达式) for 表达式 in 表达式们}) == 1:
+            out[名] = 表达式们[0]
+    return out
 
 
 def _带作用域(节点: ast.AST, 表: dict[str, ast.AST]):
@@ -625,6 +739,8 @@ def 扫描写入(根: Path) -> tuple[list[dict], dict]:
             continue
         变量表: dict[str, ast.AST] = {}
         _赋值收集(树, 变量表)
+        # 文件级 `self.X` 夹具根绑定（跨类收：基类/mixin 的 setUp 造的根在子类用例里用）。
+        变量表.update(_全文件实例属性(树, 变量表))
         for 节点, 作用域表 in _带作用域(树, 变量表):
             if not isinstance(节点, ast.Call):
                 continue

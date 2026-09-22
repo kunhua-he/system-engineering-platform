@@ -13,7 +13,6 @@ vs 实现签名 `(…, 存储目录, 项目根)` 判 `None`（静默放过）。
 """
 from __future__ import annotations
 
-import shutil
 import sys
 import tempfile
 import unittest
@@ -23,6 +22,8 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 开发工具.契约编译.入口定位 import _必填名序问题
 from 开发工具.契约编译.漂移检测 import 检测参数漂移
 
@@ -38,7 +39,7 @@ class 契约参数漂移全参数名序测试(unittest.TestCase):
         self.临时 = Path(tempfile.mkdtemp(prefix="参数漂移_"))
 
     def tearDown(self) -> None:
-        shutil.rmtree(self.临时, ignore_errors=True)
+        清只读后删除树(self.临时, 忽略失败=真)
 
     def _入口(self, 源码: str) -> Path:
         文件 = self.临时 / "入口.py"

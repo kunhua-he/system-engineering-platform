@@ -22,21 +22,28 @@
     export PATH=/Library/Developer/CommandLineTools/usr/bin:$PATH; unset PYTHONPATH;
     python3.14 -m unittest 测试中心.平台控制面.测试_能力目录注册参数名序 -v
 
-只读真实仓库文件；打乱的契约只注入到读腿的**返回值**里（不落盘、不改任何既有文件）。
+**注入手法（2026-09-23 改写）**：只读真实仓库文件；「真契约名序被打乱」这一拍用
+**真实状态注入** —— 把入口 `__init__.py` 与一份**真文件形态**的打乱契约放进 `tempfile`
+临时包目录，让**真实** `注册能力` 在真文件上跑（**不 patch 任何生产成员**，也不改任何
+既有文件）。改前那拍用 `mock.patch.object(注册腿, "读契约表", …)` 换掉了被测模块读契约的
+那个成员，断言对象是夹具。
 """
 from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
+import uuid
 from pathlib import Path
-from unittest import mock
 
 系统根 = Path(__file__).resolve().parents[2]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.能力契约.契约 import 能力注册表
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 平台控制面.能力目录 import (
     _校验参数名序,
     _读真契约名序,
@@ -70,7 +77,56 @@ def _镜像与名序(真名序: dict[str, list[str]]) -> tuple[dict, dict]:
     return 镜像, 名序
 
 
+def _加载副本包(目录: Path):
+    """按文件路径加载入口副本（包形态），返回模块对象供直接调 `注册能力`。"""
+    import importlib.util
+
+    名 = f"能力目录名序副本_{uuid.uuid4().hex}"
+    spec = importlib.util.spec_from_file_location(
+        名, 目录 / "__init__.py", submodule_search_locations=[str(目录)])
+    模块 = importlib.util.module_from_spec(spec)
+    sys.modules[名] = 模块
+    try:
+        spec.loader.exec_module(模块)
+    except BaseException:
+        sys.modules.pop(名, None)
+        raise
+    return 模块
+
+
 class 参数名序闸门测试(unittest.TestCase):
+    def setUp(self) -> None:
+        # 夹具根由 setUp 造（`self.夹具根`）—— 夹具根若当形参/外部名字传，
+        # `测试写入边界门禁` 判据一解析不出，`目录 / "能力契约"` 一类合法临时夹具写
+        # 会被整片计入「未解析」违规（判据 fail-closed）。
+        self.夹具根 = Path(tempfile.mkdtemp(prefix="名序闸门_"))
+
+    def tearDown(self) -> None:
+        清只读后删除树(self.夹具根, 忽略失败=真)
+
+    def 写打乱真契约的包(self) -> None:
+        """把**现仓真契约**读出来、只把 `释放文件租约` 的名序改乱，写进 `self.夹具根`。
+
+        同时把入口 `__init__.py` **原样复制**过去：入口全是绝对导入（无相对导入），
+        所以副本只带「入口 + 契约」两件就能让**真实** `注册能力` 真跑 —— 它读真契约的
+        那一段走 `Path(__file__).resolve().parent`，落在本临时包目录上，读到的就是这份
+        打乱了的**真文件**（真实状态注入，不是把读腿的返回值换掉）。
+        """
+        目录 = self.夹具根
+        数据 = json.loads(契约路径.read_text(encoding="utf-8"))
+        for 条目 in 数据["能力契约"]:
+            if 条目["能力id"] != 释放能力id:
+                continue
+            参数 = 条目["参数"]
+            下标 = {参数项["名称"]: 序号 for 序号, 参数项 in enumerate(参数)}
+            参数[下标["项目根"]], 参数[下标["存储目录"]] = (
+                参数[下标["存储目录"]], 参数[下标["项目根"]])
+        (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
+        (目录 / "能力契约" / "参数契约.json").write_text(
+            json.dumps(数据, ensure_ascii=False), encoding="utf-8")
+        (目录 / "__init__.py").write_text(
+            (包目录 / "__init__.py").read_text(encoding="utf-8"), encoding="utf-8")
+
     def test_正向_现仓真契约与镜像名序一致_装配通过(self):
         """四方（能力定义/真契约/镜像/名序）一致时，装配期闸门必须放行。"""
         注册表 = 能力注册表()
@@ -91,24 +147,21 @@ class 参数名序闸门测试(unittest.TestCase):
         self.assertEqual([项["名称"] for 项 in 镜像[释放能力id]], 名序[释放能力id])
 
     def test_反向_真契约名序被打乱_装配必须判红(self):
-        """把真契约里 `释放文件租约` 的名序故意改乱 ⇒ `注册能力` 装配期必须 raise。
+        """把**真契约文件**里 `释放文件租约` 的名序改乱 ⇒ `注册能力` 装配必须 raise。
 
-        修前该判据只比「镜像 vs 名序」（都在本文件、永远相等）⇒ 这里必然绿（静默放过）；
-        现在判据接上了真契约 ⇒ 必须红。
+        **真实状态注入**：造一个临时包目录（真 `__init__.py` 副本 + 打乱了的真契约文件），
+        让**真实** `注册能力` 跑 —— 它读真契约那一段读到的就是这份打乱的真文件。
+        修前判据只比「镜像 vs 名序」（都在本文件、同源）⇒ 这里必然绿（静默放过）；
+        现在判据接上了真契约 ⇒ 必须红。**不 patch 任何生产成员**（原写法是
+        `mock.patch.object(注册腿, "读契约表", return_value=打乱契约表)`，断言对象是夹具）。
         """
-        条目表 = _读契约条目表()
-        for 条目 in 条目表:
-            if 条目["能力id"] != 释放能力id:
-                continue
-            参数 = 条目["参数"]
-            下标 = {参数项["名称"]: 序号 for 序号, 参数项 in enumerate(参数)}
-            参数[下标["项目根"]], 参数[下标["存储目录"]] = (
-                参数[下标["存储目录"]], 参数[下标["项目根"]])
-        self.assertEqual(_名序投影(条目表)[释放能力id], 释放错序, "注入的契约必须真的被改乱")
-        打乱契约表 = {条目["能力id"]: 条目 for 条目 in 条目表}
-        with mock.patch.object(注册腿, "读契约表", return_value=打乱契约表):
-            with self.assertRaises(ValueError) as 捕获:
-                注册能力(能力注册表())
+        self.写打乱真契约的包()
+        打乱表 = 注册腿.读契约表(self.夹具根)   # 唯一读腿真读那份真文件
+        self.assertEqual([参数项["名称"] for 参数项 in 打乱表[释放能力id]["参数"]],
+                         释放错序, "注入的真契约文件必须真的被改乱")
+        副本 = _加载副本包(self.夹具根)
+        with self.assertRaises(ValueError) as 捕获:
+            副本.注册能力(能力注册表())
         self.assertIn(释放能力id, str(捕获.exception))
         self.assertIn("真契约", str(捕获.exception))
 

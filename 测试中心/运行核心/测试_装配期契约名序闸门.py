@@ -19,7 +19,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import tempfile
 import unittest
@@ -29,7 +28,9 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表, 能力声明
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
 
 
@@ -38,51 +39,60 @@ def _参数表(名序: list[str]) -> list[dict]:
     return [{"名称": 名, "类型": "文本型"} for 名 in 名序]
 
 
-def 写包(根: Path, 目录名: str, 能力id: str, *,
-        注册名序: list[str], 契约名序: list[str]) -> None:
-    """写一个包：包声明（真契约投影）/ 能力契约（真契约）/ 入口（注册实现）。
+class 写包夹具:
+    """在 `self.临时`（tempfile 临时目录）下造一个包：包声明 / 能力契约 / 入口。
 
-    `契约名序` 同时写进 包声明 与 能力契约（两者是同一事实源的两面）；
-    `注册名序` 写进入口的 `能力实现(... 参数=...)`。两者不一致即本闸门要抓的漂移。
+    2026-09-23 从「模块级函数 + 夹具根当参数」改为**方法**：夹具根必须从 `self.临时` 取，
+    否则「夹具根」这个外部形参在静态判据里解析不出 —— `测试写入边界门禁` 判据一的
+    「未解析」档会把 `目录 / "包声明.json"` 一类**合法临时夹具写**全部计入违规
+    （判据不认外部名字/形参，是 fail-closed 设计）。
     """
-    包id = f"闸门.{目录名}"
-    目录 = 根 / "支持库" / 目录名
-    目录.mkdir(parents=True, exist_ok=True)
-    (目录 / "包声明.json").write_text(json.dumps({
-        "包id": 包id, "名称": 目录名, "类型": "支持库", "版本": "1.0.0",
-        "入口": "入口.py", "依赖": [],
-        "能力": [{"能力id": 能力id, "名称": 能力id.split(".")[-1],
-                 "参数": _参数表(契约名序), "返回": "结果型"}],
-    }, ensure_ascii=False), encoding="utf-8")
-    (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
-    (目录 / "能力契约" / "参数契约.json").write_text(json.dumps({
-        "契约版本": "1.0.0",
-        "能力契约": [{"能力id": 能力id, "版本": "1.0.0", "说明": 目录名,
-                    "参数": _参数表(契约名序),
-                    "返回": {"类型": "结果型"}, "错误码": [], "调用示例": "{}"}],
-    }, ensure_ascii=False), encoding="utf-8")
-    (目录 / "入口.py").write_text(
-        "from 公共契约.能力契约.契约 import 能力实现\n"
-        "def 注册能力(注册表):\n"
-        "    注册表.注册(能力实现(\n"
-        f"        能力id={能力id!r}, 包id={包id!r},\n"
-        f"        实现函数=lambda: 'ok', 参数={_参数表(注册名序)!r},\n"
-        "        返回='结果型'))\n",
-        encoding="utf-8")
+
+    def 写包(self, 目录名: str, 能力id: str, *,
+            注册名序: list[str], 契约名序: list[str]) -> None:
+        """写一个包：包声明（真契约投影）/ 能力契约（真契约）/ 入口（注册实现）。
+
+        `契约名序` 同时写进 包声明 与 能力契约（两者是同一事实源的两面）；
+        `注册名序` 写进入口的 `能力实现(... 参数=...)`。两者不一致即本闸门要抓的漂移。
+        """
+        包id = f"闸门.{目录名}"
+        目录 = self.临时 / "支持库" / 目录名
+        目录.mkdir(parents=True, exist_ok=True)
+        (目录 / "包声明.json").write_text(json.dumps({
+            "包id": 包id, "名称": 目录名, "类型": "支持库", "版本": "1.0.0",
+            "入口": "入口.py", "依赖": [],
+            "能力": [{"能力id": 能力id, "名称": 能力id.split(".")[-1],
+                     "参数": _参数表(契约名序), "返回": "结果型"}],
+        }, ensure_ascii=False), encoding="utf-8")
+        (目录 / "能力契约").mkdir(parents=True, exist_ok=True)
+        (目录 / "能力契约" / "参数契约.json").write_text(json.dumps({
+            "契约版本": "1.0.0",
+            "能力契约": [{"能力id": 能力id, "版本": "1.0.0", "说明": 目录名,
+                        "参数": _参数表(契约名序),
+                        "返回": {"类型": "结果型"}, "错误码": [], "调用示例": "{}"}],
+        }, ensure_ascii=False), encoding="utf-8")
+        (目录 / "入口.py").write_text(
+            "from 公共契约.能力契约.契约 import 能力实现\n"
+            "def 注册能力(注册表):\n"
+            "    注册表.注册(能力实现(\n"
+            f"        能力id={能力id!r}, 包id={包id!r},\n"
+            f"        实现函数=lambda: 'ok', 参数={_参数表(注册名序)!r},\n"
+            "        返回='结果型'))\n",
+            encoding="utf-8")
 
 
-class 装配期契约名序闸门测试(unittest.TestCase):
+class 装配期契约名序闸门测试(写包夹具, unittest.TestCase):
     def setUp(self) -> None:
         self.临时 = Path(tempfile.mkdtemp(prefix="闸门_"))
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
 
     def tearDown(self) -> None:
-        shutil.rmtree(self.临时, ignore_errors=True)
+        清只读后删除树(self.临时, 忽略失败=真)
 
     def _写健康包(self) -> None:
-        写包(self.临时, "健康", "闸门.健康.正常",
-             注册名序=["甲", "乙"], 契约名序=["甲", "乙"])
+        self.写包("健康", "闸门.健康.正常",
+                 注册名序=["甲", "乙"], 契约名序=["甲", "乙"])
 
     def _装配(self, 注册表: 能力注册表 | None = None):
         return 装配系统(self.临时 / "支持库", self.临时 / "模块库", 注册表)
@@ -106,8 +116,8 @@ class 装配期契约名序闸门测试(unittest.TestCase):
         修后：装配期真执行 能力实现.声明一致 ⇒ 必须红。
         """
         self._写健康包()
-        写包(self.临时, "错序", "闸门.错序.能力",
-             注册名序=["乙", "甲"], 契约名序=["甲", "乙"])
+        self.写包("错序", "闸门.错序.能力",
+                 注册名序=["乙", "甲"], 契约名序=["甲", "乙"])
         注册表 = 能力注册表()
         结果 = self._装配(注册表)
         self.assertTrue(结果.成功, str(结果.问题列表))  # 健康包照常装配
@@ -119,8 +129,8 @@ class 装配期契约名序闸门测试(unittest.TestCase):
     def test_反向_声明名序与注册不一致_装配必须拒该包(self):
         """真契约/包声明名序与注册实现不一致 ⇒ 该包装配必须被拒。"""
         self._写健康包()
-        写包(self.临时, "声明错", "闸门.声明错.能力",
-             注册名序=["甲", "乙"], 契约名序=["乙", "甲"])
+        self.写包("声明错", "闸门.声明错.能力",
+                 注册名序=["甲", "乙"], 契约名序=["乙", "甲"])
         注册表 = 能力注册表()
         结果 = self._装配(注册表)
         self.assertTrue(结果.成功, str(结果.问题列表))

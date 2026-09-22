@@ -37,7 +37,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import tempfile
 import unittest
@@ -48,6 +47,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 开发工具.组件合规.合规测试包 import 组件合规
 from 运行核心.统一网关.协议.类型规格 import 校验能力参数
 
@@ -94,29 +94,6 @@ def 能力1(文本: str) -> dict:
 }
 
 
-def 建校验组件() -> Path:
-    """构造可装配的最小正式包形态组件（只求走到 `_场景真实返回值`）。"""
-    目录 = Path(tempfile.mkdtemp(prefix="合规调用器校验_"))
-    for 子目录 in ("能力契约", "依赖契约", "实现", "说明"):
-        (目录 / 子目录).mkdir()
-    (目录 / "能力契约" / "参数契约.json").write_text(
-        json.dumps({"契约版本": "1.0.0", "能力契约": [契约条目]},
-                   ensure_ascii=False, indent=2), encoding="utf-8")
-    (目录 / "依赖契约" / "依赖契约.json").write_text(
-        json.dumps({"依赖": []}, ensure_ascii=False), encoding="utf-8")
-    (目录 / "包声明.json").write_text(json.dumps({
-        "包id": 包id, "名称": "调用器校验组件", "类型": "基础模块",
-        "版本": "1.0.0", "说明": "合规调用器参数校验测试组件",
-        "入口": "__init__.py", "依赖": [],
-    }, ensure_ascii=False), encoding="utf-8")
-    (目录 / "__init__.py").write_text(入口源码, encoding="utf-8")
-    (目录 / "实现" / "实现.py").write_text(实现源码, encoding="utf-8")
-    (目录 / "说明" / "使用说明.md").write_text(
-        "# 调用器校验组件说明书\n\n能力1，错误码：参数不合法/内部错误。\n",
-        encoding="utf-8")
-    return 目录
-
-
 def 截获合规调用器(组件目录: Path):
     """在 `组件合规(...).执行()` 期间截获注入的 `_合规调用器` 实例。"""
     import 公共契约.能力契约.调用器 as 调用器模块
@@ -146,11 +123,36 @@ class Test合规调用器参数校验(unittest.TestCase):
     """合规脚手架内的进程内调用器必须过唯一校验点（不再是第二套/无校验）。"""
 
     def setUp(self) -> None:
-        self.组件目录 = 建校验组件()
+        # 夹具根**由 setUp 造**（`self.组件目录`），组件内容由 `建校验组件()` 往它里面写：
+        # 夹具根若当形参传，静态判据（`测试写入边界门禁` 判据一）解析不出外部名字，
+        # `目录 / "包声明.json"` 一类合法临时夹具写会被整片计入「未解析」违规。
+        self.组件目录 = Path(tempfile.mkdtemp(prefix="合规调用器校验_"))
+        self.建校验组件()
         self.调用器 = 截获合规调用器(self.组件目录)
 
+    def 建校验组件(self) -> None:
+        """构造可装配的最小正式包形态组件（只求走到 `_场景真实返回值`）。"""
+        目录 = self.组件目录
+        for 子目录 in ("能力契约", "依赖契约", "实现", "说明"):
+            (目录 / 子目录).mkdir()
+        (目录 / "能力契约" / "参数契约.json").write_text(
+            json.dumps({"契约版本": "1.0.0", "能力契约": [契约条目]},
+                       ensure_ascii=False, indent=2), encoding="utf-8")
+        (目录 / "依赖契约" / "依赖契约.json").write_text(
+            json.dumps({"依赖": []}, ensure_ascii=False), encoding="utf-8")
+        (目录 / "包声明.json").write_text(json.dumps({
+            "包id": 包id, "名称": "调用器校验组件", "类型": "基础模块",
+            "版本": "1.0.0", "说明": "合规调用器参数校验测试组件",
+            "入口": "__init__.py", "依赖": [],
+        }, ensure_ascii=False), encoding="utf-8")
+        (目录 / "__init__.py").write_text(入口源码, encoding="utf-8")
+        (目录 / "实现" / "实现.py").write_text(实现源码, encoding="utf-8")
+        (目录 / "说明" / "使用说明.md").write_text(
+            "# 调用器校验组件说明书\n\n能力1，错误码：参数不合法/内部错误。\n",
+            encoding="utf-8")
+
     def tearDown(self) -> None:
-        shutil.rmtree(self.组件目录, ignore_errors=True)
+        清只读后删除树(self.组件目录, 忽略失败=真)
 
     def test_缺必填参数回参数不合法_不是异常逸出(self) -> None:
         # 改前：`实现.调用()` 直调 → TypeError 逸出（调用方拿不到统一结果）。
