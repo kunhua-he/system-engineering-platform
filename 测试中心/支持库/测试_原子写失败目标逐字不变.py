@@ -24,6 +24,13 @@
 ② `:172` 会 `目标路径.parent.mkdir(parents=True, exist_ok=True)` ——
 即**父目录不存在时它会先建目录**，故本条不断言「不留任何新目录」，
 只断言「目标文件本身逐字不变 / 目标不被写坏」。
+
+★ **夹具落点与清理口径**（2026-09-23 修泄漏）：夹具根**显式**落在 `工程缓存/` 下
+（与 `TMPDIR` 解耦），并在 `setUp` 注册 `addCleanup(清只读后删除树, …)` 保证
+**用例失败也清**。原实现用 `tempfile.mkdtemp()` 的默认落点且无清理 ——
+平台跑测试时 `TMPDIR` 被指进仓库工作目录，于是仓库根堆出 18 个
+`测试_原子写失败_*` 残留（未跟踪），并让制品构建判「含未提交变更」。
+理由与依据（含工作区指纹为何不认 gitignore）见 `setUp` 的 docstring。
 """
 
 from __future__ import annotations
@@ -34,9 +41,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-if str(Path(__file__).resolve().parents[2]) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+#: 仓库根（本件位于 `测试中心/支持库/`，上溯两级）。
+仓库根 = Path(__file__).resolve().parents[2]
+if str(仓库根) not in sys.path:
+    sys.path.insert(0, str(仓库根))
 
+from 公共契约.基础类型.逻辑类型 import 真
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 支持库.后端.系统核心支持库.资源管理 import 原子写入
 
 
@@ -52,7 +63,29 @@ class Test原子写失败目标逐字不变(unittest.TestCase):
     """失败路径下目标文件必须逐字不变（原子性的真正价值所在）。"""
 
     def setUp(self) -> None:
-        self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_原子写失败_"))
+        """夹具落点**显式**落在仓库内固定排除目录 `工程缓存/` 下，且注册 addCleanup 清理。
+
+        ★ 为什么不能再用 `tempfile.mkdtemp()` 的默认落点（2026-09-23 实测）：
+        `mkdtemp()` 的落点由 `tempfile.gettempdir()`（环境变量 `TMPDIR`）决定，而
+        **平台跑测试时 `TMPDIR` 会被指进仓库工作目录** —— 本仓曾因此在仓库根堆出
+        18 个 `测试_原子写失败_*` 残留目录（未清理），并让制品构建判「含未提交变更」：
+        `开发工具/项目编译/工作区指纹.py` 的「未跟踪正式文件」腿用
+        `git ls-files --others`（**不带 `--exclude-standard`**），故残留文件即使被
+        `.gitignore` 挡住、`git status` 看不见，仍会被算成正式文件、污染字节指纹。
+
+        两条一起用，缺一不可：
+
+        - **显式 `dir=`** 指向 `工程缓存/`（在 `工作区指纹.py` 的 `固定排除目录` 里）⇒
+          落点与 `TMPDIR` 解耦，且**即便用例被 SIGKILL、addCleanup 没跑到**，残留也不会
+          进工作区指纹（`.tmp` 虽被 gitignore，却不在 `固定排除目录` 里 ⇒ 不具此保证）；
+        - **addCleanup** ⇒ 用例**失败时也清**（`addCleanup` 无论成败都会跑），且用平台
+          唯一删树原语 `清只读后删除树`（本用例会造 `0o555` 目录 / `0o444` 文件，
+          plain `shutil.rmtree` 会被权限位挡住）。
+        """
+        夹具根 = 仓库根 / "工程缓存" / "测试夹具_原子写失败"
+        夹具根.mkdir(parents=True, exist_ok=True)
+        self.临时目录 = Path(tempfile.mkdtemp(prefix="测试_原子写失败_", dir=夹具根))
+        self.addCleanup(清只读后删除树, self.临时目录, 忽略失败=真)
 
     def test_落盘阶段失败时既有文件逐字不变(self) -> None:
         """目标是**非空目录** ⇒ 替换阶段失败：既有邻居文件逐字不变（不被截断/改坏）。"""
