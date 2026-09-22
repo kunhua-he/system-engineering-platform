@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -72,19 +74,33 @@ class 描述动态化测试(unittest.TestCase):
             self.assertIn(清单.动态段占位, 工具.description or "",
                           f"{工具.name} 的描述未留动态占位符（华哥要求三个都动态）")
 
-    def test_组装后三个描述都注入了动态段(self):
-        面 = 清单.组装工具面(能力id="系统核心支持库.进程管理.执行命令")
+    def test_只有转发工具注入动态段且占位符必被替换(self):
+        """`tool_catalog` 不转发网关，给它注入动态段纯属白付 token（未完成事项.md 留档防回潮）。
+
+        判据两件：① 占位符一律被替换（不留字面量 `{{常用传参}}`）；② 只有
+        `capability_search` / `capability_call` 带常用传参段，且与 `工具动态段能力id` 一致。
+        """
+        面 = {工具.name: (工具.description or "") for 工具 in 清单.组装工具面()}
+        模板 = {工具.name: (工具.description or "") for 工具 in 清单.三个工具定义}
         self.assertEqual(3, len(面))
-        for 工具 in 面:
-            描述 = 工具.description or ""
-            self.assertNotIn(清单.动态段占位, 描述, f"{工具.name} 的占位符未被替换")
-            self.assertTrue("常用传参" in 描述, f"{工具.name} 未注入常用传参段")
+        for 名, 描述 in 面.items():
+            self.assertNotIn(清单.动态段占位, 描述, f"{名} 的占位符未被替换")
+            # 用「与静态模板的长度差」判有没有注入 —— 两个分支的表头不同
+            # （能力段写「本能力历史常用传参」，全局段写「全平台历史最高频传参」），
+            # 拿某个词去 assertIn 会漏判。
+            注入长 = len(描述) - (len(模板[名]) - len(清单.动态段占位))
+            if 名 in 清单.工具动态段能力id:
+                self.assertGreater(注入长, 0, f"{名} 应注入动态段（照抄传参）")
+            else:
+                self.assertEqual(0, 注入长, f"{名} 不转发网关，不得注入动态段（白付 token）")
 
     def test_动态段含账本真实数据(self):
         """已有 8687 次真实调用（实测），故 `执行命令` 必有记录 —— 空库时本测试会失败，
         那是如实信号（不是环境问题），不当成 flaky 重试。"""
         段 = 清单.常用传参段(能力id="系统核心支持库.进程管理.执行命令")
-        self.assertIn("历史常用传参", 段)
+        # 表头 2026-09-22 按注入预算压短（「本能力历史常用传参（照抄即可）：」→「常用传参（照抄即可）：」），
+        # 断言跟着改成不依赖旧文案的形式。
+        self.assertIn("常用传参", 段)
         self.assertIn("历史", 段)
 
     def test_无记录的能力如实说明不编造(self):
@@ -95,7 +111,7 @@ class 描述动态化测试(unittest.TestCase):
     def test_静态模板不被污染(self):
         """动态注入若就地改写模块级常量，第二次调用会叠加 —— 必须每次从模板重算。"""
         前 = [工具.description for 工具 in 清单.三个工具定义]
-        清单.组装工具面(能力id="系统核心支持库.进程管理.执行命令")
+        清单.组装工具面()
         后 = [工具.description for 工具 in 清单.三个工具定义]
         self.assertEqual(前, 后, "组装不得就地改写静态模板（否则指纹漂移、真假不分）")
 
@@ -108,6 +124,61 @@ class 描述动态化测试(unittest.TestCase):
         无 = 壳.常用传参条("绝对不存在的能力.xxx.yyy")
         self.assertIsInstance(无, dict)
         self.assertFalse(无.get("有记录"))
+
+
+class 注入面预算测试(unittest.TestCase):
+    """华哥 2026-09-22 裁决：**所有注入提示词最高 2000 字符，超出的只能使用漂移值**。
+
+    工具面是**每个请求都要重发**的注入面（不是一次性返回），超标比别处更贵：
+    实测改前 302,915 字符 —— 三个工具描述各 ~100,357，真因是 `常用传参段(能力id="")`
+    把账本「按能力分段」的 964 组全铺进描述、再 ×3 个工具；改后 3,543，本轮收到 1,966。
+
+    判据口径：三个工具的 description + inputSchema 序列化字符数之和 ≤ 预算。
+    超出部分的正确处置是**改漂移指针**，不是把预算调大。
+    """
+
+    预算 = 2000
+
+    def _工具面体量(self, 面) -> dict:
+        return {工具.name: len(工具.description or "") + len(json.dumps(工具.inputSchema, ensure_ascii=False))
+                for 工具 in 面}
+
+    def test_默认工具面不超注入预算(self):
+        明细 = self._工具面体量(清单.组装工具面())
+        总 = sum(明细.values())
+        self.assertLessEqual(总, self.预算,
+                             f"工具面 {总} 字符超出注入预算 {self.预算}：{明细}；"
+                             "超出部分改漂移指针（口径见 开发文档/规范/项目细则.md）")
+
+    def test_注入预算由构造保证(self):
+        """预算判据必须是**构造保证**，不能是「这次账本里恰好没超长样例」。
+
+        实测（2026-09-22 反向验证现场）：同一份**已还原、字节一致**的代码，基线绿，
+        跑完两拍反向验证后变红 —— 中间变的只有账本（每次 MCP 调用都在写）。
+        故断言「静态部分 + 2×动态段上限 ≤ 预算」：只要这条绿，实际工具面必绿。
+        """
+        静态 = sum(len(工具.description or "") - len(清单.动态段占位)
+                  + len(json.dumps(工具.inputSchema, ensure_ascii=False))
+                  for 工具 in 清单.三个工具定义)
+        最坏 = 静态 + 2 * 清单.动态段字符上限
+        self.assertLessEqual(最坏, self.预算,
+                             f"最坏情况 {最坏} 超预算：静态 {静态} + 2×{清单.动态段字符上限}；"
+                             "收 `动态段字符上限` 或精简静态文案/schema")
+
+    def test_动态段长度由构造保证有界(self):
+        """动态段从账本现算，长度随样例长短漂移（实测同一份代码量到 1,176 与 2,464）。
+
+        所以「工具面 ≤ 2000」不能靠账本恰好没超长样例，必须由 `动态段字符上限` 构造保证：
+        超限时保留前缀 + 漂移指针，而不是把整段铺进注入面。
+        """
+        for 能力id in ("", "系统核心支持库.进程管理.执行命令", "系统核心支持库.进程管理.启动进程"):
+            段 = 清单.截断动态段(清单.常用传参段(能力id=能力id))
+            self.assertLessEqual(len(段), 清单.动态段字符上限,
+                                 f"能力id={能力id!r} 的动态段 {len(段)} 超上限 {清单.动态段字符上限}")
+        超长 = "x" * 5000
+        self.assertLessEqual(len(清单.截断动态段(超长)), 清单.动态段字符上限,
+                             "超长输入必须被截到上限内")
+        self.assertIn("常用参数组合", 清单.截断动态段(超长), "截断后必须带漂移指针，不能静默丢")
 
 
 class 提示词与实现同源测试(unittest.TestCase):
@@ -126,7 +197,7 @@ class 提示词与实现同源测试(unittest.TestCase):
         self.assertIs(清单.默认返回上限字符, 壳.默认返回上限字符,
                       "默认上限必须只有一处事实源（两处各存一份正是漂移根因）")
         描述 = _取工具("capability_call").description or ""
-        self.assertIn(f"默认 {壳.默认返回上限字符} 字符上限", 描述,
+        self.assertIn(f"默认 {壳.默认返回上限字符} 字符", 描述,
                       "描述未按事实源插值（改回手抄数字必然再漂移）")
         self.assertNotIn("6000", 描述, "描述里残留旧默认值 6000：调用方会按 6000 规划体量")
         架构描述 = _取工具("capability_call").inputSchema["properties"]["返回上限字符"]["description"]
@@ -163,52 +234,57 @@ class 裁剪测试(unittest.TestCase):
         self.assertEqual({"a": 1}, 值)
         self.assertEqual(["不存在"], 说明["字段不存在"])
 
-    def test_字典超限深缩叶子且容器永不丢(self):
-        # 2026-09-21 批 1（B1）改口径：字典**不再丢尾键**，改为递归缩字符串叶子 ——
-        # 丢整键会让字段凭空消失，调用方连「少了什么」都不知道。
+    def test_字典超限改回指针且不再丢键(self):
+        # 2026-09-22 改口径（华哥：「丢弃干啥？直接全部收录到一个 db 里面啊」）：
+        # 超限不再缩/丢，而是**落全量 + 回指针**。本判据从「缩叶子且容器永不丢」
+        # 改为更强的「一个键都不丢 —— 因为原值整份在回执里」。
         原 = {"键1": "x" * 300, "键2": "y" * 300, "键3": "z" * 300}
         值, 说明 = 壳._裁剪值(原, 400, None)
-        self.assertTrue(说明["已裁剪"])
-        self.assertEqual(list(原), list(值), "容器永不丢：三个键必须都在，键序也不变")
-        self.assertNotIn("丢弃说明", 说明, "缩叶子够装下时不得退到丢键")
-        self.assertIn("截断说明", 说明)
+        self.assertIsNone(说明)
+        self.assertIn("取回", 值, "超限必须给取回腿（否则就是丢了内容）")
+        self.assertNotIn("丢弃说明", 值, "不得再有丢内容的说法")
+        行表 = Path(值["回执"]).read_text(encoding="utf-8").splitlines()
+        记录 = json.loads("\n".join(行表[值["起始行"] - 1:值["结束行"]]))
+        self.assertEqual(原["键1"][:20], 记录["值"]["键1"][:20])
 
-    def test_说明随上限收缩但保底事实不丢(self):
-        # 说明自己也占预算 ⇒ 上限小时说明必须更短，但**保底事实不得丢**；
-        # 更不能像旧实现那样「说明不参与计算、裁完反而更超」。
-        原 = {"键1": "x" * 300, "键2": "y" * 300, "键3": "z" * 300}
-        大, 大说明 = 壳._裁剪值(原, 400, None)
-        self.assertIn("截断说明", 大说明)
-        self.assertIn("提示", 大说明, "上限够大时说明要完整")
-        小, 小说明 = 壳._裁剪值(原, 200, None)
-        self.assertIn("裁剪后字符数", 小说明, "保底事实不得丢")
-        self.assertLess(len(json.dumps(小说明, ensure_ascii=False)),
-                        len(json.dumps(大说明, ensure_ascii=False)), "上限更小 ⇒ 说明必须更短")
+    def test_字段环事实挂在指针旁不丢(self):
+        # 旧口径下「说明随上限收缩但保底事实不丢」靠的是说明自己的预算管理；
+        # 新口径下字段环事实（保留字段/字段不存在）与指针并排回带，主检查是它们仍在。
+        值, 说明 = 壳._裁剪值({"小": "x", "大": "y" * 5000}, 100, ["小"])
+        self.assertEqual({"小": "x"}, 值)
+        self.assertEqual(["小"], 说明["保留字段"])
+        self.assertNotIn("已裁剪", 说明, "投影后已在限内，不算裁剪")
 
-    def test_裁剪后含说明不超上限(self):
-        # 硬承诺（批 1 新增判据）：值 + 裁剪说明的 JSON 字符数之和 ≤ 上限。
-        # 旧实现里说明不参与计算 ⇒ 裁完反而更超（实测 52 > 50、20 > 5），注释却自称硬承诺。
+    def test_指针回执比硬裁便宜得多(self):
+        # 旧口径（2026-09-21）：「值 + 说明」的字符数之和 ≤ 上限（硬承诺）。
+        # 2026-09-22 改口径后这条**不再成立也不该成立** —— 超限时回的是**指针**，
+        # 指针本身就是「省上下文」的手段。新判据换成真要求：指针要显著轻于原值。
+        原 = {"键1": "x" * 5000, "键2": ["y" * 3000] * 20}
+        原字符数 = len(json.dumps(原, ensure_ascii=False))
         for 上限 in (50, 200, 600, 6000):
-            值, 说明 = 壳._裁剪值({"键1": "x" * 5000, "键2": ["y" * 3000] * 20}, 上限, None)
-            总 = len(json.dumps(值, ensure_ascii=False)) + len(json.dumps(说明, ensure_ascii=False))
-            self.assertLessEqual(总, 上限, f"上限 {上限}：值+说明 = {总}，超限了")
+            值, _ = 壳._裁剪值(原, 上限, None)
+            指针字符数 = len(json.dumps(值, ensure_ascii=False))
+            self.assertLess(指针字符数, 原字符数,
+                            f"上限 {上限}：指针 {指针字符数} 应远轻于原值 {原字符数}")
+            self.assertLessEqual(指针字符数, 1200, f"上限 {上限}：指针不得自身就灌满上下文")
 
-    def test_键或条目太多才退到丢键且如实说明(self):
+    def test_大字典改回指针而非丢键(self):
         值, 说明 = 壳._裁剪值({f"k{i}": "v" * 200 for i in range(200)}, 300, None)
-        self.assertIn("丢弃说明", 说明, "退到最后手段必须如实说明")
-        self.assertLessEqual(说明["裁剪后字符数"], 300)
+        self.assertIsNone(说明)
+        self.assertIn("起始行", 值, "条目太多不再丢键，而是整份落盘 + 回指针")
+        self.assertGreater(值["结束行"], 值["起始行"],
+                           "大字典的记录必须多行 —— 压成一行就只能全量读回或读不全")
 
-    def test_列表超限先缩叶子_缩不动才截尾(self):
+    def test_列表超限改回指针(self):
         值, 说明 = 壳._裁剪值(["x" * 50] * 20, 200, None)
-        self.assertTrue(说明["已裁剪"])
-        self.assertLessEqual(说明["裁剪后字符数"], 200)
+        self.assertIsNone(说明)
+        self.assertIn("取回", 值)
 
-    def test_长文本头尾各半截断并标出标记(self):
+    def test_长文本改回指针_不再拦腰截断(self):
         值, 说明 = 壳._裁剪值("a" * 5000, 100, None)
-        self.assertIn("truncated", 值, "截断处必须有标记（头尾各半，不是拦腰切）")
-        self.assertTrue(值.startswith("a") and 值.endswith("a"), "头尾都要留")
-        总 = len(json.dumps(值, ensure_ascii=False)) + len(json.dumps(说明, ensure_ascii=False))
-        self.assertLessEqual(总, 100)
+        self.assertIsNone(说明)
+        self.assertIn("取回", 值, "超长文本整份在回执里，不再局部截断")
+        self.assertLessEqual(len(json.dumps(值, ensure_ascii=False)), 1200)
 
     def test_上限零表示不限(self):
         原 = {"a": "x" * 100000}
@@ -216,24 +292,29 @@ class 裁剪测试(unittest.TestCase):
         self.assertEqual(原, 值)
         self.assertIsNone(说明)
 
-    def test_不可序列化值不抛异常(self):
-        # 上限小到装不下「值 + 说明」时**必须如实回带 `未能压到限内`**，不假装达标 ——
-        # 旧实现的错正是「自称是硬承诺，实测裁完更超」。
-        值, 说明 = 壳._裁剪值(object(), 10, None)
+    def test_落盘不可用时不静默丢内容(self):
+        # 落盘不可用时**必须如实说明拿了不全**，不得静默丢内容，也不得抛异常。
+        # 直接停掉落盘函数来测这条分支（曾用 `object()` 触发，但那被 `default=str` 兜住了 ⇒ 测不到）。
+        原 = 壳._落全量回执
+        壳._落全量回执 = lambda _值: None
+        try:
+            值, 说明 = 壳._裁剪值({"键1": "x" * 5000}, 400, None)
+        finally:
+            壳._落全量回执 = 原
+        self.assertIsNotNone(说明)
         self.assertTrue(说明["已裁剪"])
-        self.assertIn("未能压到限内", 说明)
+        self.assertIn("全量回执未落盘", 说明, "降级时必须如实说「全量没留下」")
+        self.assertLessEqual(len(json.dumps(值, ensure_ascii=False)), 400)
 
-    def test_唯一大键装着大块时也要压到限内(self):
-        # 实测缺口（2026-09-21 现场）：`{"记录表": [8 条记录]}` 这种「一个键装着一大块」，
-        # 首键被无条件保留后旧实现就再也压不下去 —— 上限 300 实测回了 2340 字符。
-        # `未能压到限内` 虽然如实，但「上限」的本意就是别灌上下文，能压就该压下去。
+    def test_唯一大键也不再压到限内而是回指针(self):
+        # 旧口径：`{"记录表": [8 条记录]}` 这种「一个键装着一大块」必须能压到限内（实测曾回 2340 字符）。
+        # 新口径：不再拿「压到限内」当目标 —— 回指针（省上下文）且内容不丢（可取回）。
         原 = {"记录表": [{"任务": f"任务{i}", "说明": "x" * 60} for i in range(8)]}
         for 上限 in (300, 600):
-            值, 说明 = 壳._裁剪值(原, 上限, None)
-            总 = (len(json.dumps(值, ensure_ascii=False))
-                + len(json.dumps(说明, ensure_ascii=False)))
-            self.assertLessEqual(总, 上限, f"上限 {上限}：值+说明 = {总}，超限了")
-            self.assertNotIn("未能压到限内", 说明, "这个形状必须能压到限内")
+            值, _ = 壳._裁剪值(原, 上限, None)
+            self.assertIn("取回", 值)
+            self.assertLessEqual(len(json.dumps(值, ensure_ascii=False)), 1200,
+                                 f"上限 {上限}：指针不许自己灌满上下文")
 
     def test_值字段非数组时不生效但如实说明(self):
         值, 说明 = 壳._裁剪值({"a": 1}, 6000, "不是数组")
@@ -297,8 +378,9 @@ class 非法参数测试(unittest.TestCase):
             结果 = 壳._调用能力({"能力id": "某能力", "参数": {}, "项目根": str(系统根)})
         finally:
             壳.转发 = 原
-        self.assertIn(壳.值裁剪键, 结果, "超限必须回带裁剪说明")
-        self.assertTrue(结果[壳.值裁剪键]["已裁剪"])
+        # 2026-09-22 改口径：超限不再回「值裁剪」说明，而是**值里就是指针**（没丢内容）。
+        self.assertNotIn(壳.值裁剪键, 结果, "落盘成功时不该再回裁剪说明（指针就是结论）")
+        self.assertIn("取回", 结果["值"], "超限必须给取回腿")
         self.assertLess(len(json.dumps(结果["值"], ensure_ascii=False)), 20000)
 
     def test_非法返回上限被拒(self):
@@ -584,19 +666,29 @@ class 深裁反向验证(unittest.TestCase):
         exec(compile(坏, str(_薄壳源路径), "exec"), 命名空间)  # noqa: S102
         return 命名空间
 
-    def test_退回旧口径后承诺判据变红(self):
+    def test_降级路径下退回旧口径承诺判据变红(self):
+        """★ 2026-09-22 改口径后本样本换了作用对象（不是删掉）：默认路径已改回「指针」，
+        不再以「压到限内」为目标；但**降级路径**（全量落盘不可用）仍保留「值 + 说明 ≤ 上限」的硬承诺，
+        故把两边落盘都停掉，逼它们走深裁再比 —— 这层回归网依然有效。
+        """
         入参 = {"键1": "x" * 5000, "键2": ["y" * 3000] * 20}
         上限 = 6000
         模块 = self._缺陷态模块()
+        模块["_落全量回执"] = lambda _值: None
         缺陷值, 缺陷说明 = 模块["_裁剪值"](入参, 上限, None)
         缺陷总 = (len(json.dumps(缺陷值, ensure_ascii=False))
                 + len(json.dumps(缺陷说明, ensure_ascii=False)))
         self.assertGreater(缺陷总, 上限, "缺陷态下必须真的超限（这正是坏行为）")
-        # 现行实现同一输入必须达标 —— 两者结论不同，样本才有效
-        现值, 现说明 = 壳._裁剪值(入参, 上限, None)
+        # 现行实现同一输入（同样降级）必须达标 —— 两者结论不同，样本才有效
+        原落盘 = 壳._落全量回执
+        壳._落全量回执 = lambda _值: None
+        try:
+            现值, 现说明 = 壳._裁剪值(入参, 上限, None)
+        finally:
+            壳._落全量回执 = 原落盘
         现行总 = (len(json.dumps(现值, ensure_ascii=False))
                 + len(json.dumps(现说明, ensure_ascii=False)))
-        self.assertLessEqual(现行总, 上限, "现行实现必须达标")
+        self.assertLessEqual(现行总, 上限, "现行实现在降级路径上必须达标")
         self.assertNotEqual(缺陷总 > 上限, 现行总 > 上限,
                           "反向样本与现行实现的结论必须不同，否则样本失效")
 
@@ -620,20 +712,135 @@ class 兜底深缩反向验证(unittest.TestCase):
         exec(compile(坏, str(_薄壳源路径), "exec"), 命名空间)  # noqa: S102
         return 命名空间
 
-    def test_退回旧口径后唯一大键压不下去(self):
+    def test_降级路径下退回旧口径唯一大键压不下去(self):
+        """同 深裁反向验证：改口径后此样本在**降级路径**上做反向（默认路径已不以「压到限内」为目标）。"""
         入参 = {"记录表": [{"任务": f"任务{i}", "说明": "x" * 60} for i in range(8)]}
         上限 = 300
         模块 = self._缺陷态模块()
+        模块["_落全量回执"] = lambda _值: None
         缺陷值, 缺陷说明 = 模块["_裁剪值"](入参, 上限, None)
         缺陷总 = (len(json.dumps(缺陷值, ensure_ascii=False))
                 + len(json.dumps(缺陷说明, ensure_ascii=False)))
         self.assertGreater(缺陷总, 上限, "缺陷态下必须真的超限（这正是坏行为）")
-        现值, 现说明 = 壳._裁剪值(入参, 上限, None)
+        原落盘 = 壳._落全量回执
+        壳._落全量回执 = lambda _值: None
+        try:
+            现值, 现说明 = 壳._裁剪值(入参, 上限, None)
+        finally:
+            壳._落全量回执 = 原落盘
         现行总 = (len(json.dumps(现值, ensure_ascii=False))
                 + len(json.dumps(现说明, ensure_ascii=False)))
-        self.assertLessEqual(现行总, 上限, "现行实现必须压到限内")
+        self.assertLessEqual(现行总, 上限, "现行实现在降级路径上必须压到限内")
         self.assertNotEqual(缺陷总 > 上限, 现行总 > 上限,
                           "反向样本与现行实现的结论必须不同，否则样本失效")
+
+
+class 全量回执库测试(unittest.TestCase):
+    """裁剪不再丢内容（2026-09-22 华哥裁决）。
+
+    「丢弃干啥？直接全部收录到一个 db 里面啊，然后用指针便宜可以查询。这个 db，7 天删一次就完事了。」
+
+    ★ 顺带说明：源未超限时**不落盘**；源已超限时只回指针，故本类之外那些「裁剪」判据（丢键/截尾 /
+    字窜截断）只在**降级路径**（落盘不可用）成立 —— 这是 2026-09-22 改口径时同批修正的一部分，
+    留着它们是留**降级能力的回归网**，不是留旧主张。
+
+    锁四件事（每件都是可反向验证的判据，不是描述）：
+      ① 超限必落全量并回指针；
+      ② 指针指的那一行就是**逐字原文**（能取回才算不丢）；
+      ③ 不超限不落盘（不白占盘）；
+      ④ 过期按天整件清理，且只删过期的。
+
+    为什么用临时目录：本组会真写文件。写进仓库 `工程缓存/` 会把单测变成副作用源，
+    故把 `薄壳服务._项目根` 指向临时目录（`回执库()` 实时解析该值，故可注入）。
+    """
+
+    def setUp(self):
+        self._临时 = tempfile.TemporaryDirectory()
+        self._原项目根 = 壳._项目根
+        壳._项目根 = Path(self._临时.name)
+        壳.进程内回执行.clear()
+
+    def tearDown(self):
+        壳._项目根 = self._原项目根
+        壳.进程内回执行.clear()
+        self._临时.cleanup()
+
+    @staticmethod
+    def _大值():
+        return {"记录表": [{"编号": i, "正文": "内容" * 200} for i in range(12)]}
+
+    def test_超限落全量并回指针(self):
+        裁剪后, 说明 = 壳._裁剪值(self._大值(), 200, None)
+        for 键 in ("回执", "取回", "起始行", "结束行", "sha256前10", "过期日期", "保留天数",
+                 "原字符数"):
+            self.assertIn(键, 裁剪后, f"超限时必须回指针键 {键}（不再丢内容）")
+        self.assertIsNone(说明, "落盘成功时指针自己就是结论，不应再单独回裁剪说明")
+
+    def test_指针区段就是逐字原文且可翻页(self):
+        原值 = self._大值()
+        裁剪后, _ = 壳._裁剪值(原值, 200, None)
+        行表 = Path(裁剪后["回执"]).read_text(encoding="utf-8").splitlines()
+        段 = "\n".join(行表[裁剪后["起始行"] - 1:裁剪后["结束行"]])
+        self.assertEqual([], [行 for 行 in 段.splitlines() if 行.startswith("{") and 行.endswith("}")],
+                         "区段必须是**一整条**记录（多行 JSON），不能切在记录边界上")
+        记录 = json.loads(段)
+        self.assertEqual(记录["值"], 原值, "指针区段必须与未裁剪的原始值逐字一致（能取回才算不丢）")
+        self.assertEqual(记录["摘要"][:10], 裁剪后["sha256前10"])
+        self.assertGreater(裁剪后["结束行"], 裁剪后["起始行"],
+                           "记录必须是多行（可逐段翻页）；压成一行就只能全量读回或读不全")
+
+    def test_回执落的是未投影原值(self):
+        """实测缺口（2026-09-22）：落盘若放在「按 值字段 投影之后」，指针上那句「拿到的就是本次
+        全量原文」当场变成假话 —— 被点掉的字段真没了。判据：点名只要大字段、且投影后仍超限时，
+        回执里的记录仍须等于**未投影原值**。
+        """
+        原值 = {"小": "x", "大": "y" * 4000}
+        裁剪后, 说明 = 壳._裁剪值(原值, 200, ["大"])
+        self.assertIsNone(说明)
+        self.assertEqual(["大"], 裁剪后["保留字段"], "字段环事实与指针并排回带，不得因落盘而丢")
+        行表 = Path(裁剪后["回执"]).read_text(encoding="utf-8").splitlines()
+        记录 = json.loads("\n".join(行表[裁剪后["起始行"] - 1:裁剪后["结束行"]]))
+        self.assertEqual(原值, 记录["值"], "回执必须是未投影的原值（投影只决定这一次显示多少）")
+
+    def test_取回提示指向真有能力行区间的那条腿(self):
+        """实测踩过（2026-09-22）：首版提示指向 `文件管理.读取文件`，它**没有** 起始行/结束行 参数
+        （网关回「该能力契约里没有这个参数，已被网关剔除」）—— 指针当场指一条走不通的腿。
+        """
+        裁剪后, _ = 壳._裁剪值(self._大值(), 200, None)
+        self.assertIn("文件系统支持库.文件操作.读取文件", 裁剪后["取回"])
+        self.assertIn("起始行", 裁剪后["取回"])
+        self.assertNotIn("文件管理.读取文件", 裁剪后["取回"])
+
+    def test_取回提示必须自带不限上限(self):
+        """实测缺口（2026-09-22）：取回腿自己也要过薄壳这一关 —— 照指针原样调，5500 字符的原文
+        当场被裁到 300（实测），等于又丢了一遍。故指针必须自带 `返回上限字符=0`。
+        """
+        裁剪后, _ = 壳._裁剪值(self._大值(), 200, None)
+        # ★ 锚「调用形式」而不是「这几个字」：首版判据写成 assertIn("返回上限字符=0")，被同一句里
+        #   的**说明文字**满足 ⇒ 缺陷态（把参数删掉）下依旧全绿 = 假绿。实测踩过，勿回退。
+        self.assertIn("}, 返回上限字符=0)", 裁剪后["取回"],
+                      "取回腿不带 0 就会被薄壳再裁一次 —— 指针必须自带这个参数")
+
+    def test_不超限不落盘(self):
+        小值 = {"a": 1}
+        裁剪后, 说明 = 壳._裁剪值(小值, 5000, None)
+        self.assertEqual(小值, 裁剪后)
+        self.assertIsNone(说明)
+        self.assertEqual([], list(壳.回执库().glob("*.jsonl")), "没超限不该产生回执件")
+
+    def test_过期整件清理且不误删当天(self):
+        库 = 壳.回执库()
+        库.mkdir(parents=True, exist_ok=True)
+        旧件 = 库 / "20260901_全量回执.jsonl"
+        旧件.write_text('{"摘要": "旧", "时刻": "2026-09-01T00:00:00", "值": 1}\n', encoding="utf-8")
+        os.environ[壳.回执时钟环境变量] = "2026-09-22T12:00:00"
+        try:
+            裁剪后, _ = 壳._裁剪值(self._大值(), 200, None)
+        finally:
+            os.environ.pop(壳.回执时钟环境变量, None)
+        self.assertFalse(旧件.exists(), "超过保留天数的整件应被清理")
+        self.assertTrue(Path(裁剪后["回执"]).exists(), "当天的件不得被误删")
+        self.assertEqual(1, 裁剪后.get("已清理过期回执"), "清理个数应如实回带")
 
 
 if __name__ == "__main__":

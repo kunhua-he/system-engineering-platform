@@ -5,12 +5,12 @@
       "type": "local",
       "command": [
         "python3.14",
-        "{env:HOME}/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/薄壳服务.py"
+        "{env:HOME}/Documents/Agent/PHP/系统工程平台/开发工具/薄壳/启动Codex薄壳.py"
       ],
       "cwd": "{env:HOME}/Documents/Agent/PHP/系统工程平台",
       "enabled": true,
       "environment": {
-        "系统库网关凭证": "{env:MCP_GATEWAY_TOKEN}"
+        "PYTHONDONTWRITEBYTECODE": "1"
       }
     }
   }
