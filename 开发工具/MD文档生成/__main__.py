@@ -329,6 +329,10 @@ def 主流程(argv: list[str] | None = None) -> int:
     解析.add_argument("--拒绝手写校验", "--手写校验", dest="拒绝手写校验", action="store_true",
                      help="门禁形态：禁止手写 md —— 本轮改动集里出现「无机器印记的 md」即判红"
                           "（存量未归一的不算红，逐批消掉）")
+    解析.add_argument("--同步载位", action="store_true",
+                     help="只同步说明书的**机器可派生载位行**（版本/参数列表/必填参数/可选参数），"
+                          "人工正文一字不动；配 --写盘 落盘、配 --校验 只报不改。"
+                          "范围 = 白名单里的「人工类」说明书（整份合并会灌骨架垃圾，故只做载位）")
     解析.add_argument("--待归一清单", action="store_true",
                      help="列出全仓仍未归一的 md（无机器印记），供逐批推进")
     解析.add_argument("--人工改", action="store_true",
@@ -401,6 +405,18 @@ def 主流程(argv: list[str] | None = None) -> int:
     今天 = args.今天 or datetime.date.today().isoformat()
     类型名 = str(类型["类型"])
     print(f"MD 文档生成 · {类型名}（序号 {类型.get('序号')}）")
+
+    # ①之0 --同步载位：只刷机器可派生载位行（人工正文一字不动；见 说明书/载位同步.py）
+    if args.同步载位:
+        if 类型名 != "包级说明-使用说明":
+            print(f"`--同步载位` 只适用于「包级说明-使用说明」类型（当前：{类型名}）")
+            return 2
+        from 开发工具.MD文档生成.说明书 import 载位同步 as _载位同步
+        码, 行表 = _载位同步.主流程(项目根, 写盘=args.写盘,
+                                 单文件=args.文件 if args.文件 else None)
+        for 行 in 行表:
+            print(行)
+        return 码
 
     # ① --新建：出骨架
     if args.新建:
