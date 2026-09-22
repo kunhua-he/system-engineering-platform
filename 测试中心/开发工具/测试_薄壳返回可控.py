@@ -867,6 +867,10 @@ async def _跑多次工具目录(次数: int, 环境追加: dict) -> list[dict]:
                 结果 = await 会话.call_tool("tool_catalog", {})
                 正文 = 结果.content[0].text if 结果.content else ""
                 出.append(json.loads(正文))
+                # 换壳自 2026-09-23 起是**异步**的（周期巡检，且要等「无在途请求」）⇒ 两次
+                # 调用之间留一个空闲窗口，让巡检有机会在**没有在飞回包**时把壳换掉。
+                # 不留窗口也不是缺陷（换壳只是被推迟到下一次真空闲），但这条判据要验「换过」。
+                await asyncio.sleep(0.3)
     return 出
 
 
@@ -896,16 +900,16 @@ async def _不握手调工具目录(脚本: Path, 环境追加: dict | None = No
             return (True, 正文) if 正文.strip().startswith("{") else (False, 正文[:200])
 
 
-async def _连改两次源码(目录: Path, 重试: int = 3) -> list[dict]:
+async def _连改两次源码(目录: Path) -> list[dict]:
     """真 stdio：在**同一个子进程**上连改两次源码，每次改完再调一次 `tool_catalog`。
 
     判据用 `进程启动时刻` —— 它是新进程 import 时取的，换一次壳就更新一次。
 
-    ★ 为什么超时要重试：换壳有一个**已知竞态** —— SDK 的低层服务读到请求就另起任务处理，
-    读循环立刻回到读取点，而探针只看得见「有没有未读的请求」、看不见「有一条回包还没写」；
-    换壳点正好落在这一刻时，那条回包随 `os.execve` 一起消失（客户端只能超时）。
-    本判据要证的是「**换了几次壳**」，不是那个竞态，故超时后重试；竞态本身另记债务
-    （`开发文档/未完成事项.md`），修它要改换壳触发点，与本判据无关。
+    ★ 2026-09-23：这里原先**容忍一个竞态**（超时重试），因为换壳点当时在读路径上 ——
+    SDK 读到请求就另起任务处理，读循环立刻回到读取点，而探针只看得见「有没有未读的请求」、
+    看不见「有一条回包还没写」；换壳点正好落在这一刻时，那条回包随 `os.execve` 一起消失
+    （客户端只能超时）。竞态已修（换壳移到周期任务，且补了「无在途请求」判据）⇒ 重试**已删**：
+    本条现在是真判据 —— 任何一次调用超时都算红，不再靠重试掩盖。
     """
     from 支持库.适配层.MCP协议提供者 import (
         构造客户端会话, 构造标准输入输出参数, 标准输入输出客户端,
@@ -923,18 +927,13 @@ async def _连改两次源码(目录: Path, 重试: int = 3) -> list[dict]:
         async with 构造客户端会话(读取流, 写入流) as 会话:
             await 会话.initialize()
             for _ in range(3):
-                for 第几次 in range(重试):
-                    try:
-                        结果 = await asyncio.wait_for(会话.call_tool("tool_catalog", {}), 8)
-                        break
-                    except (TimeoutError, asyncio.TimeoutError):
-                        if 第几次 == 重试 - 1:
-                            raise
+                # 不重试：换壳若吞了回包，这里就是超时红（真判据，不再掩盖竞态）。
+                结果 = await asyncio.wait_for(会话.call_tool("tool_catalog", {}), 8)
                 出.append(json.loads(结果.content[0].text))
                 # 改一次源码：追加注释 ⇒ 指纹变、仍可编译 ⇒ 下一次调用前就该换壳
                 脚本.write_text(脚本.read_text(encoding="utf-8") + f"\n# 第 {len(出)} 次改动\n",
                                encoding="utf-8")
-                await asyncio.sleep(1.1)  # 进程启动时刻是秒级，睡够才分得开
+                await asyncio.sleep(1.1)  # 给周期巡检一个空闲窗口：换壳是异步的，改完要等它巡到
     return 出
 
 
@@ -1066,17 +1065,21 @@ class 自换新壳测试(unittest.TestCase):
         （正是本功能要治的「改了不生效」），换过壳的进程也再也换不动 ⇒ 壳出问题不可自愈。
 
         真起子进程 + 真 stdio：同一个壳上连改两次源码 ⇒ 必须换两次壳。
-        判据＝`进程启动时刻` 三条各不相同（它是新进程 import 时取的，换一次壳更新一次）；
-        进程号三条相同（execve 保留 PID ⇒ 「换了几次」看不出来，只能看时刻）。
+        判据＝三条回执的 `进程内指纹.薄壳服务.py` 各不相同 —— 进程内指纹是**新进程 import 时**
+        对盘上源码取的快照，换一次壳就跟着改后那一版更新一次，故「三个互不相同」等价于
+        「换了两次壳、且每次都真的加载了改后的源码」。
+        （原先用 `进程启动时刻`，它只有**秒**精度：换壳自 2026-09-23 起是异步的，两次换壳可能落在
+        同一秒 ⇒ 那个判据会假红，已换成按内容判的指纹。）
+        进程号三条相同（execve 保留 PID ⇒ 「换了几次」看不出来，只能看内容）。
         """
         with tempfile.TemporaryDirectory() as 临时:
             目录 = Path(临时) / "薄壳"
             shutil.copytree(薄壳目录, 目录, ignore=shutil.ignore_patterns("__pycache__"))
             三条 = asyncio.run(_连改两次源码(目录))
         self.assertEqual(3, len(三条))
-        时刻表 = [条["进程启动时刻"] for 条 in 三条]
-        self.assertEqual(3, len(set(时刻表)),
-                         f"连改两次源码必须换两次壳（首条不换、后两条各换一次）：{时刻表}")
+        指纹表 = [条["进程内指纹"]["薄壳服务.py"] for 条 in 三条]
+        self.assertEqual(3, len(set(指纹表)),
+                         f"连改两次源码必须换两次壳（每次换壳都要加载改后那一版）：{指纹表}")
         self.assertEqual(1, len({条["进程号"] for 条 in 三条}), "换壳不换进程号（execve 保留 PID）")
 
     def test_换壳后不重新握手也能服务(self):
@@ -1132,6 +1135,85 @@ class 换壳后不握手反向验证(unittest.TestCase):
                          f"缺陷态必须失败（否则样本失效，这道闸门等于没接线）：{缺陷说明[:200]}")
         self.assertIn("Invalid request parameters", 缺陷说明,
                       f"缺陷态必须复现那条把整条 MCP 面打死的错误：{缺陷说明[:200]}")
+
+
+async def _在飞时改源码(脚本: Path, 等待秒: float = 0.3) -> tuple[bool, str]:
+    """真 stdio：发一条**慢请求**，在它还在飞的时候改源码（指纹变 ⇒ 需换为真），再等回包。
+
+    返回 `(是否拿到回包, 说明)`。拿到＝换壳没有吞掉在飞的那条响应；拿不到＝说明里带出
+    客户端收到的真实现象（换壳吞了回包 ⇒ 只能超时）。
+    """
+    from 支持库.适配层.MCP协议提供者 import (
+        构造客户端会话, 构造标准输入输出参数, 标准输入输出客户端,
+    )
+
+    参数 = 构造标准输入输出参数(
+        命令=sys.executable,
+        参数表=[str(脚本)],
+        环境={**os.environ, "PYTHONPATH": str(系统根)},  # 副本不在仓库里，平台包靠它才导得到
+        工作目录=str(系统根),
+    )
+    async with 标准输入输出客户端(参数) as (读取流, 写入流):
+        async with 构造客户端会话(读取流, 写入流) as 会话:
+            await 会话.initialize()
+            在飞 = asyncio.create_task(会话.call_tool("tool_catalog", {}))
+            await asyncio.sleep(等待秒)  # 请求已被读进（在飞），响应还没写出来
+            脚本.write_text(脚本.read_text(encoding="utf-8") + "\n# 在飞时改源码\n", encoding="utf-8")
+            try:
+                结果 = await asyncio.wait_for(在飞, 5)
+            except (TimeoutError, asyncio.TimeoutError):
+                return False, "TimeoutError: 客户端等不到回包（在飞的那条响应被换壳吞了）"
+            except Exception as 错误:  # noqa: BLE001 —— 缺陷态就是这个异常，要如实带回
+                return False, f"{type(错误).__name__}: {错误}"
+            正文 = 结果.content[0].text if 结果.content else ""
+            return (True, 正文) if 正文.strip().startswith("{") else (False, 正文[:200])
+
+
+class 换壳窗口反向验证(unittest.TestCase):
+    """反向验证：把「无在途请求」这一项去掉（让它恒真），在飞的那条回包必被换壳吃掉。
+
+    为什么必须构造「在飞窗口」（2026-09-23 实测教训）：缺陷不是「总发生」而是「落在窗口里才发生」——
+    SDK 读到请求就 `tg.start_soon` 另起任务处理，读循环立刻回到读取点，此时 anyio 流里是**空的**
+    （探针判「空」），但客户端手里明明有一条没回的在飞请求。窗口＝「请求已读进」到「响应已写出」
+    这段处理期。不把这段拉长，缺陷态与现行态在统计上分不开（实测窗口只有毫秒级）⇒ 判据会 flaky。
+    故反向样本给**副本**注入一段处理延迟（夹具，不是被测项），把窗口撑到秒级可见。
+
+    缺陷态用**整份薄壳源码的副本**（真 stdio 子进程），只改这一处判据：工作区不受污染，
+    且走的仍是生产那条启动路径（不是把薄壳重新实现一遍来冒充）。
+    """
+
+    _延迟锚 = "    协议名 = 中文名到协议名.get(str(名称), str(名称))"
+    _延迟注入 = "    await asyncio.sleep(1.5)  # 反向样本夹具：把「请求已读进→响应已写出」的窗口撑开\n"
+    _判据锚 = "self._账本.为空()"
+
+    def _副本(self, 目录: Path, 去判据: bool) -> Path:
+        shutil.copytree(薄壳目录, 目录, ignore=shutil.ignore_patterns("__pycache__"))
+        路径 = 目录 / "薄壳服务.py"
+        源 = 路径.read_text(encoding="utf-8")
+        if self._延迟锚 not in 源:
+            raise AssertionError("处理延迟锚点未命中，反向样本夹具失效（判据需更新）")
+        坏 = 源.replace(self._延迟锚, self._延迟注入 + self._延迟锚, 1)
+        if 去判据:
+            if self._判据锚 not in 坏:
+                raise AssertionError("「无在途请求」判据锚点未命中，反向样本失效（判据需更新）")
+            # 让它恒真：`if not self._账本.为空()` 变成 `if not True` ⇒ 这一项等于不存在。
+            坏 = 坏.replace(self._判据锚, "True")
+        路径.write_text(坏, encoding="utf-8")
+        return 路径
+
+    def test_去掉无在途请求判据后在飞回包被吞(self):
+        """现行态（只注入延迟，判据照旧）不得丢回包；缺陷态（判据恒真）必须丢 ⇒ 客户端超时。"""
+        with tempfile.TemporaryDirectory() as 临时:
+            现行脚本 = self._副本(Path(临时) / "现行", 去判据=False)
+            缺陷脚本 = self._副本(Path(临时) / "缺陷", 去判据=True)
+            现行拿到, 现行说明 = asyncio.run(_在飞时改源码(现行脚本))
+            缺陷拿到, 缺陷说明 = asyncio.run(_在飞时改源码(缺陷脚本))
+        self.assertTrue(现行拿到, f"现行态：在飞时改源码也不得丢回包：{现行说明[:300]}")
+        self.assertIn("薄壳工具数", 现行说明, "现行态要拿到真工具目录（不能只判「没报错」）")
+        self.assertFalse(缺陷拿到,
+                         f"缺陷态必须丢回包（否则样本失效，这道闸门等于没接线）：{缺陷说明[:200]}")
+        self.assertIn("TimeoutError", 缺陷说明,
+                      f"缺陷态必须复现「客户端只能超时、且看不出原因」那条现象：{缺陷说明[:200]}")
 
 
 class 回包瘦身测试(unittest.TestCase):

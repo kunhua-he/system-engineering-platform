@@ -3,7 +3,8 @@
 零业务语义：只做 MCP 协议翻译 + 转发唯一网关 40007（HTTP POST /网关/调用）。
 暴露 3 个工具：capability_search（查询能力）/ capability_call（调用能力）/ tool_catalog（工具目录）。
 tool_catalog 另回工具面指纹（进程内 / 盘上 / 是否一致）：薄壳是会话启动时拉起的常驻进程，
-改了 工具清单.py / 薄壳服务.py 后旧壳会在**下一次请求前自换新壳**（os.execve，stdio 的
+改了 工具清单.py / 薄壳服务.py 后旧壳会在**客户端空闲时自换新壳**（需换 且 无在途请求
+且 读取流空三条同时成立才 `os.execve`，stdio 的
 0/1/2 号 fd 原样继承、客户端管道不断）—— 不再要求人重启 MCP 客户端；换不成（盘上编译不过 /
 本进程已换到盘上这一版）时如实写在 tool_catalog 的 `自换新壳` 键里，并继续用旧壳。
 
@@ -35,9 +36,11 @@ from 公共契约.运行时.平台适配 import 脚本入口准入  # noqa: E402
 脚本入口准入("启动平台 MCP 薄壳")
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -79,11 +82,21 @@ from 待补能力清单 import 登记待补能力
 # ── 自换新壳（2026-09-22 华哥口径「工具内部的事，不该是使用者的事」）──────────────
 # 判据（该不该换 / 换不成为什么）在 `工具清单.需换新壳`；这里只解决两件事：
 # **在哪一刻换** 与 **怎么换**。
+# ★ 2026-09-23：换壳点**从读路径搬到了周期任务**（见 `自换新壳读取流.换壳周期任务`）——
+#   读路径恰好是「请求刚读进、回包还没写」的那一刻，那里的换壳点**永远**不安全。
 自换新壳说明 = "薄壳自换新壳"
+
+#: 换壳巡检间隔（秒）：空转（盘上就是本进程这一版）用长间隔，省下无谓的指纹哈希；
+#: 一旦有嫌疑（需换为真）就切到短间隔，让「改完源码随手再调一次」在下一次调用前就换好。
+换壳空转巡检秒 = 0.5
+换壳有嫌疑巡检秒 = 0.05
+#: 真正 `os.execve` 之前的静默一拍：写流是 rendezvous，`send` 返回时消息还在 SDK 的
+#: `stdout_writer` 任务手里、没落到 fd 1 —— 静默一拍让它收尾，再复验三条判据。
+换壳前静默秒 = 0.05
 
 
 def 执行换壳(原因: str) -> None:
-    """真的换：`os.execve` 不返回（调用方已确认此刻没有在途消息）。"""
+    """真的换：`os.execve` 不返回（调用方已确认此刻无在途请求、读取流也空）。"""
     环境 = dict(os.environ)
     # 把**换到的目标指纹**（此刻盘上那一版）随环境交给新壳：新壳据此判「盘上还是我这一版就别换」。
     # 防套娃靠它，不靠「换过一次」那个布尔 —— 后者会把后续的真改动一起挡掉，等于每个会话只能换一次壳。
@@ -128,21 +141,90 @@ def _探在途(流: Any) -> tuple[str, Any]:
         return ("空", None) if type(错误).__name__ == "WouldBlock" else ("未知", None)
 
 
+def _取消息id(消息: Any) -> Any:
+    """从 SDK 的 `SessionMessage` 里取 JSON-RPC id（请求/响应有、通知没有）。
+
+    薄壳不 import SDK 内部类型（唯一第三方边界是适配层）⇒ 一律按属性名取，取不到当「没有 id」。
+    口径：`SessionMessage.message` 是 `JSONRPCMessage`，其 `.root` 才是请求/响应本体。
+    """
+    根 = getattr(getattr(消息, "message", None), "root", None)
+    return getattr(根, "id", None)
+
+
+def _账本键(请求id: Any) -> Any:
+    """id 可以是整数或字符串（JSON-RPC 两种都合法）⇒ 键带上类型，不把 `1` 与 `"1"` 混成一条。"""
+    return (type(请求id).__name__, str(请求id))
+
+
+class 在途请求账本:
+    """按请求 id 记「读进来但还没写出响应」的请求 —— 「无在途请求」＝账本为空。
+
+    为什么必须按 id 记（2026-09-23 实测定案）：SDK 的读循环**读到请求就 `tg.start_soon` 另起
+    任务**去处理，读循环立刻回到读取点。于是「请求已读进内存」与「响应已写出」之间有一整段
+    处理期，这期间 anyio 内存流里是**空的**（探针判「空」），但客户端手里明明有一条没回的在飞
+    请求 —— 此时 `os.execve`，那条响应随进程一起消失，客户端只能超时（实测症状）。
+    `_探在途` 看不见「有一条回包还没写」，账本才看得见：记上 / 划掉都在事件循环里，不跨线程。
+    """
+
+    def __init__(self) -> None:
+        self._未回: set[Any] = set()
+
+    def 记上(self, 请求id: Any) -> None:
+        if 请求id is not None:
+            self._未回.add(_账本键(请求id))
+
+    def 划掉(self, 请求id: Any) -> None:
+        if 请求id is not None:
+            self._未回.discard(_账本键(请求id))
+
+    def 为空(self) -> bool:
+        return not self._未回
+
+    def 在途数(self) -> int:
+        return len(self._未回)
+
+
+class 记账写入流:
+    """包住 MCP 写入流：响应写出时按 id 把在途账**划掉**（账本为空＝没有在飞请求）。
+
+    划账放在 `send` **之后**：`send` 返回时消息已交给 SDK 的传输任务（不再占内存流的坑），
+    此刻划掉才是「这条响应已经写出去」的最近似时刻。反序（先划后写）会让账本提前为空 ⇒
+    换壳正好落在「消息已在传输任务手里、还没落到 fd 1」的缝里；那条缝由换壳前的静默一拍兜住。
+    """
+
+    def __init__(self, 内层: Any, 账本: 在途请求账本) -> None:
+        self._内层 = 内层
+        self._账本 = 账本
+
+    def __getattr__(self, 名称: str) -> Any:
+        # 只代理到内层：其它属性/方法原样透传，薄壳不复制协议面。
+        if 名称 in ("_内层", "_账本"):
+            raise AttributeError(名称)
+        return getattr(self._内层, 名称)
+
+    async def send(self, 消息: Any) -> Any:
+        结果 = await self._内层.send(消息)
+        await asyncio.sleep(0)  # 让传输任务先跑一步（消息已在落 fd 1 的路上），再划账
+        self._账本.划掉(_取消息id(消息))
+        return 结果
+
+    # ── 协议四件套的另一半：SDK 的 `_receive_loop` 用 `async with self._write_stream` ──
+    # 特殊方法不走 `__getattr__` 代理，漏一个就是会话启动即 TypeError（实测 2026-09-23 撞红）。
+    async def __aenter__(self) -> Any:
+        await self._内层.__aenter__()
+        return self
+
+    async def __aexit__(self, *异常: Any) -> Any:
+        return await self._内层.__aexit__(*异常)
+
+
 class 自换新壳读取流:
-    """包住 MCP 读取流：读之前问一次「盘上是不是有更新的壳」，**有就换，但绝不在有在途消息时换**。
+    """包住 MCP 读取流：只做两件事 —— 读进来的请求**记上在途账**；优先消费换壳巡检**暂存**的消息。
 
-    判据链（每一环都有出处，不靠感觉）：
-      ① 该不该换 = `工具清单.需换新壳`（与 `tool_catalog` 的 `是否一致` 同一份指纹）；
-      ② 能不能安全换 = `_探在途`：探到**空**（客户端手里没有在途请求）才 `os.execve`；
-         探到**在途**就把那条先交给会话（本轮照旧用旧壳服务），下个读取点再探；
-      ③ 换不成（盘上编译不过 / 已换到盘上这一版）如实写在 `tool_catalog.自换新壳` 里，继续用旧壳。
-
-    生产里的代价接近零：客户端一问一答，服务器**写回上一条响应之后**的那一次读取，
-    客户端手里本来就是空的 ⇒ 下一条请求直接由新壳服务。
-    残余窗口（如实说）：探针到 `execve` 之间还有几微秒 —— 客户端要在这几微秒内完成
-    「读到响应 → 组装下一条 → 写进管道」才会被吞，而它一次最小往返远大于此。
-    要**零窗口**只能自己接管 stdio 传输层，那等于在薄壳里再写一条 stdio 腿（违背单腿铁律），
-    故不取。
+    ★ 换壳**不在读路径上做**（2026-09-23 实测定案，见 `换壳周期任务`）：读路径恰好是
+      「请求刚读进、回包还没写」的那一刻 —— SDK 读到请求就 `tg.start_soon` 另起任务处理，
+      读循环立刻回到读取点，于是读路径上的换壳点**永远**落在「有一条回包没写」的窗口里，
+      这个条件永远满足不了。所以本类只记账、只消费，换壳交给 `换壳周期任务`。
 
     ★ 协议四件套必须**显式**实现（`__aiter__`/`__anext__`/`__aenter__`/`__aexit__`）：
       SDK 同时用 `async for`（会话循环）与 `async with`（`_receive_loop`），而**特殊方法不走
@@ -150,36 +232,93 @@ class 自换新壳读取流:
       （实测 2026-09-22 撞红，子进程 stderr 里才是真因）。
     """
 
-    def __init__(self, 内层: Any, 进程内指纹: dict[str, str]) -> None:
+    def __init__(self, 内层: Any, 进程内指纹: dict[str, str], 账本: 在途请求账本) -> None:
         self._内层 = 内层
         self._进程内指纹 = dict(进程内指纹)
-        self._待换壳: str | None = None
+        self._账本 = 账本
+        self._暂存: deque[Any] = deque()
 
     def __getattr__(self, 名称: str) -> Any:
         # 只代理到内层：其它属性/方法原样透传，薄壳不复制协议面。
-        if 名称 in ("_内层", "_待换壳"):
+        if 名称 in ("_内层", "_进程内指纹", "_账本", "_暂存"):
             raise AttributeError(名称)
         return getattr(self._内层, 名称)
 
-    def _读之前(self) -> Any | None:
-        """返回「已在途的那条消息」（有就先服务它）；返回 None 表示继续走正常读取。"""
-        if self._待换壳 is None:
-            需换, 原因 = 需换新壳(self._进程内指纹)
-            if not 需换:
-                return None
-            self._待换壳 = 原因
-        判定, 消息 = _探在途(self._内层)
-        if 判定 == "在途":
+    async def _取一条(self, 取内层: Any) -> Any:
+        """先看暂存（换壳巡检从流里取出并托管的），再读内层；读到的请求一律记上在途账。
+
+        ★ 两条出口**都必须记账**（2026-09-23 实测踩到）：漏记非暂存那条出口，账本就永远为空 ⇒
+          「无在途请求」判据形同不存在，换壳照旧吞在飞回包（反向样本当场判红才抓到）。
+        """
+        while True:
+            if self._暂存:
+                消息 = self._暂存.popleft()
+                self._账本.记上(_取消息id(消息))
+                return 消息
+            try:
+                # 有界等待：换壳巡检可能把一条消息**暂存在我们手里**（它已把消息从流里取出），
+                # 而读取路径此刻若正阻塞在内层 `receive` 上就永远等不到它 ⇒ 按空转间隔醒一次
+                # 查暂存。空闲时每 0.5 秒醒一次（代价可忽略）；有消息时立即返回，不加延迟。
+                消息 = await asyncio.wait_for(取内层(), 换壳空转巡检秒)
+            except (TimeoutError, asyncio.TimeoutError):
+                continue
+            self._账本.记上(_取消息id(消息))
             return 消息
-        if 判定 == "未知":
-            return None
-        执行换壳(self._待换壳)  # 探到空：客户端手里没有在途请求 ⇒ 换壳不丢任何东西
-        return None
 
     async def receive(self) -> Any:
-        if (在途 := self._读之前()) is not None:
-            return 在途
-        return await self._内层.receive()
+        return await self._取一条(self._内层.receive)
+
+    async def 换壳周期任务(self) -> None:
+        """周期巡检：**需换 且 无在途请求 且 读取流空** 三条同时成立才 `os.execve`。
+
+        为什么换壳必须离开读路径（2026-09-23 实测定案）：SDK 的读循环读到请求就
+        `tg.start_soon` 另起任务处理，读循环立刻回到读取点 —— 于是读路径上的换壳点
+        **永远**落在「请求刚读进、回包还没写」的窗口里；`_探在途` 探的是 anyio 流里有没有
+        未读的请求，**看不见「有一条回包还没写」** ⇒ 原实现在这条常态路径上必吞回包
+        （客户端一直等不到回包，只能超时，且看不出原因）。
+
+        三条判据各自的出处：
+          ① 需换 = `工具清单.需换新壳`（与 `tool_catalog.是否一致` 同一份指纹）；
+          ② 无在途请求 = `在途请求账本` 为空（读进一条带 id 的请求记上、写出它的响应划掉）；
+          ③ 读取流空 = `_探在途`（探到消息**暂存**给读取路径消费，绝不丢）。
+        """
+        间隔 = 0.0  # 第一次立即巡一遍：进程刚起来时客户端还没发请求，是最干净的一次机会
+        while True:
+            if 间隔:
+                await asyncio.sleep(间隔)
+            try:
+                需换, 原因 = 需换新壳(self._进程内指纹)
+                if not 需换:
+                    间隔 = 换壳空转巡检秒
+                    continue
+                间隔 = 换壳有嫌疑巡检秒
+                if not self._账本.为空():
+                    continue  # ② 还有响应没写出去，此刻换壳就是吞回包
+                判定, 消息 = _探在途(self._内层)
+                if 判定 == "在途":
+                    # ③ 探针已把这条从流里取出 ⇒ 记账接管 + 暂存给读取路径，绝不丢
+                    self._账本.记上(_取消息id(消息))
+                    self._暂存.append(消息)
+                    continue
+                if 判定 != "空":
+                    continue  # 探针不可用 ⇒ 不换壳（安全优先）
+                # 三条已成立；给传输层一个收尾窗口，再复验一遍（静默期里可能又来了请求）。
+                await asyncio.sleep(换壳前静默秒)
+                if not self._账本.为空():
+                    continue
+                复判定, 复消息 = _探在途(self._内层)
+                if 复判定 == "在途":
+                    self._账本.记上(_取消息id(复消息))
+                    self._暂存.append(复消息)
+                    continue
+                if 复判定 != "空":
+                    continue
+                执行换壳(原因)  # 三条同时成立：需换 + 无在途 + 读流空
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 —— 巡检出事不拖垮会话，下一轮再试
+                间隔 = 换壳空转巡检秒
+                continue
 
     # ── 协议四件套：SDK 同时用 `async for`（会话循环）与 `async with`（`_receive_loop`）──
     # 特殊方法不经过 `__getattr__`，故必须逐个显式转发；漏一个就是「客户端只看到连接被关」。
@@ -193,9 +332,7 @@ class 自换新壳读取流:
         return await self._内层.__aexit__(*异常)
 
     async def __anext__(self) -> Any:
-        if (在途 := self._读之前()) is not None:
-            return 在途
-        return await self._内层.__anext__()
+        return await self._取一条(self._内层.__anext__)
 
 
 服务 = 构造服务("系统工程平台_薄壳")
@@ -873,8 +1010,22 @@ async def 主程序() -> None:
         #  按目标指纹比对 ⇒ 再改一次源码就能把被打死的壳换回新壳，见 `工具清单.需换新壳`。）
         # 薄壳不持有任何会话态（每次调用独立转发给网关），故「无握手也服务」语义正确；
         # 客户端正常握手那条路不受影响（`initialize` 分支照旧应答）。
-        await 服务.run(自换新壳读取流(读取流, 进程内指纹), 写入流,
-                     构造初始化选项(服务名, 服务版本), stateless=True)
+        #
+        # 换壳**必须在读路径之外**做（见 `自换新壳读取流.换壳周期任务`）：读路径是「请求刚读进、
+        # 回包还没写」的那一刻，那里的换壳点永远不安全。故这里另起一个周期任务，读流/写流各包一层
+        # 记账（读进一条带 id 的请求记上、写出它的响应划掉）⇒ 换壳只在「需换 且 无在途请求
+        # 且 读取流空」三条同时成立时发生。
+        账本 = 在途请求账本()
+        壳读取流 = 自换新壳读取流(读取流, 进程内指纹, 账本)
+        壳写入流 = 记账写入流(写入流, 账本)
+        换壳巡检 = asyncio.create_task(壳读取流.换壳周期任务())
+        try:
+            await 服务.run(壳读取流, 壳写入流,
+                         构造初始化选项(服务名, 服务版本), stateless=True)
+        finally:
+            换壳巡检.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await 换壳巡检
 
 
 if __name__ == "__main__":
