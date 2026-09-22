@@ -16,6 +16,10 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.运行时.进程终止 import 进程存活, 终止进程组
+# 2026-09-23 补漏：`tearDown` 的 except 分支调 `记录忽略`，但本模块此前**只有**工作器源码
+# 字符串（`工作器源码` 内那句）里有这个名字 —— 模块级从未 import ⇒ 一旦真有关闭异常，
+# tearDown 自己抛 NameError，把「允许忽略但必须留痕」变成「连测试都收不了尾」。
+from 公共契约.诊断.忽略记录 import 记录忽略, 忽略快照
 from 平台控制面.提供者.进程提供者 import 本地进程提供者
 from 运行核心.加载器.提供者隔离.独立进程 import 提供者进程池
 
@@ -226,6 +230,37 @@ class Provider进程维修测试(unittest.TestCase):
                 再次 = 池.重试关闭()
                 self.assertTrue(再次["成功"], 再次)
                 self.assertEqual(再次["未收敛"], [])
+
+
+class 关闭留痕分支回归(unittest.TestCase):
+    """`tearDown` 的「允许忽略但必须留痕」分支必须真能跑。
+
+    2026-09-23 复核：本模块的 `记录忽略` 只出现在 `工作器源码` 那个 `r'''…'''`
+    字符串里（给子进程用的），**模块级从未 import** ⇒ 只要 `重试关闭()` 真抛异常，
+    tearDown 自己就抛 `NameError: name '记录忽略' is not defined`：本意是「留痕后继续收尾」，
+    实际变成「收不了尾」，且异常发生在 tearDown 里会连带掩盖真实用例结果。
+    既有用例从未让 `重试关闭` 抛异常（失败分支测的是返回字典，不是异常），故长期潜伏。
+    """
+
+    def test_tearDown关闭异常必须留痕而非抛NameError(self):
+        用例 = Provider进程维修测试("test_P0_07_运行核心有界池稳定分配且并发不串包")
+        用例.setUp()
+        前置条数 = len(忽略快照())
+
+        class 假池:
+            def 重试关闭(self):
+                raise RuntimeError("模拟关闭失败")
+
+        用例.对象表.append(假池())
+        try:
+            用例.tearDown()          # 改前：此处 NameError；改后：正常收尾
+        finally:
+            用例.临时对象.cleanup()
+
+        新增 = 忽略快照()[前置条数:]
+        命中 = [条 for 条 in 新增 if 条["位置"] == "测试_Provider进程.tearDown"]
+        self.assertTrue(命中, f"tearDown 的关闭异常没有留痕：新增记录={新增}")
+        self.assertEqual("RuntimeError", 命中[-1]["错误类型"])
 
 
 if __name__ == "__main__":
