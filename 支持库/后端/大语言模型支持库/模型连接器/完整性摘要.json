@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "f1f3ba6e69dfb642be4632557e7fe62dd6d380e79e7a9df62f4d199a6241d354"
+      "sha256": "907042de8ef6571f1572caf3a2d407a84f016d0e44e71c338fe6cec37e7f748a"
     },
     {
       "路径": "复用决策.json",
@@ -69,19 +69,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "45d5b32a2594d07cdfccf5f97654985175bcc68c58adf13eb74acece5ef40262"
+      "sha256": "7a7f3b4dc4dcdd582ccb23587dc3c77313ae9af2df6a5824b872304bc35699ea"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "7cf6c80ca85600fb6495d601bd79283e827f8f001e926ef23115313e84752920"
+      "sha256": "0e25af584d549267c73277587eab9e0b63c4beab5b3af4ec7f3d4d1b7cd8fea4"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "fb18798d0bd110b4f42d85b5ae0523628f401b588b8cf0e016aa34da16eeb053"
+      "sha256": "c9caefaf611ef78d6efc688f8004b7d078fa3b2f84b4ec28b9ad68cbfea08cdf"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "c83e1931bf117557b21919453695b0ae9bb0abc10cbfa69ba1a0eb793f750994"
+      "sha256": "56d9737d4a69b2b1b7e3c573f7431785dc2b806d2495dd7c5da627c2d3142a9b"
     },
     {
       "路径": "说明/使用说明.md",
@@ -158,5 +158,5 @@
     "大语言模型支持库.模型连接器.汇总模型表现",
     "大语言模型支持库.模型连接器.选择模型"
   ],
-  "能力定义摘要": "527ebd4beddfd628"
+  "能力定义摘要": "fbd2fdbf1ba29507"
 }
