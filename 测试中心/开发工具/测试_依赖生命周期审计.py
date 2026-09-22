@@ -50,6 +50,54 @@ def 构造合法提供者(目录: Path) -> Path:
     return 提供者目录
 
 
+def 构造转调壳提供者(目录: Path, *, 腿含停止函数: bool, 腿含进程组证据: bool) -> Path:
+    """构造「后端腿转调适配层腿」的提供者（D-1 收口形态），腿的真实实现单独造。
+
+    平台把「同一份逻辑只能有一个实现」收口成转调壳：壳文件里只有
+    ``sys.modules[__name__] = sys.modules[唯一实现名]``，函数定义全在适配层腿。
+    判据必须跟得进这条壳，否则「实现里没有停止函数」是假红。
+    """
+    临时根 = 目录
+    (临时根 / "模块库").mkdir()          # 锚点：让 _系统根 认到临时根（转调壳解析基准）
+    腿实现 = 临时根 / "支持库" / "适配层" / "目标提供者" / "实现"
+    腿实现.mkdir(parents=True)
+    腿停止 = "def 停止():\n    pass\n" if 腿含停止函数 else ""
+    腿证据 = "进程组 = None\n" if 腿含进程组证据 else ""
+    (腿实现 / "实现文件.py").write_text(
+        f"{腿停止}\n{腿证据}\ndef 执行任务(请求):\n    return 请求\n", encoding="utf-8")
+    提供者目录 = 临时根 / "支持库" / "适配层" / "壳提供者"
+    提供者目录.mkdir(parents=True)
+    (提供者目录 / "包声明.json").write_text(json.dumps({
+        "包id": "支持库.适配层.壳提供者", "名称": "壳提供者", "类型": "支持库",
+        "版本": "1.0.0", "依赖": [],
+    }, ensure_ascii=False), encoding="utf-8")
+    (提供者目录 / "依赖锁.json").write_text(json.dumps({
+        "包": [{"名称": "示例第三方", "版本": "2.0.0"}],
+        "提供者id": "支持库.适配层.壳提供者",
+    }, ensure_ascii=False), encoding="utf-8")
+    (提供者目录 / "能力定义.json").write_text(json.dumps({
+        "包id": "支持库.适配层.壳提供者", "版本": "1.0.0",
+        "能力列表": [{"能力id": "壳.健康探针", "中文名称": "健康探针", "版本": "1.0.0"}],
+    }, ensure_ascii=False), encoding="utf-8")
+    (提供者目录 / "生命周期契约.json").write_text(json.dumps({
+        "提供者id": "支持库.适配层.壳提供者",
+        "资源模型": "独立子进程",
+        "释放策略": "每次调用在 finally 中终止进程组",
+    }, ensure_ascii=False), encoding="utf-8")
+    壳实现 = 提供者目录 / "实现"
+    壳实现.mkdir()
+    (壳实现 / "壳.py").write_text(
+        '"""转调壳：唯一实现在 支持库/适配层/目标提供者（本文件不定义任何函数）。"""\n'
+        "import sys\n\n"
+        '唯一实现名 = "支持库.适配层.目标提供者.实现.实现文件"\n'
+        "sys.modules[__name__] = sys.modules[唯一实现名]\n",
+        encoding="utf-8")
+    摘要 = 生成完整性摘要(提供者目录, 包id="支持库.适配层.壳提供者", 版本="1.0.0")
+    (提供者目录 / "完整性摘要.json").write_text(
+        json.dumps(摘要, ensure_ascii=False), encoding="utf-8")
+    return 提供者目录
+
+
 class Test依赖与生命周期审计(unittest.TestCase):
     """合法提供者零违规；各类违规样本真实检出。"""
 
@@ -118,6 +166,21 @@ class Test依赖与生命周期审计(unittest.TestCase):
         结果 = 审计单个提供者(提供者目录)
         self.assertTrue(any("缺健康探针" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
         self.assertTrue(any("缺停止入口" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
+
+    def test_转调壳指向的适配层腿算本提供者证据(self):
+        """正样本：函数定义全在适配层腿，判据跟得进转调壳 ⇒ 不判缺停止入口/释放策略不符。"""
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        提供者目录 = 构造转调壳提供者(目录, 腿含停止函数=True, 腿含进程组证据=True)
+        结果 = 审计单个提供者(提供者目录)
+        self.assertTrue(结果.是否通过, f"转调壳 + 腿有证据不应违规: {结果.违规列表}")
+
+    def test_转调壳指向空腿仍判缺停止入口(self):
+        """反向验证：壳跟随不是「一律放行」——腿里没有停止函数/资源证据时仍判红。"""
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        提供者目录 = 构造转调壳提供者(目录, 腿含停止函数=False, 腿含进程组证据=False)
+        结果 = 审计单个提供者(提供者目录)
+        self.assertTrue(any("缺停止入口" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
+        self.assertTrue(any("释放策略不符" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
 
     def test_真实审计现有提供者输出(self):
         """真实跑 worktree 现有提供者目录，输出审计报告（不 mock）。"""

@@ -91,6 +91,84 @@ def _平台自有顶层名附近(目录: Path) -> frozenset[str]:
     return 平台自有顶层名(目录)
 
 
+def _系统根(目录: Path) -> Path:
+    """从提供者目录向上找「含 模块库 的平台根」（与 `_平台自有顶层名附近` 同一判据）。
+
+    找不到（测试在临时目录里构造的孤立提供者）时退化为该目录自身：转调壳解析
+    自然落空、不产生假绿。
+    """
+    for 祖先 in 目录.parents:
+        if (祖先 / "模块库").is_dir():
+            return 祖先
+    return 目录
+
+
+#: 转调壳里「唯一实现名」的字面量形态：`支持库.适配层.X.实现.Y`（D-1 收口）。
+_转调实现名句式 = re.compile(r"^支持库\.[A-Za-z0-9_.\u4e00-\u9fff]+\.实现\.[A-Za-z0-9_\u4e00-\u9fff]+$")
+
+
+def _转调壳目标文件(目录: Path) -> list[Path]:
+    """解析 实现/ 下的**转调壳**，返回被转调的唯一实现文件（2026-09-23 补判据覆盖）。
+
+    平台把「同一份逻辑只能有一个实现」收口成转调壳：后端包 ``实现/X.py`` 里写
+    ``sys.modules[__name__] = sys.modules[唯一实现名]``，**真正带函数定义的是适配层腿**
+    的同名文件。静态 AST 扫描只看壳文件 ⇒「实现里没有停止函数 / 没有释放资源证据」
+    全是假红 —— 实测 22 条违规里 17 条由这一条造成（OCR识别/FFmpeg媒体/PDF隔离提供者/
+    textutil转换/Git操作/转写/图像解码/PDF渲染 八个提供者）。
+
+    解析口径：只在**含 ``sys.modules[__name__]`` 赋值**的文件里，取形如
+    ``支持库.适配层.X.实现.Y`` 的字符串字面量（转调壳的「唯一实现名」），按
+    「点 → 目录分隔」还原成仓库内相对路径。解析不出返回空表（不猜、不放宽）。
+    """
+    根 = _系统根(目录)
+    实现目录 = 目录 / "实现"
+    if not 实现目录.is_dir():
+        return []
+    结果: list[Path] = []
+    for 文件 in sorted(实现目录.rglob("*.py")):
+        try:
+            源 = 文件.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "sys.modules[__name__]" not in 源:
+            continue
+        try:
+            树 = ast.parse(源)
+        except SyntaxError:
+            continue
+        for 节点 in ast.walk(树):
+            if not isinstance(节点, ast.Constant) or not isinstance(节点.value, str):
+                continue
+            文本 = 节点.value.strip()
+            if not _转调实现名句式.match(文本):
+                continue
+            候选 = 根.joinpath(*文本.split(".")).with_suffix(".py")
+            if 候选.is_file() and 候选 not in 结果:
+                结果.append(候选)
+    return 结果
+
+
+def _实现扫描文件(目录: Path) -> list[Path]:
+    """判据要扫的实现源码文件：本包 ``实现/**/*.py`` ∪ 转调壳指向的适配层腿 ``实现/*.py``。
+
+    为什么连腿的**整目录**一起扫：唯一实现常拆成兄弟文件（``_终止进程组`` 在
+    ``提供者.py``，壳却指向 ``子进程入口.py``）。腿就是本提供者的实现（同一模块
+    对象，见 `_转调壳目标文件`），故腿里的停止函数与资源证据都算本提供者的证据。
+    """
+    文件表: list[Path] = []
+    if (目录 / "实现").is_dir():
+        文件表.extend(sorted((目录 / "实现").rglob("*.py")))
+    for 目标 in _转调壳目标文件(目录):
+        文件表.extend(sorted(目标.parent.glob("*.py")))
+    去重: list[Path] = []
+    见: set[Path] = set()
+    for 文件 in 文件表:
+        if 文件 not in 见:
+            见.add(文件)
+            去重.append(文件)
+    return 去重
+
+
 def _实现第三方导入(目录: Path) -> set[str]:
     """列出 实现/**/*.py 里真实 import 的第三方顶层模块（AST 解析，不执行代码）。
 
@@ -396,11 +474,13 @@ def _停止入口真实存在(目录: Path, 停止入口文本: str) -> bool:
         return 假
     候选 = re.findall(r"([A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]{1,40})\s*\(\)", 停止入口文本)
     if not 候选:
-        候选 = re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,40}", 停止入口文本)
+        # 兜底也要认中文名（原正则只认 ASCII ⇒ `实现/子进程入口.py:进程组终止` 这类
+        # 不带 `()` 的中文写法一个候选都抓不到，判据恒假）。
+        候选 = re.findall(r"[A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]{2,40}", 停止入口文本)
     if not 候选:
         return 假
     实际函数名: set[str] = set()
-    for 文件 in 实现目录.rglob("*.py"):
+    for 文件 in _实现扫描文件(目录):
         try:
             树 = ast.parse(文件.read_text(encoding="utf-8"))
         except (SyntaxError, OSError):
@@ -416,7 +496,8 @@ def 检查停止入口(目录: Path) -> list[str]:
     实现目录 = 目录 / "实现"
     if not 实现目录.is_dir():
         return ["缺停止入口: 实现/ 目录不存在"]
-    for 文件 in 实现目录.glob("*.py"):
+    # 扫本包 实现/ ∪ 转调壳指向的适配层腿（D-1 收口后函数定义都在腿里，见 _实现扫描文件）。
+    for 文件 in _实现扫描文件(目录):
         try:
             树 = ast.parse(文件.read_text(encoding="utf-8"))
         except (SyntaxError, OSError):
@@ -480,12 +561,13 @@ def 检查停止入口(目录: Path) -> list[str]:
 
 
 def _实现源码(目录: Path) -> str:
-    """拼接 实现/**/*.py 的源码文本，供「文案 vs 实现」核对（只读，不 import）。"""
-    实现目录 = 目录 / "实现"
-    if not 实现目录.is_dir():
-        return ""
+    """拼接实现源码文本，供「文案 vs 实现」核对（只读，不 import）。
+
+    范围＝本包 ``实现/**/*.py`` ∪ 转调壳指向的适配层腿（见 `_实现扫描文件`）：
+    释放动作（``killpg`` / ``进程组`` / ``子进程`` 等）常写在腿里，只看壳文件会假红。
+    """
     片段列表: list[str] = []
-    for 文件 in sorted(实现目录.rglob("*.py")):
+    for 文件 in _实现扫描文件(目录):
         try:
             片段列表.append(文件.read_text(encoding="utf-8"))
         except OSError:
