@@ -99,6 +99,7 @@ class 双腿行为差异基类(unittest.TestCase):
         self.日志 = self.临时根 / "调用.jsonl"
         self.计数 = self.临时根 / "计数.txt"
         self.池列表 = []
+        self._清后端提供者缓存()
 
     def tearDown(self):
         for 池 in self.池列表:
@@ -106,7 +107,21 @@ class 双腿行为差异基类(unittest.TestCase):
                 池.关闭()
             except Exception:
                 pass
+        self._清后端提供者缓存()
         shutil.rmtree(self.临时根, ignore_errors=True)
+
+    @staticmethod
+    def _清后端提供者缓存():
+        """清后端腿的 soffice 路径缓存（**状态复位，不是打桩**）。
+
+        后端腿 `查找LibreOffice()` 的候选列表首位就是 `LIBREOFFICE_BIN`/`SOFFICE_BIN`
+        环境变量，那是生产侧自己声明的注入口；但它命中 `_提供者缓存` 后**不再读环境变量**
+        ⇒ 必须先清缓存，本次注入才生效、本次的临时路径也不会残留给后续用例。
+        旧写法直接 `patch.object(后端, "_提供者缓存", …)` 把整段查找逻辑（含环境变量
+        与 PATH 回退）跳过了，等于测一个不存在的实现（`测试伪装门禁` 规则 1 判红）。
+        """
+        from 支持库.后端.文档转换支持库.LibreOffice转换.实现 import 文档转换 as 后端
+        后端._提供者缓存.clear()
 
     def _输入(self, 名称, 内容="双腿行为差异测试内容"):
         路径 = self.临时根 / 名称
@@ -146,11 +161,11 @@ class 测试重试语义差异(双腿行为差异基类):
         输入 = self._输入("重试.docx")
         输出目录 = self.临时根 / "后端输出"
         try:
-            with mock.patch.object(后端, "_提供者缓存", {"soffice": str(self.假程序)}), \
-                 mock.patch.dict(os.environ, {
-                     "FAKE_LO_LOG": str(self.日志), "FAKE_LO_COUNTER": str(self.计数),
-                     "FAKE_LO_FAIL_UNTIL": "2", "LIBREOFFICE_并发上限": "2",
-                 }):
+            with mock.patch.dict(os.environ, {
+                    "LIBREOFFICE_BIN": str(self.假程序),
+                    "FAKE_LO_LOG": str(self.日志), "FAKE_LO_COUNTER": str(self.计数),
+                    "FAKE_LO_FAIL_UNTIL": "2", "LIBREOFFICE_并发上限": "2",
+                }):
                 结果 = 后端.转换办公文件(str(输入), "txt", 超时秒=30,
                                      最大输出字节=1024, 输出目录=str(输出目录))
         finally:
@@ -210,10 +225,10 @@ class 测试背压模型差异(双腿行为差异基类):
         输入列表 = [self._输入(f"闸门{序号}.docx") for 序号 in range(6)]
         结果表 = []
         try:
-            with mock.patch.object(后端, "_提供者缓存", {"soffice": str(self.假程序)}), \
-                 mock.patch.dict(os.environ, {
-                     "FAKE_LO_LOG": str(self.日志), "FAKE_LO_DELAY": "0.12",
-                     "LIBREOFFICE_并发上限": "1"}):
+            with mock.patch.dict(os.environ, {
+                    "LIBREOFFICE_BIN": str(self.假程序),
+                    "FAKE_LO_LOG": str(self.日志), "FAKE_LO_DELAY": "0.12",
+                    "LIBREOFFICE_并发上限": "1"}):
                 线程列表 = [threading.Thread(target=lambda 路径=路径: 结果表.append(
                     后端.转换办公文件(str(路径), "txt", 超时秒=30, 最大输出字节=1024)))
                     for 路径 in 输入列表]
@@ -245,10 +260,10 @@ class 测试失败路径与清理(双腿行为差异基类):
         既有 = 输出目录 / "既有.txt"
         既有.write_text("调用方旧内容", encoding="utf-8")
         try:
-            with mock.patch.object(后端, "_提供者缓存", {"soffice": str(self.假程序)}), \
-                 mock.patch.dict(os.environ, {
-                     "FAKE_LO_LOG": str(self.日志), "FAKE_LO_EXIT_CODE": "7",
-                     "LIBREOFFICE_并发上限": "1"}):
+            with mock.patch.dict(os.environ, {
+                    "LIBREOFFICE_BIN": str(self.假程序),
+                    "FAKE_LO_LOG": str(self.日志), "FAKE_LO_EXIT_CODE": "7",
+                    "LIBREOFFICE_并发上限": "1"}):
                 结果 = 后端.转换办公文件(str(输入), "txt", 超时秒=30,
                                      最大输出字节=1024, 输出目录=str(输出目录))
         finally:
@@ -289,10 +304,10 @@ class 测试零字节产物判定差异(双腿行为差异基类):
         from 支持库.后端.文档转换支持库.LibreOffice转换.实现 import 文档转换 as 后端
         输入 = self._输入("空产物.docx")
         try:
-            with mock.patch.object(后端, "_提供者缓存", {"soffice": str(self.假程序)}), \
-                 mock.patch.dict(os.environ, {
-                     "FAKE_LO_LOG": str(self.日志), "FAKE_LO_EMPTY": "1",
-                     "LIBREOFFICE_并发上限": "1"}):
+            with mock.patch.dict(os.environ, {
+                    "LIBREOFFICE_BIN": str(self.假程序),
+                    "FAKE_LO_LOG": str(self.日志), "FAKE_LO_EMPTY": "1",
+                    "LIBREOFFICE_并发上限": "1"}):
                 结果 = 后端.转换办公文件(str(输入), "txt", 超时秒=30, 最大输出字节=1024)
         finally:
             后端._回收档案根()
@@ -338,13 +353,16 @@ class 测试错误码越界登记(unittest.TestCase):
 
     def test_后端腿实现可返回错误码的越界登记(self):
         越界 = self._实现可返回错误码(后端实现路径) - self._声明错误码(后端包目录)
-        self.assertEqual(越界, {"外部提供者不可用"})
+        # 越界集已清零（2026-09-22 实测）：原登记值 {"外部提供者不可用"} 已由
+        # 能力定义.json 补齐声明消解。若将来实现新增未声明错误码，本断言立即打红。
+        self.assertEqual(越界, set())
 
     def test_适配层腿实现可返回错误码的越界登记(self):
         越界 = self._实现可返回错误码(适配实现路径) - self._声明错误码(适配包目录)
-        # 适配层腿多出「限流」「提供者配置错误」两条：固定工作池的背压与配置校验
-        # 在自身 能力定义.json 的错误码集合里没有登记。
-        self.assertEqual(越界, {"外部提供者不可用", "限流", "提供者配置错误"})
+        # 越界集已清零（2026-09-22 实测）：原登记的三条（"外部提供者不可用" / "限流" /
+        # "提供者配置错误"）均已由能力定义.json 补齐声明消解 —— 这正是本档要钉住的事实：
+        # 生产侧补声明后此处必须同步收敛，否则登记会永久停留在旧快照。
+        self.assertEqual(越界, set())
 
     def test_两侧声明错误码集合一致(self):
         self.assertEqual(self._声明错误码(后端包目录), self._声明错误码(适配包目录))

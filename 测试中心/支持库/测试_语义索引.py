@@ -59,9 +59,9 @@ class Test语义索引(unittest.TestCase):
         实现模块 = sys.modules[建代码索引.__module__]
         假块 = [{"文件路径": "样例代码.py", "起始行": 1, "结束行": 2,
                  "块文本": "def 示例函数():\n    return 1\n", "块类型": "function"}]
-        with mock.patch.object(实现模块, "收集代码块",
+        with mock.patch.object(实现模块, "收集代码块", autospec=True,
                                return_value={"块列表": 假块, "文件数": 1, "跳过清单": []}), \
-             mock.patch.object(实现模块, "取句柄",
+             mock.patch.object(实现模块, "取句柄", autospec=True,
                                return_value=(None, "测试夹具：模拟嵌入提供者不可用")):
             结果对象 = 建代码索引(索引根=self.索引根)
         self.assertEqual(结果对象.错误码, "嵌入不可用")
@@ -81,13 +81,18 @@ class Test语义索引(unittest.TestCase):
         实现模块 = sys.modules[建代码索引.__module__]
         假块 = [{"文件路径": "样例代码.py", "起始行": 1, "结束行": 2,
                  "块文本": "def 示例函数():\n    return 1\n", "块类型": "function"}]
-        with mock.patch.object(实现模块, "收集代码块",
+        夹具说明 = "测试夹具：模拟嵌入提供者不可用"
+        with mock.patch.object(实现模块, "收集代码块", autospec=True,
                                return_value={"块列表": 假块, "文件数": 1, "跳过清单": []}), \
-             mock.patch.object(实现模块, "取句柄", return_value=(None, "测试夹具")):
+             mock.patch.object(实现模块, "取句柄", autospec=True,
+                               return_value=(None, 夹具说明)):
             结果对象 = 建代码索引(索引根=self.索引根, 超时秒=0.000001)
-        self.assertNotEqual(
-            结果对象.错误码, "超时",
-            "超时秒 已生效（实现已改）—— 请复核本用例并改回断言 `超时`")
+        # 强断言（结构）：超时秒 当前**无读取点**，故设极小超时也走不到超时分支；
+        # 结果应是「嵌入不可用」的失败信封，且提供者侧给的说明**原样透传**。
+        # 实现真把 超时秒 用起来时这里会变红 —— 那正是要复核的信号。
+        self.assertFalse(结果对象.成功)
+        self.assertEqual(结果对象.错误码, "嵌入不可用")
+        self.assertEqual(结果对象.错误说明, 夹具说明)
 
 
 if __name__ == "__main__":

@@ -27,11 +27,48 @@ def _有swiftc() -> bool:
     return shutil.which("swiftc") is not None or Path("/usr/bin/swiftc").exists()
 
 
-class Test检查提供者(unittest.TestCase):
+class 工具缓存隔离基类(unittest.TestCase):
+    """`_查找工具` 有**模块级缓存**：注入必须在清空缓存之后，且用例结束要再清一次。
+
+    缓存一旦留下替身路径（或 None），后续用例会一直拿到它 —— 这是真串扰，不是风格问题。
+    """
+
+    def setUp(self):
+        实现模块._工具缓存.clear()
+        self.addCleanup(实现模块._工具缓存.clear)
+
+
+class Test检查提供者(工具缓存隔离基类):
+    """探针语义：工具缺失与探针超时都用**真实副作用 / 真实状态注入**造。
+
+    旧写法替换的是生产模块自己的 `_查找工具` / `_跑`（`测试伪装门禁` 规则 1 判红：
+    等于把「生产怎么找工具、怎么跑命令」整段跳过，测的是一个不存在的实现）。
+
+    现写法只动**依赖边界与真实状态**：
+    - 工具缺失 → 把 `_工具缓存` 预填 None（`_查找工具` 命中缓存即回缺失，走的正是
+      生产自己的缓存路径），生产实现全程真跑；
+    - 工具超时 → 把 `_工具缓存` 指向**真会挂起的替身脚本**，`_跑` 照常启真进程、
+      走真超时强杀（比原写法多验了进程组回收）。
+
+    **为什么不能 patch `shutil.which`**：`_查找工具` 写的是
+    `next((c for c in 候选 if shutil.which(c)), None)` —— 返回的是**候选原文**
+    而不是 `which` 的返回值，故 patch `which` 注入不进替身路径（实测：注入后
+    `_查找工具` 仍回 `/usr/bin/swiftc`）。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.临时目录 = Path(tempfile.mkdtemp(prefix="swift探针_"))
+        self.addCleanup(shutil.rmtree, self.临时目录, True)
+
     def test_工具缺失语义(self):
-        """工具缺失 → 提供者不可用（不伪装成功、不混成参数问题）。"""
-        with mock.patch.object(实现模块, "_查找工具", return_value=None):
-            出 = 检查提供者()
+        """工具缺失 → 提供者不可用（不伪装成功、不混成参数问题）。
+
+        经生产自己的缓存路径注入缺失：`_查找工具` 命中 `_工具缓存` 即回 None，
+        与「机器上真没装」走的是同一条分支。
+        """
+        实现模块._工具缓存.update({"swiftc": None, "codesign": None})
+        出 = 检查提供者()
         self.assertEqual(出.错误码, "提供者不可用")
 
     def test_真探针可用(self):
@@ -42,11 +79,12 @@ class Test检查提供者(unittest.TestCase):
         self.assertTrue((出.值 or {}).get("codesign 路径"))
 
     def test_探针超时(self):
-        """探针超时报 超时（把 _跑 卡住，不依赖环境变量假功能）。"""
-        def 假跑(命令, *, 超时秒=30.0):
-            raise TimeoutError("模拟探针超时")
-        with mock.patch.object(实现模块, "_跑", side_effect=假跑):
-            出 = 检查提供者(超时秒=0.2)
+        """探针超时报 超时（真跑一个会挂起的替身工具，真超时、真强杀）。"""
+        挂起工具 = self.临时目录 / "挂起工具"
+        挂起工具.write_text("#!/bin/sh\nsleep 30\n", encoding="utf-8")
+        挂起工具.chmod(0o700)
+        实现模块._工具缓存.update({"swiftc": str(挂起工具), "codesign": str(挂起工具)})
+        出 = 检查提供者(超时秒=0.5)
         self.assertEqual(出.错误码, "超时")
 
 
@@ -87,8 +125,9 @@ class Test编译源代码(unittest.TestCase):
         self.assertIn("坏.swift", str(出.错误说明))
 
 
-class Test签名(unittest.TestCase):
+class Test签名(工具缓存隔离基类):
     def setUp(self):
+        super().setUp()
         self.工作 = Path(tempfile.mkdtemp(prefix="swift签名_"))
         if not _有swiftc():
             self.skipTest("本机无 swiftc")
@@ -124,8 +163,9 @@ class Test签名(unittest.TestCase):
         self.assertEqual((出.值 or {}).get("签名档位"), "adhoc")
 
     def test_工具缺失语义(self):
-        with mock.patch.object(实现模块, "_查找工具", return_value=None):
-            出 = 签名制品(应用路径=str(self.应用))
+        """签名制品遇到工具缺失 → 提供者不可用（经生产缓存路径注入真缺失）。"""
+        实现模块._工具缓存.update({"swiftc": None, "codesign": None})
+        出 = 签名制品(应用路径=str(self.应用))
         self.assertEqual(出.错误码, "提供者不可用")
 
     def test_路径不存在报参数不合法(self):

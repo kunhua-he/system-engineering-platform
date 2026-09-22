@@ -6,6 +6,7 @@ pdfplumber 为纯 Python 库主进程导入；环境可用时走真实解析成�
 from __future__ import annotations
 
 import base64
+import contextlib
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,62 @@ def _生成加密PDF(路径: Path) -> Path:
             f"d.save({str(路径)!r}, encryption=fitz.PDF_ENCRYPT_AES_256, owner_pw='o', user_pw='u')")
     subprocess.run([sys.executable, "-c", 代码], check=True, capture_output=True)
     return 路径
+
+
+class _替身页面:
+    """替身页面：`extract_text` **真挂起**，用来触发生产的真超时链路。"""
+
+    def __init__(self, 挂起秒: float):
+        self._挂起秒 = 挂起秒
+
+    def extract_text(self) -> str:
+        import time as _时间
+        _时间.sleep(self._挂起秒)
+        return ""
+
+    def extract_tables(self) -> list:
+        return []
+
+
+class _替身文档:
+    def __init__(self, 挂起秒: float):
+        self.pages = [_替身页面(挂起秒)]
+
+    def close(self) -> None:
+        pass
+
+
+class _挂起替身库:
+    """替身 pdfplumber：只实现 `_提取内容` 用到的接口（open/pages/extract_*）。
+
+    换掉的是**第三方库边界**（pdfplumber 本身）；生产实现 `_解析为字典` /
+    `_提取内容` 全程真跑：真起工作线程、真 join、真发协作取消、真登记终态。
+    旧写法打桩的是生产自己的 `_解析为字典`（`测试伪装门禁` 规则 1 判红），
+    等于把整条超时链跳过。
+    """
+
+    __version__ = "替身"
+
+    def __init__(self, 挂起秒: float = 30.0):
+        self._挂起秒 = 挂起秒
+
+    def open(self, 路径: str) -> _替身文档:
+        return _替身文档(self._挂起秒)
+
+
+@contextlib.contextmanager
+def _注入替身提供者(替身库):
+    """把替身库放进生产自己的提供者缓存（**真实状态注入**，不打桩生产实现）。
+
+    `_提供者缓存` 是模块级缓存：进出必须成对还原，否则会污染同进程的后续用例。
+    """
+    from 支持库.适配层.pdfplumber提供者.实现 import PDF文本表格 as 模块
+    原缓存 = 模块._提供者缓存
+    模块._提供者缓存 = {"pdfplumber": 替身库, "版本": {"pdfplumber": "替身"}}
+    try:
+        yield 模块
+    finally:
+        模块._提供者缓存 = 原缓存
 
 
 class Testpdfplumber提供者(unittest.TestCase):
@@ -117,20 +174,26 @@ class Testpdfplumber提供者(unittest.TestCase):
         self.assertEqual(结果.错误码, "文件损坏")
 
     def test_提供者禁用返回提供者不可用(self):
-        with mock.patch.dict(sys.modules, {"pdfplumber": None}), \
-                mock.patch.dict("os.environ", {"pdfplumber提供者_禁用库": "pdfplumber"}), \
-                mock.patch("支持库.适配层.pdfplumber提供者.实现.PDF文本表格._提供者缓存", None):
-            结果 = 解析PDF(str(self.文本PDF))
+        """被环境变量禁用 → 提供者不可用（清掉模块级缓存，走生产自己的禁用分支）。"""
+        from 支持库.适配层.pdfplumber提供者.实现 import PDF文本表格 as 模块
+        原缓存 = 模块._提供者缓存
+        模块._提供者缓存 = None      # 真实状态复位：强制 `加载提供者` 重走判定
+        try:
+            with mock.patch.dict(sys.modules, {"pdfplumber": None}), \
+                    mock.patch.dict("os.environ", {"pdfplumber提供者_禁用库": "pdfplumber"}):
+                结果 = 解析PDF(str(self.文本PDF))
+        finally:
+            模块._提供者缓存 = 原缓存
         self.assertEqual(结果.错误码, "提供者不可用")
         self.assertTrue(结果.可重试)
 
     def test_解析超时返回超时可重试(self):
-        """工作线程 join 强约束：解析超过 超时秒 → 超时（可重试）。"""
-        def 挂起解析(pdfplumber模块, 路径, 最大页数):
-            import time
-            time.sleep(30)
-            return {"块列表": []}
-        with mock.patch("支持库.适配层.pdfplumber提供者.实现.PDF文本表格._解析为字典", side_effect=挂起解析):
+        """工作线程 join 强约束：解析超过 超时秒 → 超时（可重试）。
+
+        用**真挂起的替身 pdfplumber**（第三方库边界）触发：生产实现真起线程、
+        真 join、真发协作取消、真登记终态 —— 比原来打桩 `_解析为字典` 多验了整条超时链。
+        """
+        with _注入替身提供者(_挂起替身库(挂起秒=30.0)):
             结果 = 解析PDF(str(self.文本PDF), 超时秒=0.2)
         self.assertEqual(结果.错误码, "超时")
         self.assertTrue(结果.可重试)
@@ -164,11 +227,15 @@ class Testpdfplumber提供者(unittest.TestCase):
         self.assertTrue(_数学.isfinite(_线程.TIMEOUT_MAX))
 
     def test_超时值合法边界真解析成功(self):
-        """合法超时值（含 TIMEOUT_MAX 边界）不得被误判为非法。"""
+        """合法超时值（含 TIMEOUT_MAX 边界）不得被误判为非法，且解析结果结构不变。"""
         import threading as _线程
         for 值 in (60.0, 1, 0.5, float(_线程.TIMEOUT_MAX)):
             结果 = 解析PDF(str(self.文本PDF), 超时秒=值)
             self.assertTrue(结果.成功, f"超时秒={值} 应解析成功，实得 {结果.错误码}")
+            # 强断言（结构）：合法超时值不只「没报错」，解析产物结构必须与默认路径一致
+            self.assertEqual(结果.错误码, "", f"超时秒={值} 成功信封不应带错误码")
+            self.assertEqual(结果.值["文档类型"], "PDF")
+            self.assertTrue(结果.值["块列表"], f"超时秒={值} 应真解析出块")
 
     # ── 反向验证 ②：超时后线程数回到基线（进程真线程取证） ────────────
     def test_超时后线程数回到基线(self):
@@ -187,12 +254,7 @@ class Testpdfplumber提供者(unittest.TestCase):
         基线集合 = set(_线程.enumerate())
         基线登记名 = set(模块.取消登记摘要()["在册线程名"])
 
-        def 挂起解析(pdfplumber模块, 路径, 最大页数):
-            _时间.sleep(2.0)
-            return {"块列表": []}
-
-        with mock.patch("支持库.适配层.pdfplumber提供者.实现.PDF文本表格._解析为字典",
-                        side_effect=挂起解析):
+        with _注入替身提供者(_挂起替身库(挂起秒=2.0)):
             结果 = 解析PDF(str(self.文本PDF), 超时秒=0.1)
         self.assertEqual(结果.错误码, "超时")
         详情 = 结果.详细信息 or {}

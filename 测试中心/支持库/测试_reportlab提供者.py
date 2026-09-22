@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import shutil
@@ -125,9 +126,14 @@ class TestReportlab提供者(unittest.TestCase):
             self.assertEqual(结果.错误码, "参数不合法")
 
     def test_提供者不可用(self):
-        """子进程拉不起来（依赖缺失的同口径）→ 提供者不可用（隔离形态下的不可用判据）。"""
-        with mock.patch.object(实现模块, "_启动子进程",
-                               side_effect=OSError("模拟 reportlab 环境不可用")):
+        """子进程拉不起来（依赖缺失的同口径）→ 提供者不可用（隔离形态下的不可用判据）。
+
+        造的是**真实依赖边界故障**：`subprocess.Popen` 抛 OSError（解释器/入口起不来）。
+        旧写法打桩生产自己的 `_启动子进程`（`测试伪装门禁` 规则 1 判红），
+        把「怎么起进程」整段跳过，测的是一个不存在的实现。
+        """
+        with mock.patch("subprocess.Popen", autospec=True,
+                        side_effect=OSError("模拟 reportlab 环境不可用")):
             结果 = 生成PDF({"标题": "测试"})
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
@@ -215,13 +221,20 @@ class TestReportlab提供者(unittest.TestCase):
             def poll(self):
                 return 0
 
+        @contextlib.contextmanager
         def _打桩响应(子进程响应: dict):
-            return mock.patch.multiple(
-                实现模块,
-                _启动子进程=mock.Mock(return_value=_假进程()),
-                受限通信=mock.Mock(return_value=(
-                    json.dumps(子进程响应, ensure_ascii=False).encode("utf-8"), b"", 假, 假)),
-            )
+            """桩掉隔离子进程**边界**（怎么起进程、怎么通信）；错误码归并逻辑全程真跑。
+
+            `autospec=True` 让桩带**真实签名**：`受限通信(...)` 的参数名/形状一旦漂移，
+            这里当场 TypeError 而不是静默通过 —— 旧写法给的是裸 `Mock`，签名不校验。
+            """
+            with mock.patch.multiple(实现模块, autospec=True,
+                                     _启动子进程=mock.DEFAULT,
+                                     受限通信=mock.DEFAULT) as 桩:
+                桩["_启动子进程"].return_value = _假进程()
+                桩["受限通信"].return_value = (
+                    json.dumps(子进程响应, ensure_ascii=False).encode("utf-8"), b"", 假, 假)
+                yield
 
         with _打桩响应({"成功": 假, "错误码": "提供者崩溃", "错误说明": "子进程崩了"}):
             结果 = 生成PDF({"标题": "子进程崩溃"})
