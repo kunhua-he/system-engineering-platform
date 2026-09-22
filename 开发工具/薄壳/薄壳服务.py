@@ -3,7 +3,9 @@
 零业务语义：只做 MCP 协议翻译 + 转发唯一网关 40007（HTTP POST /网关/调用）。
 暴露 3 个工具：capability_search（查询能力）/ capability_call（调用能力）/ tool_catalog（工具目录）。
 tool_catalog 另回工具面指纹（进程内 / 盘上 / 是否一致）：薄壳是会话启动时拉起的常驻进程，
-改了 工具清单.py / 薄壳服务.py 后旧壳不会自动重载，调用方据此判断手里的是不是盘上当前那一版。
+改了 工具清单.py / 薄壳服务.py 后旧壳会在**下一次请求前自换新壳**（os.execve，stdio 的
+0/1/2 号 fd 原样继承、客户端管道不断）—— 不再要求人重启 MCP 客户端；换不成（盘上编译不过 /
+本进程已换过一次）时如实写在 tool_catalog 的 `自换新壳` 键里，并继续用旧壳。
 
 直跑：`python3.14 开发工具/薄壳/薄壳服务.py`（stdio，由 MCP 客户端拉起）。
 凭证：环境变量「系统库网关凭证」，只在转发请求头使用，不打印、不落盘。
@@ -52,10 +54,13 @@ from 工具清单 import (
     中文名到协议名,
     三个工具定义,
     默认返回上限字符,
+    换壳完成环境变量,
+    换壳强制环境变量,
     组装工具面,
     构建工具目录,
     采集源文件指纹,
     搜索能力目标,
+    需换新壳,
 )
 from 网关转发 import 网关调用地址, 转发
 from 待补能力清单 import 登记待补能力
@@ -68,6 +73,127 @@ from 待补能力清单 import 登记待补能力
 进程内指纹 = 采集源文件指纹()
 进程启动时刻 = datetime.now().astimezone().isoformat(timespec="seconds")
 进程号 = os.getpid()
+
+
+# ── 自换新壳（2026-09-22 华哥口径「工具内部的事，不该是使用者的事」）──────────────
+# 判据（该不该换 / 换不成为什么）在 `工具清单.需换新壳`；这里只解决两件事：
+# **在哪一刻换** 与 **怎么换**。
+自换新壳说明 = "薄壳自换新壳"
+
+
+def 执行换壳(原因: str) -> None:
+    """真的换：`os.execve` 不返回（调用方已确认此刻没有在途消息）。"""
+    环境 = dict(os.environ)
+    环境[换壳完成环境变量] = "1"
+    # 强制标记只对本进程有效：新壳按**真实指纹**判（否则守卫一撤又换一次）。
+    环境.pop(换壳强制环境变量, None)
+    可执行 = sys.executable or "python3.14"
+    try:
+        # SDK 每条响应后已 `await stdout.flush()`，这里再兜一层：换壳不得丢在途响应。
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001 —— flush 失败不阻断换壳（fd 直写不经这两层缓冲）
+        pass
+    sys.stderr.write(f"{自换新壳说明}：{原因}；下一次调用由新壳处理\n")
+    sys.stderr.flush()
+    os.execve(可执行, [可执行, str(Path(__file__).resolve())], 环境)
+
+
+def _探在途(流: Any) -> tuple[str, Any]:
+    """非阻塞探针：`("在途", 消息)` / `("空", None)` / `("未知", None)`。
+
+    为什么需要它（2026-09-22 两次端到端判红换来的，不是理论）：`mcp.server.stdio` 的
+    `stdin_reader` 是**预读一条**的 —— 读完一行就阻塞在 buffer=0 的 rendezvous 流 `send` 上。
+    那条消息此刻在**本进程内存里、不在管道里**：此时 `os.execve`，它就随进程一起消失。
+    实测症状：客户端永远等不到回包（子进程还活着），测试挂在 `call_tool` 上不返回。
+    而 anyio 的 `receive_nowait()` 恰好能看见「有发送方在等」这一状态
+    （实现里先取 `waiting_senders` 再取 `buffer`）⇒ 用它当探针，**探到空才换壳**。
+
+    为什么按**类型名**判定、不 import anyio：薄壳不得直接依赖第三方（唯一第三方边界是
+    `支持库.适配层.MCP协议提供者`），而 anyio 的 `WouldBlock` 没有被适配层导出。
+    这个判定有判据锚（`测试中心.开发工具.测试_薄壳返回可控` 用**真 anyio 流**验两态），
+    anyio 改名或改语义会当场判红，不会静默退化成「永远不换壳」。
+    探针本身不可用（流上没有 `receive_nowait`、或抛的是别的异常）⇒ 判 `"未知"`，
+    调用方据此**不换壳**（安全优先：宁可继续用旧壳，也不冒丢消息的险）。
+    """
+    探针 = getattr(流, "receive_nowait", None)
+    if 探针 is None:
+        return "未知", None
+    try:
+        return "在途", 探针()
+    except Exception as 错误:  # noqa: BLE001 —— 第三方异常只在类型名上判，理由见上
+        return ("空", None) if type(错误).__name__ == "WouldBlock" else ("未知", None)
+
+
+class 自换新壳读取流:
+    """包住 MCP 读取流：读之前问一次「盘上是不是有更新的壳」，**有就换，但绝不在有在途消息时换**。
+
+    判据链（每一环都有出处，不靠感觉）：
+      ① 该不该换 = `工具清单.需换新壳`（与 `tool_catalog` 的 `是否一致` 同一份指纹）；
+      ② 能不能安全换 = `_探在途`：探到**空**（客户端手里没有在途请求）才 `os.execve`；
+         探到**在途**就把那条先交给会话（本轮照旧用旧壳服务），下个读取点再探；
+      ③ 换不成（盘上编译不过 / 已换过一次）如实写在 `tool_catalog.自换新壳` 里，继续用旧壳。
+
+    生产里的代价接近零：客户端一问一答，服务器**写回上一条响应之后**的那一次读取，
+    客户端手里本来就是空的 ⇒ 下一条请求直接由新壳服务。
+    残余窗口（如实说）：探针到 `execve` 之间还有几微秒 —— 客户端要在这几微秒内完成
+    「读到响应 → 组装下一条 → 写进管道」才会被吞，而它一次最小往返远大于此。
+    要**零窗口**只能自己接管 stdio 传输层，那等于在薄壳里再写一条 stdio 腿（违背单腿铁律），
+    故不取。
+
+    ★ 协议四件套必须**显式**实现（`__aiter__`/`__anext__`/`__aenter__`/`__aexit__`）：
+      SDK 同时用 `async for`（会话循环）与 `async with`（`_receive_loop`），而**特殊方法不走
+      `__getattr__` 代理** —— 漏一个就是会话启动即 TypeError、客户端只看到 `Connection closed`
+      （实测 2026-09-22 撞红，子进程 stderr 里才是真因）。
+    """
+
+    def __init__(self, 内层: Any, 进程内指纹: dict[str, str]) -> None:
+        self._内层 = 内层
+        self._进程内指纹 = dict(进程内指纹)
+        self._待换壳: str | None = None
+
+    def __getattr__(self, 名称: str) -> Any:
+        # 只代理到内层：其它属性/方法原样透传，薄壳不复制协议面。
+        if 名称 in ("_内层", "_待换壳"):
+            raise AttributeError(名称)
+        return getattr(self._内层, 名称)
+
+    def _读之前(self) -> Any | None:
+        """返回「已在途的那条消息」（有就先服务它）；返回 None 表示继续走正常读取。"""
+        if self._待换壳 is None:
+            需换, 原因 = 需换新壳(self._进程内指纹)
+            if not 需换:
+                return None
+            self._待换壳 = 原因
+        判定, 消息 = _探在途(self._内层)
+        if 判定 == "在途":
+            return 消息
+        if 判定 == "未知":
+            return None
+        执行换壳(self._待换壳)  # 探到空：客户端手里没有在途请求 ⇒ 换壳不丢任何东西
+        return None
+
+    async def receive(self) -> Any:
+        if (在途 := self._读之前()) is not None:
+            return 在途
+        return await self._内层.receive()
+
+    # ── 协议四件套：SDK 同时用 `async for`（会话循环）与 `async with`（`_receive_loop`）──
+    # 特殊方法不经过 `__getattr__`，故必须逐个显式转发；漏一个就是「客户端只看到连接被关」。
+    def __aiter__(self) -> "自换新壳读取流":
+        return self
+
+    async def __aenter__(self) -> Any:
+        return await self._内层.__aenter__()
+
+    async def __aexit__(self, *异常: Any) -> Any:
+        return await self._内层.__aexit__(*异常)
+
+    async def __anext__(self) -> Any:
+        if (在途 := self._读之前()) is not None:
+            return 在途
+        return await self._内层.__anext__()
+
 
 服务 = 构造服务("系统工程平台_薄壳")
 服务名 = "系统工程平台_薄壳"
@@ -709,7 +835,8 @@ async def 调用工具(名称: str, 参数: dict[str, Any]):
 async def 主程序() -> None:
     """stdio 传输：不绑定端口、不启 HTTP 服务。"""
     async with 标准输入输出上下文() as (读取流, 写入流):
-        await 服务.run(读取流, 写入流, 构造初始化选项(服务名, 服务版本))
+        await 服务.run(自换新壳读取流(读取流, 进程内指纹), 写入流,
+                     构造初始化选项(服务名, 服务版本))
 
 
 if __name__ == "__main__":

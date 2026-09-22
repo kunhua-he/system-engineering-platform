@@ -843,5 +843,127 @@ class 全量回执库测试(unittest.TestCase):
         self.assertEqual(1, 裁剪后.get("已清理过期回执"), "清理个数应如实回带")
 
 
+async def _跑多次工具目录(次数: int, 环境追加: dict) -> list[dict]:
+    """把薄壳当真 stdio 子进程拉起，连调 N 次 tool_catalog（不转发网关，故不需要 40007）。"""
+    from 支持库.适配层.MCP协议提供者 import (
+        构造客户端会话, 构造标准输入输出参数, 标准输入输出客户端,
+    )
+
+    参数 = 构造标准输入输出参数(
+        命令=sys.executable,
+        参数表=[str(薄壳目录 / "薄壳服务.py")],
+        环境={**os.environ, **环境追加},
+        工作目录=str(系统根),
+    )
+    async with 标准输入输出客户端(参数) as (读取流, 写入流):
+        async with 构造客户端会话(读取流, 写入流) as 会话:
+            await 会话.initialize()
+            出: list[dict] = []
+            for _ in range(次数):
+                结果 = await 会话.call_tool("tool_catalog", {})
+                正文 = 结果.content[0].text if 结果.content else ""
+                出.append(json.loads(正文))
+    return 出
+
+
+class 自换新壳测试(unittest.TestCase):
+    """改了薄壳源码，旧壳要自己换新壳（2026-09-22 华哥口径「工具内部的事，不该是使用者的事」）。
+
+    实测代价（2026-09-22）：回执库（落盘 + 回指针 + 7 天 TTL）/ 注入面收窄 / 工具面瘦身
+    三批改动全部落地并提交之后，会话里跑着的旧壳仍在走老路径 —— 真实调用照样回
+    `值裁剪.截断说明`（等于还在丢内容），`tool_catalog` 实测 `是否一致=假`、
+    `进程启动时刻 21:46:37`，而唯一的出路是**人记得重启 MCP 客户端**。
+
+    本组判据分三层：① 该不该换；② 探针能不能看见「已在途的消息」（换壳不得吞消息）；
+    ③ 端到端（真 stdio 子进程：换壳后调用照样成功、且确实换了、且不套娃）。
+    """
+
+    def test_指纹一致时不换壳(self):
+        需换, 原因 = 清单.需换新壳(清单.采集源文件指纹(), 环境={})
+        self.assertFalse(需换, "盘上没变就不该换（换壳不是常态动作）")
+        self.assertIn("盘上当前版本", 原因)
+
+    def test_指纹不一致时要换壳并点名文件(self):
+        指纹 = 清单.采集源文件指纹()
+        指纹["薄壳服务.py"] = "0" * 64
+        需换, 原因 = 清单.需换新壳(指纹, 环境={})
+        self.assertTrue(需换, "盘上代码更新后必须换壳，否则改动永远不生效")
+        self.assertIn("薄壳服务.py", 原因, "原因要点名是哪个文件变了")
+
+    def test_盘上编译不过时拒绝换壳(self):
+        """反向保护：换上一个起不来的壳比继续用旧壳更糟 —— 整个 MCP 当场失联。"""
+        with tempfile.TemporaryDirectory() as 临时:
+            锚 = Path(临时)
+            (锚 / "工具清单.py").write_text("x = 1\n", encoding="utf-8")
+            (锚 / "薄壳服务.py").write_text("def 坏(:\n", encoding="utf-8")
+            需换, 原因 = 清单.需换新壳({"工具清单.py": "a", "薄壳服务.py": "b"},
+                                  目录=锚, 环境={})
+        self.assertFalse(需换, "盘上编译不过时必须继续用旧壳")
+        self.assertIn("编译不过", 原因)
+
+    def test_指纹读不到时不换壳(self):
+        """读不到 ≠ 有新版：拿空指纹当「不一致」会换上一个来路不明的版本。"""
+        with tempfile.TemporaryDirectory() as 临时:
+            需换, 原因 = 清单.需换新壳({"工具清单.py": "a", "薄壳服务.py": "b"},
+                                  目录=Path(临时), 环境={})
+        self.assertFalse(需换)
+        self.assertIn("读不到", 原因)
+
+    def test_已换过一次不重复换(self):
+        指纹 = {名: "0" * 64 for 名 in 清单.薄壳源文件}
+        需换, 原因 = 清单.需换新壳(指纹, 环境={清单.换壳完成环境变量: "1"})
+        self.assertFalse(需换, "换完还认为自己是旧壳就会无限套娃")
+        self.assertIn("防套娃", 原因)
+
+    def test_探针三态判定(self):
+        """探针的分派（`空` / `在途` / `未知`）—— 三种行为各验一次。
+
+        ★ 为什么这里用桩、不 import anyio：真 anyio 流的语义由**端到端判据**兜住
+        （下一条）：若 `receive_nowait` 不再把「阻塞在 send 上的发送方」算作可取，或那个异常
+        改了名，探针就会恒判「未知」⇒ 永不换壳 ⇒ 端到端那条的「至少一条 本进程已换壳=真」
+        当场判红。故本测试只锁分派逻辑，不在薄壳的第三方边界之外再造一份真流依赖
+        （编译口的 `第三方导入分布` 门禁也不认测试文件里新引第三方）。
+        """
+        # 名字必须是 WouldBlock：`_探在途` 按**类型名**判（薄壳不 import anyio，理由见实现注释）。
+        WouldBlock = type("WouldBlock", (Exception,), {})
+
+        class 桩流:
+            def __init__(self, 行为: str) -> None:
+                self.行为 = 行为
+
+            def receive_nowait(self):
+                if self.行为 == "在途":
+                    return {"消息": 1}
+                if self.行为 == "空":
+                    raise WouldBlock()
+                raise RuntimeError("流已关")
+
+        self.assertEqual(("在途", {"消息": 1}), 壳._探在途(桩流("在途")),
+                         "有在途消息时必须能取出来（否则换壳会吞掉它）")
+        self.assertEqual(("空", None), 壳._探在途(桩流("空")),
+                         "空流必须判「空」，否则永远换不了壳")
+        self.assertEqual(("未知", None), 壳._探在途(桩流("坏")),
+                         "探针出事必须判「未知」⇒ 不换壳（安全优先）")
+        self.assertEqual(("未知", None), 壳._探在途(object()),
+                         "流上没有 receive_nowait 时必须判「未知」⇒ 不换壳")
+
+    def test_端到端_换壳不丢消息且确实换了(self):
+        """真起子进程 + 真 stdio 一问一答：强制换壳后，三次调用都必须被正常服务。
+
+        判据分三件（都来自实测教训，不是想当然）：
+          ① **不丢消息**：三次 `tool_catalog` 全部 `成功=True` —— 首版就是在这里挂住
+             （换壳吞了在途消息，客户端永远等不到回包）；
+          ② **确实换了**：至少有一条回 `本进程已换壳=真`（否则这条腿等于没接线）；
+          ③ **不套娃**：换壳后的 `进程号` 稳定（守卫挡住重复换壳）。
+        """
+        三条 = asyncio.run(_跑多次工具目录(3, 环境追加={清单.换壳强制环境变量: "1"}))
+        self.assertTrue(all(条.get("成功") for 条 in 三条),
+                        f"换壳不得丢消息（三条调用都要被服务）：{三条}")
+        已换 = [条 for 条 in 三条 if 条.get("本进程已换壳") is True]
+        self.assertTrue(已换, f"强制换壳下必须真的换过（否则判据全绿也没意义）：{三条}")
+        self.assertEqual(1, len({条["进程号"] for 条 in 已换}),
+                         "换壳后进程号必须稳定（重复换壳=每次调用换一个进程）")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
