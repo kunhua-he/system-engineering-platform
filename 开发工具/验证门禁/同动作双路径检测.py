@@ -80,6 +80,10 @@ from 开发工具.验证门禁.门禁公共 import (  # noqa: E402
 规则三 = "同一动作两处配置表"
 规则四 = "同一文件两条声明面自建腿"
 规则五 = "自建契约读取腿未收口唯一腿"
+规则六 = "手写 markdown 语法解析（重复既有原子能力）"
+
+#: markdown 语法解析的唯一腿（2026-09-11 下沉，提交 abd651f1）。唯一腿本体不判。
+markdown语法唯一腿 = "支持库/后端/办公文档支持库/轻量文本解析"
 
 #: 模块装配入口 `注册能力` 之外，仍属平台既定约定、不判第二腿的模块公开符号。
 模块公开约定符号表 = frozenset({模块装配入口名})
@@ -353,12 +357,75 @@ def _解析(路径: Path, 结论: 检查结论, 根: Path) -> ast.Module | None:
         return None
 
 
+def _正则字面量(节点: ast.AST) -> str | None:
+    """从 `re.compile(<常量>)` / `re.match(<常量>, …)` 取正则字面量文本；取不到返回 None。"""
+    if not isinstance(节点, ast.Call):
+        return None
+    if getattr(节点.func, "attr", None) not in ("compile", "match", "fullmatch", "search"):
+        return None
+    if not 节点.args:
+        return None
+    首个 = 节点.args[0]
+    if isinstance(首个, ast.Constant) and isinstance(首个.value, str):
+        return 首个.value
+    return None
+
+
+def _是通用markdown语法(形态: str) -> bool:
+    r"""是不是**通用 markdown 语法**的形态（业务自有约定不算）。
+
+    `| 1 |` 这类**本件自己的编号约定**（如债务清单的 `编号行`，正则里带 `\d`）
+    不在此列 —— 那是该件自己的数据约定，不是 markdown 语法，别误判。
+    """
+    去空 = 形态.replace(" ", "")
+    主体 = 去空[1:] if 去空.startswith("^") else 去空
+    # 允许 `^(#{2,4})` 这种**分组写法** —— 与 `^#{2,4}` 是同一判据的两种写法，
+    # 只认后者会漏掉前者（2026-09-22 实测：说明书解析 用的就是分组写法）。
+    主体 = 主体.lstrip("(")
+    if 主体.startswith("#") or 主体.startswith("`{3"):
+        return 真
+    return 主体.startswith("\\|") and "\\d" not in 去空
+
+
+def _规则六手写markdown语法解析(根: Path, 结论: 检查结论) -> None:
+    """扫出「手写 markdown 语法解析」——与既有原子能力重复的**实现面**第二条腿。
+
+    为什么补这一面（2026-09-22）：既有五条轴全是**声明面**重复（模块公开第二入口 /
+    跨包同名调用腿 / 两处配置表 / 两条声明面自建腿 / 契约读取腿），没有一条覆盖
+    **实现面**（手写语法解析）。实测：markdown 解析原子能力
+    `办公文档支持库.轻量文本解析` 于 2026-09-11 下沉（提交 abd651f1），而
+    `开发工具/MD文档生成/文档类型_债务清单.py` 到 2026-09-20 仍手写 `表格行/表格分隔/标题`
+    正则 —— 晚 9 天，期间没有任何机器提醒「该用它」。唯一腿本体不判；
+    判据只认**通用形态**（见 `_是通用markdown语法`）。
+    """
+    文件数 = 0
+    for 源码 in 收集源码(根):
+        相对 = 源码.relative_to(根).as_posix()
+        if 相对.startswith(markdown语法唯一腿):
+            continue
+        文件数 += 1
+        树 = _解析(源码, 结论, 根)
+        if 树 is None:
+            continue
+        for 节点 in ast.walk(树):
+            形态 = _正则字面量(节点)
+            if 形态 is None or not _是通用markdown语法(形态):
+                continue
+            结论.命中列表.append(
+                命中(规则六, 相对, getattr(节点, "lineno", 0),
+                     f"手写 markdown 语法正则 {形态!r} —— 既有唯一腿 "
+                     f"办公文档支持库.轻量文本解析.解析Markdown块 已提供该解析")
+            )
+    结论.扫描面[规则六] = 文件数
+
+
 def 构建结论(根: Path) -> 检查结论:
     结论 = 检查结论(名称=检查器名)
     _规则一模块公开第二入口(根, 结论)
     _规则二模块库跨包同名公开调用腿(根, 结论)
     _规则三同一动作两处配置表(根, 结论)
     _契约读取腿扫描(根, 结论)
+    _规则六手写markdown语法解析(根, 结论)
     return 结论
 
 
@@ -391,6 +458,9 @@ def 构建结论(根: Path) -> 检查结论:
      "        结果[契约文件.name] = None\n"
      "    return {'能力id': '夹具', '参数': 结果, '返回': '结果型', '错误码': []}\n",
      ),
+    ("规则六 手写 markdown 语法解析",
+     "开发工具/夹具工具/夹具手写markdown.py",
+     'import re\n\n表格分隔 = re.compile(r"^\\|[\\s:|-]+\\|$")\n'),
 )
 
 #: 规则二/规则三 的第一份样本（成对出现才算命中）。
@@ -414,6 +484,16 @@ def _自证() -> int:
     (根 / "模块库" / "夹具基准包").mkdir(parents=True, exist_ok=True)
     (根 / "模块库" / "夹具基准包" / "__init__.py").write_text(
         '__all__ = ["夹具能力"]\n', encoding="utf-8"
+    )
+    # 规则六的**合法样本**（必须一条都不报）：① 唯一腿本体；② 业务自有约定（带 \d 的编号行）。
+    # 路径不得与任何变异样本重合，否则拍三撤除时会被一起删掉 → 第三拍假红。
+    唯一腿实现目录 = 根 / markdown语法唯一腿 / "实现"
+    唯一腿实现目录.mkdir(parents=True, exist_ok=True)
+    (唯一腿实现目录 / "轻量文本解析.py").write_text(
+        'import re\n\n表格行 = re.compile(r"^\\|.+\\|$")\n', encoding="utf-8"
+    )
+    (根 / "开发工具" / "夹具自有约定.py").write_text(
+        'import re\n\n编号行 = re.compile(r"^\\|\\s*(\\d+)\\s*\\|")\n', encoding="utf-8"
     )
     (根 / "基线.json").write_text(
         json.dumps({"检查器": {检查器名: {}}}, ensure_ascii=False), encoding="utf-8"
