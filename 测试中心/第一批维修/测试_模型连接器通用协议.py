@@ -211,7 +211,7 @@ class 测试模型连接器通用协议(unittest.TestCase):
         # `Context size has been exceeded.` 且调用方只看到「HTTP 500」）。
         # 本断言此前漏了该键，属测试滞后于实现，非本次拆分引入。
         启动模拟.assert_called_once_with(
-            模型文件.name, None, "LLM", 模型大小字节=None,
+            模型路径=模型文件.name, 启动器=None, 模型类型="LLM", 模型大小字节=None,
             参数={"协议": "codex_responses", "上下文长度": None}, 超时秒=60,
         )
 
