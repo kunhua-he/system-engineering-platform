@@ -31,6 +31,18 @@ from 开发工具.公开调用完整性门禁 import (
 )
 
 仓库根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 def 写(路径: Path, 内容: str) -> None:
@@ -84,7 +96,8 @@ def 注册能力(注册表) -> None:
 
 class Test公开调用完整性门禁(unittest.TestCase):
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
 
     def test_合法样本零违规(self):
         合法包(self.临时)
@@ -153,7 +166,8 @@ class Test公开调用完整性门禁(unittest.TestCase):
         （它让实现侧判据在非仓库根下一行都不执行）。**判据如实报，不因兄弟判据已报过就沉默**：
         沉默会掩盖「实现侧扫描面为空」这条独立事实。
         """
-        空根 = Path(tempfile.mkdtemp())
+        空根 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, 空根, 忽略失败=真)
         违规 = 运行门禁(空根)
         self.assertEqual([条["缺口类型"] for 条 in 违规],
                          ["六环-扫描面为空", "错误码-实现侧扫描面为空"])
@@ -338,7 +352,8 @@ class Test实现侧错误码判据(unittest.TestCase):
     """C-15：实现侧产生的码 ⊆ 状态映射码；扫不到 / 不可解析 / 真缺 三态分开出条目。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         self.示例包 = self.临时 / "支持库" / "后端" / "示例包"
         写(self.示例包 / "实现" / "示例.py", 'def 好():\n    return 1\n')
         写(self.临时 / "运行核心" / "统一网关" / "本地网关.py",
@@ -377,7 +392,8 @@ class Test实现侧错误码判据(unittest.TestCase):
 
     def test_实现侧扫描面为空出条目(self):
         """扫描面为空 = 这份仓库切片里一个实现侧文件都没有，判据什么都没看 → 必须判红。"""
-        空根 = Path(tempfile.mkdtemp())
+        空根 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, 空根, 忽略失败=真)
         写(空根 / "运行核心" / "统一网关" / "本地网关.py",
            '公开错误码状态映射 = {"已登记码": 400}\n')
         写(空根 / "运行核心" / "统一网关" / "网关核心.py",
@@ -422,7 +438,8 @@ class Test说明书字段对账(unittest.TestCase):
     """
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         self.包目录 = 字段完整包(self.临时)
         self.说明路径 = self.包目录 / "说明" / "使用说明.md"
 
@@ -492,9 +509,11 @@ class Test存量基线只减不增(unittest.TestCase):
     """基线消费：桶内 = 存量（只报），基线外/超出 = 新增（判红），基线读不成 = 全量判红。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         合法包(self.临时)
-        self.基线 = Path(tempfile.mkdtemp()) / "基线.json"
+        self.基线 = Path(tempfile.mkdtemp(dir=受管临时根)) / "基线.json"
+        self.addCleanup(清只读后删除树, self.基线, 忽略失败=真)
 
     def _原始(self) -> list[dict]:
         return [条 for 条 in 检查门禁原始项(self.临时) if 条["缺口类型"] == "说明书-缺包级版本载位"]
@@ -563,6 +582,9 @@ class Test存量基线只减不增(unittest.TestCase):
         self.assertTrue(再导出, "门禁主文件必须以 from-import 再导出三个职责簇的成员")
         # **冻结名单**（拆分前 blob 的完整顶层对外面，85 个名字，只排除路径派生的 仓库根）：
         # 名单是硬编码的，不从源码反推 —— 反推的断言在「新名字没被导出」时永远看不见它。
+        # 2026-09-23 一处同名替换（计数仍 85）：`标题行`（手写 markdown 标题正则）收口为
+        # 转调唯一腿 `办公文档支持库.轻量文本解析.解析Markdown块` 的 `标题行表(文本)`，
+        # 见 `开发工具/验证门禁/同动作双路径检测` 规则六与 `未完成事项` 该行处置①。
         拆分前对外面 = (
             "Path", "_像类型名", "_公开owner字段", "_声明能力id集", "_子包声明路径", "_实现侧字面量错误码", "_实现侧条目",
             "_实现侧源码清单", "_是保留目录", "_是系统适配器", "_是聚合父包", "_是表头行", "_是适配层", "_是适配层Provider",
@@ -570,7 +592,7 @@ class Test存量基线只减不增(unittest.TestCase):
             "_错误码声明文件", "_错误码条目", "annotations", "ast", "json", "re", "sys", "主程序",
             "公开调用存量基线文件名", "六环扫描根", "六环扫描根名", "分桶", "参数列表行", "失败方法名", "实现侧入口文件名", "实现侧目录段",
             "应用存量基线", "必填参数行", "找全部包目录", "找包目录", "提取导出名", "提取注册映射", "收集声明错误码", "收集实现侧错误码",
-            "期望能力字段", "标题行", "检查依赖锁存在性", "检查全局", "检查包", "检查消费者登记完整性", "检查说明书字段", "检查错误码登记",
+            "期望能力字段", "标题行表", "检查依赖锁存在性", "检查全局", "检查包", "检查消费者登记完整性", "检查说明书字段", "检查错误码登记",
             "检查错误说明派生", "检查门禁原始项", "正式根名表变量", "正式根唯一事实源", "正式类型名集", "正式类型表变量", "正式类型表唯一事实源",
             "版本行", "系统适配器名表", "能力id形", "表头行", "说明书相对路径", "读取json带诊断", "读取存量基线", "读取文本带诊断",
             "读取模块字面量字典", "运行门禁", "运行门禁并分诊", "返回类型紧排", "返回结构粗体行", "返回结构行", "适配层根名", "错误码分隔",

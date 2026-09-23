@@ -25,14 +25,13 @@ import unittest
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 支持库.适配层.密码签名提供者 import 生成密钥对
 from 运行核心.运行环境管理器.环境管理器 import (
-    计算环境摘要, 确保环境, 环境目录, 环境结果,
+    计算环境摘要, 确保环境, 环境目录,
 )
 from 运行核心.运行环境管理器.远程镜像 import (
     计算制品摘要, 计算文件清单摘要, 获取镜像清单, 镜像不可用,
@@ -40,6 +39,20 @@ from 运行核心.运行环境管理器.远程镜像 import (
 )
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 测试中心.运行核心.环境夹具 import 注入假venv
+
+受管仓库根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 测试指纹 = "测试信任指纹-7f3a"
 
@@ -122,9 +135,15 @@ def _生成密钥对() -> tuple[str, str]:
 
 
 def _构建环境体(环境体: Path) -> None:
-    """构造镜像制品环境体（bin/python3 + site-packages/docx.py）。"""
+    """构造镜像制品环境体（bin/python3 + site-packages/docx.py）。
+
+    解释器骨架必须 `chmod 0o755`：镜像恢复后真 `校验环境` 会把它当可执行文件起
+    子进程做 import 校验（旧写法把 `校验环境` 整段 mock 掉，从没碰到这一层），
+    不可执行会 `PermissionError` → 复校验失败 → 镜像永远命不中。
+    """
     (环境体 / "bin").mkdir(parents=True)
     (环境体 / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n")
+    (环境体 / "bin" / "python3").chmod(0o755)
     (环境体 / "site-packages").mkdir()
     (环境体 / "site-packages" / "docx.py").write_text("ok=1\n")
 
@@ -189,7 +208,8 @@ class Test镜像下载代理(unittest.TestCase):
     """代理配置生效/未配置直连/代理不可用（本地 HTTP 镜像 + 记录代理）。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         self.私钥PEM, self.公钥PEM = _生成密钥对()
         self.镜像仓库 = self.临时 / "镜像仓库"
         self.镜像仓库.mkdir(parents=True)
@@ -264,7 +284,8 @@ class Test镜像下载安全解包(unittest.TestCase):
     """解包防路径穿越/符号链接逃逸；文件清单复校验；失败无残留。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         self.私钥PEM, self.公钥PEM = _生成密钥对()
         self.镜像仓库 = self.临时 / "镜像仓库"
         self.镜像仓库.mkdir(parents=True)
@@ -350,7 +371,8 @@ class Test镜像原子落盘(unittest.TestCase):
     """原子落盘：fsync + os.replace；成功可读；失败无残留。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
 
     def test_原子落盘成功可读(self):
         临时目录 = self.临时 / "落盘临时"
@@ -394,11 +416,11 @@ class Test镜像下载端到端回退(unittest.TestCase):
     """端到端：走代理命中/代理不可用回退/复校验失败回退（不落半成品）。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
         self.私钥PEM, self.公钥PEM = _生成密钥对()
-        self.构建记录: dict = {"次数": 0}
         self.配置路径 = self.临时 / "工程缓存" / "远程镜像配置.json"
         self.镜像仓库 = self.临时 / "镜像仓库"
         self.镜像仓库.mkdir()
@@ -430,20 +452,15 @@ class Test镜像下载端到端回退(unittest.TestCase):
         return [json.loads(行) for 行 in
                 证据文件.read_text(encoding="utf-8").splitlines() if 行.strip()]
 
-    def 假构建(self, 提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒):
-        self.构建记录["次数"] += 1
-        (目标 / "bin").mkdir(parents=True, exist_ok=True)
-        (目标 / "bin" / "python3").write_text(
-            "#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
+    def 注入构建(self, **参数):
+        """经生产自带注入口注入假 venv（第三方边界）；真构建/真校验全照跑。
 
-    def 放行本地构建(self):
-        return (
-            mock.patch("运行核心.运行环境管理器.环境管理器.校验环境",
-                       side_effect=lambda 解释器, 依赖锁: Path(解释器).is_file()),
-            mock.patch("运行核心.运行环境管理器.环境管理器._构建环境",
-                       side_effect=self.假构建),
-        )
+        替换旧的 `mock.patch(…环境管理器.校验环境)` + `mock.patch(…环境管理器._构建环境)`：
+        那两处把被测逻辑整段换掉（`测试伪装门禁` 规则1 P1），断言对象是夹具本身。
+        注入后构建次数由**第三方边界实测**（`假venv.调用次数`）给出。见
+        `测试中心/运行核心/环境夹具.py`。
+        """
+        return 注入假venv(**参数)
 
     def 写镜像配置(self, 代理地址: str = "") -> None:
         self.配置路径.parent.mkdir(parents=True, exist_ok=True)
@@ -471,10 +488,10 @@ class Test镜像下载端到端回退(unittest.TestCase):
         摘要 = 计算环境摘要(锁, 提供者.name)
         self.构造匹配镜像(提供者, 摘要)
         self.写镜像配置(代理地址=self.代理地址)
-        with self.放行本地构建()[0], self.放行本地构建()[1]:
+        with self.注入构建() as 假venv:
             结果 = 确保环境(提供者)
         self.assertTrue(结果.成功)
-        self.assertEqual(self.构建记录["次数"], 0)  # 未走本地构建
+        self.assertEqual(假venv.调用次数, 0)  # 未走本地构建
         目标 = 环境目录(提供者, 摘要)
         self.assertTrue((目标 / "bin" / "python3").is_file())
         self.assertTrue((目标 / "site-packages" / "docx.py").is_file())
@@ -494,10 +511,10 @@ class Test镜像下载端到端回退(unittest.TestCase):
             {"名称": "python-docx", "版本": "1.2.0", "模块名": "docx"}]})
         self.写镜像配置(
             代理地址=f"http://127.0.0.1:{_已关闭端口()}")
-        with self.放行本地构建()[0], self.放行本地构建()[1]:
+        with self.注入构建() as 假venv:
             结果 = 确保环境(提供者)
         self.assertTrue(结果.成功)
-        self.assertEqual(self.构建记录["次数"], 1)  # 回退本地构建成功
+        self.assertEqual(假venv.调用次数, 1)  # 回退本地构建成功
         证据 = self.证据行()
         self.assertEqual([行["类型"] for 行 in 证据], ["失败", "重建"])
         self.assertIn(证据[0]["错误码"], {镜像不可用, 镜像下载失败})
@@ -515,10 +532,10 @@ class Test镜像下载端到端回退(unittest.TestCase):
         self.构造匹配镜像(提供者, 摘要,
                           清单覆盖={"文件清单摘要": "错" * 16})
         self.写镜像配置()
-        with self.放行本地构建()[0], self.放行本地构建()[1]:
+        with self.注入构建() as 假venv:
             结果 = 确保环境(提供者)
         self.assertTrue(结果.成功)
-        self.assertEqual(self.构建记录["次数"], 1)
+        self.assertEqual(假venv.调用次数, 1)
         证据 = self.证据行()
         self.assertEqual([行["类型"] for 行 in 证据], ["失败", "重建"])
         self.assertEqual(证据[0]["错误码"], 镜像下载失败)

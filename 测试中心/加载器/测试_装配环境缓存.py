@@ -7,6 +7,12 @@
 - 命中复用/输入变化重建/失败清理 三态真实发生
 - 环境确保失败（构建/就绪）仍整体阻断；依赖锁内容为空/非法按单包级跳过
   （只跳过该包 + 失败证据照落），见「架构项A」口径
+
+**构建路径不再换掉被测本体**（`测试伪装门禁` 规则1 P1 收口，2026-09-23）：
+经生产自带注入口 `环境管理器.venv`（`:692`「兼容显式注入的环境创建器」）注入
+`环境夹具.假venv模块`，真 `_构建环境` / 真 `校验环境` / 真 `强制校验.校验环境` 全照跑；
+构建次数由**第三方边界实测**（`假venv.调用次数`）给出。见
+`测试中心/运行核心/环境夹具.py`。
 """
 
 from __future__ import annotations
@@ -15,11 +21,8 @@ import json
 import shutil
 import sys
 import tempfile
-import threading
-import time
 import unittest
 from pathlib import Path
-from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -28,9 +31,7 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 运行核心.环境指纹 import 计算环境指纹
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
-from 运行核心.运行环境管理器.环境管理器 import 环境结果
-
-假构建耗时秒 = 0.3
+from 测试中心.运行核心.环境夹具 import 注入假venv
 
 
 def 合法锁(提供者id: str, *, 版本: str = "1.2.0") -> dict:
@@ -57,7 +58,6 @@ class Test装配接入环境缓存(unittest.TestCase):
         self.临时 = Path(tempfile.mkdtemp())
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
-        self.构建记录: dict = {"次数": 0, "锁": threading.Lock()}
 
     def tearDown(self):
         shutil.rmtree(self.临时, ignore_errors=True)
@@ -97,49 +97,38 @@ class Test装配接入环境缓存(unittest.TestCase):
         return [json.loads(行) for 行 in
                 文件.read_text(encoding="utf-8").splitlines() if 行.strip()]
 
-    def 假构建(self, 提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒):
-        """模拟真实构建：固定耗时 + 创建解释器骨架（校验被 mock 放行）。"""
-        with self.构建记录["锁"]:
-            self.构建记录["次数"] += 1
-        time.sleep(假构建耗时秒)
-        (目标 / "bin").mkdir(parents=True, exist_ok=True)
-        (目标 / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
+    def 注入构建(self, **参数):
+        """经生产自带注入口注入假 venv（第三方边界）；真构建/真校验全照跑。
 
-    def 放行构建(self):
-        """patch 两处 校验环境（确保环境 + 强制校验终检）与 构建环境 换为 假构建。"""
-        return (
-            mock.patch("运行核心.运行环境管理器.环境管理器.校验环境",
-                       side_effect=lambda 解释器, 依赖锁: Path(解释器).is_file()),
-            mock.patch("运行核心.运行环境管理器.强制校验.校验环境",
-                       side_effect=lambda 解释器, 依赖锁: Path(解释器).is_file()),
-            mock.patch("运行核心.运行环境管理器.环境管理器._构建环境",
-                       side_effect=self.假构建),
-        )
+        替换旧的 `mock.patch(…环境管理器.校验环境)` + `mock.patch(…强制校验.校验环境)`
+        + `mock.patch(…环境管理器._构建环境)`：那三处把被测逻辑整段换掉
+        （`测试伪装门禁` 规则1 P1/P2），断言对象是夹具本身。
+        """
+        return 注入假venv(**参数)
 
     def test_装配默认路径调用缓存批量入口_命中与重建证据(self):
         """装配默认路径经 批量确保环境 确保环境：首次重建、再次命中，不重复构建。"""
         self.新支持库提供者("装配提供者", 合法锁("装配提供者"))
-        with self.放行构建()[0], self.放行构建()[1], self.放行构建()[2]:
+        with self.注入构建() as 假venv:
             结果一 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
         self.assertTrue(结果一.成功, str(结果一.问题列表))
-        self.assertEqual(self.构建记录["次数"], 1)
+        self.assertEqual(假venv.调用次数, 1)
         证据 = self.证据行()
         self.assertTrue(证据)
         self.assertEqual(证据[-1]["类型"], "重建")
         self.assertEqual(证据[-1]["提供者id"], "装配提供者")
         # 再次装配（输入未变）→ 缓存命中，不重建
-        with self.放行构建()[0], self.放行构建()[1], self.放行构建()[2]:
+        with self.注入构建() as 假venv二:
             结果二 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
         self.assertTrue(结果二.成功, str(结果二.问题列表))
-        self.assertEqual(self.构建记录["次数"], 1)
+        self.assertEqual(假venv二.调用次数, 0, "命中复用不得重建")
         证据二 = self.证据行()
         self.assertEqual([行["类型"] for 行 in 证据二], ["重建", "命中"])
 
     def test_输入变化新摘要重建(self):
         """依赖锁输入变化 → 装配走新摘要重建，旧目录保留，证据两条重建。"""
         self.新支持库提供者("装配提供者", 合法锁("装配提供者", 版本="1.2.0"))
-        with self.放行构建()[0], self.放行构建()[1], self.放行构建()[2]:
+        with self.注入构建():
             结果一 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
         self.assertTrue(结果一.成功, str(结果一.问题列表))
         提供者目录 = self.临时 / "支持库" / "装配提供者"
@@ -152,7 +141,7 @@ class Test装配接入环境缓存(unittest.TestCase):
         目录一.write_text(
             json.dumps(合法锁("装配提供者", 版本="1.1.0"), ensure_ascii=False),
             encoding="utf-8")
-        with self.放行构建()[0], self.放行构建()[1], self.放行构建()[2]:
+        with self.注入构建():
             结果二 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
         self.assertTrue(结果二.成功, str(结果二.问题列表))
         证据二 = self.证据行()
@@ -166,9 +155,7 @@ class Test装配接入环境缓存(unittest.TestCase):
     def test_环境确保失败整体阻断与失败清理(self):
         """构建失败 → 装配整体阻断、失败证据、半成品清理（不留残留）。"""
         self.新支持库提供者("装配提供者", 合法锁("装配提供者"))
-        假venv = mock.Mock()
-        假venv.create = mock.Mock(side_effect=OSError("模拟构建失败"))
-        with mock.patch("运行核心.运行环境管理器.环境管理器.venv", 假venv):
+        with self.注入构建(抛错=OSError("模拟构建失败")):
             结果 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
         self.assertFalse(结果.成功)
         self.assertTrue(
@@ -195,7 +182,7 @@ class Test装配接入环境缓存(unittest.TestCase):
         })
         self.新支持库提供者("正常提供者", 合法锁("正常提供者"))
         注册表 = 能力注册表()
-        with self.放行构建()[0], self.放行构建()[1], self.放行构建()[2]:
+        with self.注入构建():
             结果 = 装配系统(self.临时 / "支持库", self.临时 / "模块库", 注册表)
         self.assertTrue(结果.成功, str(结果.问题列表))
         self.assertEqual(结果.问题列表, [], "空锁不得整体阻断")
@@ -225,12 +212,13 @@ class Test装配接入环境缓存(unittest.TestCase):
             "环境": {"Python": 指纹["python"], "操作系统": 系统名, "CPU": 指纹["架构"]},
             "生成时间": "",
         })
-        结果 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
+        with self.注入构建() as 假venv:
+            结果 = 装配系统(self.临时 / "支持库", self.临时 / "模块库")
         self.assertTrue(结果.成功, str(结果.问题列表))
+        self.assertEqual(假venv.调用次数, 0)
         证据 = self.证据行()
         self.assertEqual(证据[-1]["类型"], "命中")
         self.assertEqual(证据[-1]["摘要"], "")
-        self.assertEqual(self.构建记录["次数"], 0)
 
     def test_无锁支持库不强制环境校验(self):
         """非第三方支持库（无 依赖锁.json）→ 不触发环境确保，也不写证据。"""

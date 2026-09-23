@@ -39,6 +39,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -253,7 +254,9 @@ class Test清只读后删除树(清只读夹具):
         # 只让「删除这个文件」失败，模拟被占用/权限拒绝且清只读也救不回来。
         # 判据用 basename：POSIX 的 fd 分支会传 `entry.name`（相对名）而 Windows 的
         # 按名字分支传全路径，两种都要拦住。
-        # 手工存/还 `os.unlink`（不走 mock.patch —— 裸桩会新增测试伪装门禁的存量违约）
+        # **换第三方边界 + `autospec=True`**（2026-09-23 收口）：旧写法是手工赋值
+        # `os.unlink = 假unlink`（门禁扫不到的替换；旧注释写明「不走 mock.patch」）。
+        # 现改为在边界自己的模块上打补丁 —— 语义逐字相同，但对门禁可见且满足规则2。
         真unlink = os.unlink
 
         def 假unlink(路径, *参数, **关键字):
@@ -261,11 +264,8 @@ class Test清只读后删除树(清只读夹具):
                 raise PermissionError(13, "Permission denied", str(路径))
             return 真unlink(路径, *参数, **关键字)
 
-        os.unlink = 假unlink
-        try:
+        with mock.patch("os.unlink", autospec=True, side_effect=假unlink):
             清只读后删除树(根, 忽略失败=真)
-        finally:
-            os.unlink = 真unlink
         留痕 = [项 for 项 in 忽略快照() if "清只读后删除树" in 项["位置"]]
         self.assertTrue(留痕, "删不干净必须留下可查询的证据，不许静默")
         self.assertTrue(any("残留" in 项["位置"] for 项 in 留痕),

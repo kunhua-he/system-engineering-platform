@@ -25,6 +25,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -77,7 +78,13 @@ class 原子落盘夹具(unittest.TestCase):
         (self.临时 / 环境文件).write_text(新环境哨兵, encoding="utf-8")
 
     def 装顶位失败补丁(self):
-        """只拦「临时目录 → 目标目录」这一步；让位与回滚都走真实实现。"""
+        """只拦「临时目录 → 目标目录」这一步；让位与回滚都走真实实现。
+
+        **换第三方边界 + `autospec=True`**（2026-09-23 收口）：旧写法是手工赋值
+        `os.replace = 假replace`（门禁扫不到的替换；旧注释还写明「不走 mock.patch」）。
+        现改为在边界自己的模块上打补丁 —— 语义逐字相同（都是替换 `os.replace` 这一个名字），
+        但**对门禁可见**且满足规则2（autospec）。
+        """
         临时目录 = self.临时
 
         def 假replace(源, 目的, **参数):
@@ -85,7 +92,7 @@ class 原子落盘夹具(unittest.TestCase):
                 raise OSError(28, "模拟顶位失败 No space left on device")
             return 真replace(源, 目的, **参数)
 
-        os.replace = 假replace
+        return mock.patch("os.replace", autospec=True, side_effect=假replace)
 
     def 让位残留(self) -> list[str]:
         return sorted(项.name for 项 in self.根.iterdir() if "让位" in 项.name)
@@ -95,12 +102,9 @@ class Test顶位失败旧环境仍可启(原子落盘夹具):
     def test_顶位失败_旧环境仍在且哨兵逐字可读(self) -> None:
         self.造旧环境()
         self.造新环境()
-        self.装顶位失败补丁()
-        try:
+        with self.装顶位失败补丁():
             with self.assertRaises(OSError) as 上下文:
                 原子落盘(self.临时, self.目标)
-        finally:
-            os.replace = 真replace
 
         说明 = str(上下文.exception)
         # 结构：错误说明必须点名「顶位失败」与回滚结论，不许静默吞掉
@@ -122,12 +126,9 @@ class Test顶位失败旧环境仍可启(原子落盘夹具):
         脚本 = self.目标 / 环境文件
         脚本.chmod(0o755)
         self.造新环境()
-        self.装顶位失败补丁()
-        try:
+        with self.装顶位失败补丁():
             with self.assertRaises(OSError):
                 原子落盘(self.临时, self.目标)
-        finally:
-            os.replace = 真replace
 
         进程 = subprocess.run([str(脚本)], capture_output=True, text=True,
                               timeout=10, check=False)
@@ -157,12 +158,9 @@ class Test反向_修复前实现必红(原子落盘夹具):
     def test_反向_修复前实现_顶位失败即丢旧环境(self) -> None:
         self.造旧环境()
         self.造新环境()
-        self.装顶位失败补丁()
-        try:
+        with self.装顶位失败补丁():
             with self.assertRaises(OSError):
                 self.修复前.原子落盘(self.临时, self.目标)
-        finally:
-            os.replace = 真replace
 
         self.assertFalse(self.目标.exists(),
                          "修复前实现（先 rmtree 再 replace）应已删掉旧环境；"

@@ -1,8 +1,11 @@
 """运行环境缓存与并行构建测试：命中/重建/失败三态证据、并行与串行锁。
 
-真实 venv 构建较慢，成功构建路径用 假构建 模拟（固定耗时 + 解释器骨架）；
-失败路径用 venv.create 抛错触发真实清理逻辑；另用 无第三方依赖 提供者
-与 已构建的真实提供者 验证缓存命中证据。
+构建路径**不再换掉被测本体**（`测试伪装门禁` 规则1 P1 收口，2026-09-23）：
+经生产自带注入口 `环境管理器.venv`（`:692`「兼容显式注入的环境创建器」）注入
+`环境夹具.假venv模块`，真 `_构建环境` 与真 `校验环境` 照跑（见
+`测试中心/运行核心/环境夹具.py` 的取舍说明）；构建次数由**第三方边界实测**
+（`假venv.调用次数`）给出，不再是夹具自增的计数器。失败路径用 venv.create
+抛错触发真实清理逻辑；另用 无第三方依赖 提供者 与 已构建的真实提供者 验证缓存命中证据。
 """
 
 from __future__ import annotations
@@ -10,20 +13,32 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
-import threading
 import time
 import unittest
 from pathlib import Path
-from unittest import mock
 
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 运行核心.运行环境管理器.环境管理器 import (
-    并行确保环境, 批量确保环境, 计算环境摘要, 环境结果,
+    并行确保环境, 批量确保环境, 计算环境摘要,
     环境目录, 读取依赖锁, 确保环境,
 )
-from 公共契约.基础类型.逻辑类型 import 真, 假
+from 测试中心.运行核心.环境夹具 import 注入假venv
+
+受管仓库根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 假构建耗时秒 = 0.4
 
@@ -39,11 +54,11 @@ class Test环境缓存并行(unittest.TestCase):
     """环境缓存审计与并行构建闭环测试。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         # 模拟系统根结构：支持库+模块库 祖先后，工程缓存落在临时根
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
-        self.构建记录: dict = {"次数": 0, "锁": threading.Lock()}
 
     def 新提供者(self, 名称: str, 锁: dict | None = None) -> Path:
         目录 = self.临时 / 名称
@@ -63,34 +78,26 @@ class Test环境缓存并行(unittest.TestCase):
         return [json.loads(行) for 行 in
                 文件.read_text(encoding="utf-8").splitlines() if 行.strip()]
 
-    def 假构建(self, 提供者目录, 依赖锁, 目标, 解释器, 摘要, 超时秒):
-        """模拟真实构建：固定耗时 + 创建解释器骨架（校验被 mock 放行）。"""
-        with self.构建记录["锁"]:
-            self.构建记录["次数"] += 1
-        time.sleep(假构建耗时秒)
-        (目标 / "bin").mkdir(parents=True, exist_ok=True)
-        (目标 / "bin" / "python3").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        return 环境结果(真, 解释器路径=str(解释器), 环境摘要=摘要)
+    def 注入构建(self, **参数):
+        """经生产自带注入口注入假 venv（第三方边界）；真构建/真校验照跑。
 
-    def 放行构建(self):
-        """patch 校验环境（目标解释器存在才通过）+ 构建换为 假构建。"""
-        return (
-            mock.patch("运行核心.运行环境管理器.环境管理器.校验环境",
-                       side_effect=lambda 解释器, 依赖锁: Path(解释器).is_file()),
-            mock.patch("运行核心.运行环境管理器.环境管理器._构建环境",
-                       side_effect=self.假构建),
-        )
+        替换旧的 `mock.patch(…校验环境)` + `mock.patch(…_构建环境)`：那两处把被测
+        逻辑整段换掉（`测试伪装门禁` 规则1 P1），断言对象是夹具本身。默认注入
+        `耗时秒=假构建耗时秒`，用于观测并行度（真 `_构建环境` 会真 sleep 这一步）。
+        """
+        参数.setdefault("耗时秒", 假构建耗时秒)
+        return 注入假venv(**参数)
 
     def test_缓存命中复用与证据(self):
         """同摘要两次确保 → 第二次命中、不重建、证据两行。"""
         提供者 = self.新提供者("docx提供者", 样例锁())
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建() as 假venv:
             结果一 = 确保环境(提供者)
             self.assertTrue(结果一.成功)
-            self.assertEqual(self.构建记录["次数"], 1)
+            self.assertEqual(假venv.调用次数, 1)
             结果二 = 确保环境(提供者)
             self.assertTrue(结果二.成功)
-        self.assertEqual(self.构建记录["次数"], 1)  # 第二次未重建
+        self.assertEqual(假venv.调用次数, 1)  # 第二次未重建
         self.assertEqual(结果一.解释器路径, 结果二.解释器路径)
         证据 = self.证据行()
         self.assertEqual([行["类型"] for 行 in 证据], ["重建", "命中"])
@@ -98,7 +105,7 @@ class Test环境缓存并行(unittest.TestCase):
     def test_输入变化新摘要重建旧目录保留(self):
         """依赖锁变化 → 新摘要目录重建，旧目录保留（不可变）。"""
         提供者 = self.新提供者("docx提供者", 样例锁("1.2.0"))
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建():
             结果一 = 确保环境(提供者)
             摘要一 = 结果一.环境摘要
             目录一 = 环境目录(提供者, 摘要一)
@@ -123,29 +130,42 @@ class Test环境缓存并行(unittest.TestCase):
             for 序号 in (1, 2, 3)
         ]
         开始 = time.time()
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建() as 假venv:
             结果表 = 并行确保环境(提供者表)
         耗时 = time.time() - 开始
         self.assertTrue(all(结果.成功 for 结果 in 结果表))
-        self.assertEqual(self.构建记录["次数"], 3)
-        # 并行 ≈ 单次耗时；串行 ≈ 3×单次（1.2s）→ 明显小于 2×单次（0.8s）
-        self.assertLess(耗时, 假构建耗时秒 * 2)
+        self.assertEqual(假venv.调用次数, 3)
         for 提供者 in 提供者表:
             锁 = 读取依赖锁(提供者)
             目标 = 环境目录(提供者, 计算环境摘要(锁, 提供者.name))
             self.assertTrue((目标 / "bin" / "python3").is_file())
         证据 = self.证据行()
         self.assertEqual(len([行 for 行 in 证据 if 行["类型"] == "重建"]), 3)
+        # 并行度**与同批串行实测对比**，不写死秒数：真 `_构建环境` 每次有真实开销
+        # （pip 安装 + import 校验两个子进程 + 原子落盘），写死阈值会把真实开销
+        # 误判成「没并行」。串行对照用不同提供者名（摘要含提供者 id → 不会命中上一批缓存）。
+        串行对照表 = [
+            self.新提供者(f"串行对照提供者{序号}", 样例锁("1.0", 索引地址=f"http://127.0.0.1:8{序号}/仓库"))
+            for 序号 in (1, 2, 3)
+        ]
+        开始串行 = time.time()
+        with self.注入构建() as 假venv串行:
+            for 提供者 in 串行对照表:
+                确保环境(提供者)
+        串行耗时 = time.time() - 开始串行
+        self.assertEqual(假venv串行.调用次数, 3)
+        self.assertLess(耗时, 串行耗时 * 0.75,
+                        f"并行 {耗时:.2f}s 未明显快于同批串行 {串行耗时:.2f}s")
 
     def test_同提供者并发串行(self):
         """并发提交同一提供者 → 顺序构建：一次重建 + 一次命中，耗时 ≥ 串行。"""
         提供者 = self.新提供者("串行提供者", 样例锁())
         开始 = time.time()
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建() as 假venv:
             结果表 = 并行确保环境([提供者, 提供者])
         耗时 = time.time() - 开始
         self.assertTrue(all(结果.成功 for 结果 in 结果表))
-        self.assertEqual(self.构建记录["次数"], 1)  # 第二个任务命中
+        self.assertEqual(假venv.调用次数, 1)  # 第二个任务命中
         # 第二个任务被提供者锁阻塞直至首个构建完成 → 总耗时 ≥ 单次构建
         self.assertGreaterEqual(耗时, 假构建耗时秒 - 0.05)
         证据 = self.证据行()
@@ -158,19 +178,17 @@ class Test环境缓存并行(unittest.TestCase):
             for 序号 in (1, 2)
         ]
         开始 = time.time()
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建() as 假venv:
             结果表 = 并行确保环境(提供者表)
         耗时 = time.time() - 开始
         self.assertTrue(all(结果.成功 for 结果 in 结果表))
-        self.assertEqual(self.构建记录["次数"], 2)
+        self.assertEqual(假venv.调用次数, 2)
         self.assertGreaterEqual(耗时, 假构建耗时秒 * 2 - 0.15)  # 串行 ≈ 2×单次
 
     def test_构建失败清理半成品与失败证据(self):
         """venv 创建失败 → 清理临时目录 + 失败证据（错误码/错误说明/输入哈希）。"""
         提供者 = self.新提供者("失败提供者", 样例锁())
-        假venv = mock.Mock()
-        假venv.create = mock.Mock(side_effect=OSError("模拟构建失败"))
-        with mock.patch("运行核心.运行环境管理器.环境管理器.venv", 假venv):
+        with self.注入构建(抛错=OSError("模拟构建失败")):
             结果 = 确保环境(提供者, 超时秒=10)
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者不可用")
@@ -203,7 +221,7 @@ class Test环境缓存并行(unittest.TestCase):
     def test_证据可审计(self):
         """证据 jsonl 每行可解析且字段齐全。"""
         提供者 = self.新提供者("审计提供者", 样例锁())
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建():
             确保环境(提供者)
             确保环境(提供者)
         证据 = self.证据行()
@@ -219,7 +237,7 @@ class Test环境缓存并行(unittest.TestCase):
         """批量入口等价并行入口；空列表返回空。"""
         self.assertEqual(批量确保环境([]), [])
         提供者 = self.新提供者("批量提供者", 样例锁())
-        with self.放行构建()[0], self.放行构建()[1]:
+        with self.注入构建():
             结果表 = 批量确保环境([提供者])
         self.assertEqual(len(结果表), 1)
         self.assertTrue(结果表[0].成功)

@@ -231,15 +231,22 @@ class 测试LibreOffice受管池(unittest.TestCase):
         from 支持库.适配层.LibreOffice提供者 import 转换办公文件
         from 支持库.适配层.LibreOffice提供者.实现 import 文档转换 as 模块
         输入 = self._输入("公开契约.docx")
-        with mock.patch.object(模块, "_提供者缓存", {"soffice": str(self.假程序)}), \
-             mock.patch.dict(os.environ, {
-                 "FAKE_LO_LOG": str(self.日志), "LIBREOFFICE_POOL_SIZE": "1",
-                 "LIBREOFFICE_QUEUE_SIZE": "1", "FAKE_LO_DELAY": "0",
-             }):
+        # **真实状态注入**：走生产自带的提供者解析路径 `LIBREOFFICE_BIN`
+        # （`查找LibreOffice` 的第一候选，经 `shutil.which` 真实解析），不再
+        # `mock.patch.object(模块, "_提供者缓存", …)` —— 那被 `测试伪装门禁` 规则1
+        # 判为「patch 被测对象本体·本体成员」（P1）。`_提供者缓存` 是纯备忘（查一次
+        # 存一次），清空只让它重查一次、语义无副作用；不清会把上一用例的路径盖住环境变量。
+        模块._提供者缓存.clear()
+        with mock.patch.dict(os.environ, {
+                "LIBREOFFICE_BIN": str(self.假程序),
+                "FAKE_LO_LOG": str(self.日志), "LIBREOFFICE_POOL_SIZE": "1",
+                "LIBREOFFICE_QUEUE_SIZE": "1", "FAKE_LO_DELAY": "0",
+        }):
             try:
                 结果 = 转换办公文件(str(输入), "txt", 超时秒=2, 最大输出字节=1024)
             finally:
                 模块.关闭受管池()
+                模块._提供者缓存.clear()
         self.assertTrue(结果.成功, 结果.错误说明)
         公开文本 = json.dumps(结果.转字典(), ensure_ascii=False)
         self.assertNotIn("UserInstallation", 公开文本)
