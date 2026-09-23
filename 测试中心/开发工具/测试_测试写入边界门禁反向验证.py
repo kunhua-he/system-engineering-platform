@@ -471,13 +471,13 @@ class Test判据四临时根未清(unittest.TestCase):
 
             class 用例(unittest.TestCase):
                 def test_清了(self):
-                    甲 = 造根()
-                    self.addCleanup(lambda: None, 甲)
-                    self.assertTrue(甲)
+                    A = 造根()
+                    self.addCleanup(lambda: None, A)
+                    self.assertTrue(A)
 
                 def test_没清(self):
-                    乙 = 造根()
-                    self.assertTrue(乙)
+                    B = 造根()
+                    self.assertTrue(B)
         ''')
         self.assertEqual(统分["未清"], 1, "有一个调用点没清就必须判红")
         self.assertEqual(len(部分清), 1)
@@ -729,7 +729,7 @@ class Test判据四不误判已清(unittest.TestCase):
             from 公共契约.运行时.平台适配 import 清只读后删除树
 
 
-            class 甲(unittest.TestCase):
+            class A(unittest.TestCase):
                 def setUp(self):
                     self.工作 = Path(tempfile.mkdtemp())
                     self.addCleanup(清只读后删除树, self.工作, 忽略失败=真)
@@ -738,15 +738,15 @@ class Test判据四不误判已清(unittest.TestCase):
                     self.assertTrue(self.工作)
 
 
-            class 乙(unittest.TestCase):
+            class B(unittest.TestCase):
                 def setUp(self):
                     self.工作 = Path(tempfile.mkdtemp())
-                    # ★ 乙**没有**登记清理
+                    # ★ B**没有**登记清理
 
                 def test_一个(self):
                     self.assertTrue(self.工作)
         ''')
-        self.assertEqual(统计["未清"], 1, "乙类的 self.工作 不得被甲类的登记顶包")
+        self.assertEqual(统计["未清"], 1, "B类的 self.工作 不得被A类的登记顶包")
         self.assertEqual([条["缺口类型"] for 条 in 违规], [门禁.临时根未清])
 
     def test_根在子类_清理在基类算已清(self) -> None:

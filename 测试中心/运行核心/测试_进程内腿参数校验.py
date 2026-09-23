@@ -230,11 +230,11 @@ class Test未知参数错误码(进程内腿校验测试基类):
         from 公共契约.能力契约.契约 import 能力实现, 未知参数错误
         实现 = 能力实现(
             能力id="测试.未知键", 包id="包1",
-            实现函数=lambda 甲: 甲, 参数=[{"名称": "甲"}], 返回="整数",
+            实现函数=lambda A: A, 参数=[{"名称": "A"}], 返回="整数",
         )
         self.assertTrue(issubclass(未知参数错误, TypeError))
         with self.assertRaises(TypeError):
-            实现.调用(甲=1, 乙=2)
+            实现.调用(A=1, B=2)
 
 
 if __name__ == "__main__":

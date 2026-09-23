@@ -82,31 +82,31 @@ class 归一化对话响应错误分支(unittest.TestCase):
         self.assertEqual("模型连接器", 结果.错误.来源)
 
     def test_四种协议正常形状仍走通(self):
-        对话 = 归一化对话响应({"choices": [{"message": {"content": "甲", "reasoning_content": "想"},
+        对话 = 归一化对话响应({"choices": [{"message": {"content": "A", "reasoning_content": "想"},
                                        "finish_reason": "stop"}],
                           "usage": {"prompt_tokens": 3, "completion_tokens": 4}}, True)
         self.assertTrue(对话.成功, 对话)
-        self.assertEqual("甲", 对话.值["内容"])
+        self.assertEqual("A", 对话.值["内容"])
         self.assertEqual("想", 对话.值["思考"])
         self.assertEqual("stop", 对话.值["结束原因"])
         self.assertEqual(7, 对话.值["用量"]["总令牌数"])
 
-        人类 = 归一化对话响应({"content": [{"type": "text", "text": "乙"},
+        人类 = 归一化对话响应({"content": [{"type": "text", "text": "B"},
                                       {"type": "thinking", "thinking": "思"}],
                           "stop_reason": "end_turn"}, True)
-        self.assertEqual("乙", 人类.值["内容"])
+        self.assertEqual("B", 人类.值["内容"])
         self.assertEqual("思", 人类.值["思考"])
 
-        本地 = 归一化对话响应({"message": {"content": "丙", "reasoning_content": "虑"},
+        本地 = 归一化对话响应({"message": {"content": "C", "reasoning_content": "虑"},
                           "done_reason": "stop"}, True)
-        self.assertEqual("丙", 本地.值["内容"])
+        self.assertEqual("C", 本地.值["内容"])
         self.assertEqual("虑", 本地.值["思考"])
 
         编码 = 归一化对话响应({"object": "response",
-                          "output": [{"type": "message", "content": [{"type": "output_text", "text": "丁"}]},
+                          "output": [{"type": "message", "content": [{"type": "output_text", "text": "D"}]},
                                      {"type": "reasoning", "summary": [{"text": "考"}]}],
                           "status": "completed"}, True)
-        self.assertEqual("丁", 编码.值["内容"])
+        self.assertEqual("D", 编码.值["内容"])
         self.assertEqual("考", 编码.值["思考"])
 
 
