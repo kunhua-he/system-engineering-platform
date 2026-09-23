@@ -20,8 +20,11 @@
 
 ★ **实现口径记录**（现场读码确认，避免断言与实现行为打架）：
 `支持库/后端/系统核心支持库/资源管理/实现/资源管理.py::原子写入`
-① 返回**裸 bool**（不是统一结果信封）；
-② `:172` 会 `目标路径.parent.mkdir(parents=True, exist_ok=True)` ——
+① **返回统一结果信封**（2026-09-24 批M-1 收口后）——成功 `结果.成功结果(真)`、
+失败回唯一写入腿的 `结果.失败(错误码, 说明)`，故本件一律**读 `.成功`** 判成败
+（收口前它回裸 bool；该形状已随「md 落盘收成一条腿」一并作废，不许再按真假值判）；
+② 它现**转调唯一写入腿** `文件系统支持库.文件操作.写入文件`，唯一腿的 `_原子写`
+在窗口内 `目标.parent.mkdir(parents=True, exist_ok=True)` ——
 即**父目录不存在时它会先建目录**，故本条不断言「不留任何新目录」，
 只断言「目标文件本身逐字不变 / 目标不被写坏」。
 
@@ -99,11 +102,12 @@ class Test原子写失败目标逐字不变(unittest.TestCase):
         (目标 / "占位.txt").write_text("占位\n", encoding="utf-8")
 
         try:
-            结果 = 原子写入(目标, "新内容")
+            回执 = 原子写入(目标, "新内容")
+            成功 = 回执.成功
         except OSError:
-            结果 = False  # 落盘阶段直接抛也是「失败」，同样不得破坏既有文件
+            成功 = False  # 落盘阶段直接抛也是「失败」，同样不得破坏既有文件
 
-        self.assertFalse(结果, "目标是非空目录必须判失败")
+        self.assertFalse(成功, "目标是非空目录必须判失败")
         self.assertEqual(_快照(既有), 邻居前, "失败时不得动到无关邻居文件")
         self.assertEqual(既有.read_text(encoding="utf-8"), 既有原样, "邻居内容必须逐字不变")
         self.assertTrue((目标 / "占位.txt").is_file(), "失败时不得清空目标目录里的既有文件")
@@ -125,13 +129,14 @@ class Test原子写失败目标逐字不变(unittest.TestCase):
         目标.chmod(0o444)
         try:
             try:
-                结果 = 原子写入(目标, 新内容)
+                回执 = 原子写入(目标, 新内容)
+                成功 = 回执.成功
             except (OSError, PermissionError):
-                结果 = False
+                成功 = False
             实际 = 目标.read_text(encoding="utf-8")
             self.assertIn(实际, (旧内容, 新内容),
                           f"目标落盘内容既不是完整旧内容也不是完整新内容（半成品）: {实际!r}")
-            if 结果:
+            if 成功:
                 self.assertEqual(实际, 新内容, "报成功就必须是完整新内容")
             else:
                 self.assertEqual(实际, 旧内容, "报失败就必须保持完整旧内容")
@@ -142,8 +147,8 @@ class Test原子写失败目标逐字不变(unittest.TestCase):
         """深层不存在的父目录下写入：无论成败，**绝不留下半成品目标文件**（截断/空文件）。"""
         深层 = self.临时目录 / "不存在的一层" / "再一层"
         目标 = 深层 / "新.txt"
-        结果 = 原子写入(目标, "内容")
-        if 结果:
+        回执 = 原子写入(目标, "内容")
+        if 回执.成功:
             # 若实现建了父目录并成功写入，则目标必须是**完整内容**（不得是空/半截）
             self.assertTrue(目标.is_file())
             self.assertEqual(目标.read_text(encoding="utf-8"), "内容",
@@ -161,14 +166,15 @@ class Test原子写失败目标逐字不变(unittest.TestCase):
         子目录.chmod(0o555)  # 目录不可写 ⇒ 临时文件建不出来 ⇒ 落盘阶段失败
         try:
             try:
-                结果 = 原子写入(目标, "新内容")
+                回执 = 原子写入(目标, "新内容")
+                成功 = 回执.成功
             except (OSError, PermissionError):
-                结果 = False
+                成功 = False
             残留 = [p.name for p in 子目录.iterdir() if p.name.endswith(".tmp")]
             self.assertEqual(残留, [], f"失败后残留临时文件: {残留}")
             self.assertEqual(目标.read_text(encoding="utf-8"), "旧\n",
                              "失败时必须保持完整旧内容")
-            self.assertFalse(结果, "不可写目录下应判失败")
+            self.assertFalse(成功, "不可写目录下应判失败")
         finally:
             子目录.chmod(0o755)  # 便于清理
 
@@ -236,9 +242,9 @@ class Test原子写失败目标逐字不变(unittest.TestCase):
         目标 = self.临时目录 / "目标.txt"
         目标.write_text("旧目标\n", encoding="utf-8")
 
-        结果 = 原子写入(目标, "新目标内容")
+        回执 = 原子写入(目标, "新目标内容")
 
-        self.assertTrue(结果, "正常路径必须成功")
+        self.assertTrue(回执.成功, "正常路径必须成功")
         self.assertEqual(目标.read_text(encoding="utf-8"), "新目标内容")
         self.assertEqual(_快照(其他), 其他前, "成功路径也不得动到无关文件")
         self.assertEqual(sorted(p.name for p in self.临时目录.iterdir()),
