@@ -25,6 +25,19 @@ from 支持库.后端.组件规范支持库 import (
     快照清单文件名,
     快照摘要文件名,
 )
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 def 建临时范围(工作目录: Path) -> list[str]:
@@ -40,8 +53,10 @@ class Test生成快照模板(unittest.TestCase):
     """生成：临时目录结构齐全、清单字段完整、校验通过。"""
 
     def test_临时目录生成结构齐全且校验通过(self):
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         范围目录表 = 建临时范围(工作目录)
         结果 = 生成快照清单模板(目标目录, 范围目录表, 工作目录=工作目录)
         self.assertTrue(结果["成功"], str(结果))
@@ -69,8 +84,10 @@ class Test生成快照模板(unittest.TestCase):
         self.assertTrue(通过, 消息)
 
     def test_生成可指定版本与栅栏令牌(self):
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         建临时范围(工作目录)
         结果 = 生成快照清单模板(目标目录, ["范围一", "范围二"],
                                 工作目录=工作目录, 版本="2.1.0", 栅栏令牌="令牌1")
@@ -84,8 +101,10 @@ class Test校验快照模板(unittest.TestCase):
     """校验：三文件存在 / 清单与磁盘一致 / 聚合摘要匹配。"""
 
     def _生成(self) -> tuple[Path, Path]:
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         建临时范围(工作目录)
         结果 = 生成快照清单模板(目标目录, ["范围一", "范围二"], 工作目录=工作目录)
         self.assertTrue(结果["成功"], str(结果))
@@ -124,8 +143,10 @@ class Test防御(unittest.TestCase):
     """防御：已存在文件拒绝覆盖；路径逃逸拒绝。"""
 
     def test_已存在文件拒绝覆盖(self):
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         建临时范围(工作目录)
         第一次 = 生成快照清单模板(目标目录, ["范围一", "范围二"], 工作目录=工作目录)
         self.assertTrue(第一次["成功"], str(第一次))
@@ -134,8 +155,10 @@ class Test防御(unittest.TestCase):
         self.assertEqual(第二次["错误码"], "已存在")
 
     def test_预置文件拒绝覆盖(self):
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         建临时范围(工作目录)
         (目标目录 / "旧文件.txt").write_text("旧\n", encoding="utf-8")
         结果 = 生成快照清单模板(目标目录, ["范围一", "范围二"], 工作目录=工作目录)
@@ -144,8 +167,10 @@ class Test防御(unittest.TestCase):
         self.assertTrue((目标目录 / "旧文件.txt").is_file(), "已有文件不得被覆盖")
 
     def test_路径逃逸拒绝(self):
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         建临时范围(工作目录)
         结果 = 生成快照清单模板(目标目录, ["../外部逃逸"], 工作目录=工作目录)
         self.assertFalse(结果["成功"])
@@ -153,15 +178,18 @@ class Test防御(unittest.TestCase):
         self.assertTrue(not any(目标目录.iterdir()), "逃逸拒绝时不得写入目标目录")
 
     def test_绝对路径拒绝(self):
-        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_"))
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        工作目录 = Path(tempfile.mkdtemp(prefix="快照模板范围_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 工作目录, 忽略失败=真)
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         建临时范围(工作目录)
         结果 = 生成快照清单模板(目标目录, ["/tmp/绝对路径"], 工作目录=工作目录)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "参数无效")
 
     def test_范围目录不存在拒绝(self):
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_"))
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板目标_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         结果 = 生成快照清单模板(目标目录, ["不存在目录"], 工作目录=系统根)
         self.assertFalse(结果["成功"])
         self.assertEqual(结果["错误码"], "参数无效")
@@ -175,7 +203,8 @@ class Test真实核心契约目录(unittest.TestCase):
         真实目录 = next((路径 for 路径 in 候选路径 if 路径.is_dir()), None)
         self.assertIsNotNone(真实目录, f"找不到核心契约目录: {候选路径}")
         范围名称 = 真实目录.relative_to(系统根).as_posix()
-        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板真实_"))
+        目标目录 = Path(tempfile.mkdtemp(prefix="快照模板真实_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目标目录, 忽略失败=真)
         结果 = 生成快照清单模板(目标目录, [范围名称], 工作目录=系统根)
         self.assertTrue(结果["成功"], str(结果))
         self.assertGreater(结果["文件数"], 0)

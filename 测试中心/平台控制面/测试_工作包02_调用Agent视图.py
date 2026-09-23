@@ -19,6 +19,18 @@ if str(系统根) not in sys.path:
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 平台控制面.统一入口 import 统一能力服务
 from 开发工具.统一能力入口.视图.调用Agent视图 import 调用Agent视图
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 def 完整预算() -> dict:
@@ -31,7 +43,8 @@ class Test调用Agent视图(unittest.TestCase):
     """调用Agent视图：注册身份 → 引导授予 调用Agent → 切换角色 → 真实四操作。"""
 
     def setUp(self):
-        self.目录 = Path(tempfile.mkdtemp(prefix="视图02测试_"))
+        self.目录 = Path(tempfile.mkdtemp(prefix="视图02测试_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.目录, 忽略失败=真)
         self.服务 = 统一能力服务(self.目录)
         self.视图 = 调用Agent视图(self.服务)
         self.令牌 = self.服务.授权.注册身份(身份id="调用Agent1")

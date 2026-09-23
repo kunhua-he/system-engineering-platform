@@ -20,6 +20,19 @@ if str(系统根) not in sys.path:
 from 公共契约.基础类型.结果类型 import 结果
 from 模块库.能力目录 import 搜索能力, 读取能力, 注册能力
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 搜索能力id = "能力目录.搜索能力"
 读取能力id = "能力目录.读取能力"
 旧实现字段 = (
@@ -307,7 +320,8 @@ class 搜索能力测试(能力目录测试基类):
         坏文 = 原文.replace(
             锚, "        起点 = 编号表.index(锚点id) + 2  # 反向实验：偏移量 + 故意漏一项")
 
-        临时目录 = Path(tempfile.mkdtemp(prefix="能力目录反向_", dir="/tmp"))
+        临时目录 = Path(tempfile.mkdtemp(prefix="能力目录反向_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时目录, 忽略失败=真)
         副本路径 = 临时目录 / "能力目录_反向实验.py"
         副本路径.write_text(坏文, encoding="utf-8")
         规格 = importlib.util.spec_from_file_location("能力目录_反向实验", 副本路径)

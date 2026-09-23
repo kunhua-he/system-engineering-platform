@@ -19,6 +19,19 @@ from 支持库.后端.组件规范支持库 import (
 )
 
 系统根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 Pillow包 = 系统根 / "支持库" / "适配层" / "Pillow提供者"
 
 
@@ -26,7 +39,8 @@ class Test说明书生成器(unittest.TestCase):
     """说明书生成器闭环测试。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         self.输出根 = self.临时 / "输出"
         self.输出根.mkdir()
 

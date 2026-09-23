@@ -20,6 +20,18 @@ if str(系统根) not in sys.path:
 from 项目适配层.依赖锁定.依赖锁定 import 生成依赖锁定
 from 项目适配层.依赖锁定.传递闭包 import 校验传递闭包
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 def _写项目声明(项目根: Path, 支持库绑定: list, 模块绑定: list) -> None:
@@ -103,7 +115,8 @@ class Test传递闭包正向(unittest.TestCase):
         self.assertGreaterEqual(结果.包数量, 3)
 
     def test_临时项目第三方提供者闭包通过(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包正向_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包正向_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         项目根 = 临时根 / "项目"
         _写项目声明(项目根, [{"包id": "支持库.后端.文档转换支持库.PDF隔离提供者", "版本约束": ">=1.0.0"}], [])
         生成结果 = 生成依赖锁定(项目根, 系统根)
@@ -114,7 +127,8 @@ class Test传递闭包正向(unittest.TestCase):
 
 class Test传递闭包缺项(unittest.TestCase):
     def test_锁内无能力提供者失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包缺项_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包缺项_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         项目根 = 临时根 / "项目"
         _写项目声明(项目根, [], [{"包id": "模块库.文件管理", "版本约束": ">=1.0.0"}])
         _写锁(项目根, [_锁条目("模块库.文件管理")])
@@ -137,7 +151,8 @@ class Test传递闭包缺项(unittest.TestCase):
 
 class Test传递闭包多余项(unittest.TestCase):
     def test_闭包含未声明包失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包多余_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包多余_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         项目根 = 临时根 / "项目"
         _写项目声明(项目根, [{"包id": "支持库.后端.文件系统支持库.文件操作", "版本约束": ">=1.0.0"}], [])
         _写锁(项目根, [
@@ -160,7 +175,8 @@ class Test传递闭包多余项(unittest.TestCase):
 
 class Test传递闭包版本漂移(unittest.TestCase):
     def test_声明约束与锁定版本不符失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包漂移_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包漂移_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         项目根 = 临时根 / "项目"
         _写项目声明(项目根, [{"包id": "支持库.后端.文件系统支持库.文件操作", "版本约束": ">=2.0.0"}], [])
         _写锁(项目根, [_锁条目("支持库.后端.文件系统支持库.文件操作", 版本="1.0.0")])
@@ -173,7 +189,8 @@ class Test传递闭包版本漂移(unittest.TestCase):
         )
 
     def test_锁内版本与能力定义版本不符失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包漂移_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包漂移_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         项目根 = 临时根 / "项目"
         提供者id = "支持库.后端.数据库连接支持库.SQLite数据库"
         # 期望现读：能力定义版本从 能力定义.json 现场读取，不写死版本号
@@ -214,7 +231,8 @@ class Test传递闭包版本漂移(unittest.TestCase):
 
 class Test传递闭包循环依赖(unittest.TestCase):
     def test_依赖环失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包循环_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包循环_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         _写迷你循环根(临时根)
         项目根 = 临时根 / "项目"
         _写项目声明(
@@ -233,7 +251,8 @@ class Test传递闭包循环依赖(unittest.TestCase):
 
 class Test传递闭包提供者锁(unittest.TestCase):
     def test_提供者锁缺失失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包锁缺失_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包锁缺失_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         _写迷你系统根(临时根)
         项目根 = 临时根 / "项目"
         _写项目声明(
@@ -252,7 +271,8 @@ class Test传递闭包提供者锁(unittest.TestCase):
         )
 
     def test_提供者锁为空失败(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包锁空_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包锁空_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         _写迷你系统根(临时根, 空提供者锁=真)
         项目根 = 临时根 / "项目"
         _写项目声明(
@@ -273,7 +293,8 @@ class Test传递闭包提供者锁(unittest.TestCase):
         )
 
     def test_问题清单稳定排序(self):
-        临时根 = Path(tempfile.mkdtemp(prefix="闭包排序_"))
+        临时根 = Path(tempfile.mkdtemp(prefix="闭包排序_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
         项目根 = 临时根 / "项目"
         _写项目声明(项目根, [], [{"包id": "模块库.文件管理", "版本约束": ">=1.0.0"}])
         _写锁(项目根, [_锁条目("模块库.文件管理")])

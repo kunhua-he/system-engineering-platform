@@ -42,6 +42,18 @@ from 开发工具.统一能力入口.视图.普通用户视图 import 错误码�
 from 开发工具.统一能力入口.视图.调用Agent视图 import (
     错误说明表, 建议操作表, 调用Agent视图)
 from 平台控制面.统一入口 import 统一能力服务
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 # ---- 视图 → 该视图对外暴露的稳定操作（码集从 操作契约 运行时取，不写死码）----
 视图操作 = {
@@ -301,7 +313,8 @@ class Test真实调用码命中专属建议(基类):
 
     @classmethod
     def setUpClass(cls):
-        cls.目录 = Path(tempfile.mkdtemp(prefix="视图错误码键一致_"))
+        cls.目录 = Path(tempfile.mkdtemp(prefix="视图错误码键一致_", dir=受管临时根))
+        cls.addClassCleanup(清只读后删除树, cls.目录, 忽略失败=真)
         cls.服务 = 统一能力服务(cls.目录)
         cls.预算 = 完整预算()
         for 能力id in ("计算.求值", "无提供者.能力", "炸.能力", "超时.能力"):

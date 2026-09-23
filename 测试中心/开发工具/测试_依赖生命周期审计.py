@@ -19,6 +19,19 @@ if str(系统根) not in sys.path:
 from 支持库.后端.组件规范支持库 import 生成完整性摘要
 from 开发工具.依赖生命周期审计.审计核心 import 审计单个提供者, 审计全部
 from 运行核心.依赖防火墙 import 审计依赖
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 包id = "支持库.适配层.示例提供者"
 
@@ -102,20 +115,23 @@ class Test依赖与生命周期审计(unittest.TestCase):
     """合法提供者零违规；各类违规样本真实检出。"""
 
     def test_合法提供者零违规(self):
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造合法提供者(目录)
         结果 = 审计单个提供者(提供者目录)
         self.assertTrue(结果.是否通过, f"合法提供者不应违规: {结果.违规列表}")
 
     def test_缺依赖锁检出(self):
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造合法提供者(目录)
         (提供者目录 / "依赖锁.json").unlink()
         结果 = 审计单个提供者(提供者目录)
         self.assertTrue(any("缺依赖锁" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
 
     def test_混装检出(self):
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造合法提供者(目录)
         数据 = json.loads((提供者目录 / "依赖锁.json").read_text(encoding="utf-8"))
         数据["包"].append({"名称": "另一个第三方", "版本": "1.0.0"})
@@ -125,7 +141,8 @@ class Test依赖与生命周期审计(unittest.TestCase):
         self.assertTrue(any("混装" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
 
     def test_摘要漂移检出(self):
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造合法提供者(目录)
         (提供者目录 / "实现" / "提供者.py").write_text(
             "def 执行任务(请求):\n    return 请求 + 1\n\n\ndef 停止():\n    pass\n",
@@ -134,7 +151,8 @@ class Test依赖与生命周期审计(unittest.TestCase):
         self.assertTrue(any("摘要漂移" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
 
     def test_缺健康探针与缺停止入口检出(self):
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造合法提供者(目录)
         (提供者目录 / "能力定义.json").write_text(json.dumps({
             "包id": 包id, "版本": "1.0.0",
@@ -148,7 +166,8 @@ class Test依赖与生命周期审计(unittest.TestCase):
 
     def test_生命周期契约入口与身份篡改检出(self):
         """契约不能靠任意非空文本假绿：入口必须存在且提供者身份必须匹配。"""
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造合法提供者(目录)
         (提供者目录 / "实现" / "提供者.py").write_text(
             "def 执行任务(请求):\n    return 请求\n", encoding="utf-8")
@@ -169,14 +188,16 @@ class Test依赖与生命周期审计(unittest.TestCase):
 
     def test_转调壳指向的适配层腿算本提供者证据(self):
         """正样本：函数定义全在适配层腿，判据跟得进转调壳 ⇒ 不判缺停止入口/释放策略不符。"""
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造转调壳提供者(目录, 腿含停止函数=True, 腿含进程组证据=True)
         结果 = 审计单个提供者(提供者目录)
         self.assertTrue(结果.是否通过, f"转调壳 + 腿有证据不应违规: {结果.违规列表}")
 
     def test_转调壳指向空腿仍判缺停止入口(self):
         """反向验证：壳跟随不是「一律放行」——腿里没有停止函数/资源证据时仍判红。"""
-        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_"))
+        目录 = Path(tempfile.mkdtemp(prefix="依赖审计_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         提供者目录 = 构造转调壳提供者(目录, 腿含停止函数=False, 腿含进程组证据=False)
         结果 = 审计单个提供者(提供者目录)
         self.assertTrue(any("缺停止入口" in 违规 for 违规 in 结果.违规列表), 结果.违规列表)
@@ -195,7 +216,8 @@ class Test依赖与生命周期审计(unittest.TestCase):
         from 运行核心 import 依赖防火墙
         旧根 = 依赖防火墙.系统根
         try:
-            临时根 = Path(tempfile.mkdtemp(prefix="依赖防火墙_"))
+            临时根 = Path(tempfile.mkdtemp(prefix="依赖防火墙_", dir=受管临时根))
+            self.addCleanup(清只读后删除树, 临时根, 忽略失败=真)
             (临时根 / "运行核心").mkdir()
             (临时根 / "测试中心").mkdir()
             (临时根 / "运行核心" / "坏.py").write_text("import importlib\n模块名 = input()\nimportlib.import_module(模块名)\n", encoding="utf-8")

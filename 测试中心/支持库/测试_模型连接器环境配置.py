@@ -35,6 +35,19 @@ from 支持库.后端.大语言模型支持库.模型连接器.实现.环境配�
     加载环境配置,
     查询环境配置,
 )
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 class 环境值非数值兜底(unittest.TestCase):
@@ -63,7 +76,9 @@ class 环境值非数值兜底(unittest.TestCase):
         self.assertEqual(0.55, 结果.值["配置摘要"]["内存安全阈值"])
 
     def test_环境文件里的非数值同样兜底(self):
-        环境文件 = Path(tempfile.mkdtemp(prefix="环境配置_")) / "本机.env"
+        环境根 = tempfile.mkdtemp(prefix="环境配置_", dir=受管临时根)
+        环境文件 = Path(环境根) / "本机.env"
+        self.addCleanup(清只读后删除树, 环境根, 忽略失败=真)
         环境文件.write_text("MODEL_MEMORY_SAFE_RATIO=不是数\nDEFAULT_CONTEXT_LENGTH=也不是数\n",
                        encoding="utf-8")
         结果 = 加载环境配置(str(环境文件))

@@ -37,6 +37,18 @@ from 运行核心.环境指纹 import 计算环境指纹, 生成证据记录, �
 from 支持库.适配层.系统探针 import 检查系统工具, 探针结果
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
+受管仓库根 = Path(__file__).resolve().parents[2]
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 macOSsoffice路径 = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
 
 
@@ -231,7 +243,8 @@ class Test版本漂移(unittest.TestCase):
     """锁版本（证据记录指纹）vs 探针版本不符 → 校验证据有效 失败。"""
 
     def test_探针版本漂移证据失效(self):
-        临时 = Path(tempfile.mkdtemp())
+        临时 = Path(tempfile.mkdtemp(prefix="版本漂移_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时, 忽略失败=真)
         证据文件 = 临时 / "证据.json"
         锁定目录 = 临时 / "锁定"
         漂移目录 = 临时 / "漂移"
@@ -257,7 +270,8 @@ class Test版本漂移(unittest.TestCase):
 
     def test_探针失败后证据失效不伪造(self):
         """探针失败（版本变失败标记）→ 指纹变化 → 证据失效。"""
-        临时 = Path(tempfile.mkdtemp())
+        临时 = Path(tempfile.mkdtemp(prefix="版本漂移_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 临时, 忽略失败=真)
         证据文件 = 临时 / "证据.json"
         成功目录 = 临时 / "成功"
         失败目录 = 临时 / "失败"

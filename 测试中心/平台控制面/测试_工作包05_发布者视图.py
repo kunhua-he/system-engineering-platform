@@ -17,13 +17,26 @@ from 平台控制面.统一入口 import 统一能力服务
 from 平台控制面.授权 import 发布者
 from 支持库.适配层 import 生成密钥对
 from 开发工具.统一能力入口.视图.发布者视图 import 发布者视图
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 class Test发布者视图(unittest.TestCase):
     """发布者视图：完整发布工作流与真实签名失效校验。"""
 
     def setUp(self):
-        self.目录 = Path(tempfile.mkdtemp(prefix="发布者视图测试_"))
+        self.目录 = Path(tempfile.mkdtemp(prefix="发布者视图测试_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.目录, 忽略失败=真)
         self.服务 = 统一能力服务(self.目录)
         self.身份id = "发布者1"
         self.令牌 = self.服务.授权.注册身份(身份id=self.身份id)

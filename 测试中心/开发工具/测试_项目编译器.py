@@ -12,6 +12,20 @@ from 开发工具.项目编译.项目编译器 import _解析依赖闭包, 编�
 from 开发工具.项目编译.正式包索引 import 构建索引, 校验能力引用, 校验显式包引用, 解析依赖闭包
 from 开发工具.快速编译.运行快速编译 import _全局能力所有者
 
+受管仓库根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 
 def _包(包id: str, 依赖: list | None = None, 能力: list | None = None) -> tuple[Path, dict]:
     return Path("/虚拟") / 包id, {
@@ -61,7 +75,8 @@ class 测试项目编译器(unittest.TestCase):
             校验能力引用(Path.cwd(), "_模板.示例能力")
 
     def test_项目引用模板_fail_closed(self):
-        根 = Path(tempfile.mkdtemp(prefix="项目编译器模板阻断_"))
+        根 = Path(tempfile.mkdtemp(prefix="项目编译器模板阻断_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 根, 忽略失败=真)
         (根 / "后端").mkdir()
         (根 / "项目声明.json").write_text(
             json.dumps({"项目id": "测试.模板阻断"}, ensure_ascii=False), encoding="utf-8"
@@ -95,7 +110,8 @@ class 测试项目编译器(unittest.TestCase):
             _解析依赖闭包({"支持库.包1": _包("支持库.包1", [{"包id": "支持库.不存在"}])}, {}, {}, {"支持库.包1"}, set())
 
     def test_新鲜制品启动入口不写pyc(self):
-        根 = Path(tempfile.mkdtemp(prefix="项目编译器工作包_"))
+        根 = Path(tempfile.mkdtemp(prefix="项目编译器工作包_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 根, 忽略失败=真)
         制品 = 根 / "制品"
         编译项目(Path("示例项目/可双击演示/开发文件夹"), 制品)
         锁 = json.loads((制品 / "依赖锁.json").read_text(encoding="utf-8"))

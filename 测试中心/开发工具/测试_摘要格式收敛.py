@@ -21,11 +21,38 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 支持库.后端.组件规范支持库 import 生成完整性摘要, 校验完整性摘要
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
+#: 模块级临时夹具登记：本模块的夹具**在模块级 helper 里**造（helper 拿不到 TestCase 实例，
+#: 用不了 `self.addCleanup`）⇒ 走 unittest 的**模块级收尾钩子** `tearDownModule` 登记清理
+#: （同样「用例失败也跑」）。拿得到用例实例的站点一律用 `self.addCleanup`。
+_临时夹具登记: list[Path] = []
+
+
+def tearDownModule() -> None:
+    """模块收尾：清理本模块造在 `受管临时根` 下的全部夹具（**用例失败也跑**）。"""
+    for 夹具 in _临时夹具登记:
+        清只读后删除树(夹具, 忽略失败=真)
+    _临时夹具登记.clear()
+
 
 
 def 建临时包(包id: str = "收敛.包", 版本: str = "1.0.0") -> tuple[Path, Path]:
     """构造一个带包声明与两个文件的临时包目录。"""
-    目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛_"))
+    目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛_", dir=受管临时根))
+    _临时夹具登记.append(目录)
     (目录 / "包声明.json").write_text(json.dumps({
         "包id": 包id, "版本": 版本, "类型": "支持库",
     }, ensure_ascii=False), encoding="utf-8")
@@ -162,7 +189,8 @@ class Test组件规范委托唯一生成器(unittest.TestCase):
 
     def test_组件规范生成器产出文件清单格式(self):
         from 支持库.后端.组件规范支持库 import 生成并写入完整性摘要 as 组件规范生成
-        目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛规范_"))
+        目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛规范_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         (目录 / "包声明.json").write_text(json.dumps({
             "包id": "收敛.规范", "版本": "2.0.0", "类型": "支持库",
         }, ensure_ascii=False), encoding="utf-8")
@@ -192,7 +220,8 @@ class Test组件合规委托唯一校验器(unittest.TestCase):
     """组件合规 13 项中的完整性摘要场景必须经唯一校验器。"""
 
     def _建合规包(self) -> Path:
-        目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛合规_"))
+        目录 = Path(tempfile.mkdtemp(prefix="摘要格式收敛合规_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         (目录 / "包声明.json").write_text(json.dumps({
             "包id": "收敛.合规", "版本": "1.0.0", "类型": "支持库",
             "入口": "实现/入口.py",

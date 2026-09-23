@@ -36,6 +36,17 @@ from 运行核心.统一网关.停机编排 import (
     launchd退出超时建议, 默认排空上限秒, 默认排空复查窗口秒,
 )
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 
 class 慢服务夹具:
     """起一个真 HTTP 服务，并能把某个请求的工作线程**真实占住**。"""
@@ -311,7 +322,9 @@ class 退出超时建议用例(unittest.TestCase):
                            "缺省 ExitTimeOut 只有 20 秒，与排空上限同量级 ⇒ 长请求必被 SIGKILL")
 
     def test_未声明ExitTimeOut的plist按未配置处理(self):
-        路径 = Path(tempfile.mkdtemp()) / "无退出超时.plist"
+        根 = Path(tempfile.mkdtemp(prefix="退出超时_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 根, 忽略失败=真)
+        路径 = 根 / "无退出超时.plist"
         路径.write_text("<plist><dict><key>Label</key></dict></plist>", encoding="utf-8")
         self.assertFalse(已配置退出超时(str(路径)))
         声明后 = 路径.with_name("有退出超时.plist")

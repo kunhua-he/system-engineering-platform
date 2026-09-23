@@ -27,6 +27,15 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时 import 进程终止, 平台适配
 from 支持库.后端.办公文档支持库.文字文档 import 解析文字文档
 
+#: ★ 受管临时根（仓库内**固定排除目录** `工程缓存/` 下）—— LibreOffice **私有档案**的落点。
+#: 2026-09-23 收口：原写法把 `dir=` 指向 `输出目录.parent`，而 `输出目录` 是**函数形参**，
+#: 判据一静态解析不出（落进 `测试写入-写动作未解析`）；且裸 `mkdtemp()` 的落点由测试运行时的
+#: `TMPDIR` 决定（平台跑测试时被指进仓库工作目录）。显式指向 `工程缓存/` 后：落点与运行环境
+#: 解耦、判据一判「受管写」，即便被 SIGKILL 残留也进不了工作区指纹。档案由 `finally` 里的
+#: `shutil.rmtree` 清理。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 默认soffice路径 = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
 
 
@@ -52,7 +61,7 @@ def _转换办公文件(源: Path, 输出目录: Path, 目标格式: str, *,
         return None
     目标 = 输出目录 / f"{源.stem}.{目标格式}"
     for 第几次 in range(1, 尝试次数 + 1):
-        档案 = Path(tempfile.mkdtemp(prefix=f"私有档案_{第几次}_", dir=str(输出目录.parent)))
+        档案 = Path(tempfile.mkdtemp(prefix=f"私有档案_{第几次}_", dir=受管临时根))
         try:
             # 目标与源不同名、且每轮先清目标：LibreOffice 遇到已存在的同名目标会拒绝覆盖
             if 目标.exists():

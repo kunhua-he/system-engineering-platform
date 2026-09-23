@@ -38,6 +38,32 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 from 支持库.后端.网络通信支持库.请求 import 发送请求, 下载文件  # noqa: E402
 
 系统根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
+#: 模块级临时夹具登记：本模块的夹具**在模块级 helper 里**造（helper 拿不到 TestCase 实例，
+#: 用不了 `self.addCleanup`）⇒ 走 unittest 的**模块级收尾钩子** `tearDownModule` 登记清理
+#: （同样「用例失败也跑」）。拿得到用例实例的站点一律用 `self.addCleanup`。
+_临时夹具登记: list[Path] = []
+
+
+def tearDownModule() -> None:
+    """模块收尾：清理本模块造在 `受管临时根` 下的全部夹具（**用例失败也跑**）。"""
+    for 夹具 in _临时夹具登记:
+        清只读后删除树(夹具, 忽略失败=真)
+    _临时夹具登记.clear()
+
 #: 修复前的实现（校验一次、连接时 urllib 再解析一次 ⇒ 重绑定可生效）。
 修复前基线 = "a95e48de^"
 
@@ -69,7 +95,9 @@ def 加载修复前实现():
     源码 = subprocess.run(
         ["git", "show", f"{修复前基线}:支持库/后端/网络通信支持库/请求/实现/网络请求.py"],
         cwd=str(系统根), capture_output=True, text=True, check=True).stdout
-    临时 = Path(tempfile.mkdtemp(prefix="SSRF反向验证_")) / "修复前网络请求.py"
+    夹具根 = Path(tempfile.mkdtemp(prefix="SSRF反向验证_", dir=受管临时根))
+    _临时夹具登记.append(夹具根)
+    临时 = 夹具根 / "修复前网络请求.py"
     临时.write_text(源码, encoding="utf-8")
     规格 = importlib.util.spec_from_file_location("修复前网络请求", 临时)
     if 规格 is None or 规格.loader is None:
@@ -183,7 +211,9 @@ class TestSSRF拒漂移(SSRF绑定夹具):
 
     def test_下载文件_重绑定后不得落盘(self) -> None:
         受害 = self.起受害服务("下载受害者机密文件")
-        保存路径 = str(Path(tempfile.mkdtemp(prefix="SSRF落盘_")) / "机密.bin")
+        落盘根 = tempfile.mkdtemp(prefix="SSRF落盘_", dir=受管临时根)
+        保存路径 = str(Path(落盘根) / "机密.bin")
+        self.addCleanup(清只读后删除树, 落盘根, 忽略失败=真)
         self.登记攻击者()
 
         结果 = 下载文件(地址=f"http://{攻击者主机名}:{受害.端口}/机密.bin",

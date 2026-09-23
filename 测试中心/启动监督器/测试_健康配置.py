@@ -28,6 +28,29 @@ from 启动监督器.健康监督 import (
 )
 from 支持库.适配层.系统探针 import 探针结果
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
+受管仓库根 = Path(__file__).resolve().parents[2]
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
+#: 模块级临时夹具登记：夹具在模块级 helper 里造（helper 拿不到 TestCase 实例，
+#: 用不了 `self.addCleanup`）⇒ 走 unittest 模块级收尾钩子 `tearDownModule` 登记清理。
+_临时夹具登记: list[Path] = []
+
+
+def tearDownModule() -> None:
+    """模块收尾：清理本模块造在 `受管临时根` 下的全部夹具（**用例失败也跑**）。"""
+    for 夹具 in _临时夹具登记:
+        清只读后删除树(夹具, 忽略失败=真)
+    _临时夹具登记.clear()
+
 
 def _成功探针函数(调用记录: list | None = None):
     """可控探针：成功返回，记录调用（测试注入，生产代码不用）。"""
@@ -51,8 +74,10 @@ def _失败探针函数() -> None:
 
 
 def _临时证据文件() -> Path:
-    """临时目录下的健康证据文件（每个用例独立）。"""
-    return Path(tempfile.mkdtemp()) / "健康证据.jsonl"
+    """受管临时根下的健康证据文件（每个用例独立）；模块收尾统一清理。"""
+    根 = Path(tempfile.mkdtemp(prefix="健康证据_", dir=受管临时根))
+    _临时夹具登记.append(根)
+    return 根 / "健康证据.jsonl"
 
 
 class Test健康配置覆盖(unittest.TestCase):

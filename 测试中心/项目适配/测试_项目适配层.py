@@ -27,11 +27,24 @@ from 项目适配层.项目声明.项目声明 import 加载项目声明, 写入
 from 项目适配层.运行入口.项目入口 import 项目入口
 from 项目适配层.支持库绑定.支持库绑定 import 校验绑定 as 校验支持库
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 class Test项目初始化(unittest.TestCase):
     def test_创建完整骨架(self):
-        临时目录 = tempfile.mkdtemp(prefix="适配层测试_")
+        临时目录 = tempfile.mkdtemp(prefix="适配层测试_", dir=受管临时根)
+        self.addCleanup(清只读后删除树, 临时目录, 忽略失败=真)
         项目根 = 创建项目(临时目录, "测试项目", "测试项目.初始化")
         self.assertTrue((项目根 / "项目声明.json").is_file())
         self.assertTrue((项目根 / "依赖声明.json").is_file())
@@ -40,7 +53,8 @@ class Test项目初始化(unittest.TestCase):
             self.assertTrue((项目根 / 子目录).is_dir(), f"缺少 {子目录}")
 
     def test_重复创建幂等(self):
-        临时目录 = tempfile.mkdtemp(prefix="适配层测试_")
+        临时目录 = tempfile.mkdtemp(prefix="适配层测试_", dir=受管临时根)
+        self.addCleanup(清只读后删除树, 临时目录, 忽略失败=真)
         项目根1 = 创建项目(临时目录, "幂等项目")
         项目根2 = 创建项目(临时目录, "幂等项目")
         声明1 = (项目根1 / "项目声明.json").read_text(encoding="utf-8")
@@ -50,7 +64,8 @@ class Test项目初始化(unittest.TestCase):
 
 class Test项目声明(unittest.TestCase):
     def test_读写往返(self):
-        临时目录 = tempfile.mkdtemp(prefix="适配层测试_")
+        临时目录 = tempfile.mkdtemp(prefix="适配层测试_", dir=受管临时根)
+        self.addCleanup(清只读后删除树, 临时目录, 忽略失败=真)
         项目根 = 创建项目(临时目录, "声明项目", "测试项目.声明")
         声明 = 加载项目声明(项目根 / "项目声明.json")
         self.assertEqual(声明.项目名称, "声明项目")

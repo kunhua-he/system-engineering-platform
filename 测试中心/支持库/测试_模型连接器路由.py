@@ -12,10 +12,28 @@ from pathlib import Path
 
 from 支持库.后端.大语言模型支持库.模型连接器 import 记录模型调用, 汇总模型表现, 选择模型
 
+受管仓库根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 
 class 用量测试基类(unittest.TestCase):
     def setUp(self):
-        self.库 = str(Path(tempfile.mkdtemp()) / "用量.db")
+        # 清理目标必须是 `mkdtemp` 造的**根目录**本身：只删派生的 `用量.db`
+        # 会把根目录留在受管临时根下（同款实测泄漏见 `环境配置_*`）。
+        库根 = tempfile.mkdtemp(dir=受管临时根)
+        self.库 = str(Path(库根) / "用量.db")
+        self.addCleanup(清只读后删除树, 库根, 忽略失败=真)
 
     def 造数据(self):
         """快稳云模型：4 次全成功、快、便宜；慢贵本地模型：4 次只成功 1 次、慢、贵。"""
@@ -219,7 +237,8 @@ class 测试_选择模型硬门槛(用量测试基类):
 
 class 测试_参考路径(用量测试基类):
     def test_给了参考路径产生命中诊断(self):
-        目录 = Path(tempfile.mkdtemp())
+        目录 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         (目录 / "词表.txt").write_text("内部项目\n未公开品牌\n", encoding="utf-8")
         r = 选择模型(候选清单=["快稳云模型"], 任务描述="处理内部项目的资料",
                    参考路径=str(目录 / "词表.txt"), 数据库路径=self.库)
@@ -232,14 +251,16 @@ class 测试_参考路径(用量测试基类):
 
     def test_换成普通词表机制同样可用(self):
         """★ 证明它是「通用外部规则输入」，不是隐私专用件。"""
-        目录 = Path(tempfile.mkdtemp())
+        目录 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         (目录 / "品牌词表.txt").write_text("俏小喵\n", encoding="utf-8")
         r = 选择模型(候选清单=["快稳云模型"], 任务描述="写俏小喵的种草文案",
                    参考路径=str(目录 / "品牌词表.txt"), 数据库路径=self.库)
         self.assertTrue(any("参考路径命中" in x for x in r.值["诊断"]))
 
     def test_支持文件夹(self):
-        目录 = Path(tempfile.mkdtemp())
+        目录 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, 目录, 忽略失败=真)
         (目录 / "a.txt").write_text("关键词快稳云模型\n", encoding="utf-8")
         r = 选择模型(候选清单=["快稳云模型"], 任务描述="含关键词快稳云模型的活", 参考路径=str(目录), 数据库路径=self.库)
         self.assertTrue(r.成功, r.错误说明)

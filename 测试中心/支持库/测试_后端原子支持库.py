@@ -23,10 +23,24 @@ from 支持库.后端.数据操作支持库.数据交换 import 反序列化CSV,
 from 支持库.后端.数据操作支持库.文本处理 import 按行分割, 查找文本, 去空白, 分割文本, 替换文本, 统计长度, 转大写
 from 支持库.后端.数据操作支持库.时间日期 import 解析文本时间, 时间戳转换, 格式化为文本, 获取当前时间, 计算间隔
 
+受管仓库根 = Path(__file__).resolve().parents[2]
+from 公共契约.运行时.平台适配 import 清只读后删除树
+
+#: ★ A 档泄漏收口（2026-09-23）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`（本类用例常造
+#: `0o555` 目录 / `0o444` 文件，plain `shutil.rmtree` 会被权限位挡住）。
+受管临时根 = 受管仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
 
 class Test文件系统(unittest.TestCase):
     def setUp(self):
-        self.临时目录 = tempfile.mkdtemp(prefix="测试_文件系统_")
+        self.临时目录 = tempfile.mkdtemp(prefix="测试_文件系统_", dir=受管临时根)
+        self.addCleanup(清只读后删除树, self.临时目录, 忽略失败=真)
 
     def test_写入读取往返(self):
         路径 = str(Path(self.临时目录) / "往返.txt")
