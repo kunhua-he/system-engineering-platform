@@ -41,6 +41,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.导入前缀 import 取系统根
 from 公共契约.运行时.平台适配 import 解析路径
 
 清单文件名 = "模型制品清单.json"
@@ -107,19 +108,36 @@ def _定位根(定位方式: str, 系统根: Path | None, 环境: Mapping[str, s
     return None
 
 
-def _规范化(路径: str | Path) -> Path:
-    """统一解析：相对路径按生效根拼，再 resolve（多写法等价，判定不随写法变）。
+def _定位项目根() -> Path:
+    """向上定位项目根：判据本体在 `公共契约/运行时/导入前缀.取系统根`（唯一实现）。
 
-    「相对 → 绝对」转调 `公共契约.运行时.平台适配.解析路径`（全平台唯一那条腿：
-    生效根 = 环境变量 `系统平台_项目根` → 进程 cwd）—— **本函数不自带 `is_absolute()`
-    分支、不自己按 cwd 拼根。**（`条目绝对路径` 那一支传进来的已经是绝对路径，原样返回。）
+    本函数只转调共享判据，不自己按 `parents[N]` 推根（层数写法在目录结构一动就静默
+    指错树）；找不到锚目录即 `ImportError`（fail-closed），绝不返回猜出来的根。
     """
-    return Path(解析路径(str(路径))).resolve()
+    return 取系统根(__file__)
+
+
+def _规范化(路径: str | Path, 根: Path | str | None = None) -> Path:
+    """统一解析：相对路径按**显式生效根**拼，再 resolve（多写法等价，判定不随写法变）。
+
+    「相对 → 绝对」转调 `公共契约.运行时.平台适配.解析路径`（全平台唯一那条腿）——
+    **本函数不自带 `is_absolute()` 分支、不自己按 cwd 拼根**，也**不把根留空**转交
+    `解析路径` 的三级兜底（「环境变量 `系统平台_项目根` → 进程 cwd」：网关跑制品时
+    进程 cwd 就是制品根，相对路径会静默落到另一棵树而不报错 —— 2026-09-24 修根）。
+    故根一律由调用方**显式**给出（`_定位项目根()`，或调用方现场已知的模型根 / 项目根）；
+    **留空即「参数不合法」**，当场报错也不替调用方猜一棵树。
+    （`条目绝对路径` 那一支传进来的已经是绝对路径，原样返回。）
+    """
+    if not isinstance(根, (str, Path)) or not str(根).strip():
+        raise ValueError(
+            "参数不合法：生效根不能留空；相对路径要一个非空根"
+            "（`_定位项目根()`，或调用方现场已知的模型根 / 项目根），不按进程 cwd 解析")
+    return Path(解析路径(str(路径), 根)).resolve()
 
 def 在受管模型根内(路径: str | Path, 环境: Mapping[str, str] | None = None) -> bool:
     """判断路径是否位于受管模型库根之下（等价写法归一后按「根 + 分隔符」前缀比）。"""
     模型根 = 解析模型根(环境)
-    目标 = _规范化(路径)
+    目标 = _规范化(路径, _定位项目根())
     return 目标 == 模型根 or 目标.is_relative_to(模型根)
 
 
@@ -195,7 +213,7 @@ def 条目绝对路径(条目: dict[str, Any], 系统根: Path | None = None,
     根 = _定位根(str(条目.get("定位方式") or ""), 系统根, 环境)
     if 根 is None:
         return None
-    return _规范化(根 / str(条目["相对路径"]))
+    return _规范化(根 / str(条目["相对路径"]), 根)
 
 
 def 全部条目() -> list[dict[str, Any]]:
@@ -207,7 +225,7 @@ def 查找条目(目标路径: str | Path, 系统根: Path | None = None,
              清单路径: str | Path | None = None,
              环境: Mapping[str, str] | None = None) -> dict[str, Any] | None:
     """按真实绝对路径查清单条目（相对/绝对/含 `..` 等写法一律先 resolve 再比）。"""
-    目标 = _规范化(目标路径)
+    目标 = _规范化(目标路径, _定位项目根())
     for 条目 in 读取清单(清单路径):
         if 条目绝对路径(条目, 系统根, 环境) == 目标:
             return 条目
@@ -218,7 +236,7 @@ def 相关条目(目录: str | Path, 系统根: Path | None = None,
              清单路径: str | Path | None = None,
              环境: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     """取「模型目录命中该目录（含子目录）」的清单条目 —— 目录型模型（HF/Whisper）按此校验。"""
-    目录绝对 = _规范化(目录)
+    目录绝对 = _规范化(目录, _定位项目根())
     命中: list[dict[str, Any]] = []
     for 条目 in 读取清单(清单路径):
         条目路径 = 条目绝对路径(条目, 系统根, 环境)
@@ -261,7 +279,7 @@ def 校验模型文件(路径: str | Path, *, 系统根: Path | None = None,
     顺序固定 **存在性 → 字节数 → sha256**：先否定最便宜、最可能的偏差，
     避免为「文件根本不在」的路径白白算一遍全量哈希。
     """
-    目标 = _规范化(路径)
+    目标 = _规范化(路径, _定位项目根())
     try:
         条目 = 查找条目(目标, 系统根, 清单路径, 环境)
     except ValueError as 错误:
@@ -322,7 +340,7 @@ def 校验模型目录(目录: str | Path, *, 系统根: Path | None = None,
 
     目录内无任何登记制品时按 `_未登记判定` 处置（受管内拒绝、受管外放行并标注）。
     """
-    目录绝对 = _规范化(目录)
+    目录绝对 = _规范化(目录, _定位项目根())
     try:
         命中 = 相关条目(目录绝对, 系统根, 清单路径, 环境)
     except ValueError as 错误:

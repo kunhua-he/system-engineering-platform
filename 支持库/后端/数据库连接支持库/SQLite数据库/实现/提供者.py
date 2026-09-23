@@ -74,12 +74,32 @@ def _校验超时(超时秒: Any) -> str | None:
 
 
 def _打开(数据库路径: str, 超时秒: float) -> sqlite3.Connection:
+    """打开连接（**读路径**）：只设连接级 PRAGMA，不建目录、不切日志模式。
+
+    为什么读路径不做这两件事（2026-09-24 审计，落点二）：
+    - `路径.parent.mkdir(...)`：读一个不存在的目录下的库，本来就该报「打不开」；替调用方把目录
+      建出来，等于读动作改了文件系统。
+    - `PRAGMA journal_mode = WAL`：这是**写进库文件头**的库级设置，切换本身是隐式写事务，还会
+      生成 `-wal`/`-shm` 两个文件；而 WAL 库由文件头自动识别，**读并不需要先切模式**。
+    需要「建目录 + 切 WAL」的写入腿 / 初始化腿请用 `_打开可写`。
+    """
+    连接对象 = sqlite3.connect(str(Path(数据库路径)), timeout=float(超时秒))
+    连接对象.execute("PRAGMA busy_timeout = 5000")
+    连接对象.execute("PRAGMA synchronous = NORMAL")
+    return 连接对象
+
+
+def _打开可写(数据库路径: str, 超时秒: float) -> sqlite3.Connection:
+    """打开连接（**写入腿 / 初始化腿**）：确保父目录存在，并把库切到 WAL 日志模式。
+
+    WAL 是库级持久设置（写进文件头、长期生效），写腿依赖它拿到「读写不互斥」的并发语义
+    （见本包 `生命周期契约.json` 的「并发」条目）；已生效时 `PRAGMA journal_mode` 直接返回原
+    模式、不重复写文件头，故每次写前重申是幂等的。
+    """
     路径 = Path(数据库路径)
     路径.parent.mkdir(parents=True, exist_ok=True)
-    连接对象 = sqlite3.connect(str(路径), timeout=float(超时秒))
-    连接对象.execute("PRAGMA busy_timeout = 5000")
+    连接对象 = _打开(str(路径), float(超时秒))
     连接对象.execute("PRAGMA journal_mode = WAL")
-    连接对象.execute("PRAGMA synchronous = NORMAL")
     return 连接对象
 
 
@@ -92,7 +112,7 @@ def 连接(数据库路径: str, 超时秒: float = 10) -> 结果:
         return _失败(错误码_参数不合法, 问题)
     连接对象 = None
     try:
-        连接对象 = _打开(路径, float(超时秒))
+        连接对象 = _打开可写(路径, float(超时秒))
         连接对象.execute("SELECT 1").fetchone()
         return 结果.成功结果({"已连接": True, "数据库路径": 路径})
     except sqlite3.Error as 错误:
@@ -104,7 +124,11 @@ def 连接(数据库路径: str, 超时秒: float = 10) -> 结果:
 
 def 查询(数据库路径: str, SQL: str, 参数: list | tuple | None = None,
          超时秒: float = 30) -> 结果:
-    """执行只读查询，返回列名到值的行列表。"""
+    """执行只读查询，返回列名到值的行列表。
+
+    只读语义（2026-09-24 审计，落点二）：不建目录、不切 WAL、不建表，纯 SELECT；
+    库或父目录不存在即如实报「查询失败」，不由读动作替调用方创建。
+    """
     路径 = _校验路径(数据库路径)
     if 路径 is None:
         return _失败(错误码_参数不合法, "数据库路径必须是非空文本")
@@ -141,7 +165,7 @@ def 事务执行(数据库路径: str, SQL列表: list, 超时秒: float = 30) -
         return _失败(错误码_参数不合法, "SQL列表 中每项必须是非空文本")
     连接对象 = None
     try:
-        连接对象 = _打开(路径, float(超时秒))
+        连接对象 = _打开可写(路径, float(超时秒))
         连接对象.execute("BEGIN IMMEDIATE")
         for SQL in SQL列表:
             连接对象.execute(SQL)
@@ -257,15 +281,16 @@ def _补齐缺失列(连接对象: sqlite3.Connection, 域: str, 定义: dict) -
             f"ALTER TABLE {_标识符(域)} ADD COLUMN {_标识符(名称)} {_字段类型(名称)}")
 
 
-def _创建运行库表(连接对象: sqlite3.Connection, *, 补齐列: bool = True) -> None:
-    """在已打开连接上幂等创建七个运行态域表及高频索引。
+def _创建运行库表(连接对象: sqlite3.Connection) -> None:
+    """在已打开连接上幂等创建七个运行态域表及高频索引，并给旧表补齐登记字段。
 
     只建 `运行库表定义` 里的域；删域后本函数**不会**删除已有库里的旧表（见模块注释与审计落点清单），
     但会给已存在的旧表补齐本字典新登记的字段（`_补齐缺失列`）。
 
-    `补齐列=False` 用于**只读路径**（`查询运行态`）：读一次库不该改库的表结构——`ALTER TABLE`
-    是写事务，读路径隐式写会在并发读时抢锁、并让「正式库结构变更」发生在没人写数据的时刻
-    （实测踩坑：`查询运行态(域=会话)` 一次就把正式库 `会话` 表补出 9 列）。
+    **只允许写入腿与初始化腿调用**（`写入运行态` / `初始化运行数据库`）：整段是 DDL 隐式写事务，
+    读路径（`查询运行态`）调它就是「读一次库顺带建表/补列」——2026-09-24 审计（落点一）已把该调用
+    从读路径摘掉：缺表就是库没初始化，该如实报「查询失败」，由调用方走初始化腿补齐，读动作不替它建库。
+    （实测踩坑：`查询运行态(域=会话)` 一次就把正式库 `会话` 表补出 9 列。）
     """
     公共字段 = [
         '"id" TEXT PRIMARY KEY', '"创建时间" TEXT NOT NULL',
@@ -278,8 +303,7 @@ def _创建运行库表(连接对象: sqlite3.Connection, *, 补齐列: bool = T
             字段.append(f"{_标识符(名称)} {_字段类型(名称)}")
         连接对象.execute(
             f"CREATE TABLE IF NOT EXISTS {_标识符(域)} ({', '.join(字段)})")
-        if 补齐列:
-            _补齐缺失列(连接对象, 域, 定义)
+        _补齐缺失列(连接对象, 域, 定义)
         for 列名 in 定义["索引"]:
             索引名 = f"索引_{域}_{列名}"
             连接对象.execute(
@@ -296,7 +320,7 @@ def 初始化运行数据库(数据库路径: str, 超时秒: float = 30) -> 结
         return _失败(错误码_参数不合法, 问题)
     连接对象 = None
     try:
-        连接对象 = _打开(路径, float(超时秒))
+        连接对象 = _打开可写(路径, float(超时秒))
         连接对象.execute("BEGIN IMMEDIATE")
         _创建运行库表(连接对象)
         连接对象.commit()
@@ -379,7 +403,7 @@ def 写入运行态(数据库路径: str, 域: str, 记录: dict[str, Any], 超�
     更新 = ",".join(f"{_标识符(列)}=excluded.{_标识符(列)}" for 列 in 列表 if 列 != "id")
     连接对象 = None
     try:
-        连接对象 = _打开(路径, float(超时秒))
+        连接对象 = _打开可写(路径, float(超时秒))
         _创建运行库表(连接对象)
         连接对象.execute(
             f"INSERT INTO {_标识符(域)} ({列名}) VALUES ({占位}) "
@@ -398,7 +422,11 @@ def 写入运行态(数据库路径: str, 域: str, 记录: dict[str, Any], 超�
 
 def 查询运行态(数据库路径: str, 域: str, 条件: dict[str, Any] | None = None,
              限制: int = 100, 超时秒: float = 30) -> 结果:
-    """经唯一 SQLite 入口按域查询运行态；条件仅允许真实表列，避免拼接任意 SQL。"""
+    """经唯一 SQLite 入口按域查询运行态；条件仅允许真实表列，避免拼接任意 SQL。
+
+    **只读语义**（2026-09-24 审计，落点一）：不建目录、不切 WAL、不建表、不补列，只 SELECT；
+    域表不存在（库未初始化）即如实报「查询失败」，不由读动作顺带建表/补列。
+    """
     路径, 问题 = _运行库参数(数据库路径, 域, 超时秒)
     if 问题:
         return _失败(错误码_参数不合法, 问题)
@@ -416,7 +444,6 @@ def 查询运行态(数据库路径: str, 域: str, 条件: dict[str, Any] | Non
     连接对象 = None
     try:
         连接对象 = _打开(路径, float(超时秒))
-        _创建运行库表(连接对象, 补齐列=False)
         游标 = 连接对象.execute(
             f"SELECT * FROM {_标识符(域)} WHERE {where} ORDER BY {_标识符('更新时间')} DESC LIMIT ?",
             [*条件.values(), 限制])

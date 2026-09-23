@@ -342,7 +342,7 @@ def _读取磁盘可用() -> int:
     """
     from pathlib import Path
 
-    锚点 = Path(__file__).resolve().parents[3]  # 支持库/适配层/本文件 → 系统根
+    锚点 = Path(__file__).resolve().parents[3]  # 支持库/适配层/本文件 → 系统根（parents[2]）的上一级
     if not 锚点.is_dir():
         锚点 = Path(__file__).resolve().parent
     try:
