@@ -42,6 +42,7 @@ if str(系统根) not in sys.path:
 import 公共契约.运行时.写入授权 as 写入授权模块
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 仓库只读锁 as 锁
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 公共契约.运行时.写入授权 import 受管相对路径, 校验写入授权
 from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 from 平台控制面.能力目录 import 申请文件租约, 释放文件租约
@@ -63,10 +64,7 @@ class 写入授权夹具(unittest.TestCase):
         self.目标 = self.假仓库 / "目标.py"
         self.目标.write_text("原始内容\n", encoding="utf-8")
         self._设凭证(self.夹具凭证)
-        self.addCleanup(self._清理)
-
-    def _清理(self) -> None:
-        shutil.rmtree(self._临时, ignore_errors=True)
+        self.addCleanup(清只读后删除树, self._临时, 忽略失败=真)
 
     def _设凭证(self, 值: str | None) -> None:
         旧 = os.environ.get("系统库网关凭证")
@@ -93,7 +91,7 @@ class Test写入授权反向三拍(写入授权夹具):
         结果一 = 写入文件(str(self.目标), "第一版\n")
         self.assertFalse(结果一.成功, "无活跃写租约竟然写成功了（判据没接上）")
         self.assertEqual(结果一.错误.错误码, "越界")
-        说明一 = str(结果一.错误.错误说明)
+        说明一 = str(结果一.错误.消息)
         self.assertIn("开工编排.开工即占", 说明一, "失败说明必须给可照抄的合规调用")
         self.assertIn(相对, 说明一, "失败说明必须指出是哪一条路径")
         self.assertEqual(self.目标.read_text(encoding="utf-8"), "原始内容\n",
@@ -109,7 +107,7 @@ class Test写入授权反向三拍(写入授权夹具):
             lambda: 释放文件租约(租约id清单=租约id清单, 原因="回归锁收工",
                                  项目根=str(self.假仓库)))
         结果二 = 写入文件(str(self.目标), "第二版\n")
-        self.assertTrue(结果二.成功, f"补了活跃租约仍被拒：{结果二.错误.错误说明}")
+        self.assertTrue(结果二.成功, f"补了活跃租约仍被拒：{结果二.错误说明}")
         self.assertEqual(self.目标.read_text(encoding="utf-8"), "第二版\n")
 
         # ③ 还原（释放租约）⇒ 必须复红
@@ -137,7 +135,7 @@ class Test非受管放行(写入授权夹具):
             受管, _相对, 理由 = 受管相对路径(str(路径))
             self.assertFalse(受管, f"{名义} 不该被判受管（理由：{理由}）")
             结果 = 写入文件(str(路径), "非受管内容\n")
-            self.assertTrue(结果.成功, f"{名义} 被误拒（假红）：{结果.错误.错误说明}")
+            self.assertTrue(结果.成功, f"{名义} 被误拒（假红）：{getattr(结果.错误, '消息', '')}")
             self.assertEqual(路径.read_text(encoding="utf-8"), "非受管内容\n")
 
     def test_平台自管生成物不受判据约束(self) -> None:
@@ -156,7 +154,7 @@ class Test判据的边界(写入授权夹具):
         写入授权模块.设写租约事实源(None)
         通过, 说明 = 校验写入授权(str(self.目标))
         self.assertFalse(通过, "事实源没注册竟然放行了（fail-open）")
-        self.assertIn("没注册写租约事实源", 说明)
+        self.assertIn("拿不到写租约事实源", 说明)
 
     def test_内核锁窗口不是后门(self) -> None:
         """`临时解锁` 是写腿唯一的开窗动作 ⇒ 无租约时它必须抛，而不是静默开窗。"""

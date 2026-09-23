@@ -42,6 +42,7 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 假, 真
 from 支持库.后端.大语言模型支持库.模型连接器.实现 import 模型供应链校验 as _供应链校验
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时 import 平台适配
 
 from 支持库.后端.大语言模型支持库.模型连接器.实现.模型连接基元 import (
     降级记录表,
@@ -517,7 +518,9 @@ def 读取看守账本(模型路径: str) -> dict:
 
 def _进程启动时刻(进程号: int) -> str:
     """取进程启动时刻（`ps -o lstart=`）；取不到返回空串（不猜测、不伪造）。"""
-    if os.name == "nt":
+    # 平台判断收口（铁律）：`ps` 是 POSIX 取法，Windows 上如实返回空串（不猜测、不伪造）。
+    # 用收口层的**取值型**原语 `当前平台()` 取值后比较，调用点不再裸读平台标志。
+    if 平台适配.当前平台() == "Windows":
         return ""
     import subprocess
     try:
@@ -531,7 +534,8 @@ def _进程启动时刻(进程号: int) -> str:
 
 def _进程命令行(进程号: int) -> str:
     """取进程命令行；取不到返回空串（判据宁可判「不符」也不放行）。"""
-    if os.name == "nt":
+    # 平台判断收口（铁律）：同 `_进程启动时刻`，`ps` 取法只在 POSIX 可用。
+    if 平台适配.当前平台() == "Windows":
         return ""
     import subprocess
     try:

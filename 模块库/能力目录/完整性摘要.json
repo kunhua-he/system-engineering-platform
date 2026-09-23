@@ -17,11 +17,11 @@
     },
     {
       "路径": "实现/能力目录.py",
-      "sha256": "291b16d58368f1aeb0192a139d2ee34f4fe49845a74d2d604e44003b7288833f"
+      "sha256": "2efa0488f4f5c3de6e818b156d9bc1ae32eeedd13c19ae433c17dea3538dcbc5"
     },
     {
       "路径": "实现/能力索引.py",
-      "sha256": "bec339696b43607f2caf4216d7384b5efb995314adc8d0f70c247ccc39471c74"
+      "sha256": "eaf9dd1731714068dc18d9e427e014db93f8e33b9aa3fb71c4605393deb77bcc"
     },
     {
       "路径": "权限契约/权限契约.json",

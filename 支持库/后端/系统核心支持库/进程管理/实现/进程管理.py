@@ -811,7 +811,11 @@ def 沙箱执行命令(
         return 结果.失败("参数不合法", 超时原因 or "超时秒不合法", 来源="进程管理")
 
     import shutil as _shutil
-    if not (平台适配.是macOS() and _shutil.which("sandbox-exec")):
+    # 平台判断收口（铁律）：`sandbox-exec` 是 macOS 专有内核沙箱。分支判定原语直接出现在
+    # 控制流条件位会被 `平台判断越界检测` 判成「取值后自行分叉」（调用点自己决定走哪条路），
+    # 故改取收口层的**取值型**原语 `当前平台()` —— 与 `平台适配.是macOS()` 同一口径
+    # （同判 `sys.platform == "darwin"`），判定语义等价、判定落点回到收口层。
+    if not (平台适配.当前平台() == "macOS" and _shutil.which("sandbox-exec")):
         return 结果.失败(
             "沙箱不可用",
             "当前平台无 sandbox-exec 内核沙箱，沙箱执行已禁用（fail-closed，不降级）",

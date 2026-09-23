@@ -2,6 +2,10 @@
 
 把项目文档正文按 Markdown 结构切成有序块，每块带起始行/结束行（行号自 1 起）。
 代码块内的井号不算标题 —— 这是体例规范第一节的前提，切块必须与它同口径。
+
+「哪些行是标题」不在这里手写正则判定：一律转调唯一腿
+`办公文档支持库.轻量文本解析.解析Markdown块`（它按 `属性.章节` 给出行号），
+本件只按行号分类，不另立第二条标题语法腿。
 """
 
 from __future__ import annotations
@@ -10,8 +14,8 @@ import re
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 支持库.后端.办公文档支持库.轻量文本解析 import 解析Markdown块
 
-标题模式 = re.compile(r"^(#{1,6})\s")
 围栏模式 = re.compile(r"^\s*```")
 表格模式 = re.compile(r"^\s*\|")
 列表模式 = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
@@ -20,14 +24,24 @@ from 公共契约.基础类型.结果类型 import 结果
 链接模式 = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
 
 
+def _标题行集(正文: str) -> set[int]:
+    """转调唯一腿取「哪些行是标题」（行号自 1 起）；标题语法只此一条腿。"""
+    解析结果 = 解析Markdown块(文本=正文, 语法集="完整")
+    if not 解析结果.成功:
+        raise RuntimeError(f"解析Markdown块 失败：{解析结果.错误码} {解析结果.错误说明}")
+    行集: set[int] = set()
+    for 块 in 解析结果.值.get("块列表") or []:
+        if (块.get("属性") or {}).get("章节") == "heading" and 块.get("行起"):
+            行集.add(块["行起"])
+    return 行集
+
+
 def _行类型(行: str) -> str:
-    """判定单行的块类型；空行单独一类，供状态机断块。"""
+    """判定单行的块类型；空行单独一类，供状态机断块。标题不在本函数判定。"""
     if not 行.strip():
         return "空行"
     if 围栏模式.match(行):
         return "围栏"
-    if 标题模式.match(行):
-        return "标题"
     if 分隔线模式.match(行):
         return "分隔线"
     if 表格模式.match(行):
@@ -61,13 +75,14 @@ def _切(正文: str) -> list[dict[str, Any]]:
     # 留着会让未闭合围栏的结束行多报一行、行号对不上真实文件。
     if len(行们) > 1 and 行们[-1] == "":
         行们 = 行们[:-1]
+    标题行集 = _标题行集(正文)
     块列表: list[dict[str, Any]] = []
     当前类型 = ""
     开始行 = 1
     在围栏内 = False
 
     for 序号, 行 in enumerate(行们, start=1):
-        类型 = _行类型(行)
+        类型 = "标题" if 序号 in 标题行集 else _行类型(行)
 
         if 在围栏内:
             if 类型 == "围栏":  # 闭合围栏：与开围栏同属一个代码块
