@@ -87,7 +87,7 @@ class Test组件生成模块(unittest.TestCase):
 
     def test_正向真实生成并落盘(self):
         结果值 = 生成模块脚手架(
-            项目根=str(self.项目根), 模块名="测试生成模块", 类型="基础模块",
+            项目根=str(self.项目根), 模块名="测试生成模块", 模块类型="基础模块",
             能力清单=示例能力清单, 依赖能力清单=[])
         self.assertTrue(结果值.成功, 结果值.错误说明)
         self.assertEqual(结果值.值["目标相对目录"], "模块库/测试生成模块")
@@ -111,7 +111,7 @@ class Test组件生成模块(unittest.TestCase):
             self.assertTrue((self.项目根 / 相对路径).resolve().is_relative_to(self.项目根.resolve()))
 
     def test_功能模块类型也可生成(self):
-        结果值 = 生成模块脚手架(项目根=str(self.项目根), 模块名="测试功能模块", 类型="功能模块",
+        结果值 = 生成模块脚手架(项目根=str(self.项目根), 模块名="测试功能模块", 模块类型="功能模块",
                           能力清单=示例能力清单)
         self.assertTrue(结果值.成功, 结果值.错误说明)
         声明 = json.loads((Path(结果值.值["模块目录"]) / "包声明.json").read_text(encoding="utf-8"))

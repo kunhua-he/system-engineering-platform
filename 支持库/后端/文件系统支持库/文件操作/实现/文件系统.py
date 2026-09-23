@@ -282,43 +282,62 @@ def _原子写(目标: Path, 内容: str, 编码: str = "utf-8") -> None:
         解锁（目标文件 + 其父目录）→ 临时件 → replace → **按原状态重锁**
 
     为什么父目录也要解锁：`os.replace` 是「在父目录里换名」、新建文件是「在父目录里
-    加条目」，父目录锁着时两者都被拒。重锁用「进入时读到的状态」，故本来没锁的文件
-    写完之后**不会被凭空锁上**（锁的范围只由 `上锁全仓()` 决定，不由谁碰巧写过它决定）。
+    加条目」，父目录锁着时两者都被拒。
+
+    **窗口退出后的收口（2026-09-24 补，未完成事项 D3）**：窗口内按「进入时读到的状态」
+    恢复；**窗口外**再调一次 `对齐目标锁态(目标)` 按**上下文当前锁态**对齐。
+    此前本函数只开窗、不补对齐，而「写前状态」在**活跃写租约窗口**里恰恰是
+    `认领路径时刚解开的「未锁」`（`文件租约申请.py` 认领成功即 `解锁供写入` 目标 + 其直接父目录）
+    ⇒ 认领过又写过的落点全部停在未锁，`pre-commit` 钩子「未锁 > 0 即拒提交」当场判红
+    （实测：整仓读数 `未锁 32`，未锁集合与活跃租约集合逐条重合）。
+    ⇒ 下面那句「本来没锁的文件写完之后不会被凭空锁上」是**过期口径**（漏了租约终结这条腿），
+    现行口径是「窗口内按写前状态恢复；**窗口外由 `对齐目标锁态()` 按上下文收口**」。
+    形制照抄既有腿 `项目适配层/项目声明/项目声明.py:119-128`（「窗口与对齐都用既有函数，
+    本文件不另写『解锁→写→上锁』骨架」），不新写任何扫描面或上锁逻辑。
     """
     import os
     import tempfile
-    from 公共契约.运行时.仓库只读锁 import 临时解锁
+    from 公共契约.运行时.仓库只读锁 import 临时解锁, 写腿收口锁态
     权限 = None
     try:
         if 目标.is_file():
             权限 = 目标.stat().st_mode & 0o777
     except OSError:
         权限 = None
-    with 临时解锁(目标):
-        # ★ 建父目录必须也在窗口内：目标在**新建的多层目录**里时，`mkdir(parents=True)`
-        #   是在「已锁的祖父目录」里加条目 —— 放在窗口外会在这一步就被内核拒
-        #   （实测 2026-09-23：向已锁树写 `已锁目录/新目录/新文件.md` 报
-        #   `Operation not permitted`）。`临时解锁()` 已按「走到第一个已存在祖先」解锁。
-        目标.parent.mkdir(parents=True, exist_ok=True)
-        句柄 = tempfile.NamedTemporaryFile(
-            "w", encoding=编码, dir=str(目标.parent) if 目标.parent.is_dir() else None,
-            delete=False, prefix=".__写入_", suffix=".tmp")
-        try:
-            句柄.write(内容)
-            句柄.flush()
-            os.fsync(句柄.fileno())
-        finally:
-            句柄.close()
-        try:
-            if 权限 is not None:
-                os.chmod(句柄.name, 权限)
-            os.replace(句柄.name, 目标)
-        except OSError:
+    try:
+        with 临时解锁(目标):
+            # ★ 建父目录必须也在窗口内：目标在**新建的多层目录**里时，`mkdir(parents=True)`
+            #   是在「已锁的祖父目录」里加条目 —— 放在窗口外会在这一步就被内核拒
+            #   （实测 2026-09-23：向已锁树写 `已锁目录/新目录/新文件.md` 报
+            #   `Operation not permitted`）。`临时解锁()` 已按「走到第一个已存在祖先」解锁。
+            目标.parent.mkdir(parents=True, exist_ok=True)
+            句柄 = tempfile.NamedTemporaryFile(
+                "w", encoding=编码, dir=str(目标.parent) if 目标.parent.is_dir() else None,
+                delete=False, prefix=".__写入_", suffix=".tmp")
             try:
-                os.unlink(句柄.name)
+                句柄.write(内容)
+                句柄.flush()
+                os.fsync(句柄.fileno())
+            finally:
+                句柄.close()
+            try:
+                if 权限 is not None:
+                    os.chmod(句柄.name, 权限)
+                os.replace(句柄.name, 目标)
             except OSError:
-                pass
-            raise
+                try:
+                    os.unlink(句柄.name)
+                except OSError:
+                    pass
+                raise
+    finally:
+        # ★ 必须在窗口**外**：窗口内父目录是临时解锁态，`_上下文锁态` 读到的上下文是假的
+        #   （窗口内调用会得出「上下文没锁 ⇒ 目标也解开」的错误结论）。
+        #   放 `finally` 而不是 `with` 之后：写失败时 `mkdir(parents=True)` 可能已经在窗口内
+        #   建出了新目录，那些新目录同样要按上下文收口，否则它们会永久留在未锁态。
+        #   ★ 调的是**写腿专用**那一层（只收口「窗口退出后仍未锁」的那一档）：
+        #   写前就锁着的文件由 `临时解锁` 自己按写前状态复原，无条件对齐会把它解锁掉。
+        写腿收口锁态(目标)
 
 
 def 判断存在(文件路径: str = None) -> bool:

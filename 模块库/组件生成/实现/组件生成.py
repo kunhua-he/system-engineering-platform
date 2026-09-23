@@ -76,7 +76,7 @@ def _相对文本(路径: str, 根: Path) -> str:
         return str(路径)
 
 
-def 生成模块脚手架(项目根: str = None, 模块名: str = None, 类型: str = "基础模块",
+def 生成模块脚手架(项目根: str = None, 模块名: str = None, 模块类型: str = "基础模块",
                    能力清单: list = None, 依赖能力清单: list = None,
                    支持库扫描根: str = None) -> 结果:
     """按声明生成模块脚手架，只写调用方声明的项目根内。
@@ -89,8 +89,8 @@ def 生成模块脚手架(项目根: str = None, 模块名: str = None, 类型: 
         return 结果.失败("参数不合法", "项目根必须为非空文本（生成只允许写在该根内）", 来源=来源)
     if not isinstance(模块名, str) or not 模块名.strip():
         return 结果.失败("参数不合法", "模块名必须为非空文本", 来源=来源)
-    if not isinstance(类型, str) or not 类型.strip():
-        return 结果.失败("参数不合法", f"类型必须为 {'/'.join(允许类型)} 之一", 来源=来源)
+    if not isinstance(模块类型, str) or not 模块类型.strip():
+        return 结果.失败("参数不合法", f"模块类型必须为 {'/'.join(允许类型)} 之一", 来源=来源)
     if not isinstance(能力清单, list) or not 能力清单:
         return 结果.失败("参数不合法", "能力清单必须为非空列表", 来源=来源)
     if 依赖能力清单 is not None and not isinstance(依赖能力清单, list):
@@ -121,7 +121,7 @@ def 生成模块脚手架(项目根: str = None, 模块名: str = None, 类型: 
     try:
         生成结果 = _调用支持库("组件规范支持库.生成模块模板", {
             "模块名": 模块名.strip(),
-            "类型": 类型.strip(),
+            "模块类型": 模块类型.strip(),
             "能力清单": 能力清单,
             "依赖能力清单": 依赖能力清单 or [],
             "系统根": 扫描根,

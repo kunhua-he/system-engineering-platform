@@ -47,8 +47,8 @@ class Test模块模板收敛(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.临时根, ignore_errors=True)
 
-    def _生成(self, 模块名="示例统计", 类型="基础模块", **覆盖):
-        参数 = dict(模块名=模块名, 类型=类型, 能力清单=能力清单,
+    def _生成(self, 模块名="示例统计", 模块类型="基础模块", **覆盖):
+        参数 = dict(模块名=模块名, 模块类型=模块类型, 能力清单=能力清单,
                    依赖能力清单=依赖清单, 模块库根=self.模块库根,
                    测试中心根=self.测试中心根)
         参数.update(覆盖)
@@ -56,7 +56,7 @@ class Test模块模板收敛(unittest.TestCase):
 
     def test_两类类型包声明与聚合契约(self):
         for 类型 in ("基础模块", "功能模块"):
-            结果 = self._生成(模块名=f"{类型}示例", 类型=类型)
+            结果 = self._生成(模块名=f"{类型}示例", 模块类型=类型)
             self.assertTrue(结果.成功, f"{类型} 生成失败: {结果.错误说明}")
             模块目录 = Path(结果.值["模块目录"])
             声明 = json.loads((模块目录 / "包声明.json").read_text(encoding="utf-8"))
@@ -125,7 +125,7 @@ class Test模块模板收敛(unittest.TestCase):
         self.assertEqual(结果.错误码, "能力重复")
 
     def test_类型不合法拒绝(self):
-        结果 = self._生成(类型="模块")
+        结果 = self._生成(模块类型="模块")
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "类型不合法")
 

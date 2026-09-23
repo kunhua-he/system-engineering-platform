@@ -356,34 +356,46 @@ def _原子写保留权限(目标: Path, 正文: str) -> None:
     `批量应用精确替换` **两条腿共用的唯一落盘点**，凭据挂这里就覆盖它们全部
     （挂在各自调用点上就是同一件事写两遍）。
 
+    **窗口退出后的收口（2026-09-24 补，未完成事项 D3）**：窗口内按写前状态恢复，
+    **窗口外**再调 `对齐目标锁态(目标)` 按**上下文当前锁态**对齐 —— 活跃写租约窗口里
+    「写前状态」正是认领时刚解开的「未锁」⇒ 不补这一步，改过的落点会停在未锁，
+    `pre-commit` 钩子「未锁 > 0 即拒提交」当场判红。必须在窗口**外**（窗口内父目录是
+    临时解锁态，读到的上下文锁态是假的）。形制与 `文件系统.py::_原子写` 同一条，不另立判据。
+
     **内核只读锁的解锁窗口（2026-09-23 华哥裁决「纯粹电脑硬件权限管控」）**：
     整仓受管文件可能置了 macOS 不可变标志（`chflags uchg`），那时 `os.replace` 被内核
     拒绝（实测）⇒ 落盘动作包在 `仓库只读锁.临时解锁(目标)` 里（解锁目标 + 父目录 →
     写 → 按原状态重锁）。口径与 `文件系统.py::_原子写` **同一条**，不另立一份判据。
     """
-    from 公共契约.运行时.仓库只读锁 import 临时解锁
+    from 公共契约.运行时.仓库只读锁 import 临时解锁, 写腿收口锁态
     权限 = _目标权限位(目标)
-    with 临时解锁(目标):
-        句柄 = tempfile.NamedTemporaryFile(
-            "w", encoding="utf-8", dir=str(目标.parent), delete=False,
-            prefix=".__补丁_", suffix=".tmp")
-        try:
-            句柄.write(正文)
-            句柄.flush()
-            os.fsync(句柄.fileno())
-        finally:
-            句柄.close()
-        try:
-            if 权限 is not None:
-                os.chmod(句柄.name, 权限)
-            os.replace(句柄.name, 目标)
-        except OSError:
+    try:
+        with 临时解锁(目标):
+            句柄 = tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=str(目标.parent), delete=False,
+                prefix=".__补丁_", suffix=".tmp")
             try:
-                os.unlink(句柄.name)
+                句柄.write(正文)
+                句柄.flush()
+                os.fsync(句柄.fileno())
+            finally:
+                句柄.close()
+            try:
+                if 权限 is not None:
+                    os.chmod(句柄.name, 权限)
+                os.replace(句柄.name, 目标)
             except OSError:
-                pass
-            raise
-        _同步目录(目标.parent)
+                try:
+                    os.unlink(句柄.name)
+                except OSError:
+                    pass
+                raise
+            _同步目录(目标.parent)
+    finally:
+        # ★ 必须在窗口**外**（窗口内父目录是临时解锁态，上下文锁态读出来是假的）；
+        #   调的是**写腿专用**那一层 —— 写前就锁着的文件由 `临时解锁` 自己复原，
+        #   无条件对齐会拿「上下文」覆盖调用方显式设的锁（仓库外无上下文 ⇒ 被解锁）。
+        写腿收口锁态(目标)
     _登记md写入凭据(目标, 正文)
 
 

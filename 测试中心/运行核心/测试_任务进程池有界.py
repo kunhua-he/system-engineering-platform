@@ -18,7 +18,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 运行核心.任务调度.任务进程 import 任务进程池, 资源繁忙错误
+from 运行核心.任务调度.任务进程 import 任务进程池, 资源繁忙错误, 任务表历史上限
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 终态集合 = {"成功", "失败", "已取消", "超时", "崩溃"}
@@ -36,6 +36,50 @@ def 等待条件(条件, 超时秒: float = 8.0) -> bool:
 def 任务短暂停顿(参数: dict, 取消事件) -> dict:
     time.sleep(float(参数.get("等待秒", 0.5)))
     return {"取消已见": 取消事件.is_set()}
+
+
+def 任务瞬返(参数: dict, 取消事件) -> dict:
+    """瞬时完成的任务执行器（fd 判据要提交远超上界的任务数，任务本身必须极短）。"""
+    return {"快": 真}
+
+
+def 当前进程fd数() -> int:
+    """本进程当前打开的 fd 数（macOS `/dev/fd` / Linux `/proc/self/fd`）；取不到回 -1。"""
+    for 目录 in ("/proc/self/fd", "/dev/fd"):
+        if os.path.isdir(目录):
+            try:
+                return len(os.listdir(目录))
+            except OSError:
+                return -1
+    return -1
+
+
+def 进程句柄已释放(进程) -> bool:
+    """`进程对象可判定已释放`的**唯一判据口径**（锚行为，不锚任何说明文字）。
+
+    `multiprocessing.Process.close()` 之后 `is_alive()` / `pid` / `exitcode` 一律
+    `ValueError: process object is closed`（本机实测 Python 3.14.4）；未释放时
+    `is_alive()` 正常返回布尔。故「已释放」＝调用 `is_alive()` 当场抛「已关闭」。
+    """
+    if 进程 is None:
+        return False
+    try:
+        进程.is_alive()
+    except ValueError as 错误:
+        return "closed" in str(错误)
+    return False
+
+
+class 无驱逐任务进程池(任务进程池):
+    """反向样本专用：把有界驱逐摘成空实现（等价于「不调回收路径」）。
+
+    **为什么用子类而不是 `mock.patch`**：本仓「测试伪装门禁」的存量违约上限是硬限制
+    （只减不增），`mock.patch.object` 打生产成员会当场新增两条违规；子类覆写是同一件事
+    的干净表达，且不引入第二条腿。
+    """
+
+    def _驱逐历史任务(self) -> list:
+        return []
 
 
 class Test任务进程池有界(unittest.TestCase):
@@ -189,6 +233,109 @@ class Test任务进程池有界(unittest.TestCase):
                              "监视线程总数不得超过 最大活动数+1")
         self.assertEqual(内部线程数, 1, "进程池内部应只有一个轮询监视线程")
         self.assertTrue(等待条件(lambda: 池.活动进程数() == 0))
+
+    def test_任务表历史上界有默认口径且可断言(self):
+        """上界是模块级具名常量（可读、可断言）：默认构造的池取它，且为正整数。"""
+        self.assertIsInstance(任务表历史上限, int)
+        self.assertGreaterEqual(任务表历史上限, 1)
+        池 = self._新池()
+        self.assertEqual(池.历史上限, 任务表历史上限,
+                         "默认构造的池必须取模块级上界常量（不许另写一份字面量）")
+        self.assertEqual(self._新池(历史上限=3).历史上限, 3,
+                         "显式上界必须生效（判据要能在小上界下快速取证）")
+
+    def test_提交超过历史上界后任务表有界且已驱逐任务句柄已释放(self):
+        """正向判据：提交 N（> 上界）个任务后 —— 表长有界 + 被驱逐的已收敛任务句柄已释放。
+
+        「已释放」的判据锚**进程对象可判定已释放**（`进程句柄已释放`：close 后
+        `is_alive()` 当场抛 `process object is closed`），不锚任何说明文字。
+        """
+        上界 = 8
+        池 = self._新池(最大活动数=4, 最大排队数=16, 历史上限=上界)
+        池.注册执行函数("任务.快", 任务瞬返)
+        任务列表: list = []
+        句柄表: list = []
+        for _ in range(上界 * 2):
+            任务 = 池.提交(能力id="任务.快")
+            任务列表.append(任务)
+            # 驱逐会把 `任务.进程` 置 None，故先捕获句柄本身
+            句柄表.append(任务.进程)
+        self.assertTrue(等待条件(lambda: all(任务.状态 in 终态集合 for 任务 in 任务列表)),
+                        "提交的任务必须全部真实收敛")
+        # 全部收敛后再提交一个（走同一条唯一写入口），把表压回上界附近
+        末任务 = 池.提交(能力id="任务.快")
+        self.assertTrue(等待条件(lambda: 末任务.状态 in 终态集合))
+        self.assertLessEqual(len(池.任务表), 上界 + 1,
+                             "任务表必须是有界历史，不随提交总数增长")
+        self.assertEqual(池.活动进程数(), 0)
+        已驱逐 = [(任务, 句柄) for 任务, 句柄 in zip(任务列表, 句柄表)
+                  if 任务.任务id not in 池.任务表]
+        self.assertTrue(已驱逐, "提交数超过上界后必须真的发生驱逐（表不是只写不删）")
+        for 任务, 句柄 in 已驱逐:
+            self.assertIsNone(任务.进程, "被驱逐任务的进程句柄必须解除引用")
+            self.assertIsNone(任务.取消事件, "被驱逐任务的取消事件必须解除引用（信号量 fd 归还）")
+            self.assertIsNone(任务.进程组就绪事件,
+                              "被驱逐任务的进程组就绪事件必须解除引用（信号量 fd 归还）")
+            self.assertTrue(进程句柄已释放(句柄),
+                            "被驱逐任务的进程对象必须已 close（sentinel 管道 fd 归还）")
+        # 可查性不因驱逐而丢：按磁盘快照重建（既有回退）
+        样本 = 已驱逐[0][0]
+        self.assertTrue(等待条件(lambda: (池.存储目录 / f"{样本.任务id}.json").is_file()),
+                        "被驱逐任务的磁盘快照必须存在（可查性靠它）")
+        self.assertEqual(池.查询(样本.任务id).状态, "成功", "被驱逐任务必须仍可查")
+
+    def test_反向_摘掉有界驱逐则任务表只增且句柄不释放(self):
+        """反向样本（兼本修复的变异判据）：把有界驱逐摘成空实现 ⇒ 表只增、句柄不释放。
+
+        正向判据（表长有界 + 被驱逐任务句柄已释放）**全靠这条驱逐**：同一批提交，
+        摘掉 `_驱逐历史任务` 后读数立刻变成「表长 == 提交数」「句柄仍可判定存活」。
+        两个读数合起来才把「驱逐确实发生了」与「表天然不长」区分开。
+        """
+        上界 = 8
+        池 = 无驱逐任务进程池(存储目录=self.存储目录 / "无驱逐", 最大活动数=4,
+                             最大排队数=16, 历史上限=上界)
+        self.池列表.append(池)
+        池.注册执行函数("任务.快", 任务瞬返)
+        提交数 = 上界 * 2
+        任务列表: list = []
+        句柄表: list = []
+        for _ in range(提交数):
+            任务 = 池.提交(能力id="任务.快")
+            任务列表.append(任务)
+            句柄表.append(任务.进程)
+        self.assertTrue(等待条件(lambda: all(任务.状态 in 终态集合 for 任务 in 任务列表)))
+        self.assertEqual(len(池.任务表), 提交数,
+                         "不驱逐时任务表只增（「表天然不长」被排除）")
+        self.assertGreater(len(池.任务表), 上界)
+        for 任务, 句柄 in zip(任务列表, 句柄表):
+            self.assertIsNotNone(任务.进程, "不驱逐时进程句柄不得被释放")
+            self.assertFalse(进程句柄已释放(句柄),
+                             "不驱逐时进程对象仍可判定存活（未被 close）")
+
+    def test_提交远超历史上界后进程fd不随任务数增长(self):
+        """真根因判据：fd 增长只受有界上界约束，**不随提交总数线性增长**。
+
+        实测口径约 12 fd/条（接收管道 2 + 两个事件各 4 个 POSIX 信号量 + sentinel 1）；
+        旧实现（只写不删）在同样的提交数下是约 12×提交数 个 fd。
+        """
+        基线 = 当前进程fd数()
+        if 基线 < 0:
+            self.skipTest("本平台取不到本进程 fd 目录（/proc/self/fd、/dev/fd 均不可用）")
+        上界 = 8
+        提交数 = 40
+        池 = self._新池(最大活动数=4, 最大排队数=16, 历史上限=上界)
+        池.注册执行函数("任务.快", 任务瞬返)
+        任务列表 = [池.提交(能力id="任务.快") for _ in range(提交数)]
+        self.assertTrue(等待条件(lambda: all(任务.状态 in 终态集合 for 任务 in 任务列表)))
+        末任务 = 池.提交(能力id="任务.快")
+        self.assertTrue(等待条件(lambda: 末任务.状态 in 终态集合))
+        增长 = 当前进程fd数() - 基线
+        self.assertLessEqual(
+            增长, 上界 * 12 + 60,
+            f"提交 {提交数} 个任务（远超上界 {上界}）后 fd 增长必须被封在上界附近；"
+            f"实测增长 {增长}，旧实现（只写不删）此处约为 {提交数}×12 个 fd")
+        self.assertLess(增长, 提交数 * 12 // 2,
+                        "fd 增长不得与提交总数同阶（真根因判据）")
 
 
 if __name__ == "__main__":

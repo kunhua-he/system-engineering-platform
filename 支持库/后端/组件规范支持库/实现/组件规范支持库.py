@@ -85,7 +85,7 @@ def 校验完整性摘要(包目录: Any = None) -> 结果:
     return 结果.成功结果({"通过": bool(通过), "问题列表": list(问题列表)})
 
 
-def 生成模块模板(模块名: Any = None, 类型: Any = "基础模块", 能力清单: Any = None,
+def 生成模块模板(模块名: Any = None, 模块类型: Any = "基础模块", 能力清单: Any = None,
                 依赖能力清单: Any = None, 系统根: Any = None, 模块库根: Any = None,
                 测试中心根: Any = None) -> 结果:
     """生成模块模板：参数归一后委托唯一模板生成器（失败码原样透传）。"""
@@ -94,7 +94,7 @@ def 生成模块模板(模块名: Any = None, 类型: Any = "基础模块", 能�
     依赖清单 = 依赖能力清单 if isinstance(依赖能力清单, list) else []
     return _生成模块模板(
         模块名=模块名,
-        类型=类型 if isinstance(类型, str) and 类型.strip() else "基础模块",
+        模块类型=模块类型 if isinstance(模块类型, str) and 模块类型.strip() else "基础模块",
         能力清单=能力清单,
         依赖能力清单=依赖清单,
         系统根=系统根,
