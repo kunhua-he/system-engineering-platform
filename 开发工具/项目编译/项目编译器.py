@@ -17,13 +17,16 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+# 边界项（批G L3 类2，**保留**）：本行是 `sys.path` 引导（下方若干平台导入靠它），
+# 引导期 `公共契约` 尚不可导入；且本工具自己的仓根不在 `解析路径` 的三级兜底里。
+# 拼根已改调 `解析路径`（见 `_变更涉及路径` 与上方 `平台适配` 导入）。
 系统根 = Path(__file__).resolve().parents[2]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 from 开发工具.轻代码前端编辑器.页面模型 import 校验页面
 from 开发工具.项目编译.工作区指纹 import 计算工作区字节指纹
 from 开发工具.项目编译.正式包索引 import 构建索引, 包所属根, 校验显式包引用, 校验能力引用, 解析依赖闭包
-from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
+from 公共契约.运行时.平台适配 import 清只读后删除树, 解析路径  # noqa: E402
 固定运行时目录 = ("公共契约", "后端核心", "运行核心", "前端核心", "平台控制面")
 忽略目录 = {"__pycache__", ".pytest_cache", ".ruff_cache", "工程缓存"}
 运行时适配文件 = ("__init__.py", "脱敏模式.py", "系统探针.py", "适配契约.py")
@@ -330,10 +333,8 @@ def 计算影响闭包(
     类型, 值 = "", ""
     if 文件 is not None:
         类型 = "文件"
-        目标 = Path(文件)
-        if not 目标.is_absolute():
-            目标 = 项目 / 目标
-        目标 = 目标.resolve()
+        # `文件` 可能是 `Path` ⇒ 先 `str()`；空值补 `.`（与改前 `项目 / ""` 逐字等价）。
+        目标 = 解析路径(str(文件) or ".", 项目).resolve()
         try:
             目标.relative_to(项目)
         except ValueError as 错误:

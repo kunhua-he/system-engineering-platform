@@ -108,6 +108,7 @@ if str(系统根) not in sys.path:
 
 from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.包声明.声明 import 从字典构建
+from 公共契约.运行时.平台适配 import 解析路径
 from 开发工具.MD文档生成.说明书.说明书生成器 import 生成单包说明书
 from 开发工具.MD文档生成 import 机器印记
 # 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
@@ -932,7 +933,8 @@ def 主函数(argv: list[str] | None = None) -> int:
     if 参数.包:
         目标表 = []
         for 原文 in 参数.包:
-            包目录 = (系统根 / 原文) if not Path(原文).is_absolute() else Path(原文)
+            # 空值补 `.`：与改前 `系统根 / ""` 逐字等价（唯一节点对空文本原样返回）。
+            包目录 = 解析路径(原文 or ".", 系统根)
             if not 包目录.is_dir():
                 print(f"✗ 不是目录: {原文}")
                 return 2

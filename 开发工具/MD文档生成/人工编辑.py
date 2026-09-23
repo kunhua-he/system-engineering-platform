@@ -42,6 +42,7 @@ from pathlib import Path
 
 from 开发工具.MD文档生成 import 机器印记, 类型登记
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 解析路径
 # 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
 # 见 `机器印记.py` 同一处说明。本层不再各自 `write_text`。
 from 支持库.后端.文件系统支持库.文件操作 import 写入文件
@@ -103,8 +104,7 @@ def 归一相对路径(项目根: Path, 目标: str) -> str:
     且本文件每次生成器运行都是**新进程**，改完当场生效，不依赖热接入/重启。
     """
     try:
-        候选 = Path(目标)
-        绝对 = (候选 if 候选.is_absolute() else 项目根 / 候选).resolve()
+        绝对 = 解析路径(目标, 项目根).resolve()
         根 = 项目根.resolve()
     except OSError:
         return ""
@@ -160,6 +160,9 @@ def 落盘人工正文(项目根: Path, 目标: str, 新正文: str, *, 写盘: 
 def 入口(argv: list[str] | None = None) -> int:
     """CLI：`--人工改 --文件 <目标> --正文文件 <草稿> [--写盘]`（缺失参数一律拒绝，退 2）。"""
     参数 = list(sys.argv[1:] if argv is None else argv)
+    # 边界项（批G L3 类2，**保留**）：本工具自己的仓根 —— 判据是「哪棵树里有
+    # `开发文档/`」，`解析路径` 的三级兜底（显式根/环境变量/cwd）不覆盖这种「按本
+    # 文件上溯认树」的取值；拼根（`--文件`/`--正文文件`）已改调 `解析路径`。
     项目根 = Path(__file__).resolve()
     while 项目根.name and not (项目根 / "开发文档").is_dir():
         项目根 = 项目根.parent
@@ -171,7 +174,7 @@ def 入口(argv: list[str] | None = None) -> int:
     if not 目标 or not 草稿:
         print("用法：--人工改 --文件 <目标路径> --正文文件 <草稿路径> [--写盘]")
         return 2
-    草稿路径 = Path(草稿) if Path(草稿).is_absolute() else 项目根 / 草稿
+    草稿路径 = 解析路径(草稿, 项目根)
     if not 草稿路径.is_file():
         print(f"草稿文件不存在：{草稿路径}")
         return 2

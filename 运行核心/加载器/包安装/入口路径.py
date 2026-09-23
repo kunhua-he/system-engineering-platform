@@ -12,6 +12,7 @@ from pathlib import Path
 
 from 公共契约.包声明 import 包声明
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 解析路径
 
 
 def 定位系统根() -> Path:
@@ -32,6 +33,10 @@ def 解析入口路径(声明: 包声明, 类型名: str) -> Path:
 
     解析顺序：包根目录内 → 系统根回退；两种都越界或文件不存在即抛错。
     类型名 用于错误文案（支持库 / 模块），保持与历史消息逐字一致。
+
+    「相对 → 绝对」一律转调 `公共契约.运行时.平台适配.解析路径`（全平台唯一那条腿），
+    **显式传根**（包根 / 系统根，两者都由本模块推出，不走它的三级兜底）——
+    本函数不自带 `is_absolute()` 拼根分支。
     """
     系统根 = 定位系统根()
     相对入口 = Path(声明.入口)
@@ -41,10 +46,10 @@ def 解析入口路径(声明: 包声明, 类型名: str) -> Path:
         包根 = Path(声明.来源路径).parent.resolve()
     except Exception:
         包根 = Path(getattr(声明, "来源路径", "") or "").parent.resolve()
-    入口路径 = (包根 / 相对入口).resolve()
+    入口路径 = Path(解析路径(声明.入口, 包根)).resolve()
     使用系统根回退 = 假
     if not 入口路径.is_file() or not 入口路径.is_relative_to(包根):
-        入口路径 = (系统根 / 相对入口).resolve()
+        入口路径 = Path(解析路径(声明.入口, 系统根)).resolve()
         使用系统根回退 = 真
     if 使用系统根回退 and not 入口路径.is_relative_to(系统根.resolve()):
         raise ValueError(f"{类型名}入口路径越界: {声明.入口}")

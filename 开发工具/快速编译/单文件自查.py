@@ -28,7 +28,10 @@ from pathlib import Path
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.正式根 import 遍历源码
+from 公共契约.运行时.平台适配 import 解析路径
 
+# 边界项（批G L3 类2，**保留**）：本工具自己的仓根（`解析路径` 不覆盖「按本文件推
+# 仓根」这一档，它只给 显式根/环境变量/cwd 三级兜底）；拼根本身已改调 `解析路径`。
 系统根 = Path(__file__).resolve().parents[2]
 git = "/Library/Developer/CommandLineTools/usr/bin/git"
 
@@ -38,7 +41,8 @@ git = "/Library/Developer/CommandLineTools/usr/bin/git"
 
 def 查一个(相对路径: str) -> tuple[bool, str]:
     """查单个文件能否编译；返回 (是否通过, 说明)。"""
-    路径 = 系统根 / 相对路径 if not Path(相对路径).is_absolute() else Path(相对路径)
+    # 空值：唯一节点对空文本**原样返回**，故显式补 `.` —— 与改前 `系统根 / ""` 逐字等价。
+    路径 = 解析路径(相对路径 or ".", 系统根)
     if not 路径.is_file():
         return 假, f"文件不存在: {相对路径}"
     try:

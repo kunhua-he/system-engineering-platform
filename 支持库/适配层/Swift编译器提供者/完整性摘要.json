@@ -37,19 +37,19 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "1d128beb7c9c62c2c9f6c44ce39980edaafafed52b591e9150c27d9dd23f230e"
+      "sha256": "ed6066e45beef58b17d22c98da23e33037ca65be2d0c31e2ab2a188abeea3ae3"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "9e8b6be4db071310c447801970f627a88be16259a917f24dacd7e2cc2f18e9ae"
+      "sha256": "2889de492223e5a7ab3f8dfc247525a251af02207db8d2f9b9bc928aad995148"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "be2c61fc80ed791def64f598efe71288b87e0a2b78b1ba27c8fefab183bccf3f"
+      "sha256": "0deb1b2b55308f7af0c57192af530d6799b047cc3e919a39afe522759e73f6f3"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "26fc683fa27870fe45ce07ccd46d285d7e2cfc3d9389be35417efcfa7171b6bc"
+      "sha256": "6eb4c1f040f9b58b092acffa64d1c05c43276945caa11c82f9768e42731e1598"
     },
     {
       "路径": "说明/使用说明.md",
@@ -83,5 +83,5 @@
     "Swift编译器提供者.签名制品",
     "Swift编译器提供者.校验签名"
   ],
-  "能力定义摘要": "55207dea496b8118"
+  "能力定义摘要": "5959984a2882236a"
 }

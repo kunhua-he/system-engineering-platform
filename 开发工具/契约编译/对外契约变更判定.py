@@ -86,6 +86,7 @@ if _仓库根 not in sys.path:
     sys.path.insert(0, _仓库根)
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 解析路径
 
 import json
 import re
@@ -136,6 +137,8 @@ def 指纹口径说明() -> dict[str, Any]:
     }
 
 # 本模块所在位置：项目根/开发工具/契约编译/对外契约变更判定.py
+# 边界项（批G L3 类2，**保留**）：本工具自己的仓根（`解析路径` 不覆盖「按本文件推
+# 仓根」这一档）；拼根已改调 `解析路径`（见 `判定对外契约变更`）。
 默认项目根 = Path(__file__).resolve().parents[2]
 制品仓库相对路径 = "工程缓存/制品仓库/平台客户端制品"
 #: 已安装副本所在的目录名（与 `制品仓库相对路径` 同层同风格）：
@@ -587,7 +590,9 @@ def 判定对外契约变更(包目录: str | Path, *, 基线包目录: str | Pa
     """
     项目根 = Path(项目根) if 项目根 is not None else 默认项目根
     制品仓库根 = Path(制品仓库根) if 制品仓库根 is not None else 项目根 / 制品仓库相对路径
-    包目录 = Path(包目录) if Path(包目录).is_absolute() else 项目根 / 包目录
+    # `包目录` 可能是 `Path` ⇒ 先 `str()`（唯一节点只认文本）；空值补 `.`（与改前
+    # `项目根 / ""` 逐字等价 —— 唯一节点对空文本原样返回）。
+    包目录 = 解析路径(str(包目录) or ".", 项目根)
 
     try:
         if 能力id is not None and not str(能力id).strip():

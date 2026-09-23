@@ -24,11 +24,17 @@ from pathlib import Path
 
 # 系统根必须在取正式类型名**之前**算好并插入 sys.path —— 否则全新解释器
 # 下 `from 公共契约...` 会 ModuleNotFoundError（本工具的调用方常年在仓库外跑）。
+# 边界项（批G L3 类2，**保留**）：本行是 `sys.path` 引导，必须在本文件下方
+# `from 公共契约…` **之前**算好 —— 引导期 `公共契约` 尚不可导入，故不能改调唯一腿。
+# 且唯一腿 `平台适配.解析路径` 只提供「显式根 → 环境变量 系统平台_项目根 → 进程 cwd」
+# 三级兜底，**没有**「按本文件推本工具仓根」这一档；本工具常年在仓库外跑、必须认
+# **自己所在的那棵树**，故该根保留自推。拼根已全部改调 `解析路径`（见本文件主函数）。
 系统根 = Path(__file__).resolve().parents[1]
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 解析路径
 
 git = "/Library/Developer/CommandLineTools/usr/bin/git"
 
@@ -392,25 +398,19 @@ def 主函数(argv: list[str] | None = None) -> int:
     解析.add_argument("--多条", default="", help="逐条核验债务清单（传 未完成事项.md）")
     参 = 解析.parse_args(argv)
     if 参.多条:
-        目标 = Path(参.多条)
-        if not 目标.is_absolute():
-            目标 = 系统根 / 参.多条
+        目标 = 解析路径(参.多条, 系统根)
         if not 目标.is_file():
             print(f"⚠️ 需要文件：{参.多条}")
             return 2
         return 核验债务清单(目标)
     if 参.查重:
-        目标 = Path(参.查重)
-        if not 目标.is_absolute():
-            目标 = 系统根 / 参.查重
+        目标 = 解析路径(参.查重, 系统根)
         if not 目标.is_dir():
             print(f"⚠️ 需要目录：{参.查重}")
             return 2
         return 1 if 查重(目标) else 0
     if 参.落点:
-        目标 = Path(参.落点)
-        if not 目标.is_absolute():
-            目标 = 系统根 / 参.落点
+        目标 = 解析路径(参.落点, 系统根)
         if 目标.is_dir():
             坏 = sum(核验任务包(p) for p in sorted(目标.glob("*.md")))
         elif 目标.is_file():
@@ -422,7 +422,7 @@ def 主函数(argv: list[str] | None = None) -> int:
     if not 参.文件:
         print("必须给 --文件 <仓库相对路径>，或 --落点 <任务包路径/目录>")
         return 2
-    if not (系统根 / 参.文件).exists():
+    if not 解析路径(参.文件, 系统根).exists():
         print(f"⚠️ 该路径在主干不存在：{参.文件}")
         print("   → 可能已被搬走或删除。**先确认归属再派活**（别让子代理去全盘搜）。")
         return 2

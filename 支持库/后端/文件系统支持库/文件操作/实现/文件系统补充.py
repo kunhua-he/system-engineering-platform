@@ -16,7 +16,7 @@ import zipfile
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 真
-from 公共契约.运行时.平台适配 import 清只读后删除树, 移动并可删, MCP身份准入
+from 公共契约.运行时.平台适配 import 清只读后删除树, 移动并可删, MCP身份准入, 解析路径
 from 支持库.后端.文件系统支持库.文件操作.实现.危险路径 import (
     拦截危险路径,
     放行标注,
@@ -229,7 +229,14 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
         return 结果.失败("参数不合法", "源路径必须是非空字符串", 来源="文件系统")
     if not isinstance(目标路径, str) or not 目标路径.strip():
         return 结果.失败("参数不合法", "目标路径必须是非空字符串", 来源="文件系统")
-    if not os.path.exists(源路径):
+    # 「相对 → 绝对」只算一次、只走一条腿：`公共契约.运行时.平台适配.解析路径`（生效根 =
+    # 环境变量 `系统平台_项目根` → 进程 cwd）；`abspath` 只保留「规范化」那一半（去 `..`/`.`、
+    # **不解析符号链接** —— 遍历产出的成员名要与旧行为逐字一致）。本函数后面每一处对
+    # `源路径` 的判据与遍历都用这个绝对形态：同一入参若有的按 cwd、有的按生效根，就是
+    # 「校验看一棵树、遍历看另一棵树」的半腿（2026-09-24 实测：只改遍历基时，设了环境变量
+    # 会先回「源不存在」；而若同名路径恰在 cwd 下存在，就会静默遍历错那棵树）。
+    源绝对 = os.path.abspath(解析路径(源路径))
+    if not os.path.exists(源绝对):
         return 结果.失败("源不存在", f"源不存在: {源路径}", 来源="文件系统")
     拦截 = 拦截危险路径(目标路径, 允许危险路径, "压缩文件目标路径")
     if 拦截 is not None:
@@ -240,7 +247,7 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
     except OSError as 错误:
         return 结果.失败("压缩失败", str(错误), 来源="文件系统")
     try:
-        源真实 = pathlib.Path(源路径).resolve()
+        源真实 = pathlib.Path(源绝对).resolve()
     except OSError as 错误:
         return 结果.失败("压缩失败", str(错误), 来源="文件系统")
     if 源真实 == 目标真实:
@@ -261,10 +268,10 @@ def 压缩文件(源路径: str = None, 目标路径: str = None,
     # 同形态，成员名与旧行为逐字一致（解析过的那份只在做自包含比对时用）。
     待压缩列表: list[tuple[str, str]] = []
     try:
-        if os.path.isfile(源路径):
-            待压缩列表.append((源路径, os.path.basename(源路径)))
+        if os.path.isfile(源绝对):
+            待压缩列表.append((源绝对, os.path.basename(源绝对)))
         else:
-            遍历基 = os.path.abspath(源路径)
+            遍历基 = 源绝对
             父目录 = os.path.dirname(遍历基)
             for 根, 子目录, 文件 in os.walk(遍历基):
                 子目录[:] = [

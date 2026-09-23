@@ -53,7 +53,7 @@
      "类型": "文本型",
      "必填": false,
      "默认值": "",
-     "说明": "代码地图 SQLite 绝对路径；不传用 项目根/.codegraph/codegraph.db"
+     "说明": "代码地图 SQLite 路径；不传用 项目根/.codegraph/codegraph.db（口径：写项目根相对路径（posix、不带 ..）；绝对路径兼容）"
     },
     {
      "名称": "网关地址",

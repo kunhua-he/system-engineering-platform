@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.平台适配 import 解析路径
 
 默认排除列表 = (
     ".git", ".venv", "venv", "node_modules", "__pycache__", "工程缓存",
@@ -53,10 +54,10 @@ def _解析结果行(文本: str, 根目录: Path, 上限: int) -> list[dict[str
             if 命中数 >= 上限:
                 break
             命中数 += 1
-        路径 = Path(文件部分)
         try:
-            相对 = str(路径.resolve().relative_to(根目录)) if 路径.is_absolute() \
-                else str((根目录 / 路径).resolve().relative_to(根目录))
+            # 「相对 → 绝对」转调全平台唯一那条解析腿，生效根取本函数收到的 `根目录`
+            # （调用方给的搜索根）—— 本函数不自带 `is_absolute()` 拼根分支。
+            相对 = str(Path(解析路径(文件部分, 根目录)).resolve().relative_to(根目录))
         except ValueError:
             相对 = 文件部分
         匹配列表.append({"文件": 相对, "行号": int(行号), "文本": 内容, "是否命中": 是否命中})

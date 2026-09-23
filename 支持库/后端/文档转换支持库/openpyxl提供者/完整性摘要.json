@@ -37,11 +37,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "a9a3e4df77ba4014b39e3a5d329fb8ac4edc4f344e7c6c87b796c677a3b9fbfe"
+      "sha256": "6ee9f1be72cdc1afd99cae9bb018234a791ae7ce7e671bae7118ff7d6dfe0cd5"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "3abd1b994ea407ded1e05da9e41ab05520048de9b898851c8c448b2d1df7aa72"
+      "sha256": "293aef9b499657642bc40accbdaa4ed31bacbc9bb22bdfaac2e356301d23d594"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -85,5 +85,5 @@
     "内部.表格文档.解析",
     "办公文档支持库.表格文档.生成表格文档"
   ],
-  "能力定义摘要": "b01034119cd277d6"
+  "能力定义摘要": "a3b5adf74453fbe6"
 }

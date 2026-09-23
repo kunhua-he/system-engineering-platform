@@ -96,9 +96,13 @@ def _装只读护栏() -> None:
 
 _装只读护栏()
 
+# 边界项（批G L3 类2，**保留**）：本行是 `sys.path` 引导（下方若干 `公共契约` 导入
+# 靠它），引导期 `公共契约` 尚不可导入；且本工具自己的仓根不在 `解析路径` 的三级兜底里。
 仓库根 = Path(__file__).resolve().parents[2]
 if str(仓库根) not in sys.path:
     sys.path.insert(0, str(仓库根))
+
+from 公共契约.运行时.平台适配 import 解析路径  # noqa: E402
 
 跳过目录名 = {"工程缓存", ".git", "__pycache__", "node_modules", "示例项目"}
 契约编译器生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
@@ -481,7 +485,8 @@ def 入口() -> int:
             if 规范化 in 候选表:
                 目标.append(候选表[规范化])
                 continue
-            路径 = (仓库根 / 规范化) if not Path(规范化).is_absolute() else Path(规范化)
+            # 空值补 `.`：与改前 `仓库根 / ""` 逐字等价（唯一节点对空文本原样返回）。
+            路径 = 解析路径(规范化 or ".", 仓库根)
             if (路径 / "包声明.json").is_file():
                 目标.append(路径.resolve())
                 continue

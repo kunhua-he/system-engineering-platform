@@ -16,6 +16,9 @@ import argparse
 import sys
 from pathlib import Path
 
+# 边界项（批G L3 类2，**保留**）：本行是 `sys.path` 引导（下一段就靠它 import
+# `开发工具.依赖生命周期审计.审计核心`），引导期 `公共契约` 尚不可导入 —— 调唯一腿
+# 会成环；且本工具自己的仓根不在 `解析路径` 的三级兜底里。
 本文件目录 = Path(__file__).resolve().parent
 默认系统根 = 本文件目录.parents[1]  # 开发工具/依赖生命周期审计 → 平台根
 # 直接以脚本方式运行时 sys.path[0] 为脚本目录，需把平台根插入顶层才能 import 中文包

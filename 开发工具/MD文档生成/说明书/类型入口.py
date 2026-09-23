@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from 公共契约.运行时.平台适配 import 解析路径
 from 开发工具.MD文档生成.说明书 import 合并重生成
 
 
@@ -30,7 +31,7 @@ def 主流程(项目根: Path, 写盘: bool, 今天: str | None = None,
     if 写盘:
         原生参数.append("--写盘")
     if 单文件:
-        路径 = (项目根 / 单文件) if not Path(单文件).is_absolute() else Path(单文件)
+        路径 = 解析路径(单文件, 项目根)
         # 说明书相对名固定为 说明/使用说明.md；从该文件上溯到所属包目录
         包目录 = 路径.parent.parent if 路径.parent.name == "说明" else 路径.parent
         if not (包目录 / "包声明.json").is_file():

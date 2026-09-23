@@ -41,6 +41,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from 公共契约.运行时.平台适配 import 解析路径
+
 清单文件名 = "模型制品清单.json"
 随包示例文件名 = "模型制品清单示例.json"
 数据目录名 = "数据"
@@ -106,10 +108,13 @@ def _定位根(定位方式: str, 系统根: Path | None, 环境: Mapping[str, s
 
 
 def _规范化(路径: str | Path) -> Path:
-    """统一解析：相对路径先按当前工作目录拼，再 resolve（多写法等价，判定不随写法变）。"""
-    目标 = Path(路径).expanduser()
-    return 目标.resolve() if 目标.is_absolute() else (Path.cwd() / 目标).resolve()
+    """统一解析：相对路径按生效根拼，再 resolve（多写法等价，判定不随写法变）。
 
+    「相对 → 绝对」转调 `公共契约.运行时.平台适配.解析路径`（全平台唯一那条腿：
+    生效根 = 环境变量 `系统平台_项目根` → 进程 cwd）—— **本函数不自带 `is_absolute()`
+    分支、不自己按 cwd 拼根。**（`条目绝对路径` 那一支传进来的已经是绝对路径，原样返回。）
+    """
+    return Path(解析路径(str(路径))).resolve()
 
 def 在受管模型根内(路径: str | Path, 环境: Mapping[str, str] | None = None) -> bool:
     """判断路径是否位于受管模型库根之下（等价写法归一后按「根 + 分隔符」前缀比）。"""

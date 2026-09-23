@@ -33,11 +33,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "d14513c9dbd7f8d79568bf9a423730534d96433227040fc823488c9d2e6b08dd"
+      "sha256": "fb43c6b7148d4fd7c3a505ad2ec785a2dd1656530c00333f707ec063a82f66f0"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "1e2b72be2d2f1077a147eefa64809e1be12197dd5ea1ce34dfff145cbbf37e00"
+      "sha256": "cd3179d7151ef29f4754d5ff9299ce6720e1de5e377efc51a8b344af34a9b625"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -81,5 +81,5 @@
     "LibreOffice转换.检查提供者",
     "LibreOffice转换.转换办公文件"
   ],
-  "能力定义摘要": "b7fc648ad3e91a28"
+  "能力定义摘要": "d9b4607ebf50ab50"
 }

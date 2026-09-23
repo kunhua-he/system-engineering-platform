@@ -15,6 +15,7 @@ import os
 from urllib.parse import unquote
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.平台适配 import 解析路径
 
 
 def 校验相对路径文本(相对路径: str = None) -> 结果:
@@ -77,7 +78,10 @@ def 校验路径(根目录: str = None, 相对路径: str = None) -> 结果:
     归一 = 判定值.get("归一化相对路径") or ""
     根 = os.path.abspath(os.path.expanduser(根目录))
     # 判据已收口到 校验相对路径文本（唯一节点）；本函数只保留根内绝对化 + realpath 符号链接逃逸判。
-    绝对路径 = os.path.normpath(os.path.join(根, 归一))
+    # 「相对 → 绝对」转调 `公共契约.运行时.平台适配.解析路径`（全平台唯一那条腿），生效根取
+    # 调用方给的 `根`；`归一` 已由唯一节点去掉空段与 `.`/`..` 段，故无需再 normpath。
+    # **本函数不自带 `is_absolute()` 分支、不自己拼根。**
+    绝对路径 = str(解析路径(归一, 根))
     # 防符号链接逃逸：解析后必须仍在根内
     try:
         真实根 = os.path.realpath(根)

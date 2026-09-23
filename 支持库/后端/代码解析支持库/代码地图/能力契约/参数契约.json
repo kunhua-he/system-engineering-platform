@@ -11,7 +11,7 @@
      "类型": "文本型",
      "必填": true,
      "默认值": null,
-     "说明": "代码地图 SQLite 文件绝对路径（如 <项目根>/.codegraph/codegraph.db）"
+     "说明": "代码地图 SQLite 文件路径（如 <项目根>/.codegraph/codegraph.db）（口径：写项目根相对路径（posix、不带 ..）；绝对路径兼容）"
     },
     {
      "名称": "关键词",
@@ -114,7 +114,7 @@
      "类型": "文本型",
      "必填": true,
      "默认值": null,
-     "说明": "代码地图 SQLite 文件绝对路径（如 <项目根>/.codegraph/codegraph.db）"
+     "说明": "代码地图 SQLite 文件路径（如 <项目根>/.codegraph/codegraph.db）（口径：写项目根相对路径（posix、不带 ..）；绝对路径兼容）"
     },
     {
      "名称": "节点id",
@@ -218,7 +218,7 @@
      "类型": "文本型",
      "必填": true,
      "默认值": null,
-     "说明": "代码地图 SQLite 文件绝对路径（如 <项目根>/.codegraph/codegraph.db）"
+     "说明": "代码地图 SQLite 文件路径（如 <项目根>/.codegraph/codegraph.db）（口径：写项目根相对路径（posix、不带 ..）；绝对路径兼容）"
     },
     {
      "名称": "项目根",

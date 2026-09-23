@@ -44,6 +44,7 @@ if _仓库根 not in sys.path:
     sys.path.insert(0, _仓库根)
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 解析路径
 
 import argparse
 import json
@@ -258,7 +259,7 @@ def 主() -> int:
     场景加载 = _载入判据(根)
 
     if 参数.覆盖:
-        制品 = Path(参数.覆盖) if os.path.isabs(参数.覆盖) else 根 / 参数.覆盖
+        制品 = 解析路径(参数.覆盖, 根)
         if not 制品.is_dir():
             print(f"[覆盖预检] 制品目录不存在: {制品}")
             return 1
@@ -285,7 +286,7 @@ def 主() -> int:
     空扫: list[str] = []
     目标表 = [("源码", 根, 参数.含缓存)]
     if 参数.制品:
-        制品基 = Path(参数.制品) if os.path.isabs(参数.制品) else 根 / 参数.制品
+        制品基 = 解析路径(参数.制品, 根)
         目标表.append(("制品", 制品基, True))
     for 标签, 基, 含缓存 in 目标表:
         if not 基.is_dir():

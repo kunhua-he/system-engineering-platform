@@ -45,11 +45,11 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "fdeb0492bef0ce642b676e9627b008523cfac786a0ff6ced4cb4f1fc03824a4b"
+      "sha256": "a71b6bb2856c61bf235db454b68c5dca6149683709d764525e82879bac200dc0"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "554fdcbbc13c645e99a9199fcf4aa04738e852af9afa0ae5cfda16ab032c905a"
+      "sha256": "5fd777f97928bc6c9371cd08b3aaabe700ac84ea8f0d3bd30b4285109ce1bf68"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
@@ -98,5 +98,5 @@
     "FFmpeg媒体.截取音频",
     "FFmpeg媒体.拼接媒体"
   ],
-  "能力定义摘要": "4eae1290c5e0ff2f"
+  "能力定义摘要": "554375ad727174f6"
 }

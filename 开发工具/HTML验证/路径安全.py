@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from 公共契约.运行时.平台适配 import 解析路径
 from 支持库.后端.系统核心支持库.路径安全 import 校验相对路径文本
 
 
@@ -26,7 +27,16 @@ def _安全合并路径(根: Path, 相对: str, 名称: str) -> Path:
     相对 = _解码URL一次(相对)
     if not 相对 or Path(相对).is_absolute() or re.match(r"^[A-Za-z]:[\\/]", 相对):
         raise ValueError(f"{名称}路径不合法: {相对!r}")
-    路径 = (根 / 相对).resolve()
+    # 拼根走唯一节点 `平台适配.解析路径`（相对 → 按生效根拼绝对）。唯一节点对 `~`
+    # 做家目录展开：`~未知用户` 展开失败时它抛 `RuntimeError`，本函数对外只吐
+    # `ValueError`（边界翻译，不让新异常型漏到 HTTP 面）。
+    try:
+        路径 = 解析路径(相对, 根)
+    except RuntimeError as 错误:
+        raise ValueError(f"{名称}路径逃逸: {相对!r}") from 错误
+    if not isinstance(路径, Path):
+        raise ValueError(f"{名称}路径不合法: {相对!r}")
+    路径 = 路径.resolve()
     try:
         路径.relative_to(根.resolve())
     except ValueError as 错误:
