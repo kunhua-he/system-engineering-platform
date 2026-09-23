@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.基础类型.结果类型 import 结果
@@ -21,6 +22,64 @@ from 支持库.适配层.Git提供者.实现.受管执行 import 默认超时秒
 
 #: 推送缺省远端（与 git 自身缺省一致；显式参数优先）。
 默认远端 = "origin"
+
+# ── 提交强制点（第 2 层，2026-09-23）─────────────────────────────────────────
+#:
+#: 第 1 层是 `开发工具/git钩子/commit-msg`，它挡的是**终端 git 腿**（任何进程都能敲 git，
+#: 拦不住，只能钩）。它有一个**可达上限**：`core.hooksPath` 是仓库本地配置，
+#: 一条 `git config --unset core.hooksPath` 就把它**静默关掉** —— 此后提交再无拦截，
+#: 且没有任何东西会报出来（本仓反复吃亏的「假绿」形态）。
+#:
+#: 本层把**同一条规则**直接判在提交腿上，两处各自独立生效：钩子被关掉，本腿照样拦。
+#: 而 `git commit --no-verify` 这条 git 内建绕过通道，**本腿的签名里没有它**
+#: （2026-09-23 实测确认）⇒ 对 MCP 腿是严格强制。
+提交开工ID句式 = re.compile(r"开工-\d{8}-\d{6}-[0-9a-f]{4,}")
+#: git 自身的流程消息（合并/回退/自动 fixup）不是「一次开发改动」，不要求开工ID。
+#: ★ 与钩子逐字同口径（`开发工具/git钩子/commit-msg:43`）—— 两处判据必须同批改，否则两腿分叉。
+提交豁免前缀 = re.compile(r"^(Merge |Revert |fixup! |squash! )")
+#: 强制点的安装位置与 git 侧应指向的配置值（两处是同一件事的两个落点，故并排写）。
+强制点相对目录 = ("开发工具", "git钩子")
+强制点hooksPath = "开发工具/git钩子"
+
+
+def 强制点校验(仓库路径: str, 消息: str, 超时秒: float) -> 结果 | None:
+    """提交强制点第 2 层：钩子在不在、接着线没、消息里有没有开工ID。全通过返回 None。
+
+    钩子文件不存在时返回 None —— 别的仓库（或本仓尚未装钩子时）没有这道强制点，
+    在此处判它是**误报**，而误报会挡死与本题无关的仓库。
+    """
+    根 = Path(仓库路径).resolve()
+    钩子 = 根.joinpath(*强制点相对目录) / "commit-msg"
+    if not 钩子.is_file():
+        return None
+    文本 = 消息 or ""
+    首行 = 文本.splitlines()[0] if 文本.strip() else ""
+    if not 提交豁免前缀.match(首行) and not 提交开工ID句式.search(文本):
+        return 失败结果(
+            "提交被拒",
+            "提交消息里没有开工ID —— 本仓一切改动从 `开工编排.开工即占` 进："
+            "它发开工ID，同时原子认领 `修改路径`（互斥门）；没有开工ID 的改动不合规。"
+            "修法：把开工ID 写进消息开头，形如 "
+            "`开工-20260923-131126-78e8 <改了什么、怎么验的>`。",
+            详情={"判据": "消息必须匹配 " + 提交开工ID句式.pattern,
+                  "豁免": "首行为 Merge / Revert / fixup! / squash! 时豁免（git 自身流程消息）",
+                  "本层为什么存在": "钩子可被 `git config --unset core.hooksPath` 静默关掉；"
+                              "本腿判同一条规则，关掉钩子也拦得住"},
+        )
+    执行 = 执行git(str(根), ["config", "--get", "core.hooksPath"], 超时秒)
+    if not 执行.成功:
+        return 执行
+    值 = (执行.值.get("标准输出") or "").strip()   # 退出码 1 = 该项未设置（git 正常回执）
+    if 值 != 强制点hooksPath:
+        return 失败结果(
+            "强制点未接线",
+            f"core.hooksPath = {值 or '（未设置）'}，应为 '{强制点hooksPath}' —— "
+            f"钩子文件在（{钩子}），但 git 不会调用它：终端腿的提交将无人拦。"
+            f"修法：git config core.hooksPath {强制点hooksPath}",
+            详情={"钩子文件": str(钩子), "现场值": 值,
+                  "修复命令": f"git config core.hooksPath {强制点hooksPath}"},
+        )
+    return None
 
 
 def _已暂存路径(仓库路径: str, 超时秒: float) -> 结果 | list[str]:
@@ -97,6 +156,10 @@ def 提交(仓库路径: str, 路径列表: list[str] | None = None, 消息: str
             or 校验提交消息(消息) or 校验超时(超时秒))
     if 校验:
         return 校验
+    # ── 提交强制点第 2 层（2026-09-23）：见 强制点校验 的 docstring ──
+    校验 = 强制点校验(仓库路径, 消息, 超时秒)
+    if 校验:
+        return 校验
     相对列表: list[str] = []
     全量暂存 = 路径列表 is None or (isinstance(路径列表, list) and not 路径列表)
     if 全量暂存:
@@ -143,6 +206,8 @@ def 提交(仓库路径: str, 路径列表: list[str] | None = None, 消息: str
     return 结果.成功结果({
         "提交": 执行列表[2].值["标准输出"].strip(), "消息": 消息, "路径列表": 相对列表,
         "全量暂存": 全量暂存, "提交文件": 提交文件, "文件数": len(提交文件),
+        "强制点": {"钩子": "开发工具/git钩子/commit-msg", "hooksPath": 强制点hooksPath,
+                 "本腿": "已按同一判据放行（开工ID 在消息里）"},
     })
 
 

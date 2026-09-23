@@ -481,5 +481,93 @@ class Test提交多行与文件清单(unittest.TestCase):
         self.assertEqual(结果.值["提交文件"], ["中文新增文件.txt"])
 
 
+class Test提交强制点第2层(unittest.TestCase):
+    """提交腿自判「开工ID + 钩子接线」（2026-09-23，强制点第 2 层）。
+
+    为什么要有第 2 层：第 1 层的 `开发工具/git钩子/commit-msg` 有一个**可达上限** ——
+    `core.hooksPath` 是仓库本地配置，一条 `git config --unset core.hooksPath` 就把它
+    **静默关掉**，此后提交再无拦截、且没有任何东西会报出来。故同一条规则必须**也**判在
+    提交腿上（必经路径），两处各自独立生效。
+
+    本类全部走**公开入口 `提交`**（不 import `实现/`，避免与「跨包禁止导入 实现/」
+    及测试白名单计数纠缠）；临时仓库里造一个钩子文件即可构造出「本仓」形态。
+    ★ 真仓库的 `core.hooksPath` 接线断言不在这里重复 —— 它在
+    `测试中心/开发工具/测试_git钩子.py`（同一件事不留第二套判据）。
+    """
+
+    def setUp(self):
+        self.临时根 = Path(tempfile.mkdtemp(prefix="测试_提交强制点_"))
+        self.仓库 = _初始化仓库(self.临时根 / "仓库")
+        self.钩子目录 = self.仓库 / "开发工具" / "git钩子"
+        self.钩子目录.mkdir(parents=True)
+        (self.钩子目录 / "commit-msg").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+    def tearDown(self):
+        shutil.rmtree(self.临时根, ignore_errors=True)
+
+    def _接线(self):
+        _运行git(str(self.仓库), "config", "core.hooksPath", "开发工具/git钩子")
+
+    def _改一个文件(self, 名: str) -> Path:
+        文件 = self.仓库 / 名
+        文件.write_text("内容\n", encoding="utf-8")
+        return 文件
+
+    def test_接线且消息带开工ID_放行并回带强制点(self):
+        self._接线()
+        文件 = self._改一个文件("甲.txt")
+        结果 = 提交(str(self.仓库), [str(文件)],
+                   "开工-20260923-131126-78e8 甲：新增一个文件并验证")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["提交文件"], ["甲.txt"])
+        self.assertEqual("开发工具/git钩子", 结果.值["强制点"]["hooksPath"],
+                         "放行时必须在回包里写明强制点落在哪 —— 否则调用方不知道它被谁放的行")
+
+    def test_反向_钩子在但消息没有开工ID_必须拒且不落提交(self):
+        """这是第 2 层的**存在理由**：钩子被关掉时，这条判据必须还拦得住。
+
+        故本用例**故意不接线**（`core.hooksPath` 未设）：此刻第 1 层已经失效，
+        拦截只可能来自本腿 —— 拦不住就说明第 2 层是装饰。
+        """
+        self.assertNotEqual(
+            "开发工具/git钩子",
+            _运行git(str(self.仓库), "config", "--get", "core.hooksPath").stdout.strip(),
+            "夹具前提：本用例必须在不接线的仓库里跑，否则测不出第 2 层")
+        文件 = self._改一个文件("乙.txt")
+        结果 = 提交(str(self.仓库), [str(文件)], "随手提交一句，没有开工ID")
+        self.assertFalse(结果.成功, "钩子已失效时提交腿必须自己拦住无开工ID 的提交")
+        self.assertEqual("提交被拒", 结果.错误码, 结果.错误说明)
+        现存 = _运行git(str(self.仓库), "log", "--oneline").stdout
+        self.assertNotIn("随手提交", 现存, "被拒的提交不得留痕")
+
+    def test_反向_钩子在但hooksPath没接线_必须拒(self):
+        """「钩子文件在」不等于「git 会调用它」—— 这个差别正是静默失效的入口。"""
+        文件 = self._改一个文件("丙.txt")
+        结果 = 提交(str(self.仓库), [str(文件)],
+                   "开工-20260923-131126-78e8 丙：消息合规，但钩子没接线")
+        self.assertFalse(结果.成功, "钩子文件在而 hooksPath 没指它 ⇒ 终端腿无人拦，必须拒")
+        self.assertEqual("强制点未接线", 结果.错误码, 结果.错误说明)
+        self.assertIn("git config core.hooksPath 开发工具/git钩子", 结果.错误说明,
+                      "拒绝时必须给出可直接照抄的修法")
+
+    def test_豁免前缀_回退消息不要求开工ID(self):
+        """`Revert ` 开头是 git 自身的流程消息，不是「一次开发改动」—— 与钩子同口径。"""
+        self._接线()
+        文件 = self._改一个文件("丁.txt")
+        结果 = 提交(str(self.仓库), [str(文件)],
+                   'Revert "某次改动"\n\nThis reverts commit 0123456789abcdef.')
+        self.assertTrue(结果.成功, 结果.错误说明)
+
+    def test_钩子文件不在时不拦_别的仓库不受影响(self):
+        """误报守卫：没有这道强制点的仓库（或本仓尚未装钩子时）必须照常提交。
+
+        在此处判它是**误报**，而误报会挡死与本题无关的仓库 —— 比不判更糟。
+        """
+        shutil.rmtree(self.钩子目录)
+        文件 = self._改一个文件("戊.txt")
+        结果 = 提交(str(self.仓库), [str(文件)], "没有钩子的仓库里，普通消息照常提交")
+        self.assertTrue(结果.成功, 结果.错误说明)
+
+
 if __name__ == "__main__":
     unittest.main()
