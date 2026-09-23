@@ -15,7 +15,6 @@ import hashlib
 import os
 import re
 import subprocess
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -79,18 +78,21 @@ def _时间戳() -> str:
 
 
 def _原子写文本(路径: Path, 文本: str) -> None:
-    """原子写：唯一临时文件 + fsync + 原子替换 + 目录 fsync。"""
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    临时路径 = 路径.parent / f".{路径.name}.{uuid.uuid4().hex}.tmp"
-    临时路径.write_text(文本, encoding="utf-8")
-    with open(临时路径, "rb") as 句柄:
-        os.fsync(句柄.fileno())
-    os.replace(临时路径, 路径)
-    目录句柄 = os.open(路径.parent, os.O_RDONLY)
-    try:
-        os.fsync(目录句柄)
-    finally:
-        os.close(目录句柄)
+    """原子写：**转调唯一写腿**（`文件系统支持库.文件操作.写入文件`）。
+
+    为什么删掉本地的「临时件 + fsync + os.replace + 目录 fsync」实现：那是**第二套落盘腿**
+    （哲学 1.2 同一条腿两处实现即缺陷），且整仓内核只读锁下 `os.replace` 会被内核以
+    `Operation not permitted` 拒（2026-09-23 实测）—— 唯一写腿自带「解锁窗口 + 同目录
+    临时件 + os.replace + 保留目标权限位」，语义与本处原实现同源，父目录也由它自动创建。
+
+    **失败仍抛 `OSError`**：本函数的调用方一律 `except OSError` 收口（见
+    `记录发布证据` / `_写激活准备证据` / 切换激活指针三处），转调不得改变这条契约 ——
+    否则「写不进去」会从「如实返回 证据写入失败」退化成未捕获异常。
+    """
+    from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+    写结果 = 写入文件(str(路径), 文本)
+    if not 写结果.成功:
+        raise OSError(f"{写结果.错误码}: {写结果.错误说明}")
 
 
 def 当前提交() -> str:

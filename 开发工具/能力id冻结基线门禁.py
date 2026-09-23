@@ -310,8 +310,11 @@ def 冻结基线(根: Path, 基线文件: Path | None = None) -> tuple[int, str]
         "能力数": len(条目),
         "条目": 条目,
     }
-    基线文件.parent.mkdir(parents=True, exist_ok=True)
-    基线文件.write_text(json.dumps(文档, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # 落盘统一走**唯一写腿**（`文件系统支持库.文件操作.写入文件`），不裸 `write_text`：
+    # 该腿自带「内核只读锁的解锁窗口 + 原子替换 + 保留权限位」，裸写会在整仓上锁后被内核
+    # 以 `Operation not permitted` 拒（2026-09-23 实测）；父目录由写腿自动创建。
+    from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+    写入文件(str(基线文件), json.dumps(文档, ensure_ascii=False, indent=2) + "\n").确保成功()
     return 0, f"已冻结 {len(条目)} 条能力 id → {基线文件}"
 
 

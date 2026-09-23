@@ -33,8 +33,17 @@ def _登记串行锁():
     if fcntl is None:
         yield
         return
+    # 整仓内核只读锁（macOS `chflags uchg`）下，`open("a+")` 在**新建锁文件**或
+    # **打开既有锁文件**时都会被内核以 `Operation not permitted` 拒（2026-09-23 实测）。
+    # 本处**转不动唯一写腿**：写入腿是「打开-写-关」的一次性动作，而 flock 要求
+    # 句柄在整个临界区里一直开着 ⇒ 只能按《仓库只读锁》的既定腿开窗口：
+    # `临时解锁` 开窗（含父目录链）→ `open` → 窗口**外**补 `对齐目标锁态`。
+    # 窗口与对齐都用既有函数，本文件不另写「解锁→写→上锁」骨架（哲学 1.2）。
+    from 公共契约.运行时.仓库只读锁 import 临时解锁, 对齐目标锁态
     锁路径.parent.mkdir(parents=True, exist_ok=True)
-    句柄 = 锁路径.open("a+")
+    with 临时解锁(锁路径):
+        句柄 = 锁路径.open("a+")
+    对齐目标锁态(锁路径)
     try:
         fcntl.flock(句柄.fileno(), fcntl.LOCK_EX)
         yield
@@ -76,6 +85,9 @@ def 登记待补能力(能力id: str, 来源工具: str, 网关错误说明: str
             "登记时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
         行 = json.dumps(条目, ensure_ascii=False)
-        with 清单路径.open("a", encoding="utf-8") as 文件:
-            文件.write(行 + "\n")
+        # 落盘走**唯一写腿**（`文件系统支持库.文件操作.追加写入`）：它自带
+        # 「内核只读锁的解锁窗口」，裸 `open("a")` 会在整仓上锁后被内核以
+        # `Operation not permitted` 拒（2026-09-23 实测）。
+        from 支持库.后端.文件系统支持库.文件操作 import 追加写入
+        追加写入(str(清单路径), 行 + "\n").确保成功()
         return {"是否新增": True, "已登记条数": len(已有) + 1, "清单路径": str(清单路径)}

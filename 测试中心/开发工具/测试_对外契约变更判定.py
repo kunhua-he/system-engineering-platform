@@ -96,6 +96,12 @@ class 对外契约变更判定测试(unittest.TestCase):
             shutil.rmtree(副本)
         副本.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(self.真实包, 副本)
+        # ★ 副本要能改，必须先解掉**复制过来的内核只读标志**：`copytree` 默认走 `copy2`，
+        #   会把源文件的 `st_flags`（整仓只读锁的 `uchg`）一起复制 ⇒ 紧接着的
+        #   `改副本定义()` 写盘会被内核以 `Operation not permitted` 拒。
+        #   按目标位置对齐（目标在 /tmp ⇒ 副本解除锁）—— 唯一实现在锁模块里。
+        from 公共契约.运行时.仓库只读锁 import 对齐目标锁态
+        对齐目标锁态(副本)
         return 副本
 
     def 改副本定义(self, 副本: Path, 替换: list[tuple[str, str]]) -> None:

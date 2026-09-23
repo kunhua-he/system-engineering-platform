@@ -41,6 +41,10 @@ from pathlib import Path
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：`文件系统支持库.文件操作.写入文件`
+# 已是原子写（临时文件 + `os.replace`）且落盘后按内容指纹登记写入凭据。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+
 
 def _下一版本(版本: str, *, 升主: bool) -> tuple[str, str]:
     """算出下一版本：返回（新版本, 口径说明）。版本号不可解析时抛 ValueError（fail-closed）。"""
@@ -118,8 +122,8 @@ def 处理一个包(包目录: Path, *, 写盘: bool) -> dict:
         出["动作"] = "未核验"
         return 出
     try:
-        定义路径.write_text(新文本, encoding="utf-8")
-    except OSError as 错误:
+        写入文件(str(定义路径), 新文本).确保成功()
+    except (OSError, ValueError) as 错误:
         出["问题"] = f"写盘失败（{type(错误).__name__}: {错误}）"
         出["动作"] = "未核验"
         return 出

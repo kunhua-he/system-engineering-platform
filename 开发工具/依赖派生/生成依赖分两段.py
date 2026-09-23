@@ -862,22 +862,26 @@ def 生成(汇总数据: dict) -> int:
         return 1
 
     期望 = 期望包声明字段(汇总数据)
+    # 落盘统一走**唯一写腿**（`文件系统支持库.文件操作.写入文件`），不裸 `write_text`：
+    # 该腿自带「内核只读锁的解锁窗口」（`仓库只读锁.临时解锁`），裸写会在整仓上锁后被内核
+    # 以 `Operation not permitted` 拒（2026-09-23 实测）。写腿同时按内容指纹登记写入凭据。
+    from 支持库.后端.文件系统支持库.文件操作 import 写入文件
     for 件 in 汇总数据["正式包"]:
         路径 = (仓库根 / 件["路径"]) / "包声明.json"
         原文本 = 路径.read_text(encoding="utf-8")
         新文本 = 重写包声明文本(原文本, 期望[件["名称"]])
         if 新文本 != 原文本:
-            路径.write_text(新文本, encoding="utf-8")
+            写入文件(str(路径), 新文本).确保成功()
             改动.append(f"包声明.json ← {件['名称']} 依赖类别={期望[件['名称']]}")
 
     登记文本 = 生成登记(汇总数据)
     if not 登记路径.is_file() or 登记路径.read_text(encoding="utf-8") != 登记文本:
-        登记路径.write_text(登记文本, encoding="utf-8")
+        写入文件(str(登记路径), 登记文本).确保成功()
         改动.append(f"依赖登记.json（{len(汇总数据['件表'])} 件）")
 
     清单文本 = 生成清单(汇总数据)
     if not 清单路径.is_file() or 清单路径.read_text(encoding="utf-8") != 清单文本:
-        清单路径.write_text(清单文本, encoding="utf-8")
+        写入文件(str(清单路径), 清单文本).确保成功()
         改动.append("说明/依赖分两段.md")
 
     print(f"生成完成：件数 {len(汇总数据['件表'])}"

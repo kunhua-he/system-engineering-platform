@@ -62,6 +62,9 @@ if str(_项目根) not in sys.path:
     sys.path.insert(0, str(_项目根))
 
 from 公共契约.基础类型.结果类型 import 结果
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 来源标识 = "技能模板生成器"
 默认步骤 = [
@@ -121,7 +124,7 @@ if __name__ == "__main__":
 
 def _写(路径: Path, 内容: str) -> None:
     路径.parent.mkdir(parents=True, exist_ok=True)
-    路径.write_text(内容, encoding="utf-8")
+    写入文件(str(路径), 内容).确保成功()
 
 
 def _转JSON文本(数据: Any) -> str:

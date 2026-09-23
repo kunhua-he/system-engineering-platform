@@ -17,6 +17,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from 公共契约.运行时.仓库只读锁 import 对齐目标锁态
+
+# ★ 本文件每一处 `shutil.copytree` 之后都跟着一句 `对齐目标锁态(目录)`。
+#   为什么（2026-09-23 实测，洞 ④ 的测试夹具同族）：本仓整仓置了 macOS 不可变标志
+#   （`chflags uchg`，见 `公共契约/运行时/仓库只读锁.py`），而 `copytree`（默认用 `copy2`）
+#   **会把源文件的 `st_flags` 一起复制** ⇒ 临时区里的副本也是只读的，紧接着的
+#   `副本.write_text(...)` 当场 `PermissionError: [Errno 1] Operation not permitted`
+#   （实测：`测试_薄壳返回可控` 3 个用例整组 error）。副本在仓库外，按上下文锁态
+#   对齐后自然是未锁的 —— 这也正是 `对齐目标锁态` 的反方向用途。
 系统根 = Path(__file__).resolve().parents[2]
 薄壳目录 = 系统根 / "开发工具" / "薄壳"
 for 路径 in (str(系统根), str(薄壳目录)):
@@ -1171,6 +1180,7 @@ class 自换新壳测试(unittest.TestCase):
         with tempfile.TemporaryDirectory() as 临时:
             目录 = Path(临时) / "薄壳"
             shutil.copytree(薄壳目录, 目录, ignore=shutil.ignore_patterns("__pycache__"))
+            对齐目标锁态(目录)   # ★ copytree 会把源的 uchg 带过来 ⇒ 副本不可写（见头部注）
             三条 = asyncio.run(_连改两次源码(目录))
         self.assertEqual(3, len(三条))
         指纹表 = [条["进程内指纹"]["薄壳服务.py"] for 条 in 三条]
@@ -1219,6 +1229,7 @@ class 换壳后不握手反向验证(unittest.TestCase):
             目录 = Path(临时) / "薄壳"
             shutil.copytree(薄壳目录, 目录,
                             ignore=shutil.ignore_patterns("__pycache__"))
+            对齐目标锁态(目录)   # ★ copytree 会把源的 uchg 带过来 ⇒ 副本不可写（见头部注）
             缺陷态脚本 = self._缺陷态脚本(目录)
             # 副本不在仓库里，平台包要显式经 PYTHONPATH 才导得到（生产里由 __file__ 推导）。
             环境 = {"PYTHONPATH": str(系统根)}
@@ -1284,6 +1295,7 @@ class 换壳窗口反向验证(unittest.TestCase):
 
     def _副本(self, 目录: Path, 去判据: bool) -> Path:
         shutil.copytree(薄壳目录, 目录, ignore=shutil.ignore_patterns("__pycache__"))
+        对齐目标锁态(目录)   # ★ copytree 会把源的 uchg 带过来 ⇒ 副本不可写（见头部注）
         路径 = 目录 / "薄壳服务.py"
         源 = 路径.read_text(encoding="utf-8")
         if self._延迟锚 not in 源:

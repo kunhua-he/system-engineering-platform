@@ -21,6 +21,9 @@ import re
 from pathlib import Path
 
 from 开发工具.MD文档生成 import 元信息头, 生成区
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `机器印记.py` 同一处说明。本层不再各自 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 决策记录目录 = "开发文档/决策记录"
 决策编号 = re.compile(r"^(\d{4})_")
@@ -58,13 +61,14 @@ def 写元信息头(项目根: Path, 相对: str, 允许补头: bool = False) ->
             return 0, [f"  无元信息头，按自身体例（不强加）"]
         位 = 元信息头.插入位置(行表)
         新表 = 行表[:位] + [应然, 元信息头.待填口径, 元信息头.待填维护者, ""] + 行表[位:]
-        路径.write_text("\n".join(新表) + ("\n" if 文本.endswith("\n") else ""),
-                    encoding="utf-8")
+        写入文件(str(路径),
+               "\n".join(新表) + ("\n" if 文本.endswith("\n") else "")).确保成功()
         return 0, [f"  已补元信息头：{应然[2:]}", "  `口径`/`维护者` 两行留待填（属人工区）"]
     if 行表[块[0]] == 应然:
         return 0, [f"  元信息头无需改动（{应然[2:]}）"]
     行表[块[0]] = 应然
-    路径.write_text("\n".join(行表) + ("\n" if 文本.endswith("\n") else ""), encoding="utf-8")
+    写入文件(str(路径),
+           "\n".join(行表) + ("\n" if 文本.endswith("\n") else "")).确保成功()
     return 0, [f"  已改：{应然[2:]}"]
 
 
@@ -143,6 +147,6 @@ def 出决策骨架(项目根: Path, 标题: str, 日期: str) -> tuple[int, lis
     if 路径.exists():
         return 2, [f"  目标已存在，不覆盖：{文件名}"]
     骨架 = 由模板出骨架(项目根, 编号, 标题, 日期)
-    路径.write_text("\n".join(骨架) + "\n", encoding="utf-8")
+    写入文件(str(路径), "\n".join(骨架) + "\n").确保成功()
     return 0, [f"  已出骨架：{决策记录目录}/{文件名}"
               f"（编号按最大号 +1；章节从 `{决策记录模板相对}` 派生，格式只有一份）"]

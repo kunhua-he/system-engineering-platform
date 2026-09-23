@@ -299,6 +299,86 @@ class Test清只读后删除树(清只读夹具):
                         f"应有一条残留留痕，实际: {留痕}")
 
 
+class Test删树权限三缺陷(清只读夹具):
+    """2026-09-23 债务行复核：`清只读后删除树` 的三处真缺陷（同一根因链）。
+
+    债务行只登记了一处（回调少传 `flags`），现场复核发现共三处，逐条锁在下面：
+
+    1. **回调少传 `flags`**：`rmtree` 会把 `os.open`（两参）交给 `onexc`，原实现写死
+       `函数(路径)` ⇒ `TypeError: open() missing required argument 'flags' (pos 2)`。
+       `TypeError` 不是 `OSError`，下面的 `except OSError` 接不住 ⇒ 直接冒到调用方。
+    2. **目录被 `清除只读属性` 写成只写**：`确保可删` 对目录也调 `清除只读属性`
+       （`chmod(路径, S_IWRITE)` 是**赋值**）⇒ 权限变成恰好 `0o200`，读/执行位全丢，
+       目录连打开都做不到 ⇒ 「清只读」这一步自己制造了下一次 `PermissionError`。
+       `_确保目录可写` 的守卫只查 `W_OK`，恰好判「已可写、不必动」而放过它。
+    3. **回调修完不重试**：`onexc` 的语义是「这次失败由你处理」，返回后 `rmtree`
+       **不重试那一步**、直接跳过整个子树并**正常返回** ⇒ 函数报成功、树还在
+       （实测：`chmod 000` 的目录调用后无异常，`os.walk` 仍列出全部条目）。
+    """
+
+    @staticmethod
+    def _放开权限(路径: Path) -> None:
+        """兜底放开权限位；**路径已不存在就跳过**（本类的正常结局正是「已删净」）。"""
+        try:
+            os.chmod(路径, 0o755)
+        except (OSError, FileNotFoundError):
+            pass
+
+    def test_1_目录自身不可读_不得抛TypeError且必须删净(self) -> None:
+        """缺陷 1 + 3 的合并现场：`chmod 000` 的顶目录（原实现报 TypeError 且树还在）。"""
+        根 = self.根 / "顶目录不可读"
+        (根 / "子").mkdir(parents=True)
+        (根 / "子" / "f.txt").write_text("x", encoding="utf-8")
+        os.chmod(根, 0o000)
+        self.addCleanup(self._放开权限, 根)
+        try:
+            清只读后删除树(根)
+        except TypeError as 错误:
+            self.fail(f"回调按一参转发给了 os.open（两参）: {错误}")
+        self.assertFalse(根.exists(),
+                         "函数返回了但树还在 —— `onexc` 修完权限 rmtree 不会重试，"
+                         "必须由本函数自己再删一次（否则「删树」静默变成「没删」）")
+
+    def test_2_子目录只读_必须删净不得静默留下(self) -> None:
+        """缺陷 3 的另一个现场：子目录 `0o555` + 文件 `0o444`，原实现报成功但树还在。"""
+        根 = self.根 / "子目录只读"
+        子 = 根 / "子"
+        子.mkdir(parents=True)
+        文件 = 子 / "f.txt"
+        文件.write_text("x", encoding="utf-8")
+        os.chmod(文件, 0o444)
+        os.chmod(子, 0o555)
+        self.addCleanup(self._放开权限, 子)
+        self.addCleanup(self._放开权限, 根)
+        清只读后删除树(根)
+        self.assertFalse(根.exists(), "只读子目录同样必须删净")
+
+    def test_3_普通树不得被误伤(self) -> None:
+        """反向：修复不许把「本来就好删的树」搞坏（改动全在只读/权限分支上）。"""
+        根 = self.根 / "普通树"
+        (根 / "a" / "b").mkdir(parents=True)
+        (根 / "a" / "b" / "c.txt").write_text("x", encoding="utf-8")
+        清只读后删除树(根)
+        self.assertFalse(根.exists())
+
+    def test_4_清只读后目录仍须可读可执行(self) -> None:
+        """缺陷 2 的直接判据：目录经权限归一路径后，**读/执行位不得丢**。
+
+        为什么这条不能只看 `W_OK`：改前 `chmod(S_IWRITE)` 之后 `W_OK` 恒真，
+        只看写位就永远发现不了「不可读也不可执行」。
+        """
+        from 公共契约.运行时.平台适配 import 确保可删
+        目标 = self.根 / "只读目录权限"
+        目标.mkdir()
+        os.chmod(目标, 0o000)
+        self.addCleanup(self._放开权限, 目标)
+        确保可删(目标)
+        模式 = 目标.stat().st_mode & 0o777
+        self.assertTrue(os.access(目标, os.W_OK), f"清只读后应可写（模式 {oct(模式)}）")
+        self.assertTrue(os.access(目标, os.R_OK), f"目录必须仍可读（模式 {oct(模式)}）")
+        self.assertTrue(os.access(目标, os.X_OK), f"目录必须仍可执行/遍历（模式 {oct(模式)}）")
+
+
 class Test同步落盘跨平台(清只读夹具):
     """`同步落盘` 是 `原子落盘` 的第一步，也是真机报错的那一步。"""
 

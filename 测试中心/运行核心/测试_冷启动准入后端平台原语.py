@@ -231,6 +231,11 @@ class Test冷启动准入后端平台原语(冷启动反向门禁基础):
         目标包.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(源包, 目标包,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        # ★ 影子副本要能改，先解掉复制过来的**内核只读标志**（`copytree` 默认 `copy2`
+        #   会连 `st_flags` 一起复制）：否则下面写 `准入闸门.py` 被内核拒
+        #   （实测 `Operation not permitted`）。唯一实现见锁模块。
+        from 公共契约.运行时.仓库只读锁 import 对齐目标锁态
+        对齐目标锁态(目标包)
         (目标包 / "准入闸门.py").write_text(
             源文本.replace(变异锚点, '后端, 说明 = _假准入后端(), ""') + 假后端注入,
             encoding="utf-8",

@@ -153,9 +153,17 @@ def 生成依赖锁定(项目根目录: Path, 系统根目录: Path) -> 锁定�
         "包列表": 包列表,
     }
     锁定路径 = 项目根目录 / "依赖锁定.json"
+    # 整仓内核只读锁（macOS `chflags uchg`）下，裸 `write_text`/`replace` 会被内核以
+    # `Operation not permitted` 拒（2026-09-23 实测）。本层**不能**转调
+    # `支持库.后端.文件系统支持库.文件操作.写入文件`（唯一分层方案：项目适配层不得调用
+    # 支持库，见 `运行核心/依赖防火墙.py` 的 `允许依赖表`）⇒ 按《仓库只读锁》的既定腿
+    # 开窗口：`临时解锁`（含父目录链）→ 临时件 + `replace` → 窗口**外**补 `对齐目标锁态`。
+    from 公共契约.运行时.仓库只读锁 import 临时解锁, 对齐目标锁态
     临时路径 = 锁定路径.with_suffix(".tmp")
-    临时路径.write_text(json.dumps(锁定数据, ensure_ascii=False, indent=2), encoding="utf-8")
-    临时路径.replace(锁定路径)
+    with 临时解锁(锁定路径, 临时路径):
+        临时路径.write_text(json.dumps(锁定数据, ensure_ascii=False, indent=2), encoding="utf-8")
+        临时路径.replace(锁定路径)
+    对齐目标锁态(锁定路径)
 
     结果.成功 = True
     结果.锁定路径 = str(锁定路径)

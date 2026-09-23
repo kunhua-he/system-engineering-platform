@@ -34,6 +34,9 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 支持库.适配层 import 内容摘要
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 清单文件名 = "清单.json"
 摘要文件名 = "摘要.json"
@@ -105,14 +108,16 @@ def 生成快照清单模板(目标目录: Path, 范围目录表: list[str], *,
         for 相对路径 in 文件表:
             目标文件 = 目标 / 相对路径
             目标文件.parent.mkdir(parents=True, exist_ok=True)
+            # 二进制拷贝：文件系统支持库目前**没有二进制写入腿**（只有文本 `写入文件`），
+            # 故这一处如实保留 `write_bytes`、不上报为已收口（见交付回执的「未收口」栏）。
             目标文件.write_bytes((工作根 / 相对路径).read_bytes())
-        (目标 / 清单文件名).write_text(
-            json.dumps(清单, ensure_ascii=False, indent=2), encoding="utf-8")
-        (目标 / 摘要文件名).write_text(
-            json.dumps({"摘要": 摘要}, ensure_ascii=False), encoding="utf-8")
-        (目标 / 激活指针文件名).write_text(
-            json.dumps(激活指针, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError as 错误:
+        写入文件(str(目标 / 清单文件名),
+               json.dumps(清单, ensure_ascii=False, indent=2)).确保成功()
+        写入文件(str(目标 / 摘要文件名),
+               json.dumps({"摘要": 摘要}, ensure_ascii=False)).确保成功()
+        写入文件(str(目标 / 激活指针文件名),
+               json.dumps(激活指针, ensure_ascii=False, indent=2)).确保成功()
+    except (OSError, ValueError) as 错误:
         return {"成功": False, "错误码": "快照损坏",
                 "消息": f"快照写入失败: {错误}", "快照目录": str(目标)}
     return {"成功": True, "错误码": "", "快照目录": str(目标),

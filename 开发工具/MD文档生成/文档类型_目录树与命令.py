@@ -33,6 +33,9 @@ import re
 from pathlib import Path
 
 from 开发工具.MD文档生成 import 生成区
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `机器印记.py` 同一处说明。本层不再各自 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 树块标题 = "## 目录树"
 摘要文件名 = "完整性摘要.json"
@@ -162,7 +165,8 @@ def 出文档(项目根: Path, 相对: str) -> tuple[int, list[str]]:
         raise 生成区.边界缺失(f"找不到 {树块标题} 的 ```text 围栏：{相对}（边界切不出即拒改）")
     去掉 = {i for i, 条目 in 树条目(行表, *范围) if _条目名(条目) in set(漂移)}
     新表 = [行 for i, 行 in enumerate(行表) if i not in 去掉]
-    路径.write_text("\n".join(新表) + ("\n" if 文本.endswith("\n") else ""), encoding="utf-8")
+    写入文件(str(路径),
+           "\n".join(新表) + ("\n" if 文本.endswith("\n") else "")).确保成功()
     return 0, [f"  已删漂移条目 {len(去掉)} 行：{x}" for x in 漂移]
 
 

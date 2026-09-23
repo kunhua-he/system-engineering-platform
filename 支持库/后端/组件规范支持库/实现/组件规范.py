@@ -15,6 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+
 组件类型表 = {"支持库", "基础模块", "功能模块", "项目代码"}
 九要素 = ("包声明", "能力契约", "依赖契约", "配置契约", "权限契约",
           "执行单元", "验证场景", "说明书", "完整性摘要")
@@ -96,6 +100,6 @@ def 生成完整性摘要(组件目录: Path) -> dict[str, Any]:
     摘要 = 生成文件清单摘要(
         组件目录, 包id=声明.get("包id", 组件目录.name),
         版本=声明.get("版本", "1.0.0"))
-    (组件目录 / "完整性摘要.json").write_text(
-        json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    写入文件(str(组件目录 / "完整性摘要.json"),
+           json.dumps(摘要, ensure_ascii=False, indent=2) + "\n").确保成功()
     return 摘要

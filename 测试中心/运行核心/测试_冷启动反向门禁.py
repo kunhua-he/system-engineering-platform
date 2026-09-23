@@ -44,9 +44,23 @@ if str(_自举根) not in sys.path:
     sys.path.insert(0, str(_自举根))
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.仓库只读锁 import 对齐目标锁态
 
 系统根 = Path(__file__).resolve().parents[2]
 脚本路径 = Path(__file__).resolve().parent / "冷启动脚本.py"
+
+
+# ★ 本文件每一处 `shutil.copy2` / `copytree` 之后都跟着一句 `对齐目标锁态(...)`。
+#   为什么（2026-09-23 实测）：本仓整仓置了 macOS 不可变标志（`chflags uchg`，
+#   见 `公共契约/运行时/仓库只读锁.py`），而 `copy2`（`copytree` 默认也用它）
+#   **会把源文件的 `st_flags` 一起复制** ⇒ 影子里的副本也是只读的，紧接着的
+#   `.unlink()` / `write_text()` 全被内核以 `Operation not permitted` 拒
+#   （实测报错现场即影子的 `包声明.json`）。`对齐目标锁态()` 按**目标位置**对齐：
+#   影子在临时区（父目录没锁）⇒ 副本自然解除锁。
+#   ★ 为什么写成「逐处复制 + 逐处对齐」而不是包一个 `复制到影子()` 助手：
+#   `测试写入边界门禁` 会把助手里的 `copy2(源, 目标)` 判成**新的未解析写动作**
+#   （目标表达式解析不出左端基，fail-closed 计违规），新增即判红。
+#   逐处写则目标表达式与既有形态一致，不引入新的未解析处数。
 
 # 冷启动影子适配层的包入口桩：公开导出与真实 支持库/适配层/__init__.py 同名同义
 # （转发到影子里已复制的 密码签名提供者）。没有它，平台控制面/包仓库/签名能力.py
@@ -187,12 +201,14 @@ class 冷启动反向门禁基础(unittest.TestCase):
         适配层影子.mkdir(exist_ok=True)
         for 文件 in ("系统探针.py", "脱敏模式.py"):
             shutil.copy2(支持库根 / "适配层" / 文件, 适配层影子 / 文件)
+            对齐目标锁态(适配层影子 / 文件)
         # 适配层是命名空间包：影子目录只放冷启动依赖的两个模块，用
         # 最小 __init__.py 声明为常规包，避免真 __init__.py 拉入完整适配链。
         (适配层影子 / "__init__.py").write_text(影子适配层入口, encoding="utf-8")
         密码签名 = 支持库根 / "适配层" / "密码签名提供者"
         if 密码签名.is_dir():
             shutil.copytree(密码签名, 适配层影子 / "密码签名提供者")
+            对齐目标锁态(适配层影子 / "密码签名提供者")
             (适配层影子 / "密码签名提供者" / "包声明.json").unlink(missing_ok=True)
             (适配层影子 / "密码签名提供者" / "依赖锁.json").unlink(missing_ok=True)
             shutil.rmtree(适配层影子 / "密码签名提供者" / "__pycache__",
@@ -205,6 +221,7 @@ class 冷启动反向门禁基础(unittest.TestCase):
         系统探针 = 支持库根 / "适配层" / "系统探针提供者"
         if 系统探针.is_dir():
             shutil.copytree(系统探针, 适配层影子 / "系统探针提供者")
+            对齐目标锁态(适配层影子 / "系统探针提供者")
             (适配层影子 / "系统探针提供者" / "包声明.json").unlink(missing_ok=True)
             (适配层影子 / "系统探针提供者" / "依赖锁.json").unlink(missing_ok=True)
             shutil.rmtree(适配层影子 / "系统探针提供者" / "__pycache__",
@@ -221,9 +238,13 @@ class 冷启动反向门禁基础(unittest.TestCase):
             (模块库根 / "文件管理", self.根 / "模块库" / "文件管理"),
         ):
             shutil.copytree(源, 目标)
+            对齐目标锁态(目标)
         shutil.copy2(支持库根 / "__init__.py", self.根 / "支持库" / "__init__.py")
+        对齐目标锁态(self.根 / "支持库" / "__init__.py")
         shutil.copy2(支持库根 / "后端" / "__init__.py", self.根 / "支持库" / "后端" / "__init__.py")
+        对齐目标锁态(self.根 / "支持库" / "后端" / "__init__.py")
         shutil.copy2(模块库根 / "__init__.py", self.根 / "模块库" / "__init__.py")
+        对齐目标锁态(self.根 / "模块库" / "__init__.py")
 
     def 写合成支持库(
         self, 名称: str, 能力id: str, *,

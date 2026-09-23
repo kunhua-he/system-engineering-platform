@@ -50,6 +50,9 @@ if str(_项目根) not in sys.path:
 
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.后端.组件规范支持库.实现.完整性摘要 import 生成完整性摘要
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 系统根 = _定位项目根()
 错误来源 = "支持库模板生成器"
@@ -64,7 +67,7 @@ from 支持库.后端.组件规范支持库.实现.完整性摘要 import 生成
 
 def _写(路径: Path, 内容: str) -> None:
     路径.parent.mkdir(parents=True, exist_ok=True)
-    路径.write_text(内容, encoding="utf-8")
+    写入文件(str(路径), 内容).确保成功()
 
 
 def _转JSON文本(数据: dict) -> str:

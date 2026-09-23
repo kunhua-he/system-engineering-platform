@@ -110,8 +110,19 @@ def 加载项目声明(声明路径: Path) -> 项目声明:
 
 
 def 写入项目声明(声明: 项目声明, 声明路径: Path) -> None:
-    """写入项目声明 JSON（原子写盘）。"""
-    声明路径.parent.mkdir(parents=True, exist_ok=True)
+    """写入项目声明 JSON（原子写盘）。
+
+    整仓内核只读锁（macOS `chflags uchg`）下，裸 `mkdir`/`write_text`/`replace` 会被内核
+    以 `Operation not permitted` 拒（2026-09-23 实测）。本层**不能**转调
+    `支持库.后端.文件系统支持库.文件操作.写入文件`（唯一分层方案：项目适配层不得调用
+    支持库，见 `运行核心/依赖防火墙.py` 的 `允许依赖表`）⇒ 按《仓库只读锁》的既定腿
+    开窗口：`临时解锁`（含父目录链）→ 临时件 + `replace` → 窗口**外**补 `对齐目标锁态`。
+    窗口与对齐都用既有函数，本文件不另写「解锁→写→上锁」骨架（哲学 1.2）。
+    """
+    from 公共契约.运行时.仓库只读锁 import 临时解锁, 对齐目标锁态
     临时路径 = 声明路径.with_suffix(".tmp")
-    临时路径.write_text(json.dumps(声明.转字典(), ensure_ascii=False, indent=2), encoding="utf-8")
-    临时路径.replace(声明路径)
+    with 临时解锁(声明路径, 临时路径):
+        声明路径.parent.mkdir(parents=True, exist_ok=True)
+        临时路径.write_text(json.dumps(声明.转字典(), ensure_ascii=False, indent=2), encoding="utf-8")
+        临时路径.replace(声明路径)
+    对齐目标锁态(声明路径)

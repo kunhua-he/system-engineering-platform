@@ -234,14 +234,18 @@ def 主函数(argv: list[str] | None = None) -> int:
 
     基线路径 = 系统根 / "开发工具/参数口径基线.json"
     if 写基线:
-        基线路径.write_text(json.dumps({
+        # 落盘统一走**唯一写腿**（`文件系统支持库.文件操作.写入文件`），不裸 `write_text`：
+        # 该腿自带「内核只读锁的解锁窗口 + 原子替换」，裸写会在整仓上锁后被内核以
+        # `Operation not permitted` 拒（2026-09-23 实测）。
+        from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+        写入文件(str(基线路径), json.dumps({
             "口径": "真分歧 = 应当统一的概念被写成多种定义（判红）；同名不同义 = 不同概念恰好同名（只报，待裁决改名）",
             "契约来源": 唯一腿入口,
             "能力数": 事实["能力数"],
             "真分歧": [{"类别": x["类别"], "字段": x["字段"], "明细": x["明细"]} for x in 真分歧],
             "同名不同义": [{"字段": x["字段"], "明细": x["明细"], "合计": x["合计"]} for x in 同名不同义],
             "取证": "python3.14 -m 开发工具.参数口径审计 --写基线",
-        }, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        }, ensure_ascii=False, indent=2, sort_keys=True) + "\n").确保成功()
         print(f"基线已写入：{基线路径.relative_to(系统根)}")
         return 0
 

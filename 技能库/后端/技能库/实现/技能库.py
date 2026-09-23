@@ -928,8 +928,16 @@ def 生成技能索引(技能根目录: str = None, 写回索引: bool = 真) ->
             原索引 = {}
         新索引 = dict(原索引)
         新索引["能力列表"] = 条目列表
+        # 整仓内核只读锁（macOS `chflags uchg`）下，裸 `write_text` 会被内核以
+        # `Operation not permitted` 拒（2026-09-23 实测）。本层**不能**转调
+        # `支持库.后端.文件系统支持库.文件操作.写入文件`（唯一分层方案：技能库只可依赖
+        # 公共契约，见 `运行核心/依赖防火墙.py` 的 `允许依赖表`）⇒ 按《仓库只读锁》的
+        # 既定腿开窗口：`临时解锁`（含父目录链）→ 写 → 窗口**外**补 `对齐目标锁态`。
+        from 公共契约.运行时.仓库只读锁 import 临时解锁, 对齐目标锁态
         try:
-            索引路径.write_text(json.dumps(新索引, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            with 临时解锁(索引路径):
+                索引路径.write_text(json.dumps(新索引, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            对齐目标锁态(索引路径)
             结果值["已写回"] = str(索引路径)
         except OSError as 错误:
             结果值["写回失败"] = str(错误)

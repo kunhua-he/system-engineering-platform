@@ -20,6 +20,9 @@ from 支持库.后端.组件规范支持库 import (
     扫描正式包,
     摘要文件名,
 )
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本层不再各自 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 
 def 生成单包摘要(包目录: Path) -> dict[str, object]:
@@ -48,7 +51,7 @@ def 刷新全部摘要(系统根目录: Path) -> list[Path]:
     for 包目录 in 查找正式包(系统根目录):
         摘要路径 = 包目录 / 摘要文件名
         摘要文本 = json.dumps(生成单包摘要(包目录), ensure_ascii=False, indent=2) + "\n"
-        摘要路径.write_text(摘要文本, encoding="utf-8")
+        写入文件(str(摘要路径), 摘要文本).确保成功()
         写入路径列表.append(摘要路径)
     if not 写入路径列表:
         raise RuntimeError("没有发现可刷新的正式支持库或模块")

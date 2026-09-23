@@ -25,6 +25,9 @@ from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.版本规则.契约版本 import 契约版本
 from 公共契约.运行时.导入前缀 import 取系统根
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 来源 = "模块模板生成器"
 模块名正则 = re.compile(r"^[\u4e00-\u9fa5A-Za-z0-9_]{1,40}$")
 允许类型 = {"基础模块", "功能模块"}
@@ -383,7 +386,7 @@ def 生成测试骨架(模块名: str, 能力清单: list[dict], 测试中心根
             "            self.assertIn(能力id, 注册表.能力id列表)\n" + 能力测试块
             + '\n\n\nif __name__ == "__main__":\n    unittest.main()\n')
     骨架路径.parent.mkdir(parents=True, exist_ok=True)
-    骨架路径.write_text(文本, encoding="utf-8")
+    写入文件(str(骨架路径), 文本).确保成功()
     return 结果.成功结果({"测试骨架": str(骨架路径)})
 
 def _默认系统根() -> Path:
@@ -414,7 +417,7 @@ def 生成模块模板(*, 模块名: str, 类型: str = "基础模块", 能力�
     文件表 = 模块包内容(模块名, 类型, 能力清单, 依赖清单)
     for 相对路径, 内容 in 文件表.items():
         (模块目录 / 相对路径).parent.mkdir(parents=True, exist_ok=True)
-        (模块目录 / 相对路径).write_text(内容, encoding="utf-8")
+        写入文件(str(模块目录 / 相对路径), 内容).确保成功()
     from 支持库.后端.组件规范支持库.实现.组件规范 import 生成完整性摘要
     生成完整性摘要(模块目录)
     骨架结果 = 生成测试骨架(模块名, 能力清单, 测试中心根)

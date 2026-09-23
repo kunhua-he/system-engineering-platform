@@ -142,7 +142,12 @@ def 批量修(根: Path) -> int:
             内联.clear()
             内联.update(重排)
         if 变了:
-            引用文件.write_text(json.dumps(数据, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            # 落盘统一走**唯一写腿**（`文件系统支持库.文件操作.写入文件`），不裸 `write_text`：
+            # 该腿自带「内核只读锁的解锁窗口 + 原子替换」，裸写会在整仓上锁后被内核以
+            # `Operation not permitted` 拒（2026-09-23 实测）。
+            from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+            写入文件(str(引用文件),
+                 json.dumps(数据, ensure_ascii=False, indent=2) + "\n").确保成功()
             改动 += 1
             print(f"  已修: {引用文件.relative_to(根)}")
     return 改动

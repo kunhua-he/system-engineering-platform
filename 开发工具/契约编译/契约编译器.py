@@ -21,6 +21,8 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 开发工具.契约编译.聚合契约解析 import 校验能力条目, 读取原始
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
 
@@ -269,16 +271,16 @@ def 编译契约(契约文件: Path, 输出目录: Path) -> 编译结果:
         if 路径.is_file() and 生成标记 not in 路径.read_text(encoding="utf-8"):
             结果.问题列表.append(f"生成文件被手工修改: {文件名}（缺少生成标记）")
             continue
-        路径.write_text(内容, encoding="utf-8")
+        写入文件(str(路径), 内容).确保成功()
         结果.产物列表.append(编译产物(类型, 路径, 内容, _摘要文本(内容)))
     # 搜索数据 + Agent 数据（JSON 产物）
     搜索数据 = 生成能力搜索数据(契约)
     搜索路径 = 输出目录 / "能力搜索数据.json"
-    搜索路径.write_text(json.dumps(搜索数据, ensure_ascii=False, indent=2), encoding="utf-8")
+    写入文件(str(搜索路径), json.dumps(搜索数据, ensure_ascii=False, indent=2)).确保成功()
     结果.产物列表.append(编译产物("能力搜索数据", 搜索路径, json.dumps(搜索数据, ensure_ascii=False)))
     agent数据 = 生成Agent查询数据(契约)
     agent路径 = 输出目录 / "Agent查询数据.json"
-    agent路径.write_text(json.dumps(agent数据, ensure_ascii=False, indent=2), encoding="utf-8")
+    写入文件(str(agent路径), json.dumps(agent数据, ensure_ascii=False, indent=2)).确保成功()
     结果.产物列表.append(编译产物("Agent查询数据", agent路径, json.dumps(agent数据, ensure_ascii=False)))
     return 结果
 

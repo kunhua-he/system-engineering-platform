@@ -10,6 +10,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+
 说明书文件名 = "使用说明.md"
 
 # 骨架态标记：正文命中任一标记，即判定「仍是模板骨架、未被作者改过」。
@@ -230,5 +234,5 @@ def 生成说明书(包目录: Path, 输出根目录: Path, *, 允许重建骨�
     """
     目标路径 = 校验输出目标(包目录, 输出根目录, 允许重建骨架=允许重建骨架)
     目标路径.parent.mkdir(parents=True, exist_ok=True)
-    目标路径.write_text(生成说明书文本(包目录), encoding="utf-8")
+    写入文件(str(目标路径), 生成说明书文本(包目录)).确保成功()
     return 目标路径

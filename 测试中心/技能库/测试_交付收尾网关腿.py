@@ -110,6 +110,11 @@ class 交付收尾网关腿测试(unittest.TestCase):
         夹具源 = 技能包目录 / "验证夹具"
         夹具目标 = Path(cls.临时目录) / "验证夹具"
         shutil.copytree(夹具源, 夹具目标)
+        # ★ 夹具副本要能改，先解掉复制过来的**内核只读标志**（`copytree` 默认 `copy2`
+        #   会连 `st_flags` 一起复制）：否则下面删残留锁文件与重建租约存储都被内核拒
+        #   （实测 `Operation not permitted`）。唯一实现见锁模块。
+        from 公共契约.运行时.仓库只读锁 import 对齐目标锁态
+        对齐目标锁态(夹具目标)
         for 残留 in (".文件租约.lock", ".文件改动日志.lock"):
             (夹具目标 / 残留).unlink(missing_ok=True)
         cls.夹具 = 夹具目标

@@ -51,6 +51,8 @@ if str(_系统根) not in _sys.path:
 
 from 开发工具.契约编译.聚合契约解析 import 解析聚合契约
 from 公共契约.版本规则.契约版本 import 契约版本
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 生成标记 = "本文件由契约编译器自动生成，禁止手工修改"
 
@@ -237,7 +239,8 @@ def 从现有包生成能力定义(包目录: Path, *, 覆盖: bool = False) -> 
         },
     }
     if not 校验能力定义(定义):
-        定义路径.write_text(json.dumps(定义, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        写入文件(str(定义路径),
+               json.dumps(定义, ensure_ascii=False, indent=1) + "\n").确保成功()
         return 定义路径, []
     return None, ["迁移结果未通过能力定义结构校验"]
 
@@ -623,7 +626,7 @@ def _写产物(路径: Path, 内容: str, 结果: 编译结果) -> None:
                 return  # 手写入口含注册能力 → 合法，保留
             结果.问题列表.append(f"生成文件被手工修改: {路径.name}（缺少生成标记）")
             return
-    路径.write_text(内容, encoding="utf-8")
+    写入文件(str(路径), 内容).确保成功()
     结果.产物列表.append({"类型": 路径.name, "路径": str(路径), "摘要": _摘要(内容)})
 
 

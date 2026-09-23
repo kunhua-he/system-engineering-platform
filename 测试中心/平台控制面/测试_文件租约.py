@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from pathlib import Path
 from unittest import mock
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 仓库只读锁 as 锁
 from 平台控制面.能力目录.实现.文件租约申请 import 申请文件租约
 from 平台控制面.能力目录.实现.文件租约维护 import (
     回收过期文件租约,
@@ -532,29 +534,37 @@ class 登记与流水测试(文件租约测试基类):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_两个指纹拉出中途全部流水(self) -> None:
-        """★ 核心用法：声明指纹 + 现在指纹 → 中途全部事件（上锁/留言/解锁）。"""
-        旧指纹, _ = 计算内容指纹(仓库根, 文件1)
-        登记改动意图(修改路径=[{"路径": 文件1, "指纹": 旧指纹}], 所有者="会话1",
-                   任务="想改", 存储目录=self.存储目录, 项目根=str(仓库根))
-        认领 = 申请文件租约(修改路径=[{"路径": 文件1, "指纹": 旧指纹}], 所有者="会话1",
-                         任务="动手改", 存储目录=self.存储目录, 校验指纹=真,
-                         项目根=str(仓库根))
-        self.assertTrue(认领.成功)
-        租约id = 值(认领)["租约id清单"][0]
-        文件租约留言(租约id=租约id, 作者="会话1", 留言="加了一行注释",
-                 存储目录=self.存储目录, 项目根=str(仓库根))
-        目标文件 = 仓库根 / 文件1
-        原内容 = 目标文件.read_bytes()
-        try:
+        """★ 核心用法：声明指纹 + 现在指纹 → 中途全部事件（上锁/留言/解锁）。
+
+        ★ 2026-09-23 修：本用例**要真改一次文件**才能造出两个不同指纹。原先改的是
+        **仓库内的真实文件**（`仓库根 / 文件1`）—— 整仓内核只读锁一上就 `PermissionError`，
+        而且「进程被杀就把真仓库改了」。现改为在**临时仓**里造这份文件：测试不许有副作用，
+        改真仓库文件更是（与 `测试写入边界门禁` 同一条纪律）。
+        """
+        with tempfile.TemporaryDirectory(prefix="文件租约临时仓") as 临时仓:
+            仓 = Path(临时仓)
+            相对 = "受测文件.txt"
+            (仓 / 相对).write_text("原始内容\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=仓, check=False, capture_output=True)
+            旧指纹, _ = 计算内容指纹(仓, 相对)
+            登记改动意图(修改路径=[{"路径": 相对, "指纹": 旧指纹}], 所有者="会话1",
+                       任务="想改", 存储目录=self.存储目录, 项目根=str(仓))
+            认领 = 申请文件租约(修改路径=[{"路径": 相对, "指纹": 旧指纹}], 所有者="会话1",
+                             任务="动手改", 存储目录=self.存储目录, 校验指纹=真,
+                             项目根=str(仓))
+            self.assertTrue(认领.成功)
+            租约id = 值(认领)["租约id清单"][0]
+            文件租约留言(租约id=租约id, 作者="会话1", 留言="加了一行注释",
+                     存储目录=self.存储目录, 项目根=str(仓))
+            目标文件 = 仓 / 相对
+            原内容 = 目标文件.read_bytes()
             目标文件.write_bytes(原内容 + "\n# 测试改动\n".encode("utf-8"))
-            新指纹, _ = 计算内容指纹(仓库根, 文件1)
+            新指纹, _ = 计算内容指纹(仓, 相对)
             释放文件租约(租约id清单=[租约id], 原因="改完解锁", 存储目录=self.存储目录,
-                     项目根=str(仓库根))
-            结果 = 查询改动历史(修改路径=[文件1], 声明指纹=旧指纹, 现在指纹=新指纹,
-                            存储目录=self.存储目录, 项目根=str(仓库根))
+                     项目根=str(仓))
+            结果 = 查询改动历史(修改路径=[相对], 声明指纹=旧指纹, 现在指纹=新指纹,
+                            存储目录=self.存储目录, 项目根=str(仓))
             值表 = 值(结果)["结果表"][0]
-        finally:
-            目标文件.write_bytes(原内容)
         self.assertTrue(值表["能否定位"], "两个指纹必须都能定位: " + 值表["定位说明"])
         类型表 = [e["类型"] for e in 值表["区间事件"]]
         self.assertIn("上锁", 类型表, "改动窗必须覆盖最关键的「上锁」")
@@ -830,6 +840,156 @@ class 过期租约清理反向验证测试(文件租约测试基类):
         self.assertEqual(释放["释放数"], 1)
         self.assertEqual(释放["过期未清数"], 0)
         self.assertEqual(self.盘上记录(文件1)["状态"], "已释放", "正常释放必须记「已释放」而非「已过期」")
+
+
+@unittest.skipUnless(锁.支持内核锁(), "本平台不支持内核级只读锁（仅 macOS）")
+class 租约与内核锁联动测试(unittest.TestCase):
+    """★ 华哥 2026-09-23 裁决：「**开工 ID 登记的时候解锁**。然后如果开工 ID 过期或者结束，
+    **提交之后就上锁回去**。……**只有 mcp 才能解锁，禁止用其他方式解锁**。」
+
+    判据本体在 `公共契约/运行时/仓库只读锁.py`（`解锁供写入` / `回锁`）；本组用例测的是
+    「租约 ↔ 内核锁」这条联动**真的接上了**。判据一律落在**行为**上（认领后真能写进去 /
+    释放后真被内核拒 / 父目录的收放跟着租约账走），不看函数有没有被调用 —— 只看调用的
+    话，把两个调用点删掉本组会全绿，而整仓锁其实已经没人管了（「判据在 ≠ 判据覆盖」）。
+
+    **夹具纪律**：小树只造在 `tempfile` 临时根里（`git init -q` + `上锁全仓`），
+    **绝不对真仓库上锁/解锁**；`tearDown` 兜底解锁后才能删临时树。
+    `解锁供写入` 只认网关凭证，而本组要测的正是「经 MCP 那条路」的行为 ⇒ 夹具假装自己
+    是网关（凭证非空即可），`addCleanup` 里还原。
+    """
+
+    夹具凭证 = "文件租约内核锁-夹具"
+
+    def setUp(self) -> None:
+        self._临时 = tempfile.TemporaryDirectory(prefix="租约内核锁_")
+        self.根 = Path(self._临时.name)
+        for 名 in ("a", "b"):
+            (self.根 / 名).mkdir()
+            (self.根 / 名 / "既有.txt").write_text(f"{名}\n", encoding="utf-8")
+        # 同一目录下的第二条既有文件（用例④要「同目录两条活跃租约」）
+        (self.根 / "a" / "另一.txt").write_text("另一\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=self.根, check=False,
+                    capture_output=True)
+        锁.上锁全仓(self.根)
+        self.assertEqual(0, 锁.查询(self.根)["未锁数"], "前置：夹具树必须已全锁")
+        self._存储临时 = tempfile.TemporaryDirectory(prefix="租约内核锁存储_")
+        # ★ 本属性**故意不叫 `存储目录`**：同文件里基类 `文件租约测试基类` 已经有一个
+        #   `self.存储目录`，而 `测试写入边界门禁` 对同名 `self.X` 的合并有明确守卫
+        #   （「不同类可以有同名 self.X 指完全不同的东西」⇒ 不跨类硬合并，落回未解析、
+        #   fail-closed 计违规）。两边各一个绑定、字面量还不同 ⇒ 判据会把这个文件里
+        #   既有的 `Path(self.存储目录)` 判成**新增未解析**（实测 356→357）。
+        #   换个名字既满足判据的设计意图，也不动基线。
+        self.租约存储 = self._存储临时.name
+        旧 = os.environ.get("系统库网关凭证")
+        os.environ["系统库网关凭证"] = self.夹具凭证
+
+        def _还原() -> None:
+            if 旧 is None:
+                os.environ.pop("系统库网关凭证", None)
+            else:
+                os.environ["系统库网关凭证"] = 旧
+
+        self.addCleanup(_还原)
+
+    def tearDown(self) -> None:
+        # 兜底解锁（锁着的东西删不掉 —— 这是锁生效的副产品，不是意外）
+        for 项 in sorted(self.根.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+            try:
+                os.chflags(项, 0)
+            except OSError:
+                pass
+        try:
+            os.chflags(self.根, 0)
+        except OSError:
+            pass
+        self._存储临时.cleanup()
+        self._临时.cleanup()
+
+    def 申请(self, 路径, 所有者="会话1", 持有秒=900.0):
+        """本组一律显式给 `项目根` = 夹具根：锁这条腿只认绝对路径，基准根给错就锁错树。"""
+        return 申请文件租约(修改路径=路径, 所有者=所有者, 任务="内核锁联动用例",
+                          持有秒=持有秒, 存储目录=self.租约存储, 项目根=str(self.根))
+
+    def 释放(self, 租约id清单, 原因="用例收工"):
+        return 释放文件租约(租约id清单=租约id清单, 原因=原因,
+                          存储目录=self.租约存储, 项目根=str(self.根))
+
+    def test_认领后待建路径与父目录都未锁且真能写进去(self) -> None:
+        """① 「开工 ID 登记的时候解锁」：认领成功 = 写窗口打开。
+
+        判据是**行为**不是读数：认领之后真的 `mkdir(parents=True)` + 写文件能成。
+        不解锁时这两步会被内核以 `Operation not permitted` 拒（父目录锁着就不能加条目）。
+        """
+        结果 = self.申请(["a/新目录/新文件.txt"], 所有者="会话1")
+        self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["锁问题"], "",
+                      "夹具已带网关凭证，认领即解锁不应有锁问题")
+        待建 = self.根 / "a/新目录/新文件.txt"
+        self.assertFalse(锁.是锁着的(self.根 / "a"),
+                      "认领后直接父目录必须已解锁（新建文件是在父目录里加条目）")
+        self.assertFalse(锁.是锁着的(待建), "待建路径本身不该锁着")
+        待建.parent.mkdir(parents=True)
+        待建.write_text("写进去了\n", encoding="utf-8")
+        self.assertEqual(待建.read_text(encoding="utf-8"), "写进去了\n",
+                      "认领即解锁：写窗口必须真的打开（不解锁时这里被内核拒）")
+        self.assertFalse(锁.是锁着的(待建.parent), "新建出来的目录也不该锁着")
+
+    def test_释放后路径已锁(self) -> None:
+        """② 「提交之后就上锁回去」：释放 = 写窗口关闭，路径必须回到锁上。"""
+        结果 = self.申请(["a/既有.txt"], 所有者="会话1")
+        目标 = self.根 / "a/既有.txt"
+        self.assertFalse(锁.是锁着的(目标), "前置：认领后应已解锁")
+        值表 = 值(self.释放(结果.值["租约id清单"]))
+        self.assertEqual(值表["释放数"], 1)
+        self.assertTrue(锁.是锁着的(目标), "释放即回锁：写窗口必须关闭")
+
+    def test_下一次认领的懒回收把过期租约路径回锁(self) -> None:
+        """③ 「开工 ID 过期……就上锁回去」：过期租约由**下一次认领**顺手回收并回锁。
+
+        懒回收挂在「有人要动文件」这个本来就有的唤醒点上（不新造周期调度器）——
+        本用例把这条链钉住：过期租约的路径在下一次认领之后必须是锁着的。
+        """
+        过期 = self.申请(["a/既有.txt"], 所有者="会话1", 持有秒=0.0)
+        目标 = self.根 / "a/既有.txt"
+        self.assertFalse(锁.是锁着的(目标), "前置：认领后应已解锁（过期不等于立刻回锁）")
+        新 = self.申请(["b/新文件.txt"], 所有者="会话2")
+        self.assertTrue(新.成功, 新.错误说明)
+        self.assertEqual(新.值["懒回收数"], 1, "认领之前必须顺手回收掉那条已过期租约")
+        self.assertEqual(新.值["懒回收问题"], "")
+        self.assertTrue(锁.是锁着的(目标), "过期回收即回锁：该路径的写窗口必须关闭")
+        self.assertTrue(锁.是锁着的(self.根 / "a"),
+                      "该目录下已无活跃租约 ⇒ 父目录也要收回（否则目录敲着=能凭空新增条目）")
+        self.assertNotEqual(过期.值["租约id清单"], 新.值["租约id清单"])
+
+    def test_同目录两条租约释放互不干扰且最后一条收回父目录(self) -> None:
+        """④ 并发互不干扰：父目录是**共享**的，收放必须跟着租约账走。
+
+        - 同目录两条活跃租约：释放其中一条**不得**把父目录锁上（否则另一条的
+          「新建文件」会被内核拒）；
+        - 释放最后一条时**必须**把父目录收回（否则整仓锁逐次退化成「目录全开着」）；
+        - 全部释放后 `查询()["未锁数"]` 回到 0（锁的强度靠这个数，不靠感觉）。
+        """
+        甲 = self.申请(["a/既有.txt"], 所有者="会话1")
+        乙 = self.申请(["a/另一.txt"], 所有者="会话2")
+        目录 = self.根 / "a"
+        self.assertFalse(锁.是锁着的(目录), "前置：两条都认领后父目录应已解锁")
+        self.assertFalse(锁.是锁着的(self.根 / "a/既有.txt"))
+        self.assertFalse(锁.是锁着的(self.根 / "a/另一.txt"))
+        值(self.释放(甲.值["租约id清单"], 原因="甲收工"))
+        self.assertFalse(锁.是锁着的(目录),
+                      "同目录还有活跃租约时不得收回父目录（会掐掉别人的开工窗口）")
+        self.assertFalse(锁.是锁着的(self.根 / "a/另一.txt"), "释放甲不得影响乙的写窗口")
+        # 乙的写窗口真的还开着：能新建文件（父目录锁着时这一步被内核拒）
+        临时新建 = self.根 / "a/乙新建.txt"
+        临时新建.write_text("乙还能建\n", encoding="utf-8")
+        self.assertEqual(临时新建.read_text(encoding="utf-8"), "乙还能建\n")
+        临时新建.unlink()
+        值(self.释放(乙.值["租约id清单"], 原因="乙收工"))
+        self.assertTrue(锁.是锁着的(目录),
+                      "同目录已无活跃租约 ⇒ 必须把父目录收回（目录敲着=能凭空新增条目）")
+        self.assertTrue(锁.是锁着的(self.根 / "a/既有.txt"))
+        self.assertTrue(锁.是锁着的(self.根 / "a/另一.txt"))
+        self.assertEqual(锁.查询(self.根)["未锁数"], 0, "整棵夹具树必须回到全锁")
 
 
 if __name__ == "__main__":

@@ -314,7 +314,11 @@ def 刷新摘要(锁路径: Path, 旧sha: str, 新sha: str) -> tuple[list[str], 
         if 新文本.strip() == 原文本.strip():
             未刷新.append(f"{摘要路径.relative_to(根)}: 摘要需改但重排后文本无差异（异常）")
             continue
-        摘要路径.write_text(新文本, encoding="utf-8")
+        # 落盘统一走**唯一写腿**（`文件系统支持库.文件操作.写入文件`），不裸 `write_text`：
+        # 该腿自带「内核只读锁的解锁窗口 + 原子替换」，裸写会在整仓上锁后被内核以
+        # `Operation not permitted` 拒（2026-09-23 实测）。
+        from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+        写入文件(str(摘要路径), 新文本).确保成功()
         已刷新.append(str(摘要路径.relative_to(根)))
     return 已刷新, 未刷新
 
@@ -361,10 +365,12 @@ def 重建单锁(锁路径: Path, *, 写入: bool, 新环境: dict[str, str],
     if not 写入:
         return 报告
     旧sha = hashlib.sha256(报告["旧文本"].encode("utf-8")).hexdigest()
-    临时路径 = 锁路径.with_name(f".{锁文件名}.重建中")
-    临时路径.write_text(报告["新文本"], encoding="utf-8")
+    # 落盘统一走**唯一写腿**：它自带「解锁窗口 + 同目录临时件 + os.replace + 保留权限位」，
+    # 正是本处原先手写的「临时件 + replace」；整仓上锁后裸 replace 会被内核以
+    # `Operation not permitted` 拒（2026-09-23 实测）。
+    from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+    写入文件(str(锁路径), 报告["新文本"]).确保成功()
     新sha = hashlib.sha256(报告["新文本"].encode("utf-8")).hexdigest()
-    临时路径.replace(锁路径)
     已刷新, 未刷新 = 刷新摘要(锁路径, 旧sha, 新sha)
     报告["旧sha256"] = 旧sha
     报告["新sha256"] = 新sha

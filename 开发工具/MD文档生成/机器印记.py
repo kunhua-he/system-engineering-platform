@@ -28,6 +28,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：`文件系统支持库.文件操作.写入文件`
+# 已是原子写（临时文件 + `os.replace`，天然过只读锁）且落盘后按内容指纹登记写入凭据
+# （`公共契约.诊断.写入流水`）。本层不再各自 `write_text` —— 那既不原子、也不留凭据。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+
 印记前缀 = "<!-- 机器管理｜类型："
 印记正则 = re.compile(r"^<!-- 机器管理｜类型：(.+?)｜生成器：(.+?) -->\s*$")
 
@@ -76,12 +81,13 @@ def 加印记(项目根: Path, 相对: str, 类型名: str) -> tuple[int, list[s
         位 = 找印记(行表)
         assert 位 is not None
         行表[位] = 造印记(类型名)
-        路径.write_text("\n".join(行表) + ("\n" if 文本.endswith("\n") else ""),
-                    encoding="utf-8")
+        写入文件(str(路径),
+               "\n".join(行表) + ("\n" if 文本.endswith("\n") else "")).确保成功()
         return 0, [f"  印记类型更正：{现行[0]} → {类型名}"]
     位 = 插入位置(行表)
     新表 = 行表[:位] + [造印记(类型名), ""] + 行表[位:]
-    路径.write_text("\n".join(新表) + ("\n" if 文本.endswith("\n") else ""), encoding="utf-8")
+    写入文件(str(路径),
+           "\n".join(新表) + ("\n" if 文本.endswith("\n") else "")).确保成功()
     return 0, [f"  已加机器印记：{造印记(类型名)}"]
 
 

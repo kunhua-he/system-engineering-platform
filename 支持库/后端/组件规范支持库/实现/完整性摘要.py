@@ -24,6 +24,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本模块不再自己 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 摘要文件名 = "完整性摘要.json"
 排除目录名 = {"__pycache__", "工程缓存"}
@@ -263,7 +266,7 @@ def 迁移旧格式摘要(系统根: Path, 排除路径: Iterable[Path] = ()) ->
             版本=声明.get("版本", "1.0.0"),
         )
         摘要路径 = 包目录 / 摘要文件名
-        摘要路径.write_text(
-            json.dumps(摘要, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        写入文件(str(摘要路径),
+               json.dumps(摘要, ensure_ascii=False, indent=2) + "\n").确保成功()
         重算列表.append(摘要路径)
     return 重算列表

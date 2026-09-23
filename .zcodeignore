@@ -1,0 +1,84 @@
+# Python 缓存与生成物
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+
+# 工程缓存可重新生成，不作为正式源代码
+工程缓存/
+
+# 系统文件
+.DS_Store
+
+# 测试残留临时文件
+.测试值.*.tmp
+
+# 凭证与本地数据（朋友审计报告 P0-12：密钥提供者.py 把 .env 当凭证来源，未忽略则一次 git add -A 即泄漏）
+.env
+*.db
+*.log
+*.tmp
+
+# 数据库文件的全部形态（*.db 之外还有 .sqlite3 与 SQLite 的 WAL/SHM 边车文件）
+# 已入库的验证夹具不受本规则影响（git 对已跟踪文件不生效），此处只挡后续新增
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-wal
+*.db-shm
+# SQLite 边车文件：**基名不限**。上面 `*.db-*` / `*.sqlite3-*` 只按两种基名枚举，
+# 而 SQLite 的边车后缀跟着**数据库文件名**走 —— 只要库文件叫别的名字
+# （历史上实测漏网过一例：一个扩展名写成 `.json` 的 SQLite 库），
+# `<库名>-wal` / `<库名>-shm` 就整条漏网、持续污染工作区。
+# 故补宽口径，覆盖任意基名的边车；不靠「记得每加一个库就补一条规则」。
+*-wal
+*-shm
+
+# 编辑器/工具生成的本地配置（含本机网关凭证取法，不得进仓）
+zcode.json
+
+# 备份/中间件后缀（`*.bak*` 含带时间戳的 `*.bak_<日期>` 变体）
+# 为什么是硬规则而不是靠人记得删：同类误提交已发生**两次**（2026-09-19
+# `说明书白名单.json.bak_131056`、2026-09-20 `能力id冻结基线.json.bak_指纹重建`），
+# 两次都靠事后人工 `git rm --cached` 清理 —— 按哲学 14.3「反复犯错的开发要补底层」，
+# 这里把它挡在**产出点**（一次 `git add -A` 即拦），不靠记性。
+# 注意：`*.bak*` 是宽口径，覆盖 `.bak` / `.bak_xxx` / `.bak-xxx` 全部变体；
+# 备份与临时脚本一律落 `/private/tmp/系统平台临时脚本_20260918/`（哲学 1.6）。
+*.bak
+*.bak_*
+*.bak-*
+*.orig
+*~
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+site-packages/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

@@ -25,6 +25,9 @@ from pathlib import Path
 
 from 公共契约.包声明 import 包声明
 from 开发工具.契约编译.聚合契约解析 import 解析聚合契约, 提取能力表
+# 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据，
+# 见 `开发工具/MD文档生成/机器印记.py` 同一处说明。本层不再各自 `write_text`。
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 
 
 def _包契约表(声明: 包声明) -> dict[str, dict]:
@@ -158,10 +161,10 @@ def 写出说明书(声明列表: list[包声明], 输出目录: Path) -> list[P
     输出目录.mkdir(parents=True, exist_ok=True)
     写入列表: list[Path] = []
     目录文件 = 输出目录 / "能力目录说明书.md"
-    目录文件.write_text(生成目录说明书(声明列表), encoding="utf-8")
+    写入文件(str(目录文件), 生成目录说明书(声明列表)).确保成功()
     写入列表.append(目录文件)
     for 声明 in 声明列表:
         文件 = 输出目录 / f"{声明.包id}.md"
-        文件.write_text(生成单包说明书(声明), encoding="utf-8")
+        写入文件(str(文件), 生成单包说明书(声明)).确保成功()
         写入列表.append(文件)
     return 写入列表

@@ -63,8 +63,11 @@ def 热接入():
 
 
 def 写文件(相对: str, 内容: str):
-    (演练包目录 / 相对).parent.mkdir(parents=True, exist_ok=True)
-    (演练包目录 / 相对).write_text(内容, encoding="utf-8")
+    # 落盘走**唯一写腿**（`文件系统支持库.文件操作.写入文件`）：它自带「内核只读锁的解锁
+    # 窗口 + 原子替换 + 保留权限位」，并递归创建父目录 —— 裸 `mkdir`/`write_text` 在整仓
+    # 上锁后会被内核以 `Operation not permitted` 拒（2026-09-23 实测）。
+    from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+    写入文件(str(演练包目录 / 相对), 内容).确保成功()
 
 
 def 创建演练包(版本: str = "v1", 带心跳: bool = True):
@@ -208,9 +211,9 @@ def 主流程() -> int:
         # ── 5. 失败包（加载失败必须失败）──
         print("\n[5] 失败包（坏入口必须返回失败，且不破坏其他包）")
         创建演练包("v4")
-        (演练包目录 / "实现").mkdir(parents=True, exist_ok=True)
-        (演练包目录 / "实现" / "热接入演练.py").write_text(
-            "def 演练加法(*, 左数):\n    return 1 + 破语法(\n", encoding="utf-8")
+        # 同一落点改走本文件的 写文件（内部即唯一写腿），不再裸 mkdir + write_text。
+        写文件("实现/热接入演练.py",
+            "def 演练加法(*, 左数):\n    return 1 + 破语法(\n")
         状态码, 数据 = 热接入()
         检查("失败包返回 HTTP 400", 状态码 == 400, f"实际 {状态码}")
         检查("失败信封成功=false", 数据["成功"] is False, f"实际 {数据}")
