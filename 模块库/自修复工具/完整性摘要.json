@@ -69,7 +69,7 @@
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "c9ddcc5a0787bcb704d21a3135a05e05a161aaabebc47e794cffdc84817a4153"
+      "sha256": "766a07551ab43619ed873e61727c76069107b41e38176569faa36badc9b07700"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -92,6 +92,10 @@
       "sha256": "bfc169fb9bfccbab9bc9966fdcf94d7d3750177deb6ce02f430ae7446a8b5e2e"
     },
     {
+      "路径": "验证场景/仓库锁.json",
+      "sha256": "c9c72f180f9bbf38c10b3caa1ffa7a87f0293dd8b9cb2a9ae9727a7e42db3639"
+    },
+    {
       "路径": "验证场景/开发编译口自检.json",
       "sha256": "ff3a875f13ef2b9c7c7cd4ef326aed156e7927f1dc366b83c3a44b62c32aef4e"
     },
@@ -105,7 +109,7 @@
     },
     {
       "路径": "验证场景引用.json",
-      "sha256": "daa8847c9c88ebdbd43484ba65c148f631f55b884cea618e6d2d1508f246c385"
+      "sha256": "c27b3003bc5136a5660869f45c43aca5bcbf8af862c476b75e93b74b0b64bac5"
     },
     {
       "路径": "验证夹具/最小Git仓库.zip",
