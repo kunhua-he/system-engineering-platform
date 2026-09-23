@@ -356,12 +356,12 @@ def 新壳可加载(目录: _Path | None = None) -> tuple[bool, str]:
         try:
             源码 = 路径.read_bytes()
         except OSError as 错误:
-            return False, f"{文件名} 读不到（{type(错误).__name__}）"
+            return 假, f"{文件名} 读不到（{type(错误).__name__}）"
         try:
             compile(源码, str(路径), "exec")
         except SyntaxError as 错误:
-            return False, f"{文件名}:{错误.lineno} 语法错误（{错误.msg}）"
-    return True, ""
+            return 假, f"{文件名}:{错误.lineno} 语法错误（{错误.msg}）"
+    return 真, ""
 
 
 def 需换新壳(进程内指纹: dict[str, str] | None = None, 目录: _Path | None = None,
@@ -381,17 +381,17 @@ def 需换新壳(进程内指纹: dict[str, str] | None = None, 目录: _Path | 
     盘上 = 采集源文件指纹(目录)
     不一致 = sorted(名 for 名 in 盘上 if 进程内.get(名) != 盘上.get(名))
     if not (bool(环境.get(换壳强制环境变量)) or 不一致):
-        return False, "本壳即盘上当前版本"
+        return 假, "本壳即盘上当前版本"
     未取到 = sorted(名 for 名, 值 in 盘上.items() if not 值)
     if 未取到:
-        return False, f"盘上指纹读不到（{'、'.join(未取到)}），不换"
+        return 假, f"盘上指纹读不到（{'、'.join(未取到)}），不换"
     已换到 = str(环境.get(换壳目标指纹环境变量, "") or "").strip()
     if 已换到 and 已换到 == 指纹串(盘上):
-        return False, "本进程已换到盘上这一版，不重复换（防套娃）"
+        return 假, "本进程已换到盘上这一版，不重复换（防套娃）"
     可加载, 原因 = 新壳可加载(目录)
     if not 可加载:
-        return False, f"盘上源码编译不过，拒绝换壳（{原因}）；修好后自动换"
-    return True, "盘上代码已更新（" + "、".join(不一致 or ["强制自测"]) + "）"
+        return 假, f"盘上源码编译不过，拒绝换壳（{原因}）；修好后自动换"
+    return 真, "盘上代码已更新（" + "、".join(不一致 or ["强制自测"]) + "）"
 
 
 def 构建工具目录(进程内指纹: dict[str, str] | None = None,
@@ -418,7 +418,7 @@ def 构建工具目录(进程内指纹: dict[str, str] | None = None,
         for 工具 in 三个工具定义
     ]
     目录: dict[str, Any] = {
-        "成功": True,
+        "成功": 真,
         "错误码": "",
         "错误说明": "",
         "薄壳工具数": len(清单),

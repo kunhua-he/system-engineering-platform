@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.基础类型.结果类型 import 结果
 from 支持库.适配层.Git提供者.实现.白名单 import (
     失败结果, 校验仓库路径, 校验提交哈希, 校验提交消息, 校验路径在仓库内, 校验超时,
@@ -49,8 +50,8 @@ def _被本次覆盖(暂存路径: str, 相对列表: list[str]) -> bool:
     for 项 in 相对列表:
         候选 = 项.replace("\\", "/").strip("/")
         if 规范 == 候选 or 规范.startswith(候选 + "/"):
-            return True
-    return False
+            return 真
+    return 假
 
 
 def 提交(仓库路径: str, 路径列表: list[str] | None = None, 消息: str | None = None,

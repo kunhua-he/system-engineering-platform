@@ -106,6 +106,7 @@ for _祖先 in 系统根.parents:
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
+from 公共契约.基础类型.逻辑类型 import 真
 from 公共契约.包声明.声明 import 从字典构建
 from 开发工具.MD文档生成.说明书.说明书生成器 import 生成单包说明书
 from 开发工具.MD文档生成 import 机器印记
@@ -202,7 +203,7 @@ def _是G2形态(现行文本: str) -> bool:
     生成器产出的说明书标题不在围栏里，故对真实文件是**同结论**。
     """
     if G2表头 in 现行文本:
-        return True
+        return 真
     return any(G2小节形态.match(文本) for 文本 in _二级标题文本(现行文本))
 
 

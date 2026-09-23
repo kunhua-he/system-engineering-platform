@@ -1418,11 +1418,11 @@ def 扫描临时根未清(根: Path) -> tuple[list[dict], dict]:
                 if 名 not in 清理面:
                     continue
                 if not 名.startswith(("self.", "cls.")):
-                    return True
+                    return 真
                 提供类 = 清理面类.get(名, set())
                 if _祖先链(基类表, 本处类) & 提供类:
-                    return True
-            return False
+                    return 真
+            return 假
 
         helper根: dict[str, set[str]] = {}
         for 节点 in ast.walk(树):

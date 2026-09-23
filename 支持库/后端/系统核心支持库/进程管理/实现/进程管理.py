@@ -14,6 +14,7 @@ import time
 from collections import deque
 from pathlib import Path
 
+from 公共契约.基础类型.逻辑类型 import 假
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 from 公共契约.运行时 import 平台适配, 进程终止
@@ -79,10 +80,10 @@ def _解析经shell(经shell) -> tuple[bool, str]:
     显式参数只许显式裁定 —— 与 `_解析超时秒` 同一口径。
     """
     if 经shell is None:
-        return False, ""
+        return 假, ""
     if isinstance(经shell, bool):
         return 经shell, ""
-    return False, f"经shell 必须是 真/假（逻辑型）；收到 {经shell!r}"
+    return 假, f"经shell 必须是 真/假（逻辑型）；收到 {经shell!r}"
 
 
 # 命令文本拆分（B-28）与它的 `posix=False` 口径**已整体下沉收口层**
