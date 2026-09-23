@@ -185,11 +185,11 @@
     },
     {
       "路径": "文本补丁/能力契约/参数契约.json",
-      "sha256": "7d82cd44304470fe51f5a64e96aa677da8efc1c6409f698fbd0045e0c582e5fb"
+      "sha256": "8eb033eefc8a16556323c0558af873f55118e55e0d47209194b88ebe3cb2c5a0"
     },
     {
       "路径": "文本补丁/能力定义.json",
-      "sha256": "b108b0f4ace43e2a0b87af6b8b95537ed1d9bd7646f2f67af7cc8f03b7d18f4f"
+      "sha256": "f8bd886e182cccf6ca380a7bc9014ed58d8662f57cfcf427bfc814ad4f72052f"
     },
     {
       "路径": "文本补丁/能力数据/Agent查询数据.json",
