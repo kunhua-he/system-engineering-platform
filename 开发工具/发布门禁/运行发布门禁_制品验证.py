@@ -150,7 +150,7 @@ def 校验制品来源绑定(
         清单字节指纹 = str(清单.get("来源工作区字节指纹", ""))
         能力表, 契约问题 = _读取契约能力(制品目录)
         if 契约问题:
-            raise ValueError("；".join(契约问题[:5]))
+            raise ValueError("；".join(契约问题))
         from 开发工具.项目编译.项目编译器 import _制品文件摘要
         实际摘要 = _制品文件摘要(制品目录)
         身份.update({
@@ -208,7 +208,7 @@ def 核验制品字节未变(
     删除 = sorted(set(验证前) - set(验证后))
     漂移 = sorted(路径 for 路径 in set(验证前) & set(验证后)
                 if 验证前[路径] != 验证后[路径])
-    return 假, f"制品被验证过程修改：新增{新增[:3]} 删除{删除[:3]} 字节漂移{漂移[:3]}"
+    return 假, f"制品被验证过程修改：新增{新增} 删除{删除} 字节漂移{漂移}"
 
 
 def 构建验证缓存环境(制品目录: Path) -> tuple[Path, dict[str, str]]:
@@ -260,9 +260,9 @@ def 校验契约与HTML矩阵(
     目标全集 = set(报告.get("正向目标能力全集") or [])
     实际全集 = set(报告.get("实际成功目标能力全集") or [])
     if 目标全集 != 正式全集:
-        问题表.append(f"目标能力全集不一致: 缺少={sorted(正式全集 - 目标全集)[:5]}")
+        问题表.append(f"目标能力全集不一致: 缺少={sorted(正式全集 - 目标全集)}")
     if 实际全集 != 正式全集:
-        问题表.append(f"实际成功能力全集不一致: 缺少={sorted(正式全集 - 实际全集)[:5]}")
+        问题表.append(f"实际成功能力全集不一致: 缺少={sorted(正式全集 - 实际全集)}")
     资源回收 = 报告.get("资源回收")
     if (not isinstance(资源回收, dict) or 资源回收.get("已回收") is not True
             or 资源回收.get("进程组残留") is not False
@@ -286,7 +286,7 @@ def 校验契约与HTML矩阵(
             问题表.append(f"{能力id}: 成功状态码证据缺失或非法")
         if "值" not in 成功结果["返回"] or 成功结果["返回"].get("值") is None:
             问题表.append(f"{能力id}: 缺少真实业务值")
-    return not 问题表, "；".join(问题表[:12]) or f"{len(能力表)} 个能力真实HTTP成功并完成资源收口", len(能力表)
+    return not 问题表, "；".join(问题表) or f"{len(能力表)} 个能力真实HTTP成功并完成资源收口", len(能力表)
 
 
 def _代码使用类型(实现目录: Path) -> set[str]:
@@ -423,7 +423,7 @@ def 校验第三方访问声明(制品目录: Path) -> tuple[bool | None, str]:
                 or not isinstance(权限.get(能力.get("能力id")), dict)
                 or not 权限.get(能力.get("能力id"))]
         if 缺权限:
-            问题表.append(f"{前缀}: 权限声明缺能力 {缺权限[:3]}")
+            问题表.append(f"{前缀}: 权限声明缺能力 {缺权限}")
         实际类型 = _代码使用类型(提供者 / "实现")
         参数文本 = json.dumps([能力.get("参数", []) for 能力 in 能力表], ensure_ascii=False)
         if "文件" in 参数文本 or "路径" in 参数文本:
@@ -465,7 +465,7 @@ def 校验第三方访问声明(制品目录: Path) -> tuple[bool | None, str]:
         return None, (f"{_未核验前缀}：{层标}支持库/ 下未发现第三方提供者"
                       f"（标准提供者 0、依赖锁 0），本项未取得核验证据（不得计入通过）；"
                       f"适配层外另有 {外置锁数} 份依赖锁不在本项声明核验范围")
-    return not 问题表, "；".join(问题表[:12]) or f"{提供者数} 个第三方提供者权限/网络/文件/进程声明与真实依赖一致"
+    return not 问题表, "；".join(问题表) or f"{提供者数} 个第三方提供者权限/网络/文件/进程声明与真实依赖一致"
 
 
 #: 制品落后提交数阈值（债务 #133③）：`git rev-list --count <制品提交>..HEAD` **超过**它即判红。

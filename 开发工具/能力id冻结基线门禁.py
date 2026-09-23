@@ -228,7 +228,7 @@ def 读取基线(路径: Path) -> tuple[dict[str, dict], list[dict]]:
     if 坏:
         return {}, [{"能力id": "*", "包": "全仓", "缺口类型": 缺基线形状,
                      "路径": str(路径),
-                     "详情": f"条目形状非法 {len(坏)} 条: {'；'.join(坏[:5])} ⇒ 判红（fail-closed）"}]
+                     "详情": f"条目形状非法 {len(坏)} 条: {'；'.join(坏)} ⇒ 判红（fail-closed）"}]
     return 出, []
 
 
