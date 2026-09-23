@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import tempfile
 import unittest
@@ -29,9 +28,24 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 运行核心.环境指纹 import 计算环境指纹
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
 from 测试中心.运行核心.环境夹具 import 注入假venv, 钉住运行缓存根
+
+系统根 = Path(__file__).resolve().parents[2]
+
+#: ★ 临时目录建了必清（2026-09-23 收口）：本模块此前是裸 `mkdtemp()` + `tearDown` 里
+#: `shutil.rmtree(..., ignore_errors=True)`，**未统一到受管临时根**（对照
+#: `测试中心/加载器/测试_装配单包隔离.py` 的现成写法）。受管临时根在仓库内**固定排除目录**
+#: `工程缓存/` 下：`dir=` 显式指向它 ⇒ 落点与测试运行时的 `TMPDIR` 解耦（平台跑测试时
+#: `TMPDIR` 被指进仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）；`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理改走平台唯一删树原语 `清只读后删除树` 并登记给 `addCleanup`
+#: （用例失败也跑），与 `钉住运行缓存根` 的还原登记同一条腿。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 
 def 合法锁(提供者id: str, *, 版本: str = "1.2.0") -> dict:
@@ -55,16 +69,16 @@ class Test装配接入环境缓存(unittest.TestCase):
     """装配系统接入环境缓存的闭环测试（临时迷你系统根）。"""
 
     def setUp(self):
-        self.临时 = Path(tempfile.mkdtemp())
+        self.临时 = Path(tempfile.mkdtemp(prefix="装配环境缓存_", dir=受管临时根))
+        # 清理登记在**根**上（用例失败也跑）；改前是 `tearDown` + 宽 `rmtree(..., ignore_errors=True)`
+        # —— 宽删被权限位挡住时连残留都不留痕，且落点没钉受管临时根（见模块顶部说明）。
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         # ★ 运行缓存根钉到**本用例的临时根**（返回还原函数登记给 addCleanup，还原进用例前原值）：
         # 不钉的话，网关进程设的 `系统底座_工程缓存根`/`系统底座_提供者环境根` 会把缓存根
         # 改指真仓库，证据与依赖摘要目录全落错地方（见 环境夹具.钉住运行缓存根）。
         self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
-
-    def tearDown(self):
-        shutil.rmtree(self.临时, ignore_errors=True)
 
     def 新支持库提供者(self, 名称: str, 锁: dict | None, *, 入口: str = "入口.py") -> Path:
         """在迷你系统根 支持库 下构造一个第三方适配层提供者。"""

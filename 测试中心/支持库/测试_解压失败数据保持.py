@@ -30,11 +30,32 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 支持库.后端.文件系统支持库.文件操作 import 解压文件  # noqa: E402
+from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
+from 公共契约.基础类型.逻辑类型 import 真
 
 系统根 = Path(__file__).resolve().parents[2]
 修复前基线 = "5bb174c0^"
 占位符 = b"XXXXXX"
 破坏后 = b"YYYYYY"
+
+#: ★ 临时目录建了必清（2026-09-23 收口）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下
+#: （`dir=` 显式指向它 ⇒ 落点与测试运行时的 `TMPDIR` 解耦；`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 被 SIGKILL 残留也进不了指纹）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
+#: 模块级临时夹具登记：`加载修复前实现` 是**模块级 helper**（拿不到 TestCase 实例，
+#: 用不了 `self.addCleanup`）⇒ 走 unittest 的模块级收尾钩子 `tearDownModule` 登记清理
+#: （同样「用例失败也跑」）。改前现场：helper 里裸 `mkdtemp()` 造出的**根**只用作父目录，
+#: 落文件后又**全程零清理** —— 每次跑都泄漏一个 `解压反向验证_*` 根。
+_临时夹具登记: list[Path] = []
+
+
+def tearDownModule() -> None:
+    """模块收尾：清理本模块造在 `受管临时根` 下的全部夹具（**用例失败也跑**）。"""
+    for 夹具 in _临时夹具登记:
+        清只读后删除树(夹具, 忽略失败=真)
+    _临时夹具登记.clear()
 
 
 def 造中途失败包(包路径: Path, 成员列表: list[tuple[str, str]]) -> None:
@@ -55,11 +76,13 @@ def 造中途失败包(包路径: Path, 成员列表: list[tuple[str, str]]) -> 
 
 
 def 加载修复前实现():
-    """把修复前的实现文件从 git 取出、落到 /tmp 并加载（只读历史，不改工作区）。"""
+    """把修复前的实现文件从 git 取出、落到受管临时根并加载（只读历史，不改工作区）。"""
     源码 = subprocess.run(
         ["git", "show", f"{修复前基线}:支持库/后端/文件系统支持库/文件操作/实现/文件系统补充.py"],
         cwd=str(系统根), capture_output=True, text=True, check=True).stdout
-    临时 = Path(tempfile.mkdtemp(prefix="解压反向验证_")) / "修复前文件系统补充.py"
+    夹具根 = Path(tempfile.mkdtemp(prefix="解压反向验证_", dir=受管临时根))
+    _临时夹具登记.append(夹具根)
+    临时 = 夹具根 / "修复前文件系统补充.py"
     临时.write_text(源码, encoding="utf-8")
     规格 = importlib.util.spec_from_file_location("修复前文件系统补充", 临时)
     if 规格 is None or 规格.loader is None:
@@ -74,11 +97,8 @@ class 解压失败夹具(unittest.TestCase):
     """统一临时根；每个用例一个独立目录，互不干扰。"""
 
     def setUp(self) -> None:
-        self.根 = Path(tempfile.mkdtemp(prefix="解压失败数据保持_"))
-
-    def tearDown(self) -> None:
-        import shutil
-        shutil.rmtree(self.根, ignore_errors=True)
+        self.根 = Path(tempfile.mkdtemp(prefix="解压失败数据保持_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.根, 忽略失败=真)
 
     def 中转件(self, 目标: Path) -> list[str]:
         return sorted(项.name for 项 in 目标.rglob("*.tmp"))

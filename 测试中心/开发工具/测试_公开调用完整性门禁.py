@@ -512,8 +512,14 @@ class Test存量基线只减不增(unittest.TestCase):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         合法包(self.临时)
-        self.基线 = Path(tempfile.mkdtemp(dir=受管临时根)) / "基线.json"
-        self.addCleanup(清只读后删除树, self.基线, 忽略失败=真)
+        # ★ 根必须被清（2026-09-23 收口）：改前写的是
+        # `self.基线 = Path(tempfile.mkdtemp(...)) / "基线.json"` 再把**那个文件路径**
+        # 交给 addCleanup —— `清只读后删除树(文件)` 在目录树原语上必然失败，`忽略失败=真`
+        # 只留痕不报错 ⇒ mkdtemp 造出的**根目录全程无人清**，每次跑泄漏一个根。
+        # 现写法把根绑成名字、清理登记在**根**上（派生子路径随根一起走）。
+        self.基线目录 = Path(tempfile.mkdtemp(dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.基线目录, 忽略失败=真)
+        self.基线 = self.基线目录 / "基线.json"
 
     def _原始(self) -> list[dict]:
         return [条 for 条 in 检查门禁原始项(self.临时) if 条["缺口类型"] == "说明书-缺包级版本载位"]

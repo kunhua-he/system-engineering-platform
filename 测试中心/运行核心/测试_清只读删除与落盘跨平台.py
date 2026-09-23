@@ -51,6 +51,25 @@ from 公共契约.基础类型.逻辑类型 import 真, 假  # noqa: E402
 
 系统根 = Path(__file__).resolve().parents[2]
 
+#: ★ 临时目录建了必清（2026-09-23 收口）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下
+#: （`dir=` 显式指向它 ⇒ 落点与测试运行时的 `TMPDIR` 解耦；`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 被 SIGKILL 残留也进不了指纹）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
+#: 模块级临时夹具登记：`加载修复前实现` 是**模块级 helper**（拿不到 TestCase 实例，
+#: 用不了 `self.addCleanup`）⇒ 走 unittest 的模块级收尾钩子 `tearDownModule` 登记清理
+#: （同样「用例失败也跑」）。改前现场：helper 里裸 `mkdtemp()` 造出的**根**只用作父目录，
+#: 落文件后又**全程零清理** —— 每次跑都泄漏一个 `清只读反向验证_*` 根。
+_临时夹具登记: list[Path] = []
+
+
+def tearDownModule() -> None:
+    """模块收尾：清理本模块造在 `受管临时根` 下的全部夹具（**用例失败也跑**）。"""
+    for 夹具 in _临时夹具登记:
+        清只读后删除树(夹具, 忽略失败=真)
+    _临时夹具登记.clear()
+
 #: 修复前的实现（`同步落盘` 直接 `os.open(目录)`、清理一律 `rmtree(临时, ignore_errors=True)`）
 修复前基线 = "753a7d1e"
 
@@ -61,12 +80,14 @@ _真scandir = os.scandir
 
 
 def 加载修复前实现():
-    """把修复前的 `远程镜像` 从 git 取出、落到 /tmp 并加载（只读历史，不动工作区）。"""
+    """把修复前的 `远程镜像` 从 git 取出、落到受管临时根并加载（只读历史，不动工作区）。"""
     源码 = subprocess.run(
         ["/Library/Developer/CommandLineTools/usr/bin/git", "show",
          f"{修复前基线}:运行核心/运行环境管理器/远程镜像.py"],
         cwd=str(系统根), capture_output=True, text=True, check=True).stdout
-    临时 = Path(tempfile.mkdtemp(prefix="清只读反向验证_")) / "修复前远程镜像.py"
+    夹具根 = Path(tempfile.mkdtemp(prefix="清只读反向验证_", dir=受管临时根))
+    _临时夹具登记.append(夹具根)
+    临时 = 夹具根 / "修复前远程镜像.py"
     临时.write_text(源码, encoding="utf-8")
     规格 = importlib.util.spec_from_file_location("修复前远程镜像", 临时)
     if 规格 is None or 规格.loader is None:
@@ -148,16 +169,22 @@ class Windows语义模拟:
 
 class 清只读夹具(unittest.TestCase):
     def setUp(self) -> None:
-        self.根 = Path(tempfile.mkdtemp(prefix="清只读_"))
+        self.根 = Path(tempfile.mkdtemp(prefix="清只读_", dir=受管临时根))
+        # 清理走**被测的那个原语**（`清只读后删除树`）：本类用例故意造只读文件与只读目录，
+        # 宽 `rmtree` 在 Windows 语义下会被权限位挡住 ⇒ 清理失败即留垃圾（改前现场）。
+        self.addCleanup(清只读后删除树, self.根, 忽略失败=真)
 
     def tearDown(self) -> None:
-        # 兜底：把模拟期间可能残留的只读位清掉再删，避免测试自己留垃圾
+        # 兜底：把模拟期间产生的只读位**去掉写保护**，好让 addCleanup 的删树能真的走到底。
+        # ★ 必须是 `原模式 | S_IWRITE`，不能写成 `chmod(项, stat.S_IWRITE)`：后者把模式**覆盖**
+        # 成 0o200（只写，没有读/执行）⇒ 目录连 `os.open` 都打不开，删树递归不下去，
+        # 清理就变成「静默失败 + 留垃圾」（改前现场：宽 `rmtree(..., ignore_errors=True)`
+        # 把这个错误吞了，所以看不出来；换成平台原语 `清只读后删除树` 后当场暴露）。
         for 项 in sorted(self.根.rglob("*"), key=lambda p: len(p.parts), reverse=True):
             try:
-                os.chmod(项, stat.S_IWRITE)
+                os.chmod(项, 项.stat().st_mode | stat.S_IWRITE)
             except OSError:
                 pass
-        shutil.rmtree(self.根, ignore_errors=True)
 
     def 造只读树(self, 名: str = "制品") -> tuple[Path, Path]:
         """造一棵「像 venv 一样」的树：含只读文件 + 含只读文件的子目录。"""

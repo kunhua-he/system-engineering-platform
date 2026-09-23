@@ -1,6 +1,6 @@
-"""测试写入边界门禁：**测试不得假绿**三条判据（债务 #106 + 2026-09-22 实测现场）。
+"""测试写入边界门禁：**测试不得假绿**四条判据（债务 #106 + 2026-09-22/23 实测现场）。
 
-本件名里的「写入边界」是**判据一**的落点；判据二、三同属「测试不得假绿」一族，
+本件名里的「写入边界」是**判据一**的落点；判据二、三、四同属「测试不得假绿」一族，
 按父任务要求**同件增项**（不另开第二个判据件，避免同类判据散成多条腿），
 故件名保留历史、判据面在件内如实列全 —— 读本件先读这张表：
 
@@ -10,6 +10,7 @@
 | 一 写动作**未解析**（fail-closed） | 「解析不出」被当放行 ⇒ 判据一全盲（1151/1153 处没判过） | `测试写入-写动作未解析` | 基线内 854 键 / 1151 处（只减不增） |
 | 二 只断言「成功」 | 未装配空转 ⇒ `成功=True` 而**什么都没测** | `测试断言-只断言成功` | 基线内 18 条（只减不增） |
 | 三 mock 空转 | mock 的环境变量键**在实现里零读取点** | `测试mock-环境变量零读点` | 基线内 0 条 |
+| 四 临时根**建了不清**（fail-closed） | `mkdtemp`/`mkstemp` 造出的**根**没人清 ⇒ 每跑一次泄漏一个临时目录 | `测试写入-临时根未清` | 基线内 0 键（本包（P1）收口后现场为 0，只减不增） |
 
 ## 判据一：测试只许写 `tempfile` / `工程缓存/` 下的受管目录，禁止写仓库正式根
 
@@ -90,6 +91,44 @@
 不是把存量一口气判红）。故「无 `dir=`」这一档按**运行时临时根**判，并把**门禁侧无法判定**
 的那一半**如实印在判据行上**（`判据一` 行尾会打印本次判定所依据的运行时临时根）。
 
+## 判据四：`tempfile` 建出来的**根**必须在 `addCleanup` / 收尾钩子里被清（防「建了不清」）
+
+**现场证据（2026-09-23 实测，本包 P1 收口）**：本判据**上线前**先拿它在改前树上量 ——
+`测试中心/**.py` 共 **217** 处临时根，其中 **7 处 / 6 个模块**没人清（`未清 2` + `根不可达 5`），
+每跑一次测试就泄漏一个临时目录（跑 N 遍泄漏 N 个）。判据一管的是「落点在哪」
+（别造进仓库正式根），**管不到「清没清」**：落点在系统临时目录的夹具同样会长期堆积。
+故本判据补的是**清没清**这一半。修完当场复量：**217 处全部已清、违规 0**（见本件 `判据四` 行）。
+
+**判定口径**（逐 `mkdtemp` / `mkstemp` 调用，fail-closed）：
+
+| 情形 | 判定 |
+|---|---|
+| 根绑定给名字（`X` / `self.X` / `cls.X`），该名字出现在**清理面**任一处 | **放行** |
+| 根绑定给名字，清理面上**找不到**该名字 | **判红**（`测试写入-临时根未清`） |
+| 根**没绑定**给名字（`Path(mkdtemp()) / "x"` 这类**派生到子路径**、或直接当实参） | **判红**（根不可达 ⇒ 判不出它被清，fail-closed） |
+| helper 造根并 `return`，清理在**调用点**做 | 该 helper 的**全部**调用点绑定名都在清理面上才放行（**部分清**同样判红） |
+| helper 造根并**自己登记**清理（模块级登记表 + `tearDownModule`，或 helper 内 `addCleanup`） | 放行（一处登记覆盖全部调用点） |
+
+**清理面**（四条等效的清理腿，任一命中即算清过）：
+
+1. `addCleanup(清理原语, 根, …)` / `addClassCleanup(…)` 的实参（含 `addCleanup(lambda: rmtree(根))`
+   的 lambda 体内清理调用的实参）；
+2. `tearDown` / `tearDownClass` / `tearDownModule` / `doCleanups` 函数体里的清理调用实参；
+3. **`try` 的 `finally` / `except` 体**里的清理调用实参（用例失败路径也跑，与 `addCleanup` 等效）；
+4. 模块级登记表 `表.append(根)`，且该表在 `tearDownModule` 里被 `for … in 表` 消费。
+
+**清理原语**（`清理调用名`）= `清只读后删除树` / `rmtree` / `rmdir` / `unlink` / `remove` / `删除树`。
+**为什么清理面上要找的是「名字」而不是「值」**：静态判不出两个表达式指向同一路径，
+按名字判是**唯一可静态落地**的口径；代价是「清了一个同名的别的变量」会算作已清 ——
+这一半如实声明为**漏报**，但**假绿方向**被「名字必须真的出现在清理调用里」卡住（不是看到
+清理词就算过）。
+
+**为什么「根没绑定给名字」也判红（fail-closed）**：`Path(mkdtemp(...)) / "x.json"` 里
+**只有派生出来的那个文件路径**有名字，根**没有名字** ⇒ 静态判不出根被清 —— 而这正是
+本判据要防的形态（判据一侧实测过同一形态：`测试_公开调用完整性门禁.py` 把**文件路径**
+交给 `addCleanup(清只读后删除树, …)`，目录树原语对文件必然失败、`忽略失败=真` 只留痕 ⇒
+**根全程无人清**）。与判据一同口径：**解析不出 ⇒ 计入违规**，不猜。
+
 ## 判据二：测试断言必须看**业务字段**，不能只看 `成功`（防「未装配空转假绿」）
 
 **现场证据（2026-09-22 实测，已提交 dd1123a0）**：
@@ -129,7 +168,15 @@
   （`环境目录(真实提供者目录, 摘要)` 的实参是本仓路径、返回值却是 `工程缓存/提供者运行环境/…`）
   静态解析不出来 ⇒ 归入**「未解析」档并计入违规**（fail-closed），**不猜**
   —— 这一类是「未解析」档的主要来源，靠**处数冻结**兜住存量、靠**处数比对**拦住新增；
-- 判据一/二只覆盖 `测试中心/`；判据三的**反查面**是「除 `测试中心/` 外的全仓源码」；
+- 判据一/二/四只覆盖 `测试中心/`；判据三的**反查面**是「除 `测试中心/` 外的全仓源码」；
+- 判据四的**名字口径**（如实声明，不假装精确）：清理面上比对的是**名字**（`根` / `self.根`），
+  不是值 —— 静态判不出两个表达式指向同一路径。故「清了**同名的另一个变量**」会被算作已清，
+  这是**漏报**方向（**不是**假绿：判据仍要求该名字真的出现在清理调用里，且 `self.X` 还要
+  核对**类归属**与基类链）；另一半「名字出现 ≠ 真的删干净」判不了（运行时才知道），
+  本判据只管**有没有清理动作**；
+- 判据四**不覆盖** `TemporaryDirectory` 上下文管理器（`with … as 根:` 退出即清，属语言保证）；
+  也不覆盖**子进程脚本模板字符串**里的 `mkdtemp`（那是子进程自己造的根，本进程不持有
+  —— `测试中心/运行核心/测试_平台准入.py` 属这一档，如实不算它的面）；
 - 判据二按**用例**判（不是按断言）：一条用例里只要有一处业务断言，整条用例就不进待核
   —— 「有业务断言」是它真的看过产出的证据；这会漏掉「一行业务断言 + 九行只看成功」的
   用例，属**如实声明的漏报**，不假装是全覆盖。
@@ -179,7 +226,7 @@
 
 ## 用法
 
-    python3.14 -m 开发工具.测试写入边界门禁              # 跑门禁（三条判据）
+    python3.14 -m 开发工具.测试写入边界门禁              # 跑门禁（四条判据）
     python3.14 -m 开发工具.测试写入边界门禁 --根 <目录>    # 覆盖扫描根（反向验证用）
     python3.14 -m 开发工具.测试写入边界门禁 --只报        # 只打印不判红（排查用）
     python3.14 -m 开发工具.测试写入边界门禁 --存量明细     # 逐条打印存量键（重建基线用）
@@ -216,18 +263,20 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 缺源码不可解析 = "测试写入-源码不可解析"
 写仓库内相对路径 = "测试写入-写仓库内相对路径"
 未解析写动作 = "测试写入-写动作未解析"
+临时根未清 = "测试写入-临时根未清"
 只断言成功 = "测试断言-只断言成功"
 mock空转 = "测试mock-环境变量零读点"
 缺存量基线 = "测试写入-存量基线不可用"
 
-#: 存量基线的四个桶名（**顺序即报告顺序**；缺桶 = 形状非法 ⇒ 判红）。
-#: 「未解析」桶紧跟「写仓库内相对路径」—— 两者同属判据一（判据一现在有两档）。
-存量桶名 = (写仓库内相对路径, 未解析写动作, 只断言成功, mock空转)
+#: 存量基线的五个桶名（**顺序即报告顺序**；缺桶 = 形状非法 ⇒ 判红）。
+#: 「未解析」桶紧跟「写仓库内相对路径」—— 两者同属判据一（判据一现在有两档）；
+#: 「临时根未清」桶紧跟两者 —— 判据四与判据一同属「临时目录该建得干净、也该清得干净」一族。
+存量桶名 = (写仓库内相对路径, 未解析写动作, 临时根未清, 只断言成功, mock空转)
 
 #: 桶名 → 统计里的判据键（报告打印用，避免在打印处再写一遍 if 链）。
 #: 「未解析」单列 `判据一·未解析`：判据一有两档，共用 `判据一` 会互相覆盖存量统计。
 判据键 = {写仓库内相对路径: "判据一", 未解析写动作: "判据一·未解析",
-        只断言成功: "判据二", mock空转: "判据三"}
+        临时根未清: "判据四", 只断言成功: "判据二", mock空转: "判据三"}
 
 #: 未解析档：报告里**样例（文件:行）**的条数上限（存量上千处，逐条打印会把判据行淹掉）。
 未解析样例上限 = 5
@@ -984,6 +1033,494 @@ def 扫描写入(根: Path) -> tuple[list[dict], dict]:
     return 违规, 统计
 
 
+# ---------------------------------------------------------------------------
+# 判据四：临时根建了没清
+# ---------------------------------------------------------------------------
+
+#: 判据四的**清理原语**（清理面上被点名即算「清过」）。与写动作面分开列：写动作面收了
+#: `mkdir`/`copy2` 一类**造**的动作，这里只要**销毁**的动作。
+清理调用名 = frozenset({"清只读后删除树", "rmtree", "rmdir", "unlink", "remove", "删除树"})
+
+#: 判据四的收尾钩子（它们的函数体跑在**用例失败之后**，与 `addCleanup` 同一条腿）。
+收尾钩子名 = frozenset({"tearDown", "tearDownClass", "tearDownModule", "doCleanups"})
+
+#: 判据四的清理登记调用（`unittest.TestCase` 自带）。
+清理登记名 = frozenset({"addCleanup", "addClassCleanup"})
+
+#: 接收者是路径、且是**销毁**动作的名字（`根.rmdir()` / `锁.unlink()` 形态）。
+销毁式接收者名 = frozenset({"rmdir", "unlink", "rmtree", "清只读后删除树", "删除树"})
+
+#: 判据四认的临时根构造器（`tempfile` 一族里**造目录/文件后缀名**的两个）。
+临时根构造器 = frozenset({"mkdtemp", "mkstemp"})
+
+
+def _函数名(节点: ast.AST) -> str:
+    """`X.attr` / `name` 的末段名；其余空串。"""
+    if isinstance(节点, ast.Attribute):
+        return 节点.attr
+    if isinstance(节点, ast.Name):
+        return 节点.id
+    return ""
+
+
+def _名字引用(节点: ast.AST) -> set[str]:
+    """表达式里出现的**名字**引用集（判据四的「名字口径」，见模块 docstring）。
+
+    - `Name` / `Attribute` ⇒ 其源码文本（`根` / `self.临时`）；
+    - `Path(x)` / `str(x)` ⇒ 递归取 `x`（包装不改变它指的是哪个目录）；
+    - `a / b` ⇒ 两边都取（`self.根 / "不存在"` 里 `self.根` 是真名字）。
+    """
+    if isinstance(节点, (ast.Name, ast.Attribute)):
+        return {_表达式文本(节点)}
+    if isinstance(节点, ast.Call) and _函数名(节点.func) in ("Path", "str") and 节点.args:
+        return _名字引用(节点.args[0])
+    if isinstance(节点, ast.BinOp) and isinstance(节点.op, ast.Div):
+        return _名字引用(节点.left) | _名字引用(节点.right)
+    出: set[str] = set()
+    for 子 in ast.iter_child_nodes(节点):
+        出 |= _名字引用(子)
+    return 出
+
+
+def _是临时根调用(节点: ast.AST) -> bool:
+    """`tempfile.mkdtemp(...)`（模块限定）或 `mkdtemp(...)`（from-import）形态。"""
+    if not isinstance(节点, ast.Call):
+        return 假
+    被调 = 节点.func
+    if isinstance(被调, ast.Attribute):
+        return (被调.attr in 临时根构造器
+                and isinstance(被调.value, ast.Name) and 被调.value.id == "tempfile")
+    return isinstance(被调, ast.Name) and 被调.id in 临时根构造器
+
+
+def _父节点表(树: ast.AST) -> dict[int, ast.AST]:
+    父: dict[int, ast.AST] = {}
+    for 节点 in ast.walk(树):
+        for 子 in ast.iter_child_nodes(节点):
+            父[id(子)] = 节点
+    return 父
+
+
+def _根表达式(调用: ast.AST, 父: dict[int, ast.AST]) -> tuple[ast.AST, bool]:
+    """从临时根调用上溯到**它自己的根表达式**；返回 ``(表达式, 是否派生到子路径)``。
+
+    上溯两种包裹（都不改变「根是哪个目录」）：
+    - `Path(tempfile.mkdtemp(...))` / `str(tempfile.mkdtemp(...))` —— 外层是构造器；
+    - `Path(tempfile.mkdtemp(...)) / "x.json"` —— **派生到子路径**：派生出来的那条
+      **文件路径**才是被赋名的东西，根**没有名字**（`子路径=真`）。
+    """
+    节点 = 调用
+    子路径 = 假
+    while id(节点) in 父:
+        上 = 父[id(节点)]
+        if isinstance(上, ast.Call) and _函数名(上.func) in ("Path", "str") \
+                and 上.args and 上.args[0] is 节点:
+            节点 = 上
+            continue
+        if isinstance(上, ast.BinOp) and isinstance(上.op, ast.Div):
+            子路径 = 真
+            if id(上) not in 父:
+                return 上, 子路径
+            更上 = 父[id(上)]
+            if isinstance(更上, ast.Call) and _函数名(更上.func) in ("Path", "str"):
+                节点 = 更上
+                continue
+            return 上, 子路径
+        break
+    return 节点, 子路径
+
+
+def _根绑定名(根表达式: ast.AST, 父: dict[int, ast.AST]) -> list[str]:
+    """根表达式被赋给了哪些名字（`x` / `self.x` / `cls.x`）；没有被赋名 ⇒ 空列表。
+
+    为什么是**列表**：`mkstemp` 的标准形态是**元组解包**
+    （`句柄, 路径 = tempfile.mkstemp()`），根被拆成两个名字接住
+    —— 只认单名会把这一整类判成「根没绑定」（假红，实测踩过）。
+    """
+    p = 父.get(id(根表达式))
+    目标表: list[ast.AST] = []
+    if isinstance(p, ast.Assign) and len(p.targets) == 1:
+        目标表 = [p.targets[0]]
+    elif isinstance(p, ast.AnnAssign) and isinstance(p.target, ast.AST):
+        目标表 = [p.target]
+    出: list[str] = []
+    for 目标 in 目标表:
+        if isinstance(目标, (ast.Name, ast.Attribute)):
+            出.append(_表达式文本(目标))
+            continue
+        for 子 in ast.walk(目标):
+            if isinstance(子, (ast.Name, ast.Attribute)):
+                出.append(_表达式文本(子))
+    return 出
+
+
+def _所在函数(节点: ast.AST, 父: dict[int, ast.AST]) -> ast.AST | None:
+    当前 = 节点
+    while id(当前) in 父:
+        if isinstance(当前, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return 当前
+        当前 = 父[id(当前)]
+    return None
+
+
+def _类结构表(树: ast.AST) -> tuple[dict[str, list[str]], list[ast.ClassDef]]:
+    """``(类名 → 基类名列表, 全部类节点)`` —— 供 `_所属类` 与基类链回溯用。"""
+    基类表: dict[str, list[str]] = {}
+    全部类: list[ast.ClassDef] = []
+    for 节点 in ast.walk(树):
+        if isinstance(节点, ast.ClassDef):
+            全部类.append(节点)
+            基类表[节点.name] = [基.id for 基 in 节点.bases if isinstance(基, ast.Name)]
+    return 基类表, 全部类
+
+
+def _所属类(全部类: list[ast.ClassDef], 节点: ast.AST) -> str:
+    """`节点` 最内层的**所属类名**；不在任何类里 ⇒ 空串（模块级）。"""
+    最佳名 = ""
+    最小规模: int | None = None
+    for 类 in 全部类:
+        if not any(子 is 节点 for 子 in ast.walk(类)):
+            continue
+        规模 = sum(1 for _ in ast.walk(类))
+        if 最小规模 is None or 规模 < 最小规模:
+            最小规模 = 规模
+            最佳名 = 类.name
+    return 最佳名
+
+
+def _祖先链(基类表: dict[str, list[str]], 类名: str) -> set[str]:
+    """类名 → 它自己 + 全部祖先类名（含基类链，防「根在子类、清理在基类」被误判）。"""
+    出: set[str] = set()
+    待 = [类名]
+    while 待:
+        当前 = 待.pop()
+        if not 当前 or 当前 in 出:
+            continue
+        出.add(当前)
+        待.extend(基类表.get(当前, []))
+    return 出
+
+
+def _清理面名字(树: ast.AST) -> tuple[set[str], dict[str, set[str]]]:
+    """判据四的**清理面**：被清理动作点过名的名字集（四条等效清理腿，见模块 docstring）。
+
+    返回 ``(文件级名字集, self.X/cls.X 名字 → 提供清理证据的类名集)``。
+
+    ★ 为什么不是「文件里出现过清理词」：那会把「清了别的目录」算成本根已清（假绿）。
+    本函数只在**清理调用真的点到了某个名字**时才把它记进清理面。
+
+    ★ 为什么要按**类**再分一张表（2026-09-23 反向验证实测）：同一文件里两个类各有一个
+    同名 `self.工作`（`测试_SwiftCompiler提供者.py` 的 `Test编译源代码` 与 `Test签名`
+    就是这么写的）—— 只按文件级收名字，删掉前者的 `addCleanup` 后者的登记会替它顶包
+    ⇒ **弄坏不红**（反向验证第一拍拍到过）。故 `self.X` / `cls.X` 的证据必须归到
+    **它所在的类**（含基类链），判根时再按「根所在类 ∈ 证据类」比对。
+    """
+    证据: set[str] = set()
+    证据类: dict[str, set[str]] = {}
+    基类表, 全部类 = _类结构表(树)
+
+    def _记(名: str, 提供处: ast.AST | None = None) -> None:
+        证据.add(名)
+        if 名.startswith(("self.", "cls.")) and 提供处 is not None:
+            证据类.setdefault(名, set()).add(_所属类(全部类, 提供处))
+
+    # ④ 模块级登记表：`tearDownModule` 里 `for 夹具 in 表: 清只读后删除树(夹具, …)`
+    # ★ 必须核**循环体里真的对循环变量调了清理**：只认「表出现在 tearDownModule 的 for 里」
+    # 会把空转收尾（`for 夹具 in 表: pass`）算成已清 —— 反向验证拍5 实测过这一处 fail-open。
+    登记表: set[str] = set()
+    for 节点 in ast.walk(树):
+        if not (isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and 节点.name == "tearDownModule"):
+            continue
+        for 子 in ast.walk(节点):
+            if not isinstance(子, ast.For):
+                continue
+            变量名 = _表达式文本(子.target)
+            if not any(
+                    函数名 in 清理调用名
+                    and any(变量名 in _名字引用(参) for 参 in 调用.args)
+                    for 语句 in 子.body for 调用 in ast.walk(语句)
+                    if isinstance(调用, ast.Call)
+                    for 函数名 in [_函数名(调用.func)]):
+                continue
+            登记表.add(_表达式文本(子.iter).split(".")[-1])
+    # ① addCleanup / addClassCleanup
+    for 节点 in ast.walk(树):
+        if not (isinstance(节点, ast.Call) and _函数名(节点.func) in 清理登记名):
+            continue
+        for 参 in list(节点.args[1:]) + [k.value for k in 节点.keywords]:
+            for 名 in _名字引用(参):
+                _记(名, 节点)
+        # `addCleanup(lambda: __import__("shutil").rmtree(根, ignore_errors=True))` 形态：
+        # lambda 体内**清理调用的实参**才算（把 lambda 里所有名字都收会把「只读别的根」
+        # 误判成本根被清 ⇒ 假绿）。
+        for 首参 in list(节点.args[:1]):
+            if isinstance(首参, ast.Lambda):
+                for 内 in ast.walk(首参):
+                    if isinstance(内, ast.Call) and _函数名(内.func) in 清理调用名:
+                        for 参 in 内.args:
+                            for 名 in _名字引用(参):
+                                _记(名, 节点)
+                        if isinstance(内.func, ast.Attribute) \
+                                and _函数名(内.func) in 销毁式接收者名:
+                            for 名 in _名字引用(内.func.value):
+                                _记(名, 节点)
+    # ④ 登记表 append（`表.append(根)`）
+    # ★ 表名必须**真的在 tearDownModule 里被清理循环消费**（见上面 `登记表` 的核法）：
+    # 只按「名字里有『登记』」认会把**没被消费**的登记表算成已清 —— 反向验证拍5 实测过
+    # 这一处 fail-open（`for 夹具 in 表: pass` 照样算清过）。
+    for 节点 in ast.walk(树):
+        if isinstance(节点, ast.Call) and _函数名(节点.func) == "append" and 节点.args \
+                and isinstance(节点.func, ast.Attribute):
+            接收 = _表达式文本(节点.func.value).split(".")[-1]
+            if 接收 in 登记表:
+                for 名 in _名字引用(节点.args[0]):
+                    _记(名, 节点)
+
+    def _收体(语句表: list[ast.stmt]) -> None:
+        """收一段语句体（收尾钩子 / try 的 finally / except）里全部清理调用的目标名。"""
+        for 语句 in 语句表:
+            for 子 in ast.walk(语句):
+                if not (isinstance(子, ast.Call) and _函数名(子.func) in 清理调用名):
+                    continue
+                for 参 in 子.args:
+                    for 名 in _名字引用(参):
+                        _记(名, 子)
+                if isinstance(子.func, ast.Attribute) and _函数名(子.func) in 销毁式接收者名:
+                    for 名 in _名字引用(子.func.value):
+                        _记(名, 子)
+
+    def _走(节点: ast.AST) -> None:
+        for 子 in ast.iter_child_nodes(节点):
+            if isinstance(子, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if 子.name in 收尾钩子名:  # ② 收尾钩子
+                    _收体(子.body)
+                _走(子)
+                continue
+            if isinstance(子, ast.Try):  # ③ try 的 finally / except
+                _收体(子.finalbody)
+                for 处理器 in 子.handlers:
+                    _收体(处理器.body)
+                _走(子)
+                continue
+            _走(子)
+
+    _走(树)
+    return 证据, 证据类
+
+
+def _返回根的局部名(函数: ast.AST) -> set[str]:
+    """该函数里「造出来又 `return` 出去」的临时根**局部名**（没有则是空集）。"""
+    局部: set[str] = set()
+    for 子 in ast.walk(函数):
+        if isinstance(子, ast.Assign) and len(子.targets) == 1 \
+                and isinstance(子.targets[0], ast.Name):
+            if any(_是临时根调用(c) for c in ast.walk(子.value)):
+                局部.add(子.targets[0].id)
+    if not 局部:
+        return set()
+    出: set[str] = set()
+    for 子 in ast.walk(函数):
+        if isinstance(子, ast.Return) and 子.value is not None:
+            for 孙 in ast.walk(子.value):
+                if isinstance(孙, ast.Name) and 孙.id in 局部:
+                    出.add(孙.id)
+    return 出
+
+
+def _helper调用点绑定名(树: ast.AST, 父: dict[int, ast.AST], 函数名: str,
+                全部类: list[ast.ClassDef]) -> dict[str, set[str]]:
+    """该 helper 的全部调用点**绑定到的名字** → 该绑定**所在类**集（含元组解包）。
+
+    ★ 为什么要带上「所在类」：helper 返回根的清理登记在**调用点**（`self.addCleanup(…,
+    组件目录)`），而 `self.X` 证据是按类核的 —— 拿 mkdtemp **节点所在的类**（helper 体内，
+    模块级 = 空串）去比会把「用例类里的清理登记」判成不匹配 ⇒ 假红（反向验证实测过）。
+    """
+    出: dict[str, set[str]] = {}
+
+    def _记(名: str, 位置节点: ast.AST) -> None:
+        出.setdefault(名, set()).add(_所属类(全部类, 位置节点))
+
+    for 节点 in ast.walk(树):
+        if not (isinstance(节点, ast.Call) and _函数名(节点.func) == 函数名):
+            continue
+        当前 = 节点
+        while id(当前) in 父:
+            上 = 父[id(当前)]
+            if isinstance(上, ast.BinOp) and isinstance(上.op, ast.Div):
+                当前 = 上
+                continue
+            if isinstance(上, ast.Call) and _函数名(上.func) in ("Path", "str") and 上.args \
+                    and 上.args[0] is 当前:
+                当前 = 上
+                continue
+            break
+        p = 父.get(id(当前))
+        目标们: list[ast.AST] = []
+        if isinstance(p, ast.Assign):
+            目标们 = list(p.targets)
+        elif isinstance(p, ast.AnnAssign):
+            目标们 = [p.target]
+        for 目标 in 目标们:
+            if isinstance(目标, (ast.Name, ast.Attribute)):
+                _记(_表达式文本(目标), 目标)
+            for 孙 in ast.walk(目标):
+                if isinstance(孙, (ast.Name, ast.Attribute)):
+                    # 裸 `self` / `cls` 不是**根的名字**（它只是接收者）—— 把它收进「调用点
+                    # 绑定名」会让「已清」永远不成立（`self` 永不出现在清理面 ⇒ 恒判红）。
+                    if isinstance(孙, ast.Name) and 孙.id in ("self", "cls"):
+                        continue
+                    _记(_表达式文本(孙), 孙)
+    return 出
+
+
+def 扫描临时根未清(根: Path) -> tuple[list[dict], dict]:
+    """判据四：``(违规, 统计)`` —— 每条临时根造出来之后**有没有人清**。
+
+    统计把「判过了多少」拆开：`临时根数` = `已清` + `未清` + `根不可达` + `不可解析` 之和
+    —— 只报「违规 0 条」的判据无法自证它看过任何东西（同判据一的理由）。
+    """
+    根 = Path(根)
+    违规: list[dict] = []
+    统计 = {"文件数": 0, "临时根数": 0, "已清": 0, "未清": 0, "根不可达": 0, "不可解析": 0,
+           "helper返回根": 0}
+    文件表 = _测试文件表(根)
+    for 文件 in 文件表:
+        统计["文件数"] += 1
+        相对 = 文件.relative_to(根).as_posix()
+        树, 错误 = _读并解析(文件)
+        if 树 is None:
+            统计["不可解析"] += 1
+            违规.append({"文件": 相对, "行": 0, "动作": "-", "目标": "-",
+                         "缺口类型": 缺源码不可解析, "桶键": f"{相对}::-::-",
+                         "详情": f"{错误} ⇒ 这份测试造了什么临时根未知，不静默跳过"})
+            continue
+        临时根们 = [节点 for 节点 in ast.walk(树) if _是临时根调用(节点)]
+        if not 临时根们:
+            continue
+        父 = _父节点表(树)
+        清理面, 清理面类 = _清理面名字(树)
+        基类表, 全部类 = _类结构表(树)
+
+        def _本处算清(名们: list[str], 调用节点: ast.AST, 所在类: str | None = None) -> bool:
+            """这些名字里**至少一个**在本处被清（`self.X` / `cls.X` 还要核类归属）。
+
+            `self.X` 必须按类核：同文件两个类各有同名 `self.工作` 时，A 类的登记
+            不能替 B 类顶包（反向验证实测过：不核类则删掉 A 的 addCleanup 也不红）。
+            核类时带**基类链**（`祖先链`）：根在子类、清理写在基类 `tearDown` 里是仓内
+            常见形态，不认基类会假红。
+
+            `所在类` 显式给出时以它为准（helper 形态：根造在模块级 helper 里，
+            但清理登记在**调用点所在的用例类**，按 mkdtemp 节点所在的类（空串）核必然错）。
+            """
+            本处类 = 所在类 if 所在类 is not None else _所属类(全部类, 调用节点)
+            for 名 in 名们:
+                if 名 not in 清理面:
+                    continue
+                if not 名.startswith(("self.", "cls.")):
+                    return True
+                提供类 = 清理面类.get(名, set())
+                if _祖先链(基类表, 本处类) & 提供类:
+                    return True
+            return False
+
+        helper根: dict[str, set[str]] = {}
+        for 节点 in ast.walk(树):
+            if isinstance(节点, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                局部名 = _返回根的局部名(节点)
+                if 局部名:
+                    helper根[节点.name] = 局部名
+        helper可清: dict[str, dict[str, set[str]]] = {
+            名: _helper调用点绑定名(树, 父, 名, 全部类) for 名 in helper根}
+        for 调用 in 临时根们:
+            统计["临时根数"] += 1
+            根表达式, 子路径 = _根表达式(调用, 父)
+            绑定们 = _根绑定名(根表达式, 父)
+            绑定 = 绑定们[0] if 绑定们 else None
+            所在 = _所在函数(调用, 父)
+            返回本根 = (isinstance(所在, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and 所在.name in helper根
+                    and bool(绑定们) and all(名 in helper根[所在.name] for 名 in 绑定们))
+            if 返回本根:
+                统计["helper返回根"] += 1
+            if 子路径:
+                # 根**没有名字**（派生出来的文件路径才有名字）⇒ 判不出根被清。
+                # fail-closed：与判据一同口径，解析不出**不是**放行的理由。
+                统计["根不可达"] += 1
+                违规.append({
+                    "文件": 相对, "行": 调用.lineno, "动作": _函数名(调用.func),
+                    "目标": _表达式文本(根表达式),
+                    "缺口类型": 临时根未清,
+                    "桶键": f"{相对}::{_函数名(调用.func)}::根不可达::{_表达式文本(根表达式)}",
+                    "详情": (f"`{_表达式文本(根表达式)}` 的**临时根没有绑定给任何名字**"
+                             "（只把派生出来的子路径绑了名）⇒ 静态判不出根被清，"
+                             f"fail-closed 计入违规。修法：把根绑成名字并 "
+                             f"`addCleanup(清只读后删除树, 根, 忽略失败=真)` 或登记进"
+                             "模块级登记表（由 tearDownModule 消费）"),
+                })
+                continue
+            if not 绑定们:
+                统计["根不可达"] += 1
+                违规.append({
+                    "文件": 相对, "行": 调用.lineno, "动作": _函数名(调用.func),
+                    "目标": _表达式文本(根表达式),
+                    "缺口类型": 临时根未清,
+                    "桶键": f"{相对}::{_函数名(调用.func)}::根未绑定::{_表达式文本(根表达式)}",
+                    "详情": (f"`{_表达式文本(根表达式)}` 造出的临时根**没有绑定给名字**"
+                             "⇒ 判不出它被清（fail-closed）。修法：绑成名字再登记清理"),
+                })
+                continue
+            if _本处算清(绑定们, 调用):
+                统计["已清"] += 1
+                continue
+            if 返回本根:
+                # helper 返回根 ⇒ 根在各调用点叫**别的名字**，「本地名 vs 调用点名」对不上。
+                # 两条等效的清理腿，**任一成立即算已清**：
+                #   A) helper 自己登记了清理（本地根名出现在清理面 —— 上面 `_本处算清` 已判）；
+                #   B) 每个调用点各自清（该 helper 的**全部**调用点绑定名在**各自所在类**里
+                #      都出现在清理面上）。
+                # ★ 只认「部分调用点清了」会漏判成绿 ⇒ 必须**全量包含**。
+                调用点名 = helper可清.get(所在.name, {})
+                调用点漏 = sorted(
+                    名 for 名, 类集 in 调用点名.items()
+                    if not any(_本处算清([名], 调用, 所在类=类) for 类 in 类集))
+                if 调用点名 and not 调用点漏:
+                    统计["已清"] += 1
+                    continue
+                统计["未清"] += 1
+                违规.append({
+                    "文件": 相对, "行": 调用.lineno, "动作": _函数名(调用.func),
+                    "目标": _表达式文本(根表达式),
+                    "缺口类型": 临时根未清,
+                    "桶键": f"{相对}::{_函数名(调用.func)}::helper根未清::{所在.name}",
+                    "详情": (f"helper `{所在.name}` 造出临时根并返回，但**根没人清**："
+                             f"本地名 `{绑定}` 不在清理面、且调用点绑定名 "
+                             f"{sorted(调用点名) or '<无>'} 未全部出现在清理面 "
+                             f"（缺 {调用点漏}）。修法二选一："
+                             "helper 内登记模块级登记表（tearDownModule 消费，一处覆盖全调用点）"
+                             "，或每个调用点 addCleanup/try-finally 清根"),
+                })
+                continue
+            统计["未清"] += 1
+            违规.append({
+                "文件": 相对, "行": 调用.lineno, "动作": _函数名(调用.func),
+                "目标": _表达式文本(根表达式),
+                "缺口类型": 临时根未清,
+                "桶键": f"{相对}::{_函数名(调用.func)}::{绑定}",
+                "详情": (f"临时根 `{绑定}`（`{_表达式文本(根表达式)}`）**建了没清**："
+                         "清理面上找不到它（addCleanup 实参 / tearDown / try-finally / "
+                         "except / 模块级登记表四条腿都没点它）⇒ 每跑一次测试泄漏一个临时目录。"
+                         "修法：`self.addCleanup(清只读后删除树, "
+                         f"{绑定}, 忽略失败=真)`，或登记进模块级登记表由 tearDownModule 消费"),
+            })
+    if not 文件表:
+        违规.append({"文件": 扫描根名, "行": 0, "动作": "-", "目标": "-",
+                     "缺口类型": 缺扫描面, "桶键": f"{扫描根名}::-::-",
+                     "详情": f"{根 / 扫描根名} 下未发现任何 .py ⇒ 扫描面为空，"
+                             "空集不是通过（fail-closed）"})
+    return 违规, 统计
+
+
 def 扫描只断言成功(根: Path) -> tuple[list[dict], dict]:
     """判据二：``(待核清单, 统计)``。"""
     根 = Path(根)
@@ -1214,12 +1751,13 @@ def 运行门禁(根: Path | None = None, *, 基线路径: Path | None = None
     判据一, 统计一 = 扫描写入(根)
     判据二, 统计二 = 扫描只断言成功(根)
     判据三, 统计三 = 扫描mock空转(根)
+    判据四, 统计四 = 扫描临时根未清(根)
 
     统计: dict[str, Any] = {"判据一": 统计一, "判据二": 统计二, "判据三": 统计三,
-                        "判据一·未解析": {}}
+                        "判据四": 统计四, "判据一·未解析": {}}
 
     桶清单: dict[str, list[dict]] = {名: [] for 名 in 存量桶名}
-    for 判据清单 in (判据一, 判据二, 判据三):
+    for 判据清单 in (判据一, 判据二, 判据三, 判据四):
         违规.extend(_分桶(判据清单, 桶清单))
 
     for 桶名 in 存量桶名:
@@ -1258,6 +1796,12 @@ def _打印判据(标号: str, 统计: dict) -> None:
         # 如实报出本档判「无 dir= 的临时落点」时依据的是**哪一个**临时根 ——
         # 门禁侧只能观测到自己那一份，测试进程的读不到（见 `_运行时临时根安全`）。
         print(f"    [运行时临时根] {运行时临时根说明()}")
+    elif 标号 == "判据四":
+        print(f"  [{标号} 临时根未清] 扫描 {统计['文件数']} 个 .py；"
+              f"临时根 {统计['临时根数']} 处（已清 {统计['已清']}／"
+              f"未清 {统计['未清']}（计入违规，fail-closed）／"
+              f"根不可达（未绑定给名字，计入违规）{统计['根不可达']}）；"
+              f"其中 helper 返回根 {统计['helper返回根']} 处")
     elif 标号 == "判据二":
         print(f"  [{标号} 只断言成功] 扫描 {统计['文件数']} 个 .py；"
               f"用例 {统计['用例数']} 个（有断言 {统计['有断言用例']}）⇒ "
@@ -1270,7 +1814,7 @@ def _打印判据(标号: str, 统计: dict) -> None:
 
 
 def 主程序(argv: list[str] | None = None) -> int:
-    解析 = argparse.ArgumentParser(description="测试写入边界门禁（债务 #106，三条判据）")
+    解析 = argparse.ArgumentParser(description="测试写入边界门禁（债务 #106，四条判据）")
     解析.add_argument("--根", default=None, help="覆盖扫描根（反向验证用）")
     解析.add_argument("--只报", action="store_true", help="只打印不判红（排查用）")
     解析.add_argument("--存量明细", action="store_true",
@@ -1279,7 +1823,7 @@ def 主程序(argv: list[str] | None = None) -> int:
     根 = Path(参数.根).expanduser() if 参数.根 else 仓库根
     违规, 存量报告, 统计 = 运行门禁(根)
     print(f"测试写入边界门禁：根={根}／扫描面={扫描根名}/")
-    for 标号 in ("判据一", "判据二", "判据三"):
+    for 标号 in ("判据一", "判据四", "判据二", "判据三"):
         _打印判据(标号, 统计[标号])
     样例 = 统计["判据一"]["未解析样例"]
     if 样例:
@@ -1308,7 +1852,7 @@ def 主程序(argv: list[str] | None = None) -> int:
             print(f"测试写入边界门禁结论：绿 —— 基线内 {统计['存量总数']} 键 / "
                   f"{统计['存量总处数']} 处存量（只报不拦，只减不增）")
         else:
-            print("测试写入边界门禁通过：三条判据零违规、零存量"
+            print("测试写入边界门禁通过：四条判据零违规、零存量"
                   "（受管落点 = tempfile / 工程缓存）")
         return 0
     头 = "测试写入边界门禁失败（只报态，不判红）" if 参数.只报 else "测试写入边界门禁失败"

@@ -19,8 +19,23 @@ from 支持库.适配层.Swift编译器提供者 import (  # noqa: E402
     检查提供者, 校验签名, 签名制品, 编译源代码,
 )
 from 支持库.适配层.Swift编译器提供者.实现 import Swift工具 as 实现模块  # noqa: E402
+from 公共契约.运行时.平台适配 import 清只读后删除树  # noqa: E402
+from 公共契约.基础类型.逻辑类型 import 真  # noqa: E402
 
-夹具 = Path(__file__).resolve().parents[2] / "支持库/适配层/Swift编译器提供者/验证夹具/你好.swift"
+系统根 = Path(__file__).resolve().parents[2]
+
+#: ★ 临时目录建了必清（2026-09-23 收口）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下。
+#: `dir=` 显式指向它 ⇒ 落点与**测试运行时**的 `TMPDIR` 解耦（平台跑测试时 `TMPDIR` 被指进
+#: 仓库工作目录，裸 `mkdtemp()` 会把夹具造进仓库）。`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 即便进程被 SIGKILL、
+#: 清理没跑到，残留也进不了工作区指纹（`.gitignore` 保不住：指纹的未跟踪腿不用
+#: `--exclude-standard`）。清理走平台唯一删树原语 `清只读后删除树`，登记给 `addCleanup`
+#: （用例失败也跑）。改前现场：两个类的 `setUp` 里裸 `mkdtemp()` 且**全程零清理**
+#: （`测试写入边界门禁` 判据四报的是「根未被清」，不是「落点不合规」）。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
+
+夹具 = 系统根 / "支持库/适配层/Swift编译器提供者/验证夹具/你好.swift"
 
 
 def _有swiftc() -> bool:
@@ -58,8 +73,8 @@ class Test检查提供者(工具缓存隔离基类):
 
     def setUp(self):
         super().setUp()
-        self.临时目录 = Path(tempfile.mkdtemp(prefix="swift探针_"))
-        self.addCleanup(shutil.rmtree, self.临时目录, True)
+        self.临时目录 = Path(tempfile.mkdtemp(prefix="swift探针_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时目录, 忽略失败=真)
 
     def test_工具缺失语义(self):
         """工具缺失 → 提供者不可用（不伪装成功、不混成参数问题）。
@@ -90,7 +105,8 @@ class Test检查提供者(工具缓存隔离基类):
 
 class Test编译源代码(unittest.TestCase):
     def setUp(self):
-        self.工作 = Path(tempfile.mkdtemp(prefix="swift单测_"))
+        self.工作 = Path(tempfile.mkdtemp(prefix="swift单测_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.工作, 忽略失败=真)
 
     def test_参数不合法_清单为空(self):
         出 = 编译源代码(源文件清单=[], 输出路径=str(self.工作 / "x"))
@@ -128,7 +144,8 @@ class Test编译源代码(unittest.TestCase):
 class Test签名(工具缓存隔离基类):
     def setUp(self):
         super().setUp()
-        self.工作 = Path(tempfile.mkdtemp(prefix="swift签名_"))
+        self.工作 = Path(tempfile.mkdtemp(prefix="swift签名_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.工作, 忽略失败=真)
         if not _有swiftc():
             self.skipTest("本机无 swiftc")
         out = 编译源代码(源文件清单=[str(夹具)], 输出路径=str(self.工作 / "可执行"), 超时秒=180.0)

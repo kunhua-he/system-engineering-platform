@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,9 +20,25 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.基础类型.逻辑类型 import 真
+
 仓库根 = Path(__file__).resolve().parents[2]
 门禁 = 仓库根 / "开发工具" / "能力id冻结基线门禁.py"
 真基线 = 仓库根 / "开发文档" / "项目证据" / "能力id冻结基线.json"
+
+#: ★ 临时目录建了必清（2026-09-23 收口）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下
+#: （`dir=` 显式指向它 ⇒ 落点与测试运行时的 `TMPDIR` 解耦；`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 被 SIGKILL 残留也进不了指纹）。
+#: 清理走平台唯一删树原语 `清只读后删除树`，登记给 `addCleanup`（用例失败也跑）。
+#:
+#: 改前现场（两处真泄漏，均由 `测试写入边界门禁` 判据四量出）：
+#: ① `test_真基线缺失必须fail_closed` 里 `mkdtemp()` 造出的**根**只用作父目录
+#:    （`... / "不存在的基线.json"`），落盘后**全程零清理**；
+#: ② 类夹具的 `tearDown` 用 `shutil.rmtree(..., ignore_errors=True)` —— 本类用例造
+#:    `0o555` 目录 / `0o444` 文件（`chmod` 相关用例），宽删被权限位挡住时**连残留都不留痕**。
+受管临时根 = 仓库根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 能力1 = "夹具.包1.能力一"
 能力2 = "夹具.包2.能力二"
@@ -49,8 +64,16 @@ def 能力条(能力id: str, 版本: str = "1.0.0", 参数: list | None = None) 
 
 
 class 冻结门禁夹具(unittest.TestCase):
+    """夹具根清理走 `addCleanup(清只读后删除树, …, 忽略失败=真)`（用例失败也跑）。
+
+    为什么不是 `tearDown` + 宽 `shutil.rmtree(..., ignore_errors=True)`（改前写法）：
+    宽删被权限位挡住时**连残留都不留痕**（`清只读后删除树` 的 `忽略失败=真` 会逐条经
+    `记录忽略` 留痕），而本类用例确实造只读形态。
+    """
+
     def setUp(self) -> None:
-        self.临时 = Path(tempfile.mkdtemp(prefix="能力id冻结单测_"))
+        self.临时 = Path(tempfile.mkdtemp(prefix="能力id冻结单测_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
         self.夹具 = self.临时 / "夹具根"
         self.示例包1 = self.夹具 / "支持库" / "后端" / "夹具包1"
         写包(self.示例包1, "支持库.后端.夹具包1", [能力条(能力1)])
@@ -61,9 +84,6 @@ class 冻结门禁夹具(unittest.TestCase):
             cwd=str(仓库根), capture_output=True, text=True)
         self.assertEqual(0, 结果.returncode, 结果.stdout + 结果.stderr)
         self.assertEqual(2, len(json.loads(self.基线.read_text(encoding="utf-8"))["条目"]))
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self.临时, ignore_errors=True)
 
     def 跑(self) -> tuple[int, str]:
         结果 = subprocess.run(
@@ -179,7 +199,9 @@ class 真实仓库口径(unittest.TestCase):
         `--基线` 指向一个**不存在的临时路径**，同样触发 fail-closed 分支，
         且对仓库零副作用（无需还原、中断也安全）。
         """
-        不存在的基线 = Path(tempfile.mkdtemp(prefix="冻结基线空目录_")) / "不存在的基线.json"
+        基线空目录 = Path(tempfile.mkdtemp(prefix="冻结基线空目录_", dir=受管临时根))
+        self.addCleanup(清只读后删除树, 基线空目录, 忽略失败=真)
+        不存在的基线 = 基线空目录 / "不存在的基线.json"
         self.assertFalse(不存在的基线.exists())
         结果 = subprocess.run(
             [sys.executable, str(门禁), str(仓库根), "--基线", str(不存在的基线)],

@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 import tempfile
 import unittest
@@ -19,8 +18,16 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.平台适配 import 清只读后删除树
 from 开发工具.组件合规.合规测试包 import 组件合规, 合规场景表
 from 支持库.后端.组件规范支持库 import 生成完整性摘要
+
+#: ★ 临时目录建了必清（2026-09-23 收口）：受管临时根在仓库内**固定排除目录** `工程缓存/` 下
+#: （`dir=` 显式指向它 ⇒ 落点与测试运行时的 `TMPDIR` 解耦；`工程缓存` 在
+#: `开发工具/项目编译/工作区指纹.py` 的 `固定排除目录` 里 ⇒ 被 SIGKILL 残留也进不了指纹）。
+#: 清理走平台唯一删树原语 `清只读后删除树`。
+受管临时根 = 系统根 / "工程缓存" / "测试临时"
+受管临时根.mkdir(parents=True, exist_ok=True)
 
 能力1 = {
     "能力id": "合规.能力1", "版本": "1.0.0", "说明": "合规测试能力1",
@@ -77,8 +84,13 @@ def 能力2(路径: str) -> dict:
 
 
 def 建收敛组件() -> Path:
-    """构造 S0 聚合契约正式包形态的齐全组件（含全部缺项阻断要素）。"""
-    目录 = Path(tempfile.mkdtemp(prefix="合规收敛_"))
+    """构造 S0 聚合契约正式包形态的齐全组件（含全部缺项阻断要素）。
+
+    落点钉在 `受管临时根`（`dir=` 显式给出，与测试运行时的 `TMPDIR` 解耦）；
+    **调用方负责清根**：12 个用例各自 `finally: 清只读后删除树(组件目录, 忽略失败=真)`
+    —— 改前是裸 `mkdtemp()` + 宽 `shutil.rmtree`，落点没钉、清理原语也没统一。
+    """
+    目录 = Path(tempfile.mkdtemp(prefix="合规收敛_", dir=受管临时根))
     for 子目录 in ("能力契约", "依赖契约", "配置契约", "权限契约", "实现", "说明"):
         (目录 / 子目录).mkdir()
     (目录 / "能力契约" / "参数契约.json").write_text(
@@ -141,7 +153,7 @@ class Test组件合规收敛(unittest.TestCase):
                              [f"{名称}: {详情}" for 名称, 通过, 详情 in 报告.场景结果表 if not 通过])
             self.assertTrue(报告.成功)
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_聚合契约逐能力遍历_缺一能力错误码检出(self) -> None:
         """契约场景必须逐能力遍历：能力2缺错误码 → 检出（禁整文件当一个能力）。"""
@@ -155,7 +167,7 @@ class Test组件合规收敛(unittest.TestCase):
             self.assertFalse(场景表["契约"], "能力2缺错误码必须被契约场景检出")
             self.assertFalse(场景表["失败语义"], "能力2缺错误码必须被失败语义场景检出")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_权限逐能力遍历_缺一能力声明检出(self) -> None:
         组件目录 = 建收敛组件()
@@ -166,26 +178,26 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["权限"], "能力2无权限声明必须被检出")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺配置契约阻断(self) -> None:
         组件目录 = 建收敛组件()
         try:
-            shutil.rmtree(组件目录 / "配置契约")
+            清只读后删除树(组件目录 / "配置契约")
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["配置"], "缺 配置契约 必须阻断")
             self.assertFalse(场景表["结构"], "缺 配置契约 同时使九要素结构失败")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺权限契约阻断(self) -> None:
         组件目录 = 建收敛组件()
         try:
-            shutil.rmtree(组件目录 / "权限契约")
+            清只读后删除树(组件目录 / "权限契约")
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["权限"], "缺 权限契约 必须阻断")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺注册能力检出(self) -> None:
         """正式包入口缺 注册能力 → 公共入口阻断。"""
@@ -197,7 +209,7 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["公共入口"], "缺 注册能力 必须被公共入口场景检出")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺__all__检出(self) -> None:
         组件目录 = 建收敛组件()
@@ -208,7 +220,7 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["公共入口"], "缺 __all__ 必须被公共入口场景检出")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺能力契约阻断(self) -> None:
         组件目录 = 建收敛组件()
@@ -217,7 +229,7 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["契约"], "缺 能力契约 必须阻断")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺资源预算阻断(self) -> None:
         组件目录 = 建收敛组件()
@@ -226,7 +238,7 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["结构"], "缺 资源预算 必须阻断")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺复用决策阻断(self) -> None:
         组件目录 = 建收敛组件()
@@ -235,7 +247,7 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["结构"], "缺 复用决策 必须阻断")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_缺验证证据阻断(self) -> None:
         组件目录 = 建收敛组件()
@@ -244,7 +256,7 @@ class Test组件合规收敛(unittest.TestCase):
             场景表 = _场景通过表(组件目录)
             self.assertFalse(场景表["结构"], "缺 验证证据 必须阻断")
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
     def test_反向破坏_删除实现一致失败(self) -> None:
         """删除 实现 → 公共入口/真实返回值 全部失败（反向破坏一致）。"""
@@ -255,7 +267,7 @@ class Test组件合规收敛(unittest.TestCase):
             self.assertFalse(场景表["公共入口"])
             self.assertFalse(场景表["真实返回值"])
         finally:
-            shutil.rmtree(组件目录, ignore_errors=True)
+            清只读后删除树(组件目录, 忽略失败=真)
 
 
 if __name__ == "__main__":
