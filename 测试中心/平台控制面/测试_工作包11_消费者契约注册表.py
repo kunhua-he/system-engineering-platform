@@ -23,7 +23,7 @@ def 能力契约(请求参数=None, 返回键=None, 错误码集=None, 超时=5.
                  "示例": {"能力id": "能力A", "参数": {"关键词": "搜索"}}},
         "响应约束": {"返回键": 返回键 if 返回键 is not None else ["成功", "结果", "错误码", "消息"],
                      "结构": "统一结果键"},
-        "错误码集": 错误码集 if 错误码集 is not None else ["CAPABILITY_NOT_FOUND", "CALL_TIMEOUT"],
+        "错误码集": 错误码集 if 错误码集 is not None else ["能力不存在", "调用超时"],
         "超时": 超时,
         "释放要求": 释放要求 if 释放要求 is not None else ["释放调用信号量", "取消挂起任务"],
     }
@@ -52,7 +52,7 @@ class Test消费者契约注册表(unittest.TestCase):
         self.assertEqual(记录["请求"]["参数列表"], ["能力id", "参数"])
         self.assertEqual(记录["请求"]["示例"], {"能力id": "能力A", "参数": {"关键词": "搜索"}})
         self.assertEqual(记录["响应约束"]["返回键"], ["成功", "结果", "错误码", "消息"])
-        self.assertEqual(记录["错误码集"], ["CAPABILITY_NOT_FOUND", "CALL_TIMEOUT"])
+        self.assertEqual(记录["错误码集"], ["能力不存在", "调用超时"])
         self.assertEqual(记录["超时"], 5.0)
         self.assertEqual(记录["释放要求"], ["释放调用信号量", "取消挂起任务"])
         存储文件 = self.目录 / "消费者契约.json"
@@ -78,12 +78,12 @@ class Test消费者契约注册表(unittest.TestCase):
 
     def test_错误码漂移导致门禁阻断(self):
         self.注册表.登记契约("消费者1", "能力A",
-                            能力契约(错误码集=["CALL_TIMEOUT", "CALL_FAILED"]))
-        结果 = self.注册表.门禁判定("能力A", 能力契约(错误码集=["CALL_TIMEOUT"]))
+                            能力契约(错误码集=["调用超时", "调用失败"]))
+        结果 = self.注册表.门禁判定("能力A", 能力契约(错误码集=["调用超时"]))
         self.assertTrue(结果["数据"]["是否阻断"], "错误码缺失必须阻断")
         漂移 = 结果["数据"]["漂移列表"]
         self.assertEqual(漂移[0]["漂移类型"], "错误码漂移")
-        self.assertEqual(漂移[0]["期望值"], "CALL_FAILED")
+        self.assertEqual(漂移[0]["期望值"], "调用失败")
 
     def test_超时漂移导致门禁阻断(self):
         # 消费者要求 5 秒时限，能力当前超时变短为 2 秒（不满足消费者要求）→ 阻断
