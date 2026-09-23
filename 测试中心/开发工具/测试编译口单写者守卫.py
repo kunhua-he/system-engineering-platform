@@ -96,6 +96,30 @@ def _清临时根(根: Path) -> None:
         pass
 
 
+def _钉住非嵌套() -> None:
+    """把 `系统平台_编译口嵌套` 钉成「不存在」，**返回还原函数**（配 `addCleanup` 用）。
+
+    为什么需要它（2026-09-23 门禁实测）：编译口**步骤5** 跑定向测试前会把本标记放进
+    环境（`编译口.编译口嵌套标记`，防「编译口→测试→编译口」自递归）。而本模块判的是
+    **守卫本体**（占锁/夺锁/拒启）—— `起单写者守卫` 见到本标记就按「嵌套调用」短路
+    （不占锁、不拒启，见 `编译口.py:起单写者守卫`），于是本模块**在门禁里恒红、单独跑
+    恒绿**（实测：门禁环境下 5 条用例红，裸跑 15 条全绿）。判据跟着调用方环境漂移，
+    不是判据要判的东西 —— 故每条用例开工前把它钉成「不存在」，收工还原进用例前原值
+    （含「原本就没有」）。
+    """
+    键 = 编译口.编译口嵌套标记
+    原值 = os.environ.get(键)
+    os.environ.pop(键, None)
+
+    def 还原() -> None:
+        if 原值 is None:
+            os.environ.pop(键, None)
+        else:
+            os.environ[键] = 原值
+
+    return 还原
+
+
 def _写锁(根: Path, *, pid: int, 启动时间戳: float, 仓库根文本: str | None = None) -> Path:
     """直接在临时根下写一把锁（模拟残留 / 伪造现场）。"""
     锁 = 根 / 编译口.锁相对路径
@@ -109,7 +133,18 @@ def _写锁(根: Path, *, pid: int, 启动时间戳: float, 仓库根文本: str
     return 锁
 
 
-class 锁落点与内容(unittest.TestCase):
+class _守卫用例(unittest.TestCase):
+    """守卫用例公共 setUp：把 `系统平台_编译口嵌套` 钉成「不存在」再测（见 `_钉住非嵌套`）。
+
+    子类若自带 setUp，**必须先 `super().setUp()`** —— 否则标记没被钉掉，
+    那几条用例在门禁（步骤5 设了标记）里会因 `起单写者守卫` 走嵌套短路而恒红。
+    """
+
+    def setUp(self) -> None:
+        self.addCleanup(_钉住非嵌套())
+
+
+class 锁落点与内容(_守卫用例):
     """判据 1/2：落点必须在 `工程缓存/` 下，内容必须够人核。"""
 
     def test_锁落在工程缓存下(self) -> None:
@@ -157,10 +192,11 @@ class 锁落点与内容(unittest.TestCase):
             _清临时根(根)
 
 
-class 活锁必须拒启(unittest.TestCase):
+class 活锁必须拒启(_守卫用例):
     """判据 3：**起两个编译口**，第二个必须被拒启（不是挂死、不是静默并发跑）。"""
 
     def setUp(self) -> None:
+        super().setUp()   # 钉掉 `系统平台_编译口嵌套`（见 `_守卫用例`）
         # 自己占一把真仓库的锁；占不到（外层编译口已持有，例如本测试正跑在它的步骤5 里）
         # 同样是「锁被占」的合法现场，照样取证 —— 只是这把锁不由本测试释放。
         self.自己占的: dict | None = None
@@ -192,7 +228,7 @@ class 活锁必须拒启(unittest.TestCase):
         self.assertNotIn("═══ 开发编译口", 出, "拒启时不得进入主流程（那是并发写）")
 
 
-class 陈旧锁可夺但必须如实报(unittest.TestCase):
+class 陈旧锁可夺但必须如实报(_守卫用例):
     """判据 4：PID 不存在 / 启动超阈值 ⇒ 可夺，且输出如实报「夺了陈旧锁（原 PID …）」。"""
 
     def test_pid不存在视为陈旧可夺(self) -> None:
@@ -239,7 +275,7 @@ class 陈旧锁可夺但必须如实报(unittest.TestCase):
             _清临时根(根)
 
 
-class 判不出来一律拒启(unittest.TestCase):
+class 判不出来一律拒启(_守卫用例):
     """判据 5：fail-closed —— 探测不出有没有别人在跑，就不许静默放行。"""
 
     def _拒启取证(self, 根: Path) -> str:
@@ -284,7 +320,7 @@ class 判不出来一律拒启(unittest.TestCase):
             _清临时根(根)
 
 
-class 只读与嵌套不占锁(unittest.TestCase):
+class 只读与嵌套不占锁(_守卫用例):
     """判据 6：只有会写盘的运行模式才占锁（取舍理由见编译口 `锁相对路径` 注释块）。"""
 
     def test_只读不占锁且如实说明(self) -> None:
@@ -319,7 +355,7 @@ class 只读与嵌套不占锁(unittest.TestCase):
             _清临时根(根)
 
 
-class 释放只删自己那把(unittest.TestCase):
+class 释放只删自己那把(_守卫用例):
     """判据 7：锁里 pid 不是本进程时，释放不得动它。"""
 
     def test_别人的锁不许被释放(self) -> None:
@@ -344,7 +380,7 @@ class 释放只删自己那把(unittest.TestCase):
             _清临时根(根)
 
 
-class 接线到开发循环(unittest.TestCase):
+class 接线到开发循环(_守卫用例):
     """守卫件本身必须被编译口点名（13.1：有实现却不在必经路径上 = 半个强制）。"""
 
     def test_编译口点名本测试模块(self) -> None:

@@ -38,7 +38,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
 )
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
-from 测试中心.运行核心.环境夹具 import 注入假venv
+from 测试中心.运行核心.环境夹具 import 注入假venv, 钉住运行缓存根
 
 受管仓库根 = Path(__file__).resolve().parents[2]
 from 公共契约.运行时.平台适配 import 清只读后删除树
@@ -77,6 +77,9 @@ class Test远程镜像契约(unittest.TestCase):
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
+        # ★ 运行缓存根钉到本用例临时根（见 环境夹具.钉住运行缓存根）：网关进程设的
+        # `系统底座_工程缓存根`/`系统底座_提供者环境根` 会把缓存根改指真仓库。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
 
     def test_默认配置关闭(self):
         """无配置文件 → 启用=False（默认关闭，行为零变化）。"""
@@ -290,6 +293,9 @@ class Test远程镜像接入(unittest.TestCase):
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
+        # ★ 运行缓存根钉到本用例临时根（见 环境夹具.钉住运行缓存根）：不钉的话，
+        # 网关进程设的两个变量会把 证据/环境目录/镜像配置 全改指真仓库 ⇒ 用例恒红。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
         self.配置路径 = self.临时 / "工程缓存" / "远程镜像配置.json"

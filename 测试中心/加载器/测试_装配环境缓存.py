@@ -31,7 +31,7 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力注册表
 from 运行核心.环境指纹 import 计算环境指纹
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
-from 测试中心.运行核心.环境夹具 import 注入假venv
+from 测试中心.运行核心.环境夹具 import 注入假venv, 钉住运行缓存根
 
 
 def 合法锁(提供者id: str, *, 版本: str = "1.2.0") -> dict:
@@ -56,6 +56,10 @@ class Test装配接入环境缓存(unittest.TestCase):
 
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp())
+        # ★ 运行缓存根钉到**本用例的临时根**（返回还原函数登记给 addCleanup，还原进用例前原值）：
+        # 不钉的话，网关进程设的 `系统底座_工程缓存根`/`系统底座_提供者环境根` 会把缓存根
+        # 改指真仓库，证据与依赖摘要目录全落错地方（见 环境夹具.钉住运行缓存根）。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
 

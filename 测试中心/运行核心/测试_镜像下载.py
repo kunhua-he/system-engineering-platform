@@ -39,7 +39,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
 )
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
-from 测试中心.运行核心.环境夹具 import 注入假venv
+from 测试中心.运行核心.环境夹具 import 注入假venv, 钉住运行缓存根
 
 受管仓库根 = Path(__file__).resolve().parents[2]
 from 公共契约.运行时.平台适配 import 清只读后删除树
@@ -210,6 +210,9 @@ class Test镜像下载代理(unittest.TestCase):
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
+        # ★ 运行缓存根钉到本用例临时根（见 环境夹具.钉住运行缓存根）：网关进程设的
+        # `系统底座_工程缓存根`/`系统底座_提供者环境根` 会把缓存根改指真仓库。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
         self.私钥PEM, self.公钥PEM = _生成密钥对()
         self.镜像仓库 = self.临时 / "镜像仓库"
         self.镜像仓库.mkdir(parents=True)
@@ -286,6 +289,9 @@ class Test镜像下载安全解包(unittest.TestCase):
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
+        # ★ 运行缓存根钉到本用例临时根（见 环境夹具.钉住运行缓存根）：网关进程设的
+        # `系统底座_工程缓存根`/`系统底座_提供者环境根` 会把缓存根改指真仓库。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
         self.私钥PEM, self.公钥PEM = _生成密钥对()
         self.镜像仓库 = self.临时 / "镜像仓库"
         self.镜像仓库.mkdir(parents=True)
@@ -373,6 +379,9 @@ class Test镜像原子落盘(unittest.TestCase):
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
+        # ★ 运行缓存根钉到本用例临时根（见 环境夹具.钉住运行缓存根）：网关进程设的
+        # `系统底座_工程缓存根`/`系统底座_提供者环境根` 会把缓存根改指真仓库。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
 
     def test_原子落盘成功可读(self):
         临时目录 = self.临时 / "落盘临时"
@@ -418,6 +427,9 @@ class Test镜像下载端到端回退(unittest.TestCase):
     def setUp(self):
         self.临时 = Path(tempfile.mkdtemp(dir=受管临时根))
         self.addCleanup(清只读后删除树, self.临时, 忽略失败=真)
+        # ★ 运行缓存根钉到本用例临时根（见 环境夹具.钉住运行缓存根）：不钉的话，
+        # 网关进程设的两个变量会把 证据/环境目录/镜像配置 全改指真仓库 ⇒ 用例恒红。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
         self.私钥PEM, self.公钥PEM = _生成密钥对()
