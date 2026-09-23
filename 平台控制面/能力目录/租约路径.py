@@ -18,6 +18,8 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import unquote
 
+from 支持库.后端.系统核心支持库.路径安全 import 校验相对路径文本
+
 拒绝_非文本 = "非文本或空白"
 拒绝_绝对路径 = "绝对路径"
 拒绝_家目录 = "~ 家目录写法"
@@ -76,8 +78,12 @@ def 校验相对路径(原始: Any) -> tuple[str, str]:
     归一 = 归一化相对路径(解码文本)  # 复用本层唯一那次解码结果，不再解码
     if not 归一:
         return "", f"修改路径{拒绝_空}: {原始!r}"
-    if 归一 == ".." or 归一.startswith("../") or "/../" in 归一 or 归一.endswith("/.."):
-        return 归一, f"只接受项目根内的仓库相对路径，拒绝{拒绝_越界}: {原始!r}"
+    # 收口（2026-09-23 S4·T3）：字面段判据不再自己写，一律转调唯一节点
+    # `系统核心支持库.路径安全.校验相对路径文本`（`..` 段/段内 `.`/盘符/`~` 全由它判）。
+    文本判定 = 校验相对路径文本(原始.strip())
+    判定值 = 文本判定.值 if isinstance(文本判定.值, dict) else {}
+    if not 文本判定.成功 or not 判定值.get("通过"):
+        return 归一, f"只接受项目根内的仓库相对路径，拒绝{判定值.get('原因') or 拒绝_越界}: {原始!r}"
     if _是绝对路径(归一):
         return 归一, f"只接受项目根内的仓库相对路径，拒绝{拒绝_绝对路径}: {原始!r}"
     return 归一, ""

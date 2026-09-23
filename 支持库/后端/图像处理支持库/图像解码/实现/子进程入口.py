@@ -22,7 +22,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import sys
@@ -88,18 +87,11 @@ if str(导入根) not in sys.path:
 
 import 支持库.适配层.Pillow提供者  # noqa: E402,F401 —— 公开入口（同层，合规）
 
-from 公共契约.运行时.导入前缀 import 取根前缀
+from 公共契约.运行时.导入前缀 import 载入唯一实现, 取根前缀
 
 唯一实现名 = 取根前缀(__name__) + "支持库.适配层.Pillow提供者.实现.子进程入口"
 
-if 唯一实现名 not in sys.modules:  # 兜底：公开入口未加载该子模块时按文件路径显式载入
-    唯一实现文件 = 系统根 / "支持库" / "适配层" / "Pillow提供者" / "实现" / "子进程入口.py"
-    _规格 = importlib.util.spec_from_file_location(唯一实现名, 唯一实现文件)
-    if _规格 is None or _规格.loader is None:
-        raise ImportError(f"无法加载唯一实现（文件缺失或不可加载）: {唯一实现文件}")
-    _模块 = importlib.util.module_from_spec(_规格)
-    sys.modules[唯一实现名] = _模块
-    _规格.loader.exec_module(_模块)
+载入唯一实现(唯一实现名, 系统根 / "支持库" / "适配层" / "Pillow提供者" / "实现" / "子进程入口.py")
 
 sys.modules[__name__] = sys.modules[唯一实现名]
 

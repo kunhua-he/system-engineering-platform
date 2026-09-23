@@ -235,5 +235,45 @@ class 垫片不得再按层数取根测试(unittest.TestCase):
                 self.assertIn(f'"{名}"', 文本, f"{路径} 的自举段缺锚 {名}")
 
 
+def _载入块扫描面() -> list[Path]:
+    """可能藏「垫片载入块」的源码面：支持库 + 公共契约（不碰生成物与缓存目录）。"""
+    出: list[Path] = []
+    for 名 in ("支持库", "公共契约"):
+        根 = 系统根 / 名
+        if 根.is_dir():
+            出.extend(sorted(根.rglob("*.py")))
+    return 出
+
+
+class 垫片载入块收口测试(unittest.TestCase):
+    """批 3 R1：转调垫片的 fail-closed 载入块只许在共享模块里存在一份。
+
+    为什么要有它：验收判据「同一块全仓出现次数 = 1」若只靠人工读数，改回去没人拦得住 ——
+    与 `自举段形状逐字相同` 同一条哲学：**能收成一处的必须收成一处**，收不掉的才退而
+    「可被机器检出」。反向验证的「弄坏 ⇒ 红」就挂在本类上（把块抄回任一垫片即报红）。
+    """
+
+    载入块首行 = "if 唯一实现名 not in sys.modules:"
+    载入调用 = "载入唯一实现("
+
+    def test_载入块只剩共享模块一处(self) -> None:
+        命中 = [文件 for 文件 in _载入块扫描面()
+                if self.载入块首行 in 文件.read_text(encoding="utf-8", errors="replace")]
+        相对 = [str(文件.relative_to(系统根)) for 文件 in 命中]
+        self.assertEqual(相对, ["公共契约/运行时/导入前缀.py"],
+                         f"垫片载入块不止共享模块一处（或一处都没有）：{相对}")
+
+    def test_共享载入判据保留fail_closed(self) -> None:
+        文本 = 共享模块.read_text(encoding="utf-8")
+        self.assertIn("def 载入唯一实现(", 文本, "共享模块里没有 载入唯一实现")
+        self.assertIn("raise ImportError", 文本, "共享载入判据丢了 fail-closed（缺失即明确报错）")
+
+    def test_垫片都改调共享载入(self) -> None:
+        调用者 = [文件 for 文件 in _后端源码()
+                 if self.载入调用 in 文件.read_text(encoding="utf-8", errors="replace")]
+        self.assertGreaterEqual(len(调用者), 30,
+                                f"调用 载入唯一实现 的垫片只有 {len(调用者)} 个，收口不完整")
+
+
 if __name__ == "__main__":
     unittest.main()

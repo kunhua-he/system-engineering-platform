@@ -110,8 +110,8 @@ class Test隔离腿唯一化收口(unittest.TestCase):
                 f"{对['名']}：门面缺少「同一模块对象」收口语句",
             )
             self.assertIn(
-                "raise ImportError", 源,
-                f"{对['名']}：门面缺少「唯一实现缺失即明确报错」，有静默降级风险",
+                "载入唯一实现(", 源,
+                f"{对['名']}：门面缺少 fail-closed 载入调用（兜底块已收进 公共契约/运行时/导入前缀）",
             )
 
     def test_模块对象同一化_实现承载方是适配层腿(self):
@@ -165,8 +165,8 @@ class Test隔离腿唯一化收口(unittest.TestCase):
             源 = 路径.read_text(encoding="utf-8")
             self.assertIn("sys.modules[__name__] = sys.modules[唯一实现名]", 源,
                           f"{路径.name} 缺少「同一模块对象」收口语句")
-            self.assertIn("raise ImportError", 源,
-                          f"{路径.name} 缺少「唯一实现缺失即明确报错」，有静默降级风险")
+            self.assertIn("载入唯一实现(", 源,
+                          f"{路径.name} 缺少 fail-closed 载入调用（兜底块已收进 公共契约/运行时/导入前缀）")
             行数 = len(源.splitlines())
             self.assertLessEqual(
                 行数, 80,

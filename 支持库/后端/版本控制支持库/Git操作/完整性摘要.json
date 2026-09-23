@@ -21,31 +21,31 @@
     },
     {
       "路径": "实现/Git提供者.py",
-      "sha256": "feaa09fbf292fd820560da1c9c26ab8403217b028532bfb454454fc5a66e9705"
+      "sha256": "1548ed917c13ee1d3389aaa13795c2cde177c7a7ecc35a5a29d4f2aabd076b12"
     },
     {
       "路径": "实现/仓库根白名单.py",
-      "sha256": "7b43d11187629756c100cac6c45fc8ef9ce7adf385d18caed3d0c67c84fe5f54"
+      "sha256": "26a889e06c9f4ea98cc36ae7f8f8bf281c56c25be045f2492108a87db2a17df6"
     },
     {
       "路径": "实现/分支名安全.py",
-      "sha256": "80e7e2445595ec9ac62df81db4f977e74b040d157a2693ccfd0b1132ae19d307"
+      "sha256": "528a270fa1116ef317e499bc6008025ae495fdbb1ea32d9201cc86b81564cb94"
     },
     {
       "路径": "实现/分支操作.py",
-      "sha256": "6ca43d37ac46f3a7483505e720ad4f7bd2790fb85c5d7725bd447ad9c076cc3d"
+      "sha256": "e89d334f5072dd16e7146747d85fefcde247100f9f098c40c4c941826664e029"
     },
     {
       "路径": "实现/受管执行.py",
-      "sha256": "1b0af9d0c17b15fe6820f121e120cb0bf47b4094208cc4fa52112b921086ad36"
+      "sha256": "876e29fed09ef2ed27101c6e4eefd63c715d35706454e8c97f5cc1ee1175ae2d"
     },
     {
       "路径": "实现/提交回滚.py",
-      "sha256": "9c18258ef47247bcc1de9a635ea8dd51110497e7746b67b430a40ac52198c373"
+      "sha256": "9307151bf022887b476547a4c4f7aebe581182cec3a6c12affd5d58d83fc25bc"
     },
     {
       "路径": "实现/白名单.py",
-      "sha256": "f66944b8f060676e44095e0471fbc6a43948cb27d1ebdb1ef5f9df4c078a09f5"
+      "sha256": "b6d4e5c89b32e583dfd7f0c51390baebbe074947fc768cd5c81e23c786b6cdd2"
     },
     {
       "路径": "权限契约/权限契约.json",

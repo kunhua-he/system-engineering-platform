@@ -33,15 +33,15 @@
     },
     {
       "路径": "实现/子进程入口.py",
-      "sha256": "2ffb0b9cb933cb62b88bfb5976f03ab35f2ed3745e43d82af29ba1a9738a0b41"
+      "sha256": "bcf7772a4a5473aaac47c65bab4357ead0233fbebb8e2586f0f9f9eb4d3a0178"
     },
     {
       "路径": "实现/子进程解析.py",
-      "sha256": "c04fc3135b7bbf55f455b68d24b02e17fb6188c618b46e47938014dee8eae5df"
+      "sha256": "3c9705dc8c27291f312362465f219a8f93a8871bfd2fe5062a0036c203727a6e"
     },
     {
       "路径": "实现/提供者.py",
-      "sha256": "1985b66fa66cae5778253401378df117b9688f4e17c422b4b65bd7c0f3f4d528"
+      "sha256": "77d9000e6a9e4c0e9a8540654c4360af7047cb5c2caef8c127929c78a7cb62b8"
     },
     {
       "路径": "权限契约/权限契约.json",

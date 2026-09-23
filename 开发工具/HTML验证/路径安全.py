@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from 支持库.后端.系统核心支持库.路径安全 import 校验相对路径文本
+
 
 def _解码URL一次(文本: str) -> str:
     """URL 解码归一化（未完成事项 §四「路径边界有 5 份实现、口径互不一致」，2026-09-23）：**只解一次，绝不解两遍**。
@@ -20,6 +22,7 @@ def _安全合并路径(根: Path, 相对: str, 名称: str) -> Path:
         raise ValueError(f"{名称}路径不合法: {相对!r}")
     # URL 解码归一化（未完成事项 §四「路径边界有 5 份实现、口径互不一致」）：所有判据之前先 unquote，且只解一次。
     # 此前 `..%2f逃逸` 不解码时只是一个普通目录名（`resolve()` 追不出越界）⇒ 编码穿越全放行。
+    原文 = 相对
     相对 = _解码URL一次(相对)
     if not 相对 or Path(相对).is_absolute() or re.match(r"^[A-Za-z]:[\\/]", 相对):
         raise ValueError(f"{名称}路径不合法: {相对!r}")
@@ -34,7 +37,13 @@ def _安全合并路径(根: Path, 相对: str, 名称: str) -> Path:
     # （段切分口径与 系统核心支持库.路径安全.校验路径 一致：只按 `/` 切）。
     # 放在 resolve 判据**之后**：越出根的那种仍走既有的「越出包目录或受管目录」分支，
     # 消息与旧行为逐字不变（`测试_HTML验证器` 的 `assertRaisesRegex(..., "越出包目录")` 钉着它）。
-    if ".." in 相对.split("/"):
+    # 收口（2026-09-23 S4·T3）：字面段判据不再自己写，一律转调唯一节点
+    # `系统核心支持库.路径安全.校验相对路径文本`（`..` 段/段内 `.`/盘符/`~` 全由它判）。
+    # 放在 resolve 判据**之后**：越出根的那种仍走上面的「越出包目录或受管目录」分支，
+    # 消息与旧行为逐字不变（`测试_HTML验证器` 的 `assertRaisesRegex(..., "越出包目录")` 钉着它）。
+    文本判定 = 校验相对路径文本(原文)
+    判定值 = 文本判定.值 if isinstance(文本判定.值, dict) else {}
+    if not 文本判定.成功 or not 判定值.get("通过"):
         raise ValueError(f"{名称}路径逃逸: {相对!r}")
     return 路径
 

@@ -210,7 +210,7 @@ class TestReportlab提供者(unittest.TestCase):
         # 后端腿门面不得重复承载自举：门面只转调，且缺件即明确报错、不静默降级
         后端源 = (后端腿目录 / "实现" / "子进程入口.py").read_text(encoding="utf-8")
         self.assertIn("sys.modules[__name__] = sys.modules[唯一实现名]", 后端源)
-        self.assertIn("raise ImportError", 后端源)
+        self.assertIn("载入唯一实现(", 后端源)
 
     def test_错误码归并到契约声明的三项(self):
         """子进程的未声明错误码一律归并到 生成失败；声明内的两项才透传。"""

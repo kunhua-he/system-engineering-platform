@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from urllib.parse import unquote
 
+from 支持库.后端.系统核心支持库.路径安全 import 校验相对路径文本
+
 
 def 安全迭代文件(根目录: str | Path, *, 跳过符号链接: bool = True) -> list[Path]:
     """递归列出根目录下的**真实文件**，跳过符号链接与目录（#159，2026-09-20）。
@@ -58,12 +60,17 @@ def 规范化相对路径(路径: str) -> str:
     # 解包/落盘代码看到的是**解码后**的名字 ⇒ 编码穿越可整体绕过本函数。
     # 为什么只解一次：对**已解码结果**再解一次会让 `%252e%252e` 这类双重编码钻过去
     # （二次解码本身就是漏洞），故此处只对原始入参调用一次 unquote。
+    原始 = 路径
     路径 = unquote(路径)
     if not 路径 or 路径 in (".", "/", "\\"):
         raise ValueError(f"空或根路径不允许: {路径!r}")
     if 路径.startswith("/") or 路径.startswith("\\") or 路径[1:2] == ":":
         raise ValueError(f"绝对路径不允许: {路径!r}")
-    if any(段 in ("..", ".") for 段 in 路径.replace("\\", "/").split("/")):
+    # 收口（2026-09-23 S4·T3）：字面段判据不再自己写，一律转调唯一节点
+    # `系统核心支持库.路径安全.校验相对路径文本`（`..` 段/段内 `.`/盘符/`~` 全由它判）。
+    文本判定 = 校验相对路径文本(原始)
+    判定值 = 文本判定.值 if isinstance(文本判定.值, dict) else {}
+    if not 文本判定.成功 or not 判定值.get("通过"):
         raise ValueError(f"路径逃逸不允许: {路径!r}")
     if "\\" in 路径:
         raise ValueError(f"反斜杠分隔符不允许: {路径!r}")
