@@ -10,8 +10,8 @@ import re
 from typing import Any
 
 from 支持库.适配层.脱敏模式 import 密钥片段模式
+from 公共契约.基础类型.字段名册 import 是敏感键名
 
-敏感关键词表 = ("密码", "口令", "令牌", "私钥", "密钥", "token", "secret", "password", "private_key")
 摘要长度 = 100
 
 
@@ -26,10 +26,13 @@ def 脱敏文本(文本: str) -> str:
 
 
 def 脱敏值(值: Any, 名称: str = "") -> Any:
-    """按配置名或值特征脱敏单个值。"""
+    """按配置名或值特征脱敏单个值。
+
+    键名是否敏感由唯一腿 `公共契约.基础类型.字段名册.是敏感键名` 判定
+    （本模块**不再自持关键词表** —— 2026-09-23 收口，见该表上方说明）。
+    """
     if isinstance(值, str):
-        是敏感名 = any(关键词 in 名称.lower() for 关键词 in 敏感关键词表)
-        if 是敏感名:
+        if 是敏感键名(名称):
             return "已脱敏"
         if 密钥片段模式.search(值):
             return 脱敏文本(值)

@@ -12,8 +12,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-# 敏感配置关键词表（适配层自持，避免反向依赖项目适配层）
-敏感关键词表 = ("密码", "口令", "令牌", "私钥", "密钥", "token", "secret", "password", "private_key")
+# 敏感键名判定走唯一腿（`公共契约/基础类型/字段名册.py`）：本模块**不自持关键词表**
+# —— 2026-09-23 收口前它是三份相同 `敏感关键词表` 之一（漏 `凭证`/`api_key`/`credential`），
+# 且「适配层自持」这条理由不成立：`公共契约` 是支持库本来就允许依赖的层
+# （见 `运行核心/依赖防火墙.py` 允许依赖表），无需为避开反向依赖而复制一份表。
+from 公共契约.基础类型.字段名册 import 是敏感键名
 
 
 @dataclass
@@ -94,7 +97,7 @@ def 校验引用完整性(配置: dict[str, Any]) -> list[str]:
     问题列表 = []
     from 支持库.适配层.脱敏模式 import 密钥片段模式
     for 名称, 值 in 配置.items():
-        if any(关键词 in 名称.lower() for 关键词 in 敏感关键词表):
+        if 是敏感键名(名称):
             if not isinstance(值, str):
                 问题列表.append(f"{名称} 必须是文本引用")
                 continue

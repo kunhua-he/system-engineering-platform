@@ -11,7 +11,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-敏感关键词表 = ("密码", "口令", "令牌", "私钥", "密钥", "token", "secret", "password", "private_key")
+# 敏感键名判定走唯一腿（`公共契约/基础类型/字段名册.py`）：本模块**不自持关键词表**
+# —— 2026-09-23 收口前它是三份相同 `敏感关键词表` 之一（漏 `凭证`/`api_key`/`credential`）。
+# 唯一腿只能落 `公共契约`：项目适配层按分层**不许**依赖 `支持库`
+# （见 `运行核心/依赖防火墙.py` 允许依赖表），而 `公共契约` 是它本来就允许的层。
+from 公共契约.基础类型.字段名册 import 是敏感键名
 
 # 疑似明文密钥值特征：长度 >= 12 且含字母数字混合（如 ghp_xxx / sk-xxx）
 明文值模式 = re.compile(r"^(gh[pous]_|sk-|eyJ|AKIA|-----BEGIN)", re.IGNORECASE)
@@ -77,7 +81,7 @@ def 校验配置(
 
     # 4. 敏感配置检测（配置名关键词 + 明文值特征）
     for 名称, 值 in 配置.items():
-        是敏感名 = any(关键词 in 名称.lower() for 关键词 in 敏感关键词表)
+        是敏感名 = 是敏感键名(名称)
         if 是敏感名:
             结果.敏感配置名列表.append(名称)
         if 是敏感名 and isinstance(值, str) and 明文值模式.match(值):
