@@ -115,9 +115,9 @@ def 空值结构(值结构: object) -> bool:
     故 `{"类型": "文本型，这条记录的类型"}`（带说明的单字段）**不算**空对象。
     """
     if not isinstance(值结构, dict):
-        return False
+        return 假
     if not 值结构:
-        return True
+        return 真
     return set(值结构) == {"类型"} and 只有类型名(值结构["类型"])
 
 

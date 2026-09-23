@@ -197,11 +197,11 @@ def 处于嵌套调用(根: Path) -> bool:
     的真跑判据会被自己的防套娃开关打死（那是「防回潮」不该付出的代价）。
     """
     if not os.environ.get(防套娃标记()):
-        return False
+        return 假
     try:
         return Path(根).resolve() == 系统根.resolve()
     except OSError:
-        return False
+        return 假
 
 门禁说明 = (
     "四项检查：① 全量可导入性（逐文件真实 import，失败即违规，"
