@@ -23,10 +23,11 @@ from typing import Any, Iterable
     # `工作目录` 时把临时文件落 `<工作目录>/.tmp`（`进程管理.py` 的
     # `临时目录 = _Path(工作目录) / ".tmp"`），现场残留全是门禁/测试的临时树
     # （`反向破坏_*` / `注册口径漂移测试_*` / `门禁_备份恢复_*` / `破坏任务_*` / `破坏路由_*` …）。
-    # `.gitignore` 用 `*.tmp` 挡它（故 `git status` 看不见），但指纹的未跟踪腿**不用**
-    # `--exclude-standard`（见 `计算工作区字节指纹` 内注释）⇒ 只认本表。
-    # 实测 2026-09-23：不排除时 298 个临时树文件被算成「未跟踪正式文件」，
-    # 工作区恒判「含未提交变更」、字节指纹随本机残留而变（假红）。
+    # `.gitignore` 用 `*.tmp` 挡它；未跟踪腿现带 `--exclude-standard`（见
+    # `计算工作区字节指纹` 内注释），git 侧已挡。本表仍列它作**第二道**：夹具仓库
+    # 无 `.gitignore` 时靠本表挡（`测试_工作区指纹.py` 的真仓库夹具正是如此）。
+    # 历史（2026-09-23）：未跟踪腿不带 `--exclude-standard` 时，298 个临时树文件
+    # 被算成「未跟踪正式文件」，工作区恒判「含未提交变更」、字节指纹随本机残留而变（假红）。
     ".tmp",
     "__pycache__",
     ".pytest_cache",
@@ -39,10 +40,13 @@ from typing import Any, Iterable
     "node_modules",
 )
 # 固定排除文件：按**基名**判定，支持 `fnmatch` 通配（无通配字符时即全等，语义不变）。
-# 带通配的这批是 `.gitignore` 的**文件级**规则镜像 —— 此前只列目录，不认文件级规则，
+# 带通配的这批镜像 `.gitignore` 的**文件级**规则 —— 此前只列目录，不认文件级规则，
 # 于是 `.gitignore` 挡住、git status 看不见的本地残留（`*.db` / `*-wal` / `*.bak_*` /
 # `zcode.json` 等）仍被 `git ls-files --others` 报出并被算成正式文件，导致工作区恒判
-# 「含未提交变更」、字节指纹随本机残留而变。此处逐条镜像 `.gitignore`，仍是显式可审计表。
+# 「含未提交变更」、字节指纹随本机残留而变。此处逐条镜像 `.gitignore`，仍是显式可审计表：
+# 未跟踪腿现带 `--exclude-standard`（git 侧已按 `.gitignore` 挡），本表是**第二道** ——
+# 兜底无 `.gitignore` 的夹具仓库，且承担 `.gitignore` **没有**的那批文件级规则
+# （`.zcodeignore` 等，见下方注释）。
 固定排除文件 = (
     ".DS_Store",
     "*.db",
@@ -65,9 +69,9 @@ from typing import Any, Iterable
     "zcode.json",
     # `.zcodeignore`：**ZCode 客户端**的本地产物（文件头两段自带说明 ——
     # 「↑ 以上同步自 .gitignore」与「ZCode 默认排除规则」，由客户端生成/同步）。
-    # 它**不在** `.gitignore` 里（`git status` 如实报 `?? .zcodeignore`），而指纹的未跟踪腿
-    # **不用** `--exclude-standard`（.gitignore 不是指纹语义的一部分）⇒ 靠 `.gitignore`
-    # 或客户端忽略规则都保不住工作区，必须进本表。
+    # 它**不在** `.gitignore` 里（`git status` 如实报 `?? .zcodeignore`）⇒ 未跟踪腿
+    # 即便带了 `--exclude-standard`，git 仍会把它报出来；`.gitignore` 与客户端忽略规则
+    # 都保不住工作区，**必须**进本表（本表是它唯一的挡板）。
     # 实测 2026-09-23：不进本表时它被算成 1 个「未跟踪正式文件」，工作区恒判「含未提交变更」。
     ".zcodeignore",
 )
@@ -144,9 +148,17 @@ def 计算工作区字节指纹(仓库根: Path) -> dict[str, Any]:
         暂存差异.extend(_执行(根, ["diff", "--cached", "--binary", "--no-ext-diff", "--no-color", "--", 路径]))
 
     未暂存路径 = _路径表(_执行(根, ["diff", "--name-only", "-z", "--"]))
-    # 不使用 --exclude-standard：.gitignore 不是指纹语义的一部分；所有排除项
-    # 必须只来自上方固定、显式、可审计的目录/文件表。
-    未跟踪路径 = _路径表(_执行(根, ["ls-files", "--others", "-z", "--"]))
+    # 未跟踪腿必须带 `--exclude-standard`（§四 #66，2026-09-23 修）：不带时
+    # `git ls-files --others` 会把 `.gitignore` 已忽略的文件**全部枚举出来** ——
+    # 本仓 `工程缓存/` 9.3G、实测 435,164 条，加上其它共 436,525 条；单次空载
+    # 9.9s，验证负载下 >30s 直接撞 `_执行` 的 timeout ⇒ 抛 `无法计算工作区字节指纹`
+    # ⇒ 验证器写不出证据文件、门禁必判红。带上后 git 先按 `.gitignore` 过滤，
+    # 实测 436,525 → 1 条、9.9s → 0.13s。
+    # 上方两张显式表**保留**：`.zcodeignore` 不在 `.gitignore` 里（ZCode 客户端
+    # 本地产物，`git status` 如实报 `??`），`.mypy_cache`/`.codegraph`/`.hermes`/
+    # `node_modules` 同样不在 `.gitignore` 里，都只能靠 `固定排除文件`/`固定排除目录`
+    # 挡；表还兜底**无 `.gitignore` 的夹具仓库**（见 `测试_工作区指纹.py`）。
+    未跟踪路径 = _路径表(_执行(根, ["ls-files", "--others", "-z", "--exclude-standard", "--"]))
 
     哈希 = hashlib.sha256()
     哈希.update(b"HEAD\0" + len(提交字节).to_bytes(8, "big") + 提交字节)

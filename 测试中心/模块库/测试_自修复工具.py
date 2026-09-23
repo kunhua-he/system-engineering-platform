@@ -7,7 +7,8 @@ setUpClass 启动真实后端与本地回环网关并装配 HTTP连接器，模�
 覆盖：worktree 创建→补丁应用→验证→提交→挑拣合入→回滚→验证还原；
 补丁多重匹配/路径逃逸/验证失败不提交/回滚失败中止/未提交修改拒绝；
 平台不可用（连接器未装配如实返回 提供者不可用）；参数错误；
-获取当前提交哈希；零残留（临时仓库/worktree/进程/登记临时资源全清理）。
+获取当前提交哈希；零残留（临时仓库/worktree/进程/登记临时资源全清理）；
+§四 #65 反向验证：>2000 字符文件走 `_应用补丁` 全量读、写回逐字节不变。
 
 注：本地进程适配器属适配层豁免包，装配系统不自动收录
 “本地进程.执行命令受控”，setUpClass 按真实提供者补注册到后端，
@@ -609,6 +610,48 @@ class 测试源码根显式化(_假调用器夹具, unittest.TestCase):
                 self.assertFalse(调用结果.成功, f"坏源码根必须被拒: {坏根}")
                 self.assertEqual(调用结果.错误码, "参数不合法")
                 self.assertEqual(假件.记录, [], "参数不合法时不得起巡检")
+
+
+class Test应用补丁全量读不截断(unittest.TestCase):
+    """§四 #65 反向验证：>2000 字符文件走 `_应用补丁` 必须逐字节不变（不得截断写回）。
+
+    缺陷（2026-09-23 实测）：`_应用补丁` 原先用 `读取文件` **默认档**（精炼 + 2000
+    字符上限，且截断提示拼进 `值`）读 → `count`/`replace` → **写回**；>2000 字符的
+    文件被截断后写回 = 静默丢数据（实测 10,006 字符的文件读回只剩 56 字符的续取提示）。
+    本件钉住：修复后同一路径读全文，写回内容与「原文.replace(旧,新)」**逐字节相同**。
+    """
+
+    def setUp(self):
+        装配能力调用器()
+        self.addCleanup(卸载能力调用器)
+        self.临时根 = Path(tempfile.mkdtemp(prefix="测试_应用补丁_"))
+        self.addCleanup(shutil.rmtree, self.临时根, ignore_errors=True)
+
+    def test_超长文件替换后逐字节不变(self):
+        import hashlib
+
+        from 模块库.自修复工具.实现.自修复工具 import _应用补丁
+
+        原文 = "头" * 5000 + "\n旧锚点\n" + "尾" * 5000 + "\n"
+        self.assertGreater(len(原文), 2000, "夹具必须超过 `读取文件` 默认 2000 字符上限")
+        目标 = self.临时根 / "大文件.txt"
+        目标.write_text(原文, encoding="utf-8")
+
+        结果 = _应用补丁(str(self.临时根),
+                       [{"文件": "大文件.txt", "旧内容": "旧锚点", "新内容": "新锚点"}])
+        self.assertTrue(结果.成功, f"补丁应成功: {结果.错误说明}")
+
+        期望 = 原文.replace("旧锚点", "新锚点")
+        实际 = 目标.read_text(encoding="utf-8")
+        self.assertEqual(len(期望), len(实际),
+                         f"写回长度变了（截断写回）：期望 {len(期望)} 实际 {len(实际)}")
+        self.assertEqual(
+            hashlib.sha256(期望.encode("utf-8")).hexdigest(),
+            hashlib.sha256(目标.read_bytes()).hexdigest(),
+            "写回内容与期望不逐字节相同（静默丢数据）")
+        self.assertIn("尾" * 5000, 实际, "文件尾部被截断")
+        self.assertIn("新锚点", 实际, "旧内容未被替换")
+        self.assertNotIn("续取", 实际, "读到的应是全文，不是截断续取提示")
 
 
 def _停用惰性装配():
