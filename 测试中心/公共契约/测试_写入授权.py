@@ -32,6 +32,9 @@ import os
 import shutil
 import sys
 import tempfile
+import json
+import subprocess
+import time
 import unittest
 from pathlib import Path
 
@@ -165,3 +168,83 @@ class Test判据的边界(写入授权夹具):
         # 非受管路径照旧开窗（否则平台自己的运行期写盘会被一起锁死）
         with 锁.临时解锁(受管临时根 / "窗口.txt"):
             pass
+
+
+class Test平台编译机写者不受判据约束(写入授权夹具):
+    """第三出口（2026-09-24 补）：**写者是平台自己的编译机** ⇒ 非受管。
+
+    为什么必须补（主会话实测）：`受管相对路径` 原先只按**路径**豁免，而平台派生件
+    （各包 `完整性摘要.json`、`支持库/适配层/依赖登记.json`、`开发文档/规范/*.md` 的
+    三行元信息头）既不在豁免前缀里、也不在 `平台生成物` 那 5 条固定名里，而它们的
+    **唯一写者编译口又不持任何租约** ⇒ 全仓 `静态编译` 结构性多出 3 条阻断红
+    （`摘要闭合` / `依赖分两段` / `规范元信息头` 的生成步骤，退出码 1）。
+
+    判据两层（强度在第二层）：环境标记（快筛，**可伪造**）+ **进程祖先链**（伪造不了）。
+    故本类的反向用例里，`test_锁pid不在祖先链即照旧判受管` 才是真正的强度判据 ——
+    调用方即使拿到锁里的 pid、也把环境标记设成它，仍然过不了，因为它**无法让自己的
+    父进程变成那个编译口**。
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._原锁相对路径 = 写入授权模块.编译机锁相对路径
+        # 锁相对路径是**绝对路径**（`Path(仓库根) / 绝对路径` 取绝对路径那一支），
+        # 故夹具不必动真仓库的 `工程缓存/编译口单写者锁.json`。
+        #
+        # ★ 2026-09-24（批E）：`self.锁` 必须**从可解析的受管临时根派生**，不许写成
+        #   `Path(写入授权模块.编译机锁相对路径)` —— 那样左端基是「模块属性的值」，
+        #   `测试写入边界门禁` 判据一静态解析不出 ⇒ 落进「未解析（fail-closed）」档、
+        #   计入违规（实测：该门禁现场处数 357 > 存量基线 356 ⇒ 判红）。
+        #   夹具写的就是临时目录，让**静态读得出**它落在受管临时根下，是判据一要求的形状。
+        self.锁根 = Path(self._临时)
+        self.锁 = self.锁根 / "编译机锁.json"
+        写入授权模块.编译机锁相对路径 = str(self.锁)
+        self.addCleanup(self._还原)
+
+    def _还原(self) -> None:
+        写入授权模块.编译机锁相对路径 = self._原锁相对路径
+        os.environ.pop(写入授权模块.编译机PID环境变量名, None)
+
+    def _写锁(self, pid: int) -> None:
+        self.锁.write_text(json.dumps({"pid": pid}), encoding="utf-8")
+
+    def test_正拍_标记与锁pid一致且在自己祖先链里才放行(self) -> None:
+        self._写锁(os.getpid())
+        os.environ[写入授权模块.编译机PID环境变量名] = str(os.getpid())
+        受管, _相对, 理由 = 受管相对路径(str(self.目标))
+        self.assertFalse(受管, f"编译机写者该被判非受管（理由：{理由}）")
+        self.assertIn("编译机", 理由)
+        结果 = 写入文件(str(self.目标), "派生内容\n")
+        self.assertTrue(结果.成功, f"编译机写者被误拒：{getattr(结果.错误, '消息', '')}")
+
+    def test_反拍_标记缺失即照旧判受管(self) -> None:
+        self._写锁(os.getpid())
+        os.environ.pop(写入授权模块.编译机PID环境变量名, None)
+        受管, _相对, _理由 = 受管相对路径(str(self.目标))
+        self.assertTrue(受管, "没有环境标记竟然放行（等于给了一条可伪造的旁路）")
+
+    def test_反拍_标记与锁里pid不一致即照旧判受管(self) -> None:
+        self._写锁(os.getpid() + 1)
+        os.environ[写入授权模块.编译机PID环境变量名] = str(os.getpid())
+        受管, _相对, _理由 = 受管相对路径(str(self.目标))
+        self.assertTrue(受管, "标记与锁里 pid 不一致竟然放行")
+
+    def test_反拍_锁pid不在祖先链即照旧判受管(self) -> None:
+        """★ 强度判据：伪造环境标记够不着 —— 祖先关系不是调用方能选的东西。"""
+        他 = subprocess.Popen(["sleep", "20"])      # 我的**后代**，不在祖先链里
+        try:
+            time.sleep(0.3)
+            self._写锁(他.pid)
+            os.environ[写入授权模块.编译机PID环境变量名] = str(他.pid)
+            受管, _相对, _理由 = 受管相对路径(str(self.目标))
+            self.assertTrue(受管, "锁 pid 不在祖先链里竟然放行（判据被伪造了）")
+        finally:
+            # 显式 kill + wait：只 kill 不 wait 会让子进程在解释器退出时仍被判「still running」，
+            # 报 `ResourceWarning` —— 噪声会被别的门禁当成异常读。
+            他.kill()
+            他.wait(timeout=10)
+
+    def test_反拍_锁文件缺失即照旧判受管(self) -> None:
+        os.environ[写入授权模块.编译机PID环境变量名] = str(os.getpid())
+        受管, _相对, _理由 = 受管相对路径(str(self.目标))
+        self.assertTrue(受管, "锁文件不在竟然放行（fail-open）")
