@@ -246,9 +246,19 @@ class 测试节点H模型Provider流式读取(unittest.TestCase):
         self.assertEqual(事件[-1]["错误码"], "超时")
 
     def test_HTTP错误转结构化上游失败终态(self) -> None:
+        """HTTP 错误必须带服务端正文（2026-09-21 提交 8a23f34d「模型 HTTP 错误正文透传」）。
+
+        该提交把 HTTPError 分支从只回 `HTTP {code}` 改为**透传错误正文**
+        （唯一取值点 `模型HTTP提供者.取错误正文`，非流式/流式两处同口径）——
+        原断言写死旧文案「模型 HTTP 返回 401」，随该行为改进而过期；
+        现按夹具真实返回体（`{"error": {"message": "凭证拒绝"}}`）断言，判据强度不变。
+        """
         事件 = self._读取("HTTP错误")
+        # 正文按**服务端原始字节**透传（`json.dumps` 默认 `ensure_ascii=True` ⇒ 中文为
+        # `\uXXXX` 转义），故期望值用原始字符串（不预先解码），与生产口径逐字一致。
         self.assertEqual(事件, [{
-            "类型": "错误", "错误码": "认证失败", "错误说明": "模型 HTTP 返回 401",
+            "类型": "错误", "错误码": "认证失败",
+            "错误说明": r'模型 HTTP 返回 401：{"error": {"message": "\u51ed\u8bc1\u62d2\u7edd"}}',
             "状态码": 401, "可重试": False, "异常类型": "HTTPError",
         }])
 

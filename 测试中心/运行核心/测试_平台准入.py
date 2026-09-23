@@ -58,10 +58,18 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 #: 架构走 `platform.machine()`；两者一起打桩。
 准入判定模板 = """
 import platform, sys
+# 2026-09-23 修夹具（判据一字未改）：**必须先 import 平台适配，再打桩 sys.platform**。
+# 原因：`平台适配.py:48` 有模块级 `import shutil`（2026-09-21 只读删除收口引入），
+# 而 CPython 3.14 的 shutil 在 `sys.platform == 'win32'` 时执行 `import _winapi`；
+# macOS 上无该扩展 ⇒ 先改 sys.platform='win32' 再 import 必然 ModuleNotFoundError
+# （实测：Windows/AMD64 与 Windows/ARM64 两条用例全红，Linux/macOS 不受影响）。
+# `校验支持范围` / `当前平台` / `当前架构` 都是**调用期**才读 `sys.platform` /
+# `platform.machine()`（`平台适配.py` 的 `当前平台`/`当前架构`），故先 import 后打桩，
+# 准入判定读到的仍是桩值 —— 断言与覆盖面均不变，只是让 Windows 模拟不再自伤。
+from 公共契约.运行时.平台适配 import 校验支持范围, 平台不支持错误
 sys.platform = {平台标志!r}
 platform.system = lambda: {系统!r}
 platform.machine = lambda: {架构!r}
-from 公共契约.运行时.平台适配 import 校验支持范围, 平台不支持错误
 try:
     校验支持范围(用途="准入自测")
     print("准入通过")
