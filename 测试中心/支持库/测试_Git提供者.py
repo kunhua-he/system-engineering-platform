@@ -62,7 +62,12 @@ class TestGit提供者(unittest.TestCase):
 
     def setUp(self):
         self.临时根 = Path(tempfile.mkdtemp(prefix="测试_Git提供者_"))
-        self.仓库 = _初始化仓库(self.临时根 / "仓库")
+        # ★ `self.仓库` 必须由 `self.临时根` **直接**派生，不能接 `_初始化仓库(...)` 的返回值
+        # （理由与 `测试_提交强制点.setUp` 逐字同款：未知函数返回值解析不出左端基 ⇒ 测试写入
+        # 边界门禁把本文件所有 `self.仓库 / …` 写动作判「未解析」、按处数冻进存量基线）。
+        # 2026-09-24 批M-c 把三处 `self.仓库` 一并补齐（门禁要**同类全部绑定同形**才认这个名字）。
+        self.仓库 = self.临时根 / "仓库"
+        _初始化仓库(self.仓库)
         self.工作区 = self.临时根 / "工作区"
 
     def tearDown(self):
@@ -89,9 +94,42 @@ class TestGit提供者(unittest.TestCase):
         for 哈希 in ["abc;def", "abc def", "abcdefg;", "短哈希"]:
             结果 = 回滚(str(self.仓库), 哈希)
             self.assertEqual(结果.错误码, "参数不合法", repr(哈希))
-        for 路径 in ["相对路径/文件", "含 空格/文件", "含;分号/文件", "换\n行/文件"]:
+        # ★ 2026-09-24 批M-c 起「相对路径」不再是非法写法（口径 = 项目根相对路径，
+        # 绝对兼容），故这里只留元字符档；相对/绝对两档的真实提交见
+        # `test_提交_项目根相对路径与绝对路径都收` 与 `test_提交_相对与绝对写法越界一律拒`。
+        for 路径 in ["含 空格/文件", "含;分号/文件", "换\n行/文件"]:
             结果 = 提交(str(self.仓库), [路径], "消息")
             self.assertEqual(结果.错误码, "参数不合法", repr(路径))
+
+    def test_提交_项目根相对路径与绝对路径都收(self):
+        """路径口径唯一节点（2026-09-24 批M-c）：相对优先、绝对兼容。
+
+        相对写法以**本次的 `仓库路径`** 为基准归一（`白名单.归一化仓库内路径` 是唯一一处
+        归一，绝对档判据一字不改）；返回的 `路径列表` 一律是**仓库相对路径**（git pathspec 形态）。
+        """
+        (self.仓库 / "相对.txt").write_text("相对内容\n", encoding="utf-8")
+        相对结果 = 提交(str(self.仓库), ["相对.txt"], "相对写法提交")
+        self.assertTrue(相对结果.成功, 相对结果.错误说明)
+        self.assertEqual(相对结果.值["路径列表"], ["相对.txt"])
+        self.assertEqual(相对结果.值["提交文件"], ["相对.txt"])
+        self.assertFalse(相对结果.值["全量暂存"])
+        self.assertEqual(当前状态(str(self.仓库)).值["未提交修改"], [])
+
+        (self.仓库 / "绝对.txt").write_text("绝对内容\n", encoding="utf-8")
+        绝对结果 = 提交(str(self.仓库), [str(self.仓库 / "绝对.txt")], "绝对写法提交")
+        self.assertTrue(绝对结果.成功, 绝对结果.错误说明)
+        self.assertEqual(绝对结果.值["路径列表"], ["绝对.txt"])
+
+    def test_提交_相对与绝对写法越界一律拒(self):
+        """越界语义不变：`..` 逃逸与仓库外绝对路径都回 `路径越界`。
+
+        越界判定发生在**归一化**阶段（`白名单.归一化仓库内路径`），早于任何 git 动作，
+        故本用例不需要真造探针文件 —— 不造也就不会多出一处写动作。
+        """
+        for 越界写法 in ["../仓库外.md", "子目录/../../仓库外.md",
+                        str(self.临时根 / "仓库外.md")]:
+            结果 = 提交(str(self.仓库), [越界写法], "越界写法")
+            self.assertEqual(结果.错误码, "路径越界", repr(越界写法))
 
     def test_创建工作区与查询工作区(self):
         _新建工作区(self.仓库, self.工作区, 分支名="开发分支")
@@ -301,7 +339,9 @@ class Test推送(unittest.TestCase):
 
     def setUp(self):
         self.临时根 = Path(tempfile.mkdtemp(prefix="测试_Git推送_"))
-        self.仓库 = _初始化仓库(self.临时根 / "仓库")
+        # ★ 同 `TestGit提供者.setUp`：`self.仓库` 由 `self.临时根` 直接派生（门禁判据一静态解析左端基）。
+        self.仓库 = self.临时根 / "仓库"
+        _初始化仓库(self.仓库)
         self.远端 = _建裸远端(self.临时根 / "远端.git")
 
     def tearDown(self):
@@ -398,7 +438,9 @@ class Test提交多行与文件清单(unittest.TestCase):
 
     def setUp(self):
         self.临时根 = Path(tempfile.mkdtemp(prefix="测试_Git提交清单_"))
-        self.仓库 = _初始化仓库(self.临时根 / "仓库")
+        # ★ 同 `TestGit提供者.setUp`：`self.仓库` 由 `self.临时根` 直接派生（门禁判据一静态解析左端基）。
+        self.仓库 = self.临时根 / "仓库"
+        _初始化仓库(self.仓库)
         # **必须显式把转义开关打开**：本机全局 gitconfig 恰好是 quotePath=false（实测），
         # 不显式打开则「不转义」的断言在没修的环境里也照样绿 —— 那就是假绿（实测踩过：
         # 摘掉生产代码里的开关，三条中文路径断言全部照绿）。仓库级 true 复现 git 的
