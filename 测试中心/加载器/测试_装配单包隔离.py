@@ -31,6 +31,7 @@ if str(系统根) not in sys.path:
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 运行核心.加载器.生命周期管理.管理器 import 装配系统
+from 测试中心.运行核心.环境夹具 import 钉住运行缓存根
 
 健康入口 = (
     "from 公共契约.能力契约.契约 import 能力实现\n"
@@ -47,6 +48,11 @@ class 迷你根夹具(unittest.TestCase):
         self.临时 = Path(tempfile.mkdtemp(prefix="单包隔离_"))
         (self.临时 / "支持库").mkdir()
         (self.临时 / "模块库").mkdir()
+        # 运行缓存根钉到**本用例的迷你根**：坏锁的失败证据断言落在
+        # `<临时>/工程缓存/提供者运行环境/缓存证据.jsonl`，而经 MCP 跑时继承的
+        # `系统底座_工程缓存根`/`系统底座_提供者环境根`（网关 plist 设的，指向真仓库）
+        # 会把落点改指真仓库 ⇒ 用例恒红（2026-09-23 实测：裸跑 OK、门禁条件下 FAILED）。
+        self.addCleanup(钉住运行缓存根(self.临时 / "工程缓存"))
 
     def tearDown(self) -> None:
         shutil.rmtree(self.临时, ignore_errors=True)
