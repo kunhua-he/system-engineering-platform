@@ -23,6 +23,8 @@
     python3.14 开发工具/能力网关/重启网关.py --运行态同根  # 只判「运行态与构建链同根」（不重启、不落盘）
     python3.14 开发工具/能力网关/重启网关.py --看结果    # 读上次重启的结论
     python3.14 开发工具/能力网关/重启网关.py --前台      # 同步重启并等就绪（终端直跑用）
+    python3.14 开发工具/能力网关/重启网关.py --重载配置后台  # 改了 plist 后必须用它（kickstart 不重读 plist）
+    python3.14 开发工具/能力网关/重启网关.py --重载配置    # 同上，同步形态（终端直跑用）
     …均可加 `--超时 60`（就绪等待上限秒，默认 45）
 
 **探活与重启都判「运行态同根」（债务 #219，2026-09-21）**：网关活着、能力数对、装配告警空
@@ -57,6 +59,9 @@ from 公共契约.基础类型.逻辑类型 import 真, 假
 plist路径 = Path.home() / "Library" / "LaunchAgents" / f"{服务标签}.plist"
 凭证变量名 = "系统库网关凭证"
 默认就绪超时秒 = 45.0
+#: `重载配置` 的 `bootout → bootstrap` 重试（见 `重载配置` 内的 ★ 段：实测首次必 EIO）。
+重载重试次数 = 3
+重载重试间隔秒 = 2.0
 #: 后台重启路径下，子进程动手前先等一拍（让父进程先把「已触发」送回去，见 重启() 注释）。
 后台重启前延迟秒 = 0.8
 结果文件 = Path(__file__).resolve().parents[2] / "工程缓存" / "网关重启结果.json"
@@ -335,6 +340,71 @@ def 重启(凭证: str, 超时秒: float) -> int:
         结果["错误说明"] = (完成.stderr or 完成.stdout or "").strip()[:300]
         _落结果(结果)
         return 1
+    return _收尾(结果, 凭证, 超时秒)
+
+
+def 重载配置(凭证: str, 超时秒: float) -> int:
+    """**重载 plist 后**重启：`bootout` + `bootstrap`（kickstart 不重读 plist）。
+
+    为什么必须有这条腿（2026-09-24 实测，批J）：
+    `kickstart -k` 用的是 launchd **已加载的作业定义**，**不重读 plist**（本模块 docstring
+    早就写明这一点，但只把它当成「判据边界」写进 `判定同根`，**没有给出口**）。
+    实测代价：plist 补了 `SoftResourceLimits.NumberOfFiles = 65536`（2026-09-24 00:58），
+    当天 03:30 重启后**进程真实软限仍是 256** —— 经 MCP `执行命令` 起子进程读
+    `resource.getrlimit(RLIMIT_NOFILE)` 实测 `(256, …)`。于是「fd 耗尽」这类**配置级**
+    修复永远只停在文件上，谁都不会发现（`判定同根` 只看运行缓存根，不看资源限额）。
+    配置改了却没有一条腿把它读进去 = 与「源码改了没重建制品」同一类缺陷。
+
+    做法：`bootout <域>/<标签>` 卸掉已加载定义，再 `bootstrap <域> <plist>` 按**盘上
+    plist 现读**重新加载并启动（`RunAtLoad=真` ⇒ 随即拉起）。就绪等待、探活、能力数、
+    装配告警、运行态同根与结论落盘**全部复用 `_收尾`**（一处实现，不复制一遍）。
+
+    边界（如实）：`bootout` 非 0 不直接判死 —— 若作业本就没加载，它照样报错，
+    此时 `bootstrap` 才是真判据；故 `bootout` 退出码只**记录**，成败由 `bootstrap` 定。
+    """
+    time.sleep(后台重启前延迟秒)
+    前进程 = 进程号()
+    try:
+        网关错误日志.write_text("", encoding="utf-8")
+    except OSError:
+        pass
+    域 = f"gui/{os.getuid()}"
+    结果: dict = {"模式": "重载配置", "服务标签": 服务标签, "重启前进程号": 前进程,
+                  "plist路径": str(plist路径)}
+    卸载 = subprocess.run(["launchctl", "bootout", f"{域}/{服务标签}"],
+                         capture_output=True, text=True, timeout=60)
+    结果["bootout退出码"] = 卸载.returncode
+    # ★ `bootout` 之后**不能立刻** `bootstrap`：实测（2026-09-24，本批首次用这条腿）
+    # 第一次必得 `Bootstrap failed: 5: Input/output error`，隔一拍重试即成功 —— 是
+    # launchd 卸载尚未落定的**竞态**，不是配置错（同一份 plist 紧接着 `bootstrap` 就成）。
+    # 故按 `重载重试次数` 退避重试，并把**轮次**记进结论：判据要能区分「第一次就成」
+    # 与「重试才成」，否则这个竞态会被当成偶发噪声，下一次仍要人工救场。
+    装载 = None
+    轮次 = 0
+    for 轮次 in range(1, 重载重试次数 + 1):
+        if 轮次 > 1:
+            time.sleep(重载重试间隔秒)
+        装载 = subprocess.run(["launchctl", "bootstrap", 域, str(plist路径)],
+                             capture_output=True, text=True, timeout=60)
+        if 装载.returncode == 0:
+            break
+    结果["bootstrap退出码"] = 装载.returncode
+    结果["bootstrap轮次"] = 轮次
+    if 装载.returncode != 0:
+        结果["成功"] = False
+        结果["错误说明"] = ("按盘上 plist 重新加载失败："
+                          + (装载.stderr or 装载.stdout or "").strip()[:300])
+        _落结果(结果)
+        return 1
+    return _收尾(结果, 凭证, 超时秒)
+
+
+def _收尾(结果: dict, 凭证: str, 超时秒: float) -> int:
+    """重启/重载共用收尾：等就绪 → 探活 → 能力数 → 装配告警 → 运行态同根 → 落盘。
+
+    **一处实现**（哲学 1.2）：`重启` 与 `重载配置` 只差「怎么把进程换掉」那一步，
+    换完之后的判据与结论形状逐字相同，故不各写一遍。
+    """
     就绪, 轮次, 耗时 = 就绪等待(凭证, 超时秒)
     结果.update({"就绪": 就绪, "就绪轮次": 轮次, "就绪耗时秒": round(耗时, 2),
                  "重启后进程号": 进程号()})
@@ -358,11 +428,15 @@ def 重启(凭证: str, 超时秒: float) -> int:
     return 0 if 结果["成功"] else 1
 
 
-def 触发后台重启(argv: list[str]) -> int:
-    """脱离进程组起子进程做重启 + 轮询，父进程立即返回（见模块 docstring 的 ★ 段）。"""
+def 触发后台重启(argv: list[str], 前台参数: str = "--前台") -> int:
+    """脱离进程组起子进程做重启 + 轮询，父进程立即返回（见模块 docstring 的 ★ 段）。
+
+    `前台参数` 决定子进程走哪条腿：`--前台`（kickstart）或 `--重载配置`（bootout+bootstrap）。
+    两条腿共用本函数，故**脱离进程组的姿势只有一处实现**。
+    """
     if 结果文件.exists():
         结果文件.unlink()
-    子参数 = [sys.executable, str(Path(__file__).resolve()), "--前台"]
+    子参数 = [sys.executable, str(Path(__file__).resolve()), 前台参数]
     if _取值(argv, "--超时"):
         子参数 += ["--超时", _取值(argv, "--超时")]
     with open(os.devnull, "wb") as 空:
@@ -402,4 +476,9 @@ if __name__ == "__main__":
         raise SystemExit(探活(凭))
     if "--前台" in 参:
         raise SystemExit(重启(凭, _超时秒(参)))
+    if "--重载配置" in 参:
+        # 同步重载（终端直跑用）；经 MCP 调时用下面的后台形态，否则网关换进程会掐断调用链
+        raise SystemExit(重载配置(凭, _超时秒(参)))
+    if "--重载配置后台" in 参:
+        raise SystemExit(触发后台重启(参, "--重载配置"))
     raise SystemExit(触发后台重启(参))

@@ -18,7 +18,10 @@ from pathlib import Path
 if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from 运行核心.任务调度.任务进程 import 任务进程池, 资源繁忙错误, 任务表历史上限
+from 运行核心.任务调度.任务进程 import (
+    任务进程池, 资源繁忙错误, 任务表历史上限,
+    每条任务fd数, 进程常驻fd余量, 由fd预算推历史上限, 历史上限设计上限)
+
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 终态集合 = {"成功", "失败", "已取消", "超时", "崩溃"}
@@ -331,11 +334,59 @@ class Test任务进程池有界(unittest.TestCase):
         self.assertTrue(等待条件(lambda: 末任务.状态 in 终态集合))
         增长 = 当前进程fd数() - 基线
         self.assertLessEqual(
-            增长, 上界 * 12 + 60,
+            增长, 上界 * 每条任务fd数 + 进程常驻fd余量,
             f"提交 {提交数} 个任务（远超上界 {上界}）后 fd 增长必须被封在上界附近；"
             f"实测增长 {增长}，旧实现（只写不删）此处约为 {提交数}×12 个 fd")
-        self.assertLess(增长, 提交数 * 12 // 2,
+        self.assertLess(增长, 提交数 * 每条任务fd数 // 2,
                         "fd 增长不得与提交总数同阶（真根因判据）")
+
+
+class 历史上限由fd预算推出(unittest.TestCase):
+    """判据：`任务表历史上限` 与进程真实 fd 预算**同一口径**（两个数不许各说各话）。
+
+    修前写死 `64`，而同一段注释自己写着「约 12 个 fd/条」⇒ 设计上界要 768 个 fd，
+    而进程预算可能只有 256（macOS launchd 默认软限）⇒ 提交约 21 条任务必然 `EMFILE`。
+    故本类的正向判据是「推出来的条数 × 每条 fd 数 + 常驻余量 **不超软限**」，
+    反向样本是「写死 64 在软限 256 下必然越界」。
+    """
+
+    def test_软限256推16条且需要量不超预算(self) -> None:
+        上界 = 由fd预算推历史上限(256)
+        self.assertEqual(上界, 16)
+        self.assertLessEqual(上界 * 每条任务fd数 + 进程常驻fd余量, 256,
+                             "推出来的条数所需 fd 不得超软限（同一口径的判据）")
+
+    def test_软限65536推到设计上限(self) -> None:
+        self.assertEqual(由fd预算推历史上限(65536), 历史上限设计上限)
+
+    def test_无限或天文软限不放大超过设计上限(self) -> None:
+        for 软限 in (-1, 0, 1 << 41, 10 ** 18):
+            self.assertEqual(由fd预算推历史上限(软限), 历史上限设计上限,
+                             f"软限={软限} 视为无上限，不得放大超过设计上限")
+
+    def test_预算极小也至少留一条(self) -> None:
+        self.assertEqual(由fd预算推历史上限(12), 1)
+        self.assertEqual(由fd预算推历史上限(1), 1)
+
+    def test_取不到预算退回设计上限而不是1(self) -> None:
+        """「量不到」不等于「没有预算」：退回设计上限，不许把功能打死。"""
+        self.assertEqual(由fd预算推历史上限("不是数"), 历史上限设计上限)
+
+    def test_模块默认取本进程真值(self) -> None:
+        self.assertIsInstance(任务表历史上限, int)
+        self.assertGreaterEqual(任务表历史上限, 1)
+        self.assertLessEqual(任务表历史上限, 历史上限设计上限)
+        self.assertEqual(任务表历史上限, 由fd预算推历史上限(),
+                         "模块默认值必须就是同一条算式的结果，不许是第二个数")
+
+    def test_反向_写死64在软限256下必然越界(self) -> None:
+        """反向样本（本修复的变异判据）：写死的 64 在 256 预算下确实越界。"""
+        写死 = 64
+        self.assertGreater(写死 * 每条任务fd数, 256,
+                           "修前写法（写死 64）在 256 预算下需要 768 个 fd ⇒ 必然 EMFILE")
+        self.assertLessEqual(
+            由fd预算推历史上限(256) * 每条任务fd数 + 进程常驻fd余量, 256,
+            "修后写法必须落在预算内")
 
 
 if __name__ == "__main__":

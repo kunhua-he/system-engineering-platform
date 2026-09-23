@@ -152,5 +152,71 @@ class 网关运行态同根测试(unittest.TestCase):
         self.assertNotIn("is_relative_to", 本函数体, "发布门禁侧复制了判据本体")
 
 
+class 重载配置腿测试(unittest.TestCase):
+    """plist 改了要能生效：`--重载配置` 这条腿必须存在，且不复制收尾判据。
+
+    现场依据（2026-09-24 实测，批J）：plist 补了 `SoftResourceLimits.NumberOfFiles = 65536`，
+    而 `kickstart -k` 重启后进程真实软限**仍是 256**（经 MCP `执行命令` 起子进程读
+    `resource.getrlimit(RLIMIT_NOFILE)` 实测 `(256, …)`）⇒「配置级修复永远只停在文件上」。
+    本类钉三件事：① 腿在且接在入口上；② 两条腿共用同一处收尾判据（哲学 1.2）；
+    ③ `bootout → bootstrap` 的竞态有退避重试（实测首次必 EIO，不许留给人工救场）。
+    """
+
+    def _源码(self) -> str:
+        return 重启网关文件.read_text(encoding="utf-8")
+
+    def test_重载配置两个形态都接在入口上(self) -> None:
+        源码 = self._源码()
+        self.assertIn('if "--重载配置" in 参:', 源码)
+        self.assertIn("raise SystemExit(重载配置(凭, _超时秒(参)))", 源码)
+        self.assertIn('if "--重载配置后台" in 参:', 源码)
+        self.assertIn('触发后台重启(参, "--重载配置")', 源码)
+
+    def test_重载用bootout加bootstrap而不是kickstart(self) -> None:
+        """比对**代码体**，不比 docstring —— 说明里引用 kickstart 正是在讲它为什么不重读 plist。"""
+        树 = ast.parse(self._源码())
+        节点 = next((项 for 项 in ast.walk(树)
+                     if isinstance(项, ast.FunctionDef) and 项.name == "重载配置"), None)
+        self.assertIsNotNone(节点, "没找到 重载配置")
+        语句表 = list(节点.body)
+        if 语句表 and isinstance(语句表[0], ast.Expr) and isinstance(语句表[0].value, ast.Constant):
+            语句表 = 语句表[1:]                      # 跳过 docstring
+        代码体 = "\n".join(ast.unparse(语句) for 语句 in 语句表)
+        self.assertIn("bootout", 代码体)
+        self.assertIn("bootstrap", 代码体)
+        self.assertNotIn("kickstart", 代码体, "kickstart 不重读 plist，重载腿不许用它")
+
+    def test_收尾判据只有一处实现(self) -> None:
+        源码 = self._源码()
+        self.assertEqual(源码.count("def _收尾("), 1, "收尾必须只有一处实现")
+        self.assertEqual(
+            源码.count('结果["成功"] = bool(结果["能力数"] and 结果["运行态同根"]["同根"])'), 1,
+            "重启/重载共用同一处成功定义，不许各写一遍")
+        self.assertEqual(源码.count("return _收尾(结果, 凭证, 超时秒)"), 2,
+                         "两条腿都必须走同一个收尾")
+
+    def test_bootout后bootstrap有退避重试(self) -> None:
+        """实测首次必 EIO 的竞态必须被这条腿自己吃掉，否则每次都要人工救场。"""
+        from 开发工具.能力网关.重启网关 import 重载重试次数, 重载重试间隔秒
+        self.assertGreaterEqual(重载重试次数, 2)
+        self.assertGreater(重载重试间隔秒, 0)
+        源码 = self._源码()
+        self.assertIn("for 轮次 in range(1, 重载重试次数 + 1):", 源码)
+        self.assertIn('结果["bootstrap轮次"] = 轮次', 源码,
+                      "轮次要记进结论（判据要能区分「第一次就成」与「重试才成」）")
+
+    def test_后台触发只有一处实现且模式参数化(self) -> None:
+        """两条腿共用「脱离进程组起子进程」的姿势，不许各写一遍 Popen。
+
+        比对**代码体**：模块 docstring 里也写着 `start_new_session=True`（那是在解释姿势）。
+        """
+        源码 = self._源码()
+        树 = ast.parse(源码)
+        代码体 = 源码.replace(ast.get_docstring(树) or "", "", 1)
+        self.assertEqual(代码体.count("def 触发后台重启("), 1)
+        self.assertEqual(代码体.count("start_new_session=True"), 1,
+                         "脱离进程组的姿势只许有一处")
+
+
 if __name__ == "__main__":
     unittest.main()
