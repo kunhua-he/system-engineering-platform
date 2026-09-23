@@ -5,11 +5,11 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "763fb35ba235c9b132e0a3c87572914377bf7cb9e7615e4a2fa827aea3c09a46"
+      "sha256": "a881270ce9e7d7a95314e962f99e4f81202e8b7406a65c40c97d416e3e3e69dd"
     },
     {
       "路径": "包声明.json",
-      "sha256": "d43491eb29c1289d97e6830d574520a60cfd0fd8499c81e41b6f6535886bc587"
+      "sha256": "8e82e705e03fc0ae50d03252f304e0c5505a100945b637ae3a71d4c9032c31d5"
     },
     {
       "路径": "复用决策.json",
@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/开发编译口自检.py",
-      "sha256": "737f9a7d37e971933b1cbc66a055c05959e98f7bdcca2b07e5d987c6c2a82b6c"
+      "sha256": "68ee0a4370b647cafa78bcbedfa0f764d025d4d2def611022e202350da1ab112"
     },
     {
       "路径": "实现/效率巡检.py",
@@ -37,23 +37,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "1f1185719491c40a2d0df6f77610288932be47c164fba4cc32fe0b76e105b157"
+      "sha256": "bb8afa9b837aa3ad57bfaa4290b5db9c108bc4dd9b9ee471ea6cdf276233fd79"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "674203a33d588d275fdd93d88b4a6fac3bdff95bea07cbb1a0cf10be639f0b85"
+      "sha256": "8aeedc9259434c59d48e2c0616d81cd3bb525f92d73d2297d19c02accd32013e"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "4f21b5e700a1d11bb9a2a12fd20b96888a0e2c11fe96c9f33e0b4e035eebb006"
+      "sha256": "f19e9a8ddd1e27ba3fe2c2cd01249cb094c668558b883508b64a0ccd6a5dd20e"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "c30c7cacca051076e7be8a88ba9c0dd5a10dc1d9f41d474cb3b0e4eaa59c8382"
+      "sha256": "2d4bfb62dbc4a2f9d033a5b0a09cba66dff3eb4683800219622001d5af346d61"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "a8dae086fc386b464a7b901ff3ba47db35ea5242f2bf741490121509002dfada"
+      "sha256": "381c4b3ba96c125304e0408f046edefbb526064b4d1e521d70ab08612dba723d"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -102,5 +102,5 @@
     "自修复工具.效率巡检",
     "自修复工具.构建平台客户端制品"
   ],
-  "能力定义摘要": "178ce6bc039cfe52"
+  "能力定义摘要": "2eeebb7b571f2381"
 }
