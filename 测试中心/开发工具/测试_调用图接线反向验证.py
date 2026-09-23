@@ -206,6 +206,39 @@ class Test能力调用图接线反向验证(unittest.TestCase):
         self.assertIn("能力调用图", 防回潮阻断配置,
                       "阻断口径必须显式配置（13.2：不靠『未新增即放行』隐含）")
 
+    # ---------- 五、原子库的**精确豁免**（2026-09-23） ----------
+    #
+    # 为什么要有这两条：`原子库表` 按**顶层名**切分，`urllib` 整体算「网络」——
+    # 而 `urllib.parse` 是纯字符串处理（百分号解码/URL 拆分），不做 I/O、不碰 socket。
+    # 实测 2026-09-23：`模块库/开工编排/实现/开工编排.py:18` 为路径边界的 URL 解码归一化
+    # import 了 `urllib.parse`，被判「原子旁路-网络」⇒ 该项「存量 0、新增即红」当场真阻断。
+    # 定夺依据：全仓**没有** URL 解码能力（搜「URL 解码/百分号解码/unquote」0 命中）
+    # ⇒ 归因在**判据侧**（切分太粗），故按精确子模块豁免。
+    # 两条一正一反：豁免必须**只对 `urllib.parse`** 生效，`urllib.request` 照旧判红 ——
+    # 只测豁免那一条，等于给「把 urllib 整体放过」开了后门。
+
+    def test_urllib_parse是纯字符串处理不算原子旁路(self) -> None:
+        构造模块包(self.临时根, "解析包",
+               "from urllib.parse import unquote\n\n\ndef 注入能力(文本: str) -> str:\n"
+               "    return unquote(文本)\n")
+        写基线(self.临时基线, {})
+        通过, 详情 = self._判定(self.临时根, self.临时基线)
+        self.assertIs(通过, 真,
+                      f"urllib.parse 是纯字符串处理（全仓无 URL 解码能力），不该判原子旁路；"
+                      f"实际详情：{详情}")
+        self.assertIn("本次计数 0 条", 详情)
+
+    def test_反向_urllib_request仍必须判红(self) -> None:
+        """豁免只认精确子模块 —— 把 `urllib` 顶层整体放过就是放走真网络旁路。"""
+        构造模块包(self.临时根, "请求包",
+               "from urllib.request import urlopen\n\n\ndef 注入能力(文本: str) -> str:\n"
+               "    return 文本\n")
+        写基线(self.临时基线, {})
+        通过, 详情 = self._判定(self.临时根, self.临时基线)
+        self.assertIs(通过, 假, f"urllib.request 是真网络旁路，必须判红；实际详情：{详情}")
+        self.assertIn("原子旁路-网络", 详情)
+        self.assertIn("模块库/请求包/实现/请求包.py", 详情)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

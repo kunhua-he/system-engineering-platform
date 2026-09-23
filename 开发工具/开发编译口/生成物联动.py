@@ -64,6 +64,7 @@ if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 执行耗时账本
 
 登记表相对路径 = "开发文档/规范/生成物登记表.json"
 
@@ -80,13 +81,12 @@ class 登记表不可用(RuntimeError):
     """登记表缺失/不可读/形状非法 —— fail-closed：判不出派生凭据 ≠ 没有派生凭据。"""
 
 
-def 跑命令(命令列表: list[str], 超时秒: int = 120,
-          工作目录: Path | None = None) -> tuple[int, str, float]:
-    """跑一条命令，返回（退出码，输出，耗时秒）。超时/崩溃/解码失败一律记 -1（未核验）。
+def _跑一次(命令列表: list[str], 超时秒: int,
+          工作目录: Path | None) -> tuple[int, str]:
+    """真正跑那条命令，返回（退出码，输出）。超时/崩溃/解码失败一律记 -1（未核验）。
 
-    **唯一实现**：开发编译口的 `_跑` 直接引用本函数，不另写第二份 subprocess 包装。
+    拆出来只为让 `跑命令` 有**唯一出口**，好把执行耗时账本记在一处（见 `跑命令`）。
     """
-    开始 = time.monotonic()
     try:
         完成 = subprocess.run(
             命令列表, capture_output=True, text=True, timeout=超时秒,
@@ -98,13 +98,33 @@ def 跑命令(命令列表: list[str], 超时秒: int = 120,
         #   → 行[3:] 吃掉路径首字（实测 `开发工具/开发编译口/编译口.py` →
         #   `发工具/开发编译口/编译口.py`），随后 py_compile 报 No such file，
         #   编译口把正常的已跟踪改动误判为「失败」（假红）。只去尾部换行（rstrip）。
-        return 完成.returncode, 输出.rstrip(), time.monotonic() - 开始
+        return 完成.returncode, 输出.rstrip()
     except subprocess.TimeoutExpired:
-        return -1, f"超时（>{超时秒}秒，按未核验处理，绝不按通过处理）", time.monotonic() - 开始
+        return -1, f"超时（>{超时秒}秒，按未核验处理，绝不按通过处理）"
     except (OSError, UnicodeDecodeError) as 异常:
         # UnicodeDecodeError 也要接：子进程输出非 UTF-8 时 text=True 的解码发生在
         # subprocess 内部，不接就裸冒泡、把「未核验」变成崩溃。
-        return -1, f"无法执行：{异常}", time.monotonic() - 开始
+        return -1, f"无法执行：{异常}"
+
+
+def 跑命令(命令列表: list[str], 超时秒: int = 120,
+          工作目录: Path | None = None) -> tuple[int, str, float]:
+    """跑一条命令，返回（退出码，输出，耗时秒）。超时/崩溃/解码失败一律记 -1（未核验）。
+
+    **唯一实现**：开发编译口的 `_跑` 直接引用本函数，不另写第二份 subprocess 包装。
+
+    **执行耗时账本**（华哥 2026-09-23）：本函数是开发工具侧**所有**子进程的唯一出口
+    （编译口的定向测试、派生凭据生成、语法编译都经它），故耗时记在这一处即可全覆盖。
+    开关关着时 `记一笔` 第一行就返回、不碰盘（见 公共契约/运行时/执行耗时账本.py）。
+    """
+    开始 = time.monotonic()
+    退出码, 输出 = _跑一次(命令列表, 超时秒, 工作目录)
+    耗时 = time.monotonic() - 开始
+    执行耗时账本.记一笔(
+        来源="开发工具.开发编译口.生成物联动.跑命令", 命令=" ".join(命令列表),
+        耗时秒=耗时, 退出码=退出码, 工作目录=str(工作目录 or 系统根),
+        输出字节=len(输出))
+    return 退出码, 输出, 耗时
 
 
 def _首行(文本: str, 上限: int = 160) -> str:

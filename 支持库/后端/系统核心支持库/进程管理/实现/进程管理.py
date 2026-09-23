@@ -17,7 +17,7 @@ from pathlib import Path
 from 公共契约.基础类型.逻辑类型 import 假
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
-from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时 import 平台适配, 进程终止, 执行耗时账本
 from 公共契约.运行时.有界IO import 受限读取, 受限通信, 默认子进程输出上限字节
 from 公共契约.运行时.取消登记 import 当前 as 当前取消令牌
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
@@ -392,6 +392,7 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
         return 结果.失败("参数不合法", "命令为空", 来源="进程管理")
     进程 = None
     取消令牌 = 当前取消令牌()
+    开始时刻 = time.monotonic()
     try:
         进程 = subprocess.Popen(
             命令表, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -406,6 +407,15 @@ def 执行命令(命令: str = None, 超时秒: float = None, 工作目录: str 
             取消判定=(lambda: 取消令牌.已取消) if 取消令牌 is not None else None,
             取消记录=取消记录,
         )
+        # 执行耗时账本（华哥 2026-09-23）：**开关关着时 `记一笔` 第一行就返回、不碰盘**
+        # （见 公共契约/运行时/执行耗时账本.py）。放在这里而不是各 return 分支里：
+        # 一处记录覆盖下面「已取消 / 超时 / 超限 / 正常」四条出口，不会漏掉某一条。
+        执行耗时账本.记一笔(
+            来源="系统核心支持库.进程管理.执行命令", 命令=命令,
+            耗时秒=time.monotonic() - 开始时刻,
+            退出码=getattr(进程, "returncode", None),
+            工作目录=str(工作目录 or ""),
+            输出字节=len(stdout or b"") + len(stderr or b""))
         if 取消记录.get("已取消"):
             # 「调用方已离开」与「执行超时」是两件事，必须分开报（哲学第 3 条 2 项）：
             # 前者说明本次执行是被断连回收的，后者说明命令本身跑不完。错误码用已登记的
@@ -829,6 +839,7 @@ def 沙箱执行命令(
     输出文件 = 输出目录 / f".沙箱输出_{令牌}.txt"
     错误文件 = 输出目录 / f".沙箱错误_{令牌}.txt"
     进程 = None
+    开始时刻 = time.monotonic()
     try:
         with 输出文件.open("wb") as 出, 错误文件.open("wb") as 错:
             进程 = subprocess.Popen(
@@ -842,6 +853,14 @@ def 沙箱执行命令(
                 _终止进程组(进程, 强制=True)
         标准输出 = _读受限(输出文件, 上限字节)
         错误输出 = _读受限(错误文件, 上限字节)
+        # 执行耗时账本（同 执行命令 那一处）：本能力**自己起进程**（不经 执行命令），
+        # 故必须单独记一笔，否则沙箱这条腿的执行在账本里是空白。
+        执行耗时账本.记一笔(
+            来源="系统核心支持库.进程管理.沙箱执行命令", 命令=命令,
+            耗时秒=time.monotonic() - 开始时刻,
+            退出码=getattr(进程, "returncode", None),
+            工作目录=str(工作目录 or ""),
+            输出字节=len(标准输出 or "") + len(错误输出 or ""))
         if 超时标志:
             return 结果.失败(
                 "超时", f"沙箱命令执行超过 {超时} 秒",

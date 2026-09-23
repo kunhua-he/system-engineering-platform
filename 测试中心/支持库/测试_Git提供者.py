@@ -497,8 +497,14 @@ class Test提交强制点第2层(unittest.TestCase):
 
     def setUp(self):
         self.临时根 = Path(tempfile.mkdtemp(prefix="测试_提交强制点_"))
-        self.仓库 = _初始化仓库(self.临时根 / "仓库")
-        self.钩子目录 = self.仓库 / "开发工具" / "git钩子"
+        # ★ `self.强制点仓库` 必须由 `self.临时根` **直接**派生，不能接 `_初始化仓库(...)` 的返回值：
+        # 那是未知函数的返回值，静态解析不出左端基 ⇒ 测试写入边界门禁把
+        # `self.钩子目录.mkdir` / `write_text` / `rmtree` 全判成「写动作未解析」
+        # （fail-closed 计入违规）。改成「先算路径、再就地建树」后左端基可回溯到
+        # `tempfile.mkdtemp`（临时落点构造器）⇒ 判据放行。实测 2026-09-23。
+        self.强制点仓库 = self.临时根 / "仓库"
+        _初始化仓库(self.强制点仓库)
+        self.钩子目录 = self.强制点仓库 / "开发工具" / "git钩子"
         self.钩子目录.mkdir(parents=True)
         (self.钩子目录 / "commit-msg").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
 
@@ -506,17 +512,17 @@ class Test提交强制点第2层(unittest.TestCase):
         shutil.rmtree(self.临时根, ignore_errors=True)
 
     def _接线(self):
-        _运行git(str(self.仓库), "config", "core.hooksPath", "开发工具/git钩子")
+        _运行git(str(self.强制点仓库), "config", "core.hooksPath", "开发工具/git钩子")
 
     def _改一个文件(self, 名: str) -> Path:
-        文件 = self.仓库 / 名
+        文件 = self.强制点仓库 / 名
         文件.write_text("内容\n", encoding="utf-8")
         return 文件
 
     def test_接线且消息带开工ID_放行并回带强制点(self):
         self._接线()
         文件 = self._改一个文件("甲.txt")
-        结果 = 提交(str(self.仓库), [str(文件)],
+        结果 = 提交(str(self.强制点仓库), [str(文件)],
                    "开工-20260923-131126-78e8 甲：新增一个文件并验证")
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["提交文件"], ["甲.txt"])
@@ -531,19 +537,19 @@ class Test提交强制点第2层(unittest.TestCase):
         """
         self.assertNotEqual(
             "开发工具/git钩子",
-            _运行git(str(self.仓库), "config", "--get", "core.hooksPath").stdout.strip(),
+            _运行git(str(self.强制点仓库), "config", "--get", "core.hooksPath").stdout.strip(),
             "夹具前提：本用例必须在不接线的仓库里跑，否则测不出第 2 层")
         文件 = self._改一个文件("乙.txt")
-        结果 = 提交(str(self.仓库), [str(文件)], "随手提交一句，没有开工ID")
+        结果 = 提交(str(self.强制点仓库), [str(文件)], "随手提交一句，没有开工ID")
         self.assertFalse(结果.成功, "钩子已失效时提交腿必须自己拦住无开工ID 的提交")
         self.assertEqual("提交被拒", 结果.错误码, 结果.错误说明)
-        现存 = _运行git(str(self.仓库), "log", "--oneline").stdout
+        现存 = _运行git(str(self.强制点仓库), "log", "--oneline").stdout
         self.assertNotIn("随手提交", 现存, "被拒的提交不得留痕")
 
     def test_反向_钩子在但hooksPath没接线_必须拒(self):
         """「钩子文件在」不等于「git 会调用它」—— 这个差别正是静默失效的入口。"""
         文件 = self._改一个文件("丙.txt")
-        结果 = 提交(str(self.仓库), [str(文件)],
+        结果 = 提交(str(self.强制点仓库), [str(文件)],
                    "开工-20260923-131126-78e8 丙：消息合规，但钩子没接线")
         self.assertFalse(结果.成功, "钩子文件在而 hooksPath 没指它 ⇒ 终端腿无人拦，必须拒")
         self.assertEqual("强制点未接线", 结果.错误码, 结果.错误说明)
@@ -554,9 +560,11 @@ class Test提交强制点第2层(unittest.TestCase):
         """`Revert ` 开头是 git 自身的流程消息，不是「一次开发改动」—— 与钩子同口径。"""
         self._接线()
         文件 = self._改一个文件("丁.txt")
-        结果 = 提交(str(self.仓库), [str(文件)],
+        结果 = 提交(str(self.强制点仓库), [str(文件)],
                    'Revert "某次改动"\n\nThis reverts commit 0123456789abcdef.')
         self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["提交文件"], ["丁.txt"],
+                         "豁免只免「开工ID 这句」，提交本身必须真的落进去")
 
     def test_钩子文件不在时不拦_别的仓库不受影响(self):
         """误报守卫：没有这道强制点的仓库（或本仓尚未装钩子时）必须照常提交。
@@ -565,8 +573,10 @@ class Test提交强制点第2层(unittest.TestCase):
         """
         shutil.rmtree(self.钩子目录)
         文件 = self._改一个文件("戊.txt")
-        结果 = 提交(str(self.仓库), [str(文件)], "没有钩子的仓库里，普通消息照常提交")
+        结果 = 提交(str(self.强制点仓库), [str(文件)], "没有钩子的仓库里，普通消息照常提交")
         self.assertTrue(结果.成功, 结果.错误说明)
+        self.assertEqual(结果.值["提交文件"], ["戊.txt"],
+                         "「不拦」必须证明提交真的落了，不是只回了个成功")
 
 
 if __name__ == "__main__":
