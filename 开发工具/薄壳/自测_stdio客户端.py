@@ -21,7 +21,6 @@ from pathlib import Path
 
 _薄壳目录 = Path(__file__).resolve().parent
 _项目根 = _薄壳目录.parents[1]
-技能夹具 = _项目根 / "技能库" / "后端" / "技能库" / "验证夹具" / "技能工作区"
 
 
 def _截断(文本: str, 上限: int = 300) -> str:
@@ -75,29 +74,21 @@ async def 主程序() -> int:
             for 工具项 in 工具.tools:
                 print(f"    - {工具项.name} | {工具项.description.split('：')[0]} | 入参键 "
                       f"{list((工具项.inputSchema or {}).get('properties', {}))}")
-            print("[2] 断言 工具数 == 3 :", len(工具.tools) == 3)
+            print("[2] 断言 工具数 == 4 :", len(工具.tools) == 4)
 
+            # 4 条腿各一条（2026-09-25 定稿工具面）：① 查询能力／② 调用能力（位置数组）／
+            # ③ 代码地图搜索（带代码块）／④ 终端运行（默认异步腿＋有界等待）。
+            # `操作`／`意图`／`参数`／`值字段`／`看键`／`项目根` 已从工具面删除，
+            # 顶层 schema 是 additionalProperties=false ⇒ 多带任何一个都会在 **schema 层**
+            # 被 SDK 当场拒掉（回执为空、只看得到 isError=true）。
             调用表 = [
-                ("工具目录", "tool_catalog", {}),
+                ("查询能力", "capability_search", {"关键词": "读取文件", "限制": 3}),
+                # ② 的入参是**位置数组**：按该能力契约的参数行序对位（空位留 ''）。
+                # `能力目录.搜索能力` 的行序＝[关键词, 限制, 游标, 细节级别, 含常用参数]。
                 ("调用能力", "capability_call",
-                 {"能力id": "技能库.技能索引.扫描技能包", "参数": {"技能根目录": str(技能夹具)},
-                  "项目根": str(_项目根)}),
-                # 腿 1 只有 关键词/限制 两个入参（2026-09-24 设计稿 §四）——
-                # 顶层 schema 是 additionalProperties=false，多带 `项目根` 会在 **schema 层**
-                # 被 SDK 当场拒掉（实测：回执为空、只看得到 isError=true）。
-                ("查询能力", "capability_search", {"关键词": "读取文件", "限制": 5}),
-                # 网关操作转发（2026-09-21 补）：热接入 = 新增/变更包增量装配免重启
-                # （决策记录 0008：**不重启网关**）。此前薄壳把 操作 写死成 调用能力，
-                # 这两条只能回终端跑 launchctl/curl；现在一次调用即得，自测必须覆盖。
-                # 2026-09-24：`操作` 由中文字符串枚举改成**整数码**（唯一映射表＝工具清单.操作码表），
-                # 故这里的入参跟着改成码值：5=热接入 / 6=健康检查 / 1=能力详情。
-                ("热接入", "capability_call", {"操作": 5, "项目根": str(_项目根)}),
-                ("健康检查", "capability_call", {"操作": 6, "项目根": str(_项目根)}),
-                # 能力详情（2026-09-21 批 1 · A2c）：够到包内**权威落盘契约**
-                # （参数契约/配置契约/资源预算 + 契约版本 + 调用方式）。
-                ("能力详情", "capability_call", {"操作": 1,
-                                          "能力id": "文件管理.读取文件",
-                                          "项目根": str(_项目根)}),
+                 {"能力id": "能力目录.搜索能力", "数组": ["读取文件", 3]}),
+                ("代码地图搜索", "code_map_search", {"关键词": "构建工具目录", "最大条数": 1}),
+                ("终端运行", "run_command", {"命令": "echo 自测", "是否异步": False}),
             ]
             失败表: list[str] = []
             if not 指令.strip():
@@ -125,7 +116,7 @@ async def 主程序() -> int:
             # 不行 —— L9 的 enum + additionalProperties 会让它在 **schema 层**就被 SDK 拒掉
             # （`_make_error_result` 回纯文本、不经薄壳 handler），测不到薄壳自己的 isError 语义。
             失败调用 = await 会话.call_tool("capability_call", {
-                "能力id": "本能力不存在_反向样本", "参数": {}, "项目根": str(_项目根)})
+                "能力id": "本能力不存在_反向样本", "数组": []})
             失败正文 = 失败调用.content[0].text if 失败调用.content else ""
             失败成功, 失败错误码 = _读判据(失败正文)
             print(f"[10] 故意失败调用 → 成功={失败成功} "
@@ -135,11 +126,11 @@ async def 主程序() -> int:
             elif not 失败调用.isError:
                 失败表.append("业务失败未置 isError=True（客户端与模型都看不见失败）")
             # 反向再拍：schema 层拦（L9）也必须是 isError=True —— 与业务层失败同一个语义。
+            # 样本用**已删除的入参名** `参数`：工具面已无该键，`additionalProperties=false`
+            # 会让它在 schema 层被 SDK 拒掉（这正是要验的那条语义）。
             schema调用 = await 会话.call_tool("capability_call", {
-                "操作": "重启网关", "能力id": "某能力", "项目根": str(_项目根)})
-            # 注意：样本故意用**字符串** —— 整数码改造后，字符串在 schema 层（type: integer）
-            # 就会被 SDK 拒掉，正是要验的那条语义。
-            print(f"[11] schema 层拦截（表外操作）→ isError={schema调用.isError}")
+                "能力id": "某能力", "参数": {}})
+            print(f"[11] schema 层拦截（表外入参名 参数）→ isError={schema调用.isError}")
             if not schema调用.isError:
                 失败表.append("schema 层拦截未置 isError=True")
             if 失败表:
