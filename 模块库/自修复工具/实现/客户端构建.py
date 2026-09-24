@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -40,7 +41,10 @@ from 公共契约.运行时.导入前缀 import 取系统根
 #: 判据本体在 `公共契约/运行时/导入前缀.取系统根`（唯一实现，锚目录判据，与深度无关）。
 #: 改前是 `Path(__file__).resolve().parents[3]` 的**层数写法**：目录一动就静默指错树。
 系统根 = 取系统根(__file__)
-解释器 = "/opt/homebrew/bin/python3.14"
+#: 当前进程的解释器 —— Python 自己给出的唯一权威；改用它是**归队**（全仓同一写法），
+#: 不新建节点。改前写死 `/opt/homebrew/bin/python3.14`：换机 / 换 Homebrew 前缀即
+#: `FileNotFoundError`（对照 `开发工具/git钩子/pre-commit` 的候选回落链）。
+解释器 = sys.executable
 构建脚本 = "客户端/构建平台客户端.py"
 
 #: 构建完成行：`构建完成：/…/平台客户端-<摘要16>`
