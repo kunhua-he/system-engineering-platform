@@ -14,7 +14,6 @@ import base64
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 from 运行核心.运行诊断.安全审计.安全审计 import 安全审计
 from 运行核心.能力调用.运行上下文.上下文 import 运行上下文
@@ -22,6 +21,7 @@ from 运行核心.统一网关.安全.安全边界 import 脱敏错误信息
 from 运行核心.统一网关.安全.限流器 import 限流器
 from 公共契约.版本规则.契约版本 import 契约版本
 from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 运行核心.统一网关.协议.类型规格 import (
@@ -186,7 +186,7 @@ class 幂等记忆面:
         if self._幂等存储 is None:
             try:
                 库路径 = self._幂等库路径 or (
-                    解析运行数据根(Path(__file__).resolve().parents[2]) / 幂等库文件名)
+                    解析运行数据根(取系统根(__file__)) / 幂等库文件名)
             except (OSError, ValueError) as 错误:
                 记录忽略("统一网关.幂等存储.解析库路径", 错误)
                 return None

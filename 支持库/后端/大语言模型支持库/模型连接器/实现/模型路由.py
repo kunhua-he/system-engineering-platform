@@ -21,6 +21,7 @@ import re
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
+from 公共契约.运行时.数据库URI import 只读库URI
 
 from 支持库.后端.大语言模型支持库.模型连接器.实现.模型用量 import (
     默认权重,
@@ -92,7 +93,7 @@ def _读参考词表(参考路径: str) -> tuple[set[str], str | None]:
                     文本 += 子.read_text(encoding="utf-8", errors="ignore") + "\n"
         elif 路径.suffix.lower() in (".db", ".sqlite", ".sqlite3"):
             import sqlite3
-            连接 = sqlite3.connect(f"file:{路径}?mode=ro", uri=True)
+            连接 = sqlite3.connect(只读库URI(路径), uri=True)
             try:
                 for (名,) in 连接.execute("SELECT name FROM sqlite_master WHERE type='table'"):
                     try:

@@ -214,8 +214,8 @@ class 重载配置腿测试(unittest.TestCase):
         树 = ast.parse(源码)
         代码体 = 源码.replace(ast.get_docstring(树) or "", "", 1)
         self.assertEqual(代码体.count("def 触发后台重启("), 1)
-        self.assertEqual(代码体.count("start_new_session=True"), 1,
-                         "脱离进程组的姿势只许有一处")
+        self.assertEqual(代码体.count("平台适配.子进程组启动标志()"), 1,
+                         "脱离进程组的姿势只许有一处（唯一腿：平台适配.子进程组启动标志）")
 
 
 if __name__ == "__main__":

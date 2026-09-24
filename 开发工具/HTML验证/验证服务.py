@@ -8,8 +8,9 @@ from 开发工具.HTML验证.场景加载 import _加载场景
 from 开发工具.HTML验证.场景执行器 import _执行场景束
 from 开发工具.HTML验证.验证证据 import 生成场景文件
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
 def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Path | None = None) -> int:
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from http.server import BaseHTTPRequestHandler
 
     制品地址 = _校验直连地址(制品地址)
     页面字节 = (Path(__file__).resolve().parent / "验证页.html").read_bytes()
@@ -112,20 +113,6 @@ def 服务模式(制品地址: str, 服务端口: int = 45081, 制品目录: Pat
             self.end_headers()
             self.wfile.write(返回)
 
-    class 有界线程HTTP服务器(ThreadingHTTPServer):
-        daemon_threads = True
-        block_on_close = True
-        def __init__(self, *参数, **关键字):
-            super().__init__(*参数, **关键字)
-            self._线程信号量 = threading.BoundedSemaphore(32)
-        def process_request(self, 请求, 客户端地址):
-            if not self._线程信号量.acquire(blocking=False):
-                self.shutdown_request(请求)
-                return
-            def 执行():
-                try: self.process_request_thread(请求, 客户端地址)
-                finally: self._线程信号量.release()
-            threading.Thread(target=执行, daemon=True).start()
     服务 = 有界线程HTTP服务器(("127.0.0.1", 服务端口), 处理器)
     print(f"验证页已启动: http://127.0.0.1:{服务.server_port}/ （代理到 {制品地址}）")
     try:

@@ -40,6 +40,7 @@ from typing import Any
 
 from 公共契约.运行时 import 进程终止
 from 公共契约.运行时.运行缓存 import 解析运行数据根
+from 公共契约.运行时.导入前缀 import 取系统根
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
@@ -87,12 +88,16 @@ def 当前网关世代id() -> str:
 
 
 def _定位系统根() -> Path:
-    """定位工程根（同时含 `支持库` 与 `模块库` 的最近祖先；找不到时退回本文件路径）。"""
-    候选 = _主文件路径().resolve()
-    for _祖先 in 候选.parents:
-        if (_祖先 / "支持库").is_dir() and (_祖先 / "模块库").is_dir():
-            return _祖先
-    return 候选
+    """定位工程根（同时含 `支持库` 与 `模块库` 的最近祖先；找不到时退回本文件路径）。
+
+    判据走唯一腿 `公共契约/运行时/导入前缀.取系统根`（锚目录判据，不按层数推根）；
+    本函数原有的「找不到就退回主文件落点」兜底**逐字保留** —— 唯一腿取不到锚目录即
+    `ImportError`（fail-closed），而账本库路径必须总能算出一个落点，故在此显式接住。
+    """
+    try:
+        return 取系统根(_主文件路径())
+    except ImportError:
+        return _主文件路径().resolve()
 
 
 def 账本库路径() -> Path:

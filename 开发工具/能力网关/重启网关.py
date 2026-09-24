@@ -53,6 +53,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 平台适配
 
 网关地址 = "http://127.0.0.1:40007"
 服务标签 = "com.huashi.gateway-40007"
@@ -441,7 +442,7 @@ def 触发后台重启(argv: list[str], 前台参数: str = "--前台") -> int:
         子参数 += ["--超时", _取值(argv, "--超时")]
     with open(os.devnull, "wb") as 空:
         subprocess.Popen(子参数, stdout=空, stderr=空, stdin=空,
-                         start_new_session=True, cwd=str(结果文件.parents[1]))
+                         **平台适配.子进程组启动标志(), cwd=str(结果文件.parents[1]))
     print(json.dumps({
         "模式": "触发后台重启", "服务标签": 服务标签, "重启前进程号": 进程号(),
         "成功": 真, "已触发": 真, "结果文件": str(结果文件),

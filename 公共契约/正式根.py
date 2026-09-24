@@ -288,31 +288,6 @@ def 是聚合视图包(包目录: Path) -> bool:
     return bool(子包声明表(包目录))
 
 
-def 是装配包(包目录: Path, 根目录: Path, 声明: object = None) -> bool:
-    """装配口径的**唯一收录判据**：保留目录 / 聚合视图父包 / 非生产声明，三者皆非。
-
-    `声明` 已由调用方读好时传进来（避免重复读盘）；为 `None` 时本函数自行读
-    `包目录/包声明.json`，**读不成即判「不是装配包」**（fail-closed：宁可漏收
-    并让上层报缺口，也绝不因为一次读取故障白送一张收录票）。
-
-    此前这套判据分裂成两份互不相同的实现：`发现器.扫描目录`（`_`/`.` 前缀 +
-    6 聚合库名表）与 `正式包索引._扫描包`（非生产路径片段 + 非生产字段 + 状态
-    字段 + 聚合父包）。两份对同一目录可以给出相反结论 —— 见本模块头「包目录口径」。
-    """
-    if 是保留目录(包目录, 根目录):
-        return 假
-    if 是聚合视图包(包目录):
-        return 假
-    if 声明 is None:
-        import json
-        try:
-            声明 = json.loads((包目录 / 声明文件名).read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError):
-            return 假
-    包id = str(声明.get("包id", "")) if isinstance(声明, dict) else ""
-    return not 是非生产声明(声明, 包id)
-
-
 def 枚举包目录(系统根, 口径: 扫描口径) -> list[Path]:
     """按 `口径` 枚举包目录，按「相对系统根的 posix 路径」排序。
 

@@ -70,8 +70,9 @@ def 库路径() -> Path:
     if 显式:
         return Path(显式)
     from 公共契约.运行时.运行缓存 import 解析运行数据根
+    from 公共契约.运行时.导入前缀 import 取系统根
 
-    return 解析运行数据根(Path(__file__).resolve().parents[2]) / "底座运行.db"
+    return 解析运行数据根(取系统根(__file__)) / "底座运行.db"
 
 
 def _连接() -> sqlite3.Connection:

@@ -71,20 +71,3 @@ def _展开参数(实现: 能力实现, 参数: dict[str, Any]) -> dict[str, Any
     for 键, 值 in (参数 or {}).items():
         关键字表[键] = 值
     return 关键字表
-
-
-def _参数摘要(参数: dict[str, Any]) -> str:
-    """参数值级摘要（规范化 JSON + 排序键）——**当前未接线**。
-
-    来源是一次「把幂等重放升级为值级摘要」的工作包（MCP反馈开工id
-    17b41a8e9b0b43f4，2026-08-01），该工作包被停止、未落任何改动。
-    在接线前 `幂等重放` 只比参数形状，不比值；保留本函数仅为承接该意图，
-    是否真正实现值级比较待华哥定夺（见 开发文档/临时文档/47）。
-    """
-    import hashlib
-    import json
-    try:
-        文本 = json.dumps(参数, ensure_ascii=False, sort_keys=True)
-    except (TypeError, ValueError):
-        文本 = str(参数)
-    return hashlib.sha256(文本.encode("utf-8")).hexdigest()[:16]

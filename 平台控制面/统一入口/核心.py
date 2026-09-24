@@ -18,6 +18,7 @@
 from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时.有界IO import 受限读取
 
 import json
 import os
@@ -65,21 +66,12 @@ from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
 
 def _受限读取(流, 上限: int) -> tuple[bytes, bool]:
-    """读满上限后继续排空（防止管道阻塞导致进程挂死），返回 (受限内容, 截断标记)。"""
-    缓冲 = bytearray()
-    截断 = 假
-    while True:
-        块 = 流.read(65536)
-        if not 块:
-            break
-        余量 = 上限 - len(缓冲)
-        if 余量 > 0:
-            缓冲.extend(块[:余量])
-            if len(块) > 余量:
-                截断 = 真
-        else:
-            截断 = 真
-    return bytes(缓冲), 截断
+    """读满上限后继续排空（防止管道阻塞导致进程挂死），返回 (受限内容, 截断标记)。
+
+    实现委托唯一腿 `公共契约.运行时.有界IO.受限读取`：同一份「上限字节 + 超限标记」
+    口径（块大小同为 65536），本处不再自建第二套有界读。
+    """
+    return 受限读取(流, 上限)
 
 
 def _运行缓存根() -> Path:

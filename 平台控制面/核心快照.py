@@ -19,6 +19,7 @@ from typing import Any, Callable
 from 平台控制面.包仓库 import 规范化相对路径
 from 平台控制面.包仓库.路径安全 import 安全迭代文件
 from 支持库.适配层 import 签名 as Ed签名, 验证签名 as Ed验证, 内容摘要
+from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
 
@@ -57,8 +58,15 @@ class 核心快照管理:
         快照目录 = self.快照根目录 / 快照id
         快照目录.mkdir(parents=True, exist_ok=True)
         for 路径, 内容 in 规范化文件表.items():
-            (快照目录 / 路径).write_text(内容, encoding="utf-8")
-        (快照目录 / "摘要.json").write_text(json.dumps({"摘要": 摘要}, ensure_ascii=False), encoding="utf-8")
+            # 落盘经**唯一写入腿**（`文件系统支持库.文件操作.写入文件`，2026-09-25 收口）：
+            # 平台控制面 在 `允许依赖表` 里允许依赖 支持库；原子写与父目录创建由唯一腿提供，
+            # 本文件不再裸 `write_text`。**失败仍抛 `OSError`**（调用方按原契约收口）。
+            写结果 = 写入文件(str(快照目录 / 路径), 内容)
+            if not 写结果.成功:
+                raise OSError(f"{写结果.错误码}: {写结果.错误说明}")
+        写结果 = 写入文件(str(快照目录 / "摘要.json"), json.dumps({"摘要": 摘要}, ensure_ascii=False))
+        if not 写结果.成功:
+            raise OSError(f"{写结果.错误码}: {写结果.错误说明}")
         return 快照id
 
     def 签名快照(self, *, 快照id: str, 私钥PEM: str, 发布者: str) -> tuple[bool, str]:

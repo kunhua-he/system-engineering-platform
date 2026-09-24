@@ -38,6 +38,7 @@ from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配
+from 公共契约.运行时.导入前缀 import 取系统根
 from 公共契约.能力契约.契约 import 能力实现, 能力注册表
 from 公共契约.运行时.运行缓存 import 运行缓存环境变量, 解析运行缓存根
 from 公共契约.运行时.资源水位 import 读取整机内存水位
@@ -112,7 +113,8 @@ class 后端核心(资源与排空面, 包指纹面, 能力目录面):
 
     @staticmethod
     def 默认系统根() -> str:
-        return str(Path(__file__).resolve().parents[1])
+        # 根判据走唯一腿（锚目录判据，不按层数推根）：`公共契约/运行时/导入前缀.取系统根`。
+        return str(取系统根(__file__))
 
     def 装配(self) -> 结果:
         """发现并装配系统内全部支持库与模块（装配模板缓存复用）。

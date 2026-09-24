@@ -11,7 +11,6 @@
 
 import http.server
 import socket
-import socketserver
 import threading
 import time
 import urllib.error
@@ -20,6 +19,8 @@ import urllib.request
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
+from 公共契约.运行时.有界HTTP import 有界线程HTTP服务器
+from 公共契约.运行时.有界IO import 受限读取
 
 
 class 请求处理器(http.server.BaseHTTPRequestHandler):
@@ -80,31 +81,6 @@ class 请求处理器(http.server.BaseHTTPRequestHandler):
         pass  # 静默访问日志
 
 
-class 线程HTTP服务(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    daemon_threads = True      # 优雅关闭不等待进行中的慢请求线程
-    allow_reuse_address = True  # 停止后端口可立即重新绑定
-    最大线程数 = 32
-
-    def __init__(self, *参数, **关键字):
-        super().__init__(*参数, **关键字)
-        self._线程信号量 = threading.BoundedSemaphore(self.最大线程数)
-
-    def process_request(self, request, client_address):
-        if not self._线程信号量.acquire(blocking=False):
-            self.close_request(request)
-            return
-        try:
-            super().process_request(request, client_address)
-        except Exception:
-            self._线程信号量.release()
-            raise
-
-    def process_request_thread(self, request, client_address):
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self._线程信号量.release()
-
 class HTTP提供者:
     """HTTP 真实提供者：启动 / 请求 / 停止 中文契约。"""
 
@@ -130,7 +106,7 @@ class HTTP提供者:
             "处理器函数": staticmethod(处理器), "活动连接数": 0,
             "连接锁": threading.Lock()})
         self._处理器类 = 处理器类
-        self._服务 = 线程HTTP服务(("127.0.0.1", 端口), 处理器类)
+        self._服务 = 有界线程HTTP服务器(("127.0.0.1", 端口), 处理器类)
         self._端口 = self._服务.server_address[1]
         threading.Thread(target=self._服务.serve_forever, daemon=True).start()
         return self._端口
@@ -191,10 +167,5 @@ class HTTP提供者:
 
     @staticmethod
     def _受限读取(文件对象, 上限):
-        数据 = bytearray()
-        while len(数据) <= 上限:
-            块 = 文件对象.read(上限 + 1 - len(数据))
-            if not 块:
-                break
-            数据.extend(块)
-        return bytes(数据[:上限]), len(数据) > 上限
+        """有界读取响应体（上限字节 + 截断标记）：实现委托唯一腿 `公共契约.运行时.有界IO.受限读取`。"""
+        return 受限读取(文件对象, 上限)
