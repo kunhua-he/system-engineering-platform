@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import socket
 import sys
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
@@ -35,6 +37,16 @@ _无代理 = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 class 测试能力唯一事实源(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # ★ 2026-09-24（批R·R-23）：本用例**逐能力探针**（`__事实源探针__`）会把形状写进
+        #   **调用参数账**；此前直接落生产账 —— 实测污染 752 条 / 23,914 次 = 账本总量
+        #   51.8%，把 710/796 个能力的「首选常用参数」顶成哨兵（R-22 现场取证）。
+        #   这里用**唯一节点**（`公共契约/诊断/调用账本.参数账路径`）已支持的
+        #   `系统底座_调用参数账` 把账改道到临时文件：只隔离这一本账，其余运行数据
+        #   （索引/制品/审计）路径一个字不动 —— 不另起第二套隔离机制。
+        cls._原参数账 = os.environ.get("系统底座_调用参数账")
+        cls._临时账目录 = tempfile.TemporaryDirectory(prefix="能力探针账-")
+        os.environ["系统底座_调用参数账"] = str(
+            Path(cls._临时账目录.name) / "调用参数账.sqlite3")
         cls.索引 = 构建索引(系统根)
         cls.后端 = 后端核心(系统根)
         启动 = cls.后端.启动()
@@ -54,6 +66,11 @@ class 测试能力唯一事实源(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.服务器.优雅停止()
         cls.后端.优雅关闭()
+        if cls._原参数账 is None:
+            os.environ.pop("系统底座_调用参数账", None)
+        else:
+            os.environ["系统底座_调用参数账"] = cls._原参数账
+        cls._临时账目录.cleanup()
 
     @classmethod
     def _网关可调用集合(cls) -> set[str]:
