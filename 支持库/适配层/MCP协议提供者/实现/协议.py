@@ -28,6 +28,9 @@ try:
     from mcp.client.stdio import stdio_client as _标准输入输出客户端函数
     from mcp.types import Tool as _工具类
     from mcp.types import CallToolResult as _工具结果类
+    from mcp.types import Prompt as _提示类
+    from mcp.types import PromptMessage as _提示消息类
+    from mcp.types import GetPromptResult as _提示结果类
 except Exception as _导入异常:  # 依赖缺失与版本不兼容都在此收口，原因留痕
     _导入失败原因 = f"{type(_导入异常).__name__}: {_导入异常}"
 
@@ -58,19 +61,46 @@ def 检查可用性() -> dict[str, Any]:
     return {"可用": True, "版本": 版本, "说明": f"mcp SDK 可导入，版本 {版本 or '未知'}"}
 
 
-def 构造服务(名称: str):
-    """构造 mcp 服务对象（第三方对象，不契约化，故不作为能力注册）。"""
+def 构造服务(名称: str, 提示: str = ""):
+    """构造 mcp 服务对象（第三方对象，不契约化，故不作为能力注册）。
+
+    `提示`（2026-09-24 华哥裁决「类型表与常用动作要进上下文」）：写进 MCP 服务级
+    `instructions`，随 `initialize` 回包**一次性**下发。两条性质正是选它的理由：
+    ① 它**不占工具面预算**（2000 字符那条天花板只算工具描述与 schema）；
+    ② 逐轮固定 ⇒ 上游可命中缓存（工具描述同样全静态，见 `工具清单.三个工具定义`）。
+    空串＝不注入（不塞空串：回包里多一个无信息字段只是噪声）。
+    """
     _确保可用()
-    return _服务类(名称)
+    return _服务类(名称, instructions=提示 or None)
 
 
-def 构造初始化选项(服务名: str, 服务版本: str):
-    """构造初始化选项；能力集固定为 tools（薄壳只暴露工具，不收资源与提示）。"""
+def 构造初始化选项(服务名: str, 服务版本: str, 收提示: bool = False):
+    """构造初始化选项；能力集固定为 tools（`收提示=真` 时另加 prompts）。
+
+    为什么 `prompts` 要与 `instructions` 一起申报（2026-09-24）：`instructions` 里点名了
+    「改文件前 prompts/get{name=开工}」—— 不申报 prompts 能力，客户端就看不到该能力、
+    也取不到模板，那句就是**死指针**（等于教 agent 去撞墙）。
+    """
     _确保可用()
     return _初始化选项类(
         server_name=服务名,
         server_version=服务版本,
-        capabilities=_服务能力类(tools={}),
+        capabilities=_服务能力类(tools={}, prompts={} if 收提示 else None),
+    )
+
+
+def 构造提示模板(名称: str, 说明: str):
+    """构造 mcp 提示模板声明（第三方对象，不契约化，故不作为能力注册）。"""
+    _确保可用()
+    return _提示类(name=名称, description=说明)
+
+
+def 构造提示结果(说明: str, 文本: str):
+    """构造 `prompts/get` 的返回：一条 user 消息，正文走 text（模板正文由调用方给）。"""
+    _确保可用()
+    return _提示结果类(
+        description=说明,
+        messages=[_提示消息类(role="user", content=_文本内容类(type="text", text=文本))],
     )
 
 

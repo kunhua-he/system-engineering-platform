@@ -330,7 +330,7 @@ class 未传速办行为不变测试(unittest.TestCase):
     def test_非速办操作转发体逐字同形(self):
         桩 = 桩网关(调用能力={"成功": True, "值": {"x": 1}})
         with _换转发(桩):
-            结果 = 壳._调用能力({"操作": "调用能力",
+            结果 = 壳._调用能力({"操作": 0,
                               "能力id": "系统核心支持库.系统信息.获取CPU信息",
                               "参数": {"项目根": str(系统根)}})
         self.assertTrue(结果["成功"])
@@ -343,13 +343,16 @@ class 未传速办行为不变测试(unittest.TestCase):
     def test_工具面暴露速办与意图(self):
         工具 = _取工具("capability_call")
         属性 = 工具.inputSchema["properties"]
-        self.assertIn("速办", 属性["操作"]["enum"])
+        # 2026-09-24：`操作` 由中文字符串枚举改成整数码 —— 速办 的码是 7，
+        # 判据跟着从 enum 成员改成码表成员（工具面必须仍够得到速办，否则就是死腿）。
+        self.assertEqual("速办", 壳.操作码表[7], "速办 的整数码必须是 7")
+        self.assertEqual("integer", 属性["操作"]["type"])
+        self.assertIn("速办", 属性["操作"]["description"])
         self.assertIn("意图", 属性,
                       "顶层 schema 是 additionalProperties=false：不声明 意图 会被当场拒")
-        描述 = 工具.description or ""
-        self.assertIn("速办", 描述)
         for 意图 in 速办意图清单():
-            self.assertIn(意图, 描述, f"工具面未暴露速办意图 {意图}（agent 猜不到）")
+            self.assertIn(意图, 属性["意图"]["description"],
+                          f"工具面未暴露速办意图 {意图}（agent 猜不到）")
 
     def test_速办在操作白名单里(self):
         self.assertIn("速办", 壳.薄壳允许操作, "操作白名单是 fail-closed 的唯一闸门")
