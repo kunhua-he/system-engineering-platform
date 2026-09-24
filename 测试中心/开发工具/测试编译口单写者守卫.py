@@ -34,6 +34,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -117,6 +118,25 @@ def _钉住非嵌套() -> None:
         else:
             os.environ[键] = 原值
 
+    return 还原
+
+
+def _钉住环境键(键: str, 值: str):
+    """把环境变量 `键` 钉成 `值`，**返回还原函数**（配 `addCleanup` 用）。
+
+    为什么需要（R-25）：`起单写者守卫` 的排队上限与不可判定容忍窗都可由环境变量覆盖，
+    验收「到上限才拒启」「判不出持有者立刻拒启」两条路径必须能把它们钉成极小/0 ——
+    否则验一条超时路径要真等满缺省值。钉法同 `_钉住非嵌套`：记原值、还原（含「原本就没有」）。
+    """
+    原值 = os.environ.get(键)
+
+    def 还原() -> None:
+        if 原值 is None:
+            os.environ.pop(键, None)
+        else:
+            os.environ[键] = 原值
+
+    os.environ[键] = 值
     return 还原
 
 
@@ -210,7 +230,10 @@ class 活锁必须拒启(_守卫用例):
             编译口.释放单写者锁(self.自己占的)
 
     def test_第二个编译口被拒启并如实报原话(self) -> None:
-        环境 = {**os.environ, 编译口.编译口嵌套标记: ""}   # 显式清掉嵌套标记：本条要的就是「第二个写者」
+        # 排队上限钉 0（R-25）：本条判的是「第二个写者不得并发跑」，不是「要等多久」。
+        # 不钉 0 会排队等满缺省上限（缺省 900 秒）⇒ 用例挂死，判据指向也变了。
+        环境 = {**os.environ, 编译口.编译口嵌套标记: "",
+                编译口.排队上限环境变量: "0"}   # 显式清掉嵌套标记：本条要的就是「第二个写者」
         开始 = time.monotonic()
         完成 = subprocess.run(
             [sys.executable, "-m", "开发工具.开发编译口.编译口", "--文件", "README.md"],
@@ -279,6 +302,9 @@ class 判不出来一律拒启(_守卫用例):
     """判据 5：fail-closed —— 探测不出有没有别人在跑，就不许静默放行。"""
 
     def _拒启取证(self, 根: Path) -> str:
+        # 容忍窗钉 0（R-25）：坏锁不是「对方刚建锁、内容还没落」那类瞬时态，本条判的就是
+        # 立刻 fail-closed；不钉 0 会每条用例白等满缺省窗（缺省 6 秒）。
+        self.addCleanup(_钉住环境键(编译口.不可判定容忍环境变量, "0"))
         收集: list[str] = []
         句柄, 拒启 = 编译口.起单写者守卫(True, 根, 打印=收集.append)
         self.assertTrue(拒启, f"判不出来必须拒启：{收集}")
@@ -316,6 +342,62 @@ class 判不出来一律拒启(_守卫用例):
             锁.write_text(json.dumps({"pid": os.getpid(), "启动时刻": "昨天下午",
                                    "仓库根": str(根)}, ensure_ascii=False), encoding="utf-8")
             self.assertIn("启动时刻解析不出", self._拒启取证(根))
+        finally:
+            _清临时根(根)
+
+
+class 活锁排队等到就放行(_守卫用例):
+    """判据 1/2/3（R-25）：锁被**活写者**持有时**排队等**，不再当场拒启。
+
+    改前行为（2026-09-23 版）：被占即拒启。R-19 实测代价：**4 次拒启 ＋ 1 次 120 秒超时，
+    两个读数根本没取到** —— 故本条判的是「等到」，不是「拒掉」。
+    """
+
+    def test_持锁者释放后排队者拿到锁(self) -> None:
+        根 = _临时根()
+        try:
+            持有 = 编译口.占单写者锁(根)
+            释放器 = threading.Timer(1.5, 编译口.释放单写者锁, args=(持有,))
+            释放器.start()
+            self.addCleanup(释放器.cancel)
+            收集: list[str] = []
+            开始 = time.monotonic()
+            句柄, 拒启 = 编译口.起单写者守卫(True, 根, 打印=收集.append)
+            等待毫秒 = (time.monotonic() - 开始) * 1000
+            文本 = "\n".join(收集)
+            self.assertFalse(拒启, f"等到锁就不该拒启：{文本}")
+            self.assertIsNotNone(句柄, f"等到锁必须回句柄：{文本}")
+            self.assertGreaterEqual(等待毫秒, 1000.0,
+                                    f"必须真的排过队（不是立刻拿到）：{等待毫秒:.0f}ms")
+            self.assertIn("排队等待中", 文本, f"排队要如实说明，不静默：{文本}")
+            assert 句柄 is not None
+            编译口.释放单写者锁(句柄)
+            self.assertFalse((根 / 编译口.锁相对路径).is_file(), "自己那把必须能正常释放")
+        finally:
+            _清临时根(根)
+
+    def test_等到上限才拒启且说明含持锁者(self) -> None:
+        根 = _临时根()
+        try:
+            持有 = 编译口.占单写者锁(根)
+            self.addCleanup(_钉住环境键(编译口.排队上限环境变量, "0.6"))
+            收集: list[str] = []
+            开始 = time.monotonic()
+            句柄, 拒启 = 编译口.起单写者守卫(True, 根, 打印=收集.append)
+            等待毫秒 = (time.monotonic() - 开始) * 1000
+            文本 = "\n".join(收集)
+            self.assertTrue(拒启, f"到上限必须拒启：{文本}")
+            self.assertIsNone(句柄, "拒启时不得返回锁句柄")
+            self.assertIn(f"PID {os.getpid()}", 文本, f"拒启说明必须点名持锁者 PID：{文本}")
+            self.assertIn("启动于 ", 文本, f"拒启说明必须带持锁者启动时刻：{文本}")
+            self.assertIn("已排队等待", 文本, f"拒启说明必须带已等多久：{文本}")
+            self.assertIn("建议", 文本, f"拒启说明必须给建议：{文本}")
+            self.assertGreaterEqual(等待毫秒, 600.0, f"必须真等到上限：{等待毫秒:.0f}ms")
+            self.assertLess(等待毫秒, 30000.0, f"拒启不许挂死：{等待毫秒:.0f}ms")
+            # 判据 3（不引入泄漏）：排队者**没动别人的锁** —— 等待结束锁态必须一致。
+            self.assertTrue((根 / 编译口.锁相对路径).is_file(),
+                            "排队者不得动别人那把锁（等待结束锁态必须一致）")
+            编译口.释放单写者锁(持有)
         finally:
             _清临时根(根)
 

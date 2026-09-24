@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "951c40171e1634d7857823b2314f497751c7f3c76a2d522f2fb88d08c3aafe1c"
+      "sha256": "87a4940b36ba7d36b6e2322e6d3c72d7a7566d579b144879c4e5541a17edb1ec"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "ca0c67445c0c69d57fd8b4bb85eeb201cc1ffa5bf4773de69005631fcb847a3d"
+      "sha256": "d18aec1cf73500c7ccaf07611ed6b4775d96f03d8fce0a215f8f775d7275b681"
     },
     {
       "路径": "复用决策.json",
@@ -21,11 +21,11 @@
     },
     {
       "路径": "实现/任务类型规范.py",
-      "sha256": "e62b2c8fd3867eecc9707c64a71ededf5056fae581475150e14f8bc710805ae8"
+      "sha256": "7edadc94f3b5950748f3b53453dedd1a64b570861828fdb825e823ef24ce90ff"
     },
     {
       "路径": "实现/开工编排.py",
-      "sha256": "1dc09d816eb5c7cdd1e0692b9fc31598ebb1afef01e4b62fb12d1a632729c349"
+      "sha256": "a8e989e88a918e320db53b1c20e34fe97ba2375a29d7a2e6ea483b2c950be669"
     },
     {
       "路径": "实现/开工资料.py",
@@ -45,23 +45,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "18d2832a3f0852355260f9e91ee29f84d54e7b1635cbdb9e4ef2d2224a877da3"
+      "sha256": "460c703494d1cb098f59c91f5f9ee1a02b8e077540ecf3d544fe76e638634c73"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "ff99f4498ec116c6d33851c3e7bb9c1dc3a7da0c13dac361840d5fa89e8ecf76"
+      "sha256": "fdf6dcef27546bdbf6683b1decbdbcb16677e750a417eee054da5702c0148229"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "59d6943a2a4cd60dd1b5073cf3228bd467345b8f6a3233e090b09322d5d685b3"
+      "sha256": "b41159fd56ee71e6ab010d9e1d54ab9beba9693ac4edf64b2c539d3de51c0227"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "5d3fa036182b7e8ad4589aa9bd58e3c88fc7b7fe30f2f3530b62e03590efefda"
+      "sha256": "ce9dced7a8fb093900218ba4273e200cb2f1b6b581c79e85303eee1df0f9f395"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "37851956f59cda9b94b3e62c84ed13e8d954d4f9abf466b25f645e6c307a70ea"
+      "sha256": "1ca5e7e70616a671a6045e8f6d215b9318bc6b7c056ef01f87d5a92d85fcb79b"
     },
     {
       "路径": "说明/待补能力清单.md",
@@ -107,5 +107,5 @@
     "开工编排.收工释放",
     "开工编排.取任务类型规范"
   ],
-  "能力定义摘要": "4d9ddc23e28e8e03"
+  "能力定义摘要": "35d7d824b9f724f6"
 }
