@@ -214,6 +214,50 @@ def 标准化条目(条目: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def 包声明显式零能力(包目录: Path | None) -> bool:
+    """同包 `包声明.json` 是否**显式声明**零能力（`能力` 键存在且为空数组）。
+
+    「有实现、无能力面」形态的**唯一判据节点**（2026-09-24 批R 收尾）。
+
+    为什么住本模块（而不是 `能力定义编译器`）：本模块是编译器的**下层** ——
+    `能力定义编译器.py` 反向 import 本模块，判据若住上层、本模块再 import 它即**成环**。
+    故判据下沉到本模块，两侧都转调它：
+      · 定义侧 = `能力定义编译器.校验能力定义`（`能力列表` 为空时）；
+      · 契约侧 = 本模块 `解析聚合契约`（`严格` 且 `能力契约` 为空时），
+        服务 `开发工具.发布门禁.运行发布门禁_制品验证.校验制品来源绑定`。
+
+    批R·R-28 裁决①（华哥 2026-09-24「删适配层孪生能力面、保留后端腿 id」）：
+    5 个适配层提供者包删掉孪生能力面后成为「有实现、无能力面」形态 —— 该形态
+    必须**两侧同时**声明（`能力定义.json` 能力列表 空 ＋ `包声明.json` 能力 空），
+    单侧清空一律照旧判红（防静默丢能力）。
+    fail-closed：包目录为空 / 读不成 / 不是对象 / 无 `能力` 键 / `能力` 非空 ⇒ 假。
+    """
+    if 包目录 is None:
+        return False
+    声明路径 = Path(包目录) / "包声明.json"
+    if not 声明路径.is_file():
+        return False
+    try:
+        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(声明, dict) and 声明.get("能力") == []
+
+
+def _契约文件所在包目录(来源: Any) -> Path | None:
+    """契约文件路径 → 所在包目录（`…/包名/能力契约/参数契约.json` ⇒ `…/包名`）。
+
+    定位不到包（不是 `Path`、或不在 `能力契约` 目录下）就回 `None`
+    ⇒ `解析聚合契约` 退回旧口径（空列表照旧判红），**不静默放宽**。
+    """
+    if not isinstance(来源, Path):
+        return None
+    目录 = 来源.parent
+    if 目录.name != "能力契约":
+        return None
+    return 目录.parent
+
+
 def 解析聚合契约(来源: Any, *, 严格: bool = False) -> tuple[dict, list[str]]:
     """解析并归一化聚合契约；返回 (标准数据, 问题列表)。"""
     原始 = 读取原始(来源)
@@ -227,7 +271,9 @@ def 解析聚合契约(来源: Any, *, 严格: bool = False) -> tuple[dict, list
     if not isinstance(能力契约, list):
         问题列表.append("能力契约 必须是列表")
         return {"契约版本": 契约版本 or "", "能力契约": []}, 问题列表
-    if 严格 and not 能力契约:
+    # 「有实现、无能力面」包的空契约合法（判据唯一节点，两侧同源）——
+    # 见 `包声明显式零能力` 上方那段：单侧清空仍照旧判红。
+    if 严格 and not 能力契约 and not 包声明显式零能力(_契约文件所在包目录(来源)):
         问题列表.append("能力契约 不能为空列表")
     条目表 = []
     for 条目 in 能力契约:

@@ -49,7 +49,7 @@ for _祖先 in _系统根.parents:
 if str(_系统根) not in _sys.path:
     _sys.path.insert(0, str(_系统根))
 
-from 开发工具.契约编译.聚合契约解析 import 解析聚合契约
+from 开发工具.契约编译.聚合契约解析 import 包声明显式零能力, 解析聚合契约
 from 公共契约.版本规则.契约版本 import 契约版本
 from 公共契约.基础类型.历史短名 import 历史短名到正式名
 # 生成器落盘的**唯一腿**（2026-09-23「生成器开窗」）：原子写 + 留写入凭据。
@@ -243,23 +243,11 @@ def 从现有包生成能力定义(包目录: Path, *, 覆盖: bool = False) -> 
     return None, ["迁移结果未通过能力定义结构校验"]
 
 
-def _包声明显式零能力(包目录: Path) -> bool:
-    """同包 `包声明.json` 是否**显式声明**零能力（`能力` 键存在且为空数组）。
-
-    批R·R-28 新增（2026-09-24 华哥裁决①「删适配层孪生能力面、保留后端腿 id」）：
-    5 个适配层提供者包删掉孪生能力面后成为「有实现、无能力面」形态 —— 该形态
-    必须**两侧同时**声明（`能力定义.json` 能力列表 空 ＋ `包声明.json` 能力 空），
-    单侧清空一律照旧判红（防静默丢能力）。
-    fail-closed：读不成 / 不是对象 / 无 `能力` 键 / `能力` 非空 ⇒ 假。
-    """
-    声明路径 = 包目录 / "包声明.json"
-    if not 声明路径.is_file():
-        return False
-    try:
-        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return False
-    return isinstance(声明, dict) and 声明.get("能力") == []
+# `_包声明显式零能力` 已**下沉**为 `聚合契约解析.包声明显式零能力`（2026-09-24 批R 收尾）：
+# 同一判据要同时服务「能力定义侧」（本模块 `校验能力定义`）与「聚合契约侧」
+# （`解析聚合契约` 的 `严格` 分支，被 `运行发布门禁_制品验证.校验制品来源绑定` 使用）。
+# 本模块是 `聚合契约解析` 的**上层**且反向 import 它 ⇒ 判据住本模块会让下层 import 上层成环。
+# 故唯一节点住下层，本模块只转调（原私有名删除，不留兼容壳）。
 
 
 def 校验能力定义(定义: dict[str, Any], 包目录: Path | None = None) -> list[str]:
@@ -277,7 +265,7 @@ def 校验能力定义(定义: dict[str, Any], 包目录: Path | None = None) ->
         问题列表.append("缺少 包id")
     能力列表 = 提取能力列表(定义)
     if not 能力列表:
-        if 包目录 is not None and _包声明显式零能力(包目录):
+        if 包声明显式零能力(包目录):
             return 问题列表
         问题列表.append("缺少 能力列表（须含至少一个能力）")
         return 问题列表
