@@ -243,13 +243,42 @@ def 从现有包生成能力定义(包目录: Path, *, 覆盖: bool = False) -> 
     return None, ["迁移结果未通过能力定义结构校验"]
 
 
-def 校验能力定义(定义: dict[str, Any]) -> list[str]:
-    """校验能力定义结构完整（含行为与提供者字段）。"""
+def _包声明显式零能力(包目录: Path) -> bool:
+    """同包 `包声明.json` 是否**显式声明**零能力（`能力` 键存在且为空数组）。
+
+    批R·R-28 新增（2026-09-24 华哥裁决①「删适配层孪生能力面、保留后端腿 id」）：
+    5 个适配层提供者包删掉孪生能力面后成为「有实现、无能力面」形态 —— 该形态
+    必须**两侧同时**声明（`能力定义.json` 能力列表 空 ＋ `包声明.json` 能力 空），
+    单侧清空一律照旧判红（防静默丢能力）。
+    fail-closed：读不成 / 不是对象 / 无 `能力` 键 / `能力` 非空 ⇒ 假。
+    """
+    声明路径 = 包目录 / "包声明.json"
+    if not 声明路径.is_file():
+        return False
+    try:
+        声明 = json.loads(声明路径.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(声明, dict) and 声明.get("能力") == []
+
+
+def 校验能力定义(定义: dict[str, Any], 包目录: Path | None = None) -> list[str]:
+    """校验能力定义结构完整（含行为与提供者字段）。
+
+    **批R·R-28（2026-09-24 华哥裁决①）新增「有实现、无能力面」合法形态**：
+    `能力列表` 为空**不再无条件判红** —— 当且仅当**同包 `包声明.json` 的 `能力`
+    清单也为空**（两侧一致 ⇒ 显式声明的零能力面提供者包）时放行。
+    单侧清空（定义空、包声明仍声明能力）**照旧判红**；全仓能力 id 的「只增不改」
+    由 `开发工具.能力id冻结基线门禁` 独立兜底（id 消失即判红，合法下线须显式
+    `--冻结` 重建基线），本处不承担该职责。
+    """
     问题列表 = []
     if not 定义.get("包id"):
         问题列表.append("缺少 包id")
     能力列表 = 提取能力列表(定义)
     if not 能力列表:
+        if 包目录 is not None and _包声明显式零能力(包目录):
+            return 问题列表
         问题列表.append("缺少 能力列表（须含至少一个能力）")
         return 问题列表
     # 能力id 唯一性：同一份 能力定义.json 内重复 id 会让装配直接红（「能力 id 重复」），
@@ -320,13 +349,19 @@ def 生成能力契约(定义: dict[str, Any], 既有契约: dict[str, Any] | No
     for 能力 in 能力列表:
         参数表 = []
         for 参数 in 能力.get("参数", []):
-            参数表.append({
+            参数条目 = {
                 "名称": 参数["名称"],
                 "类型": 参数.get("类型", ""),
                 "必填": 参数.get("必填", True),
                 "默认值": 参数.get("默认值"),
                 "说明": 参数.get("说明", ""),
-            })
+            }
+            # 列表型参数的 项结构 透传（2026-09-24 批R R-32）：契约声明了才带进
+            # `参数契约.json`（能力详情/契约面据此一次看全列表项）；没声明**不加键**
+            # —— 不写 `null`，否则全仓每个参数都多一个恒空字段（纯噪声）。
+            if isinstance(参数.get("项结构"), list) and 参数["项结构"]:
+                参数条目["项结构"] = 参数["项结构"]
+            参数表.append(参数条目)
         默认示例 = {
             "能力id": 能力["能力id"],
             "参数": {参数["名称"]: 参数["默认值"]
@@ -416,6 +451,43 @@ def _默认值文本(值: Any) -> str:
     return repr(值)
 
 
+def _结构字面量文本(值: Any) -> str:
+    """把任意深度的结构写成**可被 AST 静态求值的 Python 字面量**文本。
+
+    与 `_默认值文本` 的分工（两者都不改变事实，只换写法）：那个服务标量默认值
+    （`None` → `None`、逻辑 → `真`/`假`），本函数服务嵌套结构（`项结构` 是
+    「列表里装字典」）。**不能直接用 `json.dumps`**：JSON 的 `true`/`false` 不是
+    Python 字面量，写进注册入口会让 `注册口径` 的 AST 静态解析落空（变「未解析」）。
+    """
+    if 值 is None:
+        return "None"
+    if 值 is True:
+        return "真"
+    if 值 is False:
+        return "假"
+    if isinstance(值, str):
+        return json.dumps(值, ensure_ascii=False)
+    if isinstance(值, list):
+        return "[%s]" % ", ".join(_结构字面量文本(项) for 项 in 值)
+    if isinstance(值, dict):
+        return "{%s}" % ", ".join(
+            "%s: %s" % (json.dumps(str(键), ensure_ascii=False), _结构字面量文本(子值))
+            for 键, 子值 in 值.items())
+    return repr(值)
+
+
+def _项结构文本(参数: dict[str, Any]) -> str:
+    """列表型参数的 `项结构` 写进注册入口的文本片段；**没声明时一个字符都不加**。
+
+    只在契约声明了 `项结构` 时产出 `, "项结构": [...]`：既有能力的注册行因此
+    **逐字节不变**（哲学第 5 条 2 项：只增字段，不动既有输出）。
+    """
+    结构 = 参数.get("项结构")
+    if not isinstance(结构, list) or not 结构:
+        return ""
+    return ', "项结构": %s' % _结构字面量文本(结构)
+
+
 def 生成注册入口(定义: dict[str, Any], 包id: str, 实现模块: str) -> str:
     """生成 __init__.py 注册入口（含 注册能力 函数）。"""
     能力列表 = 提取能力列表(定义)
@@ -431,11 +503,12 @@ def 生成注册入口(定义: dict[str, Any], 包id: str, 实现模块: str) ->
         #   全仓 42 条不一致，其中 23 条是新建模块因本行只发名字而漏声明）。
         #   类型/必填/默认值在 `能力定义.json` 里是**权威且齐全**的，生成器没有理由不产出它们。
         参数行 = ",\n".join(
-            '            {"名称": %s, "类型": %s, "必填": %s, "默认值": %s}'
+            '            {"名称": %s, "类型": %s, "必填": %s, "默认值": %s%s}'
             % (json.dumps(str(参数.get("名称", "")), ensure_ascii=False),
                json.dumps(str(参数.get("类型", "")), ensure_ascii=False),
                "真" if 参数.get("必填") else "假",
-               _默认值文本(参数.get("默认值")))
+               _默认值文本(参数.get("默认值")),
+               _项结构文本(参数))
             for 参数 in 能力.get("参数", []))
         说明 = 能力.get("说明", "")
         返回 = 能力.get("返回", "结果")
@@ -555,7 +628,7 @@ def 编译能力定义(定义文件: Path, 包目录: Path, 包id: str, 包名�
     except json.JSONDecodeError as 错误:
         结果.问题列表.append(f"能力定义 JSON 解析失败: {错误}")
         return 结果
-    问题列表 = 校验能力定义(定义)
+    问题列表 = 校验能力定义(定义, 包目录)
     if 问题列表:
         结果.问题列表.extend(问题列表)
         return 结果

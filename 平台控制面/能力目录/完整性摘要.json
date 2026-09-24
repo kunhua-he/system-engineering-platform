@@ -29,7 +29,7 @@
     },
     {
       "路径": "实现/文件租约维护.py",
-      "sha256": "9d1ea00344b5c7334176d7a833c2e91aefa616ace524a58f7c5cdbe967705ac2"
+      "sha256": "ccd375567253ea9adc71169cfea0283a6740bdb1ae116d61937b2538469c1277"
     },
     {
       "路径": "实现/注册文件租约.py",
@@ -49,7 +49,7 @@
     },
     {
       "路径": "文件租约存储.py",
-      "sha256": "b6f0065af70f4fe5cc74c3eace75bac091c8a60857958add0f2b33058fc93b50"
+      "sha256": "c5f8412fdfdc157902dbe4ffefda72a1d3bff70692d39deffabed5d648c55637"
     },
     {
       "路径": "服务.py",
