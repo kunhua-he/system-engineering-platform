@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import json
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -39,14 +40,20 @@ if str(系统根) not in sys.path:
 # 同一个权威函数（E-f）。各自实现就是「同一行代码两个结论」的根因。
 # 依赖方向核对：允许依赖表["开发工具"] 含 "运行核心"，反向无引用。
 from 运行核心.依赖防火墙 import 同包实现导入  # noqa: E402 —— 须在 系统根 入 sys.path 之后
-
-第三方根模块 = {
-    "docx", "fitz", "openpyxl", "pdfplumber", "pptx", "reportlab",
-    "cryptography", "PIL", "ffmpeg", "密码操作", "numpy", "pandas",
-    "requests", "bs4", "lxml", "yaml", "sqlalchemy", "psycopg2",
-    "psycopg", "pg8000", "torch", "whisper", "cv2", "matplotlib",
-    "pydub", "moviepy", "selenium", "playwright", "chardet",
-}
+#: 第三方根模块表**不在本文件维护**（2026-09-24 批O·O-10 收口）：唯一真源 =
+#: `开发文档/项目证据/第三方导入分布基线.json` 的 `分布` 键集，经其属主
+#: `开发工具/第三方导入分布基线门禁.py` 读出（见 `第三方根模块集`）。
+#:
+#: 【为什么要收这一口（原实现的两个实测缺陷）】原表是一张 29 名的硬编码清单，
+#: 与本仓**实测分布双向脱节**：
+#:   · 表里 18 名与实测分布无关，其中 `sqlalchemy`/`cv2`/`matplotlib`/`pydub`/
+#:     `moviepy`/`selenium`/`chardet` 在全仓 `.py` 里**零 import**（死条目）；
+#:   · 分布里 11 名**真被 import**（`fastapi`/`mcp`/`uvicorn`/`psutil`/`networkx`/
+#:     `transformers`/`tree_sitter` 等）却不在表里 ⇒ 真第三方 import 被归到
+#:     「白名单外导入」而非「第三方导入」**错标**（两类别同在 `导入违规类别`，
+#:     故判定同为违规，错的是类别名与可读性）。
+#: 同一件事两份清单正是哲学 1.3 要收的口子 ⇒ 一律转调单一真源。
+#: 标准库/仓内顶层目录/仓内模块名三条排除口径**照样由该门禁承担**，本文件不复刻。
 数据库客户端根 = {"sqlite3", "pymongo", "mysql", "redis"}
 核心根目录名 = {"运行核心", "前端核心", "后端核心"}
 支持库内部目录段 = {"实现", "能力契约", "说明", "完整性摘要", "验证场景引用",
@@ -83,6 +90,32 @@ from 运行核心.依赖防火墙 import 同包实现导入  # noqa: E402 ——
 动态导入调用 = {"import_module", "__import__", "exec", "eval"}
 导入违规类别 = {"支持库导入", "实现目录导入", "第三方导入", "运行核心导入",
               "数据库客户端", "相对导入", "白名单外导入"}
+
+
+@lru_cache(maxsize=1)
+def 第三方根模块集() -> frozenset[str]:
+    """第三方根模块集合：**单腿供数**，真源 = `第三方导入分布基线.json`。
+
+    为什么这么取（而不是在本文件维护一份清单）：同一件事两份清单必然脱节——
+    实测原 29 名清单与本仓真被 import 的 22 名分布之间 18/11 互不在对方表里，
+    于是「真第三方」被错标成「白名单外导入」。本函数一律转调该基线的**属主**
+    （`开发工具/第三方导入分布基线门禁.py::读取基线`），形状校验与 fail-closed
+    口径都由属主承担，本文件不另写第二套解析。
+
+    **取不到即返回空集**（不抛）：本函数只决定「这条 import 该叫什么类别」，
+    不承担门禁职责；拿不到真源时退回旧行为（第三方落「白名单外导入」）——
+    两类别同在 `导入违规类别` ⇒ **违规判定不变**，只是类别名不够精确。
+    真源缺失这件事本身由 `第三方导入分布基线门禁` 判红，不在这里重复报。
+
+    性能：命中一次即缓存（`lru_cache`）。基线是**构建期常量**（其变更走 `--冻结`
+    重建并进提交），单次进程内读完即定，不引入跨进程缓存失效问题。
+    """
+    from 开发工具.第三方导入分布基线门禁 import 默认基线路径, 读取基线
+
+    分布, 问题 = 读取基线(默认基线路径())
+    if 问题 or not 分布:
+        return frozenset()
+    return frozenset(分布)
 
 
 def _结果(违规列表: list[dict[str, Any]], 错误码: str = "") -> dict[str, Any]:
@@ -164,7 +197,7 @@ def _分类导入(导入模块: str, 文件相对: str | Path | None = None) -> 
         return {"类别": "实现目录导入"}
     if 根 in 核心根目录名:
         return {"类别": "运行核心导入"}
-    if 根 in 第三方根模块:
+    if 根 in 第三方根模块集():
         return {"类别": "第三方导入"}
     if 模块.startswith("."):
         return {"类别": "相对导入"}
