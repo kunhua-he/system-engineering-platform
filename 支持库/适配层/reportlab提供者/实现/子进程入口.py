@@ -80,37 +80,31 @@ if str(导入根) not in sys.path:
 from 支持库.适配层.reportlab提供者.实现.生成PDF import 生成PDF as _唯一实现生成PDF  # noqa: E402
 
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明},
-                      ensure_ascii=False)
+from 公共契约.运行时 import 子进程协议  # noqa: E402 - 单发协议唯一实现（平台根已在上方自举入 sys.path）
+
+
+def _前置() -> str | None:
+    """把平台客户端环境目录注入 sys.path（部署态导入前缀重写用）；本腿恒不失败。"""
+    注入平台客户端路径()
+    return None
+
+
+def _生成(请求: dict) -> dict:
+    """本腿唯一实现返回 ``结果`` 对象；转成协议信封（失败码兜底「生成失败」，与旧行为同口径）。"""
+    结果值 = _唯一实现生成PDF(请求.get("内容参数"))
+    if 结果值.成功:
+        return {"成功": True, "值": 结果值.值}
+    return {"成功": False, "错误码": str(结果值.错误码 or "生成失败"),
+            "错误说明": str(结果值.错误说明 or "PDF 生成失败")}
 
 
 def 主循环() -> int:
-    """读一行请求，执行，写一行响应。"""
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
-    操作 = str(请求.get("操作") or "")
-    if 操作 != "生成":
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{操作}'"))
-        return 0
-    try:
-        结果 = _唯一实现生成PDF(请求.get("内容参数"))
-    except Exception as 错误:  # 任何未预期异常都转稳定响应，不拖垮主进程
-        print(_响应(False, 错误码="提供者崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
-    if 结果.成功:
-        print(_响应(True, 值=结果.值))
-        return 0
-    print(_响应(False, 错误码=str(结果.错误码 or "生成失败"),
-                错误说明=str(结果.错误说明 or "PDF 生成失败")))
-    return 0
+    """单发协议主循环；四类收口与信封组装唯一实现在 公共契约/运行时/子进程协议。"""
+    return 子进程协议.单发主循环(
+        {"生成": _生成},
+        入口名="reportlab提供者",
+        前置=_前置,
+    )
 
 
 if __name__ == "__main__":

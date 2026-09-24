@@ -209,7 +209,7 @@
     },
     {
       "路径": "资源硬限制.py",
-      "sha256": "29411fafc8b67c3a24d141bbc0f0e369ec2f00c84428e2c9a8c469fea7f56953"
+      "sha256": "ec208fe31cba8c971bc15a128091b31ac90180ec12a03869eb44dad33c717325"
     },
     {
       "路径": "资源预算.json",
@@ -221,11 +221,11 @@
     },
     {
       "路径": "进程提供者.py",
-      "sha256": "8fdc82dfebb73d712f828012c4dbaab58f3ebfbea6fe579a5bdc19de4917888a"
+      "sha256": "162a37aef01bf08797131d246a346dc7ca4bba992751d8abb2619ce4c320c7b7"
     },
     {
       "路径": "进程组管理.py",
-      "sha256": "4eefa5ebcc9f153459e752f86c959740cf21ca38675626735ea6ec86ad974e26"
+      "sha256": "266bc96a06e4b95b49226ebd4eb4e4de3bfcb2a4222de885cc1b62f05068786e"
     },
     {
       "路径": "配置契约/配置契约.json",

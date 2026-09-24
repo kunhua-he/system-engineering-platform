@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -29,35 +28,21 @@ from 支持库.适配层.MLXWhisper提供者.实现.子进程解析 import (  # 
 from 支持库.适配层.MLXWhisper提供者.实现.子进程解析 import 禁用库环境变量名  # noqa: E402
 
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+from 公共契约.运行时 import 子进程协议  # noqa: E402 - 单发协议唯一实现（平台根已在上方自举入 sys.path）
 
 
 def _禁用库表() -> set[str]:
     return {名.strip() for 名 in os.environ.get(禁用库环境变量名, "").split(",") if 名.strip()}
 
 
-def _输出(结果: dict) -> int:
-    """输出结果；错误字典（含 错误码）转失败响应并保留 值。"""
-    if 结果.get("错误码"):
-        print(_响应(False, 值=结果.get("值"), 错误码=str(结果["错误码"]),
-                     错误说明=str(结果.get("错误说明") or "子进程执行失败")))
-        return 0
-    print(_响应(True, 值=结果.get("值")))
-    return 0
+def _前置() -> str | None:
+    """初始化转写后端（按平台选 mlx_whisper / faster_whisper）；本腿恒不失败。"""
+    初始化(_禁用库表())
+    return None
 
 
 def 主循环() -> int:
-    初始化(_禁用库表())
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
+    """单发协议主循环；四类收口与信封组装唯一实现在 公共契约/运行时/子进程协议。"""
     操作表 = {
         "检查可用性": lambda 请求: 检查可用性(str(请求.get("模型路径") or ""), str(请求.get("模型名") or "")),
         "获取模型版本": lambda 请求: 获取模型版本(str(请求.get("模型路径") or ""), str(请求.get("模型名") or "")),
@@ -66,15 +51,9 @@ def 主循环() -> int:
                                          str(请求.get("附加术语") or ""),
                                          bool(请求.get("返回分段"))),
     }
-    处理函数 = 操作表.get(str(请求.get("操作") or ""))
-    if 处理函数 is None:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{请求.get('操作')}'"))
-        return 0
-    try:
-        return _输出(处理函数(请求))
-    except Exception as 错误:
-        print(_响应(False, 错误码="进程崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
+    # 崩溃码沿用本腿既有「进程崩溃」（提供者.py 把它计入可重试错误码，改它会改调用方重试判据）
+    return 子进程协议.单发主循环(
+        操作表, 入口名="MLXWhisper提供者", 前置=_前置, 崩溃错误码="进程崩溃")
 
 
 if __name__ == "__main__":

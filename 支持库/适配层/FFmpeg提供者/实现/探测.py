@@ -50,22 +50,27 @@ def 校验基本参数(文件路径: Any, 超时秒: Any, 输出路径: Any = No
 
 
 def 检查提供者(超时秒: float = 30.0) -> 结果:
-    """检查 ffmpeg/ffprobe 可用性（真实独立进程版本探针），缺失 → 提供者不可用。"""
+    """检查 ffmpeg/ffprobe 可用性（真实独立进程版本探针），缺失 → 提供者不可用。
+
+    探针腿唯一（2026-09-24 批R·R-3 合并）：外部命令版本探针一律经
+    `系统探针.检查系统工具`（独立进程组 / 超时强杀 / 退出码分类 / 版本提取），
+    本件不再自持受管探针；两个工具各探一次，版本取该节点提取出的版本号。
+    """
     if not isinstance(超时秒, (int, float)) or isinstance(超时秒, bool) or 超时秒 <= 0:
         return _失败("参数不合法", "超时秒必须是正数")
-    ffmpeg路径 = 查找命令("ffmpeg")
-    ffprobe路径 = 查找命令("ffprobe")
-    if not ffmpeg路径 or not ffprobe路径:
-        return _失败("提供者不可用", "ffmpeg/ffprobe 未找到（未配置提供者）")
+    路径表 = {名称: 查找命令(名称) for 名称 in ("ffmpeg", "ffprobe")}
+    缺失 = [名称 for 名称, 路径 in 路径表.items() if not 路径]
+    if 缺失:
+        return _失败("提供者不可用", f"{'/'.join(缺失)} 未找到（未配置提供者）")
+    from 支持库.适配层.系统探针 import 检查系统工具
+    探针超时 = min(float(超时秒), 5.0)
     版本信息 = {}
     不可用 = []
-    for 名称, 路径 in (("ffmpeg", ffmpeg路径), ("ffprobe", ffprobe路径)):
-        探针 = 执行受管命令([路径, "-version"], 超时秒=min(float(超时秒), 5.0), 最大输出字节=8192)
+    for 名称, 路径 in 路径表.items():
+        探针 = 检查系统工具(名称, [路径], 超时秒=探针超时, 版本参数="-version")
         if 探针.成功:
-            首行 = (探针.标准输出.decode("utf-8", errors="replace").strip().splitlines() or [""])[0]
-            版本信息[名称] = 首行[:120]
+            版本信息[名称] = 探针.版本
         else:
-            版本信息[名称] = 探针.错误摘要[:120]
             不可用.append(f"{名称}: {探针.错误摘要[:80]}")
     if 不可用:
         # 探针失败必须报不可用：二进制在 PATH 里但跑不起来（缺动态库/被拦截/

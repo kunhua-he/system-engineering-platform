@@ -18,6 +18,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时 import 进程终止
 from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.PyMuPDF提供者 import 检测加密页数, 渲染整页, 提取图像, 校验PDF
 from 支持库.适配层.PyMuPDF提供者.实现 import 提供者 as 提供者模块
@@ -50,7 +51,7 @@ def _退出子进程(码: int) -> subprocess.Popen:
         [sys.executable, "-c", f"import os; os._exit({码})"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **子进程组启动标志(),
     )
-def _关闭进程(进程: subprocess.Popen) -> None:
+def _关闭进程(进程: subprocess.Popen, **_忽略) -> None:
     try:
         进程.communicate(timeout=5)
     except subprocess.TimeoutExpired:
@@ -169,7 +170,8 @@ class TestPyMuPDF提供者(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 return 提供者模块._失败("超时", "模拟超时", 可重试=真)
             finally:
-                提供者模块._终止进程组(进程)
+                进程终止.结束并留痕(进程, 位置="测试_PyMuPDF提供者.超时收尾",
+                                    宽限秒=1.0, 等待秒=1.0)
                 for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
                     if 流:
                         流.close()
@@ -180,7 +182,7 @@ class TestPyMuPDF提供者(unittest.TestCase):
         self.assertTrue(结果.可重试)
     def test_子进程崩溃返回提供者崩溃(self):
         with mock.patch.object(提供者模块, "_启动子进程", side_effect=lambda: _退出子进程(7)), \
-                mock.patch.object(提供者模块, "_终止进程组", side_effect=_关闭进程):
+                mock.patch.object(进程终止, "结束并留痕", side_effect=_关闭进程):
             结果 = 校验PDF(self.文本PDF.read_bytes())
         self.assertEqual(结果.错误码, "提供者崩溃")
         self.assertTrue(结果.可重试)
@@ -192,7 +194,7 @@ class TestPyMuPDF提供者(unittest.TestCase):
             计数["n"] += 1
             return _退出子进程(9) if 计数["n"] == 1 else 原始启动()
         with mock.patch.object(提供者模块, "_启动子进程", side_effect=先崩后正常), \
-                mock.patch.object(提供者模块, "_终止进程组", side_effect=_关闭进程):
+                mock.patch.object(进程终止, "结束并留痕", side_effect=_关闭进程):
             第一次 = 渲染整页(str(self.文本PDF), 1)
             第二次 = 渲染整页(str(self.文本PDF), 1)
         self.assertEqual(第一次.错误码, "提供者崩溃")

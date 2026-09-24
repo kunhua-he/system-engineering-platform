@@ -110,8 +110,10 @@ class 新机器恢复编排器:
         脚本 = 恢复目录 / 最小能力样板文件名
         if not 脚本.is_file():
             raise FileNotFoundError(f"恢复目录缺少最小能力样板: {脚本}")
-        解释器 = "python3.14" if shutil.which("python3.14") else sys.executable
-        执行 = subprocess.run([解释器, str(脚本)], cwd=str(恢复目录),
+        # U-5 解释器口径收口（2026-09-24 华哥裁决「不强制 3.14」）：此前是
+        # `"python3.14" if shutil.which(...) else sys.executable` —— 属第二套解释器选择逻辑；
+        # 归一到唯一节点 `sys.executable`（本进程解释器天然可回落，3.14 只是优先项）。
+        执行 = subprocess.run([sys.executable, str(脚本)], cwd=str(恢复目录),
                              capture_output=True, text=True, timeout=30)
         if 执行.returncode != 0:
             raise RuntimeError(f"最小能力执行失败: {执行.stderr.strip() or 执行.stdout.strip()}")

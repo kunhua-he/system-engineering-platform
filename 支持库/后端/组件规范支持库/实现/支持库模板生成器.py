@@ -309,28 +309,32 @@ def _调用文本(能力: dict, *, 空调用: bool = False, 带超时: bool = Fa
 
 子进程入口模板 = '''"""@@名称@@ 骨架子进程入口：stdin 一行 JSON 请求，stdout 一行 JSON 响应。"""
 from __future__ import annotations
-import json, os, sys, time
+import os, sys
+
+from 公共契约.运行时 import 子进程协议
 
 能力操作表 = @@操作表@@
 
 
-def _响应(成功, 值=None, 错误码="", 错误说明="") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+def _前置() -> str | None:
+    if os.environ.get("@@名称@@_禁用库") == "1":
+        return "@@名称@@ 被禁用"
+    return None
+
+
+def _执行(请求: dict) -> dict:
+    """骨架占位实现：原样回带操作名与参数（真实现替换这里）。"""
+    return {"占位": 请求.get("操作"), "参数": 请求.get("参数", {})}
 
 
 def 主循环() -> int:
-    if os.environ.get("@@名称@@_禁用库") == "1":
-        print(_响应(False, 错误码="提供者不可用", 错误说明="@@名称@@ 被禁用")); return 0
-    try:
-        请求 = json.loads(sys.stdin.readline() or "")
-    except json.JSONDecodeError:
-        print(_响应(False, 错误码="参数不合法", 错误说明="请求不是 JSON")); return 0
-    操作 = str(请求.get("操作") or "")
-    if 操作 not in 能力操作表:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 {操作}")); return 0
-    if os.environ.get("@@名称@@_测试超时") == "1":
-        time.sleep(5)
-    print(_响应(True, 值={"占位": 操作, "参数": 请求.get("参数", {})})); return 0
+    """单发协议主循环；四类收口与信封组装唯一实现在 公共契约/运行时/子进程协议。"""
+    return 子进程协议.单发主循环(
+        {操作: _执行 for 操作 in 能力操作表},
+        入口名="@@名称@@",
+        前置=_前置,
+        测试超时环境变量="@@名称@@_测试超时",
+    )
 
 
 if __name__ == "__main__":
@@ -373,15 +377,6 @@ def _失败(错误码: str, 消息: str) -> 结果:
     return 结果.失败(错误码, 消息, 来源="@@名称@@", 可重试=错误码 in 可重试错误码)
 
 
-def _终止进程组(进程, 宽限秒: float = 1.0) -> None:
-    """超时/异常时回收整个进程组（终止 → 宽限 → 强杀 → 复查）。
-
-    唯一实现是 公共契约.运行时.进程终止.强制结束子进程；本模板不生成任何
-    平台判断，进程组启动标志与整组回收都由 公共契约.运行时 收口。
-    """
-    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
-
-
 def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
     """启动一次性骨架子进程执行任务；超时/崩溃/不可用逐类映射稳定错误码。"""
     try:
@@ -395,7 +390,8 @@ def 执行任务(操作: str, 参数: dict, 超时秒: float = 60.0) -> 结果:
             进程,
             输入=(json.dumps({"操作": 操作, "参数": 参数}, ensure_ascii=False) + "\\n").encode(),
             超时秒=超时秒,
-            终止回调=lambda: _终止进程组(进程),
+            终止回调=lambda: 进程终止.结束并留痕(
+                进程, 位置="@@名称@@.执行任务", 宽限秒=1.0, 等待秒=1.0),
         )
         if 已超时:
             return _失败("超时", f"执行超过 {超时秒} 秒")

@@ -1,26 +1,26 @@
-"""python-pptx 提供者包级中文入口（目录名含连字符，实现按文件路径加载）。
+"""python-pptx 提供者包级中文入口（同包入口导自身实现，走平台标准导入腿）。
 
 调用者只从此入口导入 解析演示文稿 / 生成演示文稿；禁止深入 实现/ 目录。
 公开能力（分组 演示文稿）：
 - 解析演示文稿 → pptx → 结果[通用文档]（幻灯片块/备注/图像资源）
 - 生成演示文稿 → 幻灯片列表 → 结果[生成产物字典]（字节b64/媒体类型/摘要）
 python-pptx 纯 Python，主进程 import；OOXML 按不可信 ZIP 处理。
+
+**为什么不按文件路径载入实现**（原 `importlib` 直载块已删，2026-09-24 批R R-5 收口）：
+原写法的理由写的是「目录名含连字符」，而本包目录名 `python_pptx提供者` 是**合法标识符**
+（实测 `isidentifier()` 为真），理由本身不成立；同目录 `openpyxl提供者` / `python_docx提供者`
+同形且都走普通导入。平台既有合法模式即「同包 `__init__` 导自身 `实现/`」
+（判据 `运行核心/依赖防火墙.py::同包实现导入`，明文放行）。手写直载还多出一个模块身份
+—— 把同一份实现登记成合成名 `python_pptx提供者_实现`（与 #216②「同一份实现被加载成
+第二个模块对象」同型）；普通导入下制品重写器会把本行一并改写成 `平台客户端.…`，身份唯一。
 """
 
 from __future__ import annotations
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
-import importlib.util
-from pathlib import Path
-
-_实现路径 = Path(__file__).resolve().parent / "实现" / "演示文稿.py"
-_规格 = importlib.util.spec_from_file_location("python_pptx提供者_实现", _实现路径)
-_实现 = importlib.util.module_from_spec(_规格)
-_规格.loader.exec_module(_实现)
-
-解析演示文稿 = _实现.解析演示文稿
-生成演示文稿 = _实现.生成演示文稿
+from 支持库.后端.文档转换支持库.python_pptx提供者.实现.演示文稿 import 解析演示文稿
+from 支持库.后端.文档转换支持库.python_pptx提供者.实现.演示文稿 import 生成演示文稿
 
 __all__ = ["解析演示文稿", "生成演示文稿", "注册能力"]
 

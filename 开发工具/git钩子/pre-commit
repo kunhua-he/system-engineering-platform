@@ -111,7 +111,7 @@ for CAND in /opt/homebrew/bin/python3.14 python3.14 python3; do
     if command -v "$CAND" >/dev/null 2>&1; then PY="$CAND"; break; fi
 done
 if [ -z "$PY" ]; then
-    warn "⚠ 落盘强制点：找不到 python3.14（本钩子放行；请检查开发环境）。"
+    warn "⚠ 落盘强制点：找不到可用的 python 解释器（本钩子放行；请检查开发环境）。"
     exit 0
 fi
 

@@ -18,7 +18,7 @@
 
 ```bash
 # 只报现场事实（不写盘）—— 走公开能力，不直连实现
-cd /Users/hekunhua/Documents/Agent/PHP/系统工程平台 && unset PYTHONPATH
+cd <项目根> && unset PYTHONPATH
 python3.14 -c "
 import sys; sys.path.insert(0,'.')
 from pathlib import Path

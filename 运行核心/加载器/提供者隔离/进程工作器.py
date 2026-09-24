@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from pathlib import Path
@@ -87,21 +86,15 @@ def 处理请求(请求: dict) -> dict:
         }
 
 
-def 主循环() -> None:
-    """工作器主循环：READY → 逐行处理请求。"""
+def 主循环() -> int:
+    """工作器主循环：READY → 逐行处理请求。
+
+    协议唯一实现在 公共契约/运行时/子进程协议（空行/非法 JSON 跳过、停止类型也写响应）。
+    """
+    from 公共契约.运行时 import 子进程协议
+
     注册标准能力()
-    print("READY", flush=True)
-    for 行 in sys.stdin:
-        if not 行.strip():
-            continue
-        try:
-            请求 = json.loads(行)
-        except json.JSONDecodeError:
-            continue
-        响应 = 处理请求(请求)
-        print(json.dumps(响应, ensure_ascii=False), flush=True)
-        if 请求.get("类型") == "停止":
-            break
+    return 子进程协议.多请求主循环(处理请求)
 
 
 if __name__ == "__main__":

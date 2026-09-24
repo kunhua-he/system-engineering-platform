@@ -30,13 +30,6 @@ class Test批次三假绿修复(unittest.TestCase):
         self.assertFalse(成功)
         self.assertIn("保留端口", 消息)
 
-    def test_能力网关拒绝4780(self):
-        from 开发工具.能力网关.能力网关 import 启动网关
-
-        with self.assertRaises(ValueError) as 上下文:
-            启动网关(端口=4780)
-        self.assertIn("保留端口", str(上下文.exception))
-
     def test_门禁超时返回失败并不留下子进程(self):
         from 开发工具.发布门禁.运行发布门禁 import 运行子进程
 

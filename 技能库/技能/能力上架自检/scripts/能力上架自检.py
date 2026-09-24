@@ -139,7 +139,7 @@ def 主流程(参数: dict) -> dict:
     if not isinstance(文件名映射, dict):
         raise 值错误("参数不合法", "文件名映射 必须是对象：{处名: 相对路径}")
     if not isinstance(包目录, str) or not 包目录.strip():
-        raise 值错误("参数不合法", "包目录 必填：目标包根目录（绝对路径优先）")
+        raise 值错误("参数不合法", "包目录 必填：目标包根目录（规范写法＝项目根相对路径（posix、不带 ..）；绝对路径兼容。技能脚本当前按进程 cwd 解析相对写法 ⇒ 传绝对路径最稳）")
     if not isinstance(能力id列表, list) or not 能力id列表:
         raise 值错误("参数不合法", "能力id列表 必填：本次上架/改动的公开能力id清单")
     for 条目 in 能力id列表:

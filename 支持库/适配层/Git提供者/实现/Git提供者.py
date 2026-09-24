@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
@@ -29,21 +28,22 @@ def _顺序执行(仓库路径: str, 命令列表: list[list[str]], 超时秒: f
 
 
 def 检查提供者(超时秒: float = 15) -> 结果:
-    """git --version 真实探针：{git, 版本} 或 提供者不可用。"""
+    """git --version 真实探针：{git, 版本} 或 提供者不可用。
+
+    探针腿唯一（2026-09-24 批R·R-3 合并）：外部命令版本探针一律经
+    `系统探针.检查系统工具`（独立进程组 / 超时强杀 / 退出码分类 / 版本提取），
+    本件不再自持 `subprocess.run` 探针；版本取该节点提取出的版本号，
+    与 环境指纹 / 健康监督 的版本口径一致。
+    """
     校验 = 校验超时(超时秒)
     if 校验:
         return 校验
-    try:
-        版本 = subprocess.run(["git", "--version"], capture_output=True, timeout=超时秒)
-    except (OSError, subprocess.TimeoutExpired):
-        return 失败结果("提供者不可用", "无法运行 git --version", 可重试=True)
-    if 版本.returncode != 0:
+    from 支持库.适配层.系统探针 import 检查系统工具
+    探针 = 检查系统工具("git", ["git"], 超时秒=float(超时秒))
+    if not 探针.成功:
         return 失败结果("提供者不可用",
-                        f"git 探针失败（退出码 {版本.returncode}）", 可重试=True)
-    return 结果.成功结果({
-        "git": "可用",
-        "版本": 版本.stdout.decode("utf-8", errors="replace").strip(),
-    })
+                        f"git 探针失败（{探针.错误码}）: {探针.诊断}", 可重试=True)
+    return 结果.成功结果({"git": "可用", "版本": 探针.版本})
 
 
 def 创建工作区(仓库路径: str, 新路径: str, 分支名: str | None = None,

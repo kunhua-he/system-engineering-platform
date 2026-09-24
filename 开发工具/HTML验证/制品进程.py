@@ -58,6 +58,10 @@ def _进程组活跃(进程组id: int) -> bool:
     ``ps`` 不可用（如 Windows 无此工具）时退回收口层 ``按组号探活``：**按能力探测，
     不按平台名硬判**（``shutil.which("ps")`` 判的是「这台机器有没有这个进程状态工具」），
     平台差异全在收口层承担。
+
+    **为什么本函数留在本域**（2026-09-24 批R·R-6）：收口层 ``进程组存活`` 是「僵尸计为
+    存活」的**回收口径**，本函数判的是「组是否还占着资源」的**验收口径** —— 两者刻意不同，
+    故它不是第二份组回收实现，而是本域判据。
     """
     if _进程状态工具:
         try:
@@ -74,46 +78,21 @@ def _进程组活跃(进程组id: int) -> bool:
     return 进程终止.按组号探活(进程组id)
 
 
-def _终止制品进程(进程: subprocess.Popen[Any], 进程组id: int | None, *, 信号: str) -> None:
-    """终止制品进程/整组，平台差异全部由收口层承担。
-
-    **自保护**：只有「组号 == 进程号」（即 ``子进程组启动标志`` 建立的独立会话组长）
-    才按组号整组终止；非组长退回 ``终止进程组``（其 POSIX 分支对非组长只终止单进程），
-    避免误伤同组进程——这一保护与收口层内部策略一致。
-
-    Windows 无进程组号（``进程组号`` 如实返回 ``None``）→ 走 ``终止进程组``，
-    即 ``taskkill /T`` 整棵进程树。
-    """
-    if 进程组id is not None and 进程组id == 进程.pid:
-        进程终止.按组号终止(进程组id, 信号=信号)
-    else:
-        进程终止.终止进程组(进程.pid, 信号=信号)
-
-
 def _回收进程组(进程: subprocess.Popen[Any] | None) -> dict[str, Any]:
+    """回收制品进程整组，返回回收读数；**整组收敛唯一实现在 公共契约/运行时/进程终止**。
+
+    「终止 → 宽限 → 强杀 → 等整组收敛」全在收口层 `结束并留痕` 内完成（收口层自己按
+    POSIX 进程组 / Windows 进程树判定，且以**整组**收敛为准：组长已退出、同组子孙仍在
+    判未收敛并升级强杀；回收失败即登记回收失败留痕，不静默）。本函数只做两件本域的事：
+
+    ① 记录**模式**（有组号 = 独立进程组，否则单进程）与退出码；
+    ② 用本域 `_进程组活跃` 判**残留** —— 它判的是「组是否还占着资源」（僵尸不算），
+       与收口层「僵尸计为存活」刻意不同（判据见该函数）。
+    """
     if 进程 is None:
         return {"已回收": True, "模式": "直连", "进程组残留": False}
     进程组id: int | None = 进程终止.进程组号(进程)
-    if 进程.poll() is None or (进程组id is not None and _进程组活跃(进程组id)):
-        _终止制品进程(进程, 进程组id, 信号="终止")
-        截止 = time.monotonic() + 2
-        while time.monotonic() < 截止:
-            if 进程.poll() is not None and (进程组id is None or not _进程组活跃(进程组id)):
-                break
-            time.sleep(0.03)
-        if 进程.poll() is None or (进程组id is not None and _进程组活跃(进程组id)):
-            _终止制品进程(进程, 进程组id, 信号="强杀")
-    try:
-        进程.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        try:
-            进程.kill()
-        except ProcessLookupError:
-            pass
-        try:
-            进程.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass
+    收敛 = 进程终止.结束并留痕(进程, 位置="制品进程._回收进程组", 宽限秒=2.0, 等待秒=2.0)
     残留 = bool(进程组id is not None and _进程组活跃(进程组id))
     for 管道 in (进程.stdin, 进程.stdout, 进程.stderr):
         if 管道 is not None and not 管道.closed:
@@ -122,7 +101,7 @@ def _回收进程组(进程: subprocess.Popen[Any] | None) -> dict[str, Any]:
             except (OSError, ValueError):
                 pass
     return {
-        "已回收": 进程.poll() is not None and not 残留,
+        "已回收": 收敛 and not 残留,
         "模式": "独立进程组" if 进程组id is not None else "单进程",
         "pid": 进程.pid,
         "进程组id": 进程组id,

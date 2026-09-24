@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/文档转换.py",
-      "sha256": "382eed4542216df12a7b51aacb3b66ee7dcf001dbe08e858e01ed87aa1704ad7"
+      "sha256": "fd460fcb630fa315e72c0219c05e2eb9303e3bf4faa1c32b1dc065708dff132d"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -29,7 +29,7 @@
     },
     {
       "路径": "生命周期契约.json",
-      "sha256": "5b46ae47eb0c105dfbab24d35a62964ad0c2b45274cf7df81af169b6d3b5c3f9"
+      "sha256": "72b95dbaa5281de4ce477195e3602292d3b439bc69085ed66d3c7846ab02bb79"
     },
     {
       "路径": "能力契约/参数契约.json",

@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sqlite3
@@ -177,34 +176,35 @@ _操作实现表 = {
 }
 
 
-def _响应(成功, 值=None, 错误码="", 错误说明="") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明},
-                      ensure_ascii=False)
+from 公共契约.运行时 import 子进程协议  # noqa: E402 - 单发协议唯一实现（平台根已在上方自举入 sys.path）
+
+
+def _收参数(函数):
+    """本腿实现函数收「参数」子字典；协议处理函数收整条请求，故逐条包一层。"""
+
+    def 处理(请求: dict):
+        return 函数(请求.get("参数") or {})
+
+    return 处理
+
+
+def _前置() -> str | None:
+    """禁用库开关：置 1 即整条腿不可用（回 提供者不可用）。"""
+    if os.environ.get("代码地图提供者_禁用库") == "1":
+        return "代码地图提供者 被禁用"
+    return None
 
 
 def 主循环() -> int:
-    if os.environ.get("代码地图提供者_禁用库") == "1":
-        print(_响应(False, 错误码="提供者不可用", 错误说明="代码地图提供者 被禁用"))
-        return 0
-    try:
-        请求 = json.loads(sys.stdin.readline() or "")
-    except json.JSONDecodeError:
-        print(_响应(False, 错误码="参数不合法", 错误说明="请求不是 JSON"))
-        return 0
-    操作 = str(请求.get("操作") or "")
-    if 操作 not in 能力操作表:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 {操作}"))
-        return 0
-    if os.environ.get("代码地图提供者_测试超时") == "1":
-        time.sleep(5)
-    函数 = _操作实现表[操作]
-    try:
-        应答 = 函数(请求.get("参数") or {})
-    except Exception as 错误:  # 统一结果铁律：实现不外抛，真实原因原样回带
-        应答 = {"成功": 假, "错误码": "执行失败",
-                "错误说明": f"{type(错误).__name__}: {错误}"}
-    print(json.dumps(应答, ensure_ascii=False))
-    return 0
+    """单发协议主循环；四类收口与信封组装唯一实现在 公共契约/运行时/子进程协议。"""
+    return 子进程协议.单发主循环(
+        {名: _收参数(函数) for 名, 函数 in _操作实现表.items()},
+        入口名="代码地图提供者",
+        前置=_前置,
+        崩溃错误码="执行失败",
+        崩溃说明前缀="",
+        测试超时环境变量="代码地图提供者_测试超时",
+    )
 
 
 if __name__ == "__main__":

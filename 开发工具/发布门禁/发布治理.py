@@ -15,6 +15,7 @@ import hashlib
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +46,9 @@ _指纹模式 = re.compile(r"^[0-9a-f]{64}$")
 # 唯一发布命令：收敛后不再依赖 MCP 工具箱的 验证门禁（已随整目录删除）。
 # 口径与当时一致：唯一发布入口就是发布门禁脚本本身；命令白名单校验改由
 # `支持库.后端.测试支持库.验证命令白名单`（唯一原子能力）承担。
+# 解释器位（U-5，2026-09-24 华哥裁决「不强制 3.14」）：`python3.14` 是**优先项**的规范
+# 写法，识别**不按解释器判** —— 见 `_正式证据问题` 按入口比对，回落成 `python3` 跑同一
+# 入口仍是正式发布证据。
 唯一发布入口 = "开发工具/发布门禁/运行发布门禁.py"
 唯一发布命令 = ("python3.14", 唯一发布入口)
 
@@ -172,7 +176,9 @@ def 运行发布门禁(包目录: str | Path | None = None, *, 超时秒: float 
     完整门禁执行由主协调阶段收口负责。
     """
     if 命令列表 is None:
-        命令列表 = ["python3.14", str(发布门禁脚本)]
+        # U-5 解释器口径收口（2026-09-24 华哥裁决「不强制 3.14」）：唯一节点是
+        # `sys.executable` —— 此前写死 `"python3.14"` 作 argv[0]、无回落，换机即断。
+        命令列表 = [sys.executable, str(发布门禁脚本)]
         if 包目录:
             命令列表 += ["--包目录", str(包目录)]
     try:
@@ -240,7 +246,11 @@ def 检查发布证据(提交: str, *, 证据路径: str | Path | None = None) -
 # ---- 3. 发布记录与专用正式发布证据 ----
 
 def _正式证据问题(条目: dict[str, Any], 实际工作区指纹: str) -> str:
-    if 条目.get("命令") != list(唯一发布命令):
+    # U-5（2026-09-24 华哥裁决「不强制 3.14」）：按**入口**比对，不按解释器比对 ——
+    # 与 `测试支持库.验证命令白名单`、`验证编排` 同一口径；没装 3.14 的机器用回落解释器
+    # 跑同一发布入口，仍是有效正式发布证据（改前按整条比对会把它判成「未绑定」）。
+    条目命令 = 条目.get("命令")
+    if not isinstance(条目命令, list) or 条目命令[1:] != list(唯一发布命令)[1:]:
         return "正式发布证据必须绑定唯一发布命令"
     if not _制品摘要模式.fullmatch(str(条目.get("制品摘要", ""))):
         return "正式发布证据缺少合法制品摘要"

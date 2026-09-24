@@ -87,54 +87,31 @@ from 支持库.适配层.PyMuPDF提供者.实现.子进程解析 import (  # noq
 from 支持库.适配层.PyMuPDF提供者.实现.子进程解析 import 禁用库环境变量名
 
 
-def _响应(成功: bool, 值=None, 错误码: str = "", 错误说明: str = "") -> str:
-    return json.dumps({"成功": 成功, "值": 值, "错误码": 错误码, "错误说明": 错误说明}, ensure_ascii=False)
+from 公共契约.运行时 import 子进程协议  # noqa: E402 - 单发协议唯一实现（平台根已在上方自举入 sys.path）
 
 
 def _禁用库表() -> set[str]:
     return {名.strip() for 名 in os.environ.get(禁用库环境变量名, "").split(",") if 名.strip()}
 
 
-def _输出(结果: dict) -> int:
-    """输出结果；错误字典（含 错误码）转失败响应并保留 值。"""
-    if 结果.get("错误码"):
-        print(_响应(False, 值=结果.get("值"), 错误码=str(结果["错误码"]),
-                     错误说明=str(结果.get("错误说明") or "子进程执行失败")))
-        return 0
-    print(_响应(True, 值=结果.get("值")))
-    return 0
+def _前置() -> str | None:
+    """注入平台客户端路径并初始化禁用库表；注入失败即「提供者不可用」。"""
+    注入错误 = 注入平台客户端路径()
+    if 注入错误:
+        return 注入错误
+    初始化(_禁用库表())
+    return None
 
 
 def 主循环() -> int:
-    注入错误 = 注入平台客户端路径()
-    if 注入错误:
-        print(_响应(False, 错误码="提供者不可用", 错误说明=注入错误))
-        return 0
-    初始化(_禁用库表())
-    请求行 = sys.stdin.readline()
-    if not 请求行.strip():
-        print(_响应(False, 错误码="参数不合法", 错误说明="空请求"))
-        return 0
-    try:
-        请求 = json.loads(请求行)
-    except json.JSONDecodeError as 错误:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"请求不是合法 JSON: {错误}"))
-        return 0
+    """单发协议主循环；四类收口与信封组装唯一实现在 公共契约/运行时/子进程协议。"""
     操作表 = {
         "检测加密页数": lambda 请求: 检测加密页数(str(请求.get("文件路径") or "")),
         "渲染整页": lambda 请求: 渲染整页(str(请求.get("文件路径") or ""), 请求.get("页序号")),
         "提取图像": lambda 请求: 提取图像(str(请求.get("文件路径") or ""), 请求.get("页序号")),
         "校验PDF": lambda 请求: 校验PDF(str(请求.get("字节b64") or "")),
     }
-    处理函数 = 操作表.get(str(请求.get("操作") or ""))
-    if 处理函数 is None:
-        print(_响应(False, 错误码="参数不合法", 错误说明=f"未知操作 '{请求.get('操作')}'"))
-        return 0
-    try:
-        return _输出(处理函数(请求))
-    except Exception as 错误:
-        print(_响应(False, 错误码="提供者崩溃", 错误说明=f"子进程执行异常: {错误}"))
-        return 0
+    return 子进程协议.单发主循环(操作表, 入口名="PyMuPDF提供者", 前置=_前置)
 
 
 if __name__ == "__main__":

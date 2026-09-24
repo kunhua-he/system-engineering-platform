@@ -23,6 +23,7 @@ if str(Path(__file__).resolve().parents[2]) not in sys.path:
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.版本规则.契约版本 import 契约版本
+from 公共契约.运行时 import 进程终止
 from 公共契约.运行时.平台适配 import 子进程组启动标志
 from 支持库.适配层.PDF隔离提供者 import 检查提供者版本, 解析PDF隔离, 校验PDF隔离
 from 支持库.适配层.PDF隔离提供者.实现 import 隔离提供者 as 提供者模块
@@ -87,7 +88,8 @@ class TestPDF隔离提供者(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 return 提供者模块._失败("超时", "模拟超时", 可重试=真)
             finally:
-                提供者模块._终止进程组(进程)
+                进程终止.结束并留痕(进程, 位置="测试_PDF隔离提供者.超时收尾",
+                                    宽限秒=1.0, 等待秒=1.0)
                 for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
                     if 流 is not None:
                         try:
@@ -114,7 +116,7 @@ class TestPDF隔离提供者(unittest.TestCase):
             )
             return 进程
 
-        def 关闭崩溃进程(进程):
+        def 关闭崩溃进程(进程, **_忽略):
             try:
                 进程.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -128,7 +130,7 @@ class TestPDF隔离提供者(unittest.TestCase):
                             pass
 
         with mock.patch.object(提供者模块, "_启动子进程", side_effect=崩溃启动), \
-                mock.patch.object(提供者模块, "_终止进程组", side_effect=关闭崩溃进程):
+                mock.patch.object(进程终止, "结束并留痕", side_effect=关闭崩溃进程):
             结果 = 检查提供者版本()
         self.assertFalse(结果.成功)
         self.assertEqual(结果.错误码, "提供者崩溃")
@@ -137,7 +139,6 @@ class TestPDF隔离提供者(unittest.TestCase):
     def test_重启恢复(self):
         """崩溃后下一次调用重新启动子进程，正常返回（重启覆盖）。"""
         原始启动 = 提供者模块._启动子进程
-        原始终止 = 提供者模块._终止进程组
         调用计数 = {"n": 0}
 
         def 先崩后正常():
@@ -151,7 +152,7 @@ class TestPDF隔离提供者(unittest.TestCase):
                 return 进程
             return 原始启动()
 
-        def 关闭进程(进程):
+        def 关闭进程(进程, **_忽略):
             try:
                 进程.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -165,7 +166,7 @@ class TestPDF隔离提供者(unittest.TestCase):
                             pass
 
         with mock.patch.object(提供者模块, "_启动子进程", side_effect=先崩后正常), \
-                mock.patch.object(提供者模块, "_终止进程组", side_effect=关闭进程):
+                mock.patch.object(进程终止, "结束并留痕", side_effect=关闭进程):
             第一次 = 检查提供者版本()
             第二次 = 检查提供者版本()
         self.assertFalse(第一次.成功)

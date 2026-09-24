@@ -85,7 +85,10 @@ class TestGit提供者(unittest.TestCase):
         结果 = 检查提供者()
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["git"], "可用")
-        self.assertIn("git version", 结果.值["版本"])
+        # 2026-09-24 批R·R-3：探针腿统一到 系统探针.检查系统工具，版本口径随之
+        # 与 环境指纹/健康监督 一致 —— 取提取出的版本号（如 2.54.0），
+        # 不再是 `git --version` 的整行 banner。
+        self.assertRegex(结果.值["版本"], r"^\d+\.\d+")
 
     def test_参数注入拒绝(self):
         for 分支名 in ["正常;ls", "正常|ls", "正常&ls", "a\nb", "a`b", "a$b", "-开头"]:

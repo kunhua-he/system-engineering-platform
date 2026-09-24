@@ -262,17 +262,16 @@ class 浏览器自动化提供者:
                 return {"成功": True, "值": {"状态": "守护进程已不存在且状态已清理", "PID": pid}}
             if "browser_harness.daemon" not in 命令:
                 return {"成功": False, "错误码": "资源未收敛", "错误说明": "PID文件指向的进程不是Browser Harness守护进程"}
-            进程终止.终止进程组(pid, 信号="终止")
-            截止 = time.monotonic() + max(1, min(int(超时秒), 15))
-            while time.monotonic() < 截止:
-                if not 进程终止.进程存活(pid):
-                    break
-                time.sleep(0.1)
-            if 进程终止.进程存活(pid):
-                进程终止.终止进程组(pid, 信号="强杀")
-                time.sleep(0.2)
-            if 进程终止.进程存活(pid):
-                return {"成功": False, "错误码": "资源未收敛", "错误说明": f"守护进程 {pid} 仍存活"}
+            预算秒 = float(max(1, min(int(超时秒), 15)))
+            # 终止→宽限→强杀→复查的升级顺序由 公共契约.运行时.进程终止 一处持有；
+            # 复查口径是**整组**（组长已回收但同组子孙仍在 ⇒ 未收敛），比改前的
+            # 「单进程 进程存活」更严：守护进程若自建独立进程组，其同组子孙一并覆盖。
+            已收敛 = 进程终止.结束并留痕(
+                pid, 位置="浏览器自动化提供者.关闭命名守护进程",
+                宽限秒=预算秒, 等待秒=预算秒)
+            if not 已收敛:
+                return {"成功": False, "错误码": "资源未收敛",
+                        "错误说明": f"守护进程 {pid} 仍未收敛（含同组子孙）"}
             for 后缀 in (".pid", ".sock", ".spawnlock"):
                 with contextlib.suppress(OSError):
                     (运行根 / f"bu-{会话名}{后缀}").unlink()

@@ -41,15 +41,6 @@ def _启动子进程() -> subprocess.Popen:
     )
 
 
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    """终止进程组（终止→宽限→强杀→复查）：唯一实现在 公共契约.运行时.进程终止。
-
-    本处不再持有任何平台判断或信号实现；保留同签名同名的薄委托，是因为
-    既有测试（测试中心/支持库/测试_*.py）直接调用本名并以 patch.object 打桩。
-    """
-    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
-
-
 def _关闭流(进程: subprocess.Popen) -> None:
     for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
         try:
@@ -70,7 +61,8 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
             进程,
             输入=(json.dumps(请求, ensure_ascii=False) + "\n").encode("utf-8"),
             超时秒=超时秒, 输出上限字节=默认最大输出字节,
-            终止回调=lambda: _终止进程组(进程),
+            终止回调=lambda: 进程终止.结束并留痕(
+                进程, 位置="Pillow提供者.执行任务", 宽限秒=1.0, 等待秒=1.0),
         )
         if 已超时:
             return _失败("超时", f"Pillow 隔离子进程执行超过 {超时秒} 秒", 可重试=True)
@@ -78,7 +70,7 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒) -> 
             return _失败("超大", f"Pillow 隔离子进程输出超过上限 {默认最大输出字节} 字节")
     finally:
         if 进程.poll() is None:
-            _终止进程组(进程)
+            进程终止.结束并留痕(进程, 位置="Pillow提供者.执行任务", 宽限秒=1.0, 等待秒=1.0)
         _关闭流(进程)
     退出码 = 进程.returncode or 0
     if len(标准输出) > 默认最大输出字节:
@@ -264,6 +256,7 @@ def 等待并收集(进程列表: list[subprocess.Popen], 超时秒: float = 10.
     for 进程 in 进程列表:
         try:
             if 进程.poll() is None:
-                _终止进程组(进程, 宽限秒=超时秒)
+                进程终止.结束并留痕(进程, 位置="Pillow提供者.等待并收集",
+                                    宽限秒=超时秒, 等待秒=超时秒)
         except (OSError, ValueError):
             pass

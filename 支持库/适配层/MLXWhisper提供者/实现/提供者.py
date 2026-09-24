@@ -91,15 +91,6 @@ def _启动子进程() -> subprocess.Popen:
                             cwd=str(包目录.parents[2]), **平台适配.子进程组启动标志(), env=dict(os.environ))
 
 
-def _终止进程组(进程: subprocess.Popen, 宽限秒: float = 1.0) -> None:
-    """终止进程组（终止→宽限→强杀→复查）：唯一实现在 公共契约.运行时.进程终止。
-
-    本处不再持有任何平台判断或信号实现；保留同签名同名的薄委托，是因为
-    既有测试（测试中心/支持库/测试_*.py）直接调用本名并以 patch.object 打桩。
-    """
-    进程终止.强制结束子进程(进程, 宽限秒=宽限秒, 等待秒=宽限秒)
-
-
 def _关闭流(进程: subprocess.Popen) -> None:
     for 流 in (进程.stdin, 进程.stdout, 进程.stderr):
         try:
@@ -214,17 +205,20 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
         开始 = time.monotonic()
         while True:
             if 取消判断 is not None and 取消判断():
-                _终止进程组(进程)
+                进程终止.结束并留痕(进程, 位置="MLXWhisper提供者.执行任务",
+                                    宽限秒=1.0, 等待秒=1.0)
                 return _失败("取消", "转写已被调用方取消")
             if time.monotonic() - 开始 >= 超时秒:
-                _终止进程组(进程)
+                进程终止.结束并留痕(进程, 位置="MLXWhisper提供者.执行任务",
+                                    宽限秒=1.0, 等待秒=1.0)
                 return _失败("超时", f"MLX Whisper 隔离子进程执行超过 {超时秒} 秒", 可重试=真)
             全部结束 = True
             for 收集, 容器 in 收集器:
                 片段, _超限, 结束 = 收集.取()
                 容器.extend(片段)
                 if len(容器) > 最大输出字节:
-                    _终止进程组(进程)
+                    进程终止.结束并留痕(进程, 位置="MLXWhisper提供者.执行任务",
+                                        宽限秒=1.0, 等待秒=1.0)
                     return _失败("超出限制", f"MLX Whisper 隔离子进程输出超过上限 {最大输出字节} 字节")
                 全部结束 = 全部结束 and 结束
             if 进程.poll() is not None and 全部结束:
@@ -233,7 +227,8 @@ def 执行任务(请求: dict[str, Any], 超时秒: float = 默认超时秒,
                 收集.等(0.2)
     finally:
         if 进程.poll() is None:
-            _终止进程组(进程)
+            进程终止.结束并留痕(进程, 位置="MLXWhisper提供者.执行任务",
+                                宽限秒=1.0, 等待秒=1.0)
         _关闭流(进程)
     if 进程.returncode:
         return _失败("进程崩溃", f"MLX Whisper 隔离子进程异常退出（退出码 {进程.returncode}）", 可重试=真)
@@ -299,4 +294,5 @@ def 转写音频文件(文件路径: str, 超时秒: float = 默认超时秒,
 def 等待并收集(进程列表: list[subprocess.Popen], 超时秒: float = 10.0) -> None:
     for 进程 in 进程列表:
         if 进程.poll() is None:
-            _终止进程组(进程, 宽限秒=超时秒)
+            进程终止.结束并留痕(进程, 位置="MLXWhisper提供者.等待并收集",
+                                宽限秒=超时秒, 等待秒=超时秒)
