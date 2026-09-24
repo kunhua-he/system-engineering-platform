@@ -44,6 +44,35 @@ def _取工具(协议名: str):
     raise AssertionError(f"工具清单缺少 {协议名}")
 
 
+def _判据(正文: str) -> bool:
+    """薄壳**文本口径**回包的成败判据：首行 `-1` 即失败，`1`／正文都是成功。
+
+    2026-09-24 华哥裁决「成功返回 1（无返回值的情况下），有返回的直接返回成功的内容，
+    失败返回 -1」；改前这里读的是 `json.loads(结果.content[0].text)` —— 回包已不是 JSON。
+    """
+    return bool(正文) and 正文.split("\n")[0] != "-1"
+
+
+def _顶层值(正文: str, 键: str) -> str:
+    """取文本口径回包里**顶层**键的值（`键：值` 那一行的右半；无该键回空串）。
+
+    只认**无缩进**的行：嵌套块里的同名键前面有空格，不算顶层（`进程内指纹` 就是那种）。
+    """
+    前缀 = 键 + "："
+    for 行 in 正文.split("\n")[1:]:
+        if 行.startswith(前缀):
+            return 行[len(前缀):]
+    return ""
+
+
+def _指纹(正文: str) -> str:
+    """取 `进程内指纹.薄壳服务.py` 的 sha256（文本口径里是缩进 2 空格的 `薄壳服务.py：<sha>`）。"""
+    for 行 in 正文.split("\n"):
+        if 行.startswith("  薄壳服务.py："):
+            return 行[len("  薄壳服务.py："):].strip()
+    return ""
+
+
 class 工具形状测试(unittest.TestCase):
     def test_腿1只暴露两个入参(self):
         """腿 1（2026-09-24 设计稿 §四）：只 `关键词` ＋ `限制`。
@@ -114,8 +143,15 @@ class 工具面全静态测试(unittest.TestCase):
         self.assertEqual(["开工", "收口"], list(清单.提示模板))
         self.assertEqual(list(清单.提示模板), list(壳.提示模板),
                          "薄壳引用的模板表必须与唯一源同一份")
-        self.assertIn(清单.协议提示词, 壳.服务.instructions or "",
-                      "instructions 没交给服务对象（那一段等于没写）")
+        # 判据必须钉在**真上线的那个对象**上：`壳.初始化选项().instructions` 就是
+        # `initialize` 回包里的 `instructions`。此前断言的是 `壳.服务.instructions`
+        # （服务对象属性）—— SDK 只在 `create_initialization_options()` 里取它，而薄壳
+        # 走自建 `InitializationOptions` ⇒ 属性非空、回包为空，实测就这么绿着漏了 551 字符。
+        选项 = 壳.初始化选项()
+        self.assertIn(清单.协议提示词, 选项.instructions or "",
+                      "instructions 没进 initialize 回包（那一段等于没写）")
+        self.assertIsNotNone(选项.capabilities.prompts,
+                             "prompts 能力面未申报：instructions 里那句 prompts/get 就是死指针")
 
     def test_回执带常用传参且失败不反噬(self):
         """华哥：「调用的时候，默认给他返回调用的传参」。
@@ -745,9 +781,9 @@ class isError语义测试(unittest.TestCase):
             "操作": 99,  # 表外操作，白名单 fail-closed 必拒
             "能力id": "某能力", "参数": {}, "项目根": str(系统根)}))
         self.assertTrue(getattr(结果, "isError", False), "业务失败必须置 isError=True")
-        正文 = json.loads(结果.content[0].text)
-        self.assertFalse(正文["成功"])
-        self.assertEqual("参数不合法", 正文["错误码"])
+        正文 = 结果.content[0].text
+        self.assertFalse(_判据(正文), "文本口径的失败回包首行必须是 -1")
+        self.assertIn("错误码：参数不合法", 正文)
 
     def test_业务成功置isError假(self):
         # 成功路径不得误报失败（否则客户端会把正常返回当错误处理）
@@ -984,8 +1020,11 @@ class 全量回执库测试(unittest.TestCase):
         self.assertEqual(1, 裁剪后.get("已清理过期回执"), "清理个数应如实回带")
 
 
-async def _跑多次工具目录(次数: int, 环境追加: dict) -> list[dict]:
-    """把薄壳当真 stdio 子进程拉起，连调 N 次 tool_catalog（不转发网关，故不需要 40007）。"""
+async def _跑多次工具目录(次数: int, 环境追加: dict) -> list[str]:
+    """把薄壳当真 stdio 子进程拉起，连调 N 次 tool_catalog（不转发网关，故不需要 40007）。
+
+    回的是**文本口径回包原文**（逐条）；判据由调用方经 `_判据`／`_顶层值`／`_指纹` 读。
+    """
     from 支持库.适配层.MCP协议提供者 import (
         构造客户端会话, 构造标准输入输出参数, 标准输入输出客户端,
     )
@@ -1003,7 +1042,7 @@ async def _跑多次工具目录(次数: int, 环境追加: dict) -> list[dict]:
             for _ in range(次数):
                 结果 = await 会话.call_tool("tool_catalog", {})
                 正文 = 结果.content[0].text if 结果.content else ""
-                出.append(json.loads(正文))
+                出.append(正文)
                 # 换壳自 2026-09-23 起是**异步**的（周期巡检，且要等「无在途请求」）⇒ 两次
                 # 调用之间留一个空闲窗口，让巡检有机会在**没有在飞回包**时把壳换掉。
                 # 不留窗口也不是缺陷（换壳只是被推迟到下一次真空闲），但这条判据要验「换过」。
@@ -1034,10 +1073,11 @@ async def _不握手调工具目录(脚本: Path, 环境追加: dict | None = No
             except Exception as 错误:  # noqa: BLE001 —— 缺陷态就是这个异常，要如实带回
                 return False, f"{type(错误).__name__}: {错误}"
             正文 = 结果.content[0].text if 结果.content else ""
-            return (True, 正文) if 正文.strip().startswith("{") else (False, 正文[:200])
+            # 文本口径（2026-09-24）：回包不再以 `{` 开头，判据改用工具目录正文里的固定键。
+            return (True, 正文) if "薄壳工具数" in 正文 else (False, 正文[:200])
 
 
-async def _连改两次源码(目录: Path) -> list[dict]:
+async def _连改两次源码(目录: Path) -> list[str]:
     """真 stdio：在**同一个子进程**上连改两次源码，每次改完再调一次 `tool_catalog`。
 
     判据用 `进程启动时刻` —— 它是新进程 import 时取的，换一次壳就更新一次。
@@ -1066,7 +1106,7 @@ async def _连改两次源码(目录: Path) -> list[dict]:
             for _ in range(3):
                 # 不重试：换壳若吞了回包，这里就是超时红（真判据，不再掩盖竞态）。
                 结果 = await asyncio.wait_for(会话.call_tool("tool_catalog", {}), 8)
-                出.append(json.loads(结果.content[0].text))
+                出.append(结果.content[0].text)
                 # 改一次源码：追加注释 ⇒ 指纹变、仍可编译 ⇒ 下一次调用前就该换壳
                 脚本.write_text(脚本.read_text(encoding="utf-8") + f"\n# 第 {len(出)} 次改动\n",
                                encoding="utf-8")
@@ -1190,11 +1230,11 @@ class 自换新壳测试(unittest.TestCase):
           ③ **不套娃**：换壳后的 `进程号` 稳定（守卫挡住重复换壳）。
         """
         三条 = asyncio.run(_跑多次工具目录(3, 环境追加={清单.换壳强制环境变量: "1"}))
-        self.assertTrue(all(条.get("成功") for 条 in 三条),
+        self.assertTrue(all(_判据(条) for 条 in 三条),
                         f"换壳不得丢消息（三条调用都要被服务）：{三条}")
-        已换 = [条 for 条 in 三条 if 条.get("本进程已换壳") is True]
+        已换 = [条 for 条 in 三条 if _顶层值(条, "本进程已换壳") == "真"]
         self.assertTrue(已换, f"强制换壳下必须真的换过（否则判据全绿也没意义）：{三条}")
-        self.assertEqual(1, len({条["进程号"] for 条 in 已换}),
+        self.assertEqual(1, len({_顶层值(条, "进程号") for 条 in 已换}),
                          "换壳后进程号必须稳定（重复换壳=每次调用换一个进程）")
 
     def test_端到端_连改两次源码要换两次壳(self):
@@ -1215,10 +1255,11 @@ class 自换新壳测试(unittest.TestCase):
             对齐目标锁态(目录)   # ★ copytree 会把源的 uchg 带过来 ⇒ 副本不可写（见头部注）
             三条 = asyncio.run(_连改两次源码(目录))
         self.assertEqual(3, len(三条))
-        指纹表 = [条["进程内指纹"]["薄壳服务.py"] for 条 in 三条]
+        指纹表 = [_指纹(条) for 条 in 三条]
         self.assertEqual(3, len(set(指纹表)),
                          f"连改两次源码必须换两次壳（每次换壳都要加载改后那一版）：{指纹表}")
-        self.assertEqual(1, len({条["进程号"] for 条 in 三条}), "换壳不换进程号（execve 保留 PID）")
+        self.assertEqual(1, len({_顶层值(条, "进程号") for 条 in 三条}),
+                         "换壳不换进程号（execve 保留 PID）")
 
     def test_换壳后不重新握手也能服务(self):
         """换壳把 SDK 的握手状态一起换掉了，而握手只能由客户端发起 ⇒ 新壳必须**无握手也能服务**。
@@ -1245,12 +1286,16 @@ class 换壳后不握手反向验证(unittest.TestCase):
     且走的仍是生产那条启动路径（不是把薄壳重新实现一遍来冒充）。
     """
 
-    _开关片段 = "构造初始化选项(服务名, 服务版本, 收提示=真), stateless=True)"
+    # 片段只锚 `stateless` 那一个开关本身（`, stateless=True)` 在薄壳服务.py 里唯一）——
+    # 2026-09-24 实测踩到：原先锚的是**整行调用**（含 `构造初始化选项(…, 收提示=真)`），
+    # 该行参数一改（收成 `初始化选项()`）片段就失配、本用例 fail-closed 判红。
+    # 反向验证要锚「被判据盯住的那个开关」，不锚它的邻居。
+    _开关片段 = ", stateless=True)"
 
     def _缺陷态脚本(self, 目录: Path) -> Path:
         源 = (薄壳目录 / "薄壳服务.py").read_text(encoding="utf-8")
         坏 = 源.replace(self._开关片段,
-                        "构造初始化选项(服务名, 服务版本, 收提示=真), stateless=False)")
+                        ", stateless=False)")
         if 坏 == 源:
             raise AssertionError("stateless 开关片段未命中，反向样本失效（判据需更新）")
         副本 = 目录 / "薄壳服务.py"
@@ -1306,7 +1351,8 @@ async def _在飞时改源码(脚本: Path, 等待秒: float = 0.3) -> tuple[boo
             except Exception as 错误:  # noqa: BLE001 —— 缺陷态就是这个异常，要如实带回
                 return False, f"{type(错误).__name__}: {错误}"
             正文 = 结果.content[0].text if 结果.content else ""
-            return (True, 正文) if 正文.strip().startswith("{") else (False, 正文[:200])
+            # 文本口径（2026-09-24）：回包不再以 `{` 开头，判据改用工具目录正文里的固定键。
+            return (True, 正文) if "薄壳工具数" in 正文 else (False, 正文[:200])
 
 
 class 换壳窗口反向验证(unittest.TestCase):

@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path
@@ -27,6 +26,21 @@ _项目根 = _薄壳目录.parents[1]
 
 def _截断(文本: str, 上限: int = 300) -> str:
     return 文本 if len(文本) <= 上限 else 文本[:上限] + f"…(截断，共 {len(文本)} 字)"
+
+
+def _读判据(正文: str) -> tuple[bool, str]:
+    """从薄壳**文本口径**回包里取判据：`(成功, 错误码)`。
+
+    形状（2026-09-24 华哥裁决「成功返回 1，有返回的直接返回内容，失败返回 -1」）：
+    首行 `1`（成功无值）／`-1`（失败）／正文（成功有值）；`错误码` 是其后的一行 `键：值`。
+    本函数是自测侧**唯一读点** —— 回包不再是 JSON，`json.loads` 在此已不适用。
+    """
+    行表 = 正文.split("\n")
+    成功 = bool(行表) and 行表[0] != "-1"
+    for 行 in 行表[1:]:
+        if 行.startswith("错误码："):
+            return 成功, 行[len("错误码："):]
+    return 成功, ""
 
 
 async def 主程序() -> int:
@@ -45,7 +59,15 @@ async def 主程序() -> int:
     async with 标准输入输出客户端(参数) as (读取流, 写入流):
         async with 构造客户端会话(读取流, 写入流) as 会话:
             初始化 = await 会话.initialize()
-            print("[1] initialize 成功:", 初始化.serverInfo.name, 初始化.serverInfo.version)
+            # 2026-09-24 补判据：`instructions`（类型表 + 常用动作）**必须真进回包**。
+            # 此前它走 `构造服务(名称, 提示)`，而 SDK 只在 `create_initialization_options()`
+            # 里取服务对象的 instructions —— 薄壳走自建 `InitializationOptions` ⇒ 实测长度 0，
+            # 等于那 551 字符白写。同一件事两条注入腿必然有一条死腿，故此处钉死断言。
+            指令 = getattr(初始化, "instructions", None) or ""
+            print("[1] initialize 成功:", 初始化.serverInfo.name, 初始化.serverInfo.version,
+                  f"｜instructions = {len(指令)} 字符"
+                  f"｜capabilities = {sorted(初始化.capabilities.model_dump(exclude_none=True))}")
+            print("[1] 断言 instructions 非空 :", bool(指令.strip()))
 
             工具 = await 会话.list_tools()
             协议名表 = [工具项.name for 工具项 in 工具.tools]
@@ -78,22 +100,23 @@ async def 主程序() -> int:
                                           "项目根": str(_项目根)}),
             ]
             失败表: list[str] = []
+            if not 指令.strip():
+                失败表.append("initialize 未下发 instructions（类型表与常用动作等于没写）")
             for 序号, (中文名, 协议名, 入参) in enumerate(调用表, start=3):
                 结果 = await 会话.call_tool(协议名, dict(入参))
                 正文 = 结果.content[0].text if 结果.content else ""
-                数据 = json.loads(正文) if 正文.strip().startswith("{") else {}
-                print(f"[{序号}] {中文名}({协议名}) → 成功={数据.get('成功')} "
-                      f"错误码={数据.get('错误码')} isError={结果.isError}")
-                print(f"    正文片段: {_截断(json.dumps(数据, ensure_ascii=False))}")
+                成功, 错误码 = _读判据(正文)
+                print(f"[{序号}] {中文名}({协议名}) → 成功={成功} "
+                      f"错误码={错误码 or '无'} isError={结果.isError}")
+                print(f"    正文片段: {_截断(正文)}")
                 # 自测**必须给判据**：此前这四条只打印不断言，`项目根` 也没传，
                 # 四条能力调用实际全被 fail-closed 拒掉却仍打印「自测完成」——
                 # 门禁文档（AGENTS.md）写的「期望三条调用 成功=True」因此长期不成立。
-                if not 数据.get("成功"):
-                    失败表.append(f"{中文名}({协议名}) 成功={数据.get('成功')} "
-                               f"错误码={数据.get('错误码')}")
+                if not 成功:
+                    失败表.append(f"{中文名}({协议名}) 成功={成功} 错误码={错误码}")
                 # L10 判据（2026-09-21 批 2）：成功路径**不得**置 isError ——
                 # 否则客户端会把正常返回当错误处理。
-                if 数据.get("成功") and 结果.isError:
+                if 成功 and 结果.isError:
                     失败表.append(f"{中文名}({协议名}) 成功=True 却 isError=True（语义不符）")
             # ★ L10 反向判据（批 2 新增，治「改了没人知道」）：故意发一条**必失败**的调用，
             # 断言 `isError=True`。此前薄壳只回 list[TextContent]，SDK 对「返回 list」的正常路径
@@ -104,10 +127,10 @@ async def 主程序() -> int:
             失败调用 = await 会话.call_tool("capability_call", {
                 "能力id": "本能力不存在_反向样本", "参数": {}, "项目根": str(_项目根)})
             失败正文 = 失败调用.content[0].text if 失败调用.content else ""
-            失败数据 = json.loads(失败正文) if 失败正文.strip().startswith("{") else {}
-            print(f"[10] 故意失败调用 → 成功={失败数据.get('成功')} "
-                  f"错误码={失败数据.get('错误码')} isError={失败调用.isError}")
-            if 失败数据.get("成功") is not False:
+            失败成功, 失败错误码 = _读判据(失败正文)
+            print(f"[10] 故意失败调用 → 成功={失败成功} "
+                  f"错误码={失败错误码 or '无'} isError={失败调用.isError}")
+            if 失败成功 is not False:
                 失败表.append("反向样本未能造成业务失败（样本失效，请换一个）")
             elif not 失败调用.isError:
                 失败表.append("业务失败未置 isError=True（客户端与模型都看不见失败）")
