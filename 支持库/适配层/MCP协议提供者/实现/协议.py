@@ -61,21 +61,26 @@ def 检查可用性() -> dict[str, Any]:
     return {"可用": True, "版本": 版本, "说明": f"mcp SDK 可导入，版本 {版本 or '未知'}"}
 
 
-def 构造服务(名称: str, 提示: str = ""):
+def 构造服务(名称: str):
     """构造 mcp 服务对象（第三方对象，不契约化，故不作为能力注册）。
 
-    `提示`（2026-09-24 华哥裁决「类型表与常用动作要进上下文」）：写进 MCP 服务级
-    `instructions`，随 `initialize` 回包**一次性**下发。两条性质正是选它的理由：
-    ① 它**不占工具面预算**（2000 字符那条天花板只算工具描述与 schema）；
-    ② 逐轮固定 ⇒ 上游可命中缓存（工具描述同样全静态，见 `工具清单.三个工具定义`）。
-    空串＝不注入（不塞空串：回包里多一个无信息字段只是噪声）。
+    **本函数不收 `instructions`**（2026-09-24 实测收口）：`Server(instructions=…)` 只在
+    `Server.create_initialization_options()` 里才被取用，而薄壳走的是自建
+    `InitializationOptions`（见 `构造初始化选项`）⇒ 从服务对象注入**根本不进回包**，
+    实测 `initialize.instructions` 长度 = 0（同一现场 `prompts/get` 正常，证明不是链路问题）。
+    同一件事两条注入腿必然有一条是死腿，故只留 `构造初始化选项` 这一条。
     """
     _确保可用()
-    return _服务类(名称, instructions=提示 or None)
+    return _服务类(名称)
 
 
-def 构造初始化选项(服务名: str, 服务版本: str, 收提示: bool = False):
+def 构造初始化选项(服务名: str, 服务版本: str, 提示: str = "", 收提示: bool = False):
     """构造初始化选项；能力集固定为 tools（`收提示=真` 时另加 prompts）。
+
+    `提示`＝写进 `initialize` 回包 `instructions` 的正文（**唯一注入腿**）。选它的两条理由：
+    ① 它**不占工具面预算**（2000 字符那条天花板只算工具描述与 schema）；
+    ② 逐轮固定 ⇒ 上游可命中缓存（工具描述同样全静态，见 `工具清单.协议提示词`）。
+    空串＝不注入（不塞空串：回包里多一个无信息字段只是噪声）。
 
     为什么 `prompts` 要与 `instructions` 一起申报（2026-09-24）：`instructions` 里点名了
     「改文件前 prompts/get{name=开工}」—— 不申报 prompts 能力，客户端就看不到该能力、
@@ -86,6 +91,7 @@ def 构造初始化选项(服务名: str, 服务版本: str, 收提示: bool = F
         server_name=服务名,
         server_version=服务版本,
         capabilities=_服务能力类(tools={}, prompts={} if 收提示 else None),
+        instructions=提示 or None,
     )
 
 
