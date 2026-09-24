@@ -9,7 +9,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "48bb9339b4fc6c37737a55bf43e9c243ea38da630fb614b3a3743ff5714d7554"
+      "sha256": "f59e8ffc8e9ddfb3a9fd3813b4863df6d31611fcd0b7231f79ef8fe64fea22a0"
     },
     {
       "路径": "单文件互斥存储.py",
@@ -89,11 +89,11 @@
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "17bfa986c159f894bef9ec5d0e1ad21092d51275da4e13394cdcf743607e1ef6"
+      "sha256": "4b96198c99a8116157277a994bf9b799318608f8b6b1dce5060a4e6ad4be5b9c"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "5f79c3c3251e48311ba841edae5636d75fb54485ff390c4387a485b1bd577e91"
+      "sha256": "bad54cc060145e7366a6907acecccc8e4bfbea1255e65c2a7b6dd34f221d5d66"
     },
     {
       "路径": "说明/使用说明.md",
