@@ -5,7 +5,7 @@
   "文件清单": [
     {
       "路径": "PDF文档/__init__.py",
-      "sha256": "8a11a8d729f741137afb695534afbdddc7bf60f0a517a4ad15eedb382afb6069"
+      "sha256": "02a09d6dd4ace5d9fea2c0c211332da8340cc078363e2139240b71de6f4b814d"
     },
     {
       "路径": "PDF文档/依赖契约/依赖契约.json",
@@ -89,7 +89,7 @@
     },
     {
       "路径": "文字文档/__init__.py",
-      "sha256": "57c93e87f97eb617dbd33ef89ad3a710ffc19bf37ffb1b9f7bfd8267f4b03b4d"
+      "sha256": "0e51bec8e008453127a054369cb45d647d1cb1138077baf3a9f187860c43e471"
     },
     {
       "路径": "文字文档/包声明.json",
@@ -317,7 +317,7 @@
     },
     {
       "路径": "演示文稿/__init__.py",
-      "sha256": "9b8dcd2a5dfcb64440deb63b480e5b9b021a1115ff45dd9ab02ebb9dcfd6f475"
+      "sha256": "2138f1378b28c59b6877ba4f95491b2b70aaf6ae297e1e48186a9dca9def54fa"
     },
     {
       "路径": "演示文稿/包声明.json",
@@ -445,7 +445,7 @@
     },
     {
       "路径": "表格文档/__init__.py",
-      "sha256": "19154e477f10dacdaba923272758f947c22249da9b2335037a2b39ef22ec0729"
+      "sha256": "e66b8f5b207e33648d6b95160d38010228bf7406008bff543aec29d32ce1eb3c"
     },
     {
       "路径": "表格文档/包声明.json",

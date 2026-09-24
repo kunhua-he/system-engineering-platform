@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 import py_compile
 import shutil
 import subprocess
@@ -13,8 +14,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-if str(Path(__file__).resolve().parents[2]) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+系统根 = Path(__file__).resolve().parents[2]
+if str(系统根) not in sys.path:
+    sys.path.insert(0, str(系统根))
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 支持库.后端.组件规范支持库 import 校验完整性摘要
@@ -167,6 +169,11 @@ class Test支持库模板生成器(unittest.TestCase):
         运行 = subprocess.run(
             [sys.executable, str(self.测试文件)],
             capture_output=True, text=True, timeout=180,
+            # 骨架落在**项目根外**（本夹具的临时树）⇒ 它的自举段取不到锚目录，按设计
+            # 「什么都不插」（不回落层数写法），根由调用方 PYTHONPATH 提供 —— 与
+            # `测试_模块模板生成器` 的同名用例逐字同形制。这是 P-9 落点二的代价面：
+            # 骨架不再靠生成期写死的绝对路径找根。
+            env=dict(os.environ, PYTHONPATH=f"{self.测试文件.parent}{os.pathsep}{系统根}"),
         )
         输出 = 运行.stdout + 运行.stderr
         self.assertEqual(运行.returncode, 0, f"测试骨架失败:\n{输出}")
