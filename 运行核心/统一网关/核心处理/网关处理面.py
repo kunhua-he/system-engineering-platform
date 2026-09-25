@@ -23,6 +23,7 @@ from 公共契约.版本规则.契约版本 import 契约版本
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.能力契约.契约 import 未知参数错误
 from 运行核心.统一网关.协议.类型规格 import (
     类型匹配表, 数值类型名, _类型表自检, 校验能力参数,
 )
@@ -84,6 +85,12 @@ class 请求处理面:
         except FileNotFoundError:
             self._设置失败(响应, "文件不存在")
         except ValueError:
+            self._设置失败(响应, "参数不合法")
+        except 未知参数错误:
+            # 契约层收到未声明参数（`TypeError` 子类）。缺这一支会落到 `except Exception`
+            # 错报「内部错误」——把可预期的入参错误报成服务端故障，且与
+            # `唯一能力调用_调用错误码._异常错误码表` 的同码映射漂移（该表映射 参数不合法）。
+            # 两支必须逐码对齐（批次0-3 同步纪律，见本方法上方注释）。
             self._设置失败(响应, "参数不合法")
         except (ConnectionError, TimeoutError):
             self._设置失败(响应, "提供者不可用")

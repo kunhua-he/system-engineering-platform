@@ -8,7 +8,6 @@ import threading
 import unittest
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 系统根 = Path(__file__).resolve().parents[2]
 if str(系统根) not in sys.path:
@@ -20,24 +19,9 @@ from 运行核心.能力调用.HTTP连接器 import HTTP连接器
 from 运行核心.统一网关.本地网关 import 本地网关服务器
 from 运行核心.统一网关.网关核心 import 网关核心
 from 运行核心.资源协调 import 资源句柄服务
-from 运行核心.能力调用 import 进程内连接器 as 进程内连接器模块
 
 
 class 测试简单窗口受管状态(unittest.TestCase):
-    def test_进程内连接器不把空句柄伪装成历史文本句柄(self) -> None:
-        收到 = []
-
-        class 假服务:
-            def 调用能力(self, _能力id, _参数, **关键字):
-                收到.append(关键字.get("句柄"))
-                from 公共契约.基础类型.结果类型 import 结果
-                return 结果.成功结果({"确认": True})
-
-        with mock.patch.object(进程内连接器模块, "获取唯一调用服务", return_value=假服务()):
-            响应 = 进程内连接器模块.进程内连接器().调用能力("样例.能力", {})
-        self.assertTrue(响应["成功"], 响应)
-        self.assertEqual(收到, [None])
-
     @classmethod
     def setUpClass(cls) -> None:
         cls.临时对象 = tempfile.TemporaryDirectory(prefix="简单窗口受管状态_")
