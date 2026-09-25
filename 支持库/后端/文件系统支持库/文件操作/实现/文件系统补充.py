@@ -16,7 +16,7 @@ import zipfile
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.基础类型.逻辑类型 import 真
-from 公共契约.诊断.写入流水 import 登记md写入凭据
+from 公共契约.诊断 import 写入流水
 from 公共契约.运行时.导入前缀 import 取系统根
 from 公共契约.运行时.平台适配 import 清只读后删除树, 移动并可删, MCP身份准入, 解析路径
 from 公共契约.运行时.写入授权 import 授权拒绝结果
@@ -204,8 +204,9 @@ def 追加写入(路径: str = None, 内容: str = None,
         #   凭据按**最终全文**的 sha256 登记（判据比对的就是它）⇒ 必须回读一次；非 md 由登记
         #   节点自己短路（`不适用`，在读盘之前就返回），本腿不再自判一次后缀（哲学 1.2）。
         try:
-            登记md写入凭据(路径, pathlib.Path(路径).read_text(encoding="utf-8"),
-                        "文件系统支持库.文件操作.追加写入", str(开工ID or "").strip())
+            写入流水.登记md写入凭据(
+                路径, pathlib.Path(路径).read_text(encoding="utf-8"),
+                "文件系统支持库.文件操作.追加写入", str(开工ID or "").strip())
         except (OSError, UnicodeDecodeError):
             # 回读不了（非 utf-8／权限）⇒ 登记节点本就无从为它建凭据，判据也会把它归「无凭据」
             # 档；追加**已经成功**，不因此改判失败（诊断面绝不反噬主结果，同 `写入流水` 口径）。
