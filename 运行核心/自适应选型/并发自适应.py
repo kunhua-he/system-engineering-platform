@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Any
 
 from 公共契约.基础类型.逻辑类型 import 假, 真
+from 公共契约.运行时.写文件 import 原子写文件
 
 # ── 基线：按核数档给出「这台机器最多能给多少并发」─────────────────────────
 # 与 `档位表.并发旋钮按核数档` **同源同值**（那里是档位表的槽位，这里是动态度量），
@@ -218,7 +219,7 @@ def _裁剪记录(路径: Path) -> None:
         return
     if len(行表) <= 记录保留条数:
         return
-    路径.write_text("\n".join(行表[-记录保留条数:]) + "\n", encoding="utf-8")
+    原子写文件(路径, "\n".join(行表[-记录保留条数:]) + "\n", "utf-8", "")
 
 
 def 并发参数组(结论: 并发结论) -> dict[str, dict[str, int]]:

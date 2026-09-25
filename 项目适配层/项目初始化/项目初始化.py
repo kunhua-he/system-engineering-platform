@@ -44,17 +44,29 @@ def 创建项目(项目路径: Path | str, 项目名称: str, 项目id: str = ""
     for 子目录 in 标准目录列表:
         (根目录 / 子目录).mkdir(exist_ok=True)
 
+    # 落盘走**唯一原子写腿**（2026-09-25 核心批·写腿下沉）：三份初始件（项目声明 /
+    # 依赖声明 / 依赖锁定）此前是「声明走锁窗口、另两份裸 write_text」两套实现 ——
+    # 整仓内核只读锁（macOS `chflags uchg`）下裸 `write_text` 会被内核以
+    # `Operation not permitted` 拒（2026-09-23 实测）。本层按依赖防火墙不得调用
+    # `支持库.后端.文件系统支持库.文件操作.写入文件`（项目适配层只可依赖 公共契约 与
+    # 运行核心），而写腿已下沉到 `公共契约/运行时/` ⇒ 本层够得到，三份统一转调它
+    # （哲学 1.2：一类事情只有一条腿）。
+    from 公共契约.运行时.写文件 import 原子写文件
     依赖声明路径 = 根目录 / "依赖声明.json"
     if not 依赖声明路径.exists():
-        依赖声明路径.write_text(
+        原子写文件(
+            依赖声明路径,
             json.dumps({"项目id": 项目id, "支持库绑定": [], "模块绑定": []}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+            "utf-8",
+            "",
         )
     锁定路径 = 根目录 / "依赖锁定.json"
     if not 锁定路径.exists():
-        锁定路径.write_text(
+        原子写文件(
+            锁定路径,
             json.dumps({"项目id": 项目id, "锁定版本": "1.0.0", "包列表": []}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+            "utf-8",
+            "",
         )
     (根目录 / "运行入口").mkdir(exist_ok=True)
     return 根目录

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配
+from 公共契约.运行时.写文件 import 原子写文件
 
 第三方版本探测 = {
     "cryptography": "cryptography",
@@ -156,6 +157,5 @@ def 生成证据记录(证据文件: Path, 附加: dict | None = None) -> 环境
     记录 = {"环境指纹": 当前.指纹, "指纹详情": 当前.详细信息}
     if 附加:
         记录.update(附加)
-    证据文件.parent.mkdir(parents=True, exist_ok=True)
-    证据文件.write_text(json.dumps(记录, ensure_ascii=False, indent=2), encoding="utf-8")
+    原子写文件(证据文件, json.dumps(记录, ensure_ascii=False, indent=2), "utf-8", "")
     return 当前

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.运行时.写文件 import 原子写文件
 
 结论_可稳定复现 = "可稳定复现"
 结论_无法复现 = "无法复现"
@@ -85,14 +86,11 @@ def 复现执行(失败记录: Any, *, 临时目录: Path | None = None,
 
         # 执行最小验证场景：临时目录中写复现记录（不触碰生产）
         复现文件 = 临时目录 / f"复现_{结果.复现id}.json"
-        复现文件.write_text(
-            json.dumps({
-                "记录id": 失败记录.记录id, "错误码": 失败记录.错误码,
-                "输入摘要": 获取脱敏输入(失败记录),
-                "临时环境": str(临时目录),
-            }, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        原子写文件(复现文件, json.dumps({
+            "记录id": 失败记录.记录id, "错误码": 失败记录.错误码,
+            "输入摘要": 获取脱敏输入(失败记录),
+            "临时环境": str(临时目录),
+        }, ensure_ascii=False, indent=2), "utf-8", "")
 
         # 结论判定：错误码对应能力在临时环境中执行结果
         if 失败记录.错误码 in ("外部未安装", "外部不可访问", "超时"):

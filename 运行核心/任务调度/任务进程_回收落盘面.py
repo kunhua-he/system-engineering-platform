@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -37,6 +36,7 @@ from typing import Any
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 进程终止
+from 公共契约.运行时.写文件 import 原子写文件
 from 运行核心.任务调度.任务进程_对象 import (
     _本进程组号, _终态, 信号_终止, 信号_强杀, 任务状态_取消中, 任务状态_已取消,
     任务状态_成功, 任务状态_失败, 任务状态_崩溃, 任务状态_超时, 任务状态_等待中,
@@ -166,13 +166,13 @@ class 回收落盘面:
     def _落盘(self, 任务表: Any) -> None:
         """原子写任务快照；**调用方必须已释放池锁**（本函数含 fsync 慢 I/O）。
 
-        同一件事只此一份实现，按波次大小选模式（与 `JSON解码` 的模式变量同形）：
-        - **单任务**（关键路径：提交后 / 取消请求 / 停止标记）：逐文件 fsync 后再原子
-          替换 —— 「先落盘成功、再发出不可撤销的请求」的顺序承诺靠它成立；
-        - **多任务波次**（一轮轮询里同时进入终态的多个任务）：全部写出并原子替换后，
-          **目录 fsync 一次** —— 把 N 次 fsync 压成 1 次，慢 I/O 不再拖住池锁。
-          代价如实说明：极端掉电时可能丢最近一轮快照；任务权威账本是运行库
-          （见 `任务系统._保存已加锁`），磁盘快照只用于重启后的可见性。
+        落盘统一走**唯一原子写腿** `公共契约.运行时.写文件.原子写文件`（同目录临时件 +
+        `fsync` + `os.replace`，本文件不再自建骨架），按波次大小补一次收尾：
+        - **单任务**（关键路径：提交后 / 取消请求 / 停止标记）：单文件腿本身就是
+          逐文件 fsync 后原子替换 —— 「先落盘成功、再发出不可撤销的请求」的顺序承诺靠它成立；
+        - **多任务波次**（一轮轮询里同时进入终态的多个任务）：逐条原子写完之后，
+          **目录 fsync 一次**，把「改名」这一项也落盘（任务权威账本是运行库
+          （见 `任务系统._保存已加锁`），磁盘快照只用于重启后的可见性）。
 
         逐条兜底：某一条写失败不再连累同一波次的其他任务拿不到快照，最后把第一个
         异常**如实上抛**（不吞、不降级成成功）。
@@ -187,42 +187,18 @@ class 回收落盘面:
         if not 唯一表:
             return
         逐文件 = len(唯一表) == 1
-        临时对: list[tuple[str, Path]] = []
         首个异常: BaseException | None = None
-        try:
-            for 任务对象 in 唯一表:
-                目标 = self.存储目录 / f"{任务对象.任务id}.json"
-                临时路径 = ""
-                try:
-                    with tempfile.NamedTemporaryFile(
-                            "w", encoding="utf-8", dir=self.存储目录,
-                            prefix=f".{任务对象.任务id}.", suffix=".tmp",
-                            delete=False) as 输出:
-                        临时路径 = 输出.name
-                        # 先登记再写：写/fsync 中途失败也由 finally 统一清理临时文件
-                        临时对.append((临时路径, 目标))
-                        json.dump(任务对象.转字典(), 输出, ensure_ascii=False, indent=2)
-                        输出.flush()
-                        if 逐文件:
-                            os.fsync(输出.fileno())
-                except BaseException as 错误:  # noqa: BLE001 —— 逐条兜底，最后统一上抛
-                    if 首个异常 is None:
-                        首个异常 = 错误
-            for 临时路径, 目标 in 临时对:
-                try:
-                    os.replace(临时路径, 目标)
-                except BaseException as 错误:  # noqa: BLE001 —— 逐条兜底，最后统一上抛
-                    if 首个异常 is None:
-                        首个异常 = 错误
-            if not 逐文件 and 临时对:
-                self._同步目录(唯一表)
-        finally:
-            for 临时路径, _目标 in 临时对:
-                try:
-                    if 临时路径 and os.path.exists(临时路径):
-                        os.unlink(临时路径)
-                except OSError:
-                    pass
+        for 任务对象 in 唯一表:
+            目标 = self.存储目录 / f"{任务对象.任务id}.json"
+            try:
+                原子写文件(目标, json.dumps(
+                    任务对象.转字典(), ensure_ascii=False, indent=2), "utf-8", "")
+            except BaseException as 错误:  # noqa: BLE001 —— 逐条兜底，最后统一上抛
+                if 首个异常 is None:
+                    首个异常 = 错误
+        if not 逐文件:
+            # 波次模式：单文件腿已逐条 fsync 内容，这里再补一次目录 fsync 让「改名」也落盘
+            self._同步目录(唯一表)
         if 首个异常 is not None:
             raise 首个异常
 

@@ -455,22 +455,27 @@ class 原子写权限保留测试(unittest.TestCase):
 
 
 class 权限保留反向验证(unittest.TestCase):
-    """反向验证：退回「不 chmod、不建对权限」的旧写法，权限判据必须变红。
+    """反向验证：退回「不 chmod」的旧写法，权限判据必须变红。
 
     没有这层，权限断言可能在**任何**实现下都绿（比如环境 umask 恰好让它碰对）——
-    等于没证明 `_目标权限位` + `os.chmod` 真的在起作用（旧实现正是 0644→0600）。
+    等于没证明「把原权限位带回去」那一步真的在起作用（旧实现正是 0644→0600）。
+
+    ★ 2026-09-25 写腿下沉后**变异样本跟着实现走**：`os.chmod` 那一行已不在
+    `文本补丁.py`（本文件只剩转发），唯一实现在 `公共契约/运行时/写文件.py::原子写文件`
+    ⇒ 变异目标与缺陷态调用对象都改成那条腿；本文件自己的端到端断言（真 `应用精确替换`
+    必须保住 0644）留在原处不动。样本不跟着实现走就会「变异未命中 ⇒ 反向样本失效」。
     """
 
-    _补丁源 = Path(__file__).resolve().parents[2] / "支持库" / "后端" / "文件系统支持库" / "文本补丁" / "实现" / "文本补丁.py"
-    _chmod行 = "        os.chmod(句柄.name, 权限)\n"
+    _腿源 = Path(__file__).resolve().parents[2] / "公共契约" / "运行时" / "写文件.py"
+    _chmod行 = "                    os.chmod(句柄.name, 权限)\n"
 
     def _缺陷态模块(self):
-        源 = self._补丁源.read_text(encoding="utf-8")
-        坏 = 源.replace(self._chmod行, "        pass  # 反向样本：退回旧写法（不把权限带回去）\n")
+        源 = self._腿源.read_text(encoding="utf-8")
+        坏 = 源.replace(self._chmod行, "                    pass  # 反向样本：退回旧写法（不把权限带回去）\n")
         if 坏 == 源:
             raise AssertionError("chmod 行未命中，反向样本失效（判据需更新）")
-        命名空间: dict = {"__name__": "反向样本_文本补丁", "__file__": str(self._补丁源)}
-        exec(compile(坏, str(self._补丁源), "exec"), 命名空间)  # noqa: S102
+        命名空间: dict = {"__name__": "反向样本_写文件", "__file__": str(self._腿源)}
+        exec(compile(坏, str(self._腿源), "exec"), 命名空间)  # noqa: S102
         return 命名空间
 
     def test_不退权限后判据变红(self) -> None:
@@ -480,10 +485,8 @@ class 权限保留反向验证(unittest.TestCase):
             目标 = 根 / "目标.txt"
             目标.write_text(原文, encoding="utf-8")
             os.chmod(目标, 0o644)
-            结果 = 模块["应用精确替换"](
-                文件路径=str(目标), 旧文本="旧值在这里", 新文本="新值已就位",
-                根目录=str(根), 写入=真)
-            self.assertTrue(结果.成功, 结果.错误说明)
+            # 缺陷态直接调**那条腿**（变异就落在它身上）
+            模块["原子写文件"](str(目标), 原文, "utf-8", "")
             缺陷权限 = 目标.stat().st_mode & 0o777
             # 缺陷态下必须真的掉权限（这正是坏行为）
             self.assertNotEqual(缺陷权限, 0o644,

@@ -58,6 +58,7 @@ from 运行核心.运行环境管理器.远程镜像 import (
 from 支持库.适配层.密码签名提供者 import 公钥指纹
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配
+from 公共契约.运行时.写文件 import 原子写文件
 
 发布清单文件名 = "镜像清单.json"
 发布制品文件名 = "制品.tar.gz"
@@ -226,13 +227,13 @@ def 发布环境镜像(环境目录, 输出目录, 私钥PEM, *, 元数据: dict
                                  错误说明="私钥与公钥不匹配（自验签名失败）")
         制品包路径 = 输出根 / 发布制品文件名
         _安全打包(文件表, 制品包路径, 根=制品根)
-        (输出根 / 发布清单文件名).write_text(
-            json.dumps(签名后清单, ensure_ascii=False, sort_keys=True,
-                       separators=(",", ":")), encoding="utf-8")
-        (输出根 / 发布签名文件名).write_text(
-            str(签名后清单["签名"]) + "\n", encoding="utf-8")
-        (输出根 / 发布摘要文件名).write_text(制品摘要 + "\n", encoding="utf-8")
-        (输出根 / 发布元数据文件名).write_text(json.dumps({
+        原子写文件(输出根 / 发布清单文件名,
+                json.dumps(签名后清单, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":")), "utf-8", "")
+        原子写文件(输出根 / 发布签名文件名,
+                str(签名后清单["签名"]) + "\n", "utf-8", "")
+        原子写文件(输出根 / 发布摘要文件名, 制品摘要 + "\n", "utf-8", "")
+        原子写文件(输出根 / 发布元数据文件名, json.dumps({
             "制品摘要": 制品摘要,
             "清单摘要": 清单摘要,
             "签名hex": str(签名后清单["签名"]),
@@ -254,7 +255,7 @@ def 发布环境镜像(环境目录, 输出目录, 私钥PEM, *, 元数据: dict
                 "制品摘要": 发布摘要文件名,
                 "发布元数据": 发布元数据文件名,
             },
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        }, ensure_ascii=False, indent=2), "utf-8", "")
     except ValueError as 错误:
         return 发布结果(假, 错误码=发布非法路径, 错误说明=str(错误))
     except (OSError, tarfile.TarError) as 错误:

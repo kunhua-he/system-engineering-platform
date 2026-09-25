@@ -39,6 +39,7 @@ from typing import Any, Callable
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.运行时 import 平台适配
 from 公共契约.运行时.运行缓存 import 解析运行缓存根
+from 公共契约.运行时.写文件 import 原子写文件
 
 工程缓存目录名 = "工程缓存"
 提供者环境根名 = "提供者运行环境"
@@ -240,10 +241,7 @@ def _裁剪缓存证据(证据文件: Path) -> None:
             return  # 未超过保留条数，不裁剪
         行表 = 尾部.splitlines()[-缓存证据保留条数:]
         内容 = "\n".join(行.decode("utf-8", "replace") for 行 in 行表) + "\n"
-        临时路径 = 证据文件.with_name(
-            f"{证据文件.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-        临时路径.write_text(内容, encoding="utf-8")
-        临时路径.replace(证据文件)
+        原子写文件(证据文件, 内容, "utf-8", "")
     except OSError:
         return
 
@@ -600,10 +598,8 @@ def _环境校验缓存写入(解释器: Path, 缓存键: str) -> None:
         return
     路径 = _环境校验缓存路径(解释器)
     try:
-        路径.write_text(
-            json.dumps({"键": 缓存键, "时间": time.time()}, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        原子写文件(路径, json.dumps({"键": 缓存键, "时间": time.time()},
+                                    ensure_ascii=False), "utf-8", "")
     except OSError as 错误:
         # 写不进去不影响正确性（下次再真校验一次），但按第 3 条必须留痕。
         记录忽略("环境校验缓存写入失败", 路径=str(路径), 错误=str(错误))
