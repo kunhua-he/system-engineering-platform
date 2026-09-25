@@ -32,7 +32,6 @@ import atexit
 import contextlib
 import json
 import shutil
-import sqlite3
 import sys
 import tempfile
 import time
@@ -43,7 +42,7 @@ from typing import Any
 if str(系统根) not in sys.path:
     sys.path.insert(0, str(系统根))
 
-from 公共契约.运行时.数据库URI import 只读库URI
+from 公共契约.运行时.数据库连接 import 打开只读
 from 公共契约.运行时.平台适配 import 清只读后删除树
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 开发工具.备份恢复演练核对 import 反向验证 as 跑反向验证, 建源副本, 核对一致性
@@ -80,7 +79,8 @@ def _调用(能力id: str, 参数: dict) -> Any:
 
 def _只读一处(库: Path, SQL: str, 参数: tuple) -> list:
     """只读一次并立即关闭连接：留在打开态会挡住恢复能力的 `BEGIN EXCLUSIVE` 独占锁。"""
-    with contextlib.closing(sqlite3.connect(只读库URI(库), uri=True, timeout=10)) as 连接:
+    # 转调 `公共契约/运行时/数据库连接.py`，原参数 uri=True, timeout=10 → 档 打开只读(路径, 超时秒=10)。
+    with contextlib.closing(打开只读(库, 超时秒=10)) as 连接:
         return 连接.execute(SQL, 参数).fetchall()
 
 

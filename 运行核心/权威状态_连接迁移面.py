@@ -27,6 +27,7 @@ import time
 
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.数据库连接 import 打开可写
 from 运行核心.sqlite错误码判据 import 迁移可重试主码
 
 
@@ -66,12 +67,14 @@ class 连接迁移面:
                 del self._连接表[线程id]
                 del self._连接线程表[线程id]
             if 线程id not in self._连接表:
-                连接 = sqlite3.connect(
-                    str(self.数据库路径), timeout=10, check_same_thread=False)
-                # busy_timeout 必须先于 WAL/写操作设置，否则并发下 PRAGMA 立即 locked
-                连接.execute("PRAGMA busy_timeout=5000")  # 写竞争自动等待（WAL）
-                连接.execute("PRAGMA journal_mode=WAL")
-                连接.execute("PRAGMA synchronous=NORMAL")
+                # 本处转调 `公共契约/运行时/数据库连接.py`：原 timeout=10 映射到档
+                # 「打开可写(超时秒=10, 跨线程=True)」；原 PRAGMA 序列
+                # busy_timeout=5000 → WAL → synchronous=NORMAL 映射到具名档
+                # 「忙等待毫秒=5000 + 同步模式=NORMAL」（WAL 由 打开可写 自带；
+                # busy_timeout 必须先设的硬约束由 打开可写 的 PRAGMA 顺序保证）。
+                连接 = 打开可写(
+                    self.数据库路径, 10, 跨线程=True,
+                    忙等待毫秒=5000, 同步模式="NORMAL")
                 self._连接表[线程id] = 连接
                 self._连接线程表[线程id] = 当前线程
             return self._连接表[线程id]

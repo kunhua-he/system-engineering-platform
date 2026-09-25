@@ -15,7 +15,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from 公共契约.运行时.数据库URI import 只读库URI
+from 公共契约.运行时.数据库连接 import 打开只读
 
 
 def 只读激活指针(存储目录: Path | str, 指针id: str) -> dict[str, Any] | None:
@@ -27,7 +27,10 @@ def 只读激活指针(存储目录: Path | str, 指针id: str) -> dict[str, Any
     数据库路径 = Path(存储目录) / "权威状态.db"
     if not 数据库路径.exists():
         return None
-    连接 = sqlite3.connect(只读库URI(数据库路径), uri=True)
+    # 本处转调 `公共契约/运行时/数据库连接.py`，原参数 `只读库URI(数据库路径), uri=True`（**未传 timeout**）
+    # → 档 打开只读（缺省超时 5.0）：原写法未显式传 timeout 时 stdlib 默认即 5.0，故逐字等价；
+    # `uri=True` 与 `mode=ro` 由该档写死，不在此另拼 URI。
+    连接 = 打开只读(数据库路径)
     try:
         行 = 连接.execute(
             "SELECT 指针id, 目标, 版本, 栅栏令牌, 状态 FROM 激活指针 WHERE 指针id=?",

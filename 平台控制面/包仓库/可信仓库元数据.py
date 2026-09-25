@@ -16,13 +16,16 @@ from __future__ import annotations
 import json
 import os
 import time
-import uuid
 from pathlib import Path
 
 from 支持库.适配层 import 生成密钥对, 内容摘要, 签名 as 真实签名, 验证签名 as 真实验签
 from 支持库.适配层 import 创建密钥提供者
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
+# 唯一写腿（`公共契约/运行时/写文件.py::原子写文件`）：本层不再自建落盘骨架。
+from 公共契约.运行时.写文件 import 原子写文件
+# 平台差异收口层门：权限位恢复只在支持 POSIX 权限位的平台做（同唯一写腿口径）。
+from 公共契约.运行时.平台适配 import 支持chmod
 
 
 def _取数值(值) -> int | float | None:
@@ -47,37 +50,27 @@ def _签名正文(元数据: dict) -> bytes:
 
 
 def _原子写文本(路径: Path, 文本: str, 权限位: int = 0o600) -> None:
-    """tmp + fsync + os.replace 原子落盘，落盘权限显式收紧（私钥必须 0600）。
+    """原子写：**转调唯一写腿**（`公共契约/运行时/写文件.py::原子写文件`）。
 
-    与 客户端/构建平台客户端._原子写入 同口径：进程中断不会留下半截 JSON/PEM。
+    原实现是本层自建的「临时件 + fchmod + fsync + os.replace + 目录 fsync」第二套落盘
+    骨架（哲学 1.2：同一条腿两处实现即缺陷），且不含内核只读锁的解锁窗口 —— 整仓受管
+    文件置了 `chflags uchg` 时 `os.replace` 会被内核以 `Operation not permitted` 拒绝
+    （2026-09-23 实测）。唯一写腿自带「解锁窗口 + 同目录临时件 + fsync + os.replace +
+    目录项 fsync + 收口锁态」，故本处只保留本层**才有**的权限位意图。
+
+    **行为差异（就地补，不静默改权限）**：唯一写腿的权限位语义是「目标已存在则保持原
+    权限位；新建文件由临时件决定 0600」，而本处原实现**恒把结果置为 `权限位`**
+    （私钥 0600、元数据 0644）。两者对「已存在但权限位不符的目标」与「新建的 0644
+    元数据」不等价 ⇒ 写完就地 `chmod` 到 `权限位`，恢复原语义（私钥绝不被放宽成 0644，
+    元数据也不被收窄成 0600）。残余差异（未自证）：`chmod` 在 `os.replace` 之后，若
+    `chmod` 失败则目标已是新内容；原实现的 `fchmod` 在 replace 之前，失败则目标不动。
+
+    **失败仍抛 `OSError`**：`轮换根信任` 的 `except OSError` 回滚分支按此收口，转调不得
+    改变这条契约（唯一写腿的 `LookupError`/`OSError` 原样逸出）。
     """
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    临时 = 路径.parent / f".{路径.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
-    描述符 = -1
-    try:
-        描述符 = os.open(临时, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 权限位)
-        os.fchmod(描述符, 权限位)
-        视图 = memoryview(文本.encode("utf-8"))
-        while 视图:
-            已写 = os.write(描述符, 视图)
-            视图 = 视图[已写:]
-        os.fsync(描述符)
-        os.close(描述符)
-        描述符 = -1
-        os.replace(临时, 路径)
-    except BaseException:
-        # 任何失败都清掉临时文件：既有私钥/元数据在别处，不受影响
-        if 描述符 >= 0:
-            os.close(描述符)
-        try:
-            os.unlink(临时)
-        except FileNotFoundError:
-            pass
-        raise
-    # 目录项那一段**只转发**（唯一实现 = `公共契约/运行时/同步目录.py::同步目录项`）：
-    # 本函数只留「原子写」这一件**本层才有**的事（临时件 + fsync + os.replace + 0600 权限位）。
-    from 公共契约.运行时.同步目录 import 同步目录项
-    同步目录项(路径.parent)
+    原子写文件(路径, 文本, 编码="utf-8")
+    if 支持chmod():
+        os.chmod(路径, 权限位)
 
 
 class 可信仓库元数据:

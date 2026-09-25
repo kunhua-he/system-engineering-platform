@@ -18,6 +18,7 @@ from pathlib import Path
 
 from 平台控制面.备份恢复.备份执行 import 清单文件名, _尽力复制附加文件
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.数据库连接 import 打开
 
 #: 恢复结论三态（平台五态结论在本能力的落点）。`未核验` 单列，不与 `失败` 混为一谈：
 #: 空表 = 没有可核验对象，既不是「核验通过」也不是「核验失败」。
@@ -44,7 +45,8 @@ def _取独占目标库(目标库: Path) -> tuple[sqlite3.Connection | None, str
     if not 目标库.exists():
         return None, ""
     try:
-        连接 = sqlite3.connect(str(目标库), timeout=0, isolation_level=None)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=0, isolation_level=None → 档 打开(路径, 0, 自动提交=True)。
+        连接 = 打开(目标库, 0, 自动提交=True)
     except sqlite3.Error as 错误:
         return None, f"目标权威状态库无法打开，拒绝覆盖恢复: {错误}"
     try:

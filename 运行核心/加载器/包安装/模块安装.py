@@ -6,32 +6,15 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
-from typing import Any
 
 from 公共契约.包声明 import 包声明, 加载声明文件
 from 公共契约.能力契约 import 能力注册表
-from 运行核心.加载器.包安装.入口路径 import 解析入口路径
+# 入口「定位 → 加载」的唯一实现：定位走 入口路径.解析入口路径，加载见 入口加载.py。
+from 运行核心.加载器.包安装.入口加载 import 加载入口模块
 
 声明文件名 = "包声明.json"
 入口文件名 = "入口.py"
-
-
-def 加载入口模块(声明: 包声明) -> Any:
-    """按声明.入口 加载模块入口模块（路径解析见 入口路径.解析入口路径）。"""
-    入口路径 = 解析入口路径(声明, "模块")
-    模块名 = f"模块运行时_{声明.包id.replace('.', '_')}"
-    if 模块名 in sys.modules:
-        return sys.modules[模块名]
-    规格 = importlib.util.spec_from_file_location(模块名, 入口路径)
-    if 规格 is None or 规格.loader is None:
-        raise ImportError(f"无法加载模块入口: {入口路径}")
-    模块 = importlib.util.module_from_spec(规格)
-    sys.modules[模块名] = 模块
-    规格.loader.exec_module(模块)
-    return 模块
 
 
 def 发现模块(模块根目录: Path) -> list[包声明]:
@@ -48,7 +31,7 @@ def 安装模块(声明: 包声明, 注册表: 能力注册表) -> list[str]:
     （2026-09-25 收口：`设置HTTP连接器` 注入机制已删 —— `模块库/**` 无任何包导出
     该名，注入恒不触发；模块不再自持连接器。）
     """
-    模块 = 加载入口模块(声明)
+    模块 = 加载入口模块(声明, "模块")
     注册函数 = getattr(模块, "注册能力", None)
     if callable(注册函数):
         注册函数(注册表)

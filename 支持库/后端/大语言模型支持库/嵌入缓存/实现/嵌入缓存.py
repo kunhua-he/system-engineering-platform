@@ -20,6 +20,7 @@ from typing import Any
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行缓存根, 解析运行数据根
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开可写
 
 # ---- 默认配置（可由 配置契约 覆盖）----
 默认缓存目录 = 解析运行缓存根(取系统根(__file__))
@@ -64,10 +65,9 @@ def _取连接(数据库路径: str | Path | None = None) -> sqlite3.Connection:
         except Exception as 错误:
             降级记录表.append(str(错误))
     目标.parent.mkdir(parents=True, exist_ok=True)
-    # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：连接按库路径缓存并被模块级 锁 跨线程复用
-    # （check_same_thread=False）；写入只能经 事务执行，而它的契约是「SQL 文本列表、无参数绑定」，
-    # 模型名/提供者/向量属调用方数据，拼进 SQL 文本会引入转义与注入面。
-    _连接 = sqlite3.connect(str(目标), timeout=10, check_same_thread=False)
+    # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=10、check_same_thread=False → 写路径档
+    # `打开可写(..., 跨线程=True)`（此处建表，属初始化写路径）
+    _连接 = 打开可写(str(目标), 10, 跨线程=True)
     _连接.execute(
         "CREATE TABLE IF NOT EXISTS 嵌入缓存 ("
         " 缓存键 TEXT PRIMARY KEY, 文本哈希 TEXT NOT NULL, 模型名 TEXT NOT NULL,"

@@ -17,17 +17,17 @@ import contextlib
 import hashlib
 import json
 import shutil
-import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
-from 公共契约.运行时.数据库URI import 只读库URI
+from 公共契约.运行时.数据库连接 import 打开, 打开只读
 
 
 def _查询(库: Path, SQL: str, 参数: tuple = ()) -> list:
     """只读查询并**立即关闭连接**（打开态会挡住恢复的 BEGIN EXCLUSIVE 独占锁）。"""
-    with contextlib.closing(sqlite3.connect(只读库URI(库), uri=True, timeout=10)) as 连接:
+    # 转调 `公共契约/运行时/数据库连接.py`，原参数 uri=True, timeout=10 → 档 打开只读(路径, 超时秒=10)。
+    with contextlib.closing(打开只读(库, 超时秒=10)) as 连接:
         return 连接.execute(SQL, 参数).fetchall()
 
 
@@ -111,8 +111,8 @@ def 建源副本(生产根: Path, 副本根: Path, 制品夹具: Path) -> dict:
     副本根.mkdir(parents=True, exist_ok=True)
     来源: dict[str, str] = {}
     if (生产根 / "权威状态.db").is_file():
-        with contextlib.closing(sqlite3.connect(
-                只读库URI(生产根 / '权威状态.db'), uri=True, timeout=10)) as 连接:
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 uri=True, timeout=10 → 档 打开只读(路径, 超时秒=10)。
+        with contextlib.closing(打开只读(生产根 / '权威状态.db', 超时秒=10)) as 连接:
             连接.execute("VACUUM INTO ?", (str(副本根 / "权威状态.db"),))
         来源["权威状态"] = "生产副本（VACUUM INTO 一致性快照）"
     if (生产根 / "制品").is_dir():
@@ -127,7 +127,8 @@ def 建源副本(生产根: Path, 副本根: Path, 制品夹具: Path) -> dict:
 
 def 破坏恢复副本(恢复根: Path) -> None:
     """反向验证第 1 步：真实删掉恢复副本的一行（`元信息` 表在 VACUUM 快照里必有且非空）。"""
-    with contextlib.closing(sqlite3.connect(str(恢复根 / "权威状态.db"))) as 连接:
+    # 转调 `公共契约/运行时/数据库连接.py`，原参数无（吃 stdlib 默认 5.0）→ 档 打开(路径)（默认 5.0 逐字等价）。
+    with contextlib.closing(打开(恢复根 / "权威状态.db")) as 连接:
         连接.execute("delete from 元信息")
         连接.commit()
 

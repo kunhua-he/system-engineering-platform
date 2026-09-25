@@ -17,6 +17,17 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# 项目根入 sys.path：本模块是全平台唯一一条网关 HTTP 腿，可能被平台进程之外的
+# 调用方（MCP 薄壳等）按脚本绝对路径加载，故自带项目根兜底（与 `薄壳服务.py` 同一口径）。
+_项目根 = Path(__file__).resolve().parents[2]
+if str(_项目根) not in sys.path:
+    sys.path.insert(0, str(_项目根))
+
+from 开发工具.薄壳.网关凭证 import 取网关凭证  # noqa: E402
+
 import json
 import os
 import urllib.error
@@ -48,8 +59,9 @@ import uuid
 
 
 def 读取凭证() -> str:
-    """只从环境变量取凭证；本函数返回值只允许进请求头，禁止打印或落盘。"""
-    return os.environ.get(凭证环境变量, "").strip()
+    """只从环境变量取凭证（回退顺序=("环境变量",)：薄壳在平台进程之外，不读 plist）；
+    本函数返回值只允许进请求头，禁止打印或落盘。"""
+    return 取网关凭证(回退顺序=("环境变量",))
 
 
 def _请求地址(路径: str, 基地址: str) -> str:

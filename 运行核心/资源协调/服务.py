@@ -29,6 +29,7 @@ from 公共契约.诊断.忽略记录 import 记录忽略
 from 运行核心.进程身份 import 进程身份
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.运行时.同步目录 import 同步目录项
 
 
 class 事务证据:
@@ -162,17 +163,29 @@ class 资源协调器:
 
     @staticmethod
     def _同步目录(目录: Path) -> None:
-        """fsync 目录元数据（保证改名结果落盘）；失败显式报错，不静默降级。"""
+        """fsync 目录元数据（保证改名结果落盘）；失败显式报错，不静默降级。
+
+        落盘**只转发**（唯一实现在 `公共契约/运行时/同步目录.py::同步目录项`，走它的
+        `硬失败=真` 档）：本文件不再自建第二份「打开目录 fd → fsync → 关闭」。
+
+        **为什么选硬失败档**：本类的发布事务对外承诺「改名结果必须落盘才叫成功」
+        （见 `_发布快照` docstring），唯一腿的 best-effort 默认档会把失败静默掉、
+        等于给一个假承诺 ⇒ 显式选 `硬失败=真`。
+
+        **对外异常类型保留**（`OSError` → `RuntimeError`，**不是第二套实现**）：
+        唯一腿在硬失败档下把 `OSError` **原样上抛**（那是它该有的语义），而本类的
+        对外口径一直是 `RuntimeError`（同族：`快照清理失败` / `快照恢复失败`）。
+        故这里只做一次**类型收口**，fsync 序列仍是唯一腿那一份；失败仍显式报错、
+        不静默降级。
+        文案合并说明：旧实现区分「无法打开目录」与「fsync 失败」两句；唯一腿是一条
+        `open→fsync→close` 序列、不回报是哪一步失败，故统一成一句
+        「目录 fsync 失败（{目录}）」。全仓无测试/调用方断言旧两句文案或旧异常类型
+        （2026-09-26 复扫：`目录 fsync 失败` 仅本文件命中）。
+        """
         try:
-            目录fd = os.open(str(目录), os.O_RDONLY)
-        except OSError as 错误:
-            raise RuntimeError(f"目录 fsync 失败（无法打开目录 {目录}）: {错误}") from 错误
-        try:
-            os.fsync(目录fd)
+            同步目录项(目录, 硬失败=真)
         except OSError as 错误:
             raise RuntimeError(f"目录 fsync 失败（{目录}）: {错误}") from 错误
-        finally:
-            os.close(目录fd)
 
     def 读取快照值(self, 资源id: str, 版本: str) -> Any:
         """读取句柄按版本读取快照（旧句柄读旧值）。"""

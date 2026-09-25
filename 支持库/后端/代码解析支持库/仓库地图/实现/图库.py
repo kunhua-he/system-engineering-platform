@@ -17,6 +17,7 @@ from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开可写, 打开只读
 
 来源 = "仓库地图"
 #: 取根判据的唯一实现在 `公共契约/运行时/导入前缀`（锚目录判据，不按层数）
@@ -65,7 +66,8 @@ def 建库(路径: Path) -> 结果:
         路径.parent.mkdir(parents=True, exist_ok=True)
         if 路径.exists():
             路径.unlink()
-        连接 = sqlite3.connect(str(路径), timeout=15.0)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=15.0 → 写路径档 `打开可写`（建父目录 + WAL）
+        连接 = 打开可写(str(路径), 15.0)
         连接.row_factory = sqlite3.Row
         for 语句 in 建表语句表:
             连接.execute(语句)
@@ -80,12 +82,11 @@ def 只读打开(路径: Path) -> 结果:
 
     用 `只读库URI实参`（mode=ro&immutable=1）：不在库目录留 -shm/-wal side 文件。
     """
-    from 公共契约.运行时.数据库URI import 只读库URI实参
-
     if not 路径.is_file():
         return 结果.失败("文件不存在", f"仓库地图文件不存在: {路径}", 来源=来源)
     try:
-        连接 = sqlite3.connect(只读库URI实参(路径), uri=True, timeout=5.0)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 只读库URI实参+uri=True+timeout=5.0 → 只读档 `打开只读(不可变=True)`
+        连接 = 打开只读(路径, 超时秒=5.0, 不可变=True)
         连接.row_factory = sqlite3.Row
         缺表 = [表 for 表 in 必需表表 if not _有表(连接, 表)]
     except sqlite3.Error as 错误:

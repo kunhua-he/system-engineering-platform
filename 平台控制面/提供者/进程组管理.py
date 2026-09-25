@@ -24,6 +24,7 @@ from pathlib import Path
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配, 进程终止
+from 公共契约.运行时.空闲端口 import 取空闲端口
 
 树节点代码 = """import os, socket, subprocess, sys, time
 深度 = int(os.environ["树深度"])
@@ -46,13 +47,6 @@ if os.environ.get("树模式") == "组长自杀" and 深度 == 0:
 while True:
     time.sleep(60)
 """
-
-
-def _空闲端口() -> int:
-    """借用系统分配获取一个当前空闲端口。"""
-    with socket.socket() as 套接字:
-        套接字.bind(("127.0.0.1", 0))
-        return 套接字.getsockname()[1]
 
 
 def _进程存活表(pid表: list[int]) -> list[int]:
@@ -105,7 +99,7 @@ def 启动进程树(工作目录: str | Path | None = None, 模式: str | None =
     """启动真实 3 层 python 进程树，独立进程组，孙节点占用端口。"""
     目录 = Path(工作目录) if 工作目录 else Path(tempfile.mkdtemp(prefix="进程组树_"))
     目录.mkdir(parents=True, exist_ok=True)
-    端口 = _空闲端口()
+    端口 = 取空闲端口()
     环境 = dict(os.environ, 树代码=树节点代码, 树深度="0", 树工作目录=str(目录),
                 树端口=str(端口), 树模式=模式 or "")
     组长 = subprocess.Popen([sys.executable, "-c", 树节点代码],

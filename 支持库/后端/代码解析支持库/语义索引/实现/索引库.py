@@ -18,6 +18,8 @@ import math
 import sqlite3
 from pathlib import Path
 
+from 公共契约.运行时.数据库连接 import 打开可写
+
 建表语句表 = [
     """CREATE TABLE IF NOT EXISTS 代码块(
         块id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +44,8 @@ def 打开库(库文件: str) -> sqlite3.Connection:
     """打开（并按需创建）索引库，建表幂等。"""
     目标 = Path(库文件).expanduser()
     目标.parent.mkdir(parents=True, exist_ok=True)
-    连接 = sqlite3.connect(str(目标), timeout=15)
+    # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=15 → 写路径档 `打开可写`（建父目录 + WAL）
+    连接 = 打开可写(str(目标), 15)
     连接.row_factory = sqlite3.Row
     for 语句 in 建表语句表:
         连接.execute(语句)

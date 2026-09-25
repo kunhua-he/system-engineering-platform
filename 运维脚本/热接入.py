@@ -27,23 +27,23 @@ from 公共契约.运行时.平台适配 import 脚本入口准入
 脚本入口准入("热接入（增量装配，不重启 40007 网关）")
 
 import json
-import plistlib
 import time
 import urllib.error
 import urllib.request
 from urllib.parse import quote
 
 网关地址 = "http://127.0.0.1:40007"
-凭证来源 = Path.home() / "Library" / "LaunchAgents" / "com.huashi.gateway-40007.plist"
-凭证变量名 = "系统库网关凭证"
+# 凭证取用走唯一腿 `开发工具.薄壳.网关凭证`：回退顺序=("plist",) ——
+# 现读现注入 launchd 里那份，不依赖调用方环境（本脚本的原有口径）。
+from 开发工具.薄壳.网关凭证 import 凭证键 as 凭证变量名, 凭证缺失, 取网关凭证
 
 
 def 读取凭证() -> str:
     """从 LaunchAgent 读取网关凭证（不打印明文）。"""
-    if not 凭证来源.is_file():
-        raise SystemExit(f"找不到 LaunchAgent：{凭证来源}")
-    配置 = plistlib.loads(凭证来源.read_bytes())
-    凭证 = (配置.get("EnvironmentVariables") or {}).get(凭证变量名)
+    try:
+        凭证 = 取网关凭证(回退顺序=("plist",))
+    except 凭证缺失 as 错误:
+        raise SystemExit(str(错误)) from 错误
     if not 凭证:
         raise SystemExit(f"LaunchAgent 缺少环境变量 {凭证变量名}")
     return 凭证

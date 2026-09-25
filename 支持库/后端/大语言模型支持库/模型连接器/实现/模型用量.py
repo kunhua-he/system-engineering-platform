@@ -5,10 +5,8 @@
 边界：**只记录与统计，不调用任何模型、不消耗任何 LLM 额度**。
       真正的模型调用由调用方完成后再把结果告诉本能力（华哥口径：记录的是「已发生的调用」）。
 
-为什么保留 sqlite3 直连（同 `嵌入缓存` 先例的技术必要，非绕过唯一入口）：
-连接按库路径缓存并被模块级锁跨线程复用（check_same_thread=False）；写入只能经
-`事务执行`，而它的契约是「SQL 文本列表、无参数绑定」，模型名/任务类型属调用方数据，
-拼进 SQL 文本会引入转义与注入面。故与同父下 `会话存储`/`嵌入缓存` 保持一致口径。
+建连转调 `公共契约/运行时/数据库连接.py` 的写路径档 `打开可写`：连接按库路径缓存、
+被模块级锁跨线程复用（`check_same_thread=False` 由具名档 `跨线程=True` 承担）。
 
 全部能力返回统一结果（成功/值/错误码/错误说明）；参数非法返回 参数不合法。
 """
@@ -26,6 +24,7 @@ from pathlib import Path
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开可写
 
 默认库文件名 = "大语言模型支持库.模型用量.db"
 默认最少样本数 = 3
@@ -76,7 +75,9 @@ def _取连接(数据库路径: str | Path | None = None) -> sqlite3.Connection:
         except Exception as 错误:
             降级记录表.append(str(错误))
     目标.parent.mkdir(parents=True, exist_ok=True)
-    _连接 = sqlite3.connect(str(目标), timeout=10, check_same_thread=False)
+    # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=10、check_same_thread=False → 写路径档
+    # `打开可写(..., 跨线程=True)`（此处建表建索引，属初始化写路径）
+    _连接 = 打开可写(str(目标), 10, 跨线程=True)
     _连接.execute(
         "CREATE TABLE IF NOT EXISTS 模型用量 ("
         " 记录id TEXT PRIMARY KEY, 模型 TEXT NOT NULL, 任务类型 TEXT NOT NULL,"

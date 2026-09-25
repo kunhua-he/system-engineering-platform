@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 from 公共契约.基础类型.逻辑类型 import 真, 假
+# 唯一写腿（`公共契约/运行时/写文件.py::原子写文件`）：本层不再自建落盘骨架。
+from 公共契约.运行时.写文件 import 原子写文件
 
 操作_安装 = "安装"
 操作_校验 = "校验"
@@ -53,7 +55,8 @@ class 发布事务:
 
 
 class 发布事务管理器:
-    """写盘使用同目录临时文件加原子替换；事务状态不会半写。"""
+    """写盘**转调唯一写腿**（`公共契约/运行时/写文件.py::原子写文件`，同目录唯一临时名 +
+    原子替换）；事务状态不会半写。"""
 
     def __init__(self, 存储目录: Path | None = None) -> None:
         self.存储目录 = 存储目录 or Path(self.默认存储目录())
@@ -102,19 +105,25 @@ class 发布事务管理器:
         return 操作id
 
     def 保存(self, 事务: 发布事务) -> None:
+        """原子落盘：**转调唯一写腿**（`公共契约/运行时/写文件.py::原子写文件`）。
+
+        原实现是本层自建的「临时件 + fsync + `os.replace`」第二套落盘骨架（哲学 1.2：
+        同一条腿两处实现即缺陷），且不含内核只读锁的解锁窗口。唯一写腿自带「解锁窗口 +
+        同目录唯一临时名 + fsync + `os.replace` + 权限位恢复 + 目录项 fsync + 收口锁态」。
+        本层只保留「落盘成功后才更新内存事务表」这一步：原语义是 `os.replace` 成功才写
+        `事务表`，唯一写腿失败即抛 `OSError` ⇒ `事务表` 仍不被更新，逐字同型。
+
+        **行为差异（如实标注，不改权限）**：唯一写腿的权限位语义是「目标已存在则保持原
+        权限位；新建文件由临时件决定 0600」；原实现走 `open(..., "w")`（缺省 0666 受
+        umask，通常 0644）且 replace 时**无条件**把目标置成该值。⇒ 新建事务文件由 0644
+        收窄为 **0600**，已存在的保持其现有权限位。本处**无显式权限位意图**，故按唯一写腿
+        口径走、不就地补，并在此写明差异（不静默）。
+        """
         with self.锁:
             目标文件 = self.存储目录 / f"{事务.事务id}.json"
-            临时文件 = self.存储目录 / f".{事务.事务id}.{uuid.uuid4().hex}.tmp"
-            try:
-                with 临时文件.open("w", encoding="utf-8") as 输出:
-                    json.dump(事务.转字典(), 输出, ensure_ascii=False, sort_keys=True, indent=2)
-                    输出.flush()
-                    os.fsync(输出.fileno())
-                os.replace(临时文件, 目标文件)
-                self.事务表[事务.事务id] = 事务
-            finally:
-                if 临时文件.exists():
-                    临时文件.unlink()
+            原子写文件(目标文件, json.dumps(
+                事务.转字典(), ensure_ascii=False, sort_keys=True, indent=2), 编码="utf-8")
+            self.事务表[事务.事务id] = 事务
 
     def 提交(self, 事务: 发布事务, *, 一致性问题: list[str] | None = None) -> None:
         if not 事务.步骤列表:

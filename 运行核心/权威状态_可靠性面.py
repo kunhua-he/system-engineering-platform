@@ -27,7 +27,8 @@ from typing import Any
 
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
-from 公共契约.运行时.数据库URI import 只读库URI, 连接真实库路径
+from 公共契约.运行时.数据库连接 import 打开只读
+from 公共契约.运行时.数据库URI import 连接真实库路径
 
 
 class 可靠性面:
@@ -210,7 +211,11 @@ class 可靠性面:
         （类 docstring 第 1 条）。
         """
         try:
-            校验连接 = sqlite3.connect(只读库URI(self.数据库路径), uri=True)
+            # 本处转调 `公共契约/运行时/数据库连接.py`：原
+            # sqlite3.connect(只读库URI(self.数据库路径), uri=True) 且未显式传 timeout
+            # 映射到档「打开只读(路径)」——默认超时 5.0 = stdlib 默认，行为不变；
+            # uri=True 与只读 URI 由 打开只读 经 数据库URI 唯一口径自带。
+            校验连接 = 打开只读(self.数据库路径)
             try:
                 self._校验目标库(校验连接)
                 结果 = 校验连接.execute("PRAGMA integrity_check").fetchone()

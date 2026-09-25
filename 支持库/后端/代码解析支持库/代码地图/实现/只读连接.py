@@ -17,6 +17,7 @@ from pathlib import Path
 
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.数据库URI import 只读库URI实参
+from 公共契约.运行时.数据库连接 import 打开只读
 
 来源 = "代码地图"
 必需表表 = ("nodes", "edges")
@@ -33,7 +34,8 @@ def 打开代码地图(代码地图路径: str) -> 结果:
     if not 路径.is_file():
         return 结果.失败("文件不存在", f"代码地图文件不存在: {路径}", 来源=来源)
     try:
-        连接 = sqlite3.connect(只读URI(路径), uri=True, timeout=5.0)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 只读URI(路径)+uri=True+timeout=5.0 → 只读档 `打开只读(不可变=True)`
+        连接 = 打开只读(路径, 超时秒=5.0, 不可变=True)
         连接.row_factory = sqlite3.Row
         缺表 = [表 for 表 in 必需表表 if not _有表(连接, 表)]
     except sqlite3.Error as 错误:

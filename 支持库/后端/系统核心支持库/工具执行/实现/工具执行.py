@@ -78,12 +78,12 @@ def 清理执行记录(执行id: str = None) -> 结果:
 # SQLite 落库（重启不丢）+ 认领（原子取出）+ 超时补投（重启恢复）。
 # 0加密0限制：负载原文存取，脱敏由业务端自理。
 # ═══════════════════════════════════════════════
-import sqlite3 as _sqlite3
 import atexit as _atexit
 import os as _os
 from pathlib import Path as _Path
 from 公共契约.运行时.运行缓存 import 解析运行数据根 as _解析运行数据根
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开
 
 投递默认库路径 = str(_解析运行数据根(取系统根(__file__)) / "认领投递.db")
 
@@ -150,10 +150,9 @@ def _投递连接(库路径: str):
                 _投递缓存连接 = None
                 _投递缓存路径 = None
         _os.makedirs(_os.path.dirname(目标), exist_ok=True)
-        # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：认领投递是「事务内读最早一条待认领
-        # + 原子改状态」，且该长连接在模块级 锁 内被跨线程复用（check_same_thread=False）；
-        # 唯一入口不暴露连接对象、事务执行无事务内读回与参数绑定，表达不了该原子语义。
-        连接 = _sqlite3.connect(目标, timeout=5, check_same_thread=False)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=5、check_same_thread=False → 读路径档
+        # `打开(..., 跨线程=True)`：连接在模块级 锁 内跨线程复用；不建目录、不切 WAL，语义与原直连等价。
+        连接 = 打开(目标, 5, 跨线程=True)
         连接.execute("""CREATE TABLE IF NOT EXISTS 投递表 (
         投递id TEXT PRIMARY KEY,
         队列名 TEXT NOT NULL,

@@ -29,10 +29,11 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+# 唯一写腿（`公共契约/运行时/写文件.py::原子写文件`）：本层不再自建落盘骨架。
+from 公共契约.运行时.写文件 import 原子写文件
 
 # 唯一 schema：任何 `当前.json` 的正文都只有这五个键（顺序即落盘顺序）。
 指针键表 = ("摘要sha256", "制品目录", "制品摘要", "版本", "栅栏令牌")
@@ -84,7 +85,7 @@ def 读取激活指针(路径: Path | str) -> dict[str, Any] | None:
 
 def 写激活指针(路径: Path | str, 指针: dict[str, Any], *,
                保留额外键: bool = 假) -> None:
-    """按唯一 schema 原子写指针（临时文件 → fsync → `os.replace` → 目录 fsync）。
+    """按唯一 schema 原子写指针（**转调唯一写腿** `公共契约/运行时/写文件.py::原子写文件`）。
 
     **唯一落盘点**：入库/安装/重建/重置/回收规范化全部走这里，不得各写各的
     `json.dumps`（那正是两份 schema 能各活一半的原因）。
@@ -92,6 +93,20 @@ def 写激活指针(路径: Path | str, 指针: dict[str, Any], *,
     `保留额外键=False`（缺省）时只落 `指针键表` 的键：写出来的文件必然是同一种
     表达。历史兼容键 `路径` 属 schema 之外，因此**不会**被写出——需要让历史读法
     继续可用的调用方，请用 `保留额外键=True` 显式说明原因（缺省不留后门）。
+
+    原实现是本层自建的「固定临时名 + fsync + `os.replace` + 目录 fsync」第二套落盘骨架
+    （哲学 1.2：同一条腿两处实现即缺陷），其中**固定临时名** `.{名}.tmp` 会让两个并发
+    写者往同一个临时文件里交错写内容、再把交错结果 replace 成正式指针。唯一写腿自带
+    「解锁窗口 + **同目录唯一临时名** + fsync + `os.replace` + 权限位恢复 + 目录项 fsync
+    + 收口锁态」，两个病根（第二套骨架、固定临时名）一并消除。
+
+    **行为差异（如实标注，不改权限）**：唯一写腿的权限位语义是「目标已存在则保持原权限
+    位；新建文件由临时件决定 0600」；原实现走 `write_text`（open 缺省 0666 受 umask，
+    通常 0644）且 replace 时**无条件**把目标置成该值。⇒ 新建的 `当前.json` 由 0644 收窄为
+    **0600**，已存在的则保持其现有权限位（不再被拉回 0644）。本处**无显式权限位意图**，
+    故按唯一写腿口径走、不就地补，并在此写明差异（不静默）。
+
+    **失败仍抛 `OSError`**：唯一写腿的 `LookupError`/`OSError` 原样逸出，与改前同型。
     """
     路径 = Path(路径)
     归一 = 归一激活指针(指针)
@@ -102,17 +117,7 @@ def 写激活指针(路径: Path | str, 指针: dict[str, Any], *,
                 正文[键] = 值
     for 键 in 指针键表:
         正文[键] = 归一[键]
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    临时路径 = 路径.with_name(f".{路径.name}.tmp")
-    临时路径.write_text(json.dumps(正文, ensure_ascii=False), encoding="utf-8")
-    with open(临时路径, "rb") as 句柄:
-        os.fsync(句柄.fileno())
-    os.replace(临时路径, 路径)
-    目录句柄 = os.open(路径.parent, os.O_RDONLY)
-    try:
-        os.fsync(目录句柄)
-    finally:
-        os.close(目录句柄)
+    原子写文件(路径, json.dumps(正文, ensure_ascii=False), 编码="utf-8")
 
 
 def 指针形态(路径: Path | str) -> dict[str, Any]:

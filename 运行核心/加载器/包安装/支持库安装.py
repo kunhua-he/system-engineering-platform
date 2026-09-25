@@ -7,33 +7,16 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
-from typing import Any
 
 from 公共契约.包声明 import 包声明, 加载声明文件
 from 公共契约.能力契约 import 能力注册表
-from 运行核心.加载器.包安装.入口路径 import 解析入口路径
+# 入口「定位 → 加载」的唯一实现：定位走 入口路径.解析入口路径，加载见 入口加载.py。
+from 运行核心.加载器.包安装.入口加载 import 加载入口模块
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 声明文件名 = "包声明.json"
 入口文件名 = "入口.py"
-
-
-def 加载入口模块(声明: 包声明) -> Any:
-    """按声明.入口 加载入口模块（路径解析见 入口路径.解析入口路径）。"""
-    入口路径 = 解析入口路径(声明, "支持库")
-    模块名 = f"支持库运行时_{声明.包id.replace('.', '_')}"
-    if 模块名 in sys.modules:
-        return sys.modules[模块名]
-    规格 = importlib.util.spec_from_file_location(模块名, 入口路径)
-    if 规格 is None or 规格.loader is None:
-        raise ImportError(f"无法加载支持库入口: {入口路径}")
-    模块 = importlib.util.module_from_spec(规格)
-    sys.modules[模块名] = 模块
-    规格.loader.exec_module(模块)
-    return 模块
 
 
 def 发现支持库(支持库根目录: Path) -> list[包声明]:
@@ -45,7 +28,7 @@ def 发现支持库(支持库根目录: Path) -> list[包声明]:
 
 def 安装支持库(声明: 包声明, 注册表: 能力注册表) -> list[str]:
     """装配一份支持库：加载入口并注册能力实现，返回已注册能力 id。"""
-    模块 = 加载入口模块(声明)
+    模块 = 加载入口模块(声明, "支持库")
     注册函数 = getattr(模块, "注册能力", None)
     if not callable(注册函数):
         raise RuntimeError(f"支持库 {声明.包id} 的入口缺少 注册能力(注册表) 函数")

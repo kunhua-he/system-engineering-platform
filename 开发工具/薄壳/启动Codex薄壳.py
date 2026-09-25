@@ -8,27 +8,27 @@ MCP 握手发生在能力网关之前，不能靠网关能力自举凭证。启�
 from __future__ import annotations
 
 import os
-import plistlib
 import sys
 from pathlib import Path
 
-凭证键 = "系统库网关凭证"
-LaunchAgent文件 = Path.home() / "Library" / "LaunchAgents" / "com.huashi.gateway-40007.plist"
+# 项目根入 sys.path：本文件是 MCP 启动入口，由桌面客户端按绝对路径拉起，
+# sys.path[0] 是薄壳目录而不是项目根（与 `薄壳服务.py` 同一条坑）。
+_项目根 = Path(__file__).resolve().parents[2]
+if str(_项目根) not in sys.path:
+    sys.path.insert(0, str(_项目根))
+
+from 开发工具.薄壳.网关凭证 import 环境变量别名, 凭证键, 凭证缺失, 取网关凭证  # noqa: E402
+
 薄壳文件 = Path(__file__).with_name("薄壳服务.py")
 
 
 def 读取凭证() -> str:
-    for 键 in (凭证键, "MCP_GATEWAY_TOKEN"):
-        值 = os.environ.get(键, "").strip()
-        if 值:
-            return 值
+    # 凭证取用走唯一腿 `开发工具/薄壳/网关凭证.py`：回退顺序=("环境变量", "plist") ——
+    # MCP 握手在网关之前，桌面客户端可能没继承 shell 环境，故先 env 再落 plist 兜底（原有口径）。
     try:
-        配置 = plistlib.loads(LaunchAgent文件.read_bytes())
-        环境变量 = 配置.get("EnvironmentVariables", {})
-        值 = 环境变量.get(凭证键, "")
-    except (OSError, ValueError, TypeError, plistlib.InvalidFileException):
+        return 取网关凭证(回退顺序=("环境变量", "plist"), 环境变量别名=环境变量别名)
+    except 凭证缺失:
         return ""
-    return 值.strip() if isinstance(值, str) else ""
 
 
 def main() -> int:

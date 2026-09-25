@@ -11,6 +11,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 from 公共契约.基础类型.逻辑类型 import 真, 假
+# 唯一写腿（`公共契约/运行时/写文件.py::原子写文件`）：本层不再自建落盘骨架。
+from 公共契约.运行时.写文件 import 原子写文件
 
 阶段_准备 = "准备"
 阶段_提交 = "提交"
@@ -73,13 +75,23 @@ class 事务恢复:
                 self.加载问题.append(f"操作日志第 {行号} 行损坏: {type(错误).__name__}")
 
     def _原子保存状态(self) -> None:
-        临时文件 = self.状态文件.with_suffix(f".tmp.{uuid.uuid4().hex}")
+        """原子落盘：**转调唯一写腿**（`公共契约/运行时/写文件.py::原子写文件`）。
+
+        原实现是本层自建的「临时件 + fsync + `os.replace`」第二套落盘骨架（哲学 1.2：
+        同一条腿两处实现即缺陷），且不含内核只读锁的解锁窗口。唯一写腿自带「解锁窗口 +
+        同目录唯一临时名 + fsync + `os.replace` + 权限位恢复 + 目录项 fsync + 收口锁态」。
+
+        **行为差异（如实标注，不改权限）**：唯一写腿的权限位语义是「目标已存在则保持原
+        权限位；新建文件由临时件决定 0600」；原实现走 `open(..., "w")`（缺省 0666 受
+        umask，通常 0644）且 replace 时**无条件**把目标置成该值。⇒ 新建 `操作状态.json`
+        由 0644 收窄为 **0600**，已存在的保持其现有权限位。本处**无显式权限位意图**，故按
+        唯一写腿口径走、不就地补，并在此写明差异（不静默）。
+
+        **失败仍抛 `OSError`**：唯一写腿的 `LookupError`/`OSError` 原样逸出，与改前同型。
+        """
         数据 = {"操作表": [记录.转字典() for 记录 in self.操作表.values()]}
-        with 临时文件.open("w", encoding="utf-8") as 输出:
-            json.dump(数据, 输出, ensure_ascii=False, sort_keys=True, indent=2)
-            输出.flush()
-            os.fsync(输出.fileno())
-        os.replace(临时文件, self.状态文件)
+        原子写文件(self.状态文件, json.dumps(
+            数据, ensure_ascii=False, sort_keys=True, indent=2), 编码="utf-8")
 
     def _追加(self, 记录: 操作记录) -> None:
         with self.锁:

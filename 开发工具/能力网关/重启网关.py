@@ -54,6 +54,7 @@ from urllib.parse import quote
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.运行时 import 平台适配
+from 开发工具.薄壳.网关凭证 import 凭证缺失, 取网关凭证
 
 网关地址 = "http://127.0.0.1:40007"
 服务标签 = "com.huashi.gateway-40007"
@@ -78,10 +79,11 @@ plist路径 = Path.home() / "Library" / "LaunchAgents" / f"{服务标签}.plist"
 
 
 def 读取凭证() -> str:
-    if not plist路径.is_file():
-        raise SystemExit(f"找不到 LaunchAgent：{plist路径}")
-    配置 = plistlib.loads(plist路径.read_bytes())
-    return str((配置.get("EnvironmentVariables") or {}).get(凭证变量名) or "")
+    # 凭证取用走唯一腿 `开发工具.薄壳.网关凭证`：回退顺序=("plist",)，现读现注入（原有口径）。
+    try:
+        return 取网关凭证(回退顺序=("plist",), plist路径=plist路径)
+    except 凭证缺失 as 错误:
+        raise SystemExit(str(错误)) from 错误
 
 
 def _发(路径: str, 请求体: dict | None, 凭证: str, 超时秒: float = 20.0) -> tuple[int, dict]:

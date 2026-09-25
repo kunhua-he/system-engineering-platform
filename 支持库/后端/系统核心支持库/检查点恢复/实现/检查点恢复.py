@@ -19,6 +19,7 @@ import uuid
 from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开可写
 
 默认库路径 = str(解析运行数据根(取系统根(__file__)) / "检查点.db")
 锁 = __import__("threading").Lock()
@@ -90,7 +91,9 @@ def _连接(库路径: str) -> sqlite3.Connection:
             return _检查点缓存连接
         _关闭检查点缓存连接()
         os.makedirs(os.path.dirname(库路径), exist_ok=True)
-        连接 = sqlite3.connect(库路径, timeout=5, check_same_thread=False)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=5、check_same_thread=False → 写路径档
+        # `打开可写(..., 跨线程=True)`（此处建表建索引，属初始化写路径）
+        连接 = 打开可写(库路径, 5, 跨线程=True)
         try:
             连接.execute("""CREATE TABLE IF NOT EXISTS 检查点 (
         检查点id TEXT PRIMARY KEY,
@@ -250,7 +253,6 @@ def 查询中断(会话id: str = None, 库路径: str = None) -> 结果:
 # queued→running→terminal（已完成/失败），SQLite 落库重启不丢，支持多worker并发与断点续跑。
 # 0加密0限制：任务数据原文存取，脱敏由业务端自理。
 # ═══════════════════════════════════════════════
-import sqlite3 as _sqlite3
 import os as _os
 
 任务默认库路径 = str(解析运行数据根(取系统根(__file__)) / "任务状态机.db")
@@ -285,7 +287,9 @@ def _任务连接(库路径: str) -> sqlite3.Connection:
             return _任务缓存连接
         _关闭任务缓存连接()
         _os.makedirs(_os.path.dirname(库路径), exist_ok=True)
-        连接 = _sqlite3.connect(库路径, timeout=5, check_same_thread=False)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=5、check_same_thread=False → 写路径档
+        # `打开可写(..., 跨线程=True)`（此处建表建索引，属初始化写路径）
+        连接 = 打开可写(库路径, 5, 跨线程=True)
         try:
             连接.execute("""CREATE TABLE IF NOT EXISTS 任务表 (
         任务id TEXT PRIMARY KEY,

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.数据库连接 import 打开
 
 忙碌超时毫秒 = 3000
 
@@ -26,15 +27,15 @@ class 迁移互斥编排器:
         self._连接: sqlite3.Connection | None = None
 
     def _打开(self) -> sqlite3.Connection:
-        # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：本类要**持有一条连接的显式事务**
-        # （BEGIN IMMEDIATE 跨多条语句、事务内回读状态再决定 推进/复用/冲突）。
-        # 唯一入口的能力契约明写「不向调用方暴露连接对象」，事务执行只接受 SQL 文本列表、
-        # 无事务内读回，表达不了该语义；强行改写会丢掉真实数据库级写锁互斥。
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=忙碌超时/1000 + PRAGMA busy_timeout
+        # → 档 打开(路径, 忙碌超时/1000, 忙等待毫秒=忙碌超时)。
+        # 连接腿返回的就是真实 sqlite3.Connection，本类仍**持有一条连接跑显式事务**
+        # （BEGIN IMMEDIATE 跨多条语句、事务内回读状态再决定 推进/复用/冲突），该语义逐字保留。
         if self._连接 is None:
-            self._连接 = sqlite3.connect(
-                str(self.存储目录 / self.数据库文件名),
-                timeout=忙碌超时毫秒 / 1000)
-            self._连接.execute(f"PRAGMA busy_timeout = {忙碌超时毫秒}")
+            self._连接 = 打开(
+                self.存储目录 / self.数据库文件名,
+                忙碌超时毫秒 / 1000,
+                忙等待毫秒=忙碌超时毫秒)
         return self._连接
 
     def 执行迁移(self, 迁移任务id: str) -> tuple[str, str]:

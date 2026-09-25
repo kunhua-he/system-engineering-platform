@@ -24,6 +24,7 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.句柄体系 import 句柄体系, 句柄类型_资源
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开可写
 
 # 补列等容错路径的问题留痕（哲学第 3 条 2 项：失败必须可见，不许 except: pass 吞掉）
 补列问题: list[str] = []
@@ -139,10 +140,9 @@ def _连接(库路径: str) -> sqlite3.Connection:
             目录 = os.path.dirname(目标)
             if 目录:
                 os.makedirs(目录, exist_ok=True)
-            # 保留 sqlite3 直连、不收敛到唯一入口的技术必要：连接按库路径缓存（换路径先关旧、
-            # 进程退出统一收口）、check_same_thread=False 配合模块级 锁 串行化，且建表/补列必须
-            # 在持连接时完成；唯一入口每次调用即关连接、不暴露连接对象，表达不了该生命周期。
-            新建 = sqlite3.connect(目标, timeout=10, check_same_thread=False)
+            # 转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=10、check_same_thread=False → 写路径档
+            # `打开可写(..., 跨线程=True)`（此处建表/补列，属初始化写路径）
+            新建 = 打开可写(目标, 10, 跨线程=True)
             新建.executescript(_建表语句)
             # 兼容旧库：幂等补 父会话id 列。列已存在属预期；其它错误必须留痕（哲学第 3 条 2 项）。
             try:

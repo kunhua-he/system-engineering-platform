@@ -12,6 +12,9 @@ from 公共契约.基础类型.结果类型 import 结果
 from 公共契约.诊断.忽略记录 import 记录忽略
 # 错误码唯一源 = `公共契约/错误结构/错误结构.py`（B-9 收口）：平台同义码只导入，不复制字面量。
 from 公共契约.错误结构 import 错误码_参数不合法, 错误码_提供者不可用
+# 连接创建唯一腿 = `公共契约/运行时/数据库连接.py`（跨层共用原语）：本文件的连接一律转调它，
+# 本文件不再出现 `sqlite3.connect`。
+from 公共契约.运行时.数据库连接 import 打开, 打开可写
 
 来源 = "SQLite数据库提供者"
 
@@ -27,7 +30,8 @@ def 压缩数据库(数据库路径: str = None, 超时秒: float = 30) -> 结�
     为什么单列能力：VACUUM **不能在事务内执行**，而本库其余写能力都跑在显式事务里，
     调用方无法用它们完成压缩；"缺什么补什么"——缺的原子能力就补进对应的库。
 
-    连接以**自动提交模式**（isolation_level=None）打开，只执行 VACUUM，不改业务数据。
+    连接以**自动提交模式**（`打开(..., 自动提交=True)` ⇒ `isolation_level=None`）打开，只执行
+    VACUUM，不改业务数据；连接创建走唯一腿 `公共契约/运行时/数据库连接.py`。
     """
     路径 = _校验路径(数据库路径)
     if 路径 is None:
@@ -40,7 +44,7 @@ def 压缩数据库(数据库路径: str = None, 超时秒: float = 30) -> 结�
     压缩前 = 文件.stat().st_size
     连接 = None
     try:
-        连接 = sqlite3.connect(路径, timeout=float(超时秒), isolation_level=None)
+        连接 = 打开(路径, float(超时秒), 自动提交=True)
         连接.execute("VACUUM")
     except sqlite3.Error as 错误:
         return _失败(错误码_事务失败, f"压缩失败: {错误}", 可重试=True)
@@ -76,31 +80,28 @@ def _校验超时(超时秒: Any) -> str | None:
 def _打开(数据库路径: str, 超时秒: float) -> sqlite3.Connection:
     """打开连接（**读路径**）：只设连接级 PRAGMA，不建目录、不切日志模式。
 
-    为什么读路径不做这两件事（2026-09-24 审计，落点二）：
-    - `路径.parent.mkdir(...)`：读一个不存在的目录下的库，本来就该报「打不开」；替调用方把目录
-      建出来，等于读动作改了文件系统。
-    - `PRAGMA journal_mode = WAL`：这是**写进库文件头**的库级设置，切换本身是隐式写事务，还会
-      生成 `-wal`/`-shm` 两个文件；而 WAL 库由文件头自动识别，**读并不需要先切模式**。
+    连接创建**转调唯一腿** `公共契约/运行时/数据库连接.py::打开`（本文件不再出现
+    `sqlite3.connect`）；本函数只保留本包的能力面口径 —— `busy_timeout=5000` +
+    `synchronous=NORMAL` 两个连接级 PRAGMA。读路径「不建目录、不切 WAL」的完整论证
+    （2026-09-24 审计，落点二）已随口径搬到该腿的模块 docstring，此处不再复述。
+
     需要「建目录 + 切 WAL」的写入腿 / 初始化腿请用 `_打开可写`。
     """
-    连接对象 = sqlite3.connect(str(Path(数据库路径)), timeout=float(超时秒))
-    连接对象.execute("PRAGMA busy_timeout = 5000")
-    连接对象.execute("PRAGMA synchronous = NORMAL")
-    return 连接对象
+    return 打开(数据库路径, float(超时秒), 忙等待毫秒=5000, 同步模式="NORMAL")
 
 
 def _打开可写(数据库路径: str, 超时秒: float) -> sqlite3.Connection:
     """打开连接（**写入腿 / 初始化腿**）：确保父目录存在，并把库切到 WAL 日志模式。
 
+    连接创建**转调唯一腿** `公共契约/运行时/数据库连接.py::打开可写`（它 = 建父目录 + 读路径
+    参数 + `PRAGMA journal_mode=WAL`）；本文件只把本包的读路径口径（`busy_timeout=5000` +
+    `synchronous=NORMAL`）一并传入。
+
     WAL 是库级持久设置（写进文件头、长期生效），写腿依赖它拿到「读写不互斥」的并发语义
     （见本包 `生命周期契约.json` 的「并发」条目）；已生效时 `PRAGMA journal_mode` 直接返回原
     模式、不重复写文件头，故每次写前重申是幂等的。
     """
-    路径 = Path(数据库路径)
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    连接对象 = _打开(str(路径), float(超时秒))
-    连接对象.execute("PRAGMA journal_mode = WAL")
-    return 连接对象
+    return 打开可写(数据库路径, float(超时秒), 忙等待毫秒=5000, 同步模式="NORMAL")
 
 
 def 连接(数据库路径: str, 超时秒: float = 10) -> 结果:

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from 公共契约.基础类型.逻辑类型 import 真, 假
 from 公共契约.诊断.忽略记录 import 记录忽略
-from 公共契约.运行时.数据库URI import 只读库URI
+from 公共契约.运行时.数据库连接 import 打开只读
 from 公共契约.运行时.平台适配 import 清只读后删除树
 from 平台控制面.备份恢复.校验函数 import 内容摘要
 from 支持库.后端.数据库连接支持库.SQLite数据库 import 查询
@@ -36,7 +36,8 @@ def 一致性快照(源库: Path, 目标: Path) -> None:
     失败即抛错 —— 由 `执行备份` 回收整个未被认证的快照目录，不留半份状态。
     """
     try:
-        源连接 = sqlite3.connect(只读库URI(源库), uri=True, timeout=10)
+        # 转调 `公共契约/运行时/数据库连接.py`，原参数 uri=True, timeout=10 → 档 打开只读(路径, 超时秒=10)。
+        源连接 = 打开只读(源库, 超时秒=10)
     except sqlite3.Error as 错误:
         raise RuntimeError(f"权威状态库不可读，备份中止: {错误}") from 错误
     try:

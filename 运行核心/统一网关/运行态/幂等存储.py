@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from 公共契约.诊断.忽略记录 import 记录忽略
 from 公共契约.基础类型.逻辑类型 import 真, 假
+from 公共契约.运行时.数据库连接 import 打开
 
 
 幂等默认保留秒 = 3600.0
@@ -51,7 +52,9 @@ class 幂等存储:
         self._建表锁 = threading.Lock()
 
     def _连接(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self.库路径), timeout=2.0)
+        # 本处转调 `公共契约/运行时/数据库连接.py`：原 timeout=2.0 映射到档
+        # 「打开(路径, 2.0)」——读路径，不建目录、不切 WAL，与原 sqlite3.connect 一致。
+        return 打开(self.库路径, 2.0)
 
     def _确保表(self, 连接: sqlite3.Connection) -> None:
         if self._已建表:

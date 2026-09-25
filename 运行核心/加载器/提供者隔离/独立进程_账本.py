@@ -41,6 +41,7 @@ from typing import Any
 from 公共契约.运行时 import 进程终止
 from 公共契约.运行时.运行缓存 import 解析运行数据根
 from 公共契约.运行时.导入前缀 import 取系统根
+from 公共契约.运行时.数据库连接 import 打开可写
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 
@@ -114,10 +115,10 @@ def _账本连接(库路径: Path) -> sqlite3.Connection:
     ``synchronous=FULL``：WAL 模式下每次提交都对 WAL 做 fsync —— 这就是账本要求的
     「写后落盘」；账本行必须扛得住网关被 kill -9（正是它要解决的场景）。
     """
-    连接 = sqlite3.connect(str(库路径), timeout=账本连接超时秒)
-    连接.execute("PRAGMA journal_mode=WAL")
-    连接.execute("PRAGMA synchronous=FULL")
-    return 连接
+    # 本处转调 `公共契约/运行时/数据库连接.py`：原 timeout=账本连接超时秒 与
+    # PRAGMA 序列 WAL → synchronous=FULL 映射到档
+    # 「打开可写(库路径, 账本连接超时秒, 同步模式="FULL")」（WAL 由 打开可写 自带）。
+    return 打开可写(库路径, 账本连接超时秒, 同步模式="FULL")
 
 
 def _建账本表(连接: sqlite3.Connection) -> None:

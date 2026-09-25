@@ -41,8 +41,14 @@ import sqlite3
 import time
 from pathlib import Path
 
+from 公共契约.运行时.环境开关 import 环境开关
+from 公共契约.运行时.数据库连接 import 打开, 打开可写
+
 #: 开关的环境变量名（唯一口径；改这里即改全平台）。
 开关环境变量 = "系统平台_执行耗时日志"
+#: 本开关的历史接受面（显式传给 `环境开关`；**不得改用并集** `真值词表`：并集多出的
+#: `yes` / `是` 会把「关」静默改成「开」＝放宽接受面，而同义收口不得改变任何一处判定结果）。
+开关词表 = frozenset({"真", "1", "on", "true"})
 #: 库路径覆盖环境变量（与 任务系统 / 独立进程账本 同一口径）。
 库环境变量 = "系统库运行库"
 #: 表名与列口径的唯一定义处（读写共用，不各写一遍）。
@@ -60,8 +66,15 @@ from pathlib import Path
 
 
 def 开关() -> bool:
-    """日志开关当前是否打开（未设/无法解析一律按**关**处理）。"""
-    return str(os.environ.get(开关环境变量, "") or "").strip().lower() in ("真", "1", "on", "true")
+    """日志开关当前是否打开（未设/无法解析一律按**关**处理）。
+
+    判定逻辑统一走 `公共契约/运行时/环境开关.py`（env→bool 唯一实现）；本处不再自带一份。
+
+    **接受面逐字保持（显式传 `开关词表`）**：旧实现认 `真/1/on/true`，并集 `真值词表`
+    多出的 `yes` / `是` **故意不认** —— 传并集会把这两个值从「关」判成「开」＝放宽
+    本开关接受面（观测开关会突然开始写盘），违反「同义收口不得改变任何一处判定结果」。
+    """
+    return 环境开关(开关环境变量, 词表=开关词表)
 
 
 def 库路径() -> Path:
@@ -76,8 +89,8 @@ def 库路径() -> Path:
 
 
 def _连接() -> sqlite3.Connection:
-    连接 = sqlite3.connect(str(库路径()), timeout=5.0)
-    连接.execute("PRAGMA journal_mode=WAL")
+    # 本处转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=5.0 + 手写 `PRAGMA journal_mode=WAL` → 档 打开可写（超时 5.0 + WAL，逐字等价）。
+    连接 = 打开可写(库路径(), 5.0)
     连接.execute(
         f"CREATE TABLE IF NOT EXISTS {表名}("
         f"{列[0]} TEXT, {列[1]} TEXT, {列[2]} TEXT, {列[3]} TEXT, "
@@ -129,7 +142,8 @@ def 自检() -> dict:
     错误 = 最后一次错误
     if 路径.is_file():
         try:
-            连接 = sqlite3.connect(str(路径), timeout=5.0)
+            # 本处转调 `公共契约/运行时/数据库连接.py`，原参数 timeout=5.0（纯读 SELECT、无 PRAGMA、前置 `路径.is_file()` 门）→ 档 打开（读路径：超时 5.0；不建目录、不切 WAL，原语义逐字保留）。
+            连接 = 打开(路径, 5.0)
             try:
                 行数 = int(连接.execute(f"SELECT COUNT(*) FROM {表名}").fetchone()[0])
             finally:

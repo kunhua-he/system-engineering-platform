@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
 
 from 公共契约.基础类型.逻辑类型 import 假, 真
+from 公共契约.运行时.同步目录 import 同步目录项
 
 
 默认读取块大小 = 65536
@@ -106,7 +108,6 @@ def 追加JSONL(
         输出.write(json.dumps(记录, ensure_ascii=False) + "\n")
         if 强制落盘:
             输出.flush()
-            import os
             os.fsync(输出.fileno())
 
 
@@ -120,6 +121,19 @@ def 重写JSONL(
     同一 `json.loads` 约定：非字典或坏行一律不保留），内存有界——一次只持有
     一行 + 至多 `批次条数` 行待写缓冲，**不把整个文件读进内存**；写盘走临时文件 +
     `os.replace` 原子替换，中途失败不留半截文件（原文件保持可读）。
+
+    **落盘屏障（2026-09-26 补）**：本函数是**自建骨架**（临时件 + `os.replace`），
+    原先临时件**连 `flush`/`fsync` 都没有**、`os.replace` 后也不 fsync 父目录 ——
+    掉电可能把「改名后的目标名」指向空/半截内容，或丢目录项。现补：关闭前
+    `输出.flush()` + `os.fsync(输出.fileno())`；`os.replace` 后转调
+    `公共契约/运行时/同步目录.py::同步目录项(文件.parent)`（best-effort 档 ——
+    目录项落盘的**唯一实现**，本函数不另写一段）。
+
+    **为什么不直接转调 `公共契约/运行时/写文件.py::原子写文件`**：那条腿的入参是
+    **整串内容**（`内容: str`）—— 转调它就必须先把整个重写结果拼进内存，本函数
+    「流式重写、内存有界（一次只持一行 + 至多 `批次条数` 行缓冲）」这一性质当场失效
+    （大 JSONL 会把内存打爆）。故骨架留在本函数，只把「目录项落盘」这一族原语
+    转调出去；内容 `flush`+`fsync` 全仓也只有本处一段。
     """
     文件 = Path(路径)
     if not 文件.is_file():
@@ -147,10 +161,14 @@ def 重写JSONL(
                 if 缓冲:
                     输出.write("".join(缓冲))
                     缓冲.clear()
-                if 保留条数 == 0:
-                    输出.flush()
-        import os
+                # 落盘屏障：关闭前把内容刷到盘上（旧实现这一步没有；旧版
+                # 「保留条数 == 0 时 flush」已被这里的无条件 flush 覆盖）。
+                输出.flush()
+                os.fsync(输出.fileno())
         os.replace(临时, 文件)
+        # 目录项落盘（best-effort 档，唯一实现 `同步目录项`）：`os.replace` 只保证
+        # 「改名这个动作」原子，不保证改名后的**目录项**已落盘。
+        同步目录项(文件.parent)
     finally:
         if 临时.exists():
             临时.unlink(missing_ok=True)
