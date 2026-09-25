@@ -1,15 +1,15 @@
 {
   "包id": "支持库.后端.文件系统支持库.文本补丁",
-  "版本": "1.4.1",
+  "版本": "1.5.0",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "a14d88ccb87a367a0deedae629fdfc6f300d1f9a4da24ecbcc4642f1d82dd8e0"
+      "sha256": "9f343c504b579a1b5a8fbb9e41138bdbb2990e177498ca7dcd008b7842f2ca46"
     },
     {
       "路径": "包声明.json",
-      "sha256": "e999eb574e30717d2779802a3f7167b2dee7d52d7fd9e5084e668dc7dcf4e6c9"
+      "sha256": "b3aafc10777e89f081b65da033572964aa2b2d0fb481ef5c0ea85cb956933e68"
     },
     {
       "路径": "复用决策.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "实现/文本补丁.py",
-      "sha256": "0b3588b77a75bc0ea79be441aaf80ccf27568c2f9ef5c587f0abb71b0c95c311"
+      "sha256": "e8b7ac2124d0398b6cd94b2a928118869ca1f4ce53c9e0b80f75aaa6660fbe70"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -25,23 +25,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "f730e25c6bf73bcd85903d8c94b0def88613e409ff28df73c8a4a0341cd3fe5d"
+      "sha256": "254c2242c1d6a4a458ad74b6c194904be50e3b574803f8756f261cb1801ad38f"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "c3be660a39f019705bec8b72b4aabeacb8b1dc7027dc83c0218469875f6e6e5d"
+      "sha256": "ad61bbe783e2a1d05295a7fabb4d0e5da8a9a2eeabc9200a14ed786015f880b4"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "60dfa152f3d30df6222e5430e54d6ced477126c598ec77470ae56efd060b51d9"
+      "sha256": "e4f4d1a9ada7ccd32d5a6b5674419eb49ee17c7d0bdd1cbc8e9f6f73af1c7978"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "fc7fadd1c9bc53031d523e791804f0c00d77582bb38495a8939c3b8e5c27ca52"
+      "sha256": "9eccd99bb37d8902a1f49dc4750983468b8901d765e0c976e0656dcd5859a1c2"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "18b79b59c8dfd78317183bc5f1d083958a9f98ea499d1dec3a9a914f66ae149f"
+      "sha256": "261a844ebce12f0783b7c0ebbc9c162e192ee8e586171f397dbdd48efbf0b63b"
     },
     {
       "路径": "说明/设计说明.md",
@@ -71,5 +71,5 @@
     "文件系统支持库.文本补丁.批量应用精确替换",
     "文件系统支持库.文本补丁.解析代码补丁"
   ],
-  "能力定义摘要": "304026342ad55e31"
+  "能力定义摘要": "5157d1ee0669e809"
 }

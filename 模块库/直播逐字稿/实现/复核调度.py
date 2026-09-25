@@ -127,8 +127,12 @@ def _执行一轮(调用能力, 源音频路径: str, 超时: float, 模型配�
                 "分段": 分段 if isinstance(分段, list) else []})
     return 条目
 
-def _写复核盘(复核目录: str, 区间id: int, 数据: dict) -> tuple[str, str]:
-    """写 复核_0001.json（id 补 4 位）；返回 (路径, 错误说明)。"""
+def _写复核盘(复核目录: str, 区间id: int, 数据: dict, 开工ID: str | None = None) -> tuple[str, str]:
+    """写 复核_0001.json（id 补 4 位）；返回 (路径, 错误说明)。
+
+    开工ID 穿透（2026-09-25）：`原子写入` 按「活跃写租约所有者 == 开工ID」判授权
+    （`公共契约/运行时/写入授权.py::校验写入授权`）；复核目录受管时缺它即 `越界`。
+    """
     try:
         路径 = Path(复核目录).expanduser() / f"复核_{区间id:04d}.json"
     except (TypeError, ValueError) as 错误:
@@ -137,7 +141,8 @@ def _写复核盘(复核目录: str, 区间id: int, 数据: dict) -> tuple[str, 
     if not _成功(序列化) or not isinstance(getattr(序列化, "值", None), str):
         return "", "数据无法序列化为 JSON"
     写 = _底座("系统核心支持库.资源管理.原子写入",
-             {"目标路径": str(路径), "内容": getattr(序列化, "值") + "\n"})
+             {"目标路径": str(路径), "内容": getattr(序列化, "值") + "\n",
+              "开工ID": 开工ID or ""})
     if not _成功(写):
         return "", _失败说明(写, "写盘失败")
     return str(路径), ""
@@ -246,7 +251,8 @@ def _读已有复核(复核目录: str, 区间id: int) -> dict | None:
 
 def 复核区间(源音频路径: str, 区间: dict, 复核目录: str, 调用能力,
              轮数: int = 默认轮数, 模型配置: dict | None = None,
-             超时秒: float = 默认超时秒, 续跑: bool = 真) -> dict:
+             超时秒: float = 默认超时秒, 续跑: bool = 真,
+             开工ID: str | None = None) -> dict:
     """对单个区间先截取区间音频、再跑多轮独立转写并落盘；已落盘且区间一致时直接复用。"""
     区间id, 开始, 结束 = _区间信息(区间)
     超时 = _取数(超时秒)
@@ -284,7 +290,7 @@ def 复核区间(源音频路径: str, 区间: dict, 复核目录: str, 调用�
                 for 序号 in range(1, 轮数 + 1)]
     写入路径, 写盘错误 = _写复核盘(
         复核目录, 区间id, {"区间id": 区间id, "开始秒": 开始, "结束秒": 结束,
-                        "区间音频路径": 区间音频, "轮次": 轮次列表})
+                        "区间音频路径": 区间音频, "轮次": 轮次列表}, 开工ID)
     失败轮 = [条目 for 条目 in 轮次列表 if not 条目["成功"]]
     可用, 标注 = _区间可用(轮次列表, 开始, 结束)
     完成 = 可用 and not 写盘错误

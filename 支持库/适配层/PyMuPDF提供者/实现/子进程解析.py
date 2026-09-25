@@ -1,7 +1,9 @@
 """子进程解析逻辑：在隔离子进程内执行 PyMuPDF（fitz）渲染操作。
 
 本模块只在子进程中导入；这里可以安全使用 fitz，崩溃不影响平台主进程。
-成功 {"值": ...}；失败 {"错误码": ..., "错误说明": ..., "值": ...}。
+成功返回**裸值**字典（`公共契约/运行时/子进程协议.组装应答` 的「其余按成功转信封」一支
+直接把它当 `值`；不再自带 `{"值": ...}` 包一层 —— 那会多包一层信封）；
+失败返回 `{"错误码": ..., "错误说明": ..., "值": ...}`（按「含错误码的字典」保留 `值`）。
 """
 
 from __future__ import annotations
@@ -79,7 +81,7 @@ def 检测加密页数(文件路径: str) -> dict[str, Any]:
     if 错误:
         return 错误
     try:
-        return {"值": {"已加密": bool(文档.is_encrypted), "页数": 文档.page_count}}
+        return {"已加密": bool(文档.is_encrypted), "页数": 文档.page_count}
     finally:
         文档.close()
 
@@ -98,7 +100,7 @@ def 渲染整页(文件路径: str, 页序号: Any) -> dict[str, Any]:
             字节 = 像素.tobytes("png")
         except Exception as 渲染错误:
             return {"错误码": "文件损坏", "错误说明": f"页面渲染失败: {渲染错误}"}
-        return {"值": base64.b64encode(字节).decode("ascii")}
+        return base64.b64encode(字节).decode("ascii")
     finally:
         文档.close()
 
@@ -134,7 +136,7 @@ def 提取图像(文件路径: str, 页序号: Any) -> dict[str, Any]:
                 "字节b64": base64.b64encode(数据["image"]).decode("ascii"),
                 "尺寸": {"宽度": int(数据.get("width") or 0), "高度": int(数据.get("height") or 0)},
             })
-        return {"值": 结果表}
+        return 结果表
     finally:
         文档.close()
 
@@ -157,6 +159,6 @@ def 校验PDF(字节b64: str) -> dict[str, Any]:
     try:
         if 文档.is_encrypted:
             return _加密错误("PDF 已加密，需要密码才能打开")
-        return {"值": {"页数": 文档.page_count, "提供者": "fitz"}}
+        return {"页数": 文档.page_count, "提供者": "fitz"}
     finally:
         文档.close()

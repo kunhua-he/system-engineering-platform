@@ -1,15 +1,15 @@
 {
   "包id": "技能库.后端.技能库",
-  "版本": "1.1.2",
+  "版本": "1.1.3",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "5c8eb9d57dfc1b4f09a245c6efb0ee171dbc5ba6a2592d925720dfd67f94a39e"
+      "sha256": "846d6a2ff902eb7f1ab751e0cb0114b1f98dad626911572a4773df88c8b3ffd2"
     },
     {
       "路径": "包声明.json",
-      "sha256": "04197648c6fc3fd9cf67e8007ef7cfff19b14b5d71eab36eff6356b28bd7dea2"
+      "sha256": "80e3b6dd4d02eddfe0dc5cc516612ceaba6e0a8b294094d3dca36f9efd914127"
     },
     {
       "路径": "复用决策.json",
@@ -17,7 +17,7 @@
     },
     {
       "路径": "实现/技能库.py",
-      "sha256": "807f0b4cdcc62ac1ca09201bbc996dcbfb2e54b75efdfc475ba10c3668997835"
+      "sha256": "3cc46be80f88ef62e5517bb2e19b6117067ec65b513f00d9b1608e3954a179b4"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -25,23 +25,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "406ad3eb41838d656cdff6df8aebe318a6e5c0b4ca0571bb76ee421d1783866f"
+      "sha256": "8aaffd6b9e00e7b470186b8fe60712ec315e91fbb6606b8fa13dad8040f9c02c"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "952dbaa48455ebcca9662b46d76cac88b573ced867ea628e3d317cba1b3d172f"
+      "sha256": "23ccf4b67c1bc48b1155844ff18c18a3fdbcfa8e7fad0a5dbecf234b227c2c6b"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "5971526a6b9e1a7ee25bcaebfafb3e50fb7c117d844f40f87ec24fa1cc57c6ea"
+      "sha256": "0d84d6a6317370fe6224b391108fd0ca1fc0b00dfc2a15e30758dfa61a433db6"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "aeda00e2e9b44bc027d01f3fcaea3e1ccd4feb842ab27130f469b4e6c497d52d"
+      "sha256": "959f061ded68004311da411160d6b41f6b05a98851ceaac130bfd63ec995c788"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "290510f2ee1a9f7d4d53da2a45c1ed9b2e3528fd22683487cdd1db64ecc67754"
+      "sha256": "a4c3ebf7e022ccb3080f1ae75ae5a7c52df2e09a1dd1b93d29a22265b42a6f89"
     },
     {
       "路径": "说明/设计说明.md",
@@ -127,5 +127,5 @@
     "技能库.技能索引.扫描技能包",
     "技能库.技能索引.生成索引"
   ],
-  "能力定义摘要": "f09cfa43407dcab9"
+  "能力定义摘要": "926d22a3d6837b33"
 }

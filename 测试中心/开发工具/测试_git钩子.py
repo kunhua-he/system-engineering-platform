@@ -119,16 +119,108 @@ class 强制点必须在必经路径上(unittest.TestCase):
 
 
 class 钩子判据本身(unittest.TestCase):
+    """提交强制点（`commit-msg`）的**声明级 ＋ 实证级**两问。
+
+    ★ 2026-09-25：钩子升到实证级（问二）—— 拿消息里的开工ID 去租约账核 `所有者` 列
+    （`开发工具/git钩子/commit-msg::verify_workid`）。故「有开工ID必放」这类用例**不能再拿假ID**
+    （旧版写死的 `开工-20260923-131126-78e8` 现在必红）：必须在一份**夹具租约账**里放一个
+    真凭证，并让钩子在**能 import 到该夹具账**的临时树里跑（否则钩子读真账、假ID 必被拒）。
+    本类自带那棵临时树（钩子副本 ＋ `平台控制面` 桩 ＋ `开发工具/MD文档生成` 放行桩）。
+
+    口径版本：本夹具按「**所有者 恒＝开工ID**」那一版写（开工即占 不再允许覆盖 `所有者`）。
+
+    ★ 夹具补第二档（2026-09-25，见 `setUp` 里 `文件租约存储.py` 那段注释）：问二实为
+    **两小问**——活跃档查无时再查全量档（含 `已释放`/`已过期`，正常流程「先收工释放、
+    后提交」走的就是这一档）。全量档那条腿 import 的是
+    `平台控制面.能力目录.文件租约存储`，夹具必须一并桩上，否则
+    `test_反向_假开工ID在账里查无必须拒` 会因「核验不可用 ⇒ 放行」而恒绿。
+    """
+
+    #: 夹具凭证：作为 `所有者` 注入夹具租约账 ⇒ 对钩子问二「真实存在」。
+    夹具开工ID = "开工-20260925-120000-a1b2"
+    #: 反向样本：形如真开工ID、但**不在**夹具账里 ⇒ 问二必须拒。
+    夹具假开工ID = "开工-20260923-131126-78e8"
+
+    def setUp(self) -> None:
+        # ★ `self.仓库` 必须由 `self.临时根` 直接派生（不接函数返回值）——「测试写入边界门禁」
+        #   解析左端基，接返回值会被判「写动作未解析」（与 `提交时整仓锁必须在位` 同口径）。
+        self.临时根 = Path(tempfile.mkdtemp(prefix="测试_钩子开工ID_"))
+        self.仓库 = self.临时根 / "仓库"
+        self.仓库.mkdir()
+        _运行git(self.仓库, "init", "-q", "-b", "main")
+        钩子目录 = self.仓库 / "开发工具" / "git钩子"
+        钩子目录.mkdir(parents=True)
+        self.钩子 = 钩子目录 / "commit-msg"
+        self.钩子.write_text(钩子路径.read_text(encoding="utf-8"), encoding="utf-8")
+        # 判据二（写入凭据）的放行桩：本类只考开工ID 两问；凭据腿在临时树里不可用会把每笔都拒。
+        凭据包 = self.仓库 / "开发工具" / "MD文档生成"
+        凭据包.mkdir(parents=True)
+        (凭据包 / "__init__.py").write_text("", encoding="utf-8")
+        (凭据包 / "__main__.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+        # 夹具租约账桩（唯一注入口：事实源由平台控制面侧载入时自注册）——`所有者` 列放夹具凭证。
+        包 = self.仓库 / "平台控制面" / "能力目录"
+        包.mkdir(parents=True)
+        (self.仓库 / "平台控制面" / "__init__.py").write_text("", encoding="utf-8")
+        (包 / "__init__.py").write_text(
+            "from 公共契约.运行时.写入授权 import 设写租约事实源\n"
+            "活跃表 = %r\n" % ({"夹具/凭证.txt": self.夹具开工ID},)
+            + "设写租约事实源(lambda: (活跃表, \"\"))\n",
+            encoding="utf-8")
+        # ★ 问二的**全量档**（`只要活跃=假`）也必须桩上（2026-09-25 现场实测）：
+        #   钩子 `verify_workid` 活跃档查无时会**再查全量档**（含 `已释放`/`已过期`，正常流程
+        #   「先收工释放、后提交」走的就是这一档），那条腿直接
+        #   `from 平台控制面.能力目录.文件租约存储 import 写租约所有者表`。夹具树里只有
+        #   `能力目录/__init__.py` 时该 import 必失败 ⇒ 钩子按「核验不可用」放行
+        #   ⇒ `test_反向_假开工ID在账里查无必须拒` 恒绿（**反向样本失效**，假红换假绿）。
+        #   桩的是**租约账这个外部事实源**，不桩被测判据：两小问、退出码与文案照旧跑真身。
+        #   全量档放同一个夹具凭证（真 ID 走「活跃档命中」这条更早的分支，全量档只兜底）；
+        #   夹具假 ID 两档都查无 ⇒ 必须拒。★ 写入点必须与上面同形（`包 / 文件名` 左端基由
+        #   `self.仓库 ← self.临时根` 解析得出）——「测试写入边界」门禁把解析不出的写动作
+        #   fail-closed 计入违规，改成传参进来的 `包` 会当场判红。
+        (包 / "文件租约存储.py").write_text(
+            "全量账 = %r\n" % ({"夹具/凭证.txt": self.夹具开工ID},)
+            + "\n"
+            "\n"
+            "def 写租约所有者表(存储目录=\"\", *, 只要活跃=True):\n"
+            "    \"\"\"活跃档由夹具已注册的事实源回答，本桩只答全量档。\"\"\"\n"
+            "    return ({} if 只要活跃 else dict(全量账)), \"\"\n",
+            encoding="utf-8")
+        self.addCleanup(shutil.rmtree, self.临时根, ignore_errors=True)
+
+    def _跑本树(self, 消息: str) -> int:
+        """在**夹具树**里真跑钩子：`cwd`=夹具仓库 ⇒ 钩子的 python 以夹具树为 `sys.path[0]`，
+        夹具 `平台控制面` 先于真仓库那份被导入（载入即注册夹具租约账）；
+        `PYTHONPATH`=真仓库根 ⇒ 判据本体 `公共契约` 仍取自真源码树。"""
+        环境 = dict(os.environ)
+        环境["PYTHONPATH"] = str(仓库根)
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            路径 = f.name
+            f.write(消息)
+        try:
+            return subprocess.run(["sh", str(self.钩子), 路径], cwd=str(self.仓库),
+                                  capture_output=True, text=True, timeout=120,
+                                  env=环境).returncode
+        finally:
+            os.unlink(路径)
+
     def test_无开工ID必拒(self) -> None:
-        self.assertNotEqual(跑钩子("夹具：这条消息没有开工ID\n"), 0,
+        self.assertNotEqual(self._跑本树("夹具：这条消息没有开工ID\n"), 0,
                             "没有开工ID 的提交必须被拒（这正是强制点的用途）")
 
     def test_有开工ID必放(self) -> None:
-        self.assertEqual(跑钩子("开工-20260923-131126-78e8 夹具：这条有开工ID\n"), 0)
+        self.assertEqual(self._跑本树(f"{self.夹具开工ID} 夹具：这条有开工ID\n"), 0)
 
     def test_开工ID在正文任意位置都认(self) -> None:
-        self.assertEqual(跑钩子("正文一段\n\n开工-20260923-131126-78e8 详情\n"), 0,
+        self.assertEqual(self._跑本树(f"正文一段\n\n{self.夹具开工ID} 详情\n"), 0,
                          "开工ID 不强制在第一行（提交腿把消息原样传下来）")
+
+    def test_反向_假开工ID在账里查无必须拒(self) -> None:
+        """★ 问二（实证级）的反向样本：形如真开工ID、但夹具账里没有它 ⇒ 必须拒。
+
+        弄坏→红：把夹具账桩的 `所有者` 换成假ID、或摘掉问二，本用例必红。
+        """
+        self.assertNotEqual(self._跑本树(f"{self.夹具假开工ID} 编一个开工ID 蒙混\n"), 0,
+                            "账里查无的假开工ID 竟然放行了（问二没生效）")
 
     def test_自身出错一律放行(self) -> None:
         """钩子坏了不该让整个仓库提交瘫痪 —— 只有「检查跑完了且确实没声明」才拒。"""
@@ -137,7 +229,7 @@ class 钩子判据本身(unittest.TestCase):
     def test_git自身流程消息放行(self) -> None:
         for 消息 in ("Merge branch '主干'\n", "Revert \"某次提交\"\n",
                     "fixup! 前一条\n", "squash! 前一条\n"):
-            self.assertEqual(跑钩子(消息), 0, f"{消息.strip()} 不该被要求带开工ID")
+            self.assertEqual(self._跑本树(消息), 0, f"{消息.strip()} 不该被要求带开工ID")
 
 
 class 提交时整仓锁必须在位(unittest.TestCase):
@@ -211,10 +303,13 @@ class 提交时整仓锁必须在位(unittest.TestCase):
         包 = self.仓库 / "平台控制面" / "能力目录"
         包.mkdir(parents=True, exist_ok=True)
         (self.仓库 / "平台控制面" / "__init__.py").write_text("", encoding="utf-8")
+        # ★ 2026-09-25：事实源的值从**路径集**改成**映射**（路径 → 所有者）；本桩只喂
+        #   开窗面（路径），所有者填桩名即可 —— 钩子里的 `活跃租约开窗集()` 只取键。
+        活跃表 = {路径: "夹具所有者" for 路径 in sorted(活跃相对路径集)}
         (包 / "__init__.py").write_text(
             "from 公共契约.运行时.写入授权 import 设写租约事实源\n"
-            "活跃 = frozenset(%r)\n" % (tuple(sorted(活跃相对路径集)),)
-            + "设写租约事实源(lambda: (活跃, \"\"))\n",
+            "活跃表 = %r\n" % (活跃表,)
+            + "设写租约事实源(lambda: (活跃表, \"\"))\n",
             encoding="utf-8")
 
     def _改钩子源码(self, 替换: dict[str, str] | None) -> Path:

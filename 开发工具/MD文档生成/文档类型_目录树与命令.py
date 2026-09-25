@@ -145,7 +145,8 @@ def 核验(项目根: Path, 相对: str) -> tuple[int, list[str]]:
     return 1, [f"  树里写了但摘要里没有（照它执行会打不开文件）：{x}" for x in 漂移]
 
 
-def 出文档(项目根: Path, 相对: str) -> tuple[int, list[str]]:
+def 出文档(项目根: Path, 相对: str,
+          开工ID: str = "") -> tuple[int, list[str]]:
     """生成器形态：**只删**树块里对不上摘要的条目；不重排、不补条、不换格式。
 
     「缺摘要」与「无漂移」的结论必须与 `核验` **完全一致**（同一情形两套结论即缺陷：
@@ -166,12 +167,14 @@ def 出文档(项目根: Path, 相对: str) -> tuple[int, list[str]]:
     去掉 = {i for i, 条目 in 树条目(行表, *范围) if _条目名(条目) in set(漂移)}
     新表 = [行 for i, 行 in enumerate(行表) if i not in 去掉]
     写入文件(str(路径),
-           "\n".join(新表) + ("\n" if 文本.endswith("\n") else "")).确保成功()
+           "\n".join(新表) + ("\n" if 文本.endswith("\n") else ""),
+           开工ID=开工ID).确保成功()
     return 0, [f"  已删漂移条目 {len(去掉)} 行：{x}" for x in 漂移]
 
 
 def 主流程(项目根: Path, 写盘: bool, 今天: str | None = None,
-           单文件: str | None = None) -> tuple[int, list[str]]:
+           单文件: str | None = None,
+           开工ID: str = "") -> tuple[int, list[str]]:
     """本类型的入口（签名与 `文档类型_债务清单.主流程` 一致，见 `__main__.py` 的统一分派）。
 
     类型定义从判据文件按名取（**不另抄一份路径判据**）；`单文件` 为 `--文件 <路径>` 的定向模式。
@@ -184,7 +187,8 @@ def 主流程(项目根: Path, 写盘: bool, 今天: str | None = None,
         return 2, [f"该类型下没找到现存文件（路径判据：{类型.get('路径判据')}）"]
     总码, 行表 = 0, []
     for 相对 in 表:
-        码, 行 = 出文档(项目根, 相对) if 写盘 else 核验(项目根, 相对)
+        码, 行 = (出文档(项目根, 相对, 开工ID=开工ID) if 写盘
+                 else 核验(项目根, 相对))
         总码 = max(总码, 码)
         行表.append(f"  [{'写盘' if 写盘 else '核验'}] {相对}")
         行表.extend("      " + x for x in 行)

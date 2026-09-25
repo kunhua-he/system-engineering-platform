@@ -1,11 +1,11 @@
 {
   "包id": "模块库.文件管理",
-  "版本": "2.0.2",
+  "版本": "2.0.3",
   "摘要算法": "sha256",
   "文件清单": [
     {
       "路径": "__init__.py",
-      "sha256": "72781e39bba04cc6eab33784b8a6dcb30edf91d5c72dc56470f04409cdd6bbb7"
+      "sha256": "7998bef2b0f7981ec5f345baa302d08573cf0ae92a9da490399bcdba674fec33"
     },
     {
       "路径": "依赖契约/依赖契约.json",
@@ -13,7 +13,7 @@
     },
     {
       "路径": "包声明.json",
-      "sha256": "e76db5bcfc0fe077673f485fadee3e7c51f5cf48e96d5e7fe16ccf93fb47189c"
+      "sha256": "ff54f1effdbb3f2bcd55e5b2ab15e8707a429fbccb41e540b1e2b412dbcdc52d"
     },
     {
       "路径": "复用决策.json",
@@ -21,7 +21,7 @@
     },
     {
       "路径": "实现/文件管理.py",
-      "sha256": "f3aff6c440752bc4c97044fc54385ebef0aa69ca070069b2e2792a83e239d177"
+      "sha256": "bb59e7fe94e843648b7c31ab60da15b81ac01748a044c1fca508ced10df9ceea"
     },
     {
       "路径": "权限契约/权限契约.json",
@@ -29,23 +29,23 @@
     },
     {
       "路径": "能力契约/参数契约.json",
-      "sha256": "a74afff52496849e8c20b381af3a28e23ad76400ad36eb1cdc4032dc2e7e9993"
+      "sha256": "0b7b4334303d69f20012959f5011efd57d79ff2cddf9262c154d40dd086db283"
     },
     {
       "路径": "能力定义.json",
-      "sha256": "ebbfc19fc7405c4a27c360e5de5902a3ba52641027275a6cba321f5ebbb554dd"
+      "sha256": "6d26131318457ecbe5e21bc852cc067ba6b429ea3f86ae4b4efdf6fde9eaf395"
     },
     {
       "路径": "能力数据/Agent查询数据.json",
-      "sha256": "585b7757b33611398b670c0d2949286783b547a6fd8de0bce549a0e29a495150"
+      "sha256": "30493a7b05fec05af37b84ac864ff378cca8392c4a2972853e1f5bacb97f5b2a"
     },
     {
       "路径": "能力数据/能力搜索数据.json",
-      "sha256": "7be35938c656f14b4c850bec4054e7e9b5bd835e00d1a7f78ac4ecd901b044cb"
+      "sha256": "740b866519707ce23d7cb95a694a2cdb29b5f4d3d273c272f2c72cd776ab94b3"
     },
     {
       "路径": "说明/使用说明.md",
-      "sha256": "3edb0e95432f6e38eb698253f32113a23f9f706fe510ad984277122c07731511"
+      "sha256": "c381a33ae4c38feb1d969f2242a2b90bd1b424f891f07e4cfea3f3a67ecf5f80"
     },
     {
       "路径": "说明/目录树与命令.md",
@@ -92,5 +92,5 @@
     "文件管理.读取文件头部字节",
     "文件管理.流式创建摘要"
   ],
-  "能力定义摘要": "fd924b7ea6c242c1"
+  "能力定义摘要": "fdd3e6dd5937ec17"
 }

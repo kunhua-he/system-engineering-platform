@@ -14,13 +14,16 @@ from __future__ import annotations
 from typing import Any
 
 from 公共契约.基础类型.结果类型 import 结果
-from 支持库.后端.组件规范支持库.实现.包装辅助 import 失败, 路径参数
+from 支持库.后端.组件规范支持库.实现.包装辅助 import 失败, 文本参数, 路径参数
+# 落盘腿被授权判据拒绝时的**原样错误码载体**（`越界` 不许被中间层收敛，2026-09-25）。
+from 支持库.后端.组件规范支持库.实现.模板公共件 import 写入被拒
 from 支持库.后端.组件规范支持库.实现.说明书生成器 import (
     生成说明书 as _生成说明书,
 )
 
 
-def 生成说明书(包目录: Any = None, 输出根目录: Any = None, 允许重建骨架: Any = False) -> 结果:
+def 生成说明书(包目录: Any = None, 输出根目录: Any = None, 允许重建骨架: Any = False,
+            开工ID: Any = None) -> 结果:
     """生成 `<输出根目录>/说明/使用说明.md`；默认拒绝覆盖，骨架态可显式重建。"""
     源目录 = 路径参数(包目录)
     输出根 = 路径参数(输出根目录)
@@ -35,7 +38,12 @@ def 生成说明书(包目录: Any = None, 输出根目录: Any = None, 允许�
     if not 输出根.is_dir():
         return 失败("参数不合法", f"输出根目录不是目录: {输出根}")
     try:
-        目标 = _生成说明书(源目录, 输出根, 允许重建骨架=允许重建骨架)
+        目标 = _生成说明书(源目录, 输出根, 允许重建骨架=允许重建骨架,
+                       开工ID=文本参数(开工ID))
+    except 写入被拒 as 错误:
+        # 写腿第二判据（写入授权）的拒绝：**原样透出真码**（`越界`）——它继承 ValueError，
+        # 不提前拦下会被下面的 `except ValueError` 误报成 `路径逃逸`（真因被洗掉）。
+        return 结果.失败(错误.错误码, 错误.错误说明, 来源="组件规范支持库")
     except FileExistsError as 错误:
         return 失败("已存在", str(错误))
     except ValueError as 错误:

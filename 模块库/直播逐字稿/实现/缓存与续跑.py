@@ -37,8 +37,12 @@ def 现在文本() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def 准备缓存(缓存目录: str) -> dict[str, Path]:
-    """创建缓存目录骨架并返回命名路径表（键为阶段名）。"""
+def 准备缓存(缓存目录: str, 开工ID: str | None = None) -> dict[str, Path]:
+    """创建缓存目录骨架并返回命名路径表（键为阶段名）。
+
+    开工ID 穿透（2026-09-25）：骨架落盘走 `创建目录`，按「活跃写租约所有者 == 开工ID」
+    判授权，原样透传（缓存目录受管时缺它即 `越界`）。
+    """
     根 = Path(缓存目录).expanduser().resolve()
     路径表 = {
         "根": 根,
@@ -55,7 +59,8 @@ def 准备缓存(缓存目录: str) -> dict[str, Path]:
     for 名称, 路径 in 路径表.items():
         if 名称 == "根":
             continue
-        _底座("文件系统支持库.文件操作.创建目录", {"目录路径": str(路径), "递归": 真})
+        _底座("文件系统支持库.文件操作.创建目录",
+             {"目录路径": str(路径), "递归": 真, "开工ID": 开工ID or ""})
     路径表["疑难清单"] = 根 / "04_疑难清单.json"
     路径表["复核区间"] = 根 / "05_复核区间.json"
     路径表["指纹"] = 路径表["元数据"] / 指纹文件名
@@ -91,8 +96,12 @@ def 读JSON(路径: Path) -> dict | None:
     return getattr(解析, "值", None)
 
 
-def 写JSON(路径: Path, 数据: dict) -> bool:
-    """写 JSON（utf-8、缩进 2）；成功返回 True。"""
+def 写JSON(路径: Path, 数据: dict, 开工ID: str | None = None) -> bool:
+    """写 JSON（utf-8、缩进 2）；成功返回 True。
+
+    开工ID 穿透（2026-09-25）：`写入文件` 按「活跃写租约所有者 == 开工ID」判授权
+    （`公共契约/运行时/写入授权.py::校验写入授权`）；缓存目录受管时缺它即 `越界`。
+    """
     序列化 = _底座("数据操作支持库.数据交换.序列化JSON", {"数据": 数据})
     if not _成功(序列化):
         return 假
@@ -100,7 +109,8 @@ def 写JSON(路径: Path, 数据: dict) -> bool:
     if not isinstance(文本, str):
         return 假
     写 = _底座("文件系统支持库.文件操作.写入文件",
-              {"文件路径": str(路径), "内容": 文本 + "\n", "编码": "utf-8"})
+              {"文件路径": str(路径), "内容": 文本 + "\n", "编码": "utf-8",
+               "开工ID": 开工ID or ""})
     return _成功(写)
 
 
@@ -109,9 +119,9 @@ def 读指纹(缓存: dict) -> dict | None:
     return 读JSON(缓存["指纹"])
 
 
-def 写指纹(缓存: dict, 指纹: dict) -> bool:
-    """写任务指纹。"""
-    return 写JSON(缓存["指纹"], 指纹)
+def 写指纹(缓存: dict, 指纹: dict, 开工ID: str | None = None) -> bool:
+    """写任务指纹。开工ID 穿透见 写JSON。"""
+    return 写JSON(缓存["指纹"], 指纹, 开工ID)
 
 
 def _未知(值) -> bool:
@@ -159,11 +169,11 @@ def 指纹一致(旧指纹: dict | None, 新指纹: dict) -> bool:
     return 真
 
 
-def 写状态(缓存: dict, 状态: dict) -> bool:
-    """写项目状态（追加更新时间）。"""
+def 写状态(缓存: dict, 状态: dict, 开工ID: str | None = None) -> bool:
+    """写项目状态（追加更新时间）。开工ID 穿透见 写JSON。"""
     内容 = dict(状态)
     内容["更新时间"] = 现在文本()
-    return 写JSON(缓存["状态"], 内容)
+    return 写JSON(缓存["状态"], 内容, 开工ID)
 
 
 def 读状态(缓存: dict) -> dict | None:

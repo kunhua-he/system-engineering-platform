@@ -2,7 +2,7 @@
 from __future__ import annotations
 import http.client, ipaddress, json, threading, time, urllib.parse
 from typing import Any
-from 开发工具.HTML验证.常量 import 请求上限字节
+from 开发工具.HTML验证.常量 import 请求上限字节, 场景写入凭证, 场景写入凭证参数名
 from 开发工具.HTML验证.单步场景 import 验证场景
 
 #: 每线程一条长连接（未完成事项 #192）：键=(主机, 端口)，值=http.client.HTTPConnection。
@@ -60,6 +60,25 @@ def _校验直连地址(地址: str) -> str:
         raise ValueError("直连地址不得包含凭据、业务路径、查询或片段")
     return 地址.rstrip("/")
 
+def _补写入凭证(参数: dict[str, Any]) -> dict[str, Any]:
+    """场景参数补上写入凭证 `开工ID` —— **本腿唯一的补位点**（口径见 `常量.场景写入凭证`）。
+
+    为什么必须补：写腿的 `开工ID` 是 **`必填=true`**，而必填校验发生在**写盘之前、
+    豁免判定之前**（`类型规格.校验能力参数`）⇒ 不补的话，收口把激活制品换成新契约之后，
+    **凡调写腿的正向场景都会撞 `缺少必填参数 开工ID`**，连落点全在豁免前缀 `工程缓存/`
+    的受管临时目录场景也一样过不去。
+
+    为什么不削弱判据：`场景写入凭证` 不是真实开工ID ⇒ 不可能拥有任何租约 ⇒ 受管路径照旧
+    被 `校验写入授权` 判 `越界`；只有非受管落点（豁免前缀/仓库外/自管生成物）才放行。
+
+    为什么是 `setdefault` 而不是覆盖：场景自己声明了凭证（如 `模块库/项目文档/验证场景/*.json`）
+    就原样送出 —— 覆盖会改掉那些场景的真实入参，等于把场景内容偷偷改掉。
+    """
+    送出 = dict(参数) if isinstance(参数, dict) else {}
+    送出.setdefault(场景写入凭证参数名, 场景写入凭证)
+    return 送出
+
+
 def _单次请求(目标: str, 场景: 验证场景, 超时秒: float) -> tuple[int, dict[str, Any]]:
     """发一次真实 HTTP 请求并把响应归一成 (状态码, 数据)。
 
@@ -79,7 +98,7 @@ def _单次请求(目标: str, 场景: 验证场景, 超时秒: float) -> tuple[
     请求头 = {"Accept": "application/json"}
     if 方法 == "POST":
         请求体 = json.dumps(
-            {"能力id": 场景.能力id, "参数": 场景.参数}, ensure_ascii=False
+            {"能力id": 场景.能力id, "参数": _补写入凭证(场景.参数)}, ensure_ascii=False
         ).encode("utf-8")
         请求头["Content-Type"] = "application/json"
     try:

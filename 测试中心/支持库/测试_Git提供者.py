@@ -287,19 +287,40 @@ class TestGit提供者(unittest.TestCase):
 
     def test_获取当前提交哈希_超时注入(self):
         class _挂起进程:
-            """模拟 git 卡死：受限通信需 poll() 返回 None 触发超时。"""
+            """模拟 git 卡死：受限通信需 poll() 返回 None 触发超时。
+
+            ★ 本替身必须是**真 `subprocess.Popen` 的忠实替身**（真对象见
+            `支持库/适配层/Git提供者/实现/受管执行.py` 的 `subprocess.Popen(...)`）。
+            收口层 `公共契约/运行时/进程终止.发进程组信号` 的「句柄兜底」腿
+            （`进程.terminate()` / `进程.kill()`，2026-09-24 批R 起）在组信号送不达时
+            会对句柄调用这两个方法；替身缺了它们 ⇒ 收口层抛 AttributeError，
+            本用例报 ERROR（是替身陈旧，不是被测腿的缺陷）。
+            故按真 Popen 语义补齐：`terminate()`/`kill()` 送达信号后进程即死，
+            `poll()` 随之上报退出码（SIGTERM→-15 / SIGKILL→-9，与真 Popen 同口径）。
+            """
 
             pid = 2147483000
             stdin = stdout = stderr = None
 
+            def __init__(self):
+                self.退出码 = None
+
             def poll(self):
-                return None
+                return self.退出码
 
             def communicate(self, timeout=None):
                 raise subprocess.TimeoutExpired("git", timeout)
 
             def wait(self, timeout=None):
-                raise subprocess.TimeoutExpired("git", timeout)
+                if self.退出码 is None:
+                    raise subprocess.TimeoutExpired("git", timeout)
+                return self.退出码
+
+            def terminate(self):
+                self.退出码 = -15  # SIGTERM
+
+            def kill(self):
+                self.退出码 = -9  # SIGKILL
 
         with mock.patch("subprocess.Popen", autospec=True,
                         return_value=_挂起进程()):
@@ -318,18 +339,21 @@ class TestGit提供者(unittest.TestCase):
         self.assertEqual(结果.错误码, "参数不合法")
 
     def test_注册能力(self):
+        """批R·R-28（2026-09-24，华哥裁决①「删适配层孪生能力面、保留后端腿 id」）：
+        本包**能力面已删**（`包声明.json` 能力清单为空），`注册能力` 是如实空实现。
+
+        ★ 旧腿不许复活（不保留旧腿）：本用例断言的是**当前事实** —— 本包不注册任何公开能力。
+        原用例断言的是被删掉的孪生能力面（裸 id `Git操作.*` 10 条，包id=本包），
+        那本身就是旧腿；若有人把它重新注册回来，`能力id列表` 就不再为空，本用例必红。
+        能力面归后端腿 `支持库.后端.版本控制支持库.Git操作`（对外 id 不变，生产调用点零改动），
+        本包只剩实现。选「改写」而非「删除」：删除会丢掉这条防旧腿复活的守卫。
+        """
         from 公共契约.能力契约.契约 import 能力注册表
         from 支持库.适配层.Git提供者 import 注册能力
         注册表 = 能力注册表()
         注册能力(注册表)
-        for 能力id in ["Git操作.检查提供者", "Git操作.创建工作区", "Git操作.查询工作区",
-                       "Git操作.关闭工作区", "Git操作.提交", "Git操作.推送",
-                       "Git操作.回滚",
-                       "Git操作.挑拣合入", "Git操作.当前状态",
-                       "Git操作.获取当前提交哈希"]:
-            实现 = 注册表.获取(能力id)
-            self.assertIsNotNone(实现, 能力id)
-            self.assertEqual(实现.包id, "支持库.适配层.Git提供者")
+        self.assertEqual(注册表.能力id列表, [],
+                         "本包能力面已删（批R·R-28）：注册能力 不得注册任何公开能力")
 
 
 class Test推送(unittest.TestCase):
@@ -538,7 +562,19 @@ class Test提交强制点第2层(unittest.TestCase):
     及测试白名单计数纠缠）；临时仓库里造一个钩子文件即可构造出「本仓」形态。
     ★ 真仓库的 `core.hooksPath` 接线断言不在这里重复 —— 它在
     `测试中心/开发工具/测试_git钩子.py`（同一件事不留第二套判据）。
+
+    ★ 2026-09-25 第 3 问（实证级）：提交腿要拿消息里的开工ID 去**写租约账**核 `所有者` 列
+    （`提交回滚._核验开工ID存在`，数据源经 `写入授权._取读取器()`）⇒ 旧版拿假ID 的用例必红。
+    ★ 2026-09-25 修假红后＝**两小问**（先活跃、再全量）：判据问的是「平台发过没发过」，
+    故夹具事实源必须能答两问（同一张表答两问即可 —— 夹具那条记录按「平台发过」计）。
+    夹具在 `setUp` 里经平台既有注入口 `设写租约事实源` 注入一个**真实存在**的凭证（见 `夹具开工ID`）。
+    口径版本：本夹具按「**所有者 恒＝开工ID**」那一版写（开工即占 不再允许覆盖 `所有者`）。
     """
+
+    #: 夹具凭证：注入到写租约事实源的 `所有者` 列 ⇒ 对本腿第 3 问「真实存在」。
+    夹具开工ID = "开工-20260925-120000-a1b2"
+    #: 反向样本：形如真开工ID、但**不在**账里 ⇒ 第 3 问必须拒。
+    夹具假开工ID = "开工-20260923-131126-78e8"
 
     def setUp(self):
         self.临时根 = Path(tempfile.mkdtemp(prefix="测试_提交强制点_"))
@@ -552,6 +588,15 @@ class Test提交强制点第2层(unittest.TestCase):
         self.钩子目录 = self.强制点仓库 / "开发工具" / "git钩子"
         self.钩子目录.mkdir(parents=True)
         (self.钩子目录 / "commit-msg").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        # 第 3 问的事实源（夹具租约账）：走平台既有注入口 `设写租约事实源`，**不 patch 被测模块本体**
+        # （与 `测试_写入授权.py` 同形）；`所有者` 列放 `夹具开工ID` ⇒ 该 ID 对本腿「真实存在」。
+        # ★ 夹具必须答**两小问**（`只要活跃=真` 活跃档 / `只要活跃=假` 全量档）：被测腿对两档
+        #   都拿同一张表问「这个ID 发过没发过」，夹具那条记录按「平台发过」计，两档同表即可。
+        from 公共契约.运行时 import 写入授权 as 授权
+        原事实源 = 授权.写租约事实源
+        授权.设写租约事实源(
+            lambda **_: ({"夹具/凭证.txt": self.夹具开工ID}, ""))
+        self.addCleanup(授权.设写租约事实源, 原事实源)
 
     def tearDown(self):
         shutil.rmtree(self.临时根, ignore_errors=True)
@@ -568,7 +613,7 @@ class Test提交强制点第2层(unittest.TestCase):
         self._接线()
         文件 = self._改一个文件("甲.txt")
         结果 = 提交(str(self.强制点仓库), [str(文件)],
-                   "开工-20260923-131126-78e8 甲：新增一个文件并验证")
+                   f"{self.夹具开工ID} 甲：新增一个文件并验证")
         self.assertTrue(结果.成功, 结果.错误说明)
         self.assertEqual(结果.值["提交文件"], ["甲.txt"])
         self.assertEqual("开发工具/git钩子", 结果.值["强制点"]["hooksPath"],
@@ -595,11 +640,26 @@ class Test提交强制点第2层(unittest.TestCase):
         """「钩子文件在」不等于「git 会调用它」—— 这个差别正是静默失效的入口。"""
         文件 = self._改一个文件("丙.txt")
         结果 = 提交(str(self.强制点仓库), [str(文件)],
-                   "开工-20260923-131126-78e8 丙：消息合规，但钩子没接线")
+                   f"{self.夹具开工ID} 丙：消息合规，但钩子没接线")
         self.assertFalse(结果.成功, "钩子文件在而 hooksPath 没指它 ⇒ 终端腿无人拦，必须拒")
         self.assertEqual("强制点未接线", 结果.错误码, 结果.错误说明)
         self.assertIn("git config core.hooksPath 开发工具/git钩子", 结果.错误说明,
                       "拒绝时必须给出可直接照抄的修法")
+
+    def test_反向_假开工ID在账里查无_必须拒(self):
+        """★ 第 3 问的反向样本（2026-09-25）：形如真开工ID、但账里查无 ⇒ 必须拒。
+
+        这是本判据的**存在理由**：任何人都能编一个 `开工-…` 字符串写进消息，只查「声明了ID」
+        拦不住编的。弄坏→红：把 `_核验开工ID存在` 的所有者比对摘掉，本用例必红。
+        """
+        self._接线()
+        文件 = self._改一个文件("己.txt")
+        结果 = 提交(str(self.强制点仓库), [str(文件)],
+                   f"{self.夹具假开工ID} 己：编一个开工ID 蒙混过关")
+        self.assertFalse(结果.成功, "账里查无的假开工ID 竟然放行了（第 3 问没生效）")
+        self.assertEqual("提交被拒", 结果.错误码, 结果.错误说明)
+        现存 = _运行git(str(self.强制点仓库), "log", "--oneline").stdout
+        self.assertNotIn("蒙混过关", 现存, "被拒的提交不得留痕")
 
     def test_豁免前缀_回退消息不要求开工ID(self):
         """`Revert ` 开头是 git 自身的流程消息，不是「一次开发改动」—— 与钩子同口径。"""

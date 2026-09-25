@@ -60,7 +60,8 @@ def 找项目根() -> Path:
 
 
 def _跑元信息头(项目根: Path, 类型: dict, 写盘: bool,
-              单文件: str | None, 允许补头: bool = False) -> tuple[int, list[str]]:
+              单文件: str | None, 允许补头: bool = False,
+              开工ID: str = "") -> tuple[int, list[str]]:
     类型名 = str(类型["类型"])
     if 单文件:
         相对表 = [单文件]
@@ -84,13 +85,14 @@ def _跑元信息头(项目根: Path, 类型: dict, 写盘: bool,
                 写前 = None
         try:
             if 写盘:
-                码, 行 = 文档类型_通用.写元信息头(项目根, 相对, 允许补头)
+                码, 行 = 文档类型_通用.写元信息头(项目根, 相对, 允许补头,
+                                             开工ID=开工ID)
             else:
                 码, 行 = 文档类型_通用.核验元信息头(项目根, 相对)
             # 机器印记：`--写盘` 时同批加上（「机器管理的」标记，手写件靠它被识别）——
             # 无论该文件原有无元信息头都加（印记与元信息头是两件事：印记=归属，头=日期口径）
             if 写盘:
-                码2, 行2 = 机器印记.加印记(项目根, 相对, 类型名)
+                码2, 行2 = 机器印记.加印记(项目根, 相对, 类型名, 开工ID=开工ID)
                 行 = 行 + 行2
             if 写盘:
                 指纹 = _记写入凭据(项目根, 相对, 类型名, 写前=写前)
@@ -230,7 +232,8 @@ def _查重全仓(项目根: Path, 阈值: float | None, 取前: int) -> int:
     return 1
 
 
-def _加印记(项目根: Path, 类型: dict, 单文件: str | None) -> int:
+def _加印记(项目根: Path, 类型: dict, 单文件: str | None,
+           开工ID: str = "") -> int:
     """把该类现存文件纳入机器管理（只加印记，不动正文、不刷生成区）。
 
     **归属复核（必须）**：`--类型` 是按路径判据枚举的，而兜底类（路径判据 `**/*.md`）
@@ -255,7 +258,7 @@ def _加印记(项目根: Path, 类型: dict, 单文件: str | None) -> int:
             if 归属 is not None and str(归属.get("类型")) != 类型名:
                 跳过 += 1
                 continue
-        码, 行 = 机器印记.加印记(项目根, 相对, 类型名)
+        码, 行 = 机器印记.加印记(项目根, 相对, 类型名, 开工ID=开工ID)
         if 码 != 0:
             for x in 行:
                 print(f"  ! {相对}: {x}")
@@ -564,12 +567,22 @@ def 主流程(argv: list[str] | None = None) -> int:
                      help="人工改正文的唯一通道：--文件 <目标> + --正文文件 <草稿>"
                           "（校验类型判据与生成区，落盘并加印记；加 --写盘 才写入）")
     解析.add_argument("--正文文件", help="--人工改 用的草稿文件路径（人先写草稿，不直接写目标）")
+    解析.add_argument("--开工ID", default="",
+                     help="本次改动的开工ID（`开工编排.开工即占` 返回的凭证）——"
+                          "落盘腿据此核对「这条路径的活跃写租约是不是你认领的」；"
+                          "受管路径缺它即 `越界`（fail-closed）。编译口那条腿不传，"
+                          "走「写者是平台编译机」出口")
     解析.add_argument("--查重", action="store_true",
                      help="查重：落盘前判断「这条内容是不是已经在别处写过了」（防几条腿）")
     解析.add_argument("--阈值", type=float, default=None,
                      help="查重报告阈值（默认 0.40；≥0.70 标为高度疑似重复）")
     解析.add_argument("--取前", type=int, default=5, help="查重返回前 N 名（默认 5）")
     args = 解析.parse_args(argv)
+    # 本次改动的写凭据：**只做形态归一（去空白）**，不在此判拒 —— 判据唯一在
+    # `公共契约.运行时.写入授权.校验写入授权`（同一件事两处判即缺陷）。定义必须放在
+    # 各分支**之前**：`--人工改`/`--同步载位` 等分支在 `--类型` 解析之前就要用它
+    # （实测踩过 UnboundLocalError：定义放后面时 `--人工改` 当场崩）。
+    开工ID = str(getattr(args, "开工ID", "") or "").strip()
 
     项目根 = 找项目根()
     try:
@@ -593,7 +606,8 @@ def 主流程(argv: list[str] | None = None) -> int:
             print("用法：--人工改 --文件 <目标路径> --正文文件 <草稿路径> [--写盘]")
             return 2
         return 人工编辑.入口(["--人工改", "--文件", args.文件, "--正文文件", args.正文文件]
-                          + (["--写盘"] if args.写盘 else []))
+                          + (["--写盘"] if args.写盘 else [])
+                          + (["--开工ID", 开工ID] if 开工ID else []))
 
     if args.查重:
         if not args.类型 and args.序号 is None and not args.文件:
@@ -638,7 +652,8 @@ def 主流程(argv: list[str] | None = None) -> int:
             return 2
         from 开发工具.MD文档生成.说明书 import 载位同步 as _载位同步
         码, 行表 = _载位同步.主流程(项目根, 写盘=args.写盘,
-                                 单文件=args.文件 if args.文件 else None)
+                                 单文件=args.文件 if args.文件 else None,
+                                 开工ID=开工ID)
         for 行 in 行表:
             print(行)
         return 码
@@ -646,7 +661,8 @@ def 主流程(argv: list[str] | None = None) -> int:
     # ① --新建：出骨架
     if args.新建:
         if 类型名 == "决策记录":
-            码, 行表 = 文档类型_通用.出决策骨架(项目根, args.标题 or "", 今天)
+            码, 行表 = 文档类型_通用.出决策骨架(项目根, args.标题 or "", 今天,
+                                         开工ID=开工ID)
         else:
             码, 行表 = 2, [f"「{类型名}」暂未提供出骨架动作（现有：决策记录）"]
         for 行 in 行表:
@@ -655,7 +671,7 @@ def 主流程(argv: list[str] | None = None) -> int:
 
     # ①之2 --加印记：只把现存文件纳入机器管理（无生成区的类型用它）
     if args.加印记:
-        return _加印记(项目根, 类型, args.文件 if args.文件 else None)
+        return _加印记(项目根, 类型, args.文件 if args.文件 else None, 开工ID)
 
     # ② 按类型分派（有可刷新生成区）
     if 类型名 in 按类型分派:
@@ -665,11 +681,16 @@ def 主流程(argv: list[str] | None = None) -> int:
         # 真 TypeError 一起吞掉，正是「宽 except 把故障伪装成正常」那一类）。
         import inspect
         处理 = 按类型分派[类型名]
-        可传单文件 = "单文件" in inspect.signature(处理).parameters
+        形参名 = inspect.signature(处理).parameters
+        可传单文件 = "单文件" in 形参名
         单文件 = args.文件 if args.文件 else None
+        # `开工ID` 同样按签名嗅探（与 `单文件` 同一手法）：分派表里的三个主流程都收它，
+        # 但不硬传 —— 将来加一个不收它的处理函数时不会在运行期炸。
+        额外 = {"单文件": 单文件} if 可传单文件 else {}
+        if "开工ID" in 形参名:
+            额外["开工ID"] = 开工ID
         try:
-            码, 行表 = (处理(项目根, 写盘=args.写盘, 今天=今天, 单文件=单文件)
-                      if 可传单文件 else 处理(项目根, 写盘=args.写盘, 今天=今天))
+            码, 行表 = 处理(项目根, 写盘=args.写盘, 今天=今天, **额外)
         except 生成区.边界缺失 as 错:
             print(f"生成区边界缺失，拒绝写盘（fail-closed）：{错}")
             return 2
@@ -680,7 +701,8 @@ def 主流程(argv: list[str] | None = None) -> int:
     # ③ 元信息头型（权威文档 / 规范）
     if 类型名 in 走元信息头:
         码, 行表 = _跑元信息头(项目根, 类型, args.写盘,
-                               args.文件 if args.文件 else None, args.补头)
+                               args.文件 if args.文件 else None, args.补头,
+                               开工ID=开工ID)
         for 行 in 行表:
             print(行)
         return 码

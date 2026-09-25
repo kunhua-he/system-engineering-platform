@@ -8,12 +8,11 @@ from __future__ import annotations
 from 公共契约.基础类型.逻辑类型 import 真, 假
 
 import json
-import shutil
 import time
 import uuid
 from pathlib import Path
 from typing import Any
-from 公共契约.运行时.平台适配 import 清只读后删除树
+from 公共契约.运行时.平台适配 import 复制文件不传标志, 清只读后删除树
 
 
 class 验证工作区:
@@ -43,13 +42,20 @@ class 验证工作区:
         return self.根目录
 
     def 复制输入快照(self, 来源目录: Path) -> None:
-        """复制输入快照（只读拷贝，不引用正式资产）。"""
+        """复制输入快照（只读拷贝，不引用正式资产）。
+
+        **必须走 `复制文件不传标志`（2026-09-25 收口）**：原先用 `shutil.copy2`，
+        而 `copy2` 的 `copystat` 会把源的内核不可变标志（`uchg`，本仓整仓置了只读锁）
+        一并复制 ⇒ 快照副本也带 `uchg` ⇒ 回收时 `清只读后删除树` 清不掉（`uchg` 存在时
+        `os.chmod` 本身被内核拒），验证腿在自己的**仓库内豁免区**里留下删不掉的残留。
+        复制原语**不再各写一份**：全仓唯一实现在 `公共契约/运行时/平台适配/复制.py`。
+        """
         for 文件 in Path(来源目录).rglob("*"):
             if 文件.is_file() and "pycache" not in str(文件) and "工程缓存" not in str(文件):
                 相对 = 文件.relative_to(来源目录)
                 目标 = self.输入快照目录 / 相对
                 目标.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(文件, 目标)
+                复制文件不传标志(文件, 目标)
 
     def 记录证据(self, 事件类型: str, 详情: dict[str, Any] | None = None) -> None:
         """运行证据（JSONL 追加）。"""

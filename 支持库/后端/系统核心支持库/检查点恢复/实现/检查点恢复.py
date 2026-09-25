@@ -177,7 +177,7 @@ def 恢复检查点(会话id: str = None, 库路径: str = None) -> 结果:
 # 0加密0限制：状态快照/中断原因原文存取，业务端自理敏感处理。
 # ═══════════════════════════════════════════════
 def 登记中断(会话id: str = None, 状态快照: dict = None, 中断原因: str = None,
-           版本: str = None, 库路径: str = None) -> 结果:
+           版本: str = None, 库路径: str = None, 开工ID: str | None = None) -> 结果:
     """登记会话中断：保存检查点+中断原因，返回中断id（Coze InterruptID 语义）。"""
     if not isinstance(会话id, str) or not 会话id.strip():
         return 结果.失败("参数不合法", "会话id必须是非空字符串", 来源="检查点恢复")
@@ -310,7 +310,8 @@ def _任务连接(库路径: str) -> sqlite3.Connection:
         return _任务缓存连接
 
 
-def 创建任务(*, 任务名: str = None, 归属人: str = None, 库路径: str = None) -> 结果:
+def 创建任务(*, 任务名: str = None, 归属人: str = None, 库路径: str = None,
+           开工ID: str | None = None) -> 结果:
     """创建任务（状态=排队）。返回 任务id。"""
     if not isinstance(任务名, str) or not 任务名.strip():
         return 结果.失败("参数不合法", "任务名必须是非空字符串", 来源="检查点恢复")
@@ -327,7 +328,8 @@ def 创建任务(*, 任务名: str = None, 归属人: str = None, 库路径: str
         return 结果.失败("创建任务失败", str(错误), 来源="检查点恢复")
 
 
-def 领取任务(*, 任务id: str = None, 执行者: str = None, 库路径: str = None) -> 结果:
+def 领取任务(*, 任务id: str = None, 执行者: str = None, 库路径: str = None,
+           开工ID: str | None = None) -> 结果:
     """领取任务（排队→运行中）。仅排队态可领（幂等保护）。"""
     if not isinstance(任务id, str) or not 任务id.strip():
         return 结果.失败("参数不合法", "任务id必须是非空字符串", 来源="检查点恢复")
@@ -349,7 +351,7 @@ def 领取任务(*, 任务id: str = None, 执行者: str = None, 库路径: str 
 
 
 def 完成任务(*, 任务id: str = None, 成功: bool = None, 结果值: dict = None,
-             库路径: str = None) -> 结果:
+             库路径: str = None, 开工ID: str | None = None) -> 结果:
     """完成任务（运行中→已完成/失败，终态）。"""
     if not isinstance(任务id, str) or not 任务id.strip():
         return 结果.失败("参数不合法", "任务id必须是非空字符串", 来源="检查点恢复")

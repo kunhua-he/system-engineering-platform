@@ -48,7 +48,7 @@ def _取服务(存储目录: str) -> 统一能力服务:
 
 
 def 执行稳定操作(操作: str, 参数: dict[str, Any] | None = None, 令牌: str = "",
-                 存储目录: str = "") -> Any:
+                 存储目录: str = "", 开工ID: str | None = None) -> Any:
     """按稳定操作名执行真实操作（授权 → 执行 → 证据），返回统一结果。"""
     from 公共契约.基础类型.结果类型 import 结果
 

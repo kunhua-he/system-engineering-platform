@@ -172,7 +172,8 @@ def _投递连接(库路径: str):
         return 连接
 
 
-def 登记投递(*, 队列名: str = None, 负载: dict = None, 库路径: str = None) -> 结果:
+def 登记投递(*, 队列名: str = None, 负载: dict = None, 库路径: str = None,
+           开工ID: str | None = None) -> 结果:
     """登记一条投递（落 SQLite，重启不丢）。返回 投递id。"""
     if not isinstance(队列名, str) or not 队列名.strip():
         return 结果.失败("参数不合法", "队列名必须是非空字符串", 来源="工具执行")
@@ -215,7 +216,7 @@ def 认领投递(*, 队列名: str = None, 认领者: str = None, 库路径: str
 
 
 def 完成投递(*, 投递id: str = None, 成功: bool = None, 结果值: dict = None,
-             库路径: str = None) -> 结果:
+             库路径: str = None, 开工ID: str | None = None) -> 结果:
     """投递完成登记（成功/失败）。"""
     if not isinstance(投递id, str) or not 投递id.strip():
         return 结果.失败("参数不合法", "投递id必须是非空字符串", 来源="工具执行")

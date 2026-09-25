@@ -175,14 +175,15 @@ def 现行生成区(文本: str) -> list[str]:
     return [生成区.取元信息头(文本, 6)[0]] + 生成区.取账目块(文本)
 
 
-def 主流程(项目根: Path, 写盘: bool, 今天: str | None = None) -> tuple[int, list[str]]:
+def 主流程(项目根: Path, 写盘: bool, 今天: str | None = None,
+           开工ID: str = "") -> tuple[int, list[str]]:
     路径 = 项目根 / 账目文件相对
     文本 = 路径.read_text(encoding="utf-8")
     应然 = 应然生成区(项目根, 文本)
     现行 = 现行生成区(文本)
     if 写盘:
-        写入文件(str(路径), 出文档(项目根, 文本)).确保成功()
-        机器印记.加印记(项目根, 账目文件相对, "债务清单")
+        写入文件(str(路径), 出文档(项目根, 文本), 开工ID=开工ID).确保成功()
+        机器印记.加印记(项目根, 账目文件相对, "债务清单", 开工ID=开工ID)
         return 0, ["生成区已按正文实数重写（人工区零丢失自检通过）；机器印记已加"] + \
                   [(行[2:] if 行.startswith("> ") else 行)
                    for 行 in 应然 if 行.startswith("> |") or 行.startswith("> 最后更新")]

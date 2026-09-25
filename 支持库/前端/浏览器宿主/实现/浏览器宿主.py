@@ -20,7 +20,7 @@ from 支持库.后端.文件系统支持库.文件操作 import 写入文件
 def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str = "",
                网关地址: str = "", 能力id: str = "", 端口: int = 45080,
                自动打开: bool = False, 受管验证: bool = False,
-               状态目录: str = "") -> tuple[有界线程HTTP服务器, str] | dict[str, Any]:
+               状态目录: str = "工程缓存/浏览器宿主") -> tuple[有界线程HTTP服务器, str] | dict[str, Any]:
     """启动静态浏览器宿主；页面调用只能转发 POST /网关/调用。"""
     校验应用监听端口(端口)
     标题文本 = html.escape(str(标题), quote=True)
@@ -62,6 +62,10 @@ def 启动网页服务(*, 标题: str = "底座网页服务", 页面说明: str 
         实际端口 = 服务.server_port
         服务.shutdown()
         服务.server_close()
+        # 状态文件是**平台自管的受管验证握手件**（绑定可回收端口→关服务→记回收结果），
+        # 全仓无读取方（只有本处写）⇒ 不是 agent 的事实源文件，故缺省落**豁免前缀**
+        # `工程缓存/`（与 `仓库只读锁.豁免前缀` 同口径）：缺省空串会 `Path("").resolve()`
+        # 成进程 cwd，网关 cwd 在仓库根时即受管路径，写入腿会因拿不到写租约当场 `越界`。
         状态根 = Path(状态目录).resolve()
         状态根.mkdir(parents=True, exist_ok=True)
         状态文件 = 状态根 / "浏览器宿主状态.json"
