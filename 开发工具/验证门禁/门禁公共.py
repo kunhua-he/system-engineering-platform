@@ -222,10 +222,17 @@ def 写基线段(基线路径: Path, 检查器名: str, 结论: 检查结论) ->
     全文.setdefault("检查器", {})[检查器名] = {
         条.键: {"行号": 条.行号, "详情": 条.详情} for 条 in 结论.命中列表
     }
-    基线路径.parent.mkdir(parents=True, exist_ok=True)
-    基线路径.write_text(
-        json.dumps(全文, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
-    )
+    # 落盘走**唯一写腿**（`文件系统支持库.文件操作.写入文件`），不裸 `write_text`：
+    # 该腿自带「内核只读锁的解锁窗口」与写入凭证判据（受管路径须被一条活跃写租约覆盖）；
+    # 裸写会在整仓内核只读锁下被内核以 `Operation not permitted` 拒 ——
+    # `开发工具/全量重算摘要.py` 2026-09-23 因**同一根因**已改走写腿，本处是同一形态的
+    # 漏改处（2026-09-26 补齐）：改前 `--写基线` 出口在锁下**结构性不可用**（实测 EPERM）。
+    # 无凭证 / 无租约时该腿 fail-closed（`确保成功` 抛出，错误说明自带可照抄的
+    # `开工即占` 调用），不静默降级、不退回裸写。
+    from 支持库.后端.文件系统支持库.文件操作 import 写入文件
+    写入文件(
+        str(基线路径), json.dumps(全文, ensure_ascii=False, indent=1) + "\n"
+    ).确保成功()
 
 
 def 读文件相对路径参数(argv: list[str]) -> tuple[Path, Path, bool, bool]:
@@ -313,8 +320,3 @@ def 新建夹具根(前缀: str) -> Path:
     import tempfile
 
     return Path(tempfile.mkdtemp(prefix=前缀))
-
-
-def 写(路径: Path, 文本: str) -> None:
-    路径.parent.mkdir(parents=True, exist_ok=True)
-    路径.write_text(文本, encoding="utf-8")

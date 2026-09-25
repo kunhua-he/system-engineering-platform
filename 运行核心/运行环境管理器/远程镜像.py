@@ -504,25 +504,17 @@ def 清只读后删除树(目录: Path, *, 忽略失败: bool = 假) -> None:
 def _同步目录项(目录: Path) -> None:
     """fsync 单个目录项；本平台拿不到目录句柄/不支持目录 fsync 时**如实留痕**。
 
+    落盘**只转发**（唯一实现在 `公共契约/运行时/同步目录.py::同步目录项`）：本文件不再
+    自建第二份「打开目录 fd → fsync → 关闭」。`留痕位置` 传本模块原口径，`记录忽略`
+    的定位不变。
+
     Windows 上 `os.open(目录, os.O_RDONLY)` **必然**抛
     `PermissionError: [Errno 13] Permission denied: '<目录>'`——CPython 的 `os.open()`
     对目录走 `CreateFileW` 且不带 `FILE_FLAG_BACKUP_SEMANTICS`，这**不是权限不足**，
     是「Windows 不允许把目录当文件打开」；POSIX 上同一调用合法（本机实测成功）。
     """
-    try:
-        目录句柄 = os.open(目录, os.O_RDONLY)
-    except OSError as 错误:
-        记录忽略("远程镜像.同步落盘.目录", 错误)
-        return
-    try:
-        os.fsync(目录句柄)
-    except OSError as 错误:
-        记录忽略("远程镜像.同步落盘.目录", 错误)
-    finally:
-        try:
-            os.close(目录句柄)
-        except OSError as 错误:
-            记录忽略("远程镜像.同步落盘.目录关闭", 错误)
+    from 公共契约.运行时.同步目录 import 同步目录项
+    同步目录项(目录, 留痕位置="远程镜像.同步落盘.目录")
 
 
 def _同步文件项(文件: Path) -> None:

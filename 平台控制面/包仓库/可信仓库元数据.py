@@ -74,16 +74,10 @@ def _原子写文本(路径: Path, 文本: str, 权限位: int = 0o600) -> None:
         except FileNotFoundError:
             pass
         raise
-    try:
-        目录描述符 = os.open(路径.parent, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(目录描述符)
-    except OSError:
-        pass
-    finally:
-        os.close(目录描述符)
+    # 目录项那一段**只转发**（唯一实现 = `公共契约/运行时/同步目录.py::同步目录项`）：
+    # 本函数只留「原子写」这一件**本层才有**的事（临时件 + fsync + os.replace + 0600 权限位）。
+    from 公共契约.运行时.同步目录 import 同步目录项
+    同步目录项(路径.parent)
 
 
 class 可信仓库元数据:

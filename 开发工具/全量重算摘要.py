@@ -27,8 +27,13 @@ import json
 import sys
 from pathlib import Path
 
-正式根表 = ("支持库", "模块库", "技能库", "平台控制面", "运行核心", "开发工具",
-            "客户端", "启动监督器", "项目适配层", "公共契约")
+# 唯一事实源 `公共契约/正式根.py::正式根名表`。本入口支持「直接跑」
+# （`python3.14 开发工具/全量重算摘要.py`），那时 sys.path[0] 是本文件所在目录、
+# 不是工程根，故先把工程根补进导入路径再导入（与 `把工程根放进导入路径` 同一口径）。
+_工程根 = Path(__file__).resolve().parents[1]
+if str(_工程根) not in sys.path:
+    sys.path.insert(0, str(_工程根))
+from 公共契约.正式根 import 正式根名表 as 正式根表  # noqa: E402
 
 
 def 把工程根放进导入路径(仓库根: Path) -> None:

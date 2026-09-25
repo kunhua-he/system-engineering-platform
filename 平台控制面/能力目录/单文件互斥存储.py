@@ -58,19 +58,14 @@ def 清理临时文件(路径: Path) -> None:
 
 
 def 同步目录(目录: Path) -> None:
-    """目录项 fsync（best-effort）：保证 replace 后的目录项也能落到磁盘。"""
-    句柄 = -1
-    try:
-        句柄 = os.open(str(目录), os.O_RDONLY)
-        os.fsync(句柄)
-    except OSError:
-        pass
-    finally:
-        if 句柄 >= 0:
-            try:
-                os.close(句柄)
-            except OSError:
-                pass
+    """目录项 fsync（best-effort）：保证 replace 后的目录项也能落到磁盘。
+
+    落盘**只转发**（唯一实现在 `公共契约/运行时/同步目录.py::同步目录项`）：本模块不再
+    自建第二份「打开目录 fd → fsync → 关闭」。行为逐字不变（吞 `OSError`、不留痕、
+    不升级为落盘失败）。
+    """
+    from 公共契约.运行时.同步目录 import 同步目录项
+    同步目录项(目录)
 
 
 class _独占区:

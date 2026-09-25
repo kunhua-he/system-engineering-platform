@@ -48,8 +48,8 @@ def 检查提供者(超时秒: float = 15) -> 结果:
 
 
 def 创建工作区(仓库路径: str, 新路径: str, 分支名: str | None = None,
-             起始点: str | None = None, 超时秒: float = 默认超时秒,
-             开工ID: str = None) -> 结果:
+             起始点: str | None = None, 开工ID: str = None,
+             超时秒: float = 默认超时秒) -> 结果:
     """git worktree add [-b 分支名] 路径 [起始点]：新建独立工作区。
 
     `开工ID`（写入凭证，**只做形态归一，不自行判拒**）：worktree add 会在 `新路径`
@@ -109,7 +109,7 @@ def 查询工作区(仓库路径: str, 超时秒: float = 默认超时秒) -> �
 
 
 def 关闭工作区(仓库路径: str, 目标路径: str, 强制: bool = False,
-             超时秒: float = 默认超时秒, 开工ID: str = None) -> 结果:
+             开工ID: str = None, 超时秒: float = 默认超时秒) -> 结果:
     """git worktree remove 关闭工作区；强制=假 时存在未提交修改一律 未提交修改 拒绝。
 
     强制=真 → `git worktree remove --force`（丢弃未提交修改，调用方须显式选择）；
